@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { AlertCircle, Loader2, ShieldQuestion, Terminal } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useReducer, useRef } from 'react'
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
@@ -149,8 +150,12 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
           <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
-          <DialogTitle className="text-center text-xl">Checking sign-in request…</DialogTitle>
-          <DialogDescription className="text-center">One moment while we look up the code.</DialogDescription>
+          <DialogTitle className="text-center text-xl">
+            <Trans>Checking sign-in request…</Trans>
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            <Trans>One moment while we look up the code.</Trans>
+          </DialogDescription>
         </DialogHeader>
       )}
 
@@ -160,13 +165,17 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
             <div className={`${iconWrapperClass} bg-muted`}>
               <Terminal className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
-            <DialogTitle className="text-center text-xl">Sign in to the CLI</DialogTitle>
+            <DialogTitle className="text-center text-xl">
+              <Trans>Sign in to the CLI</Trans>
+            </DialogTitle>
             <DialogDescription className="text-center">
-              Enter the code shown in your terminal to continue.
+              <Trans>Enter the code shown in your terminal to continue.</Trans>
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 py-4">
-            <Label htmlFor="device-user-code">Code</Label>
+            <Label htmlFor="device-user-code">
+              <Trans>Code</Trans>
+            </Label>
             <Input
               id="device-user-code"
               autoFocus
@@ -177,7 +186,7 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
               className="text-center font-mono tracking-[0.3em] uppercase"
             />
             <Button type="submit" className="mt-2 w-full" disabled={!normalizeUserCode(state.userCode)}>
-              Continue
+              <Trans>Continue</Trans>
             </Button>
           </div>
         </form>
@@ -189,10 +198,14 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
             <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
               <ShieldQuestion className="size-[var(--icon-size-default)] text-white" />
             </div>
-            <DialogTitle className="text-center text-xl">Approve CLI sign-in?</DialogTitle>
+            <DialogTitle className="text-center text-xl">
+              <Trans>Approve CLI sign-in?</Trans>
+            </DialogTitle>
             <DialogDescription className="text-center">
-              A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this
-              from your own terminal.
+              <Trans>
+                A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this
+                from your own terminal.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4 py-4">
@@ -200,21 +213,21 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
               {state.userCode}
             </div>
             <p className="text-center text-[length:var(--font-size-sm)] text-muted-foreground">
-              Confirm this code matches the one in your terminal.
+              <Trans>Confirm this code matches the one in your terminal.</Trans>
             </p>
             <div className="flex w-full gap-2">
               <Button variant="outline" className="flex-1" onClick={deny} disabled={isSubmitting}>
                 {state.pendingAction === 'deny' ? (
                   <Loader2 className="size-[var(--icon-size-sm)] animate-spin" />
                 ) : (
-                  'Deny'
+                  <Trans>Deny</Trans>
                 )}
               </Button>
               <Button className="flex-1" onClick={approve} disabled={isSubmitting}>
                 {state.pendingAction === 'approve' ? (
                   <Loader2 className="size-[var(--icon-size-sm)] animate-spin" />
                 ) : (
-                  'Approve'
+                  <Trans>Approve</Trans>
                 )}
               </Button>
             </div>
@@ -226,12 +239,16 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
         <>
           <DialogHeader>
             <GradientCheck className="mx-auto mb-4 size-12" />
-            <DialogTitle className="text-center text-xl">Sign-in approved</DialogTitle>
-            <DialogDescription className="text-center">You can return to your terminal.</DialogDescription>
+            <DialogTitle className="text-center text-xl">
+              <Trans>Sign-in approved</Trans>
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              <Trans>You can return to your terminal.</Trans>
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Button className="w-full" onClick={goHome}>
-              Done
+              <Trans>Done</Trans>
             </Button>
           </div>
         </>
@@ -243,14 +260,16 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
             <div className={`${iconWrapperClass} bg-muted`}>
               <AlertCircle className="size-[var(--icon-size-default)] text-muted-foreground" />
             </div>
-            <DialogTitle className="text-center text-xl">Sign-in denied</DialogTitle>
+            <DialogTitle className="text-center text-xl">
+              <Trans>Sign-in denied</Trans>
+            </DialogTitle>
             <DialogDescription className="text-center">
-              The request was denied. You can safely close this page.
+              <Trans>The request was denied. You can safely close this page.</Trans>
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Button variant="outline" className="w-full" onClick={goHome}>
-              Close
+              <Trans>Close</Trans>
             </Button>
           </div>
         </>
@@ -263,16 +282,16 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
               <AlertCircle className="size-[var(--icon-size-default)] text-red-600 dark:text-red-400" />
             </div>
             <DialogTitle className="text-center text-xl">
-              {state.error.reason === 'expired' ? 'Request expired' : "Code didn't work"}
+              {state.error.reason === 'expired' ? <Trans>Request expired</Trans> : <Trans>Code didn't work</Trans>}
             </DialogTitle>
             <DialogDescription className="text-center">{state.error.message}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 py-4">
             <Button variant="outline" className="w-full" onClick={reset}>
-              Enter a different code
+              <Trans>Enter a different code</Trans>
             </Button>
             <Button variant="ghost" className="w-full" onClick={goHome}>
-              Close
+              <Trans>Close</Trans>
             </Button>
           </div>
         </>
@@ -301,8 +320,12 @@ export const DeviceApproval = () => {
           <div className={`${iconWrapperClass} bg-gradient-to-br from-amber-400 to-orange-500`}>
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-white" />
           </div>
-          <DialogTitle className="text-center text-xl">Loading…</DialogTitle>
-          <DialogDescription className="text-center">Checking your session.</DialogDescription>
+          <DialogTitle className="text-center text-xl">
+            <Trans>Loading…</Trans>
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            <Trans>Checking your session.</Trans>
+          </DialogDescription>
         </DialogHeader>
       </ApprovalShell>
     )

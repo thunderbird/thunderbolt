@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
 import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
@@ -22,6 +23,7 @@ import { WaitlistHeader } from './waitlist-header'
  * The backend sends different emails based on whether they're approved, pending, or new.
  */
 export const WaitlistPage = () => {
+  const { t } = useLingui()
   const authClient = useAuth()
   const navigate = useNavigate()
   const { state, isValidEmail, actions } = useWaitlistState({
@@ -30,6 +32,7 @@ export const WaitlistPage = () => {
   })
 
   const isVerifying = state.status === 'verifying'
+  const email = state.email
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
@@ -40,15 +43,24 @@ export const WaitlistPage = () => {
           <WaitlistHeader />
 
           <div className="mt-auto flex flex-col items-center text-center md:my-auto">
-            <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Check your email</p>
+            <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
+              <Trans>Check your email</Trans>
+            </p>
             <p className="mt-2 text-base text-muted-foreground">
-              We&apos;ve sent an email to <span className="font-medium text-foreground">{state.email}</span> with your
-              next steps.
+              {/* Bound to a local so the catalog placeholder is named `{email}`
+                  rather than positional `{0}` — a member expression gives the
+                  extractor no name to use. */}
+              <Trans>
+                We&apos;ve sent an email to <span className="font-medium text-foreground">{email}</span> with your next
+                steps.
+              </Trans>
             </p>
           </div>
 
           <div className="mb-auto mt-8 flex w-full flex-col items-center gap-4 md:mb-0 md:mt-0">
-            <p className="text-sm text-muted-foreground">If you received a code to log in, enter it here:</p>
+            <p className="text-sm text-muted-foreground">
+              <Trans>If you received a code to log in, enter it here:</Trans>
+            </p>
             <InputOTP
               maxLength={otpLength}
               pattern={REGEXP_ONLY_DIGITS}
@@ -72,11 +84,11 @@ export const WaitlistPage = () => {
               type="button"
               onClick={() => actions.handleOtpComplete(state.otp)}
               isLoading={isVerifying}
-              loadingLabel="Verifying…"
+              loadingLabel={t`Verifying…`}
               disabled={state.otp.length !== otpLength}
               className="h-[46px] w-full rounded-xl text-base"
             >
-              Continue
+              <Trans>Continue</Trans>
             </Button>
           </div>
         </div>
@@ -91,14 +103,16 @@ export const WaitlistPage = () => {
 
         <div className="flex w-full flex-col items-center gap-8">
           <div className="text-center font-sans">
-            <p className="text-[28px] font-medium leading-normal text-foreground">Want early access?</p>
+            <p className="text-[28px] font-medium leading-normal text-foreground">
+              <Trans>Want early access?</Trans>
+            </p>
           </div>
 
           <form onSubmit={actions.handleSubmit} className="flex w-full flex-col gap-4">
             <Input
               type="email"
               inputMode="email"
-              placeholder="Email"
+              placeholder={t`Email`}
               value={state.email}
               onChange={(e) => actions.setEmail(e.target.value)}
               disabled={state.status === 'joining'}
@@ -113,30 +127,37 @@ export const WaitlistPage = () => {
             <Button
               type="submit"
               isLoading={state.status === 'joining'}
-              loadingLabel="Sending…"
+              loadingLabel={t`Sending…`}
               disabled={!isValidEmail}
               className="h-[46px] w-full rounded-xl text-base"
             >
-              Continue
+              <Trans>Continue</Trans>
             </Button>
           </form>
         </div>
 
         <p className="text-center text-xs text-muted-foreground">
-          By continuing, you agree to our{' '}
-          <a
-            href={termsOfServiceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:no-underline"
-          >
-            Terms of Service
-          </a>{' '}
-          and{' '}
-          <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
-            Privacy Policy
-          </a>
-          .
+          <Trans>
+            By continuing, you agree to our{' '}
+            <a
+              href={termsOfServiceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a
+              href={privacyPolicyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              Privacy Policy
+            </a>
+            .
+          </Trans>
         </p>
       </div>
     </WaitlistCard>

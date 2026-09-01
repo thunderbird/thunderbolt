@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,24 +24,32 @@ type RevokeDeviceDialogProps = {
 }
 
 const descriptions = {
-  trusted:
-    'The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.',
-  pending: 'This will deny the device access to your encrypted data. The device will need to set up sync again.',
+  trusted: msg`The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.`,
+  pending: msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,
 }
 
-export const RevokeDeviceDialog = ({ open, onOpenChange, onConfirm, isPending, variant }: RevokeDeviceDialogProps) => (
-  <AlertDialog open={open} onOpenChange={onOpenChange}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>{variant === 'pending' ? 'Deny this device?' : 'Revoke this device?'}</AlertDialogTitle>
-        <AlertDialogDescription>{descriptions[variant]}</AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={onConfirm} disabled={isPending}>
-          {isPending ? (variant === 'pending' ? 'Denying…' : 'Revoking…') : variant === 'pending' ? 'Deny' : 'Revoke'}
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+export const RevokeDeviceDialog = ({ open, onOpenChange, onConfirm, isPending, variant }: RevokeDeviceDialogProps) => {
+  const { i18n, t } = useLingui()
+  const isPendingVariant = variant === 'pending'
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {isPendingVariant ? <Trans>Deny this device?</Trans> : <Trans>Revoke this device?</Trans>}
+          </AlertDialogTitle>
+          <AlertDialogDescription>{i18n._(descriptions[variant])}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>
+            <Trans>Cancel</Trans>
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} disabled={isPending}>
+            {isPending ? (isPendingVariant ? t`Denying…` : t`Revoking…`) : isPendingVariant ? t`Deny` : t`Revoke`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

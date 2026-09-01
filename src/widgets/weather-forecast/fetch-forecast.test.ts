@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { setActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient, RequestOptions, ResponsePromise } from '@/lib/http'
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { fetchWeatherForecast } from './fetch-forecast'
 
 type RecordedRequest = { url: string; searchParams: Record<string, string | number | boolean | undefined> }
@@ -42,6 +43,13 @@ const buildForecast = (count: number) => ({
   },
 })
 
+// The module-level locale and its mirror leak across test files — bun test shares
+// one module registry and one happy-dom localStorage for the whole run.
+afterEach(() => {
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
+})
+
 describe('fetchWeatherForecast', () => {
   it('geocodes then fetches the forecast and returns the mapped shape', async () => {
     const recorded: RecordedRequest[] = []
@@ -74,6 +82,56 @@ describe('fetchWeatherForecast', () => {
     expect(recorded[0].searchParams.name).toBe('London')
     expect(recorded[1].url).toContain('api.open-meteo.com/v1/forecast')
     expect(recorded[1].searchParams.temperature_unit).toBe('fahrenheit')
+  })
+
+  /**
+   * Geocoding stays English whatever the UI language is. `region`/`country` come
+   * from the model's widget arguments and are usually English, so localizing the
+   * response would break `disambiguateLocation` — the country filter would match
+   * nothing and `narrowMatches` would fall back to every candidate, silently
+   * returning the wrong city's forecast.
+   */
+  it('geocodes in English even when the UI is in another language', async () => {
+    setActiveLocale('pt-BR')
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      { geocoding: { results: [{ name: 'Recife', latitude: -8.05, longitude: -34.9 }] }, forecast: buildForecast(1) },
+      recorded,
+    )
+
+    await fetchWeatherForecast(
+      { location: 'Recife', region: '', country: '', days: 1, temperatureUnit: 'c' },
+      httpClient,
+    )
+
+    expect(recorded[0].searchParams.language).toBe('en')
+  })
+
+  // The disambiguation above must hold regardless of UI language — the test that
+  // exercises it runs under the default locale, so this pins the non-English case.
+  it('still disambiguates by region and country when the UI is in another language', async () => {
+    setActiveLocale('fr')
+    const recorded: RecordedRequest[] = []
+    const httpClient = createFakeHttpClient(
+      {
+        geocoding: {
+          results: [
+            { name: 'Paris', admin1: 'Île-de-France', country: 'France', latitude: 48.85, longitude: 2.35 },
+            { name: 'Paris', admin1: 'Texas', country: 'United States', latitude: 33.66, longitude: -95.55 },
+          ],
+        },
+        forecast: buildForecast(1),
+      },
+      recorded,
+    )
+
+    const result = await fetchWeatherForecast(
+      { location: 'Paris', region: 'Texas', country: 'United States', days: 1, temperatureUnit: 'c' },
+      httpClient,
+    )
+
+    expect(result.location).toBe('Paris, Texas, United States')
+    expect(recorded[1].searchParams.latitude).toBe(33.66)
   })
 
   it('disambiguates by region and country, selecting the matching result', async () => {

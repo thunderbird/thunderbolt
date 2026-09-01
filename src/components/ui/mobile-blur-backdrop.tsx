@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cn } from '@/lib/utils'
+import { useLingui } from '@lingui/react/macro'
 import { createPortal } from 'react-dom'
 
 type MobileBlurBackdropProps = {
@@ -17,10 +18,11 @@ type MobileBlurBackdropProps = {
 /** Full-screen backdrop used on mobile to blur and mute content behind popovers/menus.
  *  Portals by default so transformed menu anchors cannot constrain its fixed positioning. */
 export const MobileBlurBackdrop = ({ onClick, className, disablePortal = false }: MobileBlurBackdropProps) => {
+  const { t } = useLingui()
   const backdrop = (
     <button
       type="button"
-      aria-label="Dismiss"
+      aria-label={t`Dismiss`}
       className={cn(
         'fixed inset-0 z-40 cursor-default bg-white/30 backdrop-blur-md backdrop-saturate-[.25] dark:bg-black/30',
         className,

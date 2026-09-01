@@ -4,6 +4,7 @@
 
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { Button } from '@/components/ui/button'
+import { openFailedMessage } from '@/hooks/use-external-link-dialog'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { fn } from 'storybook/test'
@@ -140,7 +141,7 @@ export const WithError: Story = {
     open: true,
     onOpenChange: fn(),
     url: 'https://example.com',
-    openError: 'Could not open link. Please try again or copy the URL.',
+    openError: openFailedMessage,
   },
 }
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { ContentViewHeader } from '@/content-view/header'
 import { useContentView } from '@/content-view/context'
 import { Button } from '@/components/ui/button'
@@ -122,7 +123,7 @@ const DocumentPreview = ({ fileName, fileType, state, initialPage }: DocumentPre
           {fileType === 'unsupported' && (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm text-muted-foreground">
-                Preview not available for this file type. Use the download button to view it.
+                <Trans>Preview not available for this file type. Use the download button to view it.</Trans>
               </p>
             </div>
           )}

@@ -72,7 +72,7 @@ describe('optimistic task creation', () => {
     const addButton = await waitForElement(() => screen.queryByRole('button', { name: 'Add Your First Task' }))
     fireEvent.click(addButton)
 
-    const input = screen.getByPlaceholderText('Add a new task...')
+    const input = screen.getByPlaceholderText('Add a new task…')
     fireEvent.change(input, { target: { value: task.item } })
     fireEvent.keyDown(input, { key: 'Enter' })
 

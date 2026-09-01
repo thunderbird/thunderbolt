@@ -2,13 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { extractCountryFromLocation } from '@/lib/country-utils'
+import { useDatabase } from '@/contexts'
+import { updateSettings } from '@/dal'
+import { unitDefaultsForRegion } from '@/i18n/region-units'
 import { useEffect, useReducer } from 'react'
-import { useCountryUnits } from './use-country-units'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6
+
+/** Total wizard steps; the last one is the celebration, which ends the wizard. */
+export const onboardingStepCount = 6
 
 type OnboardingState = {
   currentStep: OnboardingStep
@@ -73,8 +77,8 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         ...state,
         currentStep: action.payload,
         canGoBack: action.payload > 1,
-        canGoNext: action.payload < 5,
-        canSkip: action.payload > 1 && action.payload < 5,
+        canGoNext: action.payload < onboardingStepCount,
+        canSkip: action.payload > 1 && action.payload < onboardingStepCount,
       }
 
     case 'SET_PRIVACY_AGREED':
@@ -154,13 +158,13 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
       }
 
     case 'NEXT_STEP': {
-      const nextStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const nextStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       return {
         ...state,
         currentStep: nextStep,
         canGoBack: nextStep > 1,
-        canGoNext: nextStep < 5,
-        canSkip: nextStep > 1 && nextStep < 5,
+        canGoNext: nextStep < onboardingStepCount,
+        canSkip: nextStep > 1 && nextStep < onboardingStepCount,
       }
     }
 
@@ -170,19 +174,19 @@ const onboardingReducer = (state: OnboardingState, action: OnboardingAction): On
         ...state,
         currentStep: prevStep,
         canGoBack: prevStep > 1,
-        canGoNext: prevStep < 5,
-        canSkip: prevStep > 1 && prevStep < 5,
+        canGoNext: prevStep < onboardingStepCount,
+        canSkip: prevStep > 1 && prevStep < onboardingStepCount,
       }
     }
 
     case 'SKIP_STEP': {
-      const skipStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const skipStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       return {
         ...state,
         currentStep: skipStep,
         canGoBack: skipStep > 1,
-        canGoNext: skipStep < 5,
-        canSkip: skipStep > 1 && skipStep < 5,
+        canGoNext: skipStep < onboardingStepCount,
+        canSkip: skipStep > 1 && skipStep < onboardingStepCount,
       }
     }
 
@@ -202,35 +206,16 @@ export const useOnboardingState = () => {
     onboarding_current_step: '1',
   })
 
-  const {
-    preferredName,
-    locationName,
-    locationLat,
-    locationLng,
-    distanceUnit,
-    temperatureUnit,
-    dateFormat,
-    timeFormat,
-    currency,
-  } = useSettings({
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
-    time_format: '12h',
-    currency: 'USD',
-  })
+  const db = useDatabase()
+  // Only `preferred_name` is read back here; everything else onboarding touches
+  // is write-only and goes through `setValues`.
+  const { preferredName } = useSettings({ preferred_name: '' })
   const { data: integrationStatusData } = useIntegrationStatus()
-
-  const { fetchCountryUnits } = useCountryUnits()
 
   // Sync with saved step on mount
   useEffect(() => {
     const savedStep = parseInt(onboardingCurrentStep.value || '1', 10)
-    if (savedStep >= 1 && savedStep <= 5) {
+    if (savedStep >= 1 && savedStep <= onboardingStepCount) {
       dispatch({ type: 'SET_CURRENT_STEP', payload: savedStep as OnboardingStep })
     }
   }, [onboardingCurrentStep.value])
@@ -274,26 +259,38 @@ export const useOnboardingState = () => {
       }
     },
 
-    submitLocation: async (locationData: { locationName: string; locationLat: number; locationLng: number }) => {
+    submitLocation: async (locationData: {
+      locationName: string
+      locationLat: number
+      locationLng: number
+      locationCountryCode: string
+    }) => {
       dispatch({ type: 'SUBMIT_LOCATION', payload: locationData })
 
       try {
-        // Run sequentially to avoid "cannot start a transaction within a transaction"
-        // (each setValue uses updateSettings which wraps in db.transaction)
-        await locationName.setValue(locationData.locationName)
-        await locationLat.setValue(String(locationData.locationLat))
-        await locationLng.setValue(String(locationData.locationLng))
+        await updateSettings(db, {
+          location_name: locationData.locationName,
+          location_lat: String(locationData.locationLat),
+          location_lng: String(locationData.locationLng),
+          location_country_code: locationData.locationCountryCode,
+        })
 
-        const country = extractCountryFromLocation(locationData.locationName)
-        if (country) {
-          const countryUnitsData = await fetchCountryUnits(country)
-          if (countryUnitsData) {
-            await distanceUnit.setValue(countryUnitsData.unit, { recomputeHash: true })
-            await temperatureUnit.setValue(countryUnitsData.temperature, { recomputeHash: true })
-            await dateFormat.setValue(countryUnitsData.dateFormatExample, { recomputeHash: true })
-            await timeFormat.setValue(countryUnitsData.timeFormat, { recomputeHash: true })
-            await currency.setValue(countryUnitsData.currency.code, { recomputeHash: true })
-          }
+        // Applied without a prompt, unlike the same change in preferences: the
+        // user is setting the app up, and their location is a better signal than
+        // whatever `useUnitDefaults` seeded from the browser. `recomputeHash`
+        // keeps them seeded defaults rather than user edits.
+        if (locationData.locationCountryCode) {
+          const units = unitDefaultsForRegion(locationData.locationCountryCode)
+          await updateSettings(
+            db,
+            {
+              distance_unit: units.distanceUnit,
+              temperature_unit: units.temperatureUnit,
+              time_format: units.timeFormat,
+              currency: units.currency,
+            },
+            { recomputeHash: true },
+          )
         }
 
         dispatch({ type: 'SET_SUBMITTING_LOCATION', payload: false })
@@ -305,7 +302,7 @@ export const useOnboardingState = () => {
     },
 
     nextStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
       dispatch({ type: 'NEXT_STEP' })
       await onboardingCurrentStep.setValue(String(newStep))
     },
@@ -315,7 +312,7 @@ export const useOnboardingState = () => {
       await onboardingCurrentStep.setValue(String(newStep))
     },
     skipStep: async () => {
-      const newStep = Math.min(state.currentStep + 1, 5) as OnboardingStep
+      const newStep = Math.min(state.currentStep + 1, onboardingStepCount) as OnboardingStep
 
       if (state.currentStep === 3) {
         try {

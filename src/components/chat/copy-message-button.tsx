@@ -5,6 +5,7 @@
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
+import { useLingui } from '@lingui/react/macro'
 import { Check, Copy } from 'lucide-react'
 
 type CopyMessageButtonProps = {
@@ -17,6 +18,7 @@ type CopyMessageButtonProps = {
  * Shows a checkmark icon for 2 seconds after a successful copy.
  */
 export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) => {
+  const { t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
 
   return (
@@ -24,8 +26,8 @@ export const CopyMessageButton = ({ text, className }: CopyMessageButtonProps) =
       variant="ghost"
       size="icon"
       className={cn('size-8 rounded-lg', className)}
-      title="Copy message"
-      aria-label="Copy message"
+      title={t`Copy message`}
+      aria-label={t`Copy message`}
       onClick={() => copy(text)}
     >
       {isCopied ? (

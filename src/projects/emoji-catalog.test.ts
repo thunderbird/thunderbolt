@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import { describe, expect, it } from 'bun:test'
 import { buildCatalog, filterCatalog, loadEmojiCatalog, suggestedEmoji, toRows } from './emoji-catalog'
 
@@ -33,7 +34,7 @@ const data = {
 describe('buildCatalog', () => {
   it('flattens categories with human labels', () => {
     const catalog = buildCatalog(data)
-    expect(catalog.map((category) => category.label)).toEqual(['Objects'])
+    expect(catalog.map((category) => i18n._(category.label))).toEqual(['Objects'])
   })
 
   it('drops entries with no glyph, and categories left empty', () => {

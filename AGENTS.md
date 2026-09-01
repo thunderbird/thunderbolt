@@ -114,6 +114,8 @@ See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync
 
 **FTS search index couples to PowerSync's internal tables:** `src/search/fts-setup.ts` builds the unified `search_index` (THU-766) by attaching SQLite triggers to PowerSync's internal backing tables (`table.internalName`, i.e. `ps_data__*` / `ps_data_local__*`) and reading their JSON `data` blob via `json_extract(data, '$.<snake_case_column>')`. Both the table naming and the blob layout are undocumented `@powersync/web` implementation details. A PowerSync upgrade that renames or restructures them breaks search **silently** — no TypeScript error, and often no runtime error (the index just goes empty/stale). When upgrading `@powersync/web`, verify the internal table names and `data` blob shape still hold. The trigger-count self-heal in `createSearchIndex` (rebuilds when the expected triggers are missing) mitigates PowerSync dropping/recreating those tables at runtime, but not a shape change; bump `searchIndexVersion` to force a rebuild when the registry or FTS schema changes.
 
+**FTS tokenization is deliberately locale-independent:** the index is built with `tokenize = 'unicode61 remove_diacritics 2'` and nothing in `src/search/` reads the app locale. The index holds *user content*, whose language is independent of the UI language and routinely mixed within one account, so keying the tokenizer on the locale would be wrong for most rows — and a language change must never rebuild the index. Scripts unicode61 cannot tokenize (Japanese, Chinese, Thai, Lao, Khmer, Myanmar) are matched with `LIKE` at query time instead, routed per term by `src/search/query-plan.ts`; a parallel `trigram` index was measured and rejected (~2.2× the source text in extra storage, and it silently drops terms shorter than three characters from a MATCH). The porter stemmer was removed — it indexes stems while queries append a `*` prefix, so prefixes longer than the stem stopped matching and the palette blanked out mid-word. `src/search/fold.ts` mirrors the tokenizer's folding in JS so `highlight.tsx` marks what actually matched; both use locale-independent case folding on purpose.
+
 ## Reconciled defaults and version bumps
 
 Reconciled default tables ship a monotonic `defaults<X>Version` constant next to the defaults array. Reconciliation uses it as the ordering signal so multi-device sync groups converge without ping-ponging (see THU-637, extended to the other reconciled tables in THU-677): a device only overwrites an existing row when its defaults version is strictly newer than the highest ever applied on this account.
@@ -134,6 +136,15 @@ Files that ship a version constant today:
 Both the main API (`backend/src/index.ts`) and the PostHog proxy route (`backend/src/posthog/routes.ts`) use `cors({ allowedHeaders: true })`, which echoes back whatever the browser requests in `Access-Control-Request-Headers`. This is required by the universal proxy at `/v1/proxy`, which forwards arbitrary upstream headers as `X-Proxy-Passthrough-*` (LLM SDKs add `x-api-key`, `x-stainless-*`, `openai-organization`, etc. — a static allowlist would break preflight whenever a new provider header appears). Adding a new custom header to any request requires no CORS-config change.
 
 If you ever need a browser-readable response header in cross-origin code, you must add it to `corsExposeHeaders` in `backend/src/config/settings.ts` — browsers expose only the headers listed there to `Response.headers` cross-origin.
+
+## App version gate
+
+The backend enforces a minimum app version via `createAppVersionMiddleware` (mounted globally in `backend/src/index.ts`). It is a no-op until `MIN_APP_VERSION` is set; when set, every `/v1` request from a below-minimum client gets a **426 Upgrade Required** unless its path is in `appVersionExemptPrefixes` (`backend/src/middleware/app-version.ts`). The gate is **fail-closed** — a missing `X-App-Version` header is rejected on non-exempt routes.
+
+- **Adding a backend route hit by a browser redirect or a header-less client** (OAuth/SSO callbacks, WebSocket upgrades, posthog-js, CLI device-grant) — add its prefix to `appVersionExemptPrefixes`, or it will 426 silently once the gate is enabled.
+- **Adding a frontend→backend fetch client** — route it through `appVersionHeader()` (`src/lib/app-version.ts`) so it sends `X-App-Version`. The universal proxy adds the header to the outer hop only; it must never leak to external upstreams (see `skipHeaders` in `src/lib/proxy-fetch.ts`).
+- **Passing per-call headers to a Better Auth method** (`authClient.signIn.emailOtp({ fetchOptions: { headers } })`) — Better Auth **replaces** the client-level headers instead of merging them, so a bare `headers` object silently drops `X-App-Version` and the call 426s on a perfectly current build. Build it with `authRequestHeaders()` (`src/contexts/auth-context.tsx`) instead.
+- Enabling the gate is a config change (`MIN_APP_VERSION`), not a deploy. `getSettings()` memoizes per process, so **restart the backend** after changing it.
 
 ## Responsive Sizing
 
@@ -162,3 +173,99 @@ Corners step **down** as you nest (outer radius − padding ≈ inner radius): a
 - Icons: `size-[var(--icon-size-default)]`, `size-[var(--icon-size-sm)]`
 - Minimum heights: `min-h-[var(--min-touch-height)]`
 - Composer-control radius: `rounded-[var(--radius-control)]` — the one sanctioned `rounded-[var()]` exception, sized between `lg` and `xl` for the compact prompt-area controls (see the rationale in `src/index.css`). Everything else uses the named tiers above.
+
+## Localization (i18n)
+
+The app runs on Lingui v6 with `.po` catalogs in `src/locales/{locale}/messages.po`. The message id is the English source text, so **there are no keys to invent** — write the copy, run `bun run i18n:extract`, and commit the catalogs. CI (`bun run i18n:check`) fails if they are stale.
+
+**Every user-facing string goes through a macro.** That includes `aria-label`, `title`, and `placeholder` — a translated UI with English screen-reader labels is a half-finished job.
+
+```tsx
+import { Trans, useLingui } from '@lingui/react/macro'
+
+<h1><Trans>Not Found</Trans></h1>              // JSX text
+<button aria-label={t`Go back`} />             // string position; t from useLingui()
+```
+
+Pick by position: `<Trans>` for anything rendered as JSX (it handles inline elements and interpolation), and `` t`…` `` from `useLingui()` for values that must be strings.
+
+**Never build a sentence from fragments.** One message per sentence, values as placeholders — `` t`Deleted ${name}` ``, not `'Deleted ' + name`. Word order differs across languages, so a joined fragment is untranslatable.
+
+### Module scope freezes the locale
+
+`` t`…` `` resolves against the catalog active _where it is evaluated_. At module scope that is import time, so the string pins to the boot locale and never follows a language change. One rule covers every case: **module scope declares `` msg`…` `` descriptors; the point of use resolves them with `i18n._(descriptor)`.**
+
+- **Constant tables** (error copy, option labels) hold descriptors and the render site resolves them. See `src/lib/otp-error-messages.ts`.
+- **Zod schemas and other builders** become factories taking `i18n: I18n`, called during render. See `src/components/onboarding/onboarding-name-step.tsx`. Don't reach for `useMemo` — `i18n` is a stable singleton, so the only usable dependency is `i18n.locale`, which `exhaustive-deps` rejects as redundant.
+
+Do **not** pass `t` into a helper to work around this. The extractor only recognises a macro it can see imported in the file, so a `t` arriving as a parameter produces no catalog entry — the string silently never reaches translators, and nothing fails to tell you.
+
+Resolving eagerly in an async event handler — `i18n._(getOtpErrorMessage(...))` before storing the result in state — is fine and deliberate: the snapshot is taken while the user is looking at the screen. Use the `i18n` singleton there rather than `useLingui()`, which would imply a reactivity the stored string doesn't have.
+
+### Formatting dates, numbers, and durations
+
+Every rendered date, relative time, number, and duration goes through `src/i18n/format.ts`. Components call `useFormatters()`; non-React callers call `getFormatters(getActiveLocale())`.
+
+```tsx
+const formatters = useFormatters()
+formatters.relativeTime(device.lastSeen) // "2 hours ago" / "vor 2 Stunden" / "2 時間前"
+formatters.compactNumber(usedTokens) // "256K" / "256.000" / "25.6万"
+formatters.duration(reasoningTime) // "1.5s" / "1,5s" / "1.5s"
+formatters.time(start, { hour12 }) // "1:30 PM" / "13:30" / "午後1:30"
+```
+
+`duration` is the one place the layer does not let CLDR name the unit. `unitDisplay: 'narrow'` for
+seconds is not stable across ICU builds — the same code renders German as `1,5s` on ICU 74 and
+`1,5 Sek.` on ICU 78 — so only the number is localized and `s`/`ms` are appended as SI symbols.
+Never pin CLDR-derived output in a doc, a JSDoc example, or an assertion; assert the behaviour
+under test (the decimal separator here) instead of the suffix.
+
+**Never format inline.** A bare `Intl.NumberFormat('en', …)` pins English; a bare `value.toLocaleString()` silently uses the _host_ locale rather than the app's. Both bugs shipped before THU-809.
+
+**The hook is not optional.** Lingui's `I18nProvider` re-renders only components that read its context, so a component formatting off a module-level `getActiveLocale()` keeps rendering the outgoing locale after a language switch. `useFormatters()` subscribes via `useActiveLocale()`; `getFormatters` is memoized per locale, so its result is referentially stable and safe in a dependency array.
+
+**Parse through `toDate`, never `new Date(str)`.** `new Date('2026-08-26')` is UTC midnight, so a bare `YYYY-MM-DD` renders as the previous day anywhere west of Greenwich. `toDate` gives date-only strings an explicit local midnight.
+
+**No date library.** `Intl` carries full CLDR, so a new locale needs no code. Pattern-based formatters (dayjs, date-fns) can't replace it: the pattern is ours and encodes English word order — `format('dddd, MMM D')` yields "Mittwoch, Aug. 26" in German, where CLDR gives "Mittwoch, 26. Aug.".
+
+`time` takes `hour12` explicitly rather than defaulting to the locale's convention, because the choice is the user's `time_format` setting — an en-US user preferring 24-hour is the whole point of having it. Everything else the layer renders is locale-derived, so nothing else takes an override. `temperature_unit` is a unit _conversion_ rather than a format and stays with the weather widget.
+
+Expect output to vary more than English suggests: German and Japanese don't abbreviate thousands, so `256K` becomes `256.000` and `25.6万`. Assertions on formatted output should pin the locale — `getFormatters('en')` — rather than rely on negotiation. `bun test` runs in UTC, so hardcoded day-of-month expectations are stable there but not in the browser.
+
+### Units and their defaults
+
+Four synced settings describe how the user wants quantities shown: `distance_unit`, `temperature_unit`, `time_format`, `currency`. Their values are derived from CLDR, keyed on an ISO 3166-1 alpha-2 region.
+
+```ts
+unitDefaultsForRegion('GB')
+// { distanceUnit: 'imperial', temperatureUnit: 'c', timeFormat: '24h', currency: 'GBP' }
+```
+
+**Distance and temperature are separate CLDR categories.** `measurementSystem` puts US and LR on `US` and GB and MM on `UK`; `measurementSystem-category-temperature` is a different list — US, BS, BZ, KY, PR, PW — and explicitly overrides LR and MM back to metric. Britain is imperial for road distance and Celsius for weather, and modelling the two as one field is what made the retired `units-by-country.json` wrong on eight regions. `src/i18n/region-units.ts` transcribes both lists plus a region→currency map from `cldr-json`; refresh them from upstream when a country changes currency.
+
+**Hour cycle is computed, never stored — but the tag must carry no script subtag.** ICU keys its hour-cycle data on `language-REGION`, so a maximized tag falls off the lookup path and silently resolves to the root default: `en-GB` is `h23` while `en-Latn-GB` is `h12`, and `es-MX` is `h12` while `es-Latn-MX` is `h23`. `tagForRegion` drops the script for this reason and has a regression test on GB and MX.
+
+**Defaults are seeded, not fetched.** `useUnitDefaults` (mounted beside `useAppLanguage` in `app.tsx`) writes each unset setting with `recomputeHash`, exactly as the `language` setting is seeded — so reconcile's `wouldOverwriteUserValue` guard preserves it, a reset means "back to auto", and two devices cannot ping-pong the synced rows. The region comes from `location_country_code`, then the first `navigator.languages` tag carrying a region, then the app locale. The middle step matters: the app ships one `en` catalog for every English-speaking region, so a British user resolved through the locale alone would maximize to `US`.
+
+Judge seedability **per setting**, not across the group — a user who picks a currency by hand should still get distance, temperature and time seeded.
+
+**Write groups of settings with `updateSettings(db, { … })`, not several `setValue` calls.** Each `setValue` opens its own transaction and SQLite rejects a `begin` while one is open, so `Promise.all` over four of them fails three. Sequential awaits work but leave the group non-atomic.
+
+**Option labels come from `useUnitLabels()`**, never from the stored token. Names that `Intl` has no API for — "Metric", "Imperial", "Celsius", "Fahrenheit" — are `msg` descriptors; symbols come from `Intl.NumberFormat` with `unitDisplay: 'short'`. Not `narrow`: English narrows Fahrenheit to a bare `°`, and Japanese and Portuguese spell "mile" out in full. Currency names use `Intl.DisplayNames` and symbols come from `formatToParts`, which is locale-dependent (pt-BR writes USD as `US$`).
+
+**Never resolve a region from a country name.** `location_country_code` is written from the geocoding provider's own `country_code`, which it returns independently of the request language. The display name in `location_name` localizes; the code does not.
+
+**`date_format` is retired** (THU-810). CLDR already knows each locale's date pattern, and the three patterns the setting offered were a strictly worse subset. Existing rows are left in place, unmanaged.
+
+### Constraints
+
+- **No `select` / `selectOrdinal`.** The `po-gettext` catalog format cannot express them (see the rationale in `lingui.config.ts`). Plurals use `<Plural>` / `plural()`, which map to native gettext plural forms.
+- **Don't reword while extracting.** The English source _is_ the id, so a copy edit orphans its translations — and 30 Playwright selectors in `e2e/` match on English text. Copy changes belong in their own commit.
+- **Thrown Errors stay English; the display boundary translates.** Localizing internal control flow buys nothing. Code-mapped user copy (`otp-error-messages.ts`) is display, not control flow, and is translated.
+- **Model-facing text stays English**: widget contracts in `src/widgets/*/instructions.ts`, skill instructions, system prompts, and the citation/widget schema messages. One language means no translation drift in behaviour-critical prompts.
+- **Dev-only surfaces are excluded** in `lingui.config.ts` (`src/devtools/**`, `src/settings/dev-settings.tsx`).
+- **`label`/`description` on synced default rows** (skills, tasks, automations, agents, models) are reconciled by content hash — translating them breaks reconciliation across devices. Leave them alone; THU-811 owns that problem.
+
+### Verifying
+
+Switch Settings → Localization to **Pseudo-locale (en-XA)**, available in dev builds only. Anything still rendering plain English was missed. Bun tests need no provider: `src/testing-library.ts` mocks the macros with identity implementations that render the English source, so `getByText` assertions keep working.

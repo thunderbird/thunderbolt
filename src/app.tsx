@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import '@/lib/dayjs'
+import { I18nProvider } from '@lingui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
+
+import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
@@ -31,6 +33,8 @@ import {
   useHttpClient,
 } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAppLanguage } from '@/hooks/use-app-language'
+import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -40,7 +44,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
 import { UpgradeRequired } from './components/upgrade-required'
 import { useConfigStore } from '@/api/config-store'
-import { compareSemver } from '@/lib/compare-semver'
+import { isVersionBelowMinimum } from '@/lib/app-version'
 import { AuthGate } from './components/auth-gate'
 import { OnboardingDialog } from './components/onboarding/onboarding-dialog'
 import { WelcomeDialog } from './components/welcome-dialog'
@@ -49,9 +53,11 @@ import { UpdateNotification } from './components/update-notification'
 import { ExternalLinkDialogProvider } from './components/chat/markdown-utils'
 import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
+import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
 import { useCredentialEvents } from './hooks/use-credential-events'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
+import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
@@ -174,6 +180,8 @@ const useBootstrapSystemAgents = () => {
 const AppContent = ({ initData }: { initData: InitData }) => {
   useMcpSync()
   useBootstrapSystemAgents()
+  useAppLanguage()
+  useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
@@ -293,6 +301,17 @@ export const App = () => {
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
+  useAppVersionUnsupportedListener()
+
+  // Start the palette's chunk during boot so it is in memory by the time
+  // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
+  // the `sidebarState` gate in `Layout`, so fetching only from there leaves a
+  // window where Cmd+K has nothing to show. ~10KB, for the one surface
+  // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
+  // runs on web too; that policy is about not warming *every* route.
+  useEffect(() => {
+    void loadSearchPalette()
+  }, [])
 
   // Show the Tauri window after React mounts and CSS is applied.
   // The window starts hidden (tauri.conf.json visible: false) to prevent
@@ -307,12 +326,23 @@ export const App = () => {
   // Reactive gate: re-evaluates whenever the config store updates, so the
   // upgrade screen tracks the current server-enforced minimum.
   const minAppVersion = useConfigStore((s) => s.config.minAppVersion)
+  const forceUpgrade = useConfigStore((s) => s.forceUpgrade)
+  const forceUpgradeMinVersion = useConfigStore((s) => s.forceUpgradeMinVersion)
   const appVersion = import.meta.env.VITE_APP_VERSION
-  const upgradeRequired = !!minAppVersion && !!appVersion && compareSemver(appVersion, minAppVersion) < 0
+  // A response-triggered 426 (`forceUpgrade`) blocks immediately for the session;
+  // the config-driven semver gate blocks on every load below the enforced minimum.
+  // Same rule the sync layer enforces via `isAppVersionUnsupported` — shared so the
+  // blocker and the sync teardown can never disagree about what "too old" means.
+  const upgradeRequired = forceUpgrade || isVersionBelowMinimum(appVersion, minAppVersion)
 
   const renderAppContent = () => {
     if (upgradeRequired) {
-      return <UpgradeRequired currentVersion={appVersion ?? 'unknown'} minVersion={minAppVersion ?? 'unknown'} />
+      return (
+        <UpgradeRequired
+          currentVersion={appVersion ?? 'unknown'}
+          minVersion={forceUpgradeMinVersion ?? minAppVersion ?? 'unknown'}
+        />
+      )
     }
     if (initError) {
       if (initError.code === 'STORAGE_UNAVAILABLE') {
@@ -363,12 +393,18 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider>
-      <LazyMotion features={loadMotionFeatures} strict>
-        {renderAppContent()}
-        <WindowControls />
-        <RevokedDeviceModal open={revokedDeviceOpen} />
-      </LazyMotion>
-    </ThemeProvider>
+    // The source locale is activated synchronously in src/i18n, so the
+    // provider never blocks first paint waiting for a catalog chunk.
+    <I18nProvider i18n={i18n}>
+      <ThemeProvider>
+        <LazyMotion features={loadMotionFeatures} strict>
+          {renderAppContent()}
+          <WindowControls />
+          {/* The upgrade blocker replaces the whole app, so it must win over the
+              revoked-device modal that renders outside renderAppContent. */}
+          <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
+        </LazyMotion>
+      </ThemeProvider>
+    </I18nProvider>
   )
 }

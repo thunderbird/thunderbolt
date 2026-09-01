@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import { validateMcpServerUrl } from '@/lib/mcp-url-validation'
 import { isRecord } from '@/lib/utils'
 
@@ -89,7 +90,7 @@ export const parseMcpServersConfig = (text: string): ParseResult => {
 
     const validation = validateMcpServerUrl(raw.url)
     if (!validation.ok) {
-      errors.push(`${name}: ${validation.reason}`)
+      errors.push(`${name}: ${i18n._(validation.reason)}`)
       continue
     }
 

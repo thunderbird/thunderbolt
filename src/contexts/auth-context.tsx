@@ -4,7 +4,10 @@
 
 import { useHttpClient } from '@/contexts/http-client-context'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { usePowerSyncCredentialsInvalidListener } from '@/hooks/use-powersync-credentials-invalid-listener'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
@@ -108,9 +111,39 @@ export const subscribeSessionCachePersist = (client: ReturnType<typeof createAut
   })
 }
 
+/**
+ * The headers every Better Auth request must carry.
+ *
+ * Also spread into a per-call `fetchOptions.headers`: better-fetch REPLACES that
+ * object rather than merging it, so a call site setting only its own header
+ * would drop `X-App-Version` — and the version gate is fail-closed, so the
+ * request comes back 426 on a build that is perfectly up to date.
+ */
+export const authRequestHeaders = (
+  extra: Record<string, string> = {},
+  platform: string = getPlatform(),
+): Record<string, string> => ({
+  'X-Client-Platform': platform,
+  'X-App-Language': getActiveLocale(),
+  ...appVersionHeader(),
+  ...extra,
+})
+
 export const buildFetchOptions = (platform: string) => ({
   credentials: (isSsoMode() ? 'include' : 'omit') as RequestCredentials,
-  headers: { 'X-Client-Platform': platform },
+  // Applied per request instead of through `headers`. better-fetch merges the
+  // client-level and per-call options with a shallow spread
+  // (`{...config, ...options}`), so any call passing its own
+  // `fetchOptions.headers` — OTP verify, magic-link verify, both of which send a
+  // challenge token — replaced a client-level `headers` object wholesale.
+  // `onRequest` survives that spread because no call site overrides it, and
+  // re-reading the locale per request keeps it from being frozen at client
+  // construction, before the synced setting has hydrated.
+  onRequest: (ctx: { headers: Headers }) => {
+    for (const [key, value] of Object.entries(authRequestHeaders({}, platform))) {
+      ctx.headers.set(key, value)
+    }
+  },
   auth: {
     type: 'Bearer' as const,
     token: () => getAuthToken() ?? '',
@@ -122,6 +155,13 @@ export const buildFetchOptions = (platform: string) => ({
     }
   },
   onError: (ctx: { response: Response }) => {
+    // A 426 from our backend means this build is below the enforced minimum —
+    // flip into the upgrade blocker (mirrors the 401 → session_expired dispatch
+    // below). Status-only: the response body belongs to Better Auth here.
+    if (ctx.response.status === 426) {
+      handleAppVersionUnsupported(ctx.response.status)
+      return
+    }
     if (ctx.response?.status !== 401) {
       return
     }

@@ -19,6 +19,7 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { isMobile as isMobilePlatform, isTauri as isTauriPlatform } from '@/lib/platform'
 import type { McpAuthActionability } from './auth-decision'
 import { cimdClientMetadataAvailable, createMcpOAuthClientProvider } from './oauth-client-provider'
+import { i18n } from '@/i18n'
 import { validateMcpOAuthCallback } from './callback-validation'
 import { startMcpOAuthLoopback } from './mcp-oauth-loopback'
 import { abandonedFlowMs, clearMcpOAuthState, getMcpOAuthState, setMcpOAuthState } from './mcp-oauth-state'
@@ -457,7 +458,9 @@ export const completeMcpOAuthFlow = async (
     issParameterSupported: issParameterSupported(metadata),
   })
   if (!validation.ok) {
-    throw new Error(validation.reason)
+    // Resolved here rather than carried as a descriptor: this is an async flow and
+    // the snapshot is taken while the user is looking at the screen (see AGENTS.md).
+    throw new Error(i18n._(validation.reason))
   }
 
   if (!handshake.clientInfo || !handshake.codeVerifier || !handshake.redirectUrl || !handshake.serverUrl) {

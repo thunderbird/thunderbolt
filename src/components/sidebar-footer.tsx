@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import {
   Cloud,
   CloudAlert,
@@ -15,9 +18,6 @@ import {
   UserRound,
 } from 'lucide-react'
 import { type ReactNode, useState, useTransition } from 'react'
-
-import dayjs from 'dayjs'
-import '@/lib/dayjs'
 
 import type { User } from '@shared/types/auth'
 
@@ -34,6 +34,8 @@ import { Switch } from '@/components/ui/switch'
 import { useAuth, useSignInModal } from '@/contexts'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useHaptics } from '@/hooks/use-haptics'
+import type { Formatters } from '@/i18n/format'
+import { useFormatters } from '@/i18n/use-formatters'
 import { usePowerSyncStatus, type PowerSyncConnectionStatus } from '@/hooks/use-powersync-status'
 import { useSyncEnabledToggle } from '@/hooks/use-sync-enabled-toggle'
 import { reconnectSync } from '@/db/powersync/sync-state'
@@ -126,30 +128,45 @@ export const SyncStateIcon = ({
   return <GradientCloud className={cn(iconSize, 'shrink-0')} />
 }
 
-/** Human status line for the account menu's Cloud Sync section. Exported for tests. */
+/**
+ * Human status line for the account menu's Cloud Sync section. Exported for tests.
+ *
+ * Takes `i18n` and the formatters rather than resolving either through the
+ * global: the copy has to follow the active catalog, and one branch
+ * interpolates a runtime value, so the descriptors can't all live at module
+ * scope.
+ */
 export const syncStatusText = (
+  i18n: I18n,
+  formatters: Formatters,
   syncEnabled: boolean,
   connectionStatus: PowerSyncConnectionStatus,
   hasSynced: boolean,
   lastSyncedAt: Date | null,
 ): string => {
   if (!syncEnabled) {
-    return 'Keep your data synced across devices.'
+    return i18n._(msg`Keep your data synced across devices.`)
   }
   if (connectionStatus === 'connecting') {
-    return 'Connecting...'
+    return i18n._(msg`Connecting…`)
   }
   if (connectionStatus !== 'connected') {
-    return 'Offline. Changes will sync when back online.'
+    return i18n._(msg`Offline. Changes will sync when back online.`)
   }
   if (hasSynced && lastSyncedAt) {
     const secondsAgo = (Date.now() - lastSyncedAt.getTime()) / 1000
-    return secondsAgo < 60 ? 'Just synced' : `Synced ${dayjs(lastSyncedAt).fromNow()}`
+    if (secondsAgo < 60) {
+      return i18n._(msg`Just synced`)
+    }
+    const relative = formatters.relativeTime(lastSyncedAt)
+    return i18n._(msg`Synced ${relative}`)
   }
-  return 'Connected'
+  return i18n._(msg`Connected`)
 }
 
 export const SidebarFooter = ({ className }: SidebarFooterProps) => {
+  const { i18n, t } = useLingui()
+  const formatters = useFormatters()
   const authClient = useAuth()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
@@ -248,7 +265,9 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       ) : (
         <div className={cn(pillClassName(true), 'cursor-default hover:bg-transparent')}>
           <Loader2 className={cn(iconSize, 'shrink-0 animate-spin text-muted-foreground')} />
-          <span className="truncate text-muted-foreground">Loading...</span>
+          <span className="truncate text-muted-foreground">
+            <Trans>Loading…</Trans>
+          </span>
         </div>
       )
     }
@@ -259,7 +278,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
     )
     if (!user) {
       return (
-        <button type="button" aria-label="Sign in" className={controlClass} onClick={openSignInModal}>
+        <button type="button" aria-label={t`Sign in`} className={controlClass} onClick={openSignInModal}>
           {stateIcon}
         </button>
       )
@@ -268,7 +287,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Account menu"
+          aria-label={t`Account menu`}
           className={cn(
             controlClass,
             collapsed && menuOpen && 'bg-sidebar-accent',
@@ -299,7 +318,9 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
           <div className="min-w-0">{renderAccountControl()}</div>
           <Button type="button" size="lg" onClick={handleNewChat} className="ml-auto rounded-full">
             <MessageCirclePlus className={iconSize} />
-            <span>New Chat</span>
+            <span>
+              <Trans>New Chat</Trans>
+            </span>
           </Button>
         </div>
       )
@@ -379,19 +400,19 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                 htmlFor="account-sync-toggle"
                 className="text-[length:var(--font-size-body)] font-medium cursor-pointer"
               >
-                Cloud Sync
+                <Trans>Cloud Sync</Trans>
               </label>
               <Switch
                 id="account-sync-toggle"
                 checked={syncEnabled}
                 onCheckedChange={handleSyncToggle}
                 disabled={isConnecting}
-                aria-label="Enable cloud sync"
+                aria-label={t`Enable cloud sync`}
               />
             </div>
             <div className="flex items-center justify-between gap-2">
               <p className={cn('text-xs text-muted-foreground', syncNeedsAttention && 'text-warning')}>
-                {syncStatusText(syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
+                {syncStatusText(i18n, formatters, syncEnabled, connectionStatus, hasSynced, lastSyncedAt)}
               </p>
               {syncNeedsAttention && (
                 <Button
@@ -406,7 +427,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
                   ) : (
                     <RefreshCw className="mr-1 size-3" />
                   )}
-                  Retry
+                  <Trans>Retry</Trans>
                 </Button>
               )}
             </div>
@@ -419,7 +440,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               <div className="flex flex-col gap-1 px-2">
                 <AccountMenuItemButton
                   icon={<Download className={iconSize} />}
-                  label="Download App"
+                  label={t`Download App`}
                   onClick={() => openLink(getDownloadUrl())}
                 />
               </div>
@@ -433,13 +454,13 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
               <div className="flex flex-col gap-1 px-2">
                 <AccountMenuItemButton
                   icon={<Terminal className={iconSize} />}
-                  label="Dev Settings"
+                  label={t`Dev Settings`}
                   to="/settings/dev-settings"
                   onNavigate={handleMenuNavigate}
                 />
                 <AccountMenuItemButton
                   icon={<Terminal className={iconSize} />}
-                  label="Message Simulator"
+                  label={t`Message Simulator`}
                   to="/message-simulator"
                   onNavigate={handleMenuNavigate}
                 />
@@ -452,7 +473,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
           <div className="flex flex-col gap-1 px-2 pb-2">
             <AccountMenuItemButton
               icon={<LogOut className={iconSize} />}
-              label="Log out"
+              label={t`Log out`}
               onClick={() => handleMenuAction(() => setLogoutModalOpen(true))}
             />
           </div>

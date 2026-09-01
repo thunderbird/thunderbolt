@@ -5,6 +5,7 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SiGithub } from '@icons-pack/react-simple-icons'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { EyeOff, Loader2, Mail } from 'lucide-react'
 import { useRef, type FormEvent, type RefObject } from 'react'
 
@@ -36,6 +37,7 @@ export const SignInEmailStep = ({
   variant,
   emailInputRef,
 }: SignInEmailStepProps) => {
+  const { t } = useLingui()
   const localRef = useRef<HTMLInputElement>(null)
   const inputRef = emailInputRef ?? localRef
 
@@ -48,7 +50,9 @@ export const SignInEmailStep = ({
       {/* Title — page variant only (modal has its own header) */}
       {variant === 'page' && (
         <div className="text-center">
-          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">Early Access Login</p>
+          <p className="font-sans text-[28px] font-medium leading-normal text-foreground">
+            <Trans>Early Access Login</Trans>
+          </p>
         </div>
       )}
 
@@ -63,20 +67,24 @@ export const SignInEmailStep = ({
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 dark:bg-transparent">
                 <SiGithub className="size-6 text-emerald-600 dark:text-[#DCE875]" />
               </div>
-              <p className="text-base text-muted-foreground">Thunderbolt is open-source</p>
+              <p className="text-base text-muted-foreground">
+                <Trans>Thunderbolt is open-source</Trans>
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 dark:bg-transparent">
                 <EyeOff className="size-6 text-amber-600 dark:text-[#DCE875]" />
               </div>
-              <p className="text-base text-muted-foreground">No logs or training on your data</p>
+              <p className="text-base text-muted-foreground">
+                <Trans>No logs or training on your data</Trans>
+              </p>
             </div>
           </div>
         </div>
       )}
 
       {status === 'error' && (
-        <p className="text-sm text-destructive">{errorMessage || 'Something went wrong. Please try again.'}</p>
+        <p className="text-sm text-destructive">{errorMessage || t`Something went wrong. Please try again.`}</p>
       )}
 
       {/* Bottom controls — input + button */}
@@ -91,7 +99,7 @@ export const SignInEmailStep = ({
             name="email"
             type="email"
             inputMode="email"
-            placeholder={variant === 'modal' ? 'Email address' : 'Email'}
+            placeholder={variant === 'modal' ? t`Email address` : t`Email`}
             value={email}
             onChange={(e) => onEmailChange(e.target.value)}
             className={
@@ -120,12 +128,12 @@ export const SignInEmailStep = ({
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              <Trans>Sending…</Trans>
             </>
           ) : variant === 'modal' ? (
-            'Send Magic Link'
+            <Trans>Send Magic Link</Trans>
           ) : (
-            'Continue'
+            <Trans>Continue</Trans>
           )}
         </Button>
       </div>

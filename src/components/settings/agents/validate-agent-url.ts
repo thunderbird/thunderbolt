@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type { CustomAgentTransport } from '@/dal/agents'
 import { isIrohTarget } from '@/lib/iroh-target'
 import { getPlatform, isTauri } from '@/lib/platform'
@@ -30,22 +32,23 @@ export const inferTransport = (url: string): CustomAgentTransport | null => {
 const defaultIsTauriIOS = (): boolean => isTauri() && getPlatform() === 'ios'
 
 /** Pure validation of `url` against the platform's transport rules. Returns
- *  the inferred transport on success, or a user-facing error string. */
+ *  the inferred transport on success, or a user-facing error descriptor the
+ *  caller resolves with `i18n._` (this module has no React and no locale). */
 export const validateAgentUrl = (
   url: string,
   isIos: () => boolean = defaultIsTauriIOS,
-): { transport: CustomAgentTransport } | { error: string } => {
+): { transport: CustomAgentTransport } | { error: MessageDescriptor } => {
   const transport = inferTransport(url)
   if (!transport) {
     // ws:// is accepted too (except on iOS, below) for LAN/dev agents without
     // TLS — the copy leads with wss:// because that's what remote endpoints
     // should use.
-    return { error: 'Enter a wss:// or ws:// URL, or an iroh ticket' }
+    return { error: msg`Enter a wss:// or ws:// URL, or an iroh ticket` }
   }
   // iroh dials QUIC over an encrypted relay (no cleartext) and its target isn't a
   // URL, so the iOS ATS guard only applies to a `ws://` WebSocket endpoint.
   if (transport === 'websocket' && isIos() && new URL(url).protocol === 'ws:') {
-    return { error: 'iOS requires a secure URL (wss://)' }
+    return { error: msg`iOS requires a secure URL (wss://)` }
   }
   return { transport }
 }

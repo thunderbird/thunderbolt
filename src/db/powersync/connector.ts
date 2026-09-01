@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
@@ -111,6 +112,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
           // ignore
         }
         handleCredentialsInvalidIfNeeded(status, body)
+        handleAppVersionUnsupported(status, body)
         // 401 surfaces as session_expired (modal opens) and DEVICE_NOT_TRUSTED is expected during setup,
         // so we don't pollute the console with those. ANONYMOUS_SYNC_FORBIDDEN is also quieted: the
         // listener immediately disables sync in response, so further requests don't happen — the log
@@ -189,6 +191,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as ErrorBody
         handleCredentialsInvalidIfNeeded(response.status, body)
+        handleAppVersionUnsupported(response.status, body)
         throw new Error(`Upload failed: ${response.status} ${JSON.stringify(body)}`)
       }
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { type ComponentProps } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { SearchIcon } from 'lucide-react'
@@ -27,8 +28,8 @@ const Command = ({ className, ...props }: ComponentProps<typeof CommandPrimitive
 const CommandDialog = ({
   open,
   onOpenChange,
-  title = 'Command Palette',
-  description = 'Search for a command to run...',
+  title,
+  description,
   children,
   className,
   showCloseButton = true,
@@ -42,7 +43,10 @@ const CommandDialog = ({
   /** Forwarded to cmdk. Pass `false` when the item list is already filtered upstream. */
   shouldFilter?: boolean
 }) => {
+  const { t } = useLingui()
   const { isMobile } = useIsMobile()
+  const dialogTitle = title ?? t`Command Palette`
+  const dialogDescription = description ?? t`Search for a command to run…`
 
   const command = (
     <Command
@@ -68,7 +72,7 @@ const CommandDialog = ({
         open={open ?? false}
         onOpenChange={onOpenChange ?? (() => {})}
         side="top"
-        title={title}
+        title={dialogTitle}
         // Focus the search input on open, matching the desktop dialog (which
         // Radix auto-focuses). `true` targets the drawer's first tabbable
         // element — the CommandInput — so the keyboard is ready to type.
@@ -82,8 +86,8 @@ const CommandDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} {...props}>
       <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
+        <DialogTitle>{dialogTitle}</DialogTitle>
+        <DialogDescription>{dialogDescription}</DialogDescription>
       </DialogHeader>
       <DialogContent
         className={cn(

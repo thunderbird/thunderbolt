@@ -3,8 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Skeleton } from '@/components/ui/skeleton'
+import type { I18n, MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import type { Map as MaplibreMap, MapLayerMouseEvent, Popup as MaplibrePopup, StyleSpecification } from 'maplibre-gl'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { featureBounds, featureLabel, parseFeatureCollection } from './geojson'
 
 type MapWidgetProps = {
@@ -76,10 +79,19 @@ export const MapWidgetSkeleton = () => (
 )
 
 /** Friendly message shown when the browser can't give MapLibre a WebGL context. */
-const webglUnavailableMessage = 'Maps can’t be displayed here — WebGL is disabled or unavailable in this browser.'
+const webglUnavailableMessage = msg`Maps can’t be displayed here — WebGL is disabled or unavailable in this browser.`
 
 /** Generic message for any other map load failure (style/tiles/network). */
-const mapLoadFailedMessage = 'The map couldn’t be loaded.'
+const mapLoadFailedMessage = msg`The map couldn’t be loaded.`
+
+/**
+ * MapLibre labels its own zoom buttons in English unless told otherwise, and it
+ * reads the table once at construction.
+ */
+const mapControlLabels = (i18n: I18n): Record<string, string> => ({
+  'NavigationControl.ZoomIn': i18n._(msg`Zoom in`),
+  'NavigationControl.ZoomOut': i18n._(msg`Zoom out`),
+})
 
 /**
  * Cheap synchronous probe: can this browser create a WebGL context at all?
@@ -108,9 +120,19 @@ const isWebglAvailable = (): boolean => {
  */
 export const MapWidget = ({ data, title }: MapWidgetProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { i18n } = useLingui()
+  const [error, setError] = useState<MessageDescriptor | null>(null)
   const [ready, setReady] = useState(false)
   const collection = useMemo(() => parseFeatureCollection(data), [data])
+
+  /**
+   * Read through an effect event so the locale is never an effect dependency:
+   * MapLibre only accepts these at construction, so depending on it would tear
+   * the map down and lose the user's pan and zoom on every language switch. The
+   * buttons keep the previous language until the widget remounts; the visible
+   * copy below re-renders properly because it resolves during render.
+   */
+  const readControlLabels = useEffectEvent(() => mapControlLabels(i18n))
 
   useEffect(() => {
     const container = containerRef.current
@@ -128,6 +150,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       setError(webglUnavailableMessage)
       return
     }
+    const controlLabels = readControlLabels()
     let map: MaplibreMap | null = null
     let cancelled = false
     // Whether the map reached `load`, so the `error` handler can tell a fatal
@@ -147,7 +170,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
       if (cancelled) {
         return
       }
-      map = new MapLib({ container, style: basemap })
+      map = new MapLib({ container, style: basemap, locale: controlLabels })
       map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
 
       // If the basemap style/tiles fail (network, 404, CORS), `load` may never
@@ -319,7 +342,7 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
         {!ready && !error && <MapSkeleton />}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
-            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{error}</p>
+            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">{i18n._(error)}</p>
           </div>
         )}
       </div>

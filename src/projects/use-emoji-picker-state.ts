@@ -10,6 +10,7 @@
  * load and scroll logic can be exercised without mounting a popover.
  */
 
+import type { MessageDescriptor } from '@lingui/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 
@@ -31,9 +32,9 @@ export const mobilePerRow = 8
 export const toGridRows = (
   categories: readonly EmojiCategory[],
   perRow: number,
-): { rows: EmojiEntry[][]; labelByRow: string[] } => {
+): { rows: EmojiEntry[][]; labelByRow: MessageDescriptor[] } => {
   const rows: EmojiEntry[][] = []
-  const labelByRow: string[] = []
+  const labelByRow: MessageDescriptor[] = []
   for (const category of categories) {
     for (const entries of toRows(category.emoji, perRow)) {
       rows.push(entries)

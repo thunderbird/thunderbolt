@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /// <reference types="vitest/config" />
+import { lingui, linguiTransformerBabelPreset } from '@lingui/vite-plugin'
+import babelPlugin from '@rolldown/plugin-babel'
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -66,6 +68,22 @@ export default defineConfig({
     },
     tailwindcss(),
     react(),
+    // The Lingui macro is a build-time Babel transform: <Trans> from
+    // @lingui/react/macro compiles into runtime <Trans id=... message=...>
+    // calls here. @vitejs/plugin-react v6 is oxc-based and DROPPED its
+    // `babel` option (passing one is silently ignored — the exact THU-806
+    // bail-out symptom: literal <Trans> at runtime with a green build), so
+    // the macro runs through @rolldown/plugin-babel instead. The Lingui
+    // preset carries a code filter, so Babel only processes files that
+    // actually import a macro package. CI's `localization` job greps the
+    // bundle for the untransformed-macro runtime stub as a tripwire.
+    babelPlugin({ presets: [linguiTransformerBabelPreset()] }),
+    // Compiles src/locales/*/messages.po into JS message catalogs on import
+    // (the en-XA pseudo-locale is generated from the English source here).
+    // `failOnCompileError` is not the default: without it the plugin only warns
+    // on a malformed catalog, so the build stays green and ships the broken
+    // locale — which is what CI's `localization` job claims to prevent.
+    lingui({ failOnCompileError: true }),
     // Include the bundle analyzer plugin only when explicitly requested.
     ...(shouldAnalyze
       ? [

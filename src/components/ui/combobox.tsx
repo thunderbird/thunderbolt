@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { cn } from '@/lib/utils'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { CheckIcon, ChevronDownIcon, Loader2 } from 'lucide-react'
@@ -46,11 +47,11 @@ export const Combobox = ({
   items,
   value,
   onValueChange,
-  placeholder = 'Select...',
-  searchPlaceholder = 'Search...',
+  placeholder: placeholderProp,
+  searchPlaceholder: searchPlaceholderProp,
   searchValue,
   onSearchChange,
-  emptyMessage = 'No items found.',
+  emptyMessage: emptyMessageProp,
   loading = false,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -61,7 +62,13 @@ export const Combobox = ({
   disabled = false,
   ...triggerProps
 }: ComboboxProps) => {
+  const { t } = useLingui()
   const [internalOpen, setInternalOpen] = useState(false)
+  // Defaults resolved in the body, not the signature: a parameter default is
+  // evaluated at module scope where `t` would freeze at the boot locale.
+  const placeholder = placeholderProp ?? t`Select…`
+  const searchPlaceholder = searchPlaceholderProp ?? t`Search…`
+  const emptyMessage = emptyMessageProp ?? t`No items found.`
   const [internalSearch, setInternalSearch] = useState('')
 
   const isControlled = controlledOpen !== undefined

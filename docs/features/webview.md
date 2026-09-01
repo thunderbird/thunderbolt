@@ -8,7 +8,15 @@
 
 ## Overview
 
-The WebView feature displays web pages directly in the application sidebar using native browser components. Links in the AI assistant open in an embedded WebView instead of launching an external browser.
+The WebView feature displays web pages directly in the application sidebar using native browser components.
+
+Where a link in the AI assistant opens is a user preference — **External Links** in Settings → Preferences, backed by `externalLinkBehavior` in the device-local settings store:
+
+| Value           | Behavior                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------- |
+| `ask` (default) | Show a confirmation dialog naming the URL, offering the sidebar WebView (desktop) or an external open         |
+| `sidebar`       | Open in the sidebar WebView immediately. Desktop only — degrades to `ask` where the side panel is unavailable |
+| `browser`       | Open in the OS browser (or a new tab on web) immediately, with no confirmation                                |
 
 **Platform engines:**
 
@@ -98,7 +106,6 @@ const webview = new Webview(windowRef.current, webviewLabel, webviewOptions)
 ## Future Improvements
 
 - Feature flag for opt-in testing
-- Privacy warnings before opening external pages
 - VPN integration or detection
 - WebView pooling/reuse for better performance
 - Content filtering/ad blocking at Tauri level

@@ -29,6 +29,7 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
+      localization: ${{ steps.filter.outputs.localization }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +63,18 @@ jobs:
               - 'crates/thunderbolt-acp-client/rust-toolchain.toml'
               - 'crates/thunderbolt-acp-client/.cargo/**'
               - 'crates/thunderbolt-acp-client/build.sh'
+            # Anything that can change extraction output or the pseudo-locale
+            # build: app source (strings + catalogs), shared/ (imported by the
+            # frontend build), build/i18n config, deps, and this workflow.
+            localization:
+              - 'src/**'
+              - 'shared/**'
+              - 'index.html'
+              - 'lingui.config.ts'
+              - 'vite.config.ts'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
 
   typescript:
     runs-on: ubuntu-latest
@@ -80,7 +93,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          # Node 22+ required: `bun run build` executes vite under Node, and
+          # @lingui/vite-plugin loads @lingui/cli/api which uses node:fs
+          # globSync (Node >=22.19, THU-806). Release workflows already use
+          # lts/*.
+          node-version: '22'
 
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -146,6 +163,78 @@ jobs:
         with:
           path: .metrics-baseline
           key: pr-metrics-main-${{ github.sha }}
+
+  # Localization gates (THU-806).
+  #  1. Extraction check — re-runs `lingui extract` (idempotent; Lingui v6
+  #     dropped the old `--check` flag) and fails if the committed .po
+  #     catalogs come out stale, i.e. a PR added or edited a user-facing
+  #     string without re-running extraction.
+  #  2. Catalog-compiling build — every locale catalog, including the en-XA
+  #     pseudo-locale generated from the English source, is compiled at build
+  #     time, so a malformed catalog reds this build.
+  #  3. Macro tripwire — the Lingui macro's failure mode is literal <Trans>
+  #     rendering in the DOM rather than a build error (an untransformed macro
+  #     import bundles a runtime stub that throws). Grep the bundle for the
+  #     stub's error text so that mode reds CI instead of shipping.
+  # Path-gated via detect-changes (like agent-core/cli/rust): the full
+  # install + build only runs when a change can affect extraction or the
+  # frontend build, not on backend/docs-only PRs.
+  localization:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.localization == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Lingui v6 requires Node >=22.19 (its CLI uses node:fs globSync;
+          # the `lingui` and `vite` bins run under Node, not Bun).
+          node-version: '22'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lingui extraction check
+        run: bun run i18n:check
+
+      - name: Catalog-compiling build
+        run: bun run build
+        env:
+          NODE_ENV: production
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Guard against untransformed Lingui macros in the bundle
+        run: |
+          # `grep -r` exits 2 when the directory is missing, and `if` reads any
+          # non-zero as "no match" — so without this check a moved `outDir` would
+          # turn the tripwire into a permanent silent pass.
+          if [ ! -d dist/assets ]; then
+            echo "::error::dist/assets not found — the macro tripwire inspected nothing. Did the build output move?"
+            exit 1
+          fi
+          if grep -rl "outside the context of compilation" dist/assets; then
+            echo "::error::Untransformed Lingui macro found in the bundle — the Babel macro transform did not run. Check the @rolldown/plugin-babel + linguiTransformerBabelPreset wiring in vite.config.ts."
+            exit 1
+          fi
+          echo "No untransformed Lingui macros in the bundle."
 
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
   # are NOT part of the default `bun run test` — they only need to run when the

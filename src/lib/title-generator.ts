@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { defaultChatTitle } from './constants'
+
 /**
  * Generates a title from a chat message by extracting key words
  *
@@ -42,6 +46,22 @@ export const generateTitle = (message: string, options?: { words?: number }): st
     finalTitle
       .split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ') || 'New Chat'
+      .join(' ') || defaultChatTitle
   )
+}
+
+/**
+ * The thread title as shown to the user.
+ *
+ * `defaultChatTitle` is a sentinel, not copy: it is written to the synced
+ * `chat_threads` row and compared on hydration to decide whether to auto-title,
+ * so storing a localized value would both break that comparison and put a
+ * locale-dependent string into synced data. It is translated here, at display,
+ * instead.
+ */
+export const chatTitleLabel = (i18n: I18n, title: string | null | undefined): string => {
+  if (!title) {
+    return i18n._(msg`Untitled chat`)
+  }
+  return title === defaultChatTitle ? i18n._(msg`New Chat`) : title
 }

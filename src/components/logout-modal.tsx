@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { HardDrive, Loader2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -33,6 +34,7 @@ type LogoutModalProps = {
 }
 
 export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearLocalData }: LogoutModalProps) => {
+  const { t } = useLingui()
   const authClient = useAuth()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -72,8 +74,12 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
   return (
     <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
       <ResponsiveModalHeader>
-        <ResponsiveModalTitle>Log out</ResponsiveModalTitle>
-        <ResponsiveModalDescription>What would you like to do with your local data?</ResponsiveModalDescription>
+        <ResponsiveModalTitle>
+          <Trans>Log out</Trans>
+        </ResponsiveModalTitle>
+        <ResponsiveModalDescription>
+          <Trans>What would you like to do with your local data?</Trans>
+        </ResponsiveModalDescription>
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent centered className="gap-3">
@@ -81,15 +87,15 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
           selected={selectedOption === 'keep'}
           onSelect={() => setSelectedOption('keep')}
           icon={<HardDrive className="h-5 w-5" />}
-          title="Leave data on device"
-          description="Your chats and settings will remain on this device for next time."
+          title={t`Leave data on device`}
+          description={t`Your chats and settings will remain on this device for next time.`}
         />
         <SelectableCard
           selected={selectedOption === 'delete'}
           onSelect={() => setSelectedOption('delete')}
           icon={<Trash2 className="h-5 w-5" />}
-          title="Delete data from device"
-          description="Remove all chats, settings, and cached data from this device."
+          title={t`Delete data from device`}
+          description={t`Remove all chats, settings, and cached data from this device.`}
           variant="destructive"
         />
       </ResponsiveModalContent>
@@ -104,10 +110,10 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
           {isLoggingOut ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {selectedOption === 'delete' ? 'Deleting...' : 'Logging out...'}
+              {selectedOption === 'delete' ? <Trans>Deleting…</Trans> : <Trans>Logging out…</Trans>}
             </>
           ) : (
-            'Log out'
+            <Trans>Log out</Trans>
           )}
         </Button>
       </FormFooter>

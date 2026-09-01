@@ -19,11 +19,13 @@ export const hashSetting = (setting: Setting): string => {
  * Default settings shipped with the application
  * These are upserted on app start and serve as the baseline for diff comparisons
  *
- * Note: Some settings are intentionally not included here because they're user-specific:
- * - anonymous_id: Generated uniquely per user
- * - selected_model: User's model selection
- * - preferred_name, location_*: User preferences
- * - integrations_*: User's integration credentials and settings
+ * Settings the user owns (`preferred_name`, `location_*`, the unit settings,
+ * `language`) ship with a **null** value rather than being left out. That null
+ * is load-bearing: it is what lets reconcile's `wouldOverwriteUserValue` guard
+ * recognize a seeded or user-set value and preserve it across a
+ * `defaultSettingsVersion` bump. A setting genuinely absent from this array is
+ * unmanaged instead — `anonymous_id` and `selected_model`, which are generated
+ * per device and per user.
  */
 
 export const defaultSettingDataCollection: Setting = {
@@ -98,6 +100,19 @@ export const defaultSettingLocationLng: Setting = {
   userId: null,
 }
 
+/**
+ * ISO 3166-1 alpha-2, written from the geocoding provider's own `country_code`
+ * rather than parsed back out of `location_name`. The display name localizes;
+ * the code does not.
+ */
+export const defaultSettingLocationCountryCode: Setting = {
+  key: 'location_country_code',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingDistanceUnit: Setting = {
   key: 'distance_unit',
   value: null,
@@ -108,14 +123,6 @@ export const defaultSettingDistanceUnit: Setting = {
 
 export const defaultSettingTemperatureUnit: Setting = {
   key: 'temperature_unit',
-  value: null,
-  updatedAt: null,
-  defaultHash: null,
-  userId: null,
-}
-
-export const defaultSettingDateFormat: Setting = {
-  key: 'date_format',
   value: null,
   updatedAt: null,
   defaultHash: null,
@@ -171,6 +178,23 @@ export const defaultSettingIntegrationsDoNotAskAgain: Setting = {
 }
 
 /**
+ * UI language as a BCP-47 tag. Ships as null (rendered as 'en' via the
+ * `useSettings` schema fallback); while unmodified it is seeded from
+ * `navigator.languages` on boot (see `useAppLanguage`), so an explicit user
+ * choice is the only thing that pins it. The null default matters: reconcile's
+ * `wouldOverwriteUserValue` guard only protects seeded values across
+ * `defaultSettingsVersion` bumps when the shipped default is null — the same
+ * mechanic as the country-derived unit defaults.
+ */
+export const defaultSettingLanguage: Setting = {
+  key: 'language',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+/**
  * Array of all default settings for iteration
  */
 export const defaultSettings: ReadonlyArray<Setting> = [
@@ -183,15 +207,16 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingLocationName,
   defaultSettingLocationLat,
   defaultSettingLocationLng,
+  defaultSettingLocationCountryCode,
   defaultSettingDistanceUnit,
   defaultSettingTemperatureUnit,
-  defaultSettingDateFormat,
   defaultSettingTimeFormat,
   defaultSettingCurrency,
   defaultSettingIntegrationsProIsEnabled,
   defaultSettingUserHasCompletedOnboarding,
   defaultSettingContentViewWidth,
   defaultSettingIntegrationsDoNotAskAgain,
+  defaultSettingLanguage,
 ] as const
 
 /**
@@ -205,4 +230,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 3
+export const defaultSettingsVersion = 5

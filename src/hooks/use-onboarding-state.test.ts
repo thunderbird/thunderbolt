@@ -3,10 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { settingsTable } from '@/db/tables'
+import { eq } from 'drizzle-orm'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useOnboardingState } from './use-onboarding-state'
+import { onboardingStepCount, useOnboardingState } from './use-onboarding-state'
 
 const mockCountryUnitsResponse = {
   unit: 'metric',
@@ -218,14 +221,13 @@ describe('useOnboardingState', () => {
       expect(result.current.state.canSkip).toBe(true)
     })
 
-    it('should not go beyond step 5', () => {
+    it('should not go beyond the last step', () => {
       const { result } = renderHook(() => useOnboardingState(), {
         wrapper: createTestProvider({ mockResponse: mockCountryUnitsResponse }),
       })
 
-      // Set to step 5
       act(() => {
-        result.current.actions.setCurrentStep(5)
+        result.current.actions.setCurrentStep(onboardingStepCount)
       })
 
       // Try to go next
@@ -233,7 +235,7 @@ describe('useOnboardingState', () => {
         result.current.actions.nextStep()
       })
 
-      expect(result.current.state.currentStep).toBe(5)
+      expect(result.current.state.currentStep).toBe(onboardingStepCount)
       expect(result.current.state.canGoNext).toBe(false)
     })
 
@@ -296,6 +298,7 @@ describe('useOnboardingState', () => {
         locationName: 'Paris, France',
         locationLat: 48.8566,
         locationLng: 2.3522,
+        locationCountryCode: 'FR',
       }
 
       await act(async () => {
@@ -305,6 +308,11 @@ describe('useOnboardingState', () => {
       expect(result.current.state.locationValue).toBe('Paris, France')
       expect(result.current.state.isLocationValid).toBe(true)
       expect(result.current.state.isSubmittingLocation).toBe(false)
+
+      // The region has to come from the provider's code, not from parsing the
+      // country back out of `locationName` — that name localizes.
+      const stored = await getDb().select().from(settingsTable).where(eq(settingsTable.key, 'location_country_code'))
+      expect(stored[0]?.value).toBe('FR')
     })
 
     it('should handle submitLocation action without country extraction', async () => {
@@ -316,6 +324,7 @@ describe('useOnboardingState', () => {
         locationName: 'Unknown', // This won't extract a country (no commas)
         locationLat: 0,
         locationLng: 0,
+        locationCountryCode: '',
       }
 
       await act(async () => {
@@ -338,6 +347,7 @@ describe('useOnboardingState', () => {
         locationName: 'Test Location',
         locationLat: 0,
         locationLng: 0,
+        locationCountryCode: '',
       }
 
       await act(async () => {
@@ -428,6 +438,7 @@ describe('useOnboardingState', () => {
         locationName: '',
         locationLat: 0,
         locationLng: 0,
+        locationCountryCode: '',
       }
 
       await act(async () => {
@@ -447,6 +458,7 @@ describe('useOnboardingState', () => {
         locationName: 'Paris, France',
         locationLat: 48.8566,
         locationLng: 2.3522,
+        locationCountryCode: 'FR',
       }
 
       await act(async () => {
@@ -456,6 +468,11 @@ describe('useOnboardingState', () => {
       expect(result.current.state.locationValue).toBe('Paris, France')
       expect(result.current.state.isLocationValid).toBe(true)
       expect(result.current.state.isSubmittingLocation).toBe(false)
+
+      // The region has to come from the provider's code, not from parsing the
+      // country back out of `locationName` — that name localizes.
+      const stored = await getDb().select().from(settingsTable).where(eq(settingsTable.key, 'location_country_code'))
+      expect(stored[0]?.value).toBe('FR')
     })
 
     it('should handle step boundaries correctly', () => {
@@ -471,9 +488,9 @@ describe('useOnboardingState', () => {
       expect(result.current.state.canGoNext).toBe(true)
       expect(result.current.state.canSkip).toBe(false)
 
-      // Test step 5 boundaries
+      // Test last step boundaries
       act(() => {
-        result.current.actions.setCurrentStep(5)
+        result.current.actions.setCurrentStep(onboardingStepCount)
       })
       expect(result.current.state.canGoBack).toBe(true)
       expect(result.current.state.canGoNext).toBe(false)

@@ -14,7 +14,7 @@ import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Bot, LogOut, Plus } from 'lucide-react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import type { PaletteCommand, UseCommandsOptions } from '../commands/types'
 import type { SearchResult } from '../types'
@@ -105,6 +105,44 @@ describe('SearchPalette commands', () => {
 
     expect(mockTrackEvent).toHaveBeenCalledWith('search_command_run', { commandId: 'nav-agents' })
     expect(screen.getByTestId('location')).toHaveTextContent('/settings/agents')
+  })
+
+  it('closes after a navigation command runs', async () => {
+    buildCommands = () => [
+      { id: 'nav-preferences', title: 'Preferences', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+    ]
+    const TestProvider = createTestProvider()
+    const ControlledPalette = () => {
+      const [open, setOpen] = useState(true)
+      return (
+        <SearchPalette
+          open={open}
+          onOpenChange={setOpen}
+          useCommands={(opts) => buildCommands(opts)}
+          useSearch={() => ({ results: searchResults, isLoading: false })}
+          trackEvent={mockTrackEvent}
+        />
+      )
+    }
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={['/']}>
+        <TestProvider>
+          <SidebarProvider>
+            {children}
+            <LocationProbe />
+          </SidebarProvider>
+        </TestProvider>
+      </MemoryRouter>
+    )
+    render(<ControlledPalette />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('option', { name: /Preferences/ }))
+    })
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/preferences')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('invokes run and tracks the run event for a "run" command', () => {
@@ -242,8 +280,41 @@ describe('SearchPalette commands', () => {
     expect(screen.getByTestId('location')).toHaveAttribute('data-state', 'null')
   })
 
+  it('matches a localized command title typed without its diacritics', async () => {
+    // Commands never enter FTS — their titles are resolved in the active locale
+    // at render time — but they fold like the index does, so an ASCII keyboard
+    // still reaches them.
+    buildCommands = () => [
+      { id: 'nav-prefs', title: 'Paramètres', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+      { id: 'nav-devices', title: 'Geräte', icon: Bot, section: 'navigation', to: '/settings/devices' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: 'parametres' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /Paramètres/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Geräte/ })).not.toBeInTheDocument()
+  })
+
+  it('matches a command title in an unsegmented script', async () => {
+    buildCommands = () => [
+      { id: 'nav-prefs', title: '設定', icon: Bot, section: 'navigation', to: '/settings/preferences' },
+    ]
+    renderPalette()
+
+    fireEvent.change(screen.getByPlaceholderText(/Search chats/), { target: { value: '設定' } })
+    await act(async () => {
+      await getClock().tickAsync(debounceMs)
+    })
+
+    expect(screen.getByRole('option', { name: /設定/ })).toBeInTheDocument()
+  })
+
   it('keeps FTS result rows that cmdk fuzzy filtering would hide', async () => {
-    // "GPT model" is a valid FTS hit for "models" (stemmed/plural), but the raw
+    // "GPT model" is a valid FTS hit for "model" (prefix match), but the raw
     // query is not a subsequence of the row text — cmdk's built-in filter would
     // drop it. shouldFilter={false} must keep it visible.
     searchResults = [{ id: 'gpt', entityType: 'model', title: 'GPT model', snippet: '', to: '/settings/models' }]

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 import { Navigate, useLocation } from 'react-router'
 
@@ -76,6 +77,7 @@ export type ConnectionsPageDeps = {
 }
 
 const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => {
+  const { t } = useLingui()
   const probeTools = deps.probeMcpServerTools ?? probeMcpServerTools
   const classifyAuth = deps.classifyMcpServerAuth ?? classifyMcpServerAuth
   const db = useDatabase()
@@ -150,10 +152,10 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
   // so a message is always labeled by its own context (switching modes clears
   // the other sources, see `changeMode`).
   const formErrorSources = [
-    { title: 'Import failed', body: importError },
-    { title: 'Add failed', body: addError },
-    { title: 'Save failed', body: updateError },
-    { title: 'Authorization error', body: dialogError },
+    { title: t`Import failed`, body: importError },
+    { title: t`Add failed`, body: addError },
+    { title: t`Save failed`, body: updateError },
+    { title: t`Authorization error`, body: dialogError },
   ]
   const formError =
     formErrorSources.find((source): source is { title: string; body: string } => source.body != null) ?? null
@@ -197,7 +199,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       dispatch({
         type: 'SERVER_FAILED',
         serverId,
-        error: error instanceof Error ? error.message : 'Failed to reconnect MCP server',
+        error: error instanceof Error ? error.message : t`Failed to reconnect MCP server`,
       })
     } finally {
       dispatch({ type: 'RETRY_SETTLED' })
@@ -270,7 +272,7 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     if (form.isAddFormOpen) {
       return (
         <DetailPanel
-          title={form.editingServerId ? 'Edit MCP Server' : 'Add MCP Server'}
+          title={form.editingServerId ? t`Edit MCP Server` : t`Add MCP Server`}
           onClose={formController.cancel}
         >
           <McpServerForm
@@ -403,18 +405,24 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Server</AlertDialogTitle>
-            <AlertDialogDescription>Delete this MCP server and its saved credentials?</AlertDialogDescription>
+            <AlertDialogTitle>
+              <Trans>Delete Server</Trans>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <Trans>Delete this MCP server and its saved credentials?</Trans>
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={formController.deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={formController.deleteMutation.isPending}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={formController.deleteMutation.isPending}
               // Fire-and-forget: the mutation's onError/onSuccess own the outcome.
               onClick={() => pendingDelete && formController.deleteMutation.mutate(pendingDelete.id)}
             >
-              {formController.deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              {formController.deleteMutation.isPending ? <Trans>Deleting…</Trans> : <Trans>Delete</Trans>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -60,12 +60,29 @@ const notSoftDeleted = (dataExpr: string): string => `${jsonExtract(dataExpr, so
 /**
  * The `CREATE VIRTUAL TABLE` statement for the unified FTS5 index. `id`,
  * `entity_type`, and `parent_id` are UNINDEXED (stored, not tokenized); `title`
- * and `body` are tokenized with the porter stemmer over unicode61.
+ * and `body` are tokenized with unicode61.
+ *
+ * The tokenizer is deliberately locale-independent — the index holds user
+ * content, whose language is independent of the UI language and routinely mixed
+ * within one account, so a language change must never rebuild it.
+ *
+ * `remove_diacritics 2` folds combining marks, so `sao` finds `São` and `koln`
+ * finds `Köln`. It leaves Japanese kana alone (`が` stays distinct from `か`).
+ *
+ * The porter stemmer was removed: it is an English-only stemmer, and
+ * because it indexes *stems* while queries append a `*` prefix, prefixes longer
+ * than the stem stopped matching — the palette blanked out mid-word (`run` hit,
+ * `runn` missed, `running` hit again). Dropping it restores monotonic prefix
+ * matching at the cost of cross-inflection recall (`runs` no longer finds
+ * `running`).
+ *
+ * unicode61 cannot tokenize scripts that do not space their words; those are
+ * matched with `LIKE` at query time instead. See `src/search/query-plan.ts`.
  */
 export const buildCreateSql = (): string =>
   `CREATE VIRTUAL TABLE ${searchIndexTable} USING fts5(` +
   `id UNINDEXED, entity_type UNINDEXED, parent_id UNINDEXED, title, body, ` +
-  `tokenize = 'porter unicode61')`
+  `tokenize = 'unicode61 remove_diacritics 2')`
 
 /**
  * The three `AFTER INSERT/UPDATE/DELETE` triggers that keep {@link searchIndexTable}

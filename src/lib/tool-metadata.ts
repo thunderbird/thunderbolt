@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+
 import type { ToolConfig } from '@/types'
 import { http } from './http'
 import { memoize } from './memoize'
@@ -13,7 +16,7 @@ export type ToolCategory = 'search' | 'data' | 'action' | 'analysis' | 'communic
 export type ToolMetadata = {
   displayName: string
   initials: string
-  loadingMessage: string
+  loadingMessage: MessageDescriptor
   category: ToolCategory
   icon: any
 }
@@ -110,58 +113,85 @@ export const formatDisplayName = (toolName: string): string =>
 /**
  * Generates contextual loading message
  */
-const generateLoadingMessage = (toolName: string, category: ToolCategory, input?: unknown, verb?: string): string => {
+/** Clips a value for display, marking the cut with an ellipsis. */
+const truncate = (value: string, maxLength: number): string =>
+  value.length > maxLength ? `${value.slice(0, maxLength)}…` : value
+
+/**
+ * Descriptors, not strings: this table lives at module scope, so a `t` here would
+ * freeze the locale at import. The render site resolves with `i18n._`.
+ */
+const actionMessage = (name: string): MessageDescriptor => {
+  if (name.includes('edit') || name.includes('write')) {
+    return msg`Editing…`
+  }
+  if (name.includes('create') || name.includes('add')) {
+    return msg`Creating…`
+  }
+  if (name.includes('delete') || name.includes('remove')) {
+    return msg`Removing…`
+  }
+  return msg`Processing…`
+}
+
+const categoryMessage = (category: ToolCategory, name: string): MessageDescriptor => {
+  switch (category) {
+    case 'search':
+      return msg`Searching…`
+    case 'data':
+      return msg`Retrieving data…`
+    case 'action':
+      return actionMessage(name)
+    case 'analysis':
+      return msg`Analyzing…`
+    case 'communication':
+      return msg`Sending…`
+    case 'weather':
+      return msg`Getting weather…`
+    case 'unknown':
+      return msg`Processing…`
+  }
+}
+
+const generateLoadingMessage = (
+  toolName: string,
+  category: ToolCategory,
+  input?: unknown,
+  verb?: string,
+): MessageDescriptor => {
   const inputObject = input as Record<string, unknown>
 
-  // If verb is provided, use it with variable substitution
+  // A tool-supplied verb is data, not copy — there is no catalog entry to look up,
+  // so it rides through as a value with only the ellipsis around it.
   if (verb) {
     const formattedVerb = formatVerb(verb, 40, input)
-    // Capitalize first letter and add ellipsis
-    return formattedVerb.charAt(0).toUpperCase() + formattedVerb.slice(1) + '...'
+    const verbPhrase = formattedVerb.charAt(0).toUpperCase() + formattedVerb.slice(1)
+    return msg`${verbPhrase}…`
   }
 
-  // Fallback to original logic
   const name = toolName.toLowerCase()
 
   // Context-aware messages with args
   if (input) {
     if (name.includes('search') && typeof inputObject.query === 'string') {
-      const query = inputObject.query.slice(0, 20)
-      return `Searching for "${query}${inputObject.query.length > 20 ? '...' : ''}"...`
+      const query = truncate(inputObject.query, 20)
+      return msg`Searching for "${query}"…`
     }
     if (name.includes('weather') && typeof inputObject.location === 'string') {
-      return `Getting weather for ${inputObject.location}...`
+      const location = inputObject.location
+      return msg`Getting weather for ${location}…`
     }
     if ((name.includes('edit') || name.includes('file')) && typeof inputObject.target_file === 'string') {
       const fileName = inputObject.target_file.split('/').pop() || inputObject.target_file
-      return `${name.includes('edit') ? 'Editing' : 'Reading'} ${fileName}...`
+      return name.includes('edit') ? msg`Editing ${fileName}…` : msg`Reading ${fileName}…`
     }
     if (name.includes('grep') && typeof inputObject.query === 'string') {
-      const query = inputObject.query.slice(0, 15)
-      return `Searching for "${query}${inputObject.query.length > 15 ? '...' : ''}"...`
+      const query = truncate(inputObject.query, 15)
+      return msg`Searching for "${query}"…`
     }
   }
 
-  // Category fallbacks
-  const messages: Record<ToolCategory, string> = {
-    search: 'Searching...',
-    data: 'Retrieving data...',
-    action:
-      name.includes('edit') || name.includes('write')
-        ? 'Editing...'
-        : name.includes('create') || name.includes('add')
-          ? 'Creating...'
-          : name.includes('delete') || name.includes('remove')
-            ? 'Removing...'
-            : 'Processing...',
-    analysis: 'Analyzing...',
-    communication: 'Sending...',
-    weather: 'Getting weather...',
-    unknown: 'Processing...',
-  }
-
-  // Return category message or final fallback
-  return messages[category] || `Using "${toolName}" tool...`
+  return categoryMessage(category, name)
 }
 
 const getToolIcon = (toolName: string) => {

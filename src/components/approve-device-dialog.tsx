@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,21 +26,25 @@ export const ApproveDeviceDialog = ({ open, onOpenChange, onConfirm, isPending }
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Approve this device?</AlertDialogTitle>
+        <AlertDialogTitle>
+          <Trans>Approve this device?</Trans>
+        </AlertDialogTitle>
         <AlertDialogDescription>
-          This will share your encryption key with the device, allowing it to decrypt and sync your data.
+          <Trans>This will share your encryption key with the device, allowing it to decrypt and sync your data.</Trans>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+        <AlertDialogCancel disabled={isPending}>
+          <Trans>Cancel</Trans>
+        </AlertDialogCancel>
         <AlertDialogAction onClick={onConfirm} disabled={isPending}>
           {isPending ? (
             <>
               <Loader2 className="size-4 mr-1 animate-spin" />
-              Approving…
+              <Trans>Approving…</Trans>
             </>
           ) : (
-            'Approve'
+            <Trans>Approve</Trans>
           )}
         </AlertDialogAction>
       </AlertDialogFooter>

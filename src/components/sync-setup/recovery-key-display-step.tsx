@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Check, Copy } from 'lucide-react'
@@ -14,6 +15,7 @@ type RecoveryKeyDisplayStepProps = {
 }
 
 export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange }: RecoveryKeyDisplayStepProps) => {
+  const { t } = useLingui()
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [confirmed, setConfirmed] = useState(false)
 
@@ -35,15 +37,19 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
   return (
     <div className="w-full flex flex-col">
       <div className="text-center space-y-4">
-        <h2 className="text-2xl font-bold">Save your recovery phrase</h2>
+        <h2 className="text-2xl font-bold">
+          <Trans>Save your recovery phrase</Trans>
+        </h2>
         <p className="text-muted-foreground">
-          Write down these 24 words in order and store them somewhere safe. You&apos;ll need them to recover your data
-          if you lose access to all your devices. This phrase won&apos;t be shown again.
+          <Trans>
+            Write down these 24 words in order and store them somewhere safe. You&apos;ll need them to recover your data
+            if you lose access to all your devices. This phrase won&apos;t be shown again.
+          </Trans>
         </p>
       </div>
 
       <div className="pt-5 space-y-4">
-        <div role="region" aria-label="Recovery phrase" className="rounded-xl bg-muted p-4">
+        <div role="region" aria-label={t`Recovery phrase`} className="rounded-xl bg-muted p-4">
           <p className="text-sm font-medium leading-relaxed">{recoveryKey}</p>
         </div>
 
@@ -51,25 +57,27 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
           {copyState === 'copied' ? (
             <>
               <Check className="size-4 mr-2" />
-              Copied
+              <Trans>Copied</Trans>
             </>
           ) : (
             <>
               <Copy className="size-4 mr-2" />
-              Copy to clipboard
+              <Trans>Copy to clipboard</Trans>
             </>
           )}
         </Button>
 
         {copyState === 'failed' && (
           <p className="text-sm text-destructive text-center">
-            Clipboard unavailable. Please select the phrase above and copy it manually.
+            <Trans>Clipboard unavailable. Please select the phrase above and copy it manually.</Trans>
           </p>
         )}
 
         <label className="flex items-start gap-3 cursor-pointer">
           <Checkbox checked={confirmed} onCheckedChange={(v) => handleConfirmedChange(v === true)} className="mt-0.5" />
-          <span className="text-sm">I have saved my recovery phrase</span>
+          <span className="text-sm">
+            <Trans>I have saved my recovery phrase</Trans>
+          </span>
         </label>
 
         <Button
@@ -84,7 +92,7 @@ export const RecoveryKeyDisplayStep = ({ recoveryKey, onDone, onConfirmedChange 
           }}
           disabled={!confirmed}
         >
-          Done
+          <Trans>Done</Trans>
         </Button>
       </div>
     </div>

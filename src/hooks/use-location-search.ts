@@ -9,6 +9,12 @@ import { useEffect, useReducer, useTransition } from 'react'
 type LocationData = {
   name: string
   city: string
+  /**
+   * ISO 3166-1 alpha-2, or empty when the provider has none. Carried alongside
+   * `name` because `name` ends in a display country that will localize, so it
+   * cannot be reverse-matched to a region.
+   */
+  countryCode: string
   coordinates: {
     lat: number
     lng: number
@@ -79,6 +85,7 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
               name: string
               region: string
               country: string
+              countryCode: string
               lat: number
               lon: number
             }>
@@ -87,6 +94,7 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
         const transformedLocations: LocationData[] = data.map((location) => ({
           name: `${location.name}, ${location.region}, ${location.country}`,
           city: location.name,
+          countryCode: location.countryCode,
           coordinates: {
             lat: location.lat,
             lng: location.lon,

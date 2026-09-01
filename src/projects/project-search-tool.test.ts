@@ -74,6 +74,24 @@ describe('searchProjectChats', () => {
     expect(hits).toEqual([])
   })
 
+  it('finds Japanese content, which unicode61 cannot tokenize', async () => {
+    await indexMessage('m1', 't1', '来週の会議は東京で開催します')
+
+    const hits = await searchProjectChats(database.db, ['t1'], '会議', new Map([['t1', '打ち合わせ']]))
+
+    expect(hits).toHaveLength(1)
+    expect(hits[0].excerpt).toContain('会議')
+  })
+
+  it('requires every term of a query mixing tokenizable and substring scripts', async () => {
+    await indexMessage('m1', 't1', 'the 会議 covered pricing')
+    await indexMessage('m2', 't2', 'pricing only')
+
+    const hits = await searchProjectChats(database.db, ['t1', 't2'], 'pricing 会議', new Map())
+
+    expect(hits.map((hit) => hit.chatThreadId)).toEqual(['t1'])
+  })
+
   it('skips the query entirely when there is nothing to match on', async () => {
     await indexMessage('m1', 't1', 'anything')
 

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { type ChatThread } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
+import { useLingui } from '@lingui/react/macro'
 import { ArrowUp, Square } from 'lucide-react'
 import {
   type ChangeEvent,
@@ -87,7 +88,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     {
       value = '',
       onChange,
-      placeholder = 'Say something...',
+      placeholder,
       showSubmitButton = true,
       onSubmit,
       canSubmit,
@@ -116,6 +117,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
     },
     ref,
   ) => {
+    const { t } = useLingui()
     const overlayRef = useRef<HTMLDivElement>(null)
 
     const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -160,7 +162,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="button"
           variant="default"
-          aria-label="Stop generating"
+          aria-label={t`Stop generating`}
           className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
@@ -172,7 +174,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="submit"
           variant="default"
-          aria-label="Send message"
+          aria-label={t`Send message`}
           className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           disabled={isLoading || !submittable}
         >
@@ -201,7 +203,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
             onSelect={onTextareaSelect}
             onScroll={hasTextareaHooks ? handleScroll : undefined}
             onPaste={onTextareaPaste}
-            placeholder={placeholder}
+            placeholder={placeholder ?? t`Say something…`}
             minHeight={42}
             maxHeight={240}
             autoFocus={autoFocus}

@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
+import type { I18n } from '@lingui/core'
 import {
   SearchableMenu,
   searchableMenuRowClass,
@@ -17,7 +20,7 @@ import { needsApiKey } from '@/settings/models/model-policy'
 import type { ChatThread } from '@/layout/sidebar/types'
 import type { Model } from '@/types'
 import { AlertTriangle, ChevronDown } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 
 export type ModelSelectorProps = {
   models: Model[]
@@ -52,9 +55,13 @@ const toMenuItem = (
   data: { model, disabledByEncryption },
 })
 
+const disabledStandardLabel = msg`Not available in private chats.`
+const disabledConfidentialLabel = msg`Only available in private chats.`
+
 export const categorizeModels = (
   models: Model[],
   chatThread: ModelSelectorProps['chatThread'],
+  i18n: I18n,
 ): SearchableMenuGroup<ModelItemData>[] => {
   // Custom and built-in models share one group — the selector only splits by
   // confidentiality (available vs the greyed-out opposite-mode section below).
@@ -89,14 +96,14 @@ export const categorizeModels = (
   if (disabledStandard.length > 0) {
     groups.push({
       id: 'standard-disabled',
-      label: 'Not available in private chats.',
+      label: i18n._(disabledStandardLabel),
       items: disabledStandard,
     })
   }
   if (disabledConfidential.length > 0) {
     groups.push({
       id: 'confidential-disabled',
-      label: 'Only available in private chats.',
+      label: i18n._(disabledConfidentialLabel),
       items: disabledConfidential,
     })
   }
@@ -114,7 +121,13 @@ export const ModelSelector = ({
   align,
   variant = 'pill',
 }: ModelSelectorProps) => {
-  const groupedItems = useMemo(() => categorizeModels(models, chatThread), [models, chatThread])
+  const { t, i18n } = useLingui()
+  // Computed during render rather than memoized: `useLingui` returns the same
+  // `i18n` singleton across a language switch, so an `i18n` dependency never
+  // invalidates and the disabled-group labels would stay in the outgoing
+  // locale until `models`/`chatThread` happened to change. Partitioning the
+  // model list is cheap; see the Localization section in AGENTS.md.
+  const groupedItems = categorizeModels(models, chatThread, i18n)
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
@@ -138,7 +151,7 @@ export const ModelSelector = ({
       ) : null}
       {/* Muted in both variants — trigger labels are chrome, not content.
           Truncates instead of wrapping when the composer gets narrow. */}
-      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? 'Select model'}</span>
+      <span className="min-w-0 truncate font-medium text-muted-foreground">{selected?.label ?? t`Select model`}</span>
       <ChevronDown
         className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
       />
@@ -176,7 +189,7 @@ export const ModelSelector = ({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>{content}</TooltipTrigger>
-            <TooltipContent side="right">API key not configured</TooltipContent>
+            <TooltipContent side="right">{t`API key not configured`}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )
@@ -185,7 +198,7 @@ export const ModelSelector = ({
     return content
   }
 
-  const footerAction = onAddModels ? { label: 'Add Model', onAction: onAddModels } : undefined
+  const footerAction = onAddModels ? { label: t`Add Model`, onAction: onAddModels } : undefined
 
   const { triggerSelection } = useHaptics()
   const handleModelChange = useCallback(
@@ -202,9 +215,9 @@ export const ModelSelector = ({
       value={selectedModel?.id}
       onValueChange={handleModelChange}
       searchable={models.length > 10}
-      searchPlaceholder="Search Models"
-      emptyMessage="No models found"
-      mobileTitle="Choose model"
+      searchPlaceholder={t`Search Models`}
+      emptyMessage={t`No models found`}
+      mobileTitle={t`Choose model`}
       mobileSide="bottom"
       trigger={renderTrigger}
       renderItem={renderItem}

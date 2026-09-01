@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setActiveLocale } from '@/i18n/active-locale'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -58,6 +59,8 @@ afterEach(() => {
   clearAuthToken()
   clearDeviceId()
   clearUserCacheSecret()
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
 })
 
 describe('auth-token', () => {
@@ -152,6 +155,37 @@ describe('auth-token', () => {
       const headers2 = getAuthenticatedHeaders()
 
       expect(headers1['X-Device-ID']).toBe(headers2['X-Device-ID'])
+    })
+
+    describe('X-App-Version', () => {
+      const env = import.meta.env as Record<string, unknown>
+      let savedVersion: unknown
+
+      beforeEach(() => {
+        savedVersion = env.VITE_APP_VERSION
+      })
+
+      afterEach(() => {
+        env.VITE_APP_VERSION = savedVersion
+      })
+
+      it('includes X-App-Version when VITE_APP_VERSION is set', () => {
+        env.VITE_APP_VERSION = '7.8.9'
+        expect(getAuthenticatedHeaders()['X-App-Version']).toBe('7.8.9')
+      })
+
+      it('omits X-App-Version when VITE_APP_VERSION is unset', () => {
+        env.VITE_APP_VERSION = undefined
+        expect(getAuthenticatedHeaders()['X-App-Version']).toBeUndefined()
+      })
+    })
+
+    // The PowerSync connector cannot use the HTTP client, so this is the only
+    // path carrying X-App-Language on token and CRUD-upload requests.
+    it('returns X-App-Language from the active locale', () => {
+      setActiveLocale('ja')
+
+      expect(getAuthenticatedHeaders()['X-App-Language']).toBe('ja')
     })
   })
 })

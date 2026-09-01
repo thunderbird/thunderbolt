@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Plus } from 'lucide-react'
 import { lazy, Suspense, useReducer } from 'react'
 import { flushSync } from 'react-dom'
@@ -107,6 +108,7 @@ export const ChatSkillsBar = ({
   const trackSkillEvent = useSkillTelemetry()
   const { openCreateItem } = useCreateItem()
 
+  const { t } = useLingui()
   const [{ reorderMode, addOpen, addQuery, actionError }, dispatch] = useReducer(barReducer, initialBarState)
   const lockedPinnedIds = new Set(pinned.filter((skill) => isWidgetSkillId(skill.id)).map((skill) => skill.id))
 
@@ -120,10 +122,12 @@ export const ChatSkillsBar = ({
       trackSkillEvent(action === 'pin' ? 'skill_pinned' : 'skill_unpinned', skill.id, {})
     } catch (error) {
       console.error('togglePin failed:', error)
+      // Bound to a local so the catalog placeholder is named `{name}` — a call
+      // expression inside a macro extracts as positional `{0}`.
+      const name = skillDisplayName(skill)
       dispatch({
         type: 'MUTATION_FAILED',
-        message:
-          action === 'pin' ? `Couldn't pin ${skillDisplayName(skill)}.` : `Couldn't unpin ${skillDisplayName(skill)}.`,
+        message: action === 'pin' ? t`Couldn't pin ${name}.` : t`Couldn't unpin ${name}.`,
       })
     }
   }
@@ -150,7 +154,7 @@ export const ChatSkillsBar = ({
             trackSkillEvent('skill_reordered', move.id, { from_index: move.from, to_index: move.to })
           } catch (error) {
             console.error('reorderPins failed:', error)
-            dispatch({ type: 'MUTATION_FAILED', message: "Couldn't save the new order." })
+            dispatch({ type: 'MUTATION_FAILED', message: t`Couldn't save the new order.` })
           }
         }}
         onClose={closeReorder}
@@ -190,7 +194,7 @@ export const ChatSkillsBar = ({
     <Button
       variant="outline"
       size="icon-sm"
-      aria-label="Add a skill"
+      aria-label={t`Add a skill`}
       disabled={addDisabled}
       className={cn(chipSurfaceClass, 'disabled:cursor-not-allowed disabled:opacity-40')}
     >
@@ -207,8 +211,8 @@ export const ChatSkillsBar = ({
           <SearchInput
             value={addQuery}
             onChange={(event) => dispatch({ type: 'ADD_QUERY_CHANGED', value: event.target.value })}
-            placeholder="Search skills"
-            aria-label="Search skills"
+            placeholder={t`Search skills`}
+            aria-label={t`Search skills`}
             autoFocus={!isMobile}
           />
         </div>
@@ -218,10 +222,14 @@ export const ChatSkillsBar = ({
           keeping the search field and "New Skill" row pinned and visible. */}
       <ul className="min-h-0 overflow-y-auto overscroll-contain md:max-h-64">
         {pinnable.length === 0 && (
-          <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">All skills are pinned</li>
+          <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>All skills are pinned</Trans>
+          </li>
         )}
         {pinnable.length > 0 && pinnableFiltered.length === 0 && (
-          <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">No matching skills</li>
+          <li className="px-2 py-1.5 text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>No matching skills</Trans>
+          </li>
         )}
         {pinnableFiltered.map((skill) => (
           <li key={skill.id}>
@@ -259,7 +267,7 @@ export const ChatSkillsBar = ({
           className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[length:var(--font-size-body)] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="size-4" />
-          New Skill
+          <Trans>New Skill</Trans>
         </button>
       </div>
     </>
@@ -269,7 +277,7 @@ export const ChatSkillsBar = ({
     <ResponsivePopover
       open={addOpen}
       onOpenChange={setAddOpen}
-      title="Add a skill"
+      title={t`Add a skill`}
       // TooltipTrigger sits between the menu trigger slot and the button so
       // both Radix roots merge their props onto the one real element.
       trigger={pinCapReached ? <TooltipTrigger asChild>{addButton}</TooltipTrigger> : addButton}
@@ -289,7 +297,9 @@ export const ChatSkillsBar = ({
   const addControl = pinCapReached ? (
     <Tooltip>
       {addMenu}
-      <TooltipContent>{`Pin limit reached (${maxPinnedSkills}). Unpin one first.`}</TooltipContent>
+      <TooltipContent>
+        <Trans>Pin limit reached ({maxPinnedSkills}). Unpin one first.</Trans>
+      </TooltipContent>
     </Tooltip>
   ) : (
     addMenu
@@ -327,7 +337,7 @@ export const ChatSkillsBar = ({
         )}
       </div>
       {isMobile && (
-        <MobileCardMenu open={reorderMode} onOpenChange={(open) => !open && closeReorder()} title="Reorder skills">
+        <MobileCardMenu open={reorderMode} onOpenChange={(open) => !open && closeReorder()} title={t`Reorder skills`}>
           {reorderPanel}
         </MobileCardMenu>
       )}

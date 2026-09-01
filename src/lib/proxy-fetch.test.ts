@@ -8,9 +8,10 @@
 // `isStandalone` and a fetch override so tests can wire fakes via constructor
 // arguments — pure dependency injection.
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
+import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -63,6 +64,93 @@ describe('createProxyFetch — Hosted mode', () => {
 
     const res = await proxyFetch('https://example.com/api', { method: 'GET' })
     expect(res.headers.get('content-type')).toBe('application/json')
+  })
+})
+
+describe('createProxyFetch — app-version gate', () => {
+  const upgradeEnvelope = {
+    success: false,
+    data: null,
+    error: 'Upgrade Required',
+    code: 'APP_VERSION_UNSUPPORTED',
+    minAppVersion: '99.0.0',
+  }
+
+  /** Collect `appVersionUnsupported` events for the duration of one test. */
+  const captureBlockEvents = (): { events: CustomEvent[]; dispose: () => void } => {
+    const events: CustomEvent[] = []
+    const listener = (event: Event) => events.push(event as CustomEvent)
+    window.addEventListener(appVersionUnsupported, listener)
+    return { events, dispose: () => window.removeEventListener(appVersionUnsupported, listener) }
+  }
+
+  const proxyFetchReturning = (response: () => Response) =>
+    createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: (async () => response()) as unknown as typeof fetch,
+      isStandalone: () => false,
+    })
+
+  // Both ends: start clean regardless of what ran before, and leave clean.
+  beforeEach(() => {
+    resetAppVersionBlockedForTesting()
+  })
+
+  afterEach(() => {
+    resetAppVersionBlockedForTesting()
+  })
+
+  it('raises the upgrade blocker when our gate rejects the outer hop', async () => {
+    const { events, dispose } = captureBlockEvents()
+    const proxyFetch = proxyFetchReturning(
+      () => new Response(JSON.stringify(upgradeEnvelope), { status: 426, headers: { 'Content-Type': 'text/plain' } }),
+    )
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(events).toHaveLength(1)
+    expect(events[0].detail).toEqual({ minAppVersion: '99.0.0' })
+    expect(isAppVersionBlocked()).toBe(true)
+    dispose()
+  })
+
+  it('ignores a 426 relayed from the external upstream', async () => {
+    // The proxy copies upstream status codes verbatim, so a provider answering
+    // 426 must never blank the app — only our `APP_VERSION_UNSUPPORTED` envelope
+    // means "this build is too old".
+    const { events, dispose } = captureBlockEvents()
+    const proxyFetch = proxyFetchReturning(
+      () =>
+        new Response(JSON.stringify({ error: 'upstream wants a protocol upgrade' }), {
+          status: 426,
+          headers: { 'X-Proxy-Passthrough-Content-Type': 'application/json' },
+        }),
+    )
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(events).toHaveLength(0)
+    expect(isAppVersionBlocked()).toBe(false)
+    dispose()
+  })
+
+  it('leaves the response body readable by the caller', async () => {
+    const proxyFetch = proxyFetchReturning(() => new Response(JSON.stringify(upgradeEnvelope), { status: 426 }))
+
+    const res = await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(res.status).toBe(426)
+    expect(await res.json()).toEqual(upgradeEnvelope)
+  })
+
+  it('does not raise the blocker on a successful proxy response', async () => {
+    const { events, dispose } = captureBlockEvents()
+    const proxyFetch = proxyFetchReturning(() => new Response('ok', { status: 200 }))
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', { method: 'POST' })
+
+    expect(events).toHaveLength(0)
+    dispose()
   })
 })
 

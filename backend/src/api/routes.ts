@@ -6,14 +6,18 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
-import unitsByCountryData from '../data/localization/units-by-country.json'
-import unitsOptionsData from '../data/localization/units-options.json'
-import { resolveCountryCode } from '../utils/country'
 
 export type LocationResult = {
   name: string
   region: string
   country: string
+  /**
+   * ISO 3166-1 alpha-2, or empty when the provider has none for this result.
+   * Returned independently of the `language` parameter, so clients can key off
+   * it instead of reverse-matching `country`, which is a display name and will
+   * localize.
+   */
+  countryCode: string
   lat: number
   lon: number
 }
@@ -28,47 +32,6 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
     .get('/health', () => ({
       status: 'ok',
     }))
-
-    .get(
-      '/units',
-      (ctx) => {
-        const { query, set } = ctx
-        const country = query.country
-
-        if (!country) {
-          set.status = 400
-          throw new Error('Country parameter is required')
-        }
-
-        const countryCode = resolveCountryCode(country)
-
-        if (!countryCode) {
-          return unitsByCountryData.US
-        }
-
-        const countryData = unitsByCountryData[countryCode as keyof typeof unitsByCountryData]
-
-        if (!countryData) {
-          return unitsByCountryData.US
-        }
-
-        return countryData
-      },
-      {
-        auth: true,
-        query: t.Object({
-          country: t.String(),
-        }),
-      },
-    )
-
-    .get(
-      '/units-options',
-      () => {
-        return unitsOptionsData
-      },
-      { auth: true },
-    )
 
     .get(
       '/locations',
@@ -105,6 +68,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
               name?: string
               admin1?: string
               country?: string
+              country_code?: string
               latitude?: number
               longitude?: number
             }>
@@ -117,6 +81,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
               name: location.name || '',
               region: location.admin1!,
               country: location.country || '',
+              countryCode: location.country_code || '',
               lat: location.latitude || 0,
               lon: location.longitude || 0,
             }))

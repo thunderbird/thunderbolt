@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Info } from 'lucide-react'
 import { useTransition } from 'react'
 
@@ -57,6 +58,7 @@ export const SkillForm = ({
   /** Generic save-failure message shown next to the submit button. */
   submitError?: string | null
 }) => {
+  const { t } = useLingui()
   const {
     label,
     slug,
@@ -113,23 +115,23 @@ export const SkillForm = ({
       <div className="flex flex-col gap-5 md:min-h-0 md:flex-1">
         <div className="flex flex-col gap-2">
           <label htmlFor="skill-label" className="text-base text-foreground">
-            Name
+            <Trans>Name</Trans>
           </label>
           <Input
             id="skill-label"
             ref={nameInputRef}
-            placeholder="Daily Brief"
+            placeholder={t`Daily Brief`}
             value={label}
             onChange={(e) => handleLabelChange(e.target.value)}
             className="md:h-9"
           />
           <div className="mt-1 flex flex-col gap-2">
             <label htmlFor="skill-slug" className="text-base text-foreground">
-              Slug
+              <Trans>Slug</Trans>
             </label>
             <Input
               id="skill-slug"
-              placeholder="daily-brief"
+              placeholder={t`daily-brief`}
               value={slug}
               onChange={(event) => handleSlugChange(event.target.value)}
               aria-invalid={localSlugError || slugError ? true : undefined}
@@ -141,26 +143,26 @@ export const SkillForm = ({
 
         <div className="flex flex-col gap-2">
           <label htmlFor="skill-description" className="flex items-center gap-1.5 text-base text-foreground">
-            Description
+            <Trans>Description</Trans>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label="What is this for?"
+                  aria-label={t`What is this for?`}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <Info size={14} strokeWidth={1.75} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="max-w-[202px]">
-                Helps the agent decide when to use this skill. Be specific about when it applies.
+                <Trans>Helps the agent decide when to use this skill. Be specific about when it applies.</Trans>
               </TooltipContent>
             </Tooltip>
           </label>
           <Textarea
             id="skill-description"
             rows={3}
-            placeholder="When to use this skill…"
+            placeholder={t`When to use this skill…`}
             value={description}
             onChange={(e) => handleDescriptionChange(e.target.value)}
           />
@@ -168,11 +170,11 @@ export const SkillForm = ({
 
         <div className="flex flex-col gap-2 md:min-h-0 md:flex-1">
           <label htmlFor="skill-instruction" className="text-base text-foreground">
-            Instructions
+            <Trans>Instructions</Trans>
           </label>
           <Textarea
             id="skill-instruction"
-            placeholder="What the assistant should do…"
+            placeholder={t`What the assistant should do…`}
             value={instruction}
             onChange={(e) => handleInstructionChange(e.target.value)}
             className="min-h-48 resize-y md:min-h-0 md:flex-1 md:resize-none"
@@ -189,11 +191,11 @@ export const SkillForm = ({
         <ResponsiveModalCancel onClick={onCancel} className="dark:hover:bg-accent" />
         <Button
           isLoading={isPending}
-          loadingLabel={mode === 'edit' ? 'Saving…' : 'Creating…'}
+          loadingLabel={mode === 'edit' ? t`Saving…` : t`Creating…`}
           disabled={!canSave}
           onClick={handleSubmit}
         >
-          {mode === 'edit' ? 'Save' : 'Create'}
+          {mode === 'edit' ? <Trans>Save</Trans> : <Trans>Create</Trans>}
         </Button>
       </FormFooter>
     </section>

@@ -43,7 +43,6 @@ const baseParams: PromptParams = {
   localization: {
     distanceUnit: 'imperial',
     temperatureUnit: 'f',
-    dateFormat: 'MM/DD/YYYY',
     timeFormat: '12h',
     currency: 'USD',
   },

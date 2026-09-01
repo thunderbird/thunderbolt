@@ -31,8 +31,12 @@ describe('buildCreateSql', () => {
     expect(sql).not.toContain('body UNINDEXED')
   })
 
-  it('uses the porter unicode61 tokenizer', () => {
-    expect(sql).toContain(`tokenize = 'porter unicode61'`)
+  it('uses a locale-independent, diacritic-folding unicode61 tokenizer', () => {
+    expect(sql).toContain(`tokenize = 'unicode61 remove_diacritics 2'`)
+  })
+
+  it('does not stem: porter breaks prefix matching mid-word', () => {
+    expect(sql).not.toContain('porter')
   })
 })
 

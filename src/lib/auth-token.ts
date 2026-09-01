@@ -11,6 +11,8 @@
  * TODO: once we have a proper encryption middleware, we should store the auth token in the settings database.
  */
 
+import { getActiveLocale } from '@/i18n/active-locale'
+import { appVersionHeader } from '@/lib/app-version'
 import { getDeviceDisplayName } from '@/lib/platform'
 
 const deviceIdKey = 'thunderbolt_device_id'
@@ -73,8 +75,10 @@ export const clearUserCacheSecret = (): void => {
 }
 
 /**
- * Build authenticated headers (Authorization + device identity).
+ * Build authenticated headers (Authorization + device identity + app language).
  * Single source of truth for callers that cannot use the HTTP client (e.g. PowerSync connector).
+ * Kept in step with the `beforeRequest` hook in `src/lib/http.ts`, which sets the
+ * same headers for callers that can.
  */
 export const getAuthenticatedHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = {}
@@ -87,9 +91,8 @@ export const getAuthenticatedHeaders = (): Record<string, string> => {
     headers['X-Device-ID'] = deviceId
     headers['X-Device-Name'] = getDeviceDisplayName()
   }
-  if (import.meta.env.VITE_APP_VERSION) {
-    headers['X-App-Version'] = import.meta.env.VITE_APP_VERSION
-  }
+  Object.assign(headers, appVersionHeader())
+  headers['X-App-Language'] = getActiveLocale()
   return headers
 }
 

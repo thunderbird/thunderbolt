@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ type EditModelFormProps = {
 
 /** Presentational model edit form driven by useEditModelFormState. */
 export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitError }: EditModelFormProps) => {
+  const { t } = useLingui()
   const state = useEditModelFormState(model)
 
   return (
@@ -40,7 +42,9 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Name</FormLabel>
+              <FormLabel>
+                <Trans>Name</Trans>
+              </FormLabel>
               <FormControl>
                 <Input {...field} className="rounded-lg" />
               </FormControl>
@@ -53,19 +57,21 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
           name="model"
           render={({ field }) => (
             <FormItem className="flex flex-col">
-              <FormLabel>Model</FormLabel>
+              <FormLabel>
+                <Trans>Model</Trans>
+              </FormLabel>
               <FormControl>
                 {state.isCustomModel ? (
-                  <Input {...field} placeholder="e.g., gpt-4-turbo-preview" className="rounded-lg" />
+                  <Input {...field} placeholder={t`e.g., gpt-4-turbo-preview`} className="rounded-lg" />
                 ) : (
                   <Combobox
                     items={state.modelItems}
                     value={state.watchedModel}
                     onValueChange={state.selectModel}
                     onOpenChange={(open) => open && state.loadCatalog()}
-                    placeholder="Select model…"
-                    searchPlaceholder="Search models…"
-                    emptyMessage="No models found."
+                    placeholder={t`Select model…`}
+                    searchPlaceholder={t`Search models…`}
+                    emptyMessage={t`No models found.`}
                     loading={state.isLoadingCatalog}
                   />
                 )}
@@ -81,7 +87,9 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             name="url"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>URL</FormLabel>
+                <FormLabel>
+                  <Trans>URL</Trans>
+                </FormLabel>
                 <FormControl>
                   <Input {...field} className="rounded-lg" onChange={(event) => state.changeUrl(event.target.value)} />
                 </FormControl>
@@ -96,7 +104,9 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
             name="apiKey"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>API Key</FormLabel>
+                <FormLabel>
+                  <Trans>API Key</Trans>
+                </FormLabel>
                 <FormControl>
                   <Input
                     type="password"
@@ -108,7 +118,11 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
                 </FormControl>
                 {model.apiKey && (
                   <Button type="button" variant="ghost" className="mt-1" onClick={state.toggleClearApiKey}>
-                    {state.apiKeyEdit.kind === 'clear' ? 'Keep saved API key' : 'Clear saved API key'}
+                    {state.apiKeyEdit.kind === 'clear' ? (
+                      <Trans>Keep saved API key</Trans>
+                    ) : (
+                      <Trans>Clear saved API key</Trans>
+                    )}
                   </Button>
                 )}
                 <FormMessage />
@@ -128,14 +142,14 @@ export const EditModelForm = ({ model, onCancel, onSubmit, isPending, submitErro
         {submitError && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}
-            title="Something went wrong"
+            title={t`Something went wrong`}
             description={submitError}
           />
         )}
         <FormFooter>
           <ResponsiveModalCancel onClick={onCancel} />
-          <Button type="submit" isLoading={isPending} loadingLabel="Saving…" disabled={state.isSaveDisabled}>
-            Save
+          <Button type="submit" isLoading={isPending} loadingLabel={t`Saving…`} disabled={state.isSaveDisabled}>
+            <Trans>Save</Trans>
           </Button>
         </FormFooter>
       </form>

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
 import { useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
@@ -14,6 +15,7 @@ import { isWebMobilePlatform, isTauri } from '@/lib/platform'
 const showAppDownloads = import.meta.env.VITE_SHOW_APP_DOWNLOADS === 'true'
 
 export const DownloadAppBannerMobile = () => {
+  const { t } = useLingui()
   const [dismissed, setDismissed] = useState(false)
 
   if (!showAppDownloads || isTauri() || !isWebMobilePlatform()) {
@@ -45,14 +47,18 @@ export const DownloadAppBannerMobile = () => {
             <button
               onClick={handleDismiss}
               className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              aria-label="Dismiss"
+              aria-label={t`Dismiss`}
             >
               <X className="size-4" />
             </button>
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">One app, every AI model</p>
-              <p className="text-xs text-muted-foreground truncate">Get Thunderbolt free app</p>
+              <p className="text-sm font-semibold text-foreground truncate">
+                <Trans>One app, every AI model</Trans>
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                <Trans>Get Thunderbolt free app</Trans>
+              </p>
             </div>
 
             <Button
@@ -65,7 +71,7 @@ export const DownloadAppBannerMobile = () => {
               }}
             >
               <a href={storeUrl} target="_blank" rel="noopener noreferrer">
-                Download
+                <Trans>Download</Trans>
               </a>
             </Button>
           </div>

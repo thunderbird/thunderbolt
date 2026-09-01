@@ -8,6 +8,7 @@ import { MicrosoftLogo } from '@/components/ui/microsoft-logo'
 import { useOAuthConnect } from '@/hooks/use-oauth-connect'
 import type { UseOAuthConnectResult } from '@/hooks/use-oauth-connect'
 import { type OAuthProvider } from '@/lib/auth'
+import { Trans } from '@lingui/react/macro'
 import { Calendar, File, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -95,36 +96,44 @@ export const OnboardingAuthStep = ({
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
         icon={<TopIcon className="size-10" />}
-        title={`Connect ${providerName}`}
+        title={<Trans>Connect {providerName}</Trans>}
         description={
-          isMicrosoft
-            ? 'Your assistant can help you manage your email, calendar, and documents.'
-            : 'Your assistant can help you manage your email and calendar.'
+          isMicrosoft ? (
+            <Trans>Your assistant can help you manage your email, calendar, and documents.</Trans>
+          ) : (
+            <Trans>Your assistant can help you manage your email and calendar.</Trans>
+          )
         }
       />
 
       <div className="mt-10 rounded-xl bg-muted">
         <OnboardingFeatureCard
           icon={Calendar}
-          title="Calendar"
+          title={<Trans>Calendar</Trans>}
           description={
-            isMicrosoft
-              ? 'View and manage your schedule; create + reschedule events.'
-              : 'View your schedule and upcoming events.'
+            isMicrosoft ? (
+              <Trans>View and manage your schedule; create + reschedule events.</Trans>
+            ) : (
+              <Trans>View your schedule and upcoming events.</Trans>
+            )
           }
         />
         <OnboardingFeatureCard
           icon={Mail}
-          title="Email"
+          title={<Trans>Email</Trans>}
           description={
-            isMicrosoft ? 'Read, compose, and organize your emails.' : 'Read your emails and compose drafts.'
+            isMicrosoft ? (
+              <Trans>Read, compose, and organize your emails.</Trans>
+            ) : (
+              <Trans>Read your emails and compose drafts.</Trans>
+            )
           }
         />
         {isMicrosoft && (
           <OnboardingFeatureCard
             icon={File}
-            title="OneDrive Access"
-            description="Search and work with your OneDrive files and documents."
+            title={<Trans>OneDrive Access</Trans>}
+            description={<Trans>Search and work with your OneDrive files and documents.</Trans>}
           />
         )}
 

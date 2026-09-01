@@ -11,8 +11,6 @@
  * chat sidebar, so this is a shortcut, not the only route to them.
  */
 
-import dayjs from 'dayjs'
-import '@/lib/dayjs'
 import { History } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -25,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { MiniAppChat } from '@/dal/mini-app-chats'
+import { useFormatters } from '@/i18n/use-formatters'
 
 type MiniAppChatHistoryProps = {
   chats: readonly MiniAppChat[]
@@ -32,30 +31,34 @@ type MiniAppChatHistoryProps = {
   onOpenChat: (chatThreadId: string) => void
 }
 
-export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProps) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button variant="ghost" size="icon" aria-label="Chats from this app">
-        <History className="size-[var(--icon-size-default)]" />
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="w-72">
-      <DropdownMenuLabel>Chats from this app</DropdownMenuLabel>
-      <DropdownMenuSeparator />
-      {chats.length === 0 ? (
-        <div className="px-2 py-3 text-[length:var(--font-size-sm)] text-muted-foreground">
-          No chats yet. Anything you ask beside this app shows up here.
-        </div>
-      ) : (
-        chats.map((chat) => (
-          <DropdownMenuItem key={chat.id} onSelect={() => onOpenChat(chat.id)} className="flex flex-col items-start">
-            <span className="truncate w-full">{chat.title ?? 'Untitled chat'}</span>
-            <span className="text-[length:var(--font-size-xs)] text-muted-foreground">
-              {dayjs(chat.lastActivityAt).fromNow()}
-            </span>
-          </DropdownMenuItem>
-        ))
-      )}
-    </DropdownMenuContent>
-  </DropdownMenu>
-)
+export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProps) => {
+  const formatters = useFormatters()
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Chats from this app">
+          <History className="size-[var(--icon-size-default)]" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel>Chats from this app</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {chats.length === 0 ? (
+          <div className="px-2 py-3 text-[length:var(--font-size-sm)] text-muted-foreground">
+            No chats yet. Anything you ask beside this app shows up here.
+          </div>
+        ) : (
+          chats.map((chat) => (
+            <DropdownMenuItem key={chat.id} onSelect={() => onOpenChat(chat.id)} className="flex flex-col items-start">
+              <span className="truncate w-full">{chat.title ?? 'Untitled chat'}</span>
+              <span className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                {formatters.relativeTime(chat.lastActivityAt)}
+              </span>
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}

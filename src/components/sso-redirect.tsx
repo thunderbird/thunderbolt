@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { http } from '@/lib/http'
 import { setAuthToken } from '@/lib/auth-token'
@@ -86,14 +87,16 @@ const SsoRedirect = () => {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="text-[length:var(--font-size-body)] text-muted-foreground">
-          Unable to connect to the identity provider. Check your network connection and SSO configuration.
+          <Trans>
+            Unable to connect to the identity provider. Check your network connection and SSO configuration.
+          </Trans>
         </p>
         <button
           type="button"
           onClick={() => setRetryKey((k) => k + 1)}
           className="h-[var(--touch-height-default)] rounded-lg bg-primary px-4 text-[length:var(--font-size-body)] text-primary-foreground"
         >
-          Try again
+          <Trans>Try again</Trans>
         </button>
       </div>
     )

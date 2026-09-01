@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { SiAnthropic } from '@icons-pack/react-simple-icons'
 import { Server } from 'lucide-react'
 
@@ -15,6 +17,9 @@ import type { Model } from '@/types'
 /** Canonical display names for model providers — the single source for labels.
  *  Key order is the provider-picker menu order (the add form derives its options
  *  from these keys, so a new provider can't silently drop out of the picker). */
+// Brand names, deliberately not translated. The one exception is `custom`,
+// which is real copy — callers substitute a translated label for it (see
+// `customProviderLabel`).
 export const providerLabels: Record<Model['provider'], string> = {
   thunderbolt: 'Thunderbolt',
   tinfoil: 'Tinfoil',
@@ -57,6 +62,13 @@ export const ModelProviderIconTile = ({ model }: { model: Pick<Model, 'provider'
   </IconTile>
 )
 
+/** The one provider label that is copy rather than a brand name. */
+export const customProviderLabel = msg`Custom`
+
 /** Provider label for display — system-managed Tinfoil models brand as Thunderbolt. */
-export const getProviderDisplay = (model: Pick<Model, 'provider' | 'isSystem'>): string =>
-  isThunderboltManagedModel(model) ? 'Thunderbolt' : providerLabels[model.provider]
+export const getProviderDisplay = (i18n: I18n, model: Pick<Model, 'provider' | 'isSystem'>): string => {
+  if (isThunderboltManagedModel(model)) {
+    return 'Thunderbolt'
+  }
+  return model.provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[model.provider]
+}

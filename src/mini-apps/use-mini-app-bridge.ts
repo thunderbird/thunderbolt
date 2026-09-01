@@ -36,6 +36,7 @@ import {
   type MiniAppSelection,
 } from '@shared/mini-app-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { createPendingRequests } from '@/components/embedded/pending-requests'
@@ -128,6 +129,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   /** Last error the app reported about itself; shown as a strip over the frame. */
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const theme = useResolvedTheme()
+  const locale = useActiveLocale()
   const setContext = useMiniAppStore((s) => s.setContext)
   const setTools = useMiniAppStore((s) => s.setTools)
   const resetGuest = useMiniAppStore((s) => s.resetGuest)
@@ -148,6 +150,13 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    */
   const themeRef = useRef(theme)
   themeRef.current = theme
+
+  // Same reasoning as `themeRef`, and the same reason it isn't `navigator.language`:
+  // the guest should format for the language the user chose in Thunderbolt, not the
+  // one their browser was installed in. A German user reading a German UI shouldn't
+  // get an app rendering US-formatted currency beside it.
+  const localeRef = useRef(locale)
+  localeRef.current = locale
 
   // What the guest declared at handshake. A ref, not state: it's read inside the
   // message handler and by the discovery effect, and re-rendering on it would
@@ -253,7 +262,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           capabilities: { context: true, chat: true, auth: auth !== null },
           hostContext: {
             theme: themeRef.current,
-            locale: navigator.language,
+            locale: localeRef.current,
             platform: resolveHostPlatform(),
           },
           ...(auth ? { auth } : {}),
@@ -376,10 +385,10 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       jsonrpc: '2.0',
       protocol: miniAppProtocolMarker,
       method: miniAppHostMethods.hostContextChanged,
-      // Partial by design — only the key that moved.
-      params: { theme },
+      // Partial by design — only the keys that moved.
+      params: { theme, locale },
     })
-  }, [theme, status, post])
+  }, [theme, locale, status, post])
 
   /** Drop the current selection — used after the host acts on it. */
   const clearSelection = useCallback(() => setSelection(null), [])

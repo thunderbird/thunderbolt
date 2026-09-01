@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { HttpClientProvider } from '@/contexts'
+import { getActiveLocale } from '@/i18n/active-locale'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { createClient } from '@/lib/http'
 import {
@@ -188,6 +189,20 @@ describe('useMiniAppBridge message handling', () => {
     expect(reply.result.protocolVersion).toBe(miniAppProtocolVersion)
     expect(reply.result.capabilities).toMatchObject({ context: true, chat: true })
     expect(bridge.current?.status).toBe('ready')
+  })
+
+  /*
+   * `navigator.language` is the browser's install language, which has nothing to
+   * do with the one the user picked in Thunderbolt. The guest formats currency and
+   * dates off this, so getting it wrong renders a German UI beside US-formatted
+   * money — which is exactly what shipped before.
+   */
+  it('tells the guest the app language, not the browser language', async () => {
+    const { replyTo, handshake } = mountBridge()
+    await handshake()
+
+    const reply = replyTo(1) as { result: MiniAppInitializeResult }
+    expect(reply.result.hostContext.locale).toBe(getActiveLocale())
   })
 
   it('refuses a protocol version it does not speak, and stays unready', async () => {

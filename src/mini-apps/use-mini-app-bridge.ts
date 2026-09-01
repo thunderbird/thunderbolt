@@ -221,6 +221,11 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           return
         }
         guestCapabilitiesRef.current = message.params.capabilities
+        // A fresh handshake means a fresh document — the app navigated, reloaded
+        // or was redeployed. Anything it told us about the last one is stale, and
+        // an error strip pinned over a working app is worse than none. Artifacts
+        // clear theirs on document change; this is the same moment.
+        setRuntimeError(null)
 
         // Only minted when the guest declared the capability — an app that never
         // asked shouldn't cause a credential to exist.

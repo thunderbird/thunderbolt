@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getEncryptionMetadata } from '@/dal'
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase } from '@/db/client'
 import { timingSafeEqual } from 'crypto'
 
 /** Hash a canary secret using SHA-256. Returns hex-encoded hash. */
@@ -29,7 +29,11 @@ const verifyAgainstHash = async (canarySecret: string, storedHash: string): Prom
  * Used to gate trust-sensitive operations (device approval, deny, revoke) — prevents X-Device-ID spoofing
  * because only a device that possesses the Content Key can decrypt the canary and extract the secret.
  */
-export const verifyCanaryProof = async (db: typeof DbType, userId: string, canarySecret: string): Promise<boolean> => {
+export const verifyCanaryProof = async (
+  db: QueryableDatabase,
+  userId: string,
+  canarySecret: string,
+): Promise<boolean> => {
   const metadata = await getEncryptionMetadata(db, userId)
   if (!metadata?.canarySecretHash) {
     return false

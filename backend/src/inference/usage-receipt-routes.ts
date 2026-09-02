@@ -20,6 +20,7 @@ import {
   InferenceTokenCountOutOfRangeError,
   recordInferenceUsage,
 } from './usage-ledger'
+import { rejectPersonalAccessToken } from './web-session'
 
 export type ReceiptRouteOptions = Readonly<{
   auth: Auth
@@ -92,11 +93,12 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (app) => {
+      const webSessionApp = app.onBeforeHandle(rejectPersonalAccessToken)
       if (rateLimit) {
-        app.use(rateLimit)
+        webSessionApp.use(rateLimit)
       }
 
-      return app.post(
+      return webSessionApp.post(
         `/${inferenceUsageReceiptPath}`,
         async ({ request, user }) => {
           const body = await parseReceiptRequest(request)

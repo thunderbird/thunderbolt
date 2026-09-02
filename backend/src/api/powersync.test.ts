@@ -63,6 +63,7 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
+  cliDeviceRegistrationEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,
   inferenceQuotaAnonymousSevenDayCents: 60,
@@ -343,6 +344,48 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(403)
       const data = await response.json()
       expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    })
+
+    it('rejects a registered CLI device from PowerSync token issuance', async () => {
+      const userId = 'user-cli-token-rejected'
+      const token = 'bearer-cli-token-rejected'
+      const deviceId = 'cli-019f0000-0000-7000-8000-000000000101'
+      const now = new Date()
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'CLI Token User',
+        email: 'cli-token-rejected@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-cli-token-rejected',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token,
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId,
+      })
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Thunderbolt CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: { Authorization: `Bearer ${signToken(token)}`, 'x-device-id': deviceId },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns 400 when x-device-id is missing', async () => {
@@ -1050,6 +1093,50 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(403)
       const data = (await response.json()) as { code: string }
       expect(data.code).toBe('DEVICE_NOT_TRUSTED')
+    })
+
+    it('rejects uploads authenticated by a CLI device', async () => {
+      const userId = 'user-cli-upload-rejected'
+      const token = 'bearer-cli-upload-rejected'
+      const deviceId = 'cli-019f0000-0000-7000-8000-000000000102'
+      const now = new Date()
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'CLI Upload User',
+        email: 'cli-upload-rejected@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-cli-upload-rejected',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token,
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId,
+      })
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Thunderbolt CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: uploadHeaders(token, deviceId),
+          body: JSON.stringify({ operations: [] }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
     })
 
     it('returns 422 when body schema is invalid (operations not an array)', async () => {
@@ -2540,6 +2627,43 @@ describe('PowerSync API (E2EE disabled)', () => {
     expect(device.userId).toBe(userId)
     expect(device.trusted).toBe(true)
     expect(device.name).toBe('My New Phone')
+  })
+
+  it('does not auto-create a reserved cli- device when E2EE is disabled', async () => {
+    const userId = 'user-cli-autocreate-rejected'
+    const token = 'bearer-cli-autocreate-rejected'
+    const deviceId = 'cli-019f0000-0000-7000-8000-000000000103'
+    const now = new Date()
+    await db.insert(userTable).values({
+      id: userId,
+      name: 'CLI Auto-create User',
+      email: 'cli-autocreate-rejected@example.com',
+      emailVerified: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(sessionTable).values({
+      id: 'session-cli-autocreate-rejected',
+      expiresAt: new Date(now.getTime() + 3600_000),
+      token,
+      createdAt: now,
+      updatedAt: now,
+      userId,
+    })
+
+    const response = await app.handle(
+      new Request('http://localhost/powersync/token', {
+        headers: {
+          Authorization: `Bearer ${signToken(token)}`,
+          'x-device-id': deviceId,
+          'x-device-name': 'Squat Attempt',
+        },
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
   })
 
   it('auto-trusts new device on upsert when E2EE is disabled', async () => {

@@ -202,6 +202,26 @@ describe('Config Settings', () => {
   })
 
   describe('Settings validation and defaults', () => {
+    it('keeps CLI device registration disabled unless explicitly enabled', () => {
+      const originalValue = process.env.CLI_DEVICE_REGISTRATION_ENABLED
+      try {
+        delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+        clearSettingsCache()
+        expect(getSettings().cliDeviceRegistrationEnabled).toBe(false)
+
+        process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
+        clearSettingsCache()
+        expect(getSettings().cliDeviceRegistrationEnabled).toBe(true)
+      } finally {
+        if (originalValue === undefined) {
+          delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+        } else {
+          process.env.CLI_DEVICE_REGISTRATION_ENABLED = originalValue
+        }
+        clearSettingsCache()
+      }
+    })
+
     it('should have valid default values in schema', () => {
       // Test that the schema itself has sensible defaults
       // This tests the schema definition without env var manipulation

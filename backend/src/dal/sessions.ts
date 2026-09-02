@@ -2,30 +2,56 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType, QueryableDatabase } from '@/db/client'
+import type { QueryableDatabase } from '@/db/client'
 import { session } from '@/db/auth-schema'
-import { and, eq, gt } from 'drizzle-orm'
+import { and, eq, gt, isNull, or } from 'drizzle-orm'
 
-/** Get an active (non-expired) session by bearer token. Returns null if not found or expired. */
-export const getActiveSessionByToken = async (database: typeof DbType, token: string) =>
-  database
-    .select({ userId: session.userId })
+export type SessionDeviceBindingResult = { status: 'bound' } | { status: 'conflict' } | { status: 'invalid-session' }
+
+/** Resolve an unexpired persisted Better Auth session from its raw database token. */
+export const getActivePersistedSession = async (database: QueryableDatabase, rawToken: string) => {
+  const rows = await database
+    .select({ id: session.id, userId: session.userId, deviceId: session.deviceId })
     .from(session)
-    .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
+    .where(and(eq(session.token, rawToken), gt(session.expiresAt, new Date())))
     .limit(1)
-    .then((rows) => rows[0] ?? null)
+  return rows[0] ?? null
+}
 
-/** Link a session to a device by setting the deviceId column. Only updates if session belongs to the user. */
+/** Atomically bind and re-read only the non-secret identity fields needed to classify the result. */
 export const linkSessionToDevice = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   sessionId: string,
   deviceId: string,
   userId: string,
-) =>
-  database
+): Promise<SessionDeviceBindingResult> => {
+  const activeAt = new Date()
+  await database
     .update(session)
     .set({ deviceId })
-    .where(and(eq(session.id, sessionId), eq(session.userId, userId)))
+    .where(
+      and(
+        eq(session.id, sessionId),
+        eq(session.userId, userId),
+        gt(session.expiresAt, activeAt),
+        or(isNull(session.deviceId), eq(session.deviceId, deviceId)),
+      ),
+    )
+
+  const activeRows = await database
+    .select({ deviceId: session.deviceId })
+    .from(session)
+    .where(and(eq(session.id, sessionId), eq(session.userId, userId), gt(session.expiresAt, activeAt)))
+    .limit(1)
+  const activeSession = activeRows[0]
+  if (!activeSession) {
+    return { status: 'invalid-session' }
+  }
+  if (activeSession.deviceId === deviceId) {
+    return { status: 'bound' }
+  }
+  return activeSession.deviceId === null ? { status: 'invalid-session' } : { status: 'conflict' }
+}
 
 /** Revoke (delete) all sessions linked to a specific device for a given user. */
 export const revokeDeviceSessions = async (database: QueryableDatabase, deviceId: string, userId: string) =>

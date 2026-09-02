@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { managedModels } from '@shared/managed-models'
 import { createConfigRoutes } from './config'
 
 const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) => {
@@ -59,6 +60,17 @@ describe('Config Routes', () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.defaults.models.version).toBe(defaultModelsVersion)
       expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('publishes the exact public managed-model catalog without private runtime fields', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+
+      expect(body.managedModels).toEqual(managedModels)
+      const serialized = JSON.stringify(body.managedModels)
+      expect(serialized).not.toContain('"internalName"')
+      expect(serialized).not.toContain('"provider"')
+      expect(serialized).not.toContain('"price"')
+      expect(serialized).not.toContain('"url"')
     })
   })
 })

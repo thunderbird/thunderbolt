@@ -6,12 +6,16 @@ import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
+import { countActiveDevices, linkSessionToDevice } from '@/dal'
 import { createApp } from '@/index'
+import { registerCliDevice } from '@/test-utils/cli-device'
 import { createTestDb } from '@/test-utils/db'
+import { createTestSettings } from '@/test-utils/settings'
 import { createHmac } from 'crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
+import { createAccountRoutes } from './account'
 import { createEncryptionRoutes } from './encryption'
 
 const baseUrl = 'http://localhost'
@@ -42,7 +46,8 @@ const counterKey = Symbol.for('encryption-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
 describe('Encryption API', () => {
-  let app: ReturnType<typeof createEncryptionRoutes>
+  let app: { handle: (request: Request) => Promise<Response> }
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
 
@@ -86,6 +91,7 @@ describe('Encryption API', () => {
       publicKey?: string
       mlkemPublicKey?: string
       revokedAt?: Date
+      deviceType?: 'normal' | 'bridge' | 'cli'
     } = {},
   ) => {
     const {
@@ -96,6 +102,7 @@ describe('Encryption API', () => {
       publicKey = 'pk-test',
       mlkemPublicKey = 'mlkem-pk-test',
       revokedAt,
+      deviceType = 'normal',
     } = options
     await db.insert(devicesTable).values({
       id,
@@ -105,6 +112,7 @@ describe('Encryption API', () => {
       approvalPending,
       publicKey,
       mlkemPublicKey,
+      deviceType,
       lastSeen: now,
       createdAt: now,
       ...(revokedAt ? { revokedAt } : {}),
@@ -158,8 +166,10 @@ describe('Encryption API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const auth = createAuth(db)
-    app = new Elysia().use(createEncryptionRoutes(auth, db)) as unknown as ReturnType<typeof createEncryptionRoutes>
+    auth = createAuth(db)
+    app = new Elysia()
+      .use(createEncryptionRoutes(auth, db))
+      .use(createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db))
   })
 
   afterEach(async () => {
@@ -196,6 +206,25 @@ describe('Encryption API', () => {
       expect(response.status).toBe(401)
     })
 
+    it('rejects the reserved cli- namespace from normal device registration', async () => {
+      await createUserAndSession(p('u-cli-normal-register'), p('tok-cli-normal-register'))
+      const deviceId = 'cli-reserved-normal-route'
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-cli-normal-register'))}`,
+          },
+          body: JSON.stringify({ deviceId, publicKey: 'pk', mlkemPublicKey: 'mlkem-pk' }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
     it('registers new device as untrusted', async () => {
       await createUserAndSession(p('u1'), p('tok-u1'))
 
@@ -222,6 +251,11 @@ describe('Encryption API', () => {
       expect(device.userId).toBe(p('u1'))
       expect(device.name).toBe('My Device')
       expect(device.trusted).toBe(false)
+      const [boundSession] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.token, p('tok-u1')))
+      expect(boundSession.deviceId).toBe(p('d1'))
     })
 
     it('registers new device as untrusted when envelopes exist', async () => {
@@ -265,6 +299,157 @@ describe('Encryption API', () => {
       const body = await response.json()
       expect(body.trusted).toBe(true)
       expect(body.envelope).toBe('my-wrapped-ck')
+
+      const repeated = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-u3'))}`,
+          },
+          body: JSON.stringify({ deviceId: p('d-trusted'), publicKey: 'pk3', mlkemPublicKey: 'mlkem-pk3' }),
+        }),
+      )
+      expect(repeated.status).toBe(200)
+      const [boundSession] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.token, p('tok-u3')))
+      expect(boundSession.deviceId).toBe(p('d-trusted'))
+    })
+
+    it('rejects rebinding a normal-device session to a newly registered device without leaving a pending row', async () => {
+      const userId = p('u-normal-rebind-new')
+      const token = p('tok-normal-rebind-new')
+      const boundDeviceId = p('d-rebind-new-a')
+      const attemptedDeviceId = p('d-rebind-new-b')
+      await createUserAndSession(userId, token, undefined, boundDeviceId)
+      await insertDevice(boundDeviceId, userId, { trusted: true })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+          },
+          body: JSON.stringify({
+            deviceId: attemptedDeviceId,
+            publicKey: 'attempted-pk',
+            mlkemPublicKey: 'attempted-mlkem-pk',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ code: 'SESSION_DEVICE_MISMATCH' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, attemptedDeviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBe(boundDeviceId)
+      expect(await countActiveDevices(db, userId)).toBe(1)
+    })
+
+    it('rejects rebinding a normal-device session through the existing-trusted-device path', async () => {
+      const userId = p('u-normal-rebind-trusted')
+      const token = p('tok-normal-rebind-trusted')
+      const boundDeviceId = p('d-rebind-existing-a')
+      const attemptedDeviceId = p('d-rebind-existing-b')
+      await createUserAndSession(userId, token, undefined, boundDeviceId)
+      await insertDevice(boundDeviceId, userId, { trusted: true })
+      await insertDevice(attemptedDeviceId, userId, { trusted: true })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+          },
+          body: JSON.stringify({
+            deviceId: attemptedDeviceId,
+            publicKey: 'attempted-pk',
+            mlkemPublicKey: 'attempted-mlkem-pk',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ code: 'SESSION_DEVICE_MISMATCH' })
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBe(boundDeviceId)
+    })
+
+    it('atomically lets only one concurrent normal registration claim an unbound session', async () => {
+      const userId = p('u-normal-rebind-race')
+      const token = p('tok-normal-rebind-race')
+      const deviceIds = [p('d-rebind-race-a'), p('d-rebind-race-b')]
+      await createUserAndSession(userId, token)
+      for (let index = 0; index < 9; index++) {
+        await insertDevice(p(`d-rebind-race-active-${index}`), userId, { trusted: true })
+      }
+
+      const responses = await Promise.all(
+        deviceIds.map((deviceId) =>
+          app.handle(
+            new Request(`${baseUrl}/devices`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${signToken(token)}`,
+              },
+              body: JSON.stringify({ deviceId, publicKey: `pk-${deviceId}`, mlkemPublicKey: `mlkem-${deviceId}` }),
+            }),
+          ),
+        ),
+      )
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409])
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      if (!persistedSession.deviceId) {
+        throw new Error('winning normal-device registration did not bind the session')
+      }
+      expect(deviceIds).toContain(persistedSession.deviceId)
+      const registeredRows = await db
+        .select()
+        .from(devicesTable)
+        .where(and(inArray(devicesTable.id, deviceIds), eq(devicesTable.userId, userId)))
+      expect(registeredRows.map(({ id }) => id)).toEqual([persistedSession.deviceId])
+      expect(await countActiveDevices(db, userId)).toBe(9)
+    })
+
+    it('returns 401 without leaving a pending device when the session expires before binding', async () => {
+      const userId = p('u-normal-bind-expiry')
+      const token = p('tok-normal-bind-expiry')
+      const deviceId = p('d-bind-expiry')
+      await createUserAndSession(userId, token)
+      const expireBeforeBind: typeof linkSessionToDevice = async (
+        database,
+        sessionId,
+        targetDeviceId,
+        targetUserId,
+      ) => {
+        await database
+          .update(sessionTable)
+          .set({ expiresAt: new Date(Date.now() - 1_000) })
+          .where(eq(sessionTable.id, sessionId))
+        return linkSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
+      }
+      const boundaryApp = new Elysia().use(createEncryptionRoutes(auth, db, { linkSessionToDevice: expireBeforeBind }))
+
+      const response = await boundaryApp.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+          },
+          body: JSON.stringify({ deviceId, publicKey: 'pk-expiry', mlkemPublicKey: 'mlkem-expiry' }),
+        }),
+      )
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({ error: 'Unauthorized' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
     })
 
     it('returns untrusted for already-pending device', async () => {
@@ -406,6 +591,88 @@ describe('Encryption API', () => {
       expect(response.status).toBe(400)
       const body = await response.json()
       expect(body.error).toBe('X-Device-ID header is required')
+    })
+
+    it('rejects a CLI row from first-device bootstrap', async () => {
+      const userId = p('u-cli-bootstrap')
+      const token = p('tok-cli-bootstrap')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, token, undefined, deviceId)
+      await insertDevice(deviceId, userId, { trusted: true, approvalPending: false, deviceType: 'cli' })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${deviceId}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify({
+            wrappedCK: 'cli-wrapped-key',
+            canaryIv: 'cli-iv',
+            canaryCtext: 'cli-ctext',
+            canarySecret: 'cli-secret',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(404)
+      expect(await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, deviceId))).toHaveLength(0)
+    })
+
+    it('rejects a trusted CLI caller from approving a normal device', async () => {
+      const userId = p('u-cli-approver')
+      const token = p('tok-cli-approver')
+      const callerDeviceId = `cli-${crypto.randomUUID()}`
+      const targetDeviceId = p('d-cli-approver-target')
+      await createUserAndSession(userId, token, undefined, callerDeviceId)
+      await insertDevice(callerDeviceId, userId, { trusted: true, approvalPending: false, deviceType: 'cli' })
+      await insertDevice(targetDeviceId, userId)
+      await insertDevice(p('d-cli-approver-existing'), userId, { trusted: true })
+      await insertEnvelope(p('d-cli-approver-existing'), userId)
+      await insertCanaryWithSecret(userId)
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${targetDeviceId}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': callerDeviceId,
+          },
+          body: JSON.stringify({ wrappedCK: 'target-wrapped-key', canarySecret: testCanarySecret }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, targetDeviceId))).toHaveLength(0)
+    })
+
+    it('rejects a CLI row from self-recovery', async () => {
+      const userId = p('u-cli-recovery')
+      const token = p('tok-cli-recovery')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, token, undefined, deviceId)
+      await insertDevice(p('d-cli-recovery-existing'), userId, { trusted: true })
+      await insertEnvelope(p('d-cli-recovery-existing'), userId)
+      await insertCanaryWithSecret(userId)
+      await insertDevice(deviceId, userId, { trusted: true, approvalPending: false, deviceType: 'cli' })
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${deviceId}/envelope`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(token)}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify({ wrappedCK: 'recovered-cli-key', canarySecret: testCanarySecret }),
+        }),
+      )
+
+      expect(response.status).toBe(404)
+      expect(await db.select().from(envelopesTable).where(eq(envelopesTable.deviceId, deviceId))).toHaveLength(0)
     })
 
     it('allows first-device bootstrap: pending device submits own envelope when no envelopes exist', async () => {
@@ -1075,6 +1342,99 @@ describe('Encryption API', () => {
       expect(device.trusted).toBe(true)
     })
 
+    it('serializes two concurrent pending approvals at nine active devices', async () => {
+      const userId = p('u-concurrent-approvals')
+      const token = p('tok-concurrent-approvals')
+      const callerDeviceId = p('d-concurrent-approvals-caller')
+      const pendingDeviceIds = [p('d-concurrent-approval-a'), p('d-concurrent-approval-b')]
+      await createUserAndSession(userId, token, undefined, callerDeviceId)
+      await insertDevice(callerDeviceId, userId, { trusted: true })
+      for (let index = 0; index < 8; index++) {
+        await insertDevice(p(`d-concurrent-approvals-active-${index}`), userId, { trusted: true })
+      }
+      for (const deviceId of pendingDeviceIds) {
+        await insertDevice(deviceId, userId)
+      }
+      await insertCanaryWithSecret(userId)
+
+      const responses = await Promise.all(
+        pendingDeviceIds.map((deviceId) =>
+          app.handle(
+            new Request(`${baseUrl}/devices/${deviceId}/envelope`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${signToken(token)}`,
+                'X-Device-ID': callerDeviceId,
+              },
+              body: JSON.stringify({ wrappedCK: `wck-${deviceId}`, canarySecret: testCanarySecret }),
+            }),
+          ),
+        ),
+      )
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 403])
+      expect(await countActiveDevices(db, userId)).toBe(10)
+      const approved = await db
+        .select()
+        .from(devicesTable)
+        .where(and(inArray(devicesTable.id, pendingDeviceIds), eq(devicesTable.trusted, true)))
+      expect(approved).toHaveLength(1)
+    })
+
+    it('serializes concurrent CLI registration and pending approval at nine active devices', async () => {
+      const userId = p('u-concurrent-cli-approval')
+      const appToken = p('tok-concurrent-cli-approval-app')
+      const cliToken = p('tok-concurrent-cli-approval-cli')
+      const callerDeviceId = p('d-concurrent-cli-approval-caller')
+      const pendingDeviceId = p('d-concurrent-cli-approval-pending')
+      const cliDeviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, appToken, undefined, callerDeviceId)
+      await db.insert(sessionTable).values({
+        id: p('session-concurrent-cli-approval-cli'),
+        token: cliToken,
+        userId,
+        expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await insertDevice(callerDeviceId, userId, { trusted: true })
+      for (let index = 0; index < 8; index++) {
+        await insertDevice(p(`d-concurrent-cli-approval-active-${index}`), userId, { trusted: true })
+      }
+      await insertDevice(pendingDeviceId, userId)
+      await insertCanaryWithSecret(userId)
+
+      const [cliResponse, approvalResponse] = await Promise.all([
+        app.handle(
+          new Request(`${baseUrl}/account/devices/cli`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${signToken(cliToken)}`,
+              'X-Device-ID': cliDeviceId,
+              'X-Device-Name': 'Concurrent CLI',
+              'X-App-Version': '1.0.0-test',
+            },
+          }),
+        ),
+        app.handle(
+          new Request(`${baseUrl}/devices/${pendingDeviceId}/envelope`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${signToken(appToken)}`,
+              'X-Device-ID': callerDeviceId,
+            },
+            body: JSON.stringify({ wrappedCK: 'wck-concurrent-cli-approval', canarySecret: testCanarySecret }),
+          }),
+        ),
+      ])
+
+      expect([cliResponse.status, approvalResponse.status].filter((status) => status === 200)).toHaveLength(1)
+      expect([422, 403]).toContain(cliResponse.status === 200 ? approvalResponse.status : cliResponse.status)
+      expect(await countActiveDevices(db, userId)).toBe(10)
+    })
+
     it('allows re-key for already-trusted device even when at cap', async () => {
       await createUserAndSession(p('u-rekey-cap'), p('tok-rekey-cap'))
       // 10 trusted devices in production-shape state (trusted=true, approvalPending=false).
@@ -1470,6 +1830,25 @@ describe('Encryption API', () => {
       expect(response.status).toBe(404)
     })
 
+    it('rejects binding a node ID to a CLI target', async () => {
+      const userId = p('u-nid-cli-target')
+      const token = p('tok-nid-cli-target')
+      const targetDeviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, token)
+      await insertDevice(p('d-nid-cli-caller'), userId, { trusted: true })
+      await insertDevice(targetDeviceId, userId, { trusted: true, approvalPending: false, deviceType: 'cli' })
+      await insertCanaryWithSecret(userId)
+
+      const response = await patchNodeId(token, p('d-nid-cli-caller'), targetDeviceId, {
+        nodeId,
+        canarySecret: testCanarySecret,
+      })
+
+      expect(response.status).toBe(404)
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
+      expect(persisted.nodeId).toBeNull()
+    })
+
     it('sets node_id with a valid canarySecret from a trusted device', async () => {
       await createUserAndSession(p('u-nid-ok'), p('tok-nid-ok'))
       await insertDevice(p('d-nid-ok-caller'), p('u-nid-ok'), { trusted: true })
@@ -1604,6 +1983,20 @@ describe('Encryption API', () => {
       expect(response.status).toBe(404)
       expect((await response.json()).error).toBe('Device not found')
     })
+
+    it('rejects a CLI session from self-enrolling an iroh node ID', async () => {
+      const userId = p('u-se-cli')
+      const token = p('tok-se-cli')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, token, undefined, deviceId)
+      await insertDevice(deviceId, userId, { trusted: true, approvalPending: false, deviceType: 'cli' })
+
+      const response = await selfEnroll(token, deviceId, { nodeId })
+
+      expect(response.status).toBe(404)
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persisted.nodeId).toBeNull()
+    })
   })
 
   // ─── GET /devices/allowlist ─────────────────────────────────────────
@@ -1624,7 +2017,7 @@ describe('Encryption API', () => {
         trusted?: boolean
         approvalPending?: boolean
         revokedAt?: Date
-        deviceType?: 'normal' | 'bridge'
+        deviceType?: 'normal' | 'bridge' | 'cli'
       } = {},
     ) => {
       const { trusted = true, approvalPending = !trusted, revokedAt, deviceType = 'normal' } = options
@@ -1651,6 +2044,7 @@ describe('Encryption API', () => {
       await createUserAndSession(p('u-al'), p('tok-al'))
       await insertDeviceWithNode(p('al-trusted'), p('u-al'), 'node-trusted', { deviceType: 'normal' })
       await insertDeviceWithNode(p('al-bridge'), p('u-al'), 'node-bridge', { deviceType: 'bridge' })
+      await insertDeviceWithNode(p('al-cli'), p('u-al'), 'node-cli', { deviceType: 'cli' })
       // Excluded: pending (untrusted), revoked, trusted-but-no-node_id.
       await insertDeviceWithNode(p('al-pending'), p('u-al'), 'node-pending', { trusted: false })
       await insertDeviceWithNode(p('al-revoked'), p('u-al'), 'node-revoked', { trusted: true, revokedAt: now })
@@ -1790,6 +2184,25 @@ describe('Encryption API', () => {
 
       expect(response.status).toBe(422)
       expect(await response.json()).toEqual({ error: 'Device limit reached' })
+    })
+
+    it('PGlite smoke: serializes concurrent CLI and bridge registration at nine active devices', async () => {
+      const userId = p('u-br-cli-race')
+      const token = p('tok-br-cli-race')
+      const cliDeviceId = `cli-${crypto.randomUUID()}`
+      await createUserAndSession(userId, token)
+      const existingDeviceIds = Array.from({ length: 9 }, (_, index) => p(`d-br-cli-race-${index}`))
+      for (const deviceId of existingDeviceIds) {
+        await insertDevice(deviceId, userId, { trusted: true })
+      }
+
+      const responses = await Promise.all([
+        registerCliDevice(app, signToken(token), cliDeviceId, { name: 'Concurrent CLI', apiPrefix: '' }),
+        registerBridge(token, { nodeId: `${bridgeNodeId}-${p('race')}`, name: 'Concurrent Bridge' }),
+      ])
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 422])
+      expect(await countActiveDevices(db, userId)).toBe(10)
     })
 
     it('allows re-registration of an existing bridge when the account is at the device cap', async () => {

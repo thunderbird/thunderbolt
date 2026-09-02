@@ -85,7 +85,7 @@ const createOpenAiSse = (id: string, model: string, counts: TokenCounts): string
     .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
     .join('') + 'data: [DONE]\n\n'
 
-it('accounts for all managed transports in one anonymous rolling quota', async () => {
+it('preserves one anonymous web-session quota across direct and confidential transports', async () => {
   const { client, db: database } = await getSharedIsolatedTestDb()
   const suffix = crypto.randomUUID()
   const userId = `managed-usage-user-${suffix}`

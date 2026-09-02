@@ -84,6 +84,7 @@ setup: setup-symlinks
 	else \
 		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
 	fi
+# Playwright does not publish Ubuntu 26.04 ARM64 builds yet; its Ubuntu 24.04 build is ABI-compatible.
 	@echo "$(BLUE)→ Installing Playwright Chromium (for make e2e tests)...$(NC)"
 	@if [ "$$(uname -s)" = "Linux" ] \
 		&& { [ "$$(uname -m)" = "aarch64" ] || [ "$$(uname -m)" = "arm64" ]; } \

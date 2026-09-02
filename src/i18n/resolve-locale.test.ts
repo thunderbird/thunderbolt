@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { negotiableLocales, resolveLocale, settableLocales } from './resolve-locale'
+import { negotiableLocales } from '@shared/i18n/locales'
+import { resolveLocale, settableLocales } from './resolve-locale'
 
 describe('resolveLocale', () => {
   test('explicit supported setting wins over browser languages', () => {

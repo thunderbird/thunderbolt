@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { appLocales, pseudoLocale, sourceLocale, type AppLocale } from '@shared/i18n/locales'
-
-/** Locales eligible for browser-language negotiation — every shipped locale except the CI pseudo-locale. */
-export const negotiableLocales = appLocales.filter((locale) => locale !== pseudoLocale)
+import { appLocales, matchExactLocale, negotiableLocales, sourceLocale, type AppLocale } from '@shared/i18n/locales'
 
 /**
  * Locales an explicit `language` setting is allowed to select.
@@ -31,8 +28,7 @@ const baseOf = (tag: string): string => tag.toLowerCase().split('-')[0]
  * `de`, `en-GB` → `en`.
  */
 export const matchLocale = (tag: string): AppLocale | null => {
-  const lowered = tag.toLowerCase()
-  const exact = negotiableLocales.find((locale) => locale.toLowerCase() === lowered)
+  const exact = matchExactLocale(tag)
   if (exact) {
     return exact
   }

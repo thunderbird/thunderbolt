@@ -76,7 +76,7 @@ setup: setup-symlinks
 	@if command -v sccache >/dev/null 2>&1; then \
 		echo "$(GREEN)✓ sccache is already installed$(NC)"; \
 	elif command -v cargo >/dev/null 2>&1; then \
-		if cargo install sccache --locked; then \
+		if cargo install sccache --locked --no-default-features; then \
 			echo "$(GREEN)✓ sccache installed$(NC)"; \
 		else \
 			echo "$(YELLOW)! sccache installation failed; Rust builds will continue without caching$(NC)"; \

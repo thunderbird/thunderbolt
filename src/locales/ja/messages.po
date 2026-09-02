@@ -176,6 +176,10 @@ msgstr "アクション"
 msgid "Actions"
 msgstr "アクション"
 
+#: src/settings/devices.tsx
+msgid "Active"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Activity"
 msgstr "アクティビティ"
@@ -678,6 +682,10 @@ msgstr "晴れ"
 #: src/components/app-error-screen.tsx
 msgid "Clearing Database…"
 msgstr "データベースを消去しています…"
+
+#: src/settings/devices.tsx
+msgid "CLI"
+msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -2835,6 +2843,10 @@ msgid "Revoke {deviceName}"
 msgstr "{deviceName} を取り消す"
 
 #: src/components/revoke-device-dialog.tsx
+msgid "Revoke this CLI?"
+msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
 msgid "Revoke this device?"
 msgstr "このデバイスを取り消しますか？"
 
@@ -3137,6 +3149,7 @@ msgstr "サイドバーのセクション"
 msgid "Sign back in"
 msgstr "もう一度サインイン"
 
+#: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr "サインイン"
@@ -3145,6 +3158,14 @@ msgstr "サインイン"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "サインイン"
+
+#: src/components/device-approval.tsx
+msgid "Sign in to a Thunderbolt account to approve this CLI request."
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign in to continue"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
@@ -3427,6 +3448,10 @@ msgstr "AI プロバイダーで現在問題が発生しています。少し待
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "AI プロバイダーの応答に時間がかかりすぎました。もう一度お試しください。"
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."

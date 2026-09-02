@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { GradientCheck } from '@/components/ui/gradient-check'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuth, type AuthClient } from '@/contexts'
+import { useAuth, useSignInModal, type AuthClient } from '@/contexts'
 import { saveDeviceApprovalReturn } from '@/lib/device-approval-return'
 import {
   approveDeviceCode,
@@ -66,8 +66,8 @@ const reducer = (state: State, action: Action): State => {
 
 /**
  * Drives the RFC 8628 approval flow: claim/verify the user code (which binds it to the
- * signed-in account), then approve or deny. Only mounts once the caller is authenticated,
- * so the verify-on-mount effect always runs with a session.
+ * signed-in account), then approve or deny. Only mounts once the caller has a real account,
+ * so the verify-on-mount effect always runs with a non-anonymous session.
  */
 const useDeviceApproval = (authClient: AuthClient, initialCode: string) => {
   const [state, dispatch] = useReducer(reducer, initialCode, init)
@@ -303,15 +303,17 @@ const DeviceApprovalContent = ({ initialCode }: { initialCode: string }) => {
 /**
  * `/device` — device-authorization approval page (RFC 8628). The user lands here from the
  * CLI's verification link/QR (which embeds the `user_code`). Approval requires a signed-in
- * session; unauthenticated visitors are sent into the normal auth flow with their return URL
- * stashed, so the page replays pre-filled once they land back authenticated (see
- * `device-approval-return.ts`) — no link re-open needed. Lazy-loaded (off the landing path).
+ * real account session. Unauthenticated visitors enter the normal auth flow with their return URL
+ * stashed. Anonymous visitors stay on this URL and can open the real-account sign-in modal, avoiding
+ * a redirect loop through the authenticated home route. Lazy-loaded (off the landing path).
  */
 export const DeviceApproval = () => {
   const authClient = useAuth()
+  const { openSignInModal } = useSignInModal()
   const { data: session, isPending } = authClient.useSession()
   const [searchParams] = useSearchParams()
   const location = useLocation()
+  const isAnonymous = !isPending && session?.user?.isAnonymous === true
 
   if (isPending) {
     return (
@@ -339,6 +341,29 @@ export const DeviceApproval = () => {
       saveDeviceApprovalReturn(`${location.pathname}${location.search}`)
     }
     return <Navigate to="/" replace />
+  }
+
+  if (isAnonymous) {
+    return (
+      <ApprovalShell>
+        <DialogHeader>
+          <div className={`${iconWrapperClass} bg-muted`}>
+            <Terminal className="size-[var(--icon-size-default)] text-muted-foreground" />
+          </div>
+          <DialogTitle className="text-center text-xl">
+            <Trans>Sign in to continue</Trans>
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            <Trans>Sign in to a Thunderbolt account to approve this CLI request.</Trans>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <Button className="w-full" onClick={openSignInModal}>
+            <Trans>Sign in</Trans>
+          </Button>
+        </div>
+      </ApprovalShell>
+    )
   }
 
   // `key` remounts (fresh reducer + re-verify) if the URL's user_code changes while mounted,

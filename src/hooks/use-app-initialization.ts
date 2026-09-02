@@ -21,6 +21,7 @@ import { pickModelsDefaults } from '@/lib/pick-defaults'
 import { getDatabasePath, getDatabaseType, getPlatform, isIndexedDbAvailable } from '@/lib/platform'
 import { initPosthog, trackError, trackEvent } from '@/lib/posthog'
 import { withTimeout } from '@/lib/timeout'
+import { normalizeBackendUrl } from '@/lib/url-utils'
 import { runDataMigrations } from '@/lib/data-migrations'
 import { reconcileDefaults, versionMarkerKeys, type VersionMarkerKey } from '@/lib/reconcile-defaults'
 import { defaultSettingsVersion } from '@/defaults/settings'
@@ -355,7 +356,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   await time('step4b_run_data_migrations', () => runDataMigrations(db))
 
   // Step 5: Get cloud url and experimental feature tasks
-  const cloudUrl = getLocalSetting('cloudUrl')
+  const cloudUrl = normalizeBackendUrl(getLocalSetting('cloudUrl'))
   const { experimentalFeatureTasks, experimentalFeatureVoice } = await time('step5_get_settings', () =>
     getSettings(db, {
       experimental_feature_tasks: false,

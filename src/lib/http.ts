@@ -91,6 +91,17 @@ const resolveUrl = (url: string, prefixUrl?: string): string => {
   return `${base}${url}`
 }
 
+/** Match a request against the configured backend origin and path prefix. */
+const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
+  const request = new URL(requestUrl)
+  const backendPath = backendUrl.pathname.replace(/\/+$/, '')
+
+  return (
+    request.origin === backendUrl.origin &&
+    (backendPath === '' || request.pathname === backendPath || request.pathname.startsWith(`${backendPath}/`))
+  )
+}
+
 const makeResponsePromise = (promise: Promise<Response>): ResponsePromise => {
   const rp = promise as ResponsePromise
   rp.json = <T>(): Promise<T> => promise.then((res) => res.json())
@@ -176,9 +187,12 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
-  const normalizedPrefix = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
+  const backendUrl =
+    prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
+      ? new URL(prefixUrl)
+      : new URL(prefixUrl, window.location.href)
   return createClient({
-    prefixUrl,
+    prefixUrl: backendUrl.href,
     fetch: config.fetch,
     credentials: config.credentials,
     hooks: {
@@ -192,7 +206,7 @@ export const createAuthenticatedClient = (
           }
           // Inject device identity headers only for app backend requests (not external APIs).
           // Uses the same prefix guard as the afterResponse 401 handler below.
-          if (request.url === prefixUrl || request.url.startsWith(normalizedPrefix)) {
+          if (isBackendRequest(request.url, backendUrl)) {
             const deviceId = getDeviceId()
             if (deviceId) {
               request.headers.set('X-Device-ID', deviceId)
@@ -214,7 +228,7 @@ export const createAuthenticatedClient = (
           // Only app-backend responses are actionable — external APIs use this same
           // client with caller-provided tokens, so their 401/426 are not signals about
           // our app session or app version. Same prefix guard as the beforeRequest hook.
-          if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
+          if (!isBackendRequest(request.url, backendUrl)) {
             return
           }
           // A 426 from our backend means this build is below the enforced minimum —

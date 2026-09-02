@@ -43,7 +43,7 @@ export const LogoutModal = ({ open, onOpenChange, clearLocalData = defaultClearL
     setIsLoggingOut(true)
 
     try {
-      await authClient.signOut()
+      await authClient.signOut({ fetchOptions: { disableSignal: true } })
     } catch (error) {
       console.error('Failed to sign out:', error)
     }

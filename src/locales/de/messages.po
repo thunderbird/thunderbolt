@@ -188,6 +188,10 @@ msgstr "Aktion"
 msgid "Actions"
 msgstr "Aktionen"
 
+#: src/settings/devices.tsx
+msgid "Active"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Activity"
 msgstr "Aktivität"
@@ -690,6 +694,10 @@ msgstr "Klarer Himmel"
 #: src/components/app-error-screen.tsx
 msgid "Clearing Database…"
 msgstr "Datenbank wird gelöscht…"
+
+#: src/settings/devices.tsx
+msgid "CLI"
+msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -2847,6 +2855,10 @@ msgid "Revoke {deviceName}"
 msgstr "{deviceName} widerrufen"
 
 #: src/components/revoke-device-dialog.tsx
+msgid "Revoke this CLI?"
+msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
 msgid "Revoke this device?"
 msgstr "Dieses Gerät widerrufen?"
 
@@ -3149,6 +3161,7 @@ msgstr "Bereiche der Seitenleiste"
 msgid "Sign back in"
 msgstr "Erneut anmelden"
 
+#: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr "Anmelden"
@@ -3157,6 +3170,14 @@ msgstr "Anmelden"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "Anmelden"
+
+#: src/components/device-approval.tsx
+msgid "Sign in to a Thunderbolt account to approve this CLI request."
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign in to continue"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
@@ -3439,6 +3460,10 @@ msgstr "Beim KI-Anbieter gibt es gerade Probleme. Versuchen Sie es in einem Mome
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "Der KI-Anbieter hat zu lange für eine Antwort gebraucht. Versuchen Sie es erneut."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."

@@ -373,7 +373,7 @@ describe('agents DAL', () => {
     it('upserts returned agents and stamps fetchedAt on 200', async () => {
       const client = makeHttpClient(async () => baseResponse)
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
@@ -442,7 +442,6 @@ describe('agents DAL', () => {
 
       const result = await refreshSystemAgents(
         getDb(),
-        'https://api.example',
         makeHttpClient(async () => response),
       )
 
@@ -471,7 +470,6 @@ describe('agents DAL', () => {
 
       const unchangedResult = await refreshSystemAgents(
         getDb(),
-        'https://api.example',
         makeHttpClient(async () => response),
       )
       expect(unchangedResult).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
@@ -491,7 +489,7 @@ describe('agents DAL', () => {
       })
 
       const client = makeHttpClient(async () => baseResponse)
-      await refreshSystemAgents(getDb(), 'https://api.example', client)
+      await refreshSystemAgents(getDb(), client)
 
       const ids = (await getDb().select().from(agentsSystemTable).all()).map((r) => r.id)
       expect(ids).toEqual(['haystack-rag'])
@@ -516,7 +514,7 @@ describe('agents DAL', () => {
       }
       const client = makeHttpClient(async () => response)
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: true, wireIdentityChangedAgents: [] })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
@@ -539,7 +537,7 @@ describe('agents DAL', () => {
         throw httpErrorOf(403)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
@@ -563,7 +561,7 @@ describe('agents DAL', () => {
         throw httpErrorOf(401)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
@@ -586,7 +584,7 @@ describe('agents DAL', () => {
         throw new TypeError('Network down')
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'network' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()
@@ -611,7 +609,7 @@ describe('agents DAL', () => {
         throw httpErrorOf(503)
       })
 
-      const result = await refreshSystemAgents(getDb(), 'https://api.example', client)
+      const result = await refreshSystemAgents(getDb(), client)
       expect(result).toEqual({ refreshed: false, reason: 'network' })
 
       const rows = await getDb().select().from(agentsSystemTable).all()

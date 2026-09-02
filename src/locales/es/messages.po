@@ -200,6 +200,10 @@ msgstr "Acción"
 msgid "Actions"
 msgstr "Acciones"
 
+#: src/settings/devices.tsx
+msgid "Active"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Activity"
 msgstr "Actividad"
@@ -702,6 +706,10 @@ msgstr "Cielo despejado"
 #: src/components/app-error-screen.tsx
 msgid "Clearing Database…"
 msgstr "Borrando la base de datos…"
+
+#: src/settings/devices.tsx
+msgid "CLI"
+msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -2859,6 +2867,10 @@ msgid "Revoke {deviceName}"
 msgstr "Revocar {deviceName}"
 
 #: src/components/revoke-device-dialog.tsx
+msgid "Revoke this CLI?"
+msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
 msgid "Revoke this device?"
 msgstr "¿Revocar este dispositivo?"
 
@@ -3161,6 +3173,7 @@ msgstr "Secciones de la barra lateral"
 msgid "Sign back in"
 msgstr "Volver a iniciar sesión"
 
+#: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr "Iniciar sesión"
@@ -3169,6 +3182,14 @@ msgstr "Iniciar sesión"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "Iniciar sesión"
+
+#: src/components/device-approval.tsx
+msgid "Sign in to a Thunderbolt account to approve this CLI request."
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign in to continue"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
@@ -3451,6 +3472,10 @@ msgstr "El proveedor de IA está teniendo problemas ahora mismo. Inténtalo de n
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "El proveedor de IA tardó demasiado en responder. Inténtalo de nuevo."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."

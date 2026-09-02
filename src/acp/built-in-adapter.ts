@@ -56,7 +56,9 @@ import type { WebToolBudget } from '@/ai/web-tool-budget'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
+import { getPlatform } from '@/lib/platform'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
+import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { vendorSupportsImages } from '@shared/defaults/models'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
@@ -315,8 +317,15 @@ export const harnessSignature = (
 /** Compose Pi's cacheable prompt prefix while keeping the per-send timestamp last. */
 // Unlike assembleBuiltInModelInput, ACP harness deliberately keeps Pi's single-string system prompt shape.
 // Exported so tests can assert the real stable prompt survives into this engine's shape.
-export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string =>
-  `${config.stableSystemPrompt}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
+export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConfig): string => {
+  const platform = getPlatform()
+  const environment = platform === 'web' || platform === 'ios' || platform === 'android' ? platform : 'desktop'
+  const clientIdentity = buildClientIdentityBlock({
+    environment,
+    appVersion: import.meta.env.VITE_APP_VERSION,
+  })
+  return `${config.stableSystemPrompt}\n\n${clientIdentity}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
+}
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
  *  thread's isolated workspace with resolved model + thinking level. Per-send app

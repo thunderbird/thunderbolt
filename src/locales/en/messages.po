@@ -188,6 +188,10 @@ msgstr "Action"
 msgid "Actions"
 msgstr "Actions"
 
+#: src/settings/devices.tsx
+msgid "Active"
+msgstr "Active"
+
 #: src/projects/emoji-catalog.ts
 msgid "Activity"
 msgstr "Activity"
@@ -690,6 +694,10 @@ msgstr "Clear sky"
 #: src/components/app-error-screen.tsx
 msgid "Clearing Database…"
 msgstr "Clearing Database…"
+
+#: src/settings/devices.tsx
+msgid "CLI"
+msgstr "CLI"
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Clipboard unavailable. Please select the phrase above and copy it manually."
@@ -2847,6 +2855,10 @@ msgid "Revoke {deviceName}"
 msgstr "Revoke {deviceName}"
 
 #: src/components/revoke-device-dialog.tsx
+msgid "Revoke this CLI?"
+msgstr "Revoke this CLI?"
+
+#: src/components/revoke-device-dialog.tsx
 msgid "Revoke this device?"
 msgstr "Revoke this device?"
 
@@ -3149,6 +3161,7 @@ msgstr "Sidebar sections"
 msgid "Sign back in"
 msgstr "Sign back in"
 
+#: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr "Sign in"
@@ -3157,6 +3170,14 @@ msgstr "Sign in"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "Sign In"
+
+#: src/components/device-approval.tsx
+msgid "Sign in to a Thunderbolt account to approve this CLI request."
+msgstr "Sign in to a Thunderbolt account to approve this CLI request."
+
+#: src/components/device-approval.tsx
+msgid "Sign in to continue"
+msgstr "Sign in to continue"
 
 #: src/settings/preferences.tsx
 msgid "Sign in to enable cloud proxy."
@@ -3439,6 +3460,10 @@ msgstr "The AI provider is having trouble right now. Try again in a moment."
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
 msgstr "The AI provider took too long to respond. Try again."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgstr "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."

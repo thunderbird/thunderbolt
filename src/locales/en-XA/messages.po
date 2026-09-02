@@ -188,6 +188,10 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: src/settings/devices.tsx
+msgid "Active"
+msgstr ""
+
 #: src/projects/emoji-catalog.ts
 msgid "Activity"
 msgstr ""
@@ -689,6 +693,10 @@ msgstr ""
 
 #: src/components/app-error-screen.tsx
 msgid "Clearing Database…"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "CLI"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -2847,6 +2855,10 @@ msgid "Revoke {deviceName}"
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
+msgid "Revoke this CLI?"
+msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
 msgid "Revoke this device?"
 msgstr ""
 
@@ -3149,6 +3161,7 @@ msgstr ""
 msgid "Sign back in"
 msgstr ""
 
+#: src/components/device-approval.tsx
 #: src/components/sidebar-footer.tsx
 msgid "Sign in"
 msgstr ""
@@ -3156,6 +3169,14 @@ msgstr ""
 #: src/components/sign-in-modal.tsx
 #: src/settings/preferences.tsx
 msgid "Sign In"
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign in to a Thunderbolt account to approve this CLI request."
+msgstr ""
+
+#: src/components/device-approval.tsx
+msgid "Sign in to continue"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -3438,6 +3459,10 @@ msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "The AI provider took too long to respond. Try again."
+msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx

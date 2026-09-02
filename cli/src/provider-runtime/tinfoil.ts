@@ -19,7 +19,7 @@ import {
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { SecureClient } from 'tinfoil'
 import { buildOpenAiCompatModel } from '../agent/openai-compat-model.ts'
-import { apiBaseUrl, isSecureCloudUrl } from '../auth/config.ts'
+import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, SessionCredential } from './types.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
@@ -68,7 +68,7 @@ const authenticatedSecureFetch =
   async (input, init) => {
     const client = getClient()
     if (client === null) throw new Error('Tinfoil binding is disposed.')
-    const headers = new Headers(init?.headers)
+    const headers = backendHeaders(init?.headers)
     headers.delete('authorization')
     headers.delete('x-api-key')
     headers.set('authorization', `Bearer ${credential.bearer}`)

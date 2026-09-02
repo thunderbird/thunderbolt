@@ -5,7 +5,7 @@
 import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '../../../shared/inference-usage.ts'
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
-import { apiBaseUrl } from '../auth/config.ts'
+import { apiBaseUrl, backendHeaders } from '../auth/config.ts'
 import { abortable, settleBestEffort } from '../lib/abort.ts'
 import type { AccountFetch } from './types.ts'
 
@@ -105,10 +105,10 @@ export const submitInferenceUsageReceipt = async (options: SubmitInferenceUsageR
   const request = async (): Promise<void> => {
     const response = await fetchFn(`${apiBaseUrl(options.backendUrl)}/${inferenceUsageReceiptPath}`, {
       method: 'POST',
-      headers: {
+      headers: backendHeaders({
         Authorization: `Bearer ${options.bearer}`,
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(options.usage),
       redirect: 'error',
       signal,

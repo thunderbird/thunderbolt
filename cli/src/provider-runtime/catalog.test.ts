@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { createFutureDirectManagedModelsFixture } from '../../../shared/managed-models.test-fixtures.ts'
 import { managedModels } from '../../../shared/managed-models.ts'
+import { cliVersion } from '../version.ts'
 import type { AccountFetch } from './types.ts'
 import { fetchManagedCatalog } from './catalog.ts'
 
@@ -104,10 +105,12 @@ describe('fetchManagedCatalog', () => {
 
     expect(result).toEqual(reordered)
     expect(result.models.map(({ id }) => id)).toEqual(reordered.models.map(({ id }) => id))
-    expect(calls[0]).toMatchObject({
-      url: 'https://api.test/v1/config',
-      init: { method: 'GET', headers: { accept: 'application/json' }, redirect: 'error' },
-    })
+    expect(calls[0]?.url).toBe('https://api.test/v1/config')
+    expect(calls[0]?.init?.method).toBe('GET')
+    const headers = new Headers(calls[0]?.init?.headers)
+    expect(headers.get('accept')).toBe('application/json')
+    expect(headers.get('x-app-version')).toBe(cliVersion)
+    expect(calls[0]?.init?.redirect).toBe('error')
     expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal)
   })
 

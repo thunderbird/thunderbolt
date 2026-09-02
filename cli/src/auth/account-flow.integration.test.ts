@@ -28,7 +28,7 @@ type ExpectedAccountRequest = {
   readonly respond: (request: AccountRequestSnapshot) => Response | Promise<Response>
 }
 
-const metadata = { deviceName: 'Acceptance CLI', appVersion: '1.0.0-test' } as const
+const metadata = { deviceName: 'Acceptance CLI' } as const
 const apiBaseUrl = 'https://api.example.test/v1'
 const authBaseUrl = `${apiBaseUrl}/api/auth`
 const cliDeviceIdPattern = /^cli-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/

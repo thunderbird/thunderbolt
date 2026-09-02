@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { cliVersion } from '../version.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
 
 const assistantMessage = (
@@ -67,6 +68,7 @@ describe('submitInferenceUsageReceipt', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0]?.url).toBe('https://app.example.com/v1/inference-usage/receipts')
     expect(requests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
+    expect(requests[0]?.headers.get('x-app-version')).toBe(cliVersion)
     expect(requests[0]?.headers.get('x-api-key')).toBeNull()
     expect(await requests[0]?.json()).toEqual({
       receipt: 'iu1.canonicalPayload.canonicalSignature',

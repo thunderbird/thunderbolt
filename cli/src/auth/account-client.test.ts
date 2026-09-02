@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { cliVersion } from '../version.ts'
 import type {
   AccountFetch,
   CliAuth,
@@ -20,7 +21,7 @@ import {
   type CliDeviceMetadata,
 } from './account-client.ts'
 
-const metadata: CliDeviceMetadata = { deviceName: 'Workstation', appVersion: '0.1.123' }
+const metadata: CliDeviceMetadata = { deviceName: 'Workstation' }
 const credential = (): SessionCredential => ({
   type: 'session',
   backendUrl: 'https://api.test/v1',
@@ -73,7 +74,7 @@ describe('ensureRegisteredSession', () => {
     expect(requests[0]?.init?.redirect).toBe('error')
     expect(Object.fromEntries(new Headers(requests[0]?.init?.headers).entries())).toEqual({
       authorization: 'Bearer signed.jwt',
-      'x-app-version': '0.1.123',
+      'x-app-version': cliVersion,
       'x-device-id': 'cli-00000000-0000-4000-8000-000000000001',
       'x-device-name': 'Workstation',
     })

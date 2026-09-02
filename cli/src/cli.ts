@@ -8,7 +8,6 @@
  * result.
  */
 
-import packageJson from '../package.json' with { type: 'json' }
 import type {
   BridgeConfig,
   BridgeProtocol,
@@ -19,9 +18,9 @@ import type {
   ThinkingLevel,
 } from './agent/types.ts'
 import { defaultCloudUrl } from './auth/config.ts'
+import { cliVersion } from './version.ts'
 
-/** Released version of the CLI, surfaced by `--version` and the banner. */
-export const cliVersion = packageJson.version
+export { cliVersion }
 
 /** All valid `--thinking` levels, in increasing depth. */
 const thinkingLevels: readonly ThinkingLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh']

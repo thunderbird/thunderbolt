@@ -61,7 +61,7 @@ const markSessionAuthenticationRequired = async (
 const createProductionProviderRuntime = async (): Promise<ProviderRuntime> => {
   const environment = process.env
   const backendUrl = resolveCloudUrl(environment)
-  const metadata = { deviceName: 'Thunderbolt CLI', appVersion: cliVersion }
+  const metadata = { deviceName: 'Thunderbolt CLI' }
   return createProviderRuntime({
     loadConfig,
     loadAuthConfig,

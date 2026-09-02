@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import { cliVersion } from '../version.ts'
 import { cliClientId } from './config.ts'
 import { createHttpTransport, type FetchFn } from './http-transport.ts'
 
@@ -53,12 +54,11 @@ describe('createHttpTransport.requestCode', () => {
       expiresInSeconds: 1800,
     })
     expect(requests[0].url).toBe(`${authBase}/device/code`)
-    expect(requests[0].init).toEqual({
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ client_id: cliClientId }),
-      redirect: 'error',
-    })
+    expect(requests[0].init.method).toBe('POST')
+    const headers = new Headers(requests[0].init.headers)
+    expect(headers.get('content-type')).toBe('application/json')
+    expect(headers.get('x-app-version')).toBe(cliVersion)
+    expect(requests[0].init.redirect).toBe('error')
     expect(requests[0].body).toEqual({ client_id: cliClientId })
   })
 
@@ -110,16 +110,11 @@ describe('createHttpTransport.pollToken', () => {
 
     expect(result).toEqual({ kind: 'approved', token: 'SIGNED.hmac' })
     expect(requests[0].url).toBe(`${authBase}/device/token`)
-    expect(requests[0].init).toEqual({
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: 'dc',
-        client_id: cliClientId,
-      }),
-      redirect: 'error',
-    })
+    expect(requests[0].init.method).toBe('POST')
+    const headers = new Headers(requests[0].init.headers)
+    expect(headers.get('content-type')).toBe('application/json')
+    expect(headers.get('x-app-version')).toBe(cliVersion)
+    expect(requests[0].init.redirect).toBe('error')
     expect(requests[0].body).toEqual({
       grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
       device_code: 'dc',

@@ -48,7 +48,7 @@ const patCredential: Extract<ResolvedAccountCredential, { type: 'pat' }> = {
   backendUrl: 'https://api.example.com/v1',
   token: 'environment-pat',
 }
-const metadata: CliDeviceMetadata = { deviceName: 'Parity Test CLI', appVersion: '1.0.0' }
+const metadata: CliDeviceMetadata = { deviceName: 'Parity Test CLI' }
 
 type ParityProvenance = 'stored-byok' | 'flag' | 'environment' | 'stored-session' | 'pat'
 type Deferred = { readonly promise: Promise<void>; readonly resolve: () => void }

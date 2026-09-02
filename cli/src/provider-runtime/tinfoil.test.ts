@@ -10,6 +10,7 @@ import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared
 import type { ManagedModel } from '../../../shared/managed-models.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
+import { cliVersion } from '../version.ts'
 import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
 import { testSessionCredential } from './test-fixtures.ts'
 import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoil.ts'
@@ -374,6 +375,7 @@ describe('createTinfoilBinding', () => {
       expect(secureRequests).toHaveLength(1)
       expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
       expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
+      expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
       expect(secureRequests[0]?.headers.get('x-api-key')).toBeNull()
       const requestPayload = (await secureRequests[0]?.json()) as {
         readonly model?: unknown

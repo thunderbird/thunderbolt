@@ -187,7 +187,7 @@ const accountFirstRunRuntime = async (
       return credential
     },
     markSessionAuthenticationRequired: async () => {},
-    metadata: { deviceName: 'Run test', appVersion: '1.0.0' },
+    metadata: { deviceName: 'Run test' },
     createByokBinding: async () => {
       throw new Error('BYOK is not used by account first-run.')
     },
@@ -331,7 +331,7 @@ describe('bootstrapBeforeHarness', () => {
           return credential
         },
         markSessionAuthenticationRequired: async () => {},
-        metadata: { deviceName: 'Test CLI', appVersion: '1.0.0' },
+        metadata: { deviceName: 'Test CLI' },
         createByokBinding: async () => {
           throw new Error('unexpected BYOK binding')
         },
@@ -799,7 +799,7 @@ describe('runAgent orchestration', () => {
         loadCatalog: async () => managedModels,
         ensureRegisteredSession: async (credential) => credential,
         markSessionAuthenticationRequired: async () => {},
-        metadata: { deviceName: 'Task 14 test', appVersion: '1.0.0' },
+        metadata: { deviceName: 'Task 14 test' },
         createByokBinding: async (profile) => {
           expect(profile.credentialStatus).toBe('authenticated')
           return {

@@ -77,7 +77,7 @@ const createPatRuntime = async (catalog: ManagedModels, respond: InferenceRespon
       return credential
     },
     markSessionAuthenticationRequired: async () => {},
-    metadata: { deviceName: 'Acceptance CLI', appVersion: '1.0.0-test' },
+    metadata: { deviceName: 'Acceptance CLI' },
     createByokBinding: async () => {
       producerCalls.byok += 1
       throw new Error('unexpected BYOK fallback')
@@ -196,7 +196,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
       loadCatalog: async () => managedModels,
       ensureRegisteredSession: async (credential) => credential,
       markSessionAuthenticationRequired: async () => {},
-      metadata: { deviceName: 'Acceptance CLI', appVersion: '1.0.0-test' },
+      metadata: { deviceName: 'Acceptance CLI' },
       createByokBinding,
       createManagedDirectBinding: async () => {
         throw new Error('unexpected managed-direct fallback')

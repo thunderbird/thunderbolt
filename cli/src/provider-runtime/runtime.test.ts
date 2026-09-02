@@ -26,7 +26,7 @@ const directModel = managedModels.models.find(({ transport }) => transport === '
 const confidentialModel = managedModels.models.find(({ transport }) => transport === 'confidential')
 if (!directModel || !confidentialModel) throw new Error('managed-model fixtures are incomplete')
 
-const metadata: CliDeviceMetadata = { deviceName: 'Test CLI', appVersion: '1.0.0' }
+const metadata: CliDeviceMetadata = { deviceName: 'Test CLI' }
 const sessionCredential: Extract<ResolvedAccountCredential, { type: 'session' }> = {
   type: 'session',
   backendUrl: 'https://api.example.com/v1',

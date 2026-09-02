@@ -90,7 +90,7 @@ export const createTestProviderRuntime = async (overrides: Partial<ProviderRunti
     loadCatalog: async () => managedModels,
     ensureRegisteredSession: async (credential) => credential,
     markSessionAuthenticationRequired: async () => {},
-    metadata: { deviceName: 'Test CLI', appVersion: '1.0.0' },
+    metadata: { deviceName: 'Test CLI' },
     createByokBinding: async (profile, selection) =>
       createTestBinding(profile.id, selection.model ?? profile.defaultModel, true),
     createManagedDirectBinding: async ({ model }) => createTestBinding('thunderbolt', model.model),

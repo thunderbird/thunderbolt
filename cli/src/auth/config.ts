@@ -12,6 +12,8 @@
  * (see `src/contexts/auth-context.tsx`, `backend/src/auth/auth.ts` `basePath`).
  */
 
+import { cliVersion } from '../version.ts'
+
 /** Env values, defaulting to the process environment. Kept as a plain map so the
  *  pure resolvers can be unit-tested without touching `process.env`. */
 type Env = Readonly<Record<string, string | undefined>>
@@ -24,6 +26,12 @@ const bakedCloudUrl = process.env.THUNDERBOLT_BUILD_CLOUD_URL
 const bakedAppUrl = process.env.THUNDERBOLT_BUILD_APP_URL
 
 export const cliClientId = 'thunderbolt-cli'
+
+export const backendHeaders = (headers?: RequestInit['headers']): Headers => {
+  const result = new Headers(headers)
+  result.set('X-App-Version', cliVersion)
+  return result
+}
 
 /**
  * Resolve the backend cloud URL: the `THUNDERBOLT_CLOUD_URL` env var (the CLI's

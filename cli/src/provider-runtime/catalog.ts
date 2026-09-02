@@ -8,7 +8,7 @@ import type {
   ManagedModels,
   ManagedModelTransport,
 } from '../../../shared/managed-models.ts'
-import { isSecureCloudUrl } from '../auth/config.ts'
+import { backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { abortable, settleBestEffort } from '../lib/abort.ts'
 import { isNonblankString, isRecord, uuidPattern } from '../lib/json.ts'
 import { providerRuntimeError } from './types.ts'
@@ -177,7 +177,7 @@ const catalogUrl = (backendUrl: string): string => {
 const requestCatalog = async (url: string, signal: AbortSignal, fetchFn?: AccountFetch): Promise<Response> => {
   const init = {
     method: 'GET',
-    headers: { accept: 'application/json' },
+    headers: backendHeaders({ accept: 'application/json' }),
     redirect: 'error',
     signal,
   } as const satisfies RequestInit

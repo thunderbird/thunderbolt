@@ -14,7 +14,7 @@ import type {
   SessionCredential,
 } from '../provider-runtime/types.ts'
 import { providerRuntimeError } from '../provider-runtime/types.ts'
-import { apiBaseUrl, authBaseUrl } from './config.ts'
+import { apiBaseUrl, authBaseUrl, backendHeaders } from './config.ts'
 import { systemClock } from './device-grant.ts'
 import { createHttpTransport } from './http-transport.ts'
 import { createTerminalQrBlock, performLogin } from './login.ts'
@@ -30,7 +30,6 @@ type AccountClientError = Error & ProviderRuntimeError
 
 export type CliDeviceMetadata = {
   readonly deviceName: string
-  readonly appVersion: string
 }
 
 export type AccountActionDependencies = {
@@ -105,7 +104,6 @@ const registerSession = async (
   request: AccountFetch,
   signal?: AbortSignal,
 ): Promise<Response> => {
-  const appVersion = metadata.appVersion.trim()
   const backendUrl = apiBaseUrl(credential.backendUrl)
 
   try {
@@ -113,12 +111,11 @@ const registerSession = async (
     return await abortable(
       request(`${backendUrl}/account/devices/cli`, {
         method: 'PUT',
-        headers: {
+        headers: backendHeaders({
           Authorization: `Bearer ${credential.bearer}`,
           'X-Device-ID': credential.deviceId,
           'X-Device-Name': metadata.deviceName,
-          'X-App-Version': appVersion,
-        },
+        }),
         redirect: 'error',
         signal,
       }),

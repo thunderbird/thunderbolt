@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { AccountFetch, CliAuth, DeviceGrantPresentation } from '../provider-runtime/types.ts'
+import { cliVersion } from '../version.ts'
 import { performLogout, type LogoutDeps } from './logout.ts'
 
 const auth = (): CliAuth => ({
@@ -80,6 +81,7 @@ describe('performLogout', () => {
     expect(requests[0]?.init?.redirect).toBe('error')
     expect(Object.fromEntries(new Headers(requests[0]?.init?.headers).entries())).toEqual({
       authorization: 'Bearer signed.jwt',
+      'x-app-version': cliVersion,
     })
     expect(statuses.map(({ status }) => status)).toEqual(['waiting', 'success'])
   })

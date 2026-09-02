@@ -61,10 +61,11 @@ describe('configureNativeWebSearch', () => {
   })
 })
 
-const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: string) => {
+const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: (baseUrl: string) => string) => {
   const sourceModel = firstCatalogModel(builtinProvider)
   const sourceProvider = builtinModels().getProvider(builtinProvider)
   if (!sourceProvider?.baseUrl) throw new Error(`Pi catalog has no base URL for ${builtinProvider}`)
+  const baseUrl = sourceProvider.baseUrl
   const calls: {
     readonly fn: 'stream' | 'streamSimple'
     readonly provider: string
@@ -80,13 +81,13 @@ const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: str
   const streams: ProviderStreams = {
     stream: (model, _context, options) => {
       capturedFetches.push(globalThis.fetch)
-      if (probeUrl) requests.push(globalThis.fetch(probeUrl))
+      if (probeUrl) requests.push(globalThis.fetch(probeUrl(baseUrl)))
       calls.push({ fn: 'stream', provider: model.provider, apiKey: options?.apiKey })
       return inertStream()
     },
     streamSimple: (model, _context, options) => {
       capturedFetches.push(globalThis.fetch)
-      if (probeUrl) requests.push(globalThis.fetch(probeUrl))
+      if (probeUrl) requests.push(globalThis.fetch(probeUrl(baseUrl)))
       calls.push({ fn: 'streamSimple', provider: model.provider, apiKey: options?.apiKey })
       return inertStream()
     },
@@ -101,7 +102,7 @@ const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: str
       api: streams,
     }),
   )
-  return { models, sourceModel, calls, capturedFetches, requests, baseUrl: sourceProvider.baseUrl }
+  return { models, sourceModel, calls, capturedFetches, requests, baseUrl }
 }
 
 describe('buildBuiltinProfileModel', () => {
@@ -167,7 +168,7 @@ describe('buildBuiltinProfileModel', () => {
   })
 
   test('captures the common origin-bound fetch for a built-in BYOK provider', async () => {
-    const source = capturingProfileSource('openai', 'https://redirect-target.example/stolen')
+    const source = capturingProfileSource('openai', () => 'https://redirect-target.example/stolen')
     const cloned = buildBuiltinProfileModel(
       {
         profileId: 'openai-profile',
@@ -182,6 +183,30 @@ describe('buildBuiltinProfileModel', () => {
 
     expect(source.capturedFetches[0]).toBe(globalThis.fetch)
     await expect(source.requests[0]).rejects.toThrow('origin')
+  })
+
+  test('does not add the Thunderbolt app version header to a BYOK provider request', async () => {
+    const requests: Request[] = []
+    const source = capturingProfileSource('openai', (baseUrl) => `${baseUrl}/models`)
+    const cloned = buildBuiltinProfileModel(
+      {
+        profileId: 'openai-profile',
+        provider: 'openai',
+        modelId: source.sourceModel.id,
+        apiKey: 'provider-key',
+        fetchFn: async (input, init) => {
+          requests.push(input instanceof Request ? new Request(input, init) : new Request(String(input), init))
+          return Response.json({ data: [] })
+        },
+      },
+      source.models,
+    )
+
+    cloned.provider.stream(cloned.model, { messages: [] }, {})
+    await source.requests[0]
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.headers.has('x-app-version')).toBe(false)
   })
 
   test('clones provider ownership while keeping the public model id and metadata', () => {

@@ -15,7 +15,7 @@
  * raw `access_token` body value is a bare session token and is deliberately not used.
  */
 
-import { cliClientId } from './config.ts'
+import { backendHeaders, cliClientId } from './config.ts'
 import type { DeviceCodeResponse, DeviceGrantTransport, TokenPollResult } from './device-grant.ts'
 
 /** RFC 8628 grant type for the token exchange. */
@@ -59,7 +59,7 @@ export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetc
   requestCode: async (signal) => {
     const res = await fetchFn(`${authBaseUrl}/device/code`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: backendHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({ client_id: cliClientId }),
       redirect: 'error',
       signal,
@@ -81,7 +81,7 @@ export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetc
   pollToken: async (deviceCode, signal) => {
     const res = await fetchFn(`${authBaseUrl}/device/token`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: backendHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({
         grant_type: deviceCodeGrantType,
         device_code: deviceCode,

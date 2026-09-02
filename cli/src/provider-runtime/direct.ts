@@ -6,7 +6,7 @@ import type { ManagedModel } from '../../../shared/managed-models.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from '../agent/openai-compat-model.ts'
 import type { CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
-import { apiBaseUrl, isSecureCloudUrl } from '../auth/config.ts'
+import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { noopBindingLifecycle, providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, ResolvedAccountCredential } from './types.ts'
 
@@ -41,7 +41,7 @@ const resolveDirectBaseUrl = (backendUrl: string): string => {
 const authenticatedFetch =
   (credential: ResolvedAccountCredential, request: OpenAiCompatFetch): OpenAiCompatFetch =>
   async (input, init) => {
-    const headers = new Headers(init?.headers)
+    const headers = backendHeaders(init?.headers)
     headers.delete('authorization')
     headers.delete('x-api-key')
     if (credential.type === 'session') {

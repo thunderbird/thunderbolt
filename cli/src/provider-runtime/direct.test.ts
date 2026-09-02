@@ -6,6 +6,7 @@ import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { describe, expect, test } from 'bun:test'
 import type { ManagedModel } from '../../../shared/managed-models.ts'
 import { createFutureDirectManagedModelsFixture } from '../../../shared/managed-models.test-fixtures.ts'
+import { cliVersion } from '../version.ts'
 import { createManagedDirectBinding } from './direct.ts'
 import { failedCompletion, runBinding, successfulCompletion, testSessionCredential } from './test-fixtures.ts'
 import type { AccountFetch, ResolvedAccountCredential } from './types.ts'
@@ -174,6 +175,7 @@ describe('createManagedDirectBinding — credential isolation', () => {
 
     expect(requestHeaders).toHaveLength(1)
     expect(requestHeaders[0]?.get('authorization')).toBe('Bearer stored-session-bearer')
+    expect(requestHeaders[0]?.get('x-app-version')).toBe(cliVersion)
     expect(requestHeaders[0]?.has('x-api-key')).toBe(false)
   })
 

@@ -5,7 +5,7 @@
 import { toError } from '@earendil-works/pi-agent-core'
 import { isProviderRuntimeError, providerRuntimeError } from '../provider-runtime/types.ts'
 import type { AccountFetch, CliAuth, DeviceGrantPresentation, ProviderRuntimeError } from '../provider-runtime/types.ts'
-import { apiBaseUrl, patRemainsActiveNote } from './config.ts'
+import { apiBaseUrl, backendHeaders, patRemainsActiveNote } from './config.ts'
 import type { CompareAndSetAuth } from './token-store.ts'
 
 export type LogoutResult = 'logged-out' | 'pat-managed-externally' | 'authentication-required'
@@ -74,7 +74,7 @@ export const performLogout = async (deps: LogoutDeps): Promise<LogoutResult> => 
     try {
       return await fetchFn(`${backendUrl}/account/devices/cli/logout`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${auth.bearer}` },
+        headers: backendHeaders({ Authorization: `Bearer ${auth.bearer}` }),
         redirect: 'error',
         signal: deps.signal,
       })

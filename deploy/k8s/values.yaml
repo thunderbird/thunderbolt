@@ -65,6 +65,11 @@ backend:
     waitlistEnabled: "false"
     databaseDriver: postgres
     rateLimitEnabled: "false"
+    # -- CLI rollout order: docs/self-hosting/configuration.md#cli-device-rollout.
+    # -- Minimum compatible app semver.
+    minAppVersion: ""
+    # -- Server-owned CLI device registration gate.
+    cliDeviceRegistrationEnabled: "false"
     # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
     thunderboltInferenceUrl: ""
   # -- Base64-encoded AI provider keys. Empty defaults disable each provider

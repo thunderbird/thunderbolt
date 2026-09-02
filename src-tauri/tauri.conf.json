@@ -25,7 +25,6 @@
       "csp": {
         "default-src": "'self' tauri: asset:",
         "connect-src": "'self' ipc: http://ipc.localhost https: wss: ws://localhost:8000 http://localhost:8000 ws://localhost:8080 http://localhost:8080 ws://127.0.0.1:8839 ws://127.0.0.1:8840 http://localhost:11434",
-        "frame-src": "'self' http://localhost:5174 http://localhost:5180 http://localhost:5190",
         "img-src": "'self' asset: data: https://api.thunderbolt.io",
         "font-src": "'self' data:",
         "style-src": "'self' 'unsafe-inline'",

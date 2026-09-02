@@ -78,9 +78,10 @@ const skipHeaders = new Set([
   'sec-fetch-site',
   'sec-fetch-user',
   'upgrade-insecure-requests',
-  // Belongs on the OUTER request to our backend only — never promote it to a
-  // passthrough header, or it would leak to external LLM/MCP upstreams.
+  // These belong on the OUTER request to our backend only — never promote them
+  // to passthrough headers, or they would leak to external LLM/MCP upstreams.
   'x-app-version',
+  'x-app-language',
 ])
 
 const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {

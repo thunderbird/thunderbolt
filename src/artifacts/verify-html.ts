@@ -115,6 +115,24 @@ export const runIframeVerification: RuntimeVerifier = (html, opts) =>
  * are phrased to hand straight back to the agent for self-correction.
  */
 export const verifyArtifactHtml = async (html: string, options: VerifyOptions = {}): Promise<ArtifactVerifyResult> => {
+  const result = await runVerification(html, options)
+  /*
+   * A rejected artifact vanishes from the transcript with no explanation:
+   * `ArtifactMessagePart` renders nothing when `ok` is false, so the user sees
+   * a card flash while the tool streams and then leave. The reason goes to the
+   * model in the tool output and nowhere else.
+   *
+   * Logged here rather than at either rejection site, because there are two —
+   * the static check returns early, well before the iframe verifier's `finish`
+   * — and putting it on one of them is how this stayed invisible.
+   */
+  if (!result.ok) {
+    console.error('[artifacts] verification failed:', result.errors.join(' · '))
+  }
+  return result
+}
+
+const runVerification = async (html: string, options: VerifyOptions): Promise<ArtifactVerifyResult> => {
   const staticIssues = await staticCheckHtml(html)
   if (staticIssues.length > 0) {
     return { ok: false, errors: staticIssues.map(formatStaticIssue) }

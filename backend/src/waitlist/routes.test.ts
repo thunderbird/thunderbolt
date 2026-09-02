@@ -7,7 +7,9 @@ import { waitlist } from '@/db/schema'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { createAuth } from '@/auth/auth'
+import type { AppLocale } from '@shared/i18n/locales'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 describe('Waitlist API', () => {
@@ -390,6 +392,79 @@ describe('Waitlist API', () => {
       )
 
       expect(response.status).toBe(500)
+    })
+  })
+
+  describe('Email language (X-App-Language)', () => {
+    const join = async (
+      appUnderTest: Awaited<ReturnType<typeof createApp>>,
+      email: string,
+      language?: string,
+    ): Promise<Response> =>
+      appUnderTest.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(language ? { 'X-App-Language': language } : {}),
+          },
+          body: JSON.stringify({ email }),
+        }),
+      )
+
+    const capturingApp = async () => {
+      const sendJoinedEmail = mock((_params: { email: string; locale: AppLocale }) => Promise.resolve())
+      const sendReminderEmail = mock((_params: { email: string; locale: AppLocale }) => Promise.resolve())
+      const app = await createApp({
+        database: db,
+        otpCooldownMs: 0,
+        waitlistEmailService: { sendJoinedEmail, sendReminderEmail },
+      })
+      return { app, sendJoinedEmail, sendReminderEmail }
+    }
+
+    it("sends the joined email in the requester's language", async () => {
+      const { app: capturing, sendJoinedEmail } = await capturingApp()
+
+      await join(capturing, 'joined-de@example.com', 'de')
+
+      expect(sendJoinedEmail).toHaveBeenCalledWith({ email: 'joined-de@example.com', locale: 'de' })
+    })
+
+    it('sends the reminder email in the requested language', async () => {
+      await db.insert(waitlist).values({
+        id: crypto.randomUUID(),
+        email: 'reminder-ja@example.com',
+        status: 'pending',
+      })
+      const { app: capturing, sendReminderEmail } = await capturingApp()
+
+      await join(capturing, 'reminder-ja@example.com', 'ja')
+
+      expect(sendReminderEmail).toHaveBeenCalledWith({ email: 'reminder-ja@example.com', locale: 'ja' })
+    })
+
+    it('falls back to English when no language header is sent', async () => {
+      const { app: capturing, sendJoinedEmail } = await capturingApp()
+
+      await join(capturing, 'joined-default@example.com')
+
+      expect(sendJoinedEmail).toHaveBeenCalledWith({ email: 'joined-default@example.com', locale: 'en' })
+    })
+
+    it('forwards the language to the approved-user magic link', async () => {
+      // Regression guard for the server-side hop: `auth.api.sendVerificationOTP`
+      // builds its own endpoint context, so unless the route forwards the
+      // incoming headers the OTP email silently reverts to English.
+      const sendSignInEmail = mock((_params: { email: string; otp: string; verifyUrl: string; locale: AppLocale }) =>
+        Promise.resolve(),
+      )
+      const auth = createAuth(db, { sendSignInEmail })
+      const appWithAuth = await createApp({ database: db, otpCooldownMs: 0, auth })
+
+      await join(appWithAuth, 'approved-fr@mozilla.org', 'fr')
+
+      expect(sendSignInEmail).toHaveBeenCalledWith(expect.objectContaining({ locale: 'fr' }))
     })
   })
 })

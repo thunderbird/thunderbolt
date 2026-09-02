@@ -63,6 +63,10 @@ type ServiceArgs = {
   thunderboltInferenceUrl?: pulumi.Input<string>
   /** URL for the Tinfoil confidential-inference enclave (env: TINFOIL_ENCLAVE_URL). Optional. */
   tinfoilEnclaveUrl?: pulumi.Input<string>
+  /** Minimum compatible app semver enforced before CLI device registration is enabled. */
+  minAppVersion: string
+  /** Enables server-owned CLI device registration after compatible app clients ship. */
+  cliDeviceRegistrationEnabled: boolean
   /**
    * When true, backend runs behind a proxy whose X-Forwarded-* headers we trust
    * for client IP extraction (Cloudflare edge for preview stacks).
@@ -503,6 +507,8 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_URL', value: args.publicUrls.powersync },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'MIN_APP_VERSION', value: args.minAppVersion },
+          { name: 'CLI_DEVICE_REGISTRATION_ENABLED', value: args.cliDeviceRegistrationEnabled ? 'true' : 'false' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           // Cloudflare terminates TLS for preview stacks — trust its CF-Connecting-IP

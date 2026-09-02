@@ -133,12 +133,16 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `appUrl` | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
 | `frontend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend` | Frontend image |
 | `backend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend` | Backend image |
+| `backend.env.minAppVersion` | `""` | Minimum compatible app semver |
+| `backend.env.cliDeviceRegistrationEnabled` | `"false"` | Server-owned CLI device registration gate |
 | `marketing.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image |
 | `imagePullSecrets` | `[]` | Registry pull secrets (leave empty for the public images) |
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.host` | `""` | Set to your hostname for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
 | `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
+
+See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
 
 ## Templates
 

@@ -118,6 +118,15 @@ jobs:
           restore-keys: |
             cli-bun-${{ matrix.os }}-
 
+      - name: Install CLI dependencies
+        run: cd cli && bun install --frozen-lockfile
+
+      - name: Type check CLI
+        run: cd cli && bun run typecheck
+
+      - name: Run CLI tests (including real Tinfoil fixture)
+        run: cd cli && bun run test
+
       - name: Build CLI binary
         env:
           THUNDERBOLT_BUILD_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
@@ -132,13 +141,18 @@ jobs:
             exit 1
           fi
           cd cli
-          bun install --frozen-lockfile
           bun build --compile --minify \
             --target="bun-${{ matrix.target }}" \
             --define "process.env.THUNDERBOLT_BUILD_CLOUD_URL=\"$THUNDERBOLT_BUILD_CLOUD_URL\"" \
             --define "process.env.THUNDERBOLT_BUILD_APP_URL=\"$THUNDERBOLT_BUILD_APP_URL\"" \
             src/index.ts \
             --outfile "dist/thunderbolt-cli-${{ matrix.target }}"
+
+      - name: Smoke CLI binary
+        run: |
+          cd cli
+          ./dist/thunderbolt-cli-${{ matrix.target }} --version
+          ./dist/thunderbolt-cli-${{ matrix.target }} --help >/dev/null
 
       # Upload as a workflow artifact rather than straight to the Release, so a
       # failed leg can never leave a partial set of binaries on the release with

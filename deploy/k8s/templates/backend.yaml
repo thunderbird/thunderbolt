@@ -111,6 +111,10 @@ spec:
               value: {{ .Values.powersync.jwt.kid }}
             - name: RATE_LIMIT_ENABLED
               value: {{ .Values.backend.env.rateLimitEnabled | quote }}
+            - name: MIN_APP_VERSION
+              value: {{ .Values.backend.env.minAppVersion | quote }}
+            - name: CLI_DEVICE_REGISTRATION_ENABLED
+              value: {{ .Values.backend.env.cliDeviceRegistrationEnabled | quote }}
             - name: THUNDERBOLT_INFERENCE_URL
               value: {{ .Values.backend.env.thunderboltInferenceUrl | default "" | quote }}
             - name: ANTHROPIC_API_KEY

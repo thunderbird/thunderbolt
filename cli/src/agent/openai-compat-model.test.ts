@@ -12,7 +12,7 @@
 
 import type { Api, AssistantMessageEventStream, Context, Model } from '@earendil-works/pi-ai'
 import { describe, expect, test } from 'bun:test'
-import { type OpenAiStreamFns, buildOpenAiCompatModel } from './openai-compat-model.ts'
+import { type OpenAiCompatFetch, type OpenAiStreamFns, buildOpenAiCompatModel } from './openai-compat-model.ts'
 
 const opts = { modelId: 'llama3.3', baseUrl: 'http://localhost:11434/v1', apiKey: 'local' }
 
@@ -55,6 +55,25 @@ describe('buildOpenAiCompatModel — synthetic descriptor', () => {
     const { models } = buildOpenAiCompatModel(opts)
     expect(models.getModel('openai-compat', 'llama3.3')?.id).toBe('llama3.3')
     expect(models.getProvider('openai-compat')?.baseUrl).toBe('http://localhost:11434/v1')
+  })
+
+  test('supports an owned provider id and catalog-provided capabilities', () => {
+    const { models, model } = buildOpenAiCompatModel({
+      ...opts,
+      providerId: 'thunderbolt',
+      reasoning: true,
+      contextWindow: 200_000,
+      supportsImages: true,
+    })
+
+    expect(model).toMatchObject({
+      provider: 'thunderbolt',
+      reasoning: true,
+      contextWindow: 200_000,
+      input: ['text', 'image'],
+    })
+    expect(models.getModel('thunderbolt', 'llama3.3')).toBe(model)
+    expect(models.getProvider('openai-compat')).toBeUndefined()
   })
 })
 
@@ -106,5 +125,38 @@ describe('buildOpenAiCompatModel — bearer key injection (security)', () => {
     const provider = models.getProvider('openai-compat')!
     provider.streamSimple(model, {} as Context, {})
     expect(calls[0]).toMatchObject({ fn: 'streamSimple', options: { apiKey: 'local' } })
+  })
+
+  test('captures an injected fetch only while Pi constructs its OpenAI client', async () => {
+    let injectedCalls = 0
+    const injectedFetch: OpenAiCompatFetch = async () => {
+      injectedCalls += 1
+      return new Response(null, { status: 204 })
+    }
+    const observedFetches: (typeof globalThis.fetch)[] = []
+    const requests: Promise<Response>[] = []
+    const inert = {} as AssistantMessageEventStream
+    const streamFns = {
+      stream: (() => {
+        observedFetches.push(globalThis.fetch)
+        requests.push(globalThis.fetch('http://localhost:11434/v1/models'))
+        return inert
+      }) as OpenAiStreamFns['stream'],
+      streamSimple: (() => {
+        observedFetches.push(globalThis.fetch)
+        requests.push(globalThis.fetch('http://localhost:11434/v1/models'))
+        return inert
+      }) as OpenAiStreamFns['streamSimple'],
+    }
+    const { models, model } = buildOpenAiCompatModel({ ...opts, fetchFn: injectedFetch }, streamFns)
+    const provider = models.getProvider('openai-compat')!
+
+    provider.stream(model, {} as Context, {})
+    provider.streamSimple(model, {} as Context, {})
+    await Promise.all(requests)
+
+    expect(observedFetches).toHaveLength(2)
+    expect(observedFetches.every((fetchFn) => fetchFn === globalThis.fetch)).toBe(true)
+    expect(injectedCalls).toBe(2)
   })
 })

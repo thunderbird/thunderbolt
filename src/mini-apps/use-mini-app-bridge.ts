@@ -22,7 +22,7 @@ import {
   miniAppRpcErrors,
   parseGuestMessage,
   parseGuestResult,
-  selectionQueryResultSchema,
+  parseSelectionQueryResult,
   toolsCallResultSchema,
   parseToolsList,
   type MiniAppGuestCapabilities,
@@ -525,10 +525,15 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const querySelection = useCallback(
     (rect: MiniAppRect): Promise<MiniAppSelectionItem[]> =>
       request(miniAppHostMethods.selectionQuery, { rect }, selectionQueryTimeoutMs).then((result) => {
-        const parsed = selectionQueryResultSchema.safeParse(result)
-        return parsed.success ? parsed.data.items : []
+        const { items, dropped } = parseSelectionQueryResult(result)
+        if (dropped > 0) {
+          // Same reasoning as the tools log below: an item vanishing from a
+          // marquee is otherwise indistinguishable from the app not having it.
+          console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed selection item(s)`)
+        }
+        return items
       }),
-    [request],
+    [app.id, request],
   )
 
   /**

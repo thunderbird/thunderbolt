@@ -18,6 +18,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import { AppWindow, BarChart3, FileSearch, LineChart, Route, Stethoscope, Table } from 'lucide-react'
+import { z } from 'zod'
 
 export type MiniAppDefinition = {
   /** URL segment and stable key: `/apps/<id>`. */
@@ -38,15 +39,28 @@ export type MiniAppDefinition = {
   origin: string
 }
 
-/** The wire shape of one app from `GET /mini-apps`. */
-export type MiniAppResponse = {
-  id: string
-  name: string
-  description: string
-  icon: string
-  url: string
-  origin: string
-}
+/**
+ * The wire shape of one app from `GET /mini-apps`.
+ *
+ * Parsed, not asserted with a generic on `.json()`. A cast here fails in the
+ * worst possible way, because `origin` is the value `isFromGuest` compares
+ * `event.origin` against: if a deploy skew ever renamed or dropped it, the
+ * comparison becomes `event.origin === undefined`, every message from a
+ * perfectly healthy app is discarded, and the panel sits at "connecting" until
+ * it gives up — with nothing logged, because from the bridge's point of view
+ * the app never spoke. `url` missing is milder and just as opaque: the frame
+ * loads the literal string "undefined".
+ */
+export const miniAppResponseSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().default(''),
+  icon: z.string().default(''),
+  url: z.string().min(1),
+  origin: z.string().min(1),
+})
+
+export type MiniAppResponse = z.infer<typeof miniAppResponseSchema>
 
 /**
  * Icon keys an operator may name in config.
@@ -76,6 +90,34 @@ export const toMiniAppDefinition = (app: MiniAppResponse): MiniAppDefinition => 
   url: app.url,
   origin: app.origin,
 })
+
+/**
+ * Turn a `GET /mini-apps` body into definitions, dropping only bad entries.
+ *
+ * `null` means the body itself was unusable — a real failure, distinct from a
+ * deployment that runs no apps, and the two must not collapse into each other
+ * (see {@link MiniAppsState.failed}). Individual entries are parsed one at a
+ * time, mirroring `getMiniApps` on the backend: one malformed app should cost
+ * that app, not the sidebar.
+ */
+export const parseMiniAppRegistry = (body: unknown): { apps: MiniAppDefinition[]; dropped: number } | null => {
+  const envelope = z.object({ apps: z.array(z.unknown()) }).safeParse(body)
+  if (!envelope.success) {
+    return null
+  }
+
+  const apps: MiniAppDefinition[] = []
+  let dropped = 0
+  for (const candidate of envelope.data.apps) {
+    const parsed = miniAppResponseSchema.safeParse(candidate)
+    if (parsed.success) {
+      apps.push(toMiniAppDefinition(parsed.data))
+      continue
+    }
+    dropped += 1
+  }
+  return { apps, dropped }
+}
 
 /** Look up a registered app by its route id. */
 export const findMiniApp = (apps: MiniAppDefinition[], id: string | undefined): MiniAppDefinition | undefined =>

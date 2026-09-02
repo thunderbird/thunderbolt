@@ -24,9 +24,19 @@
  * Trust model: the host never trusts the frame. Every inbound message is checked
  * for source window and origin by the host bridge, then parsed with the schemas
  * below. Anything that fails is dropped.
+ *
+ * **Bounds clamp, they don't reject.** Dropping a message is the right answer
+ * for a malformed *shape*, and the wrong one for a string that ran long: the
+ * guest doesn't know our prompt budgets and none of the bridges clamps to them,
+ * so a `.max()` here turns "your table row was wide" into "the feature silently
+ * does nothing". Length bounds therefore go through {@link clampedString}, and
+ * collections are parsed per element so one bad member costs that member rather
+ * than the payload. See `parseToolsList` for the case that taught us this.
  */
 
 import { z } from 'zod'
+
+import { clampedString } from './lib/clamped-string'
 
 /**
  * Discriminator stamped on every message. `postMessage` is a shared bus — React
@@ -200,9 +210,13 @@ export const maxContextPayloadChars = 20_000
  */
 export const miniAppContextSchema = z.object({
   /** Short human label for the current view. Also used as panel chrome. */
-  title: z.string().max(200),
-  /** Model-facing prose describing what the user is looking at. */
-  summary: z.string().max(20_000),
+  title: clampedString(200),
+  /** Model-facing prose describing what the user is looking at.
+   *  Clamped, not capped: an app that builds its summary from its data (one
+   *  line per node, say) grows past this with no idea the bound exists, and
+   *  rejecting cost the model the whole context update — so `get_app_context`
+   *  went on describing the previous view as if nothing had changed. */
+  summary: clampedString(20_000),
   /** Arbitrary app-defined state. Never interpreted by the host.
    *  Dropped from the model's view past {@link maxContextPayloadChars} serialised. */
   data: z.unknown().optional(),
@@ -228,8 +242,11 @@ export const initializeRequestSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.initialize),
   params: z.object({
     protocolVersion: z.number().int().positive(),
-    /** Display name the app reports for itself; host chrome may show it. */
-    appName: z.string().max(200).optional(),
+    /** Display name the app reports for itself; host chrome may show it.
+     *  Clamped rather than capped because this rides the *handshake*: rejecting
+     *  it dropped `initialize` itself, so a long display name meant the app
+     *  never connected and both sides only ever saw a timeout. */
+    appName: clampedString(200).optional(),
     capabilities: miniAppGuestCapabilitiesSchema,
   }),
 })
@@ -245,8 +262,10 @@ export const runtimeErrorNotificationSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.runtimeError),
   params: z.object({
     // Bounded because it lands in a one-line strip, and an untrusted frame
-    // should not be able to hand us an unbounded string to hold.
-    message: z.string().min(1).max(500),
+    // should not be able to hand us an unbounded string to hold. The bridges do
+    // slice to 500 before sending, but a hand-rolled one reporting a long stack
+    // trace should get a truncated strip, not silence about its own crash.
+    message: clampedString(500, { min: 1 }),
   }),
 })
 
@@ -256,8 +275,10 @@ export const chatOpenRequestSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.chatOpen),
   params: z
     .object({
-      /** Seed the composer with this text (not auto-sent). */
-      prompt: z.string().max(10_000).optional(),
+      /** Seed the composer with this text (not auto-sent). Clamped: seeding the
+       *  composer with a document excerpt is exactly what this is for, and a
+       *  rejected request never settles — the chat panel just never opens. */
+      prompt: clampedString(10_000).optional(),
     })
     .default({}),
 })
@@ -284,7 +305,11 @@ export type MiniAppRect = z.infer<typeof miniAppRectSchema>
  * selection — that isolation is the point, so the app volunteers it instead.
  */
 export const miniAppSelectionSchema = z.object({
-  text: z.string().min(1).max(20_000),
+  // Clamped: a select-all in a long view otherwise dropped the whole
+  // notification, so the "Ask about this" control never appeared — and, because
+  // the clearing notification is the same message shape, a previous selection
+  // could strand its control over text the user had moved off.
+  text: clampedString(20_000, { min: 1 }),
   /** Absent when the app can't (or won't) report geometry; the host then falls
    *  back to its fixed chat affordance rather than floating a control. */
   rect: miniAppRectSchema.optional(),
@@ -391,26 +416,53 @@ export type MiniAppHostMessage = MiniAppHostResult | MiniAppHostError | MiniAppH
  */
 export const miniAppSelectionItemSchema = z.object({
   /** Stable within one query; used as a React key and to de-duplicate. */
-  id: z.string().min(1).max(200),
+  id: clampedString(200, { min: 1 }),
   /** Short human label for the chip, e.g. "Q3 row". */
-  label: z.string().min(1).max(200),
+  label: clampedString(200, { min: 1 }),
   /** The content itself — what reaches the model. */
-  text: z.string().min(1).max(20_000),
+  text: clampedString(20_000, { min: 1 }),
   /** Optional structured payload for this item, forwarded uninterpreted. */
   data: z.unknown().optional(),
 })
 
 export type MiniAppSelectionItem = z.infer<typeof miniAppSelectionItemSchema>
 
-/**
- * Guest's answer to `ui/selection-query`. Capped so a pathological app (or a drag
- * across the whole page) can't flood the composer with chips.
- */
-export const selectionQueryResultSchema = z.object({
-  items: z.array(miniAppSelectionItemSchema).max(50),
-})
+/** Most chips one marquee can put in the composer. */
+export const maxSelectionItems = 50
 
-export type MiniAppSelectionQueryResult = z.infer<typeof selectionQueryResultSchema>
+/**
+ * Parse the guest's answer to `ui/selection-query`, tolerating bad items.
+ *
+ * Same lesson as {@link parseToolsList}, and the same bug: parsing the array as
+ * a unit meant one item cost all of them. The guests build `label` from the
+ * row's first cell and `text` from the whole row, neither clamped and neither
+ * guaranteed non-empty — so a wide table row, or a row whose first cell happens
+ * to be blank, returned *nothing* from a marquee over exactly the content-dense
+ * views the gesture exists for. The user saw the confirm bar appear with zero
+ * chips and read it as "my drag did nothing".
+ *
+ * Long strings are therefore clamped by the item schema, over-count is sliced
+ * rather than rejected, and only a genuinely malformed item is dropped — and
+ * counted, so the caller can log it.
+ */
+export const parseSelectionQueryResult = (result: unknown): { items: MiniAppSelectionItem[]; dropped: number } => {
+  const envelope = z.object({ items: z.array(z.unknown()) }).safeParse(result)
+  if (!envelope.success) {
+    return { items: [], dropped: 0 }
+  }
+
+  const items: MiniAppSelectionItem[] = []
+  let dropped = 0
+  for (const candidate of envelope.data.items.slice(0, maxSelectionItems)) {
+    const parsed = miniAppSelectionItemSchema.safeParse(candidate)
+    if (parsed.success) {
+      items.push(parsed.data)
+      continue
+    }
+    dropped += 1
+  }
+  return { items, dropped: dropped + Math.max(0, envelope.data.items.length - maxSelectionItems) }
+}
 
 /*
  * ─── Tools ───────────────────────────────────────────────────────────────────
@@ -496,17 +548,12 @@ export const miniAppToolSchema = z.object({
        */
       readOnlyHint: z.boolean().optional(),
       /** Human-facing label for the approval prompt. */
-      title: z.string().max(200).optional(),
+      title: clampedString(200).optional(),
     })
     .optional(),
 })
 
 export type MiniAppTool = z.infer<typeof miniAppToolSchema>
-
-/** Guest's answer to `tools/list`. */
-export const toolsListResultSchema = z.object({
-  tools: z.array(miniAppToolSchema).max(maxToolsPerApp),
-})
 
 /**
  * Parse a `tools/list` reply, tolerating individual bad descriptors.
@@ -522,16 +569,20 @@ export const toolsListResultSchema = z.object({
  * the model far more than no tool at all. Anything else invalid — a malformed
  * name, a description that is missing or empty — drops that one tool and is
  * reported to the caller, which logs it.
+ *
+ * {@link maxToolsPerApp} is sliced for the same reason. Capping the envelope on
+ * it left the original bug intact one level up: an app advertising 65 tools
+ * still lost all 65, and `dropped: 0` meant even the log stayed quiet.
  */
 export const parseToolsList = (result: unknown): { tools: MiniAppTool[]; dropped: number } => {
-  const envelope = z.object({ tools: z.array(z.unknown()).max(maxToolsPerApp) }).safeParse(result)
+  const envelope = z.object({ tools: z.array(z.unknown()) }).safeParse(result)
   if (!envelope.success) {
     return { tools: [], dropped: 0 }
   }
 
   const tools: MiniAppTool[] = []
-  let dropped = 0
-  for (const candidate of envelope.data.tools) {
+  let dropped = Math.max(0, envelope.data.tools.length - maxToolsPerApp)
+  for (const candidate of envelope.data.tools.slice(0, maxToolsPerApp)) {
     const truncated =
       candidate && typeof candidate === 'object' && typeof (candidate as MiniAppTool).description === 'string'
         ? { ...candidate, description: (candidate as MiniAppTool).description.slice(0, maxToolDescriptionChars) }
@@ -548,7 +599,11 @@ export const parseToolsList = (result: unknown): { tools: MiniAppTool[]; dropped
 
 /** Guest's answer to `tools/call`. */
 export const toolsCallResultSchema = z.object({
-  content: z.string().max(100_000),
+  // Clamped, and this one lied to the model when it rejected: a tool returning a
+  // large export ran, mutated the app, succeeded — and the host told the model
+  // "did not return a usable result. It may have timed out," which invites a
+  // retry of a mutation that already happened.
+  content: clampedString(100_000),
   /** True when the tool failed; the host surfaces the content as an error. */
   isError: z.boolean().optional(),
 })
@@ -573,7 +628,10 @@ const guestReplySchema = envelopeSchema.extend({
   error: z
     .object({
       code: z.number().int(),
-      message: z.string().max(2_000),
+      // Clamped, or this schema reopens the hole it was added to close: a guest
+      // reporting a failure with a long stack trace would have its reply dropped
+      // and the request would sit unsettled to its full timeout again.
+      message: clampedString(2_000),
     })
     .optional(),
 })

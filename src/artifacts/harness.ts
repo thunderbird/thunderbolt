@@ -9,6 +9,8 @@
  */
 import { z } from 'zod'
 
+import { clampedString } from '@shared/lib/clamped-string'
+
 import type { SurfaceSelectionItem, SurfaceTextSelection } from '@/components/embedded/types'
 
 export type HarnessMessage =
@@ -116,20 +118,12 @@ const rectSchema = z.object({
  * *less* trusted of the two embedded surfaces (its HTML is model-written, and
  * often shaped by whatever the model just read), while the Mini App path bounds
  * every field. The numbers mirror that path so the two agree.
- */
-/**
- * A bounded string that clamps rather than rejects.
  *
- * The bounds here are prompt-and-memory budgets, not correctness constraints,
- * and every one of these fields is free text the artifact derives from its own
- * DOM — a long stack trace, a wide table row, a select-all. Rejecting on length
- * discarded the entire message: the error strip never appeared, the marquee
- * resolved to nothing, `get_app_context` reported the page as silent. Clamping
- * keeps the bound and keeps the message. Same reasoning as `parseToolsList` on
- * the Mini App side.
+ * The bounds are prompt-and-memory budgets, not correctness constraints, and
+ * every field they guard is free text the artifact derives from its own DOM.
+ * {@link clampedString} explains why they clamp instead of rejecting; the Mini
+ * App protocol uses the same helper, so the two surfaces cannot drift on it.
  */
-const clamped = (max: number) => z.string().transform((value) => (value.length > max ? value.slice(0, max) : value))
-
 const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-ready') }),
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-height'), height: z.number().finite() }),
@@ -137,7 +131,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
     artifactNonce: z.string(),
     type: z.literal('artifact-error'),
     reason: z.enum(['exception', 'unhandled-rejection']),
-    detail: clamped(2_000),
+    detail: clampedString(2_000),
   }),
   z.object({
     artifactNonce: z.string(),
@@ -148,12 +142,12 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-context'),
-    context: z.object({ title: clamped(200), summary: clamped(20_000) }),
+    context: z.object({ title: clampedString(200), summary: clampedString(20_000) }),
   }),
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-selection'),
-    selection: z.object({ text: clamped(20_000), rect: rectSchema.optional() }).nullable(),
+    selection: z.object({ text: clampedString(20_000), rect: rectSchema.optional() }).nullable(),
   }),
 ])
 
@@ -161,7 +155,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
  *  `unknown` result, which the caller narrows once it knows what it asked. */
 export const artifactSelectionItemsSchema = z.object({
   items: z
-    .array(z.object({ id: clamped(200), label: clamped(500), text: clamped(5_000) }))
+    .array(z.object({ id: clampedString(200), label: clampedString(500), text: clampedString(5_000) }))
     // Clamped, not capped: the harness sends at most 50, but a hand-rolled one
     // sending 60 would otherwise lose the marquee result entirely.
     .max(500)

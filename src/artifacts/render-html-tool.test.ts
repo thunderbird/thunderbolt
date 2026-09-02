@@ -3,7 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { type RenderHtmlOutput, type RenderHtmlPart, renderHtmlOutput, renderHtmlTool } from './render-html-tool'
+import {
+  type RenderHtmlOutput,
+  type RenderHtmlPart,
+  renderHtmlInput,
+  renderHtmlOutput,
+  renderHtmlTool,
+} from './render-html-tool'
 
 const exec = (input: { html: string; title: string }) => renderHtmlTool.execute(input) as Promise<RenderHtmlOutput>
 
@@ -67,5 +73,35 @@ describe('renderHtmlOutput', () => {
   /** Must degrade, not throw — this runs during render. */
   it('returns undefined for a text block that is not JSON', () => {
     expect(renderHtmlOutput(part({ content: [{ type: 'text', text: 'rendered!' }] }))).toBeUndefined()
+  })
+})
+
+/*
+ * The input twin of the cast that cost a day on the output side. Absent fields
+ * are normal here — the input streams in — but a cast says nothing about a
+ * field that is present and the wrong type, and callers go straight to
+ * `html.match(…)` and `title?.trim()` during render.
+ */
+describe('renderHtmlInput', () => {
+  const part = (input: unknown) => ({ input }) as RenderHtmlPart
+
+  it('reads a complete input', () => {
+    expect(renderHtmlInput(part({ html: '<p>x</p>', title: 'X' }))).toEqual({ html: '<p>x</p>', title: 'X' })
+  })
+
+  it('reads a half-streamed input without inventing fields', () => {
+    expect(renderHtmlInput(part({ html: '<p>x' }))).toEqual({ html: '<p>x' })
+  })
+
+  it('treats a missing input as still streaming', () => {
+    expect(renderHtmlInput(part(undefined))).toEqual({})
+  })
+
+  it('drops a wrong-typed field rather than handing a caller a number to .trim()', () => {
+    expect(renderHtmlInput(part({ html: '<p>x</p>', title: 7 }))).toEqual({ html: '<p>x</p>' })
+  })
+
+  it('degrades to empty for an input that is not an object at all', () => {
+    expect(renderHtmlInput(part('<p>x</p>'))).toEqual({})
   })
 })

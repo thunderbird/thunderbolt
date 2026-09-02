@@ -26,9 +26,29 @@ export type RenderHtmlPart = ToolUIPart | DynamicToolUIPart
 export const isRenderHtmlPart = (part: UIMessage['parts'][number]): part is RenderHtmlPart =>
   isToolOrDynamicToolUIPart(part) && getToolName(part) === renderHtmlToolName
 
-/** The (possibly partial, while streaming) typed input of a `render_html` part. */
+/**
+ * The (possibly partial, while streaming) typed input of a `render_html` part.
+ *
+ * Parsed with `.catch({})` rather than cast, for the same reason
+ * {@link renderHtmlOutput} below is. The input genuinely *is* partial while it
+ * streams, so absent fields are expected and fine — but a cast also says
+ * nothing about fields that are present and the wrong type, and callers do
+ * `html.match(…)` and `title?.trim()` on the result. A number `title` or an
+ * object `html` from a provider that wraps arguments would throw during render
+ * and take the whole message down; unwrapping to `{}` degrades to the same
+ * still-streaming state the callers already handle.
+ */
+const renderHtmlInputSchema = z
+  .object({
+    // Caught per field, not just on the object: a bad `title` should not also
+    // cost the `html` that was fine.
+    html: z.string().optional().catch(undefined),
+    title: z.string().optional().catch(undefined),
+  })
+  .catch({})
+
 export const renderHtmlInput = (part: RenderHtmlPart): Partial<RenderHtmlInput> =>
-  (part.input ?? {}) as Partial<RenderHtmlInput>
+  renderHtmlInputSchema.parse(part.input ?? {})
 
 const renderHtmlOutputSchema = z.union([
   z.object({ ok: z.literal(true) }),

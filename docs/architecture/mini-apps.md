@@ -60,10 +60,10 @@ which no Mini App does.
 | --------------------- | ------ | ----------------------------------------------------------------------------------- |
 | Web (desktop browser) | iframe | —                                                                                   |
 | Tauri desktop         | iframe | `frame-src` is compiled into `tauri.conf.json`, so a new app origin needs a rebuild |
-| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                  |
+| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                 |
 | Mobile web            | —      | not offered — same gate                                                             |
 
-**Mini Apps are web and desktop only** (THU-830). The gate is on *viewport*, not platform: the split view,
+**Mini Apps are web and desktop only** (THU-830). The gate is on _viewport_, not platform: the split view,
 highlight-to-ask and the marquee all need pointer input and room, and a 700px browser window is as unworkable as a
 phone. `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the desktop window keeps the feature
 while narrowing a browser does not.
@@ -153,14 +153,34 @@ perform the same action directly without asking anyone. Making it one would mean
 
 ### Descriptor limits
 
-A tool's `description` reaches the *system* prompt once per tool for the life of the turn's cached prefix, so it is
+A tool's `description` reaches the _system_ prompt once per tool for the life of the turn's cached prefix, so it is
 capped at 300 characters (`maxToolDescriptionChars`), and an app may advertise at most 64 tools.
 
 The cap is enforced by truncation, not rejection, and one bad descriptor never costs an app its other tools —
 `parseToolsList` validates each entry on its own. That is a correction, not a design: parsing the array strictly
-meant a single over-long description discarded the *entire* toolset, silently, and the finance sample shipped for a
+meant a single over-long description discarded the _entire_ toolset, silently, and the finance sample shipped for a
 while with a 386-character description and no working tools at all. If a descriptor is dropped for any other reason
 the host logs it, because a tool going missing is otherwise indistinguishable from the model choosing not to call it.
+
+### Limits, generally: nothing an app sends is rejected for being long
+
+Every length bound in the protocol is a _host_ budget — prompt tokens, a one-line strip, memory — and an app has no
+way to know them. So they all behave the way the descriptor cap does: **strings are clamped, collections are parsed
+one element at a time, and over-count is sliced.** An app author never has to count characters, and an app that
+exceeds a bound loses the overflow rather than the message.
+
+That is a correction too, and it was the same bug five more times. A `.max()` on a field rejects the whole _message_,
+not the field, and each instance surfaced as the feature simply not working: a select-all dropped the selection
+notification so "Ask about this" never appeared; a summary built from the app's own data dropped the context update so
+`get_app_context` kept describing the previous screen; a long display name dropped `initialize` so the app never
+connected at all; a large tool result was reported to the model as "may have timed out" after the tool had already
+run; and a wide table row failed the whole marquee answer, returning zero chips from exactly the content-dense views
+the gesture exists for. None of them logged anything, because as far as the parser was concerned nothing arrived.
+
+The single exception is `context.data` / `context.selection`, which are arbitrary structure rather than text: cutting
+JSON at a character count produces invalid JSON, so an over-sized payload is withheld and the model is _told_ it was
+withheld (`maxContextPayloadChars`). Use `.max()` only where the bound is a real correctness constraint the sender is
+required to honour; otherwise use `clampedString` (`shared/lib/clamped-string.ts`), which both embedded surfaces share.
 
 ## Layout
 

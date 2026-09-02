@@ -14,7 +14,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
-import { toMiniAppDefinition, type MiniAppDefinition, type MiniAppResponse } from './registry'
+import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
 export type MiniAppsState = {
   apps: MiniAppDefinition[]
@@ -58,8 +58,17 @@ const subscribe = (listener: () => void) => {
 const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
   inFlight ??= (async () => {
     try {
-      const body = await httpClient.get('mini-apps').json<{ apps?: MiniAppResponse[] }>()
-      setState({ apps: (body.apps ?? []).map(toMiniAppDefinition), loading: false, failed: false })
+      const registry = parseMiniAppRegistry(await httpClient.get('mini-apps').json<unknown>())
+      // Thrown, not folded into an empty registry: a body we can't read is the
+      // `failed` case, and `body.apps ?? []` used to report it as the healthy
+      // "this deployment runs no apps" — erasing the one distinction below.
+      if (!registry) {
+        throw new Error('GET /mini-apps did not answer with { apps: [...] }')
+      }
+      if (registry.dropped > 0) {
+        console.error(`[mini-apps] Dropped ${registry.dropped} malformed app(s) from the registry`)
+      }
+      setState({ apps: registry.apps, loading: false, failed: false })
     } catch (error) {
       // Logged rather than swallowed: an empty sidebar is otherwise
       // indistinguishable from a deployment that configures no apps, and the

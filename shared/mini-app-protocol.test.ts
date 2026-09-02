@@ -10,9 +10,11 @@ import {
   parseGuestMessage,
   parseGuestResult,
   parseToolsList,
+  maxSelectionItems,
   maxToolDescriptionChars,
-  toolsListResultSchema,
-  selectionQueryResultSchema,
+  maxToolsPerApp,
+  parseSelectionQueryResult,
+  toolsCallResultSchema,
 } from './mini-app-protocol'
 
 const initialize = {
@@ -152,8 +154,19 @@ describe('ui/notifications/selection-changed', () => {
     expect(parseGuestMessage(selectionMessage({ text: 'x', rect: { x: '1', y: 2, width: 3, height: 4 } }))).toBeNull()
   })
 
-  it('rejects a selection longer than the cap', () => {
-    expect(parseGuestMessage(selectionMessage({ text: 'a'.repeat(20_001) }))).toBeNull()
+  /*
+   * The guests report `window.getSelection().toString()` verbatim, so a
+   * select-all in a long view runs past the cap. Rejecting dropped the whole
+   * notification: "Ask about this" never appeared, and — because a deselect is
+   * the same message shape — a stale control could strand itself on screen.
+   */
+  it('clamps an over-long selection instead of dropping the notification', () => {
+    const parsed = parseGuestMessage(selectionMessage({ text: 'a'.repeat(20_001) }))
+
+    if (parsed?.method !== 'ui/notifications/selection-changed') {
+      throw new Error('expected a ui/notifications/selection-changed')
+    }
+    expect(parsed.params.selection?.text).toHaveLength(20_000)
   })
 })
 
@@ -165,30 +178,6 @@ describe('isSupportedProtocolVersion', () => {
   it('rejects other versions in both directions', () => {
     expect(isSupportedProtocolVersion(miniAppProtocolVersion + 1)).toBe(false)
     expect(isSupportedProtocolVersion(0)).toBe(false)
-  })
-})
-
-describe('tool descriptor bounds', () => {
-  const toolsList = (description: string) => ({
-    jsonrpc: '2.0',
-    protocol: miniAppProtocolMarker,
-    id: 1,
-    result: { tools: [{ name: 'do_thing', description, inputSchema: { type: 'object' } }] },
-  })
-
-  /** The description reaches the cached system prompt once per tool, so a
-   *  generous cap let an app contribute a quarter-megabyte of prose above our
-   *  own tool policy. */
-  it('rejects a description long enough to crowd the system prompt', () => {
-    const parsed = toolsListResultSchema.safeParse(toolsList('x'.repeat(301)).result)
-
-    expect(parsed.success).toBe(false)
-  })
-
-  it('accepts a one-line description', () => {
-    const parsed = toolsListResultSchema.safeParse(toolsList('Change one assumption in the model.').result)
-
-    expect(parsed.success).toBe(true)
   })
 })
 
@@ -213,12 +202,6 @@ describe('runtime error notification', () => {
 
   it('rejects an empty message, which would render as a blank strip', () => {
     expect(parseGuestMessage(errorNotification({ message: '' }))).toBeNull()
-  })
-
-  /** It lands in a one-line strip, and an untrusted frame should not be able to
-   *  hand us an unbounded string to hold. */
-  it('rejects a message too long for the strip', () => {
-    expect(parseGuestMessage(errorNotification({ message: 'x'.repeat(501) }))).toBeNull()
   })
 })
 
@@ -285,26 +268,52 @@ describe('parseGuestResult', () => {
   })
 })
 
-describe('selectionQueryResultSchema', () => {
+describe('parseSelectionQueryResult', () => {
   const item = { id: 'a', label: 'Q3 row', text: 'Revenue: 4.2M' }
 
-  it('accepts a well-formed item list', () => {
-    expect(selectionQueryResultSchema.safeParse({ items: [item] }).success).toBe(true)
+  it('reads a well-formed item list', () => {
+    expect(parseSelectionQueryResult({ items: [item] })).toEqual({ items: [item], dropped: 0 })
   })
 
-  it('accepts an empty list — the marquee covered nothing selectable', () => {
-    expect(selectionQueryResultSchema.safeParse({ items: [] }).success).toBe(true)
+  it('reads an empty list — the marquee covered nothing selectable', () => {
+    expect(parseSelectionQueryResult({ items: [] })).toEqual({ items: [], dropped: 0 })
   })
 
-  it('rejects an item with empty text', () => {
-    expect(selectionQueryResultSchema.safeParse({ items: [{ ...item, text: '' }] }).success).toBe(false)
+  /*
+   * The bug this exists for, one layer over from the tools one: the guests build
+   * `text` from a whole table row and clamp nothing, so a marquee over exactly
+   * the content-dense view the gesture is for returned zero chips. The confirm
+   * bar appeared empty and it read as "my drag did nothing".
+   */
+  it('clamps an over-long item instead of losing the whole selection', () => {
+    const { items, dropped } = parseSelectionQueryResult({
+      items: [item, { ...item, id: 'b', text: 'x'.repeat(20_001) }],
+    })
+
+    expect(dropped).toBe(0)
+    expect(items).toHaveLength(2)
+    expect(items[1].text).toHaveLength(20_000)
   })
 
-  // A drag across the whole page shouldn't be able to push hundreds of chips
-  // into the composer.
-  it('rejects more items than the cap', () => {
-    const many = Array.from({ length: 51 }, (_, i) => ({ ...item, id: String(i) }))
-    expect(selectionQueryResultSchema.safeParse({ items: many }).success).toBe(false)
+  it('keeps the good items when one is genuinely malformed', () => {
+    const { items, dropped } = parseSelectionQueryResult({ items: [item, { ...item, id: 'b', text: '' }] })
+
+    expect(items.map((entry) => entry.id)).toEqual(['a'])
+    expect(dropped).toBe(1)
+  })
+
+  // A drag across the whole page shouldn't push hundreds of chips into the
+  // composer — but it should still yield the first fifty, not nothing.
+  it('slices past the cap rather than rejecting the answer', () => {
+    const many = Array.from({ length: maxSelectionItems + 3 }, (_, index) => ({ ...item, id: String(index) }))
+    const { items, dropped } = parseSelectionQueryResult({ items: many })
+
+    expect(items).toHaveLength(maxSelectionItems)
+    expect(dropped).toBe(3)
+  })
+
+  it('returns nothing for a reply that is not an item list', () => {
+    expect(parseSelectionQueryResult({ nope: true })).toEqual({ items: [], dropped: 0 })
   })
 })
 
@@ -344,7 +353,113 @@ describe('parseToolsList', () => {
     expect(parseToolsList({ tools: [tool({ description: '' })] })).toEqual({ tools: [], dropped: 1 })
   })
 
+  /*
+   * The same all-or-nothing shape one level up from the description bug: capping
+   * the envelope on `maxToolsPerApp` meant an app advertising one tool too many
+   * lost every one of them, and `dropped: 0` kept even the log quiet.
+   */
+  it('slices past the per-app cap rather than dropping every tool', () => {
+    const many = Array.from({ length: maxToolsPerApp + 2 }, (_, index) => tool({ name: `tool_${index}` }))
+    const { tools, dropped } = parseToolsList({ tools: many })
+
+    expect(tools).toHaveLength(maxToolsPerApp)
+    expect(dropped).toBe(2)
+  })
+
   it('returns nothing for a reply that is not a tool list', () => {
     expect(parseToolsList({ nope: true })).toEqual({ tools: [], dropped: 0 })
+  })
+})
+
+/*
+ * Every bound below guards a field the guest sends unclamped, so rejecting on
+ * length is rejecting the message. Each of these was a way for the feature to
+ * silently do nothing.
+ */
+describe('bounds clamp rather than reject', () => {
+  const guestMessage = (method: string, params: unknown) => ({
+    jsonrpc: '2.0',
+    protocol: miniAppProtocolMarker,
+    id: 3,
+    method,
+    params,
+  })
+
+  it('clamps a summary an app built from its own data', () => {
+    const parsed = parseGuestMessage(
+      guestMessage('ui/update-model-context', { context: { title: 'Q3', summary: 'x'.repeat(20_001) } }),
+    )
+
+    if (parsed?.method !== 'ui/update-model-context') {
+      throw new Error('expected a ui/update-model-context')
+    }
+    expect(parsed.params.context.summary).toHaveLength(20_000)
+  })
+
+  it('clamps a title rather than losing the context update', () => {
+    const parsed = parseGuestMessage(
+      guestMessage('ui/update-model-context', { context: { title: 'x'.repeat(201), summary: 'ok' } }),
+    )
+
+    if (parsed?.method !== 'ui/update-model-context') {
+      throw new Error('expected a ui/update-model-context')
+    }
+    expect(parsed.params.context.title).toHaveLength(200)
+  })
+
+  // The worst of them: this one rode the handshake, so a long display name meant
+  // the app never connected at all and both sides saw only a timeout.
+  it('clamps an app name rather than dropping the handshake', () => {
+    const parsed = parseGuestMessage(
+      guestMessage('ui/initialize', { protocolVersion: 1, appName: 'x'.repeat(201), capabilities: {} }),
+    )
+
+    if (parsed?.method !== 'ui/initialize') {
+      throw new Error('expected a ui/initialize')
+    }
+    expect(parsed.params.appName).toHaveLength(200)
+  })
+
+  it('clamps an open-chat prompt rather than never opening the chat', () => {
+    const parsed = parseGuestMessage(guestMessage('ui/open-chat', { prompt: 'x'.repeat(10_001) }))
+
+    if (parsed?.method !== 'ui/open-chat') {
+      throw new Error('expected a ui/open-chat')
+    }
+    expect(parsed.params.prompt).toHaveLength(10_000)
+  })
+
+  it('clamps a runtime error rather than staying silent about a crash', () => {
+    const parsed = parseGuestMessage({
+      jsonrpc: '2.0',
+      protocol: miniAppProtocolMarker,
+      method: 'ui/notifications/error',
+      params: { message: 'x'.repeat(501) },
+    })
+
+    if (parsed?.method !== 'ui/notifications/error') {
+      throw new Error('expected a ui/notifications/error')
+    }
+    expect(parsed.params.message).toHaveLength(500)
+  })
+
+  // Rejecting here actively lied: the tool ran and mutated the app, and the host
+  // told the model it "may have timed out" — an invitation to run it again.
+  it('clamps a large tool result rather than reporting the call as failed', () => {
+    const parsed = toolsCallResultSchema.safeParse({ content: 'x'.repeat(100_001) })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.content).toHaveLength(100_000)
+  })
+
+  it('clamps a reported error rather than leaving the request unsettled', () => {
+    const reply = parseGuestResult({
+      jsonrpc: '2.0',
+      protocol: miniAppProtocolMarker,
+      id: 7,
+      error: { code: -32000, message: 'x'.repeat(2_001) },
+    })
+
+    expect(reply?.error?.message).toHaveLength(2_000)
   })
 })

@@ -31,10 +31,14 @@ export type MiniAppContextToolDeps = {
  * Render one app-supplied payload as JSON, or say why it isn't here.
  *
  * Two ways a payload doesn't make it. It can be too big — see
- * {@link maxContextPayloadChars}; the app controls this value and nothing else
- * it sends is unbounded. Or it can be unserialisable: `postMessage` clones with
- * the structured clone algorithm, which carries cycles that `JSON.stringify`
- * throws on.
+ * {@link maxContextPayloadChars}. Or it can be unserialisable: `postMessage`
+ * clones with the structured clone algorithm, which carries cycles that
+ * `JSON.stringify` throws on.
+ *
+ * This is the one field the host withholds rather than clamps, because it is
+ * arbitrary structure: cutting JSON at a character count yields invalid JSON,
+ * which is worse for the model than an honest "too large to read". Every
+ * *string* the protocol bounds is clamped instead — see `clampedString`.
  *
  * Either way the model is *told*, rather than shown a section that silently
  * isn't there — "the app has no state" and "the app has more state than fits"

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
 import { Body, Container, Head, Html, Img, Link, Preview, Section, Tailwind, Text, pixelBasedPreset } from 'react-email'
 import { emailFrom } from '@/lib/resend'
 import { getSettings } from '@/config/settings'
@@ -22,15 +23,16 @@ const emailColors = {
 }
 
 type EmailLayoutProps = {
+  i18n: I18n
   preview: string
   children: import('react').ReactNode
 }
 
-export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {
+export const EmailLayout = ({ i18n, preview, children }: EmailLayoutProps) => {
   const { appUrl } = getSettings()
 
   return (
-    <Html lang="en">
+    <Html lang={i18n.locale}>
       <Tailwind
         config={{
           presets: [pixelBasedPreset],
@@ -64,9 +66,9 @@ export const EmailLayout = ({ preview, children }: EmailLayoutProps) => {
 
             <Section className="text-center mt-6">
               <Text className="text-xs text-tb-text m-0">
-                Questions?{' '}
+                {i18n._({ id: 'Questions?' })}{' '}
                 <Link href={`mailto:${emailFrom}`} className="text-tb-link underline">
-                  You can reply to this email
+                  {i18n._({ id: 'You can reply to this email' })}
                 </Link>
               </Text>
             </Section>

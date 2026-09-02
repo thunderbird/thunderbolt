@@ -5,10 +5,12 @@
 /**
  * Single source of truth for the locale set, shared by `lingui.config.ts`
  * (extraction/compilation) and the frontend runtime in `src/i18n`. Lives in
- * `shared/` rather than `src/` so that the backend can validate the
- * `X-App-Language` header against the same list — which it now does, in
- * `backend/src/emails/i18n.ts`; it cannot import from `src/`. Kept free of
- * runtime imports so the Lingui CLI can load it outside Vite.
+ * `shared/` rather than `src/` because the backend validates the
+ * `X-App-Language` header against the same list — for the email locale in
+ * `backend/src/emails/i18n.ts`, and via {@link matchExactLocale} for the
+ * outbound `Accept-Language` in `backend/src/utils/accept-language.ts` — and it
+ * cannot import from `src/`. Kept free of runtime imports so the Lingui CLI can
+ * load it outside Vite.
  */
 
 /** Locales the app ships catalogs for. `en` is the source locale; `en-XA` is the CI pseudo-locale. */
@@ -19,6 +21,37 @@ export type AppLocale = (typeof appLocales)[number]
 export const sourceLocale: AppLocale = 'en'
 
 export const pseudoLocale: AppLocale = 'en-XA'
+
+/**
+ * Locales eligible for language negotiation — every shipped locale except the
+ * CI pseudo-locale. This is the set both ends trust: the frontend negotiates
+ * `navigator.languages` against it (`src/i18n/resolve-locale.ts`) and the
+ * backend validates the `X-App-Language` header against it.
+ */
+export const negotiableLocales: readonly AppLocale[] = appLocales.filter((locale) => locale !== pseudoLocale)
+
+/**
+ * The shipped locale a client's `X-App-Language` header names, or `null`.
+ *
+ * Exact (case-insensitive) match, deliberately without the base-language
+ * fallback `matchLocale` applies to browser tags: the client sends a tag it has
+ * *already* resolved from this set, so anything else is a hand-written header
+ * and gets default behaviour rather than a best-effort guess. The pseudo-locale
+ * is absent from the set by construction, so a dev build's `en-XA` needs no
+ * special case. Callers that forward the result to a third party rely on the
+ * return being a member of {@link negotiableLocales} rather than the caller's
+ * own string — see `backend/src/utils/accept-language.ts`.
+ *
+ * @param value Raw header value, or null/undefined when the header is absent.
+ * @returns The matching shipped locale, or null.
+ */
+export const matchExactLocale = (value: string | null | undefined): AppLocale | null => {
+  const tag = value?.trim().toLowerCase()
+  if (!tag) {
+    return null
+  }
+  return negotiableLocales.find((locale) => locale.toLowerCase() === tag) ?? null
+}
 
 /**
  * A locale's language named in English — "German", "Brazilian Portuguese".

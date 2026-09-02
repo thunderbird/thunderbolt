@@ -1987,6 +1987,7 @@ msgstr "Mantenha seus dados sincronizados entre dispositivos."
 
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
+#: src/waitlist/waitlist-language-picker.tsx
 msgid "Language"
 msgstr "Idioma"
 

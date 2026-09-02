@@ -1963,6 +1963,7 @@ msgstr "デバイス間でデータを同期しましょう。"
 
 #: src/components/onboarding/onboarding-language-step.tsx
 #: src/settings/preferences.tsx
+#: src/waitlist/waitlist-language-picker.tsx
 msgid "Language"
 msgstr "言語"
 

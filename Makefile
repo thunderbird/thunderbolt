@@ -72,6 +72,18 @@ setup: setup-symlinks
 	bun install
 	@echo "$(BLUE)→ Installing backend dependencies...$(NC)"
 	cd backend && bun install
+	@echo "$(BLUE)→ Installing sccache (optional Rust build cache)...$(NC)"
+	@if command -v sccache >/dev/null 2>&1; then \
+		echo "$(GREEN)✓ sccache is already installed$(NC)"; \
+	elif command -v cargo >/dev/null 2>&1; then \
+		if cargo install sccache --locked; then \
+			echo "$(GREEN)✓ sccache installed$(NC)"; \
+		else \
+			echo "$(YELLOW)! sccache installation failed; Rust builds will continue without caching$(NC)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
+	fi
 	@echo "$(BLUE)→ Installing Playwright browsers (for `make e2e` tests)...$(NC)"
 	bunx playwright install
 	@echo "$(GREEN)✓ Setup complete!$(NC)"

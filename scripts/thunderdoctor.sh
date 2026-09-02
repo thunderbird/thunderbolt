@@ -68,7 +68,7 @@ check "cmake" \
 
 check "sccache" \
   "sccache --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'" \
-  "install with: cargo install sccache (speeds up Rust rebuilds; configured in src-tauri/.cargo/config.toml)"
+  "optional Rust build cache; make setup installs it when Cargo is available"
 
 check "container runtime (docker or podman)" \
   "if command -v podman-compose > /dev/null 2>&1 && podman info >/dev/null 2>&1; then echo \"podman \$(podman --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), running\"; elif docker info >/dev/null 2>&1; then echo \"docker \$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), running\"; else exit 1; fi" \

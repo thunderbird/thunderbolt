@@ -8,7 +8,7 @@ After cloning, run **`make doctor`** — it inspects your machine and prints exa
 
 - **[Bun](https://bun.sh/)** 1.2+
 - **Rust toolchain** — for Tauri desktop and mobile builds (install via [rustup](https://rustup.rs/))
-- **sccache** — speeds up Rust rebuilds (`cargo install sccache`)
+- **sccache** — optional; `make setup` installs it when Cargo is available to speed up Rust rebuilds
 - **Docker** — PowerSync and PostgreSQL run in containers during local dev
 
 You'll also need at least one AI provider API key — Anthropic, OpenAI, Mistral, Fireworks, or any OpenAI-compatible endpoint (Ollama and llama.cpp are recommended for local inference).
@@ -36,7 +36,7 @@ For other distributions, use the upstream
    make setup
    ```
 
-   `make setup` installs frontend and backend dependencies and wires up the Claude Code agent symlinks.
+   `make setup` installs frontend and backend dependencies, optionally installs `sccache`, and wires up the Claude Code agent symlinks.
 
 2. **Create `.env` files.**
 

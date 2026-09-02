@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { selectAllowCustomAgents, selectBuiltInAgentEnabled, useConfigStore } from './config-store'
+import { managedModels } from '@shared/managed-models'
+import { selectAllowCustomAgents, selectBuiltInAgentEnabled, type AppConfig, useConfigStore } from './config-store'
 
 const storageKey = 'thunderbolt-config'
 
@@ -46,6 +47,14 @@ describe('config store', () => {
     useConfigStore.getState().updateConfig({ e2eeEnabled: false })
 
     expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: false })
+  })
+
+  it('stores the optional managed-model catalog', () => {
+    const config: AppConfig = { managedModels }
+
+    useConfigStore.getState().updateConfig(config)
+
+    expect(useConfigStore.getState().config.managedModels).toEqual(managedModels)
   })
 })
 

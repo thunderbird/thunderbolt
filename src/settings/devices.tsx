@@ -4,6 +4,7 @@
 
 import { useDatabase } from '@/contexts'
 import { getAllDevices, getPendingDevices, type Device } from '@/dal'
+import { isPairableDeviceType } from '@/dal/devices'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
@@ -141,6 +142,8 @@ const TrustedDeviceRow = ({
 }: TrustedDeviceRowProps) => {
   const isRevoked = device.revokedAt != null
   const isBridge = device.deviceType === 'bridge'
+  const isCli = device.deviceType === 'cli'
+  const supportsPairing = isPairableDeviceType(device.deviceType) || isBridge
   const pairingPanelId = `device-pairing-${device.id}`
   return (
     <DeviceCard>
@@ -149,6 +152,8 @@ const TrustedDeviceRow = ({
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 truncate font-medium">{device.name}</p>
             {isBridge && <DeviceBadge>Bridge</DeviceBadge>}
+            {isCli && <DeviceBadge>CLI</DeviceBadge>}
+            {isCli && !isRevoked && <DeviceBadge>Active</DeviceBadge>}
             {isCurrent && <DeviceBadge>This device</DeviceBadge>}
             {isRevoked && <DeviceBadge>Revoked</DeviceBadge>}
           </div>
@@ -189,7 +194,7 @@ const TrustedDeviceRow = ({
         </div>
       </div>
 
-      {!isRevoked && (
+      {!isRevoked && supportsPairing && (
         <div className="mt-3 flex flex-col gap-2 border-t pt-3">
           <p className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
             Pairing identity
@@ -262,7 +267,10 @@ export default function DevicesSettingsPage() {
   const pairing = useDevicePairing()
 
   const dialogDevice = devices.find((d) => d.id === pairing.dialogFor) ?? null
-
+  const revokeDevice =
+    confirmationTarget?.action === 'revoke'
+      ? devices.find((device) => device.id === confirmationTarget.deviceId)
+      : undefined
   const confirmSetNodeId = async (nodeId: string) => {
     if (!pairing.dialogFor) {
       return
@@ -359,7 +367,7 @@ export default function DevicesSettingsPage() {
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
         onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
-        variant="trusted"
+        variant={revokeDevice?.deviceType === 'cli' ? 'cli' : 'trusted'}
       />
 
       <RevokeDeviceDialog

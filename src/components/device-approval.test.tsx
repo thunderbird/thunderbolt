@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { SignInModalProvider } from '@/contexts'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -17,13 +18,16 @@ import { DeviceApproval } from './device-approval'
 type FetchResult = { data: unknown; error: unknown }
 type Handlers = Partial<Record<string, () => FetchResult>>
 
-const NavigationSpy = ({ onLocationChange }: { onLocationChange: (pathname: string) => void }) => {
+const NavigationSpy = ({ onLocationChange }: { onLocationChange: (location: string) => void }) => {
   const location = useLocation()
-  onLocationChange(location.pathname)
+  onLocationChange(`${location.pathname}${location.search}`)
   return null
 }
 
 const authedSession = { user: { id: 'user-1', email: 'user@example.com' } }
+const anonymousSession = {
+  user: { id: 'anonymous-1', email: 'anonymous@example.com', isAnonymous: true },
+}
 
 const makeFetch = (handlers: Handlers) =>
   mock(async (path: string) => (handlers[path] ?? (() => ({ data: null, error: null })))())
@@ -53,31 +57,33 @@ describe('DeviceApproval', () => {
     handlers = {},
   }: {
     code?: string
-    session?: typeof authedSession | null
+    session?: typeof authedSession | typeof anonymousSession | null
     handlers?: Handlers
   }) => {
     const url = code ? `/device?user_code=${code}` : '/device'
     const fetch = makeFetch(handlers)
     const authClient = createMockAuthClient({ session, fetch })
 
-    let lastPathname = '/device'
+    let lastLocation = url
     const TestProvider = createTestProvider({ authClient })
 
     render(
       <>
         <DeviceApproval />
-        <NavigationSpy onLocationChange={(p) => (lastPathname = p)} />
+        <NavigationSpy onLocationChange={(location) => (lastLocation = location)} />
       </>,
       {
         wrapper: ({ children }: { children: ReactNode }) => (
           <MemoryRouter initialEntries={[url]}>
-            <TestProvider>{children}</TestProvider>
+            <TestProvider>
+              <SignInModalProvider>{children}</SignInModalProvider>
+            </TestProvider>
           </MemoryRouter>
         ),
       },
     )
 
-    return { fetch, getLastPathname: () => lastPathname }
+    return { fetch, getLastLocation: () => lastLocation }
   }
 
   const flush = async () => {
@@ -88,15 +94,27 @@ describe('DeviceApproval', () => {
 
   describe('authentication gate', () => {
     it('redirects unauthenticated visitors into the auth flow', () => {
-      const { getLastPathname } = renderPage({ code: 'ABCD1234', session: null })
+      const { getLastLocation } = renderPage({ code: 'ABCD1234', session: null })
 
-      expect(getLastPathname()).toBe('/')
+      expect(getLastLocation()).toBe('/')
     })
 
     it('does not call any device endpoint when unauthenticated', () => {
       const { fetch } = renderPage({ code: 'ABCD1234', session: null })
 
       expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('offers real sign-in in place for an anonymous session without claiming the code', async () => {
+      const { fetch, getLastLocation } = renderPage({ code: 'ABCD1234', session: anonymousSession })
+      await flush()
+
+      expect(screen.queryByRole('dialog', { name: 'Sign In' })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+      expect(screen.getByRole('dialog', { name: 'Sign In' })).toBeInTheDocument()
+      expect(getLastLocation()).toBe('/device?user_code=ABCD1234')
+      expect(fetch).not.toHaveBeenCalled()
+      expect(takeDeviceApprovalReturn()).toBeNull()
     })
 
     it('stashes the return URL so the code survives the login redirect', () => {

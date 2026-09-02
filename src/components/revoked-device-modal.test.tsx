@@ -7,7 +7,7 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { RevokedDeviceModal } from './revoked-device-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
@@ -15,18 +15,16 @@ mock.module('@/lib/cleanup', () => ({
   clearLocalData: mockClearLocalData,
 }))
 
-const mockReplace = mock()
-Object.defineProperty(window, 'location', {
-  value: { replace: mockReplace },
-  writable: true,
-})
-
 describe('RevokedDeviceModal', () => {
+  let mockReplace: ReturnType<typeof spyOn>
+
   beforeAll(async () => {
     await setupTestDatabase()
+    mockReplace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
   })
 
   afterAll(async () => {
+    mockReplace.mockRestore()
     await teardownTestDatabase()
   })
 

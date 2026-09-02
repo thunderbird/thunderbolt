@@ -9,6 +9,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import { clearAuthToken, getAuthToken, onAuthTokenChangedInOtherTab, setAuthToken } from '@/lib/auth-token'
 import { getPlatform } from '@/lib/platform'
 import { clearCachedSession, getCachedSession, isCachedSessionValid, setCachedSession } from '@/lib/session-cache'
+import { normalizeBackendUrl } from '@/lib/url-utils'
 import { anonymousClient, emailOTPClient } from 'better-auth/client/plugins'
 import { createAuthClient } from 'better-auth/react'
 import { consumePendingSsoAnonAlias } from '@/lib/analytics/anonymous-promotion-sso-bridge'
@@ -21,7 +22,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode }
  * in the settings database for persistence across app restarts.
  */
 const createAuthClientInstance = (cloudUrl: string) => {
-  const baseURL = cloudUrl.replace(/\/v1$/, '') // Better Auth adds /api/auth
+  const baseURL = normalizeBackendUrl(cloudUrl).replace(/\/v1$/, '') // Better Auth adds /api/auth
   const platform = getPlatform()
 
   const client = createAuthClient({

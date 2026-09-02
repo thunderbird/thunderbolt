@@ -85,6 +85,17 @@ const resolveUrl = (url: string, prefixUrl?: string): string => {
   return `${base}${url}`
 }
 
+/** Match a request against the configured backend origin and path prefix. */
+const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
+  const request = new URL(requestUrl)
+  const backendPath = backendUrl.pathname.replace(/\/+$/, '')
+
+  return (
+    request.origin === backendUrl.origin &&
+    (backendPath === '' || request.pathname === backendPath || request.pathname.startsWith(`${backendPath}/`))
+  )
+}
+
 const makeResponsePromise = (promise: Promise<Response>): ResponsePromise => {
   const rp = promise as ResponsePromise
   rp.json = <T>(): Promise<T> => promise.then((res) => res.json())
@@ -170,9 +181,12 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
-  const normalizedPrefix = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
+  const backendUrl =
+    prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
+      ? new URL(prefixUrl)
+      : new URL(prefixUrl, window.location.href)
   return createClient({
-    prefixUrl,
+    prefixUrl: backendUrl.href,
     fetch: config.fetch,
     credentials: config.credentials,
     hooks: {
@@ -186,14 +200,15 @@ export const createAuthenticatedClient = (
           }
           // Inject device identity headers only for app backend requests (not external APIs).
           // Uses the same prefix guard as the afterResponse 401 handler below.
-          if (request.url === prefixUrl || request.url.startsWith(normalizedPrefix)) {
+          if (isBackendRequest(request.url, backendUrl)) {
             const deviceId = getDeviceId()
             if (deviceId) {
               request.headers.set('X-Device-ID', deviceId)
               request.headers.set('X-Device-Name', getDeviceDisplayName())
             }
-            if (import.meta.env.VITE_APP_VERSION) {
-              request.headers.set('X-App-Version', import.meta.env.VITE_APP_VERSION)
+            const appVersion = import.meta.env.VITE_APP_VERSION
+            if (appVersion) {
+              request.headers.set('X-App-Version', appVersion)
             }
           }
         },
@@ -205,7 +220,7 @@ export const createAuthenticatedClient = (
           if (response.status !== 401 || !request.headers.has('Authorization')) {
             return
           }
-          if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
+          if (!isBackendRequest(request.url, backendUrl)) {
             return
           }
           window.dispatchEvent(

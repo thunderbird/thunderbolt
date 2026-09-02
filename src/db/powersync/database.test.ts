@@ -87,7 +87,7 @@ describe('getPowerSyncOptions', () => {
     it('enables multi-tab sync selection and provides a dedicated sync worker factory', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
       // PowerSyncDatabase-level enableMultiTabs: true selects the off-thread
-      // SharedWebStreamingSyncImplementation (THU-777); the DB factory keeps its own false.
+      // SharedWebStreamingSyncImplementation; the DB factory keeps its own false.
       expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
       expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
     })

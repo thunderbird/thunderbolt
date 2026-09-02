@@ -95,7 +95,7 @@ export const getPowerSyncOptions = (
    * The DB runs in a dedicated Worker via an explicit UMD path (import.meta.url fails under
    * tauri:// for node_modules workers).
    *
-   * Sync runs in a dedicated Worker too (THU-777): the PowerSyncDatabase-level
+   * Sync runs in a dedicated Worker too: the PowerSyncDatabase-level
    * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the
    * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker.
    *

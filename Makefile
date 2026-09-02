@@ -84,8 +84,16 @@ setup: setup-symlinks
 	else \
 		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
 	fi
-	@echo "$(BLUE)→ Installing Playwright browsers (for `make e2e` tests)...$(NC)"
-	bunx playwright install
+	@echo "$(BLUE)→ Installing Playwright browsers (for make e2e tests)...$(NC)"
+	@if [ "$$(uname -s)" = "Linux" ] \
+		&& { [ "$$(uname -m)" = "aarch64" ] || [ "$$(uname -m)" = "arm64" ]; } \
+		&& [ -r /etc/os-release ] \
+		&& ( . /etc/os-release; [ "$${ID:-}" = "ubuntu" ] && [ "$${VERSION_ID:-}" = "26.04" ] ); then \
+		echo "$(YELLOW)! Using Playwright's Ubuntu 24.04 ARM64 browsers on Ubuntu 26.04$(NC)"; \
+		PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-arm64 bunx playwright install; \
+	else \
+		bunx playwright install; \
+	fi
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 
 # Install dependencies

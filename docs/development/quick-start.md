@@ -80,6 +80,7 @@ For other distributions, use the upstream
 - **`make up` fails with a Postgres data-format error** — the Postgres image was bumped to v18, which changed its on-disk layout. If your local volume was created with an older version, run `make nuke` to wipe it and re-init (you'll lose any local DB state).
 - **Backend errors with `BETTER_AUTH_SECRET`** — run `make doctor`; it generates one for you. Or set it manually with `openssl rand -base64 32`.
 - **`powersyncJwtSecret must be at least 32 characters`** — set `POWERSYNC_JWT_SECRET` in `backend/.env` to match the one baked into `powersync-service/config/config.yaml`.
+- **Playwright on Ubuntu 26.04 ARM64** — `make setup` automatically uses Playwright's Ubuntu 24.04 ARM64 browser build until Playwright supports 26.04 directly.
 - **Tests behave weirdly** — fake timers are globally installed; see [testing.md](./testing.md).
 
 ## Helpful Makefile Targets

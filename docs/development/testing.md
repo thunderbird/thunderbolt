@@ -3,7 +3,7 @@
 ## Running Tests
 
 ```sh
-# Run frontend tests (src/ + shared/*.test.ts + selected scripts and .github script tests)
+# Run frontend tests (src/ + shared/ non-agent-core tests + selected scripts and .github script tests)
 bun run test
 
 # Run the isolated shared/agent-core module's unit tests (NOT part of `bun run test`; CI runs these only when shared/agent-core/** changes)
@@ -23,7 +23,7 @@ bun run e2e
 bun run e2e:headed   # with a visible browser
 ```
 
-**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs `shared/*.test.ts`, `scripts/create-release.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
+**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
 
 **`shared/agent-core` is the app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package**, not that package itself. Its nested unit tests sit outside frontend test discovery, so they are intentionally **not** part of `bun run test`. Run them with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate). In CI, the dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs `bun run test:agent-core:5x` only when `shared/agent-core/**` changes. The CLI imports the npm Pi package directly; it does not consume the browser adapter, and its integration coverage lives in the CLI suite.
 

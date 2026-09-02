@@ -257,6 +257,16 @@ Judge seedability **per setting**, not across the group — a user who picks a c
 
 **`date_format` is retired** (THU-810). CLDR already knows each locale's date pattern, and the three patterns the setting offered were a strictly worse subset. Existing rows are left in place, unmanaged.
 
+### The `X-App-Language` header
+
+The client sends the **already-resolved** locale — a single tag, not a preference list — on every app-backend request (`src/lib/http.ts`, `src/lib/auth-token.ts`, `src/contexts/auth-context.tsx`). The backend forwards rather than re-negotiates. Two backend paths read it: link previews (below) and transactional email (`resolveEmailLocale`, next section).
+
+- **The backend validates it against `negotiableLocales`, never trusts it.** `matchExactLocale` (`shared/i18n/locales.ts`) returns the set's *own* tag or null, so a client-controlled string can never reach an outbound request. That is what makes it safe for `backend/src/utils/accept-language.ts` to build the `Accept-Language` we present to arbitrary third-party pages when generating link previews (THU-823). Matching is exact on purpose — no base-language fallback, unlike `matchLocale`, which negotiates *browser* tags.
+- **`negotiableLocales` lives in `shared/i18n/locales.ts` because both ends trust it.** Don't re-derive it from `appLocales`: that set includes the `en-XA` pseudo-locale, so filtering it yourself is how the pseudo-locale leaks into a real code path. The module stays free of runtime imports so the Lingui CLI can load it outside Vite.
+- **It is an outer-hop header, exactly like `X-App-Version`.** It must never become a `/v1/proxy` passthrough header, or it would leak to external LLM/MCP upstreams — hence its entry in `skipHeaders` (`src/lib/proxy-fetch.ts`).
+
+Geocoding (`/v1/locations`) is deliberately *not* on this path — it takes an explicit language argument instead, because the call site sometimes needs English on purpose to keep location matching stable (see THU-847).
+
 ### Transactional email (backend)
 
 The four templates in `backend/src/emails/` (plus `email-layout.tsx`, which is shared chrome) are the main place the backend authors user-facing prose. Most other responses return a code the client translates at its display boundary — but not all: the 429 in `backend/src/waitlist/routes.ts` sends English `message` text that `use-sign-in-form-state.ts` renders verbatim, so a German user can still get a German email and an English toast from one click. THU-824 did not cover that. The email setup has its own Lingui wiring, and it differs from the frontend's in three ways that will bite if you assume otherwise.

@@ -90,6 +90,32 @@ See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the 
 
 Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass. Leave this empty unless you know your edge.
 
+## CLI Device Rollout
+
+| Variable                          | Default | Description                                                      |
+| --------------------------------- | ------- | ---------------------------------------------------------------- |
+| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking    |
+| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true` |
+
+Rollout has three mandatory, old-client-safe stages:
+
+1. **Existing clients first:** ship web, desktop, and mobile schema/UI support
+   that can safely parse and display `deviceType: cli`. If the compatible
+   installed base cannot be guaranteed, enforce a minimum-version gate before
+   enabling CLI registration on the backend.
+2. **Backend second:** deploy the public catalog, CLI registration/logout,
+   revocation enforcement, and managed inference routes. Changes to shared
+   managed-model, default-model, or usage-receipt inputs must rebuild the backend
+   image.
+3. **CLI last:** publish the native CLI artifacts only after the compatible
+   existing clients and backend are live.
+
+This remains backend-first relative to the CLI binary while preventing an older
+web, desktop, or mobile client from receiving a device type its schema or UI
+cannot handle. It also prevents a new CLI from discovering a catalog whose
+required auth or inference contracts the deployed backend does not yet
+implement.
+
 ## Waitlist
 
 | Variable                        | Default | Description                                                       |

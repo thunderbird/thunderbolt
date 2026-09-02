@@ -24,7 +24,7 @@ import {
   parseGuestResult,
   selectionQueryResultSchema,
   toolsCallResultSchema,
-  toolsListResultSchema,
+  parseToolsList,
   type MiniAppGuestCapabilities,
   type MiniAppGuestMessage,
   type MiniAppHostRequest,
@@ -544,16 +544,22 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     }
     let cancelled = false
     void request(miniAppHostMethods.toolsList, {}, toolsRequestTimeoutMs).then((result) => {
-      const parsed = toolsListResultSchema.safeParse(result)
-      if (cancelled || !parsed.success) {
+      if (cancelled) {
         return
       }
-      setTools(parsed.data.tools, callTool)
+      const { tools, dropped } = parseToolsList(result)
+      if (dropped > 0) {
+        // Loud on purpose: an app author's tool going missing is otherwise
+        // indistinguishable from the model choosing not to call it.
+        console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed tool descriptor(s) from tools/list`)
+      }
+      setTools(tools, callTool)
     })
     return () => {
       cancelled = true
     }
-    // `callTool` and `request` are stable for the life of a connection.
+    // `callTool` and `request` are stable for the life of a connection, and a
+    // different `app.id` arrives as a different route and remounts this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, handshakeEpoch, request, setTools])
 

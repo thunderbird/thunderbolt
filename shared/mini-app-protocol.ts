@@ -457,6 +457,15 @@ export type MiniAppSelectionQueryResult = z.infer<typeof selectionQueryResultSch
  * which stays inside the guest — the host only ever names a tool, never holds a
  * reference to its implementation.
  */
+/**
+ * Prompt budget for one tool's description. See {@link miniAppToolSchema}, and
+ * {@link parseToolsList} for what happens when an app exceeds it.
+ */
+export const maxToolDescriptionChars = 300
+
+/** Most tools one app can advertise. */
+export const maxToolsPerApp = 64
+
 export const miniAppToolSchema = z.object({
   /** WebMCP's constraint, adopted verbatim so descriptors port unchanged. */
   name: z
@@ -470,8 +479,11 @@ export const miniAppToolSchema = z.object({
    * could contribute a quarter of a megabyte of instructions sitting above our
    * own tool policy. A one-line description of what a tool does needs nothing
    * like that; the full schema travels separately in the tool definition.
+   *
+   * Over-long descriptions are truncated by {@link parseToolsList}, not
+   * rejected — see the reasoning there.
    */
-  description: z.string().min(1).max(300),
+  description: z.string().min(1).max(maxToolDescriptionChars),
   /** JSON Schema for the arguments. Absent means the tool takes none. */
   inputSchema: z.record(z.string(), z.unknown()).optional(),
   annotations: z
@@ -493,8 +505,46 @@ export type MiniAppTool = z.infer<typeof miniAppToolSchema>
 
 /** Guest's answer to `tools/list`. */
 export const toolsListResultSchema = z.object({
-  tools: z.array(miniAppToolSchema).max(64),
+  tools: z.array(miniAppToolSchema).max(maxToolsPerApp),
 })
+
+/**
+ * Parse a `tools/list` reply, tolerating individual bad descriptors.
+ *
+ * Parsing the array strictly was a real bug: one tool whose description ran
+ * over the cap failed the whole `tools` array, so the host discarded *every*
+ * tool the app had — silently. The model simply had nothing to call, the app
+ * looked inert, and nothing anywhere said why. An app author writing one
+ * sentence too many is a formatting problem, not a reason to disable their app.
+ *
+ * So descriptions are **truncated** rather than rejected: the cap is our prompt
+ * budget, not a correctness constraint, and a description cut short still tells
+ * the model far more than no tool at all. Anything else invalid — a malformed
+ * name, a description that is missing or empty — drops that one tool and is
+ * reported to the caller, which logs it.
+ */
+export const parseToolsList = (result: unknown): { tools: MiniAppTool[]; dropped: number } => {
+  const envelope = z.object({ tools: z.array(z.unknown()).max(maxToolsPerApp) }).safeParse(result)
+  if (!envelope.success) {
+    return { tools: [], dropped: 0 }
+  }
+
+  const tools: MiniAppTool[] = []
+  let dropped = 0
+  for (const candidate of envelope.data.tools) {
+    const truncated =
+      candidate && typeof candidate === 'object' && typeof (candidate as MiniAppTool).description === 'string'
+        ? { ...candidate, description: (candidate as MiniAppTool).description.slice(0, maxToolDescriptionChars) }
+        : candidate
+    const parsed = miniAppToolSchema.safeParse(truncated)
+    if (parsed.success) {
+      tools.push(parsed.data)
+      continue
+    }
+    dropped += 1
+  }
+  return { tools, dropped }
+}
 
 /** Guest's answer to `tools/call`. */
 export const toolsCallResultSchema = z.object({

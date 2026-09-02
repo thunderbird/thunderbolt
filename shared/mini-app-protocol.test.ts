@@ -9,6 +9,8 @@ import {
   miniAppProtocolVersion,
   parseGuestMessage,
   parseGuestResult,
+  parseToolsList,
+  maxToolDescriptionChars,
   toolsListResultSchema,
   selectionQueryResultSchema,
 } from './mini-app-protocol'
@@ -303,5 +305,46 @@ describe('selectionQueryResultSchema', () => {
   it('rejects more items than the cap', () => {
     const many = Array.from({ length: 51 }, (_, i) => ({ ...item, id: String(i) }))
     expect(selectionQueryResultSchema.safeParse({ items: many }).success).toBe(false)
+  })
+})
+
+describe('parseToolsList', () => {
+  const tool = (overrides: Record<string, unknown> = {}) => ({
+    name: 'set_assumption',
+    description: 'Change one input of the model.',
+    ...overrides,
+  })
+
+  it('reads a well-formed list', () => {
+    expect(parseToolsList({ tools: [tool()] })).toEqual({ tools: [tool()], dropped: 0 })
+  })
+
+  /*
+   * The bug this exists for: the finance sample's description ran 386 characters
+   * against a 300 cap, the whole array failed to parse, and the app silently had
+   * no tools at all. One long sentence must not disable an app.
+   */
+  it('truncates an over-long description instead of dropping the tool', () => {
+    const long = 'x'.repeat(500)
+    const { tools, dropped } = parseToolsList({ tools: [tool({ description: long })] })
+
+    expect(dropped).toBe(0)
+    expect(tools).toHaveLength(1)
+    expect(tools[0].description).toHaveLength(maxToolDescriptionChars)
+  })
+
+  it('keeps the good tools when one descriptor is genuinely malformed', () => {
+    const { tools, dropped } = parseToolsList({ tools: [tool(), tool({ name: 'has spaces' })] })
+
+    expect(tools.map((t) => t.name)).toEqual(['set_assumption'])
+    expect(dropped).toBe(1)
+  })
+
+  it('reports an empty description as dropped rather than padding it', () => {
+    expect(parseToolsList({ tools: [tool({ description: '' })] })).toEqual({ tools: [], dropped: 1 })
+  })
+
+  it('returns nothing for a reply that is not a tool list', () => {
+    expect(parseToolsList({ nope: true })).toEqual({ tools: [], dropped: 0 })
   })
 })

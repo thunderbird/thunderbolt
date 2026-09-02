@@ -151,6 +151,17 @@ and it fails safe when the annotation is absent (absent means ask). It is not a 
 perform the same action directly without asking anyone. Making it one would mean the operator classifying each tool in
 `MINI_APPS` instead of trusting the descriptor — worth doing the day apps stop being first-party.
 
+### Descriptor limits
+
+A tool's `description` reaches the *system* prompt once per tool for the life of the turn's cached prefix, so it is
+capped at 300 characters (`maxToolDescriptionChars`), and an app may advertise at most 64 tools.
+
+The cap is enforced by truncation, not rejection, and one bad descriptor never costs an app its other tools —
+`parseToolsList` validates each entry on its own. That is a correction, not a design: parsing the array strictly
+meant a single over-long description discarded the *entire* toolset, silently, and the finance sample shipped for a
+while with a 386-character description and no working tools at all. If a descriptor is dropped for any other reason
+the host logs it, because a tool going missing is otherwise indistinguishable from the model choosing not to call it.
+
 ## Layout
 
 ```

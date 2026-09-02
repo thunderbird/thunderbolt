@@ -3883,6 +3883,7 @@ msgid "Unreachable {relative}"
 msgstr "Injoignable {relative}"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "Conversation sans titre"
 

@@ -3871,6 +3871,7 @@ msgid "Unreachable {relative}"
 msgstr "Unreachable {relative}"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "Untitled chat"
 

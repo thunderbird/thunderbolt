@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { LineChart } from 'lucide-react'
-import type { MiniAppContext } from '@shared/mini-app-protocol'
+import { maxContextPayloadChars, type MiniAppContext } from '@shared/mini-app-protocol'
 import { formatMiniAppContext } from './mini-app-context-tool'
 import type { MiniAppDefinition } from './registry'
 
@@ -55,5 +55,49 @@ describe('formatMiniAppContext', () => {
     const output = formatMiniAppContext(app, { title: 't', summary: 's', data: 0, selection: false })
     expect(output).toContain('Selected:')
     expect(output).toContain('Full state:')
+  })
+
+  /**
+   * `data` is the one guest field with no schema bound — it has to stay
+   * arbitrary structure — so the ceiling lives here, where it would otherwise
+   * reach the model verbatim on every read.
+   */
+  it('withholds a data payload larger than the ceiling, and says so', () => {
+    const huge = { blob: 'x'.repeat(maxContextPayloadChars * 2) }
+    const output = formatMiniAppContext(app, { title: 'Big', summary: 'A large model.', data: huge })
+
+    expect(output).not.toContain('xxxxxxxxxx')
+    expect(output).toContain('withheld')
+    expect(output).toContain(`over the ${maxContextPayloadChars}-character limit`)
+    // The prose the author wrote for the model survives the payload being dropped.
+    expect(output).toContain('A large model.')
+  })
+
+  it('applies the same ceiling to selection', () => {
+    const huge = { blob: 'x'.repeat(maxContextPayloadChars * 2) }
+    const output = formatMiniAppContext(app, { title: 'Big', summary: 's', selection: huge })
+
+    expect(output).toContain('Selected: withheld')
+    expect(output).not.toContain('xxxxxxxxxx')
+  })
+
+  it('keeps a payload that sits just under the ceiling', () => {
+    const snug = 'y'.repeat(maxContextPayloadChars - 100)
+    const output = formatMiniAppContext(app, { title: 'Snug', summary: 's', data: snug })
+
+    expect(output).toContain('Full state:')
+    expect(output).toContain(snug)
+  })
+
+  /** `postMessage` clones with structured clone, which carries cycles that
+   *  `JSON.stringify` throws on — so the app really can hand us one. */
+  it('reports an unserialisable payload instead of throwing', () => {
+    const cyclic: Record<string, unknown> = { name: 'loop' }
+    cyclic.self = cyclic
+
+    const output = formatMiniAppContext(app, { title: 'Cyclic', summary: 'Still readable.', data: cyclic })
+
+    expect(output).toContain('could not be serialised')
+    expect(output).toContain('Still readable.')
   })
 })

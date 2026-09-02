@@ -160,12 +160,35 @@ export type MiniAppHostCapabilities = {
   /** The host honours `ui/open-chat`. */
   chat: boolean
   /**
-   * The host can mint identity tokens for this app. False when the deployment
-   * has no audience configured for it, so a guest can tell "not set up" apart
-   * from "request failed" and say something useful instead of retrying.
+   * The host will answer `ui/request-auth-token` for this app.
+   *
+   * Deliberately *not* "the token in this reply arrived": the mint is a network
+   * call on the handshake's critical path, and reporting `false` because one
+   * attempt failed tells a guest to stop asking — which is what `false` means
+   * here — over what is usually a transient error. A guest that declared `auth`
+   * and got no `auth` field should retry; one told `auth: false` should give up
+   * and say so.
    */
   auth: boolean
 }
+
+/**
+ * Ceiling on a serialised `data` or `selection` payload, in characters.
+ *
+ * `data` has to stay arbitrary structure — that is what lets an app forward the
+ * state it already has instead of writing a second one for us — but arbitrary
+ * structure is not the same as arbitrary size. Everything else a guest can hand
+ * over is bounded (`summary` 20k, `title` 200, a runtime error 500), and this is
+ * the one field that reaches the model verbatim on every `get_app_context`
+ * call, so an app that publishes its whole store would otherwise put an
+ * unbounded blob in the context window on every read and bill the user for it.
+ *
+ * Applied at format time rather than at parse: an over-sized `data` costs the
+ * model that field, not the `title` and `summary` the author wrote for it, and
+ * the model is told the payload was withheld rather than left to assume the app
+ * has no state. Roughly the same order as `summary`, for the same reason.
+ */
+export const maxContextPayloadChars = 20_000
 
 /**
  * The payload the chat reasons about — the heart of the protocol.
@@ -180,9 +203,11 @@ export const miniAppContextSchema = z.object({
   title: z.string().max(200),
   /** Model-facing prose describing what the user is looking at. */
   summary: z.string().max(20_000),
-  /** Arbitrary app-defined state. Never interpreted by the host. */
+  /** Arbitrary app-defined state. Never interpreted by the host.
+   *  Dropped from the model's view past {@link maxContextPayloadChars} serialised. */
   data: z.unknown().optional(),
-  /** What is focused/selected right now, when the app has a notion of it. */
+  /** What is focused/selected right now, when the app has a notion of it.
+   *  Bounded the same way as `data`. */
   selection: z.unknown().optional(),
 })
 
@@ -276,16 +301,25 @@ export const selectionChangedNotificationSchema = envelopeSchema.extend({
 export type MiniAppSelectionChanged = z.infer<typeof selectionChangedNotificationSchema>
 
 /**
- * Every message the host accepts from a guest. A discriminated union on `method`
- * so an unknown method fails parsing here rather than deeper in the bridge.
+ * `ui/request-auth-token` — guest → host request. No params.
+ *
+ * `jsonRpcIdSchema` like every other request, not `z.number()`. It was numeric
+ * for a while, and because this is a discriminated union a guest whose JSON-RPC
+ * library mints string ids uniformly — a perfectly ordinary choice, and one that
+ * worked for its handshake and its `ui/open-chat` — had this one message fail
+ * the parse and get dropped with no reply. Token refresh silently stopped, and a
+ * frame that outlived its token had no way back.
  */
-/** `ui/request-auth-token` — guest → host request. No params. */
 export const requestAuthTokenSchema = envelopeSchema.extend({
-  id: z.number(),
+  id: jsonRpcIdSchema,
   method: z.literal(miniAppGuestMethods.requestAuthToken),
   params: z.object({}).default({}),
 })
 
+/**
+ * Every message the host accepts from a guest. A discriminated union on `method`
+ * so an unknown method fails parsing here rather than deeper in the bridge.
+ */
 export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
   requestAuthTokenSchema,
   initializeRequestSchema,
@@ -588,8 +622,9 @@ export type MiniAppPlatform = 'web' | 'desktop' | 'ios' | 'android'
 export type MiniAppHostContext = {
   theme: MiniAppTheme
   /**
-   * BCP 47 tag, e.g. `de-DE`. Sourced from the browser today; move this to the
-   * account's language setting once the i18n layer lands (THU-812).
+   * BCP 47 tag, e.g. `de-DE`. The language the user chose in Thunderbolt, not
+   * `navigator.language` — a German user reading a German UI should not get an
+   * app formatting US currency beside it.
    */
   locale: string
   platform: MiniAppPlatform

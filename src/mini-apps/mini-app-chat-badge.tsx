@@ -17,10 +17,12 @@
 
 import { useLingui } from '@lingui/react/macro'
 
+import { useSettings } from '@/hooks/use-settings'
 import { findMiniApp } from './registry'
 import { useMiniApps } from './use-mini-apps'
 
-export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
+/** The icon itself, for a device where Mini Apps are on. */
+const MiniAppChatBadgeIcon = ({ appId }: { appId: string }) => {
   const { t } = useLingui()
   const { apps } = useMiniApps()
   const app = findMiniApp(apps, appId)
@@ -36,4 +38,22 @@ export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
       role="img"
     />
   )
+}
+
+export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
+  const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
+
+  // Chats sync; the feature flag doesn't. The same reasoning as
+  // `MiniAppChatBanner`: a chat started where Mini Apps are on can land on a
+  // device where they're off, and `/apps/:appId` isn't even a route there — so
+  // painting an app's iconography on the row points at a door that isn't there.
+  //
+  // The gate is a wrapper rather than an early return inside the icon so a
+  // flag-off device doesn't mount `useMiniApps` at all, and never fires the
+  // registry fetch for a badge it isn't going to draw.
+  if (!experimentalFeatureMiniApps.value) {
+    return null
+  }
+
+  return <MiniAppChatBadgeIcon appId={appId} />
 }

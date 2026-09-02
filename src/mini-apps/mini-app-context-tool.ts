@@ -19,12 +19,44 @@
 
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
-import type { MiniAppContext } from '@shared/mini-app-protocol'
+import { maxContextPayloadChars, type MiniAppContext } from '@shared/mini-app-protocol'
 import type { MiniAppDefinition } from './registry'
 
 export type MiniAppContextToolDeps = {
   /** Snapshot reader, injected so tests don't need the store. */
   getSnapshot: () => { app: MiniAppDefinition | null; context: MiniAppContext | null }
+}
+
+/**
+ * Render one app-supplied payload as JSON, or say why it isn't here.
+ *
+ * Two ways a payload doesn't make it. It can be too big — see
+ * {@link maxContextPayloadChars}; the app controls this value and nothing else
+ * it sends is unbounded. Or it can be unserialisable: `postMessage` clones with
+ * the structured clone algorithm, which carries cycles that `JSON.stringify`
+ * throws on.
+ *
+ * Either way the model is *told*, rather than shown a section that silently
+ * isn't there — "the app has no state" and "the app has more state than fits"
+ * lead to very different answers, and only the app's own author can fix the
+ * second one.
+ */
+const renderPayload = (label: string, value: unknown): string => {
+  const serialised = ((): string | null => {
+    try {
+      return JSON.stringify(value, null, 2) ?? null
+    } catch {
+      return null
+    }
+  })()
+
+  if (serialised === null) {
+    return `${label}: the app reported a value that could not be serialised, so it is not shown here.`
+  }
+  if (serialised.length > maxContextPayloadChars) {
+    return `${label}: withheld — the app reported ${serialised.length} characters, over the ${maxContextPayloadChars}-character limit. Answer from the summary above, and say that the full payload was too large to read.`
+  }
+  return `${label}:\n${serialised}`
 }
 
 /**
@@ -38,10 +70,10 @@ export const formatMiniAppContext = (app: MiniAppDefinition, context: MiniAppCon
   }
   const parts = [`Currently viewing: ${context.title}`, context.summary]
   if (context.selection !== undefined) {
-    parts.push(`Selected:\n${JSON.stringify(context.selection, null, 2)}`)
+    parts.push(renderPayload('Selected', context.selection))
   }
   if (context.data !== undefined) {
-    parts.push(`Full state:\n${JSON.stringify(context.data, null, 2)}`)
+    parts.push(renderPayload('Full state', context.data))
   }
   return parts.join('\n\n')
 }

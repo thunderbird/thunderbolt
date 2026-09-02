@@ -3859,6 +3859,7 @@ msgid "Unreachable {relative}"
 msgstr "{relative}に到達不能"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "無題のチャット"
 

@@ -124,15 +124,26 @@ const token = { token: 'jwt.for.finance', expiresAt: '2099-01-01T00:00:00.000Z' 
 /** An HTTP client that answers every call with a token and remembers who asked. */
 const recordingHttpClient = () => {
   const paths: string[] = []
+  const signals: AbortSignal[] = []
   const client = createClient({
     prefixUrl: 'http://test-api.local',
     fetch: async (input: Request | string | URL) => {
       paths.push(new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).pathname)
+      if (input instanceof Request && input.signal) {
+        signals.push(input.signal)
+      }
       return new Response(JSON.stringify(token), { headers: { 'Content-Type': 'application/json' } })
     },
   })
-  return { client, paths }
+  return { client, paths, signals }
 }
+
+/** A client whose token route always fails, the way a 500 or an offline tab would. */
+const failingHttpClient = () =>
+  createClient({
+    prefixUrl: 'http://test-api.local',
+    fetch: async () => new Response('nope', { status: 500 }),
+  })
 
 const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClient = recordingHttpClient().client) => {
   const bridge: { current: Bridge | null } = { current: null }
@@ -142,7 +153,7 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
     return <iframe ref={bridge.current.frameRef} title={app.name} src="about:blank" />
   }
 
-  render(
+  const { unmount } = render(
     <ThemeProvider>
       <HttpClientProvider httpClient={httpClient}>
         <Harness />
@@ -168,12 +179,12 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
   const envelope = (rest: Record<string, unknown>) => ({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, ...rest })
 
   /** The reply to one request — the host also posts unsolicited notifications. */
-  const replyTo = (id: number) => posted.find((message) => 'id' in message && message.id === id)
+  const replyTo = (id: number | string) => posted.find((message) => 'id' in message && message.id === id)
 
   const handshake = (capabilities: Record<string, boolean> = {}, version = miniAppProtocolVersion) =>
     send(envelope({ id: 1, method: 'ui/initialize', params: { protocolVersion: version, capabilities } }))
 
-  return { bridge, posted, replyTo, send, envelope, handshake }
+  return { bridge, posted, replyTo, send, envelope, handshake, unmount }
 }
 
 beforeEach(() => {
@@ -266,6 +277,52 @@ describe('useMiniAppBridge message handling', () => {
 
     expect(replyTo(7)).toMatchObject({ result: token })
     expect(paths).toEqual(['/mini-apps/finance/token', '/mini-apps/finance/token'])
+  })
+
+  /*
+   * `ui/request-auth-token` pinned its id to a number while every sibling request
+   * took `string | number`, so a guest whose JSON-RPC library mints string ids
+   * uniformly — a perfectly ordinary choice — had this one message fail the
+   * discriminated-union parse and vanish with no reply. Token refresh simply
+   * stopped, and a frame that outlived its token had no way back.
+   */
+  it('answers a token request that uses a string id, like every other request', async () => {
+    const { replyTo, send, envelope, handshake } = mountBridge()
+    await handshake({ auth: true })
+    await send(envelope({ id: 'refresh-1', method: 'ui/request-auth-token', params: {} }))
+
+    expect(replyTo('refresh-1')).toMatchObject({ result: token })
+  })
+
+  /*
+   * The mint is on the handshake's critical path, so a slow or broken token route
+   * must not cost the app its auth capability. `capabilities.auth` answers "will
+   * you serve `ui/request-auth-token`" — reporting it as false because one mint
+   * failed told a guest to stop asking, which is the documented meaning of false
+   * and the opposite of what we want here.
+   */
+  it('keeps the auth capability when the initial mint fails, so the guest retries', async () => {
+    const { bridge, replyTo, handshake } = mountBridge(() => {}, failingHttpClient())
+    await handshake({ auth: true })
+
+    const reply = replyTo(1) as { result: MiniAppInitializeResult }
+    expect(reply.result.capabilities.auth).toBe(true)
+    expect(reply.result.auth).toBeUndefined()
+    // A missing token is a degraded app, not a broken host.
+    expect(bridge.current?.status).toBe('ready')
+  })
+
+  it('abandons an in-flight mint when the user navigates away mid-handshake', async () => {
+    const { client, signals } = recordingHttpClient()
+    const { handshake, unmount } = mountBridge(() => {}, client)
+    await handshake({ auth: true })
+
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(false)
+
+    unmount()
+
+    expect(signals[0]?.aborted).toBe(true)
   })
 
   it('acknowledges an open-chat request before acting on it', async () => {

@@ -70,7 +70,7 @@ const validateOrigin = (request: Request, settings: Settings): boolean => {
 export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
   const apps = getMiniApps(settings)
 
-  if (Object.keys(apps).length === 0) {
+  if (apps.size === 0) {
     console.warn('No Mini Apps configured, skipping Mini App routes')
     return new Elysia({ prefix: '/mini-apps' })
   }
@@ -121,7 +121,10 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
             return { error: 'Forbidden', code: 'ANONYMOUS_MINI_APP_FORBIDDEN' }
           }
 
-          const app = apps[params.appId]
+          // `.get`, not an object index: `params.appId` is caller-controlled, and
+          // indexing a plain object with it let inherited `Object.prototype` keys
+          // pass the guard below (see `getMiniApps`).
+          const app = apps.get(params.appId)
           if (!app) {
             set.status = 404
             return { error: 'Unknown Mini App' }

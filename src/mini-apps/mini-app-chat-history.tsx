@@ -55,7 +55,7 @@ export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProp
         ) : (
           chats.map((chat) => (
             <DropdownMenuItem key={chat.id} onSelect={() => onOpenChat(chat.id)} className="flex flex-col items-start">
-              <span className="truncate w-full">{chat.title ?? 'Untitled chat'}</span>
+              <span className="truncate w-full">{chat.title ?? t`Untitled chat`}</span>
               <span className="text-[length:var(--font-size-xs)] text-muted-foreground">
                 {formatters.relativeTime(chat.lastActivityAt)}
               </span>

@@ -154,6 +154,15 @@ export const SandboxedHtmlFrame = ({
         return []
       }
       const result = await pending.issue(
+        // `'*'` is the only targetOrigin that can reach this frame, not a
+        // shortcut: `sandbox="allow-scripts"` without `allow-same-origin` gives
+        // the document an **opaque** origin, and an opaque origin never matches
+        // a URL-derived targetOrigin — naming one would silently drop every
+        // message. (The Mini App bridge, whose frames load from a real origin,
+        // does pin `app.origin`; the difference is the sandbox, not the care.)
+        // What travels is a viewport rectangle and the per-mount nonce the
+        // document was rendered with and already knows.
+        // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin; see above
         (id) => frame.postMessage(artifactRequest(nonce, id, artifactSelectionQueryMethod, { rect }), '*'),
         selectionQueryTimeoutMs,
       )

@@ -163,4 +163,7 @@ backend/src/api/mini-apps.ts    GET /mini-apps, POST /mini-apps/:appId/token
 backend/src/config/settings.ts  MINI_APPS parsing
 ```
 
-Template for a new app: `~/code/thunderbolt-miniapp-template`.
+A starter template for a new app — the two headers above, the guest half of the bridge, and a worked
+`ui/update-model-context` — is tracked as THU-834. It has no home yet; until it is published, copy the guest
+bridge out of one of the sample apps. (This line used to point at a path in one engineer's home directory,
+which resolved for exactly one person.)

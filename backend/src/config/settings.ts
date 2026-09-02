@@ -276,10 +276,18 @@ const miniAppEntrySchema = z
  * surfaces as a clear 404 rather than a token signed with `undefined`. Each one
  * is logged, because an app quietly missing from the sidebar is otherwise a
  * long afternoon.
+ *
+ * A `Map`, not a plain object, because the only thing that ever looks an app up
+ * is `POST /mini-apps/:appId/token` with an id straight off the URL. Indexing an
+ * object literal with that made `/mini-apps/toString/token` (or `constructor`,
+ * `valueOf`, `hasOwnProperty`) resolve to an inherited function — truthy, so the
+ * 404 guard never fired and the route fell through to signing a token whose
+ * `aud` and secret were both `undefined`. A `Map` only ever returns what was
+ * `set` on it, so the whole class of bug is gone rather than guarded against.
  */
-export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string, MiniAppConfig> => {
+export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, MiniAppConfig> => {
   if (!settings.miniApps) {
-    return {}
+    return new Map()
   }
   // `JSON.parse` throws on malformed input, so it can't go straight into
   // `safeParse` — a stray comma in an env var would take the process down.
@@ -288,11 +296,11 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string
     container = JSON.parse(settings.miniApps)
   } catch {
     console.error('[mini-apps] MINI_APPS is not valid JSON; no apps registered')
-    return {}
+    return new Map()
   }
   if (typeof container !== 'object' || container === null || Array.isArray(container)) {
     console.error('[mini-apps] MINI_APPS must be an object keyed by app id; no apps registered')
-    return {}
+    return new Map()
   }
 
   const entries = Object.entries(container).flatMap(([id, raw]) => {
@@ -304,12 +312,12 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Record<string
     }
     return [[id, app.data] as const]
   })
-  return Object.fromEntries(entries)
+  return new Map(entries)
 }
 
 /** The registry as the frontend receives it, with secrets stripped. */
 export const getPublicMiniApps = (settings: Pick<Settings, 'miniApps'>): PublicMiniApp[] =>
-  Object.entries(getMiniApps(settings)).map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
+  [...getMiniApps(settings)].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
 
 /**
  * Parse and validate environment variables into settings

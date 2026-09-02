@@ -45,34 +45,34 @@ const post = (auth: Auth, appId: string, origin = 'http://localhost:1420') =>
 
 describe('getMiniApps', () => {
   it('parses configured apps', () => {
-    expect(Object.keys(getMiniApps({ miniApps: registry }))).toEqual(['finance-model', 'patient-journeys'])
+    expect([...getMiniApps({ miniApps: registry }).keys()]).toEqual(['finance-model', 'patient-journeys'])
   })
 
   it('defaults url to origin, so operators need not repeat it', () => {
-    expect(getMiniApps({ miniApps: registry })['finance-model']?.url).toBe('http://localhost:5174')
+    expect(getMiniApps({ miniApps: registry }).get('finance-model')?.url).toBe('http://localhost:5174')
   })
 
   it('returns nothing for malformed JSON rather than throwing', () => {
-    expect(getMiniApps({ miniApps: '{ not json' })).toEqual({})
+    expect(getMiniApps({ miniApps: '{ not json' }).size).toBe(0)
   })
 
   it('drops entries with a short secret, so a weak key cannot sign', () => {
     const weak = JSON.stringify({ app: { name: 'A', origin: 'https://a.test', secret: 'tooshort' } })
-    expect(getMiniApps({ miniApps: weak })).toEqual({})
+    expect(getMiniApps({ miniApps: weak }).size).toBe(0)
   })
 
   /** An origin reaches `<iframe src>`, where a `javascript:` URL executes in
    *  our page rather than in a frame. */
   it('refuses a javascript: origin', () => {
     const hostile = JSON.stringify({ app: { name: 'A', origin: 'javascript:alert(1)', secret: financeSecret } })
-    expect(getMiniApps({ miniApps: hostile })).toEqual({})
+    expect(getMiniApps({ miniApps: hostile }).size).toBe(0)
   })
 
   it('refuses a javascript: url even behind a good origin', () => {
     const hostile = JSON.stringify({
       app: { name: 'A', origin: 'https://a.test', url: 'javascript:alert(1)', secret: financeSecret },
     })
-    expect(getMiniApps({ miniApps: hostile })).toEqual({})
+    expect(getMiniApps({ miniApps: hostile }).size).toBe(0)
   })
 
   /**
@@ -82,7 +82,7 @@ describe('getMiniApps', () => {
    */
   it('normalises an origin to what the browser will actually report', () => {
     const trailing = JSON.stringify({ app: { name: 'A', origin: 'https://a.test/', secret: financeSecret } })
-    expect(getMiniApps({ miniApps: trailing }).app?.origin).toBe('https://a.test')
+    expect(getMiniApps({ miniApps: trailing }).get('app')?.origin).toBe('https://a.test')
   })
 
   /** The whole record used to be parsed at once, so one typo emptied the
@@ -92,11 +92,11 @@ describe('getMiniApps', () => {
       good: { name: 'Good', origin: 'https://good.test', secret: financeSecret },
       broken: { name: 'Broken', origin: 'https://broken.test', secret: 'tooshort' },
     })
-    expect(Object.keys(getMiniApps({ miniApps: mixed }))).toEqual(['good'])
+    expect([...getMiniApps({ miniApps: mixed }).keys()]).toEqual(['good'])
   })
 
   it('registers nothing when the payload is not an object of apps', () => {
-    expect(getMiniApps({ miniApps: '[]' })).toEqual({})
+    expect(getMiniApps({ miniApps: '[]' }).size).toBe(0)
   })
 })
 
@@ -151,6 +151,19 @@ describe('POST /mini-apps/:appId/token', () => {
   it('404s an unknown app rather than revealing which ids exist', async () => {
     expect((await post(authWithUser(realUser), 'not-an-app')).status).toBe(404)
   })
+
+  /**
+   * The registry used to be a plain object, so an id off the URL that named an
+   * `Object.prototype` member resolved to an inherited function — truthy, so the
+   * 404 guard never fired and the route went on to sign a token with an
+   * `undefined` audience and an empty HMAC key.
+   */
+  it.each(['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    '404s the prototype key %p rather than signing with an inherited value',
+    async (appId) => {
+      expect((await post(authWithUser(realUser), appId)).status).toBe(404)
+    },
+  )
 
   it('rejects a request from an origin that is not allowed', async () => {
     expect((await post(authWithUser(realUser), 'finance-model', 'https://evil.test')).status).toBe(403)

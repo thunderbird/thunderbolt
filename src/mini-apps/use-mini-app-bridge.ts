@@ -35,7 +35,7 @@ import {
   type MiniAppInitializeResult,
   type MiniAppSelection,
 } from '@shared/mini-app-protocol'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
@@ -57,7 +57,81 @@ const toolsRequestTimeoutMs = 3_000
 /** A tool call blocks a model turn, so it gets more room than discovery. */
 const toolCallTimeoutMs = 15_000
 
+/**
+ * How long the handshake will wait on the token endpoint.
+ *
+ * Comfortably inside `handshakeTimeoutMs`, because the mint sits on the critical
+ * path: the guest gets no `initialize` reply until it settles. Unbounded, a slow
+ * or wedged token route dragged a perfectly healthy app past the handshake
+ * deadline and into `unreachable`. Missing the window costs the guest the token
+ * that would have ridden along with the reply, not the capability — it asks
+ * again with `ui/request-auth-token`.
+ */
+const tokenMintTimeoutMs = 3_000
+
 export type MiniAppBridgeStatus = 'connecting' | 'ready' | 'unreachable'
+
+/**
+ * The frame's connection lifecycle, in one place.
+ *
+ * These three moved together and were set separately: a fresh handshake clears
+ * the error, bumps the epoch and flips the status, and doing that in three
+ * ordered setters is three chances to add a fourth caller that forgets one. A
+ * reducer makes each transition the atomic thing it always was.
+ *
+ * `selection` stays out — it's host UI state driven by the guest's cursor, not
+ * part of the connection at all.
+ */
+type ConnectionState = {
+  status: MiniAppBridgeStatus
+  /**
+   * Counts handshakes, not connections.
+   *
+   * A frame can re-initialize without unmounting — the app navigated, reloaded,
+   * or was redeployed under us. Everything keyed on the `connecting → ready`
+   * transition silently didn't re-run in that case, so the host kept serving the
+   * *previous* document's tool list and would post `tools/call` to a page that no
+   * longer implements them.
+   */
+  epoch: number
+  /** Last error the app reported about itself; shown as a strip over the frame. */
+  error: string | null
+}
+
+type ConnectionAction =
+  /** The guest introduced itself — a new document is live and speaking. */
+  | { type: 'handshaked' }
+  /** A document committed in the frame without handshaking. */
+  | { type: 'documentChanged' }
+  /** No `initialize` arrived before the deadline. */
+  | { type: 'timedOut' }
+  /** The user asked for the app to be loaded again. */
+  | { type: 'reloading' }
+  /** The guest reported a failure in itself. */
+  | { type: 'runtimeError'; message: string }
+
+const initialConnection: ConnectionState = { status: 'connecting', epoch: 0, error: null }
+
+const connectionReducer = (state: ConnectionState, action: ConnectionAction): ConnectionState => {
+  switch (action.type) {
+    case 'handshaked':
+      // A fresh handshake means a fresh document — the app navigated, reloaded
+      // or was redeployed. Anything it told us about the last one is stale, and
+      // an error strip pinned over a working app is worse than none. Artifacts
+      // clear theirs on document change; this is the same moment.
+      return { status: 'ready', epoch: state.epoch + 1, error: null }
+    case 'documentChanged':
+      return { ...state, status: 'connecting' }
+    case 'timedOut':
+      return { ...state, status: 'unreachable' }
+    case 'reloading':
+      return { ...state, status: 'connecting', error: null }
+    case 'runtimeError':
+      // Latest wins rather than accumulating: a page throwing in a render loop
+      // would otherwise turn one broken component into an unbounded list.
+      return { ...state, error: action.message }
+  }
+}
 
 type AcceptOptions = {
   /** The frame's `contentWindow`; anything from elsewhere is not our app. */
@@ -120,14 +194,15 @@ export type UseMiniAppBridgeOptions = {
 export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const httpClient = useHttpClient()
-  const [status, setStatus] = useState<MiniAppBridgeStatus>('connecting')
+  const [{ status, epoch: handshakeEpoch, error: runtimeError }, dispatch] = useReducer(
+    connectionReducer,
+    initialConnection,
+  )
   // Selection is host UI state, not model context — it drives the floating
   // control and is only promoted into the conversation when the user acts on it.
   // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
   // prompt or the `get_app_context` tool.
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
-  /** Last error the app reported about itself; shown as a strip over the frame. */
-  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const theme = useResolvedTheme()
   const locale = useActiveLocale()
   const setContext = useMiniAppStore((s) => s.setContext)
@@ -166,16 +241,6 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * capability ends up declared but never consulted. */
   const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
   /*
-   * Counts handshakes, not connections.
-   *
-   * A frame can re-initialize without unmounting — the app navigated, reloaded,
-   * or was redeployed under us. Everything keyed on the `connecting → ready`
-   * transition silently didn't re-run in that case, so the host kept serving the
-   * *previous* document's tool list and would post `tools/call` to a page that no
-   * longer implements them.
-   */
-  const [handshakeEpoch, setHandshakeEpoch] = useState(0)
-  /*
    * Whether the document currently in the frame has introduced itself.
    *
    * A guest posts `initialize` from its script, which runs before the frame's
@@ -204,23 +269,40 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * an external system (the embedded frame).
    */
   useEffect(() => {
+    // Aborts the in-flight token mint when the listener goes away, so a user who
+    // navigates off mid-handshake doesn't leave a request running against a
+    // frame that no longer exists.
+    const lifetime = new AbortController()
+
     // Async because two branches mint tokens over the network. `addEventListener`
     // ignores the returned promise, which is fine — nothing awaits the handler,
     // and each branch posts its own reply when it resolves.
     const handleMessage = async (event: MessageEvent) => {
       const trust = { expectedWindow: frameRef.current?.contentWindow ?? null, expectedOrigin: app.origin }
 
-      // A reply to something we asked. Checked first: results carry no `method`,
-      // so they'd fail method dispatch.
+      /*
+       * A reply to something we asked. Checked first: results carry no `method`,
+       * so they'd fail method dispatch.
+       *
+       * A reported failure settles as a tool-shaped error result, which is what
+       * both waiters already expect: `callTool` hands the message straight to
+       * the model, and `querySelection` fails its own parse and falls back to an
+       * empty selection. The alternative — dropping the reply — left the request
+       * hanging until its timeout, so an app that said "that threw" looked
+       * exactly like an app that said nothing.
+       *
+       * Returning only when `settle` matched something is the second half of the
+       * fix in `parseGuestResult`: this branch used to swallow anything with a
+       * numeric id, waiting or not, which is how every `ui/request-auth-token`
+       * went missing. Ids the host mints are numbers, so a reply that matches
+       * nothing is not ours to consume.
+       */
       const reply = isFromGuest(event, trust) ? parseGuestResult(event.data) : null
-      if (reply && typeof reply.id === 'number') {
-        // A reported failure settles as a tool-shaped error result, which is
-        // what both waiters already expect: `callTool` hands the message
-        // straight to the model, and `querySelection` fails its own parse and
-        // falls back to an empty selection. The alternative — dropping the
-        // reply — left the request hanging until its timeout, so an app that
-        // said "that threw" looked exactly like an app that said nothing.
+      if (
+        reply &&
+        typeof reply.id === 'number' &&
         pending.settle(reply.id, reply.error ? { content: reply.error.message, isError: true } : reply.result)
+      ) {
         return
       }
 
@@ -242,24 +324,35 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           })
           return
         }
-        guestCapabilitiesRef.current = message.params.capabilities
-        // A fresh handshake means a fresh document — the app navigated, reloaded
-        // or was redeployed. Anything it told us about the last one is stale, and
-        // an error strip pinned over a working app is worse than none. Artifacts
-        // clear theirs on document change; this is the same moment.
-        setRuntimeError(null)
+        const capabilities = message.params.capabilities
+        guestCapabilitiesRef.current = capabilities
         resetGuest()
         hasHandshakedRef.current = true
-        setHandshakeEpoch((epoch) => epoch + 1)
 
         // Only minted when the guest declared the capability — an app that never
-        // asked shouldn't cause a credential to exist.
-        const auth = message.params.capabilities.auth ? await fetchMiniAppToken(httpClient, app.id) : null
+        // asked shouldn't cause a credential to exist. Bounded, because this
+        // blocks the reply: see `tokenMintTimeoutMs`.
+        const auth = capabilities.auth
+          ? await fetchMiniAppToken(
+              httpClient,
+              app.id,
+              AbortSignal.any([lifetime.signal, AbortSignal.timeout(tokenMintTimeoutMs)]),
+            )
+          : null
 
         const result: MiniAppInitializeResult = {
           protocolVersion: miniAppProtocolVersion,
           hostName: 'Thunderbolt',
-          capabilities: { context: true, chat: true, auth: auth !== null },
+          capabilities: {
+            context: true,
+            chat: true,
+            // Whether the host will *answer* `ui/request-auth-token`, which is
+            // the same question the gate on that branch asks. It used to report
+            // whether this one mint happened to land, so a slow token route told
+            // a guest that had declared `auth` the capability didn't exist —
+            // and the documented contract for that is "stop asking".
+            auth: capabilities.auth === true,
+          },
           hostContext: {
             theme: themeRef.current,
             locale: localeRef.current,
@@ -268,7 +361,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           ...(auth ? { auth } : {}),
         }
         post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
-        setStatus('ready')
+        dispatch({ type: 'handshaked' })
         return
       }
 
@@ -300,7 +393,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           })
           return
         }
-        const refreshed = await fetchMiniAppToken(httpClient, app.id)
+        const refreshed = await fetchMiniAppToken(httpClient, app.id, lifetime.signal)
         post(
           refreshed
             ? { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: refreshed }
@@ -315,9 +408,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       }
 
       if (message.method === miniAppGuestMethods.runtimeError) {
-        // Latest wins rather than accumulating: a page throwing in a render loop
-        // would otherwise turn one broken component into an unbounded list.
-        setRuntimeError(message.params.message)
+        dispatch({ type: 'runtimeError', message: message.params.message })
         return
       }
 
@@ -352,6 +443,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     window.addEventListener('message', handleMessage)
     return () => {
       window.removeEventListener('message', handleMessage)
+      lifetime.abort()
       // Resolve rather than leak: a caller awaiting a query when the user
       // navigates away should get an empty answer, not a promise that never settles.
       pending.abortAll()
@@ -372,7 +464,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     if (status !== 'connecting') {
       return
     }
-    const timer = setTimeout(() => setStatus('unreachable'), handshakeTimeoutMs)
+    const timer = setTimeout(() => dispatch({ type: 'timedOut' }), handshakeTimeoutMs)
     return () => clearTimeout(timer)
   }, [status])
 
@@ -484,7 +576,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       return
     }
     resetGuest()
-    setStatus('connecting')
+    dispatch({ type: 'documentChanged' })
   }, [resetGuest])
 
   /**
@@ -498,8 +590,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const reloadFrame = useCallback(() => {
     hasHandshakedRef.current = false
     resetGuest()
-    setRuntimeError(null)
-    setStatus('connecting')
+    dispatch({ type: 'reloading' })
     if (frameRef.current) {
       frameRef.current.src = app.url
     }

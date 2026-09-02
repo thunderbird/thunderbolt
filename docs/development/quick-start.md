@@ -19,7 +19,7 @@ Tauri needs GTK/WebKit dev libraries. On Debian/Ubuntu:
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
-  build-essential curl wget file libxdo-dev libssl-dev \
+  build-essential curl wget file pkg-config libxdo-dev libssl-dev \
   libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 ```
 

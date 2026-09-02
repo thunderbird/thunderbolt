@@ -97,7 +97,7 @@ check "render" \
 if [ "$(uname -s)" = "Linux" ]; then
   check "Tauri Linux deps (webkit2gtk-4.1)" \
     "pkg-config --exists webkit2gtk-4.1 && echo present" \
-    "install with: sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev (or equivalent for your distro: https://v2.tauri.app/start/prerequisites/#linux)"
+    "install with: sudo apt install pkg-config libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev (or equivalent for your distro: https://v2.tauri.app/start/prerequisites/#linux)"
 fi
 
 # Mobile dev prerequisites — checked but flagged optional (only needed for `tauri:dev:ios` / `tauri:dev:android`).

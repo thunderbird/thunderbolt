@@ -20,6 +20,7 @@
     "test/**/*.ts",
     "../shared/acp-types.ts",
     "../shared/compare-semver.ts",
+    "../shared/i18n/locales.ts",
     "../shared/powersync-tables.ts",
     "../shared/proxy-protocol.ts",
     "../shared/url.ts",

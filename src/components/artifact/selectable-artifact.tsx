@@ -5,6 +5,7 @@
 import { Trans } from '@lingui/react/macro'
 import type { ArtifactContext, ArtifactSelectionItem, ArtifactTextSelection } from '@/artifacts/harness'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
+import { cn } from '@/lib/utils'
 import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
 import { SurfaceSelectionBar } from '@/components/embedded/surface-selection-bar'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
@@ -69,7 +70,15 @@ export const SelectableArtifact = ({
   }
 
   return (
-    <div className="relative">
+    /*
+     * `h-full` unless the frame is sizing itself to its content. This wrapper
+     * sits between the panel's `flex-1` container and the iframe's own
+     * `h-full`, so leaving it auto-height broke the percentage chain and the
+     * artifact rendered at the iframe's intrinsic default — visibly clipped in
+     * the side panel. When `autoHeight` is set the opposite is true: the
+     * wrapper must track the reported content height, not fill its parent.
+     */
+    <div className={cn('relative', autoHeight ? '' : 'h-full')}>
       <SandboxedHtmlFrame
         html={html}
         title={title}

@@ -13,6 +13,7 @@ import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
+import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -117,12 +118,17 @@ export default function Sidebar() {
     startNewChat()
   }
 
+  const chatDestination = useChatDestination()
+
   const handleChatClick = useCallback(
     (threadId: string) => {
       trackEvent('chat_select', { chat_id: threadId })
-      void navigateAndCloseSidebar(`/chats/${threadId}`)
+      // A chat that came from an app opens inside it, not at `/chats/:id` —
+      // see `useChatDestination` for when that isn't possible.
+      const thread = chatThreads.find((candidate) => candidate.id === threadId)
+      void navigateAndCloseSidebar(chatDestination(threadId, thread?.miniAppId))
     },
-    [navigateAndCloseSidebar],
+    [chatDestination, chatThreads, navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {

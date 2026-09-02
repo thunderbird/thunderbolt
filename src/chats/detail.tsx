@@ -4,11 +4,12 @@
 
 import ChatUI from '@/components/chat/chat-ui'
 import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
+import { useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
-import { useParams, useSearchParams } from 'react-router'
+import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
@@ -135,9 +136,25 @@ export const useNewChatId = (isNew: boolean, projectId: string | null): string =
  */
 const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
   const { miniAppId } = useCurrentChatSession()
+  const chatDestination = useChatDestination()
 
   if (!miniAppId) {
     return <ChatUI />
+  }
+
+  /*
+   * A chat that came from an app opens inside it. The sidebar already routes
+   * there directly, so this catches the ways in that don't: a deep link, the
+   * search palette, a shared URL. `replace` because `/chats/:id` was never a
+   * place the user meant to be — Back should return where they came from.
+   *
+   * When the app route can't host it (feature off, phone, app deregistered)
+   * `useChatDestination` hands back this same URL, and the banner below says
+   * where the conversation started instead.
+   */
+  const destination = chatDestination(chatThreadId, miniAppId)
+  if (destination !== `/chats/${chatThreadId}`) {
+    return <Navigate to={destination} replace />
   }
 
   return (

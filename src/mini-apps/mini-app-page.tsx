@@ -318,22 +318,38 @@ export default function MiniAppPage() {
   const app = findMiniApp(apps, appId)
 
   /*
-   * Mini Apps are web and desktop only, gated on viewport rather than platform:
-   * the split view, highlight-to-ask and the marquee are all pointer-first and
-   * need the room, and a 700px browser window is as unworkable as a phone.
+   * Mini Apps are desktop only, gated on viewport rather than platform: the
+   * split view, highlight-to-ask and the marquee are all pointer-first and need
+   * the room, and a 700px browser window is as unworkable as a phone.
    * `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the
    * desktop window keeps the feature.
    *
    * Rendered as a notice rather than dropped from the route table: a deep link
    * from a synced chat, or someone simply narrowing their window mid-session,
-   * should be told what happened instead of hitting Not Found.
+   * should be told what happened instead of hitting Not Found. It names both
+   * places the feature *does* work, because "not here" without "there instead"
+   * reads as broken rather than unsupported.
    */
   if (isMobile) {
     return (
       <div className="flex h-full items-center justify-center p-8">
-        <p className="max-w-sm text-center text-[length:var(--font-size-sm)] text-muted-foreground">
-          <Trans>Mini Apps need a wider window. Your chats from this app are still in the sidebar.</Trans>
-        </p>
+        <div className="max-w-sm space-y-2 text-center">
+          <p className="text-[length:var(--font-size-body)] font-medium">
+            {/* Two whole sentences rather than a name with an English fallback
+                spliced in — a fragment like that never reaches translators. */}
+            {app ? (
+              <Trans>{app.name} is only available on desktop</Trans>
+            ) : (
+              <Trans>Mini Apps are only available on desktop</Trans>
+            )}
+          </p>
+          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>
+              Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the
+              sidebar.
+            </Trans>
+          </p>
+        </div>
       </div>
     )
   }

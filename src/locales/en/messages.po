@@ -53,6 +53,11 @@ msgid_plural "Ask about them"
 msgstr[0] "Ask about it"
 msgstr[1] "Ask about them"
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-page.tsx
+msgid "{0} is only available on desktop"
+msgstr "{0} is only available on desktop"
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"
@@ -2175,8 +2180,12 @@ msgid "Mini Apps"
 msgstr "Mini Apps"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
-msgstr "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+msgid "Mini Apps are only available on desktop"
+msgstr "Mini Apps are only available on desktop"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+#~ msgstr "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
 
 #: src/components/window-controls.tsx
 msgid "Minimize"
@@ -2552,6 +2561,10 @@ msgstr "Open in sidebar"
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
 msgstr "Open in Sidebar"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+msgstr "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"

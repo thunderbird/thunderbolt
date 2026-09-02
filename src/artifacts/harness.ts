@@ -117,6 +117,19 @@ const rectSchema = z.object({
  * often shaped by whatever the model just read), while the Mini App path bounds
  * every field. The numbers mirror that path so the two agree.
  */
+/**
+ * A bounded string that clamps rather than rejects.
+ *
+ * The bounds here are prompt-and-memory budgets, not correctness constraints,
+ * and every one of these fields is free text the artifact derives from its own
+ * DOM — a long stack trace, a wide table row, a select-all. Rejecting on length
+ * discarded the entire message: the error strip never appeared, the marquee
+ * resolved to nothing, `get_app_context` reported the page as silent. Clamping
+ * keeps the bound and keeps the message. Same reasoning as `parseToolsList` on
+ * the Mini App side.
+ */
+const clamped = (max: number) => z.string().transform((value) => (value.length > max ? value.slice(0, max) : value))
+
 const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-ready') }),
   z.object({ artifactNonce: z.string(), type: z.literal('artifact-height'), height: z.number().finite() }),
@@ -124,7 +137,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
     artifactNonce: z.string(),
     type: z.literal('artifact-error'),
     reason: z.enum(['exception', 'unhandled-rejection']),
-    detail: z.string().max(2_000),
+    detail: clamped(2_000),
   }),
   z.object({
     artifactNonce: z.string(),
@@ -135,12 +148,12 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-context'),
-    context: z.object({ title: z.string().max(200), summary: z.string().max(20_000) }),
+    context: z.object({ title: clamped(200), summary: clamped(20_000) }),
   }),
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-selection'),
-    selection: z.object({ text: z.string().max(20_000), rect: rectSchema.optional() }).nullable(),
+    selection: z.object({ text: clamped(20_000), rect: rectSchema.optional() }).nullable(),
   }),
 ])
 
@@ -148,8 +161,11 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
  *  `unknown` result, which the caller narrows once it knows what it asked. */
 export const artifactSelectionItemsSchema = z.object({
   items: z
-    .array(z.object({ id: z.string().max(200), label: z.string().max(500), text: z.string().max(5_000) }))
-    .max(50),
+    .array(z.object({ id: clamped(200), label: clamped(500), text: clamped(5_000) }))
+    // Clamped, not capped: the harness sends at most 50, but a hand-rolled one
+    // sending 60 would otherwise lose the marquee result entirely.
+    .max(500)
+    .transform((items) => items.slice(0, 50)),
 })
 
 export const parseHarnessMessage = (
@@ -182,6 +198,12 @@ export const parseHarnessMessage = (
 const harnessScript = (nonce: string): string => `<script>
 (function () {
   var NONCE = ${JSON.stringify(nonce)};
+  // Trimmed here as well as host-side. The host clamps so an overrun is never
+  // silently fatal; this keeps a select-all on a long page, or a deep stack
+  // trace, from crossing postMessage at full size in the first place.
+  var MAX_DETAIL = 2000;
+  var MAX_SELECTION = 20000;
+  var MAX_ITEM_TEXT = 5000;
   function send(msg) {
     msg.artifactNonce = NONCE;
     try { parent.postMessage(msg, '*'); } catch (e) {}
@@ -192,11 +214,11 @@ const harnessScript = (nonce: string): string => `<script>
     if (t && t !== window && t.tagName) {
       return;
     }
-    send({ type: 'artifact-error', reason: 'exception', detail: (e.message || 'Error') + (e.filename ? ' @ ' + e.filename : '') + (e.lineno ? ':' + e.lineno : '') });
+    send({ type: 'artifact-error', reason: 'exception', detail: ((e.message || 'Error') + (e.filename ? ' @ ' + e.filename : '') + (e.lineno ? ':' + e.lineno : '')).slice(0, MAX_DETAIL) });
   }, true);
   window.addEventListener('unhandledrejection', function (e) {
     var r = e.reason;
-    send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: (r && (r.stack || r.message)) || String(r) });
+    send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: String((r && (r.stack || r.message)) || r).slice(0, MAX_DETAIL) });
   });
   function measureAndSend() {
     // body.scrollHeight (not documentElement) so the frame can also SHRINK — the root's
@@ -283,7 +305,7 @@ const harnessScript = (nonce: string): string => `<script>
     var items = [];
     outer.slice(0, MAX_ITEMS).forEach(function (el, i) {
       var text = describeRow(el) || (el.textContent || '').trim();
-      if (text) { items.push({ id: i + '-' + labelFor(el, i), label: labelFor(el, i), text: text }); }
+      if (text) { items.push({ id: i + '-' + labelFor(el, i), label: labelFor(el, i), text: text.slice(0, MAX_ITEM_TEXT) }); }
     });
     return { items: items };
   };
@@ -300,7 +322,7 @@ const harnessScript = (nonce: string): string => `<script>
     if (!text) { return null; }
     var b = sel.getRangeAt(0).getBoundingClientRect();
     var rect = b.width > 0 || b.height > 0 ? { x: b.x, y: b.y, width: b.width, height: b.height } : undefined;
-    return { text: text, rect: rect };
+    return { text: text.slice(0, MAX_SELECTION), rect: rect };
   }
   function reportSelection() {
     var cur = readSelection();

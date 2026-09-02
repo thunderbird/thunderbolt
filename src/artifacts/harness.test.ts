@@ -3,7 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { artifactCsp, artifactRequest, parseHarnessMessage, wrapArtifactHtml, wrapArtifactPreviewHtml } from './harness'
+import {
+  artifactSelectionItemsSchema,
+  artifactCsp,
+  artifactRequest,
+  parseHarnessMessage,
+  wrapArtifactHtml,
+  wrapArtifactPreviewHtml,
+} from './harness'
 
 describe('wrapArtifactHtml', () => {
   it('injects the harness at the start of an existing <head>, before agent content', () => {
@@ -80,15 +87,43 @@ describe('parseHarnessMessage', () => {
    * The caps inside the injected script are advisory: the page owns its own
    * document and knows its own nonce, so it can overwrite the harness handlers
    * or post whatever it likes. Anything the host trusts is enforced here.
+   *
+   * Enforced by clamping rather than rejection, though. These are prompt and
+   * memory budgets, not correctness constraints, and dropping the message threw
+   * away a whole context update — leaving `get_app_context` to report the page
+   * as silent — over one long string.
    */
-  it('rejects a context summary past the cap', () => {
+  it('clamps a context summary past the cap instead of dropping the update', () => {
     const oversized = {
       artifactNonce: nonce,
       type: 'artifact-context' as const,
       context: { title: 'Q3', summary: 'x'.repeat(20_001) },
     }
 
-    expect(parseHarnessMessage({ source: win, data: oversized } as MessageEvent, win, nonce)).toBeNull()
+    const parsed = parseHarnessMessage({ source: win, data: oversized } as MessageEvent, win, nonce)
+
+    expect(parsed?.type).toBe('artifact-context')
+    expect(parsed?.type === 'artifact-context' && parsed.context.summary).toHaveLength(20_000)
+  })
+
+  /*
+   * A marquee over a wide table is exactly where this bites: one row past the
+   * per-item cap failed the whole array, so the selection resolved to nothing on
+   * the content-dense artifacts the gesture exists for.
+   */
+  it('clamps an over-long selection item rather than losing the whole result', () => {
+    const parsed = artifactSelectionItemsSchema.safeParse({
+      items: [{ id: 'r1', label: 'Row 1', text: 'x'.repeat(6_000) }],
+    })
+
+    expect(parsed.success && parsed.data.items[0].text).toHaveLength(5_000)
+  })
+
+  it('keeps the first 50 items when a harness sends more', () => {
+    const items = Array.from({ length: 60 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}`, text: 'cell' }))
+    const parsed = artifactSelectionItemsSchema.safeParse({ items })
+
+    expect(parsed.success && parsed.data.items).toHaveLength(50)
   })
 
   it('rejects a selection rect with a non-finite coordinate', () => {

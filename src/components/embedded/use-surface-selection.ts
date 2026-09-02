@@ -18,7 +18,7 @@
  * formatting are not.
  */
 
-import { useCallback, useReducer } from 'react'
+import { useCallback, useReducer, useRef } from 'react'
 
 import { toSelectionPassages } from './selection-passage'
 import type { SurfaceRect, SurfaceSelectionItem } from './types'
@@ -26,15 +26,20 @@ import type { SurfaceRect, SurfaceSelectionItem } from './types'
 export type SurfaceSelectionMode =
   | { kind: 'idle' }
   | { kind: 'drawing' }
-  /** The drag is released and the guest has been asked, but hasn't answered. */
-  | { kind: 'resolving' }
+  /**
+   * The drag is released and the guest has been asked, but hasn't answered.
+   * `token` identifies which release we are waiting on — the overlay stays
+   * mounted through this state, so a second box can be drawn before the first
+   * query returns.
+   */
+  | { kind: 'resolving'; token: number }
   /** The guest answered; an empty array is a real answer ("nothing there"). */
   | { kind: 'reviewing'; items: SurfaceSelectionItem[] }
 
 type Action =
   | { type: 'marqueeStarted' }
-  | { type: 'marqueeReleased' }
-  | { type: 'marqueeAnswered'; items: SurfaceSelectionItem[] }
+  | { type: 'marqueeReleased'; token: number }
+  | { type: 'marqueeAnswered'; token: number; items: SurfaceSelectionItem[] }
   | { type: 'dismissed' }
 
 /**
@@ -52,11 +57,15 @@ const modeReducer = (mode: SurfaceSelectionMode, action: Action): SurfaceSelecti
     case 'marqueeStarted':
       return { kind: 'drawing' }
     case 'marqueeReleased':
-      return { kind: 'resolving' }
+      return { kind: 'resolving', token: action.token }
     case 'marqueeAnswered':
-      // Ignored unless we are still waiting for it: a late answer to a drag the
-      // user has since cancelled must not resurrect the review bar.
-      return mode.kind === 'resolving' ? { kind: 'reviewing', items: action.items } : mode
+      // Ignored unless we are still waiting for *this* answer. Two guards in
+      // one: a late answer to a drag the user has since cancelled must not
+      // resurrect the review bar, and a slow answer for box A must not be shown
+      // as the contents of box B, drawn while A was still in flight.
+      return mode.kind === 'resolving' && mode.token === action.token
+        ? { kind: 'reviewing', items: action.items }
+        : mode
     case 'dismissed':
       return { kind: 'idle' }
   }
@@ -71,14 +80,19 @@ export type SurfaceSelectionDeps = {
 
 export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
+  const lastReleaseToken = useRef(0)
 
   const startMarquee = useCallback(() => dispatch({ type: 'marqueeStarted' }), [])
   const dismiss = useCallback(() => dispatch({ type: 'dismissed' }), [])
 
   const resolveMarquee = useCallback(
     async (rect: SurfaceRect) => {
-      dispatch({ type: 'marqueeReleased' })
-      dispatch({ type: 'marqueeAnswered', items: await query(rect) })
+      // A ref rather than reducer state: the token has to be readable here, in
+      // the same tick as the dispatch, and a dispatch doesn't hand back what it
+      // produced.
+      const token = ++lastReleaseToken.current
+      dispatch({ type: 'marqueeReleased', token })
+      dispatch({ type: 'marqueeAnswered', token, items: await query(rect) })
     },
     [query],
   )

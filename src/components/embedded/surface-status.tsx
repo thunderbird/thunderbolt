@@ -78,7 +78,7 @@ export const EmbeddedSurfaceStatus = ({ name, failed = false, detail, onRetry }:
 export const EmbeddedErrorStrip = ({ message, className }: { message: string; className?: string }) => (
   <div
     className={cn(
-      'flex items-center gap-2 border-b border-border bg-destructive/10 px-4 py-1.5 text-xs text-destructive',
+      'flex items-center gap-2 border-b border-border bg-destructive/10 px-4 py-1.5 text-[length:var(--font-size-xs)] text-destructive',
       className,
     )}
   >

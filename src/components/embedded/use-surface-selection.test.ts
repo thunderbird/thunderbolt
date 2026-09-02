@@ -18,6 +18,13 @@ const deferredQuery = () => {
   return { query, release: (items: SurfaceSelectionItem[]) => release(items) }
 }
 
+/** One deferred per call, so two in-flight queries can be settled out of order. */
+const deferredQueries = () => {
+  const releases: ((items: SurfaceSelectionItem[]) => void)[] = []
+  const query = () => new Promise<SurfaceSelectionItem[]>((resolve) => releases.push(resolve))
+  return { query, releases }
+}
+
 const setup = (query: (rect: SurfaceRect) => Promise<SurfaceSelectionItem[]>) => {
   const asked: string[][] = []
   const hook = renderHook(() => useSurfaceSelection({ query, onAsk: (passages) => asked.push(passages) }))
@@ -83,6 +90,50 @@ describe('useSurfaceSelection', () => {
 
     await act(async () => release([row('a')]))
     expect(hook.result.current.mode.kind).toBe('idle')
+  })
+
+  /**
+   * The overlay stays mounted through `resolving`, so the user can release a
+   * second box while the first query is still out. Both answers land in the one
+   * slot, and without a token the reducer took whichever arrived first — box A's
+   * rows shown as if they were box B's.
+   */
+  it('ignores the answer to a box the user has already redrawn', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+
+    act(() => hook.result.current.startMarquee())
+    act(() => void hook.result.current.resolveMarquee(rect))
+    act(() => void hook.result.current.resolveMarquee(rect))
+
+    await act(async () => releases[0]?.([row('a')]))
+    expect(hook.result.current.mode.kind).toBe('resolving')
+
+    await act(async () => releases[1]?.([row('b')]))
+    expect(hook.result.current.mode).toEqual({ kind: 'reviewing', items: [row('b')] })
+  })
+
+  /**
+   * The same race across a cancel. Waiting on `resolving` alone was not enough:
+   * the user gives up on box A, draws box B, and A's straggling answer lands in
+   * a slot that is once again `resolving` — so B would show A's rows.
+   */
+  it('ignores a straggler from before the user gave up and redrew', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+
+    act(() => hook.result.current.startMarquee())
+    act(() => void hook.result.current.resolveMarquee(rect))
+    act(() => hook.result.current.dismiss())
+
+    act(() => hook.result.current.startMarquee())
+    act(() => void hook.result.current.resolveMarquee(rect))
+
+    await act(async () => releases[0]?.([row('a')]))
+    expect(hook.result.current.mode.kind).toBe('resolving')
+
+    await act(async () => releases[1]?.([row('b')]))
+    expect(hook.result.current.mode).toEqual({ kind: 'reviewing', items: [row('b')] })
   })
 
   it('sends the selection to the composer and closes', async () => {

@@ -70,9 +70,14 @@ const validateOrigin = (request: Request, settings: Settings): boolean => {
 export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
   const apps = getMiniApps(settings)
 
+  // Mounted even with an empty registry. Skipping the routes made `GET
+  // /mini-apps` 404, which the client cannot tell apart from a network failure
+  // — so a deployment that simply runs no apps rendered "Couldn't load your
+  // apps. Check your connection," and the provenance banner went silent
+  // instead of saying the app is gone. An empty registry is an answer; only an
+  // unknown app id is a 404.
   if (apps.size === 0) {
-    console.warn('No Mini Apps configured, skipping Mini App routes')
-    return new Elysia({ prefix: '/mini-apps' })
+    console.warn('No Mini Apps configured; GET /mini-apps will answer with an empty registry')
   }
 
   return (

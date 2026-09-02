@@ -169,7 +169,7 @@ describe('POST /mini-apps/:appId/token', () => {
     expect((await post(authWithUser(realUser), 'finance-model', 'https://evil.test')).status).toBe(403)
   })
 
-  it('mounts nothing when no apps are configured', async () => {
+  it('404s every app id when no apps are configured', async () => {
     const routes = createMiniAppRoutes(authWithUser(realUser), createTestSettings({ miniApps: '' }))
     const response = await routes.handle(
       new Request('http://localhost/mini-apps/finance-model/token', { method: 'POST' }),
@@ -206,5 +206,19 @@ describe('GET /mini-apps', () => {
     const anonymous = { ...realUser, isAnonymous: true }
 
     expect((await get(authWithUser(anonymous))).status).toBe(403)
+  })
+
+  /**
+   * A deployment that runs no apps must answer, not 404. The client cannot tell
+   * a 404 from a network failure, so an unmounted route made "this deployment
+   * runs no apps" render as "Couldn't load your apps. Check your connection."
+   */
+  it('answers with an empty registry rather than 404 when no apps are configured', async () => {
+    const routes = createMiniAppRoutes(authWithUser(realUser), createTestSettings({ miniApps: '' }))
+    const response = await routes.handle(new Request('http://localhost/mini-apps'))
+    const body = (await response.json()) as { apps: unknown[] }
+
+    expect(response.status).toBe(200)
+    expect(body.apps).toEqual([])
   })
 })

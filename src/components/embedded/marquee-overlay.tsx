@@ -5,7 +5,14 @@
 import type { SurfaceRect } from './types'
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
-/** A drag smaller than this in either axis is treated as a click, not a marquee. */
+/**
+ * A drag must cross this in at least one axis to count as a marquee.
+ *
+ * Requiring it on *both* axes was the original rule, and it threw away the
+ * wide-but-short box that is the natural way to grab a single table row: the
+ * gesture read as a click, so select mode just exited with nothing selected. A
+ * stray click and a jitter still fail, because they are short on both axes.
+ */
 const minimumDragPx = 8
 
 type Point = { x: number; y: number }
@@ -20,7 +27,7 @@ export const rectFromDrag = (start: Point, end: Point): SurfaceRect => ({
 
 /** Whether a drag is deliberate enough to query, rather than a stray click. */
 export const isMeaningfulDrag = (rect: SurfaceRect): boolean =>
-  rect.width >= minimumDragPx && rect.height >= minimumDragPx
+  rect.width >= minimumDragPx || rect.height >= minimumDragPx
 
 type MarqueeOverlayProps = {
   /** Called with the drawn rect, in overlay-local (== guest viewport) coordinates. */

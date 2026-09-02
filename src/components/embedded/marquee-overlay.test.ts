@@ -36,9 +36,15 @@ describe('isMeaningfulDrag', () => {
     expect(isMeaningfulDrag(rectFromDrag({ x: 5, y: 5 }, { x: 9, y: 9 }))).toBe(false)
   })
 
-  // A thin box is a legitimate way to grab one row.
-  it('rejects a drag that is wide but not tall', () => {
-    expect(isMeaningfulDrag({ x: 0, y: 0, width: 400, height: 2 })).toBe(false)
+  // A thin box is a legitimate way to grab one row, and the both-axes rule used
+  // to discard it — the user swiped across a row and select mode just exited.
+  it('accepts a drag that is wide but not tall', () => {
+    expect(isMeaningfulDrag({ x: 0, y: 0, width: 400, height: 2 })).toBe(true)
+  })
+
+  // The same gesture turned ninety degrees: one column of a table.
+  it('accepts a drag that is tall but not wide', () => {
+    expect(isMeaningfulDrag({ x: 0, y: 0, width: 2, height: 400 })).toBe(true)
   })
 
   it('accepts a deliberate drag', () => {

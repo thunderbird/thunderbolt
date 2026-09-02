@@ -7,29 +7,29 @@
  * boundary between the model and the host's write/edit/bash tools, so every
  * branch matters: yolo bypass, read-only passthrough, the three decision
  * outcomes, session-allow memory scoping, and the human summary builder. The
- * harness is faked down to the single `on('tool_call', …)` seam the gate uses;
- * we invoke the captured handler directly with no real agent loop.
+ * runtime is faked down to `registerToolCallGate`; we invoke the captured
+ * handler directly with no real agent loop.
  */
 
-import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { describe, expect, test } from 'bun:test'
-import { attachPermissionGate } from './permissions.ts'
+import {
+  attachPermissionGate,
+  cyclePermissionMode,
+  readOnlyBlockReason,
+  type PermissionMode,
+} from './permissions.ts'
+import type { HarnessRuntime } from '../provider-runtime/types.ts'
 import type { PermissionDecision, PermissionPrompt, PermissionRequest } from './types.ts'
 
 type ToolCall = { type: 'tool_call'; toolCallId: string; toolName: string; input: Record<string, unknown> }
-type GateResult = { block: true; reason: string } | undefined
-type GateHandler = (event: ToolCall) => Promise<GateResult> | GateResult
-
-/** A fake harness exposing only the `on` seam the gate uses, capturing the
- *  registered `tool_call` handler so a test can drive it directly. */
+/** A fake runtime exposing only the gate seam, capturing its handler. */
 const fakeHarness = () => {
-  let handler: GateHandler | null = null
-  const harness = {
-    on: (type: string, h: GateHandler) => {
-      if (type === 'tool_call') handler = h
-      return () => {}
+  let handler: Parameters<HarnessRuntime['registerToolCallGate']>[0] | null = null
+  const harness: Pick<HarnessRuntime, 'registerToolCallGate'> = {
+    registerToolCallGate: (candidate) => {
+      handler = candidate
     },
-  } as unknown as AgentHarness
+  }
   return { harness, getHandler: () => handler }
 }
 
@@ -50,17 +50,37 @@ const call = (toolName: string, input: Record<string, unknown> = {}): ToolCall =
   input,
 })
 
+test('attachPermissionGate accepts the narrow HarnessRuntime gate surface', async () => {
+  let handler: Parameters<HarnessRuntime['registerToolCallGate']>[0] | null = null
+  const target: Pick<HarnessRuntime, 'registerToolCallGate'> = {
+    registerToolCallGate: (candidate) => {
+      handler = candidate
+    },
+  }
+
+  attachPermissionGate(target, { getMode: () => 'ask', ask: async () => 'deny' })
+
+  expect(handler).not.toBeNull()
+  await expect(handler!(call('bash', { command: 'echo unsafe' }))).resolves.toEqual({
+    block: true,
+    reason: 'User denied bash',
+  })
+})
+
 describe('attachPermissionGate — bypass + passthrough', () => {
-  test('yolo mode attaches no hook at all', () => {
+  test('yolo mode still attaches the live gate and approves without prompting', async () => {
     const { harness, getHandler } = fakeHarness()
-    attachPermissionGate(harness, { yolo: true, ask: async () => 'deny' })
-    expect(getHandler()).toBeNull()
+    const { ask, seen } = constantAsk('deny')
+    attachPermissionGate(harness, { getMode: () => 'yolo', ask })
+
+    expect(await getHandler()!(call('bash', { command: 'rm -rf /' }))).toBeUndefined()
+    expect(seen).toHaveLength(0)
   })
 
   test('read-only tools run unguarded — the prompt is never consulted', async () => {
     const { harness, getHandler } = fakeHarness()
     const { ask, seen } = constantAsk('deny')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const result = await getHandler()!(call('read', { path: '/etc/passwd' }))
     expect(result).toBeUndefined()
     expect(seen).toHaveLength(0)
@@ -69,7 +89,7 @@ describe('attachPermissionGate — bypass + passthrough', () => {
   test('webfetch runs unguarded while bash remains gated', async () => {
     const { harness, getHandler } = fakeHarness()
     const { ask, seen } = constantAsk('deny')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const handler = getHandler()!
 
     expect(await handler(call('webfetch', { url: 'https://example.com' }))).toBeUndefined()
@@ -81,11 +101,71 @@ describe('attachPermissionGate — bypass + passthrough', () => {
   })
 })
 
+describe('attachPermissionGate — permission modes', () => {
+  test('accept-edits approves write and edit but still asks before bash', async () => {
+    const { harness, getHandler } = fakeHarness()
+    const { ask, seen } = constantAsk('deny')
+    attachPermissionGate(harness, { getMode: () => 'accept-edits', ask })
+    const handler = getHandler()!
+
+    expect(await handler(call('write', { path: 'a.ts' }))).toBeUndefined()
+    expect(await handler(call('edit', { path: 'b.ts' }))).toBeUndefined()
+    expect(await handler(call('bash', { command: 'bun test' }))).toEqual({
+      block: true,
+      reason: 'User denied bash',
+    })
+    expect(seen.map(({ toolName }) => toolName)).toEqual(['bash'])
+  })
+
+  test.each(['write', 'edit', 'bash'])('read-only blocks %s without prompting', async (toolName) => {
+    const { harness, getHandler } = fakeHarness()
+    const { ask, seen } = constantAsk('allow-once')
+    attachPermissionGate(harness, { getMode: () => 'read-only', ask })
+
+    expect(await getHandler()!(call(toolName, { path: 'a.ts', command: 'pwd' }))).toEqual({
+      block: true,
+      reason: readOnlyBlockReason,
+    })
+    expect(seen).toHaveLength(0)
+  })
+
+  test('reads the live mode on the next tool call while keeping session grants ask-only', async () => {
+    const { harness, getHandler } = fakeHarness()
+    let mode: PermissionMode = 'ask'
+    const { ask, seen } = constantAsk('allow-session')
+    attachPermissionGate(harness, { getMode: () => mode, ask })
+    const handler = getHandler()!
+
+    expect(await handler(call('bash', { command: 'first' }))).toBeUndefined()
+    mode = 'read-only'
+    expect(await handler(call('bash', { command: 'second' }))).toEqual({
+      block: true,
+      reason: readOnlyBlockReason,
+    })
+    mode = 'accept-edits'
+    expect(await handler(call('bash', { command: 'third' }))).toBeUndefined()
+    mode = 'ask'
+    expect(await handler(call('bash', { command: 'fourth' }))).toBeUndefined()
+    expect(seen).toHaveLength(2)
+  })
+})
+
+describe('permission-mode cycling', () => {
+  test.each([
+    ['ask', 'accept-edits'],
+    ['accept-edits', 'read-only'],
+    ['read-only', 'yolo'],
+    ['yolo', 'ask'],
+  ] as const)('advances %s to %s in the fixed cycle', (mode, expected) => {
+    expect(cyclePermissionMode(mode)).toBe(expected)
+  })
+})
+
 describe('attachPermissionGate — decisions', () => {
   test('allow-once permits the call but does not remember it', async () => {
     const { harness, getHandler } = fakeHarness()
     const { ask, seen } = constantAsk('allow-once')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const handler = getHandler()!
     expect(await handler(call('write', { path: 'a.ts' }))).toBeUndefined()
     expect(await handler(call('write', { path: 'b.ts' }))).toBeUndefined()
@@ -96,7 +176,7 @@ describe('attachPermissionGate — decisions', () => {
   test('deny blocks the call with a reason naming the tool', async () => {
     const { harness, getHandler } = fakeHarness()
     const { ask } = constantAsk('deny')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const result = await getHandler()!(call('bash', { command: 'rm -rf /' }))
     expect(result).toEqual({ block: true, reason: 'User denied bash' })
   })
@@ -106,7 +186,7 @@ describe('attachPermissionGate — decisions', () => {
     const ask: PermissionPrompt = async () => {
       throw new Error('stdin closed')
     }
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     // The gate must not resolve to `undefined` (which would run the tool) when the
     // prompt fails — the rejection propagates so the call is not auto-approved.
     await expect(getHandler()!(call('bash', { command: 'rm -rf /' }))).rejects.toThrow('stdin closed')
@@ -117,7 +197,7 @@ describe('attachPermissionGate — allow-session scoping', () => {
   test('allow-session suppresses re-prompts for the same tool only', async () => {
     const { harness, getHandler } = fakeHarness()
     const { ask, seen } = constantAsk('allow-session')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const handler = getHandler()!
 
     // First bash prompts and is remembered.
@@ -139,7 +219,7 @@ describe('attachPermissionGate — allow-session scoping', () => {
       resolveCount += 1
       return 'allow-session'
     }
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     const handler = getHandler()!
     // Both launched concurrently: neither sees the other's session grant yet,
     // because `sessionAllowed.add` runs only after `ask` resolves.
@@ -153,13 +233,13 @@ describe('attachPermissionGate — allow-session scoping', () => {
   test('a tool allowed for the session via one harness does not bleed into another gate', async () => {
     const askA = constantAsk('allow-session')
     const a = fakeHarness()
-    attachPermissionGate(a.harness, { yolo: false, ask: askA.ask })
+    attachPermissionGate(a.harness, { getMode: () => 'ask', ask: askA.ask })
     await a.getHandler()!(call('bash', { command: 'ls' }))
 
     // A freshly-attached gate starts with an empty session allowlist.
     const askB = constantAsk('deny')
     const b = fakeHarness()
-    attachPermissionGate(b.harness, { yolo: false, ask: askB.ask })
+    attachPermissionGate(b.harness, { getMode: () => 'ask', ask: askB.ask })
     const result = await b.getHandler()!(call('bash', { command: 'ls' }))
     expect(result).toEqual({ block: true, reason: 'User denied bash' })
   })
@@ -170,7 +250,7 @@ describe('attachPermissionGate — summary builder', () => {
   const summaryFor = async (toolName: string, input: Record<string, unknown>): Promise<string> => {
     const { harness, getHandler } = fakeHarness()
     const { ask, seen } = constantAsk('allow-once')
-    attachPermissionGate(harness, { yolo: false, ask })
+    attachPermissionGate(harness, { getMode: () => 'ask', ask })
     await getHandler()!(call(toolName, input))
     return seen[0]!.summary
   }

@@ -3,24 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Builds a Pi `openai-completions` model bound to a custom base URL + bearer
- * key, so the CLI can run any OpenAI-compatible endpoint (e.g. Ollama at
- * `http://localhost:11434/v1`) outside Pi's built-in providers.
+ * Builds a Pi `openai-completions` model bound to a custom provider, base URL,
+ * credential, and optional fetch implementation.
  *
  * This is the CLI sibling of `shared/agent-core/openai-compat-model.ts`, but
- * deliberately simpler. The app's version SYNCHRONOUSLY swaps `globalThis.fetch`
- * around Pi's SDK-client construction because it must route every call through
- * the browser CORS proxy and Pi's `openai-completions` exposes no `fetch` seam.
- * The CLI has no proxy: it runs in Bun with a real global `fetch`, and Pi builds
- * its client via `new OpenAI({ apiKey, baseURL: model.baseUrl })`, which natively
- * hits that base URL and sets `Authorization: Bearer <apiKey>` itself. So the only
- * wiring needed is (1) a synthetic model descriptor carrying the base URL and
- * (2) injecting the api key on Pi's per-call options (`getClientApiKey` returns
- * `options.apiKey` when present) — no global mutation, no fetch override.
+ * Pi exposes no fetch option for this API. The standard path lets the SDK
+ * synchronously capture a stable global dispatcher; AsyncLocalStorage then
+ * selects the origin-bound transport for each call. A caller-owned prevalidated
+ * transport instead replaces `globalThis.fetch` only during that synchronous
+ * capture window and restores it immediately.
  *
  * Documented reliance (re-verify on `@earendil-works/pi-ai` / `openai` bumps):
  * Pi's `openai-completions` `createClient` reads `model.baseUrl` and
- * `options.apiKey`; the `openai` SDK sends the bearer `Authorization` header.
+ * `options.apiKey`; the OpenAI SDK captures global fetch synchronously.
  */
 
 import {
@@ -37,32 +32,53 @@ import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
+import {
+  createCredentialedFetch,
+  withCredentialedFetch,
+  type CredentialedFetch,
+  type CredentialResponseObserver,
+} from './credentialed-fetch.ts'
 
 /** The Pi API this provider exclusively serves. */
 const apiId = 'openai-completions'
 
-/** Context window used by Pi's token-budget math when the synthetic model
- *  carries none. openai-completions never caps tokens unless the caller passes
- *  `maxTokens` (the harness does not), so a generous default is harmless. */
 const defaultContextWindow = 128_000
 
-/** Advisory max-output budget on the synthetic model. Only reaches the wire if
- *  the caller sets `options.maxTokens`; it exists solely to satisfy the `Model`
- *  shape. */
 const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
+  /** Pi provider id; defaults to the legacy openai-compat provider. */
+  readonly providerId?: string
   /** Upstream model id sent on the wire, e.g. `llama3.3`. */
   readonly modelId: string
   /** OpenAI-compatible base URL, e.g. `http://localhost:11434/v1`. */
   readonly baseUrl: string
   /** Bearer key handed to the OpenAI SDK (sent as `Authorization: Bearer <key>`). */
   readonly apiKey: string
+  /** Optional underlying transport; origin-bound unless `prevalidatedFetch` opts out. */
+  readonly fetchFn?: OpenAiCompatFetch
+  /** Observes authenticated HTTP evidence before the SDK parses the response. */
+  readonly observeResponse?: CredentialResponseObserver
+  /** Temporarily exposes a caller-owned fetch that already enforces its transport security policy. */
+  readonly prevalidatedFetch?: boolean
+  /** Whether Pi may send reasoning options for this model. */
+  readonly reasoning?: boolean
+  /** Context window advertised to Pi's token-budget calculations. */
+  readonly contextWindow?: number
+  /** Whether Pi may preserve image blocks in requests to this model. */
+  readonly supportsImages?: boolean
+  /** Provider-specific OpenAI compatibility behavior. */
+  readonly compat?: Model<typeof apiId>['compat']
+  /** Provider-specific mapping from Pi thinking levels to wire efforts. */
+  readonly thinkingLevelMap?: Model<typeof apiId>['thinkingLevelMap']
 }
 
-/** Pi provider id for every CLI openai-compatible endpoint. */
-const providerId = 'openai-compat'
+/** Fetch shape used by OpenAI's client, which always dispatches a serialized URL. */
+export type OpenAiCompatFetch = CredentialedFetch
+
+/** Legacy provider id used when a caller does not own a distinct profile id. */
+const defaultProviderId = 'openai-compat'
 
 /** The raw Pi stream entry points this provider wraps. Injectable so the bearer
  *  key injection can be verified without a live OpenAI endpoint; defaults to the
@@ -73,6 +89,17 @@ export type OpenAiStreamFns = {
 }
 
 const defaultStreamFns: OpenAiStreamFns = { stream: openaiStream, streamSimple: openaiStreamSimple }
+
+/** Temporarily exposes a prevalidated fetch only for the SDK's synchronous client-capture window. */
+const withPrevalidatedFetch = <Value>(fetchFn: OpenAiCompatFetch, run: () => Value): Value => {
+  const originalFetch = globalThis.fetch
+  Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: fetchFn })
+  try {
+    return run()
+  } finally {
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: originalFetch })
+  }
+}
 
 /**
  * Narrows a dispatched `Model<Api>` to the openai-completions model this
@@ -88,28 +115,28 @@ const requireOpenAiCompletions = (model: Model<Api>): Model<typeof apiId> => {
 /**
  * Synthesize the Pi `Model<"openai-completions">` descriptor. Custom-URL models
  * live outside Pi's built-in catalog, so we build the descriptor directly.
- * `reasoning: false` keeps the request portable across OpenAI-compatible
- * endpoints — Pi clamps the harness `thinkingLevel` to `off` and sends no
- * `reasoning_effort`, which a non-reasoning model would otherwise reject.
+ * Reasoning and image input default off for legacy custom endpoints; managed
+ * callers can advertise those capabilities from their validated catalog row.
  */
 const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiId> => ({
   id: opts.modelId,
   name: opts.modelId,
   api: apiId,
-  provider: providerId,
+  provider: opts.providerId ?? defaultProviderId,
   baseUrl: opts.baseUrl,
-  reasoning: false,
-  input: ['text'],
+  reasoning: opts.reasoning ?? false,
+  input: opts.supportsImages ? ['text', 'image'] : ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: defaultContextWindow,
+  contextWindow: opts.contextWindow ?? defaultContextWindow,
   maxTokens: defaultMaxTokens,
+  compat: opts.compat,
+  thinkingLevelMap: opts.thinkingLevelMap,
 })
 
 /**
  * Resolves an OpenAI-compatible model and wires it through a Pi provider bound
- * to `opts.baseUrl` + `opts.apiKey`. Drop-in sibling of `resolveModel`'s
- * built-in branch: returns the same `{ models, model }` shape the harness
- * consumes.
+ * to `opts.baseUrl` + `opts.apiKey`. Returns the `{ models, model }` shape the
+ * harness consumes.
  *
  * @param opts - model id, base URL, and bearer api key
  * @param streamFns - the raw Pi stream functions to wrap (injectable for tests)
@@ -120,14 +147,29 @@ export const buildOpenAiCompatModel = (
   streamFns: OpenAiStreamFns = defaultStreamFns,
 ): { models: Models; model: Model<Api> } => {
   const model = synthesizeModel(opts)
+  const providerId = opts.providerId ?? defaultProviderId
+  const credentialedFetch = createCredentialedFetch(
+    opts.baseUrl,
+    opts.fetchFn,
+    opts.observeResponse,
+  )
+  /** Chooses the caller-validated transport or the standard origin-checked async-local binding. */
+  const withFetch = <Value>(run: () => Value): Value =>
+    opts.prevalidatedFetch && opts.fetchFn
+      ? withPrevalidatedFetch(opts.fetchFn, run)
+      : withCredentialedFetch(credentialedFetch, run)
 
-  // Inject the api key on every call (Pi's openai client reads `options.apiKey`);
-  // the SDK resolves the base URL from `model.baseUrl` and adds the bearer header.
+  // Inject the api key on every call and, when requested, bind the fetch only
+  // around the synchronous OpenAI-client construction window.
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
-      streamFns.stream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      withFetch(() =>
+        streamFns.stream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      ),
     streamSimple: (resolved, context, options) =>
-      streamFns.streamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      withFetch(() =>
+        streamFns.streamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+      ),
   }
 
   const models = createModels()

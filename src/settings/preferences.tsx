@@ -339,13 +339,21 @@ export default function PreferencesSettingsPage() {
     const wasSet = !!locationName.value
     const previousRegion = locationCountryCode.value
 
-    await updateSettings(db, {
-      location_name: await fetchEnglishLocationName(httpClient, location.id, location.name, activeLanguage),
-      location_lat: String(location.coordinates.lat),
-      location_lng: String(location.coordinates.lng),
-      location_country_code: location.countryCode,
-      location_id: String(location.id),
-    })
+    try {
+      await updateSettings(db, {
+        location_name: await fetchEnglishLocationName(httpClient, location.id, location.name, activeLanguage),
+        location_lat: String(location.coordinates.lat),
+        location_lng: String(location.coordinates.lng),
+        location_country_code: location.countryCode,
+        location_id: String(location.id),
+      })
+    } catch (error) {
+      // Resolving the English name is a live geocoding call, and the combobox
+      // does not await `onSelect`, so an unguarded rejection would be an
+      // unhandled one. Matches onboarding, which logs the same failure.
+      console.error('Failed to save location:', error)
+      return
+    }
 
     trackEvent(wasSet ? 'settings_location_update' : 'settings_location_set')
 

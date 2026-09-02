@@ -91,6 +91,32 @@ describe('fetchEnglishLocationName', () => {
     expect(recorded[0].searchParams).toEqual({ language: 'en' })
   })
 
+  /**
+   * Deliberately not a fallback to the localized name: `location_name` is
+   * model-facing, so storing a localized value would silently break the weather
+   * widget's English disambiguation. Callers abort the save and say so instead.
+   */
+  it('rejects rather than falling back when the lookup fails', async () => {
+    const failing: HttpClient = {
+      get: (): ResponsePromise => {
+        const rejected = Promise.resolve() as unknown as ResponsePromise
+        rejected.json = () => Promise.reject(new Error('geocoding unavailable'))
+        rejected.text = () => Promise.reject(new Error('geocoding unavailable'))
+        return rejected
+      },
+      post: () => {
+        throw new Error('not implemented')
+      },
+      delete: () => {
+        throw new Error('not implemented')
+      },
+    }
+
+    await expect(fetchEnglishLocationName(failing, 2867714, 'Munique, Baviera, Alemanha', 'pt-BR')).rejects.toThrow(
+      'geocoding unavailable',
+    )
+  })
+
   it('skips the round trip when the picker was already English', async () => {
     const recorded: RecordedRequest[] = []
     const httpClient = createFakeHttpClient(munich, recorded)

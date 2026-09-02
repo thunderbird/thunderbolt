@@ -5,6 +5,7 @@
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { managedModels } from '@shared/managed-models'
 import { Elysia } from 'elysia'
 
 /**
@@ -26,6 +27,7 @@ export const createConfigRoutes = (settings: Settings) =>
     allowCustomAgents: settings.allowCustomAgents,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
+    managedModels,
     defaults: {
       models: {
         version: defaultModelsVersion,

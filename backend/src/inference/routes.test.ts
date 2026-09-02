@@ -13,8 +13,8 @@ import { sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import OpenAI, { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { InferenceLogger, InferenceProxyLatencyLog } from './client'
-import { createInferenceRoutes, supportedModels } from './routes'
-import { defaultModels } from '@shared/defaults/models'
+import { managedDirectRuntimes } from './managed-models'
+import { createInferenceRoutes } from './routes'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type InferenceLogContext = Parameters<InferenceLogger['info']>[0]
@@ -28,17 +28,6 @@ const insertUser = async (database: TestDatabase, id: string, isAnonymous = fals
     isAnonymous,
   })
 }
-
-describe('Thunderbolt model catalog parity', () => {
-  it('routes every Thunderbolt model shipped in frontend defaults', () => {
-    const shippedModelIds = defaultModels
-      .filter((model) => model.provider === 'thunderbolt')
-      .map((model) => model.model)
-
-    expect(shippedModelIds).not.toHaveLength(0)
-    expect(shippedModelIds.every((modelId) => supportedModels[modelId] !== undefined)).toBe(true)
-  })
-})
 
 describe('Inference Routes', () => {
   let app: { handle: Elysia['handle'] }
@@ -215,7 +204,7 @@ describe('Inference Routes', () => {
     })
 
     it('declares stream-usage support for exactly the two direct models', () => {
-      expect(supportedModels).toEqual({
+      expect(managedDirectRuntimes).toEqual({
         'opus-5': {
           provider: 'anthropic',
           internalName: 'claude-opus-5',
@@ -321,6 +310,23 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
+
+    it.each(['toString', 'constructor', '__proto__'])(
+      'rejects prototype-property model %s as model not found',
+      async (model) => {
+        const response = await app.handle(
+          new Request('http://localhost/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...validRequestBody, model }),
+          }),
+        )
+
+        expect(response.status).toBe(500)
+        expect(consoleSpies.error).toHaveBeenCalledWith(expect.stringContaining('Model not found'))
+        expect(mockCreateCompletion).not.toHaveBeenCalled()
+      },
+    )
 
     it('returns a minimal 503 before client construction when the canonical price is missing', async () => {
       await database
@@ -982,10 +988,6 @@ describe('Inference Routes', () => {
 
       expect(response.status).toBe(500)
       expect(mockCreateCompletion).not.toHaveBeenCalled()
-    })
-
-    it('exposes only Thunderbolt models handled by the inference proxy', () => {
-      expect(Object.keys(supportedModels)).toEqual(['opus-5', 'deepseek-v4-flash'])
     })
 
     it('should handle requests with has_tools flag correctly', async () => {

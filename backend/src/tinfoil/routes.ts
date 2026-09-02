@@ -8,6 +8,7 @@ import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
 import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
+import { rejectPersonalAccessToken } from '@/inference/web-session'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
@@ -260,6 +261,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       const lower = key.toLowerCase()
       if (
         lower === 'authorization' ||
+        lower === 'x-api-key' ||
         lower === 'host' ||
         lower === 'cookie' ||
         lower === 'connection' ||
@@ -421,8 +423,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     })
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
+      const webSessionApp = g.onBeforeHandle(rejectPersonalAccessToken)
       if (rateLimit) {
-        return g
+        return webSessionApp
           .use(rateLimit)
           .all(
             '/*',
@@ -439,7 +442,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             { parse: 'none' },
           )
       }
-      return g.all(
+      return webSessionApp.all(
         '/*',
         (ctx) =>
           proxyToEnclave(

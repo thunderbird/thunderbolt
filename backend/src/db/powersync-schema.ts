@@ -277,9 +277,9 @@ export const devicesTable = powersyncSchema.table(
     createdAt: timestamp('created_at').defaultNow(),
     revokedAt: timestamp('revoked_at'),
     appVersion: text('app_version'),
-    // Discriminates a normal device from an iroh bridge device (ACP/MCP). A bridge is just a
-    // device with this marker, so the whole device lifecycle (revoke, cap, listing) still applies.
-    deviceType: text('device_type', { enum: ['normal', 'bridge'] })
+    // Discriminates normal app, iroh bridge (ACP/MCP), and account-only CLI devices while keeping
+    // one shared lifecycle for revocation, device caps, and listing.
+    deviceType: text('device_type', { enum: ['normal', 'bridge', 'cli'] })
       .notNull()
       .default('normal'),
     // iroh P2P endpoint identity for this device. Nullable: only set once a trusted device

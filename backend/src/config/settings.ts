@@ -109,6 +109,10 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Rollout order: docs/self-hosting/configuration.md#cli-device-rollout.
+    // Kill switch for the server-owned CLI device row.
+    cliDeviceRegistrationEnabled: z.boolean().default(false),
+
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
     // Trimmed + semver-validated at startup so typos (`banana`, `0,2,0`) fail fast
@@ -224,6 +228,7 @@ const parseSettings = (): Settings => {
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    cliDeviceRegistrationEnabled: process.env.CLI_DEVICE_REGISTRATION_ENABLED === 'true',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

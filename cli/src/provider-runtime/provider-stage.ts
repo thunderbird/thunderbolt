@@ -10,7 +10,7 @@ export type ProviderStageEntry = {
 }
 
 export type ProviderStageContext = {
-  readonly stage: (profile: ByokProfile) => void
+  readonly stage: (profile: ByokProfile) => ProviderStageEntry
   readonly get: (providerId: string) => ProviderStageEntry | null
   readonly clear: (entry: ProviderStageEntry) => boolean
 }
@@ -61,7 +61,9 @@ export const createProviderStageContext = (): ProviderStageContext => {
   return {
     stage: (profile) => {
       if (profiles.has(profile.id)) throw new Error(`Provider "${profile.id}" already staged credentials.`)
-      profiles.set(profile.id, { profile: { ...profile } })
+      const entry = { profile: { ...profile } }
+      profiles.set(profile.id, entry)
+      return entry
     },
     get: (providerId) => profiles.get(providerId) ?? null,
     clear: (entry) => {

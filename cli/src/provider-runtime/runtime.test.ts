@@ -7,6 +7,7 @@ import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
 import type { CliDeviceMetadata } from '../auth/account-client.ts'
 import { createCredentialedFetch, type CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
+import { createByokBinding } from './byok.ts'
 import { bundledManagedCatalog } from './catalog.ts'
 import type {
   ByokProfile,
@@ -415,6 +416,111 @@ describe('ProviderRuntime state and selection', () => {
     expect(calls).toMatchObject({ byok: 0, direct: 0, tinfoil: 0 })
   })
 
+  test('prepares an unsaved openai-compat invocation through the provider stage without persistence', async () => {
+    const baseUrl = 'https://models.example.com/v1'
+    const model = 'compat-model'
+    const saved: CliConfig[] = []
+    const { dependencies, runtime } = await createTestProviderRuntime({
+      loadConfig: async () => null,
+      saveConfig: async (next) => {
+        saved.push(next)
+      },
+      createByokBinding,
+      environment: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'dedicated-key' },
+    })
+
+    const prepared = await runtime.prepare({ providerId: 'openai-compat', baseUrl, model })
+
+    expect(prepared).toMatchObject({ providerId: 'openai-compat', wireModel: model, persistsCredentialStatus: false })
+    expect(prepared.piModel).toMatchObject({ provider: 'openai-compat', id: model, baseUrl })
+    expect(dependencies.providerStage.get('openai-compat')).not.toBeNull()
+    expect(runtime.snapshot()).toMatchObject({ activeProviderId: null, providers: [] })
+    expect(saved).toEqual([])
+
+    await prepared.dispose()
+    expect(dependencies.providerStage.get('openai-compat')).toBeNull()
+  })
+
+  test('reports the missing base URL for an unsaved openai-compat invocation', async () => {
+    const { runtime } = await createTestProviderRuntime({ loadConfig: async () => null })
+
+    await expect(
+      runtime.prepare({ providerId: 'openai-compat', model: 'compat-model', apiKey: 'flag-key' }),
+    ).rejects.toMatchObject({
+      code: 'config-invalid',
+      message: expect.stringMatching(/--base-url/i),
+    })
+  })
+
+  test('reports the missing model for each unsaved openai-compat invocation', async () => {
+    const { runtime } = await createTestProviderRuntime({
+      loadConfig: async () => null,
+      createByokBinding,
+      environment: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'dedicated-key' },
+    })
+    const prepared = await runtime.prepare({
+      providerId: 'openai-compat',
+      baseUrl: 'https://first.example.com/v1',
+      model: 'first-compat-model',
+    })
+
+    await expect(
+      runtime.prepare({ providerId: 'openai-compat', baseUrl: 'https://second.example.com/v1' }),
+    ).rejects.toMatchObject({
+      code: 'config-invalid',
+      message: expect.stringMatching(/--model/i),
+    })
+
+    await prepared.dispose()
+  })
+
+  test('prefers a saved openai-compat profile over an ad-hoc stage', async () => {
+    const providerStage = createProviderStageContext()
+    providerStage.stage(
+      profile({
+        id: 'openai-compat',
+        label: 'Ad-hoc compatible',
+        provider: 'openai-compat',
+        defaultModel: 'ad-hoc-model',
+      }),
+    )
+    const savedProfile = profile({
+      id: 'saved-compatible',
+      label: 'Saved compatible',
+      provider: 'openai-compat',
+      defaultModel: 'saved-model',
+    })
+    const { runtime } = await createTestProviderRuntime({
+      loadConfig: async () => config({ activeProviderId: savedProfile.id, providers: [savedProfile] }),
+      providerStage,
+    })
+
+    const prepared = await runtime.prepare({ providerId: 'openai-compat' })
+
+    expect(prepared).toMatchObject({ providerId: savedProfile.id, wireModel: savedProfile.defaultModel })
+  })
+
+  test('rejects an ad-hoc openai-compat invocation with only another provider credential', async () => {
+    const otherProviderKey = 'anthropic-only-key'
+    const { dependencies, runtime } = await createTestProviderRuntime({
+      loadConfig: async () => null,
+      createByokBinding,
+      environment: { ANTHROPIC_API_KEY: otherProviderKey },
+    })
+
+    await expect(
+      runtime.prepare({
+        providerId: 'openai-compat',
+        baseUrl: 'https://isolated.example.com/v1',
+        model: 'isolated-compat-model',
+      }),
+    ).rejects.toMatchObject({
+      code: 'authentication-required',
+      message: expect.stringMatching(/THUNDERBOLT_OPENAI_COMPAT_KEY/),
+    })
+    expect(dependencies.providerStage.get('openai-compat')).toBeNull()
+  })
+
   test('passes all four process overrides to one profile while persisting none of them', async () => {
     const selected = profile({
       id: 'custom',
@@ -469,6 +575,20 @@ describe('ProviderRuntime state and selection', () => {
 
     expect(calls).toMatchObject({ byok: 0, direct: 0, tinfoil: 0 })
     expect(saved).toEqual([])
+
+    const adHoc = await createTestProviderRuntime({
+      loadConfig: async () => null,
+      createByokBinding,
+    })
+    await expect(
+      adHoc.runtime.prepare({
+        providerId: 'openai-compat',
+        apiKey: 'flag-key',
+        baseUrl: 'http://models.example/v1',
+        model: 'cleartext-compat-model',
+      }),
+    ).rejects.toMatchObject({ code: 'config-invalid' })
+    expect(adHoc.dependencies.providerStage.get('openai-compat')).toBeNull()
   })
 
   test('writes the complete next config before publishing it and leaves state unchanged on failure', async () => {

@@ -281,9 +281,36 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
       )
     }
     if (selector === 'thunderbolt') return selector
-    const stage = dependencies.providerStage.get(selector)
-    if (stage) return { profile: cloneProfile(stage.profile), stage }
-    return { profile: resolveByokProfile(selector), stage: null }
+    const hasSavedMatch = currentConfig.providers.some(
+      ({ id, label, provider }) => id === selector || label === selector || provider === selector,
+    )
+    if (hasSavedMatch) {
+      const profile = resolveByokProfile(selector)
+      const stage = profile.id === selector ? dependencies.providerStage.get(selector) : null
+      return { profile: cloneProfile(stage?.profile ?? profile), stage }
+    }
+    if (selector !== 'openai-compat') {
+      const stage = dependencies.providerStage.get(selector)
+      if (stage) return { profile: cloneProfile(stage.profile), stage }
+      return { profile: resolveByokProfile(selector), stage: null }
+    }
+    if (!selection.baseUrl?.trim())
+      throw providerRuntimeError('config-invalid', 'OpenAI-compatible ad-hoc providers require --base-url.')
+    if (!selection.model?.trim())
+      throw providerRuntimeError('config-invalid', 'OpenAI-compatible ad-hoc providers require --model.')
+    const existingStage = dependencies.providerStage.get(selector)
+    if (existingStage) return { profile: cloneProfile(existingStage.profile), stage: existingStage }
+    const profile: ByokProfile = {
+      id: selector,
+      label: 'OpenAI-compatible',
+      provider: selector,
+      baseUrl: selection.baseUrl,
+      defaultModel: selection.model,
+      apiKey: null,
+      credentialStatus: 'not-authenticated',
+    }
+    const stage = dependencies.providerStage.stage(profile)
+    return { profile: cloneProfile(stage.profile), stage }
   }
 
   /** Returns an exact persisted profile or rejects the command before persistence. */
@@ -519,12 +546,6 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     selection: InvocationSelection,
     stage: ProviderStageEntry | null,
   ): Promise<PreparedPiBinding> => {
-    if (selected.provider === 'openai-compat' && !isSecureCloudUrl(selection.baseUrl ?? selected.baseUrl)) {
-      throw providerRuntimeError(
-        'config-invalid',
-        'OpenAI-compatible endpoints must use https (or loopback http).',
-      )
-    }
     const currentGeneration = profileGenerations.get(selected.id) ?? 0
     const preparedGeneration = currentGeneration + (stage ? 1 : 0)
     let persistsCredentialStatus = false
@@ -548,6 +569,12 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     }
     const prepared = await (async (): Promise<PreparedPiBinding> => {
       try {
+        if (selected.provider === 'openai-compat' && !isSecureCloudUrl(selection.baseUrl ?? selected.baseUrl)) {
+          throw providerRuntimeError(
+            'config-invalid',
+            'OpenAI-compatible endpoints must use https (or loopback http).',
+          )
+        }
         return await dependencies.createByokBinding(
           cloneProfile(selected),
           { ...selection, providerId: selected.id },

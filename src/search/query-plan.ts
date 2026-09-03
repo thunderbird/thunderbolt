@@ -22,9 +22,11 @@
  * Nothing here reads the app locale, deliberately. The index holds user
  * content, whose language is independent of the UI language and routinely mixed
  * within one account — a locale-keyed plan would be wrong for most rows in
- * exactly the accounts it is meant to help. The `Intl.Segmenter` locale below
- * is derived from the query's own script for the same reason.
+ * exactly the accounts it is meant to help. `wordSegmenterFor` derives its
+ * dictionary from the query's own script for the same reason.
  */
+
+import { wordSegmenterFor } from '@/lib/segmenter'
 
 /**
  * Scripts whose words are not separated by spaces, so `unicode61` collapses a
@@ -37,40 +39,6 @@
 const unsegmentedScript = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Thai}\p{sc=Lao}\p{sc=Khmer}\p{sc=Myanmar}]/u
 
 /**
- * `Intl.Segmenter`'s word segmentation is dictionary-driven, so the locale
- * picks the dictionary. Han without kana is treated as Chinese; kana anywhere
- * means Japanese.
- */
-const segmenterLocales: readonly (readonly [RegExp, string])[] = [
-  [/[\p{sc=Hiragana}\p{sc=Katakana}]/u, 'ja'],
-  [/\p{sc=Thai}/u, 'th'],
-  [/\p{sc=Khmer}/u, 'km'],
-  [/\p{sc=Lao}/u, 'lo'],
-  [/\p{sc=Myanmar}/u, 'my'],
-]
-
-/** Segmentation locale implied by a term's own script. */
-const segmenterLocaleFor = (term: string): string => segmenterLocales.find(([script]) => script.test(term))?.[1] ?? 'zh'
-
-const segmenters = new Map<string, Intl.Segmenter | null>()
-
-/**
- * Memoized segmenter, or `null` where `Intl.Segmenter` is missing (Firefox
- * only shipped it in 125). Without it an unsegmented run stays a single
- * substring term, which still matches contiguous text — just not
- * `東京天気` against `東京の天気`.
- */
-const getSegmenter = (locale: string): Intl.Segmenter | null => {
-  const cached = segmenters.get(locale)
-  if (cached !== undefined) {
-    return cached
-  }
-  const segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(locale, { granularity: 'word' }) : null
-  segmenters.set(locale, segmenter)
-  return segmenter
-}
-
-/**
  * Splits one whitespace token containing an unsegmented script into words.
  *
  * Single-character words are dropped as grammatical particles (`の`, `は`) —
@@ -80,8 +48,11 @@ const getSegmenter = (locale: string): Intl.Segmenter | null => {
  * MATCH-able `Claude` alongside a substring `設定`.
  */
 const segment = (token: string): string[] => {
-  const segmenter = getSegmenter(segmenterLocaleFor(token))
+  const segmenter = wordSegmenterFor(token)
   if (!segmenter) {
+    // Without segmentation an unsegmented run stays a single substring term,
+    // which still matches contiguous text — just not `東京天気` against
+    // `東京の天気`.
     return [token]
   }
   const words = [...segmenter.segment(token)].filter((part) => part.isWordLike === true).map((part) => part.segment)

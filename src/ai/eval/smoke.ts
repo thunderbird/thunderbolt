@@ -17,6 +17,8 @@ const smokeScenarioIds = new Set([
   'adversarial-no-search-01',
   'multi-turn-reuse-01',
   'search-wont-help-01',
+  'language-establish-01',
+  'language-sticky-paste-01',
 ])
 
 /** Select the fixed, reviewable scenario subset used by pull-request smoke runs. */

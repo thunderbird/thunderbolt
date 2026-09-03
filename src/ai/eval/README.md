@@ -20,6 +20,9 @@ EVAL_ENGINES=legacy bun run eval
 # Test only Chat mode across all models
 EVAL_MODES=chat bun run eval
 
+# Run one suite in isolation — the whole point when iterating on it
+EVAL_SUITES=language bun run eval
+
 # Verbose mode — shows the full system prompt and model response for each scenario
 EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
 
@@ -72,6 +75,50 @@ Necessity scenarios use plain Chat turns, so the production `auto` web budget ap
 
 The `research` category measures the decision to search in ordinary Chat, not exhaustive depth. Prompts that explicitly say “research,” “deep dive,” or “comprehensive” require at least two web-call attempts; other multi-source prompts require at least one. There is no scored maximum because the model may attempt additional angles after Chat's two-call execution budget is exhausted. The existing `/research` suite measures depth under its 30-call budget.
 
+### Reply-language suite
+
+Scores the `# Language` section of the system prompt (`src/ai/prompt.ts`): the model must
+answer in the conversation's language, stay there when foreign-language content shows up
+mid-thread, switch on an explicit request, and fall back to the app language when a turn
+establishes none. Scenarios live in `language-scenarios.ts` and run as Chat turns across
+the same model/engine matrix. `language` shares the scored-category machinery (samples,
+gate, Wilson interval) but is **not** a search-necessity category — `stats.ts` excludes it
+from the search headline rates.
+
+| Scenario                       | Shape                                            | Expected reply |
+| ------------------------------ | ------------------------------------------------ | -------------- |
+| `language-establish-01`        | Portuguese question                              | Portuguese     |
+| `language-establish-02`        | Japanese question                                | Japanese       |
+| `language-sticky-paste-01`     | pt thread, follow-up pastes an English traceback | Portuguese     |
+| `language-sticky-search-01`    | pt question that must search (English sources)   | Portuguese     |
+| `language-explicit-switch-01`  | pt thread, follow-up asks for English            | English        |
+| `language-fallback-code-01`    | bare code, no prose                              | app language   |
+| `language-fallback-terse-01`   | `hm?`                                            | app language   |
+| `language-negative-control-01` | ordinary English question                        | English        |
+
+Gate: 95%, matching `never_search` — following an explicit output-language instruction is
+close to deterministic for a capable model.
+
+The app language is process-global and scenarios run concurrently, so it belongs to the
+**run**, not to a scenario. Under Bun there is no `localStorage` at import time and no
+`navigator.languages`, so it resolves to `en` unless `EVAL_LANGUAGE` is set:
+
+```bash
+# Conversation-language adherence and stickiness — app language stays `en`,
+# so a Portuguese reply proves the conversation beat the setting.
+EVAL_MODELS=opus EVAL_MODES=chat bun run eval
+
+# Exercises the fallback: the two fallback scenarios now expect Japanese.
+EVAL_LANGUAGE=ja EVAL_MODELS=opus EVAL_MODES=chat bun run eval
+```
+
+Every other scenario states its expected language outright, so the suite is valid under
+any `EVAL_LANGUAGE` — only the fallback scenarios follow the run.
+
+Language is judged semantically (`replyLanguage` in `judge.ts`), scoped to the assistant's
+own prose: quoted error text, code, identifiers, URLs, and proper nouns carry their own
+language and do not fail the assertion.
+
 ### Example Output
 
 ```
@@ -118,6 +165,8 @@ Report saved to: evals/eval-results-20260804-164000.md
 | `EVAL_SAMPLES`            | `3`                                 | `5`               | Samples per necessity scenario; core suites always use 1 |
 | `EVAL_SMOKE`              | unset                               | `1`               | Run the fixed smoke subset and force all samples to 1    |
 | `EVAL_NECESSITY_OPTIONAL` | unset                               | `1`               | Include `search_wont_help` scenarios                     |
+| `EVAL_SUITES`             | all                                 | `language`        | Suites to run: `core`, `necessity`, `language`           |
+| `EVAL_LANGUAGE`           | `en`                                | `ja`              | App language for the run; reply-language fallback target |
 
 ### CLI Flags
 

@@ -1,5 +1,5 @@
 [build]
-rustc-wrapper = "sccache"
+rustc-wrapper = "../scripts/rustc-wrapper.sh"
 
 # Enable hardware-specific optimizations for better quantization performance
 [target.x86_64-apple-darwin]

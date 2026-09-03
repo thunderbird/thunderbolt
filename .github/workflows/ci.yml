@@ -75,6 +75,11 @@ jobs:
               - 'package.json'
               - 'bun.lock'
               - '.github/workflows/ci.yml'
+              # Backend transactional email has its own catalog + config (THU-824),
+              # gated by the same `i18n:check`. Without these the check never runs
+              # on a backend-email-only PR and a stale catalog merges silently.
+              - 'backend/src/emails/**'
+              - 'backend/lingui.config.ts'
 
   typescript:
     runs-on: ubuntu-latest
@@ -473,7 +478,7 @@ jobs:
         # No per-test timeout in CI (large value ≈ disabled — bun `--timeout 0` hangs async tests):
         # the 10-minute step cap above is the real ceiling, so tests that only get slow under
         # CI/PGlite contention don't spuriously fail. Local `test:backend` keeps the 5s timeout.
-        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src -name '*.test.ts' -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
+        run: cd backend && bun test --timeout 3600000 --randomize --rerun-each 5 $(find src \( -name '*.test.ts' -o -name '*.test.tsx' \) -not -path '*proxy/ws-e2e.test.ts' -not -path '*haystack/routes.test.ts')
 
       # ws-e2e.test.ts + haystack/routes.test.ts wait on Bun same-process WS close/
       # message events that Bun drops/delays under load. Systematic causes (shared

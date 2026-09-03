@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
 import { WaitlistHeader } from './waitlist-header'
+import { WaitlistLanguagePicker } from './waitlist-language-picker'
 
 /**
  * Unified entry page at /waitlist.
@@ -136,29 +137,32 @@ export const WaitlistPage = () => {
           </form>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground">
-          <Trans>
-            By continuing, you agree to our{' '}
-            <a
-              href={termsOfServiceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:no-underline"
-            >
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a
-              href={privacyPolicyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:no-underline"
-            >
-              Privacy Policy
-            </a>
-            .
-          </Trans>
-        </p>
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-center text-xs text-muted-foreground">
+            <Trans>
+              By continuing, you agree to our{' '}
+              <a
+                href={termsOfServiceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline"
+              >
+                Terms of Service
+              </a>{' '}
+              and{' '}
+              <a
+                href={privacyPolicyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline"
+              >
+                Privacy Policy
+              </a>
+              .
+            </Trans>
+          </p>
+          <WaitlistLanguagePicker />
+        </div>
       </div>
     </WaitlistCard>
   )

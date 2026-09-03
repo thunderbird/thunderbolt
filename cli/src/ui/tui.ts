@@ -462,10 +462,11 @@ class MessageQueue implements Component, Focusable {
         ? new TruncatedText(`${title}${' '.repeat(gap)}${hint}`).render(width)
         : [...new TruncatedText(title).render(width), ...new Text(hint, 0, 0).render(width)]
     const items = this.items.map((text, index) => {
-      const line = new TruncatedText(`  ${index + 1}. ${sanitizeTerminalText(text).replace(/\s+/g, ' ').trim()}`).render(
-        width,
-      )[0] ?? ''
-      return this.focused && index === this.selectedIndex ? selectListTheme.selectedText(line) : line
+      const selected = this.focused && index === this.selectedIndex
+      const line = new TruncatedText(
+        `${selected ? '> ' : '  '}${index + 1}. ${sanitizeTerminalText(text).replace(/\s+/g, ' ').trim()}`,
+      ).render(width)[0] ?? ''
+      return selected ? selectListTheme.selectedText(line) : line
     })
     return [...header, ...items]
   }

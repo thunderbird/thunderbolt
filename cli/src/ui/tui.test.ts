@@ -286,8 +286,17 @@ describe('runTuiRepl', () => {
     await promptStarted.promise
     terminal.send('steer this')
     terminal.send('\r')
+    terminal.send('leave queued')
+    terminal.send('\r')
     terminal.send('draft stays')
+    terminal.writes.length = 0
     terminal.send('\x1b[A')
+    await terminal.waitForOutput('Queued (2)')
+
+    const output = terminal.writes.join('')
+    expect(output).toContain('> 1. steer this')
+    expect(output).not.toContain('> 2. leave queued')
+
     terminal.send('\r')
     await terminal.waitForOutput('steering')
 

@@ -160,7 +160,7 @@ export default function ChatUI() {
 
         <m.div
           className={cn(
-            '-mt-3 md:-mt-4 relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
+            'relative z-10 px-3 pb-3 md:px-4 md:pb-4 flex',
             isNativeMobile && 'pb-0',
             !hasMessages && !isMobile && 'flex-1 items-center',
           )}

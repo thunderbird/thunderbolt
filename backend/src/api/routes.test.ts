@@ -86,8 +86,132 @@ describe('Main Routes', () => {
 
     const data = await response.json()
     expect(data).toEqual([
-      { name: 'London', region: 'England', country: 'UK', countryCode: 'GB', lat: 51.5, lon: -0.12 },
+      { id: 0, name: 'London', region: 'England', country: 'UK', countryCode: 'GB', lat: 51.5, lon: -0.12 },
     ])
+  })
+
+  /**
+   * Open-Meteo's `language` narrows what it *matches*, not just what it renders:
+   * `Munique` finds Munich under `pt` and only Muñique, Spain under `en`. And it
+   * keys on the base subtag — `pt-BR` falls off the lookup path and silently
+   * answers in English — so the route has to hand it `pt`, not the caller's tag.
+   */
+  it('should search in the requested language, narrowed to its base subtag', async () => {
+    const requested: string[] = []
+    const recordingFetch = mock((input: RequestInfo | URL) => {
+      requested.push(input instanceof Request ? input.url : input.toString())
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+
+    const testApp = createMainRoutes(mockAuth, recordingFetch as unknown as typeof fetch)
+    await testApp.handle(new Request('http://localhost/locations?query=Munique&language=pt-BR'))
+
+    expect(new URL(requested[0]).searchParams.get('language')).toBe('pt')
+  })
+
+  it('should default to English when no language is given', async () => {
+    const requested: string[] = []
+    const recordingFetch = mock((input: RequestInfo | URL) => {
+      requested.push(input instanceof Request ? input.url : input.toString())
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+
+    const testApp = createMainRoutes(mockAuth, recordingFetch as unknown as typeof fetch)
+    await testApp.handle(new Request('http://localhost/locations?query=London'))
+
+    expect(new URL(requested[0]).searchParams.get('language')).toBe('en')
+  })
+
+  /**
+   * `baseLanguage` builds an `Intl.Locale`, which throws a `RangeError` on a
+   * malformed tag, and `?language=` arrives as `''` rather than as a missing
+   * value — so it slips past the `'en'` default. Both have to be turned away at
+   * the boundary; reaching the handler makes them an opaque 500.
+   */
+  it.each(['', 'en_US', 'foo!', 'e', 'en-'])('should reject the malformed language tag %p', async (language) => {
+    const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+    const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+    const response = await testApp.handle(
+      new Request(`http://localhost/locations?query=London&language=${encodeURIComponent(language)}`),
+    )
+
+    expect(response.status).toBe(422)
+    expect(unreachedFetch).not.toHaveBeenCalled()
+  })
+
+  describe('GET /locations/:id', () => {
+    const byIdFetch = mock((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 2867714,
+            name: (input instanceof Request ? input.url : input.toString()).includes('language=pt')
+              ? 'Munique'
+              : 'Munich',
+            admin1: 'Baviera',
+            country: 'Alemanha',
+            country_code: 'DE',
+            latitude: 48.13,
+            longitude: 11.57,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+
+    it('should resolve a place by id in the requested language', async () => {
+      const testApp = createMainRoutes(mockAuth, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714?language=pt-BR'))
+      expect(response.status).toBe(200)
+
+      expect(await response.json()).toEqual({
+        id: 2867714,
+        name: 'Munique',
+        region: 'Baviera',
+        country: 'Alemanha',
+        countryCode: 'DE',
+        lat: 48.13,
+        lon: 11.57,
+      })
+    })
+
+    it('should reject a non-numeric id', async () => {
+      const testApp = createMainRoutes(mockAuth, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/not-an-id'))
+      expect(response.status).toBe(422)
+    })
+
+    it('should 404 when the provider does not know the id', async () => {
+      const missingFetch = mock(() => Promise.resolve(new Response('{}', { status: 400 })))
+      const testApp = createMainRoutes(mockAuth, missingFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/1?language=de'))
+      expect(response.status).toBe(404)
+    })
+
+    it('should reject unauthenticated requests', async () => {
+      const testApp = createMainRoutes(mockAuthUnauthenticated, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject a malformed language tag', async () => {
+      const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+      const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714?language='))
+
+      expect(response.status).toBe(422)
+      expect(unreachedFetch).not.toHaveBeenCalled()
+    })
   })
 
   it('should return an empty country code when the provider omits one', async () => {
@@ -120,8 +244,16 @@ describe('Main Routes', () => {
           new Response(
             JSON.stringify({
               results: [
-                { name: 'Canada', country: 'Canada', country_code: 'CA', latitude: 60.1, longitude: -113.6 },
                 {
+                  id: 6251999,
+                  name: 'Canada',
+                  country: 'Canada',
+                  country_code: 'CA',
+                  latitude: 60.1,
+                  longitude: -113.6,
+                },
+                {
+                  id: 4298960,
                   name: 'Canada',
                   admin1: 'Kentucky',
                   country: 'United States',
@@ -130,6 +262,7 @@ describe('Main Routes', () => {
                   longitude: -82.3,
                 },
                 {
+                  id: 2521850,
                   name: 'Cañada',
                   admin1: 'Valencia',
                   country: 'Spain',
@@ -156,8 +289,16 @@ describe('Main Routes', () => {
     expect(data).toHaveLength(2)
     expect(data.every((loc: { region: string }) => loc.region !== '')).toBe(true)
     expect(data).toEqual([
-      { name: 'Canada', region: 'Kentucky', country: 'United States', countryCode: 'US', lat: 37.6, lon: -82.3 },
-      { name: 'Cañada', region: 'Valencia', country: 'Spain', countryCode: 'ES', lat: 38.7, lon: -0.8 },
+      {
+        id: 4298960,
+        name: 'Canada',
+        region: 'Kentucky',
+        country: 'United States',
+        countryCode: 'US',
+        lat: 37.6,
+        lon: -82.3,
+      },
+      { id: 2521850, name: 'Cañada', region: 'Valencia', country: 'Spain', countryCode: 'ES', lat: 38.7, lon: -0.8 },
     ])
   })
 })

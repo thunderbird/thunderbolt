@@ -113,6 +113,48 @@ export const defaultSettingLocationCountryCode: Setting = {
   userId: null,
 }
 
+/**
+ * Open-Meteo (GeoNames) place id for the location above, stored so the display
+ * name can be re-resolved in whatever language is active rather than frozen at
+ * the language it was picked in. `location_name` stays English because it is
+ * model-facing (it reaches the prompt, and the weather widget geocodes the
+ * model's arguments in English); this is the handle that makes both possible
+ * from one stored place. Null for rows written before THU-847 — those fall
+ * back to displaying `location_name`.
+ */
+export const defaultSettingLocationId: Setting = {
+  key: 'location_id',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
+/**
+ * The saved location in the active language — "Munique, Baviera, Alemanha" for
+ * the place `location_name` holds as "Munich, Bavaria, Germany".
+ *
+ * Stored rather than resolved on render because only the geocoding provider
+ * knows city and region names (CLDR has neither), so an offline or standalone
+ * device would otherwise be stuck showing the English name. Written for free
+ * when the place is picked, since the picker already searched in the user's
+ * language.
+ *
+ * A language change invalidates it by *clearing* it (`useLanguageSetting`),
+ * which costs no network and reaches the other devices as an invalidation they
+ * each act on. `useLocationNameDisplay` refills it lazily.
+ *
+ * Null while unresolved, and for rows written before it existed — the display
+ * falls back to `location_name` until a lookup fills it in.
+ */
+export const defaultSettingLocationNameDisplay: Setting = {
+  key: 'location_name_display',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingDistanceUnit: Setting = {
   key: 'distance_unit',
   value: null,
@@ -208,6 +250,8 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingLocationLat,
   defaultSettingLocationLng,
   defaultSettingLocationCountryCode,
+  defaultSettingLocationId,
+  defaultSettingLocationNameDisplay,
   defaultSettingDistanceUnit,
   defaultSettingTemperatureUnit,
   defaultSettingTimeFormat,
@@ -230,4 +274,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 5
+export const defaultSettingsVersion = 7

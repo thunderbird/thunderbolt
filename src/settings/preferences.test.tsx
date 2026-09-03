@@ -156,12 +156,13 @@ describe('PreferencesSettingsPage — Localization layout', () => {
     // code is what `regionForUnitDefaults` reads first, so a survivor here
     // re-seeds units from a location the user just cleared. Any future location
     // key added to `handleSelectLocation` should be added below too.
-    const locationKeys = ['location_name', 'location_lat', 'location_lng', 'location_country_code']
+    const locationKeys = ['location_name', 'location_lat', 'location_lng', 'location_country_code', 'location_id']
     await updateSettings(getDb(), {
       location_name: 'Berlin, Berlin, Germany',
       location_lat: '52.52',
       location_lng: '13.405',
       location_country_code: 'DE',
+      location_id: '2950159',
     })
 
     renderPage(createMockAuthClient({ session: authedSession }))
@@ -177,7 +178,7 @@ describe('PreferencesSettingsPage — Localization layout', () => {
     })
 
     const stored = await getSettingsRecords(getDb(), locationKeys)
-    expect(stored.map((setting) => setting.value)).toEqual([null, null, null, null])
+    expect(stored.map((setting) => setting.value)).toEqual([null, null, null, null, null])
   })
 
   it('offers no Date Format row', () => {

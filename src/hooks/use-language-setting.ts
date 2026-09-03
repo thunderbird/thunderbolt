@@ -19,7 +19,26 @@ import { sourceLocale } from '@shared/i18n/locales'
  * it. Here the pair cannot be separated.
  */
 export const useLanguageSetting = () => {
-  const { language } = useSettings({ language: sourceLocale as string })
+  const { language, locationNameDisplay } = useSettings({
+    language: sourceLocale as string,
+    location_name_display: '',
+  })
+
+  /**
+   * The saved location's display name is language-specific, so a language
+   * change invalidates it. Clearing rather than re-resolving keeps this path
+   * network-free, and reaches the other devices as an invalidation each one
+   * acts on for itself; `useLocationNameDisplay` refills it lazily.
+   *
+   * Awaited separately from the language write rather than in a `Promise.all`:
+   * each `setValue` opens its own transaction, and SQLite rejects a `begin`
+   * while one is open.
+   */
+  const invalidateLocationNameDisplay = async () => {
+    if (locationNameDisplay.value) {
+      await locationNameDisplay.reset()
+    }
+  }
 
   return {
     language,
@@ -27,11 +46,13 @@ export const useLanguageSetting = () => {
     setLanguage: async (value: string) => {
       void applyLanguageSetting(value)
       await language.setValue(value)
+      await invalidateLocationNameDisplay()
     },
     /** Return the setting to "auto", i.e. whatever the browser negotiates. */
     resetLanguage: async () => {
       void applyLanguageSetting(null)
       await language.reset()
+      await invalidateLocationNameDisplay()
     },
   }
 }

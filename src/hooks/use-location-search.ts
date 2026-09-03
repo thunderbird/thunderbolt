@@ -4,22 +4,9 @@
 
 import { useHttpClient } from '@/contexts'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useActiveLocale } from '@/i18n/use-active-locale'
+import { fetchLocations, type LocationData } from '@/lib/locations'
 import { useEffect, useReducer, useTransition } from 'react'
-
-type LocationData = {
-  name: string
-  city: string
-  /**
-   * ISO 3166-1 alpha-2, or empty when the provider has none. Carried alongside
-   * `name` because `name` ends in a display country that will localize, so it
-   * cannot be reverse-matched to a region.
-   */
-  countryCode: string
-  coordinates: {
-    lat: number
-    lng: number
-  }
-}
 
 type LocationState = {
   open: boolean
@@ -63,6 +50,7 @@ type UseLocationSearchOptions = {
  */
 export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) => {
   const httpClient = useHttpClient()
+  const locale = useActiveLocale()
   const [locationState, dispatch] = useReducer(locationReducer, createInitialState(autoOpen))
   const { open, searchQuery, locations } = locationState
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -76,37 +64,13 @@ export const useLocationSearch = ({ autoOpen }: UseLocationSearchOptions = {}) =
 
     startTransition(async () => {
       try {
-        const data = await httpClient
-          .get('locations', {
-            searchParams: { query: debouncedSearchQuery },
-          })
-          .json<
-            Array<{
-              name: string
-              region: string
-              country: string
-              countryCode: string
-              lat: number
-              lon: number
-            }>
-          >()
-
-        const transformedLocations: LocationData[] = data.map((location) => ({
-          name: `${location.name}, ${location.region}, ${location.country}`,
-          city: location.name,
-          countryCode: location.countryCode,
-          coordinates: {
-            lat: location.lat,
-            lng: location.lon,
-          },
-        }))
-        dispatch({ type: 'SET_LOCATIONS', payload: transformedLocations })
+        dispatch({ type: 'SET_LOCATIONS', payload: await fetchLocations(httpClient, debouncedSearchQuery, locale) })
       } catch (error) {
         console.error('Error searching locations:', error)
         dispatch({ type: 'SET_LOCATIONS', payload: [] })
       }
     })
-  }, [debouncedSearchQuery, httpClient])
+  }, [debouncedSearchQuery, httpClient, locale])
 
   const setOpen = (open: boolean) => dispatch({ type: 'SET_OPEN', payload: open })
   const setSearchQuery = (query: string) => dispatch({ type: 'SET_SEARCH_QUERY', payload: query })

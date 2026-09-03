@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useDatabase } from '@/contexts'
+import { useDatabase, useHttpClient } from '@/contexts'
 import { updateSettings } from '@/dal'
 import { unitDefaultsForRegion } from '@/i18n/region-units'
+import { useActiveLocale } from '@/i18n/use-active-locale'
+import { fetchEnglishLocationName } from '@/lib/locations'
 import { useEffect, useReducer } from 'react'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
@@ -207,6 +209,8 @@ export const useOnboardingState = () => {
   })
 
   const db = useDatabase()
+  const httpClient = useHttpClient()
+  const locale = useActiveLocale()
   // Only `preferred_name` is read back here; everything else onboarding touches
   // is write-only and goes through `setValues`.
   const { preferredName } = useSettings({ preferred_name: '' })
@@ -260,7 +264,9 @@ export const useOnboardingState = () => {
     },
 
     submitLocation: async (locationData: {
+      /** The localized string the user picked; what the wizard keeps showing. */
       locationName: string
+      locationId: number
       locationLat: number
       locationLng: number
       locationCountryCode: string
@@ -269,10 +275,19 @@ export const useOnboardingState = () => {
 
       try {
         await updateSettings(db, {
-          location_name: locationData.locationName,
+          location_name: await fetchEnglishLocationName(
+            httpClient,
+            locationData.locationId,
+            locationData.locationName,
+            locale,
+          ),
           location_lat: String(locationData.locationLat),
           location_lng: String(locationData.locationLng),
           location_country_code: locationData.locationCountryCode,
+          location_id: String(locationData.locationId),
+          // The localized string the user picked, stored so the settings page
+          // never has to re-resolve it over the network.
+          location_name_display: locationData.locationName,
         })
 
         // Applied without a prompt, unlike the same change in preferences: the

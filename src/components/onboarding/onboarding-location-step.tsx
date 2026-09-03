@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
-import type { LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/lib/locations'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { zodResolver } from '@hookform/resolvers/zod'
 import type { I18n } from '@lingui/core'
@@ -30,6 +30,9 @@ const createLocationFormSchema = (i18n: I18n) =>
       // Not user-editable and never rendered: the combobox writes it so the
       // submit handler has the region without re-parsing `locationName`.
       locationCountryCode: z.string(),
+      // Likewise. `locationName` here is the localized display string the user
+      // clicked; the id is what recovers the English name the model needs.
+      locationId: z.number().optional(),
     })
     .refine(
       (data) => {
@@ -54,6 +57,7 @@ type OnboardingLocationStepProps = {
     setSubmittingLocation: (submitting: boolean) => void
     submitLocation: (locationData: {
       locationName: string
+      locationId: number
       locationLat: number
       locationLng: number
       locationCountryCode: string
@@ -77,6 +81,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       locationLat: undefined,
       locationLng: undefined,
       locationCountryCode: '',
+      locationId: undefined,
     },
   })
 
@@ -85,11 +90,13 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
     form.setValue('locationCountryCode', location.countryCode, { shouldDirty: true })
+    form.setValue('locationId', location.id, { shouldDirty: true })
     form.trigger()
 
     try {
       await actions.submitLocation({
         locationName: location.name,
+        locationId: location.id,
         locationLat: location.coordinates.lat,
         locationLng: location.coordinates.lng,
         locationCountryCode: location.countryCode,
@@ -139,6 +146,7 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     try {
       await actions.submitLocation({
         locationName: values.locationName,
+        locationId: values.locationId!,
         locationLat: values.locationLat!,
         locationLng: values.locationLng!,
         locationCountryCode: values.locationCountryCode,

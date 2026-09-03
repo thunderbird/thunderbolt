@@ -28,7 +28,7 @@
     "@earendil-works/pi-tui": "0.80.7",
     "@number0/iroh": "1.0.0",
     "qrcode-terminal": "0.12.0",
-    "tinfoil": "^1.2.1"
+    "tinfoil": "1.2.1"
   },
   "devDependencies": {
     "@types/bun": "^1.2.20",

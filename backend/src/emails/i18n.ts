@@ -24,7 +24,7 @@
  */
 
 import { setupI18n, type I18n, type Messages } from '@lingui/core'
-import { appLocales, pseudoLocale, sourceLocale, type AppLocale } from '@shared/i18n/locales'
+import { matchExactLocale, sourceLocale, type AppLocale } from '@shared/i18n/locales'
 import { messages as de } from './locales/de/messages'
 import { messages as en } from './locales/en/messages'
 import { messages as enXA } from './locales/en-XA/messages'
@@ -64,21 +64,6 @@ export const getEmailI18n = (locale: AppLocale): I18n => {
 }
 
 /**
- * Locales an inbound `X-App-Language` may select — every shipped locale except
- * the pseudo-locale.
- *
- * `en-XA` is excluded even though `getEmailI18n` still renders it: the preview
- * server and the render tests pass it directly, so nothing legitimate needs it
- * to arrive over the wire, while `/v1/waitlist/join` is unauthenticated and
- * takes the recipient from the request body — accepting it would let anyone
- * mail a third party pseudo-localized gibberish. Mirrors `settableLocales` in
- * `src/i18n/resolve-locale.ts`, which refuses the value for the same reason.
- */
-const emailLocales: readonly AppLocale[] = appLocales.filter((locale) => locale !== pseudoLocale)
-
-const isEmailLocale = (value: string): value is AppLocale => (emailLocales as readonly string[]).includes(value)
-
-/**
  * The locale to render an email in, from the recipient's `X-App-Language`.
  *
  * Every client sets that header on every backend request (`src/lib/http.ts`,
@@ -87,12 +72,17 @@ const isEmailLocale = (value: string): value is AppLocale => (emailLocales as re
  * client — including the three whose recipients have no `user` row yet, which
  * is why the header rather than a persisted column is the source of truth.
  *
- * The header carries a tag the client already negotiated, so this validates
- * rather than re-negotiates: an unshipped tag renders English rather than being
- * widened to its base language.
+ * The header carries a tag the client already negotiated, so {@link
+ * matchExactLocale} validates rather than re-negotiates: an unshipped tag
+ * renders English rather than being widened to its base language. Its set
+ * excludes `en-XA`, which matters here even though `getEmailI18n` still renders
+ * it — the preview server and the render tests pass the pseudo-locale directly,
+ * so nothing legitimate needs it to arrive over the wire, while
+ * `/v1/waitlist/join` is unauthenticated and takes the recipient from the
+ * request body, so honouring it would let anyone mail a third party
+ * pseudo-localized gibberish.
  *
  * @param tag The raw `X-App-Language` value, or null/undefined when the send
  *   has no request behind it — then the source locale is used.
  */
-export const resolveEmailLocale = (tag: string | null | undefined): AppLocale =>
-  tag && isEmailLocale(tag) ? tag : sourceLocale
+export const resolveEmailLocale = (tag: string | null | undefined): AppLocale => matchExactLocale(tag) ?? sourceLocale

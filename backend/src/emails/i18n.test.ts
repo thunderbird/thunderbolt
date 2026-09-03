@@ -14,6 +14,10 @@ describe('resolveEmailLocale', () => {
     expect(resolveEmailLocale('pt-BR')).toBe('pt-BR')
   })
 
+  it('normalizes casing so a hand-written header still gets its catalog', () => {
+    expect(resolveEmailLocale('PT-br')).toBe('pt-BR')
+  })
+
   it('refuses the pseudo-locale over the wire', () => {
     // `/v1/waitlist/join` is unauthenticated and takes the recipient from the
     // body, so honouring this would let anyone mail a third party gibberish.

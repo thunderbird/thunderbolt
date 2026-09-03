@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getQuotes } from '@/lib/quotes'
+import type { ThunderboltUIMessage } from '@/types'
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { defaultChatTitle } from './constants'
@@ -14,6 +16,30 @@ import { defaultChatTitle } from './constants'
  * @param options.words - Number of words to include in the title (default: 6)
  * @returns A formatted title with capitalized words or "New Chat" if no words are found
  */
+
+/**
+ * The text a thread's title should be derived from, taken from its first user
+ * message.
+ *
+ * Typed text and quoted passages both count. Quotes are their own part type
+ * rather than text, so a message that is *only* a quoted selection used to
+ * yield nothing and leave the thread called "New Chat" permanently. That was an
+ * edge case until "Ask about this" existed on artifacts and Mini Apps, where
+ * quoting *is* how a conversation starts.
+ *
+ * The raw passage, not a rendered blockquote: the `> ` markers that help a
+ * model read quoted context are noise in a title.
+ */
+export const titleSourceText = (message: ThunderboltUIMessage): string => {
+  const typed = message.parts
+    .filter((part) => part.type === 'text')
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join(' ')
+  const quoted = getQuotes(message)
+    .map((quote) => quote.text)
+    .join(' ')
+  return [typed, quoted].filter(Boolean).join(' ').trim()
+}
 
 export const generateTitle = (message: string, options?: { words?: number }): string => {
   // Clean and extract key words

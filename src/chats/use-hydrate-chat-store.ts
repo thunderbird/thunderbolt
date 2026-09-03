@@ -26,7 +26,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
-import { generateTitle } from '@/lib/title-generator'
+import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
@@ -111,10 +111,7 @@ export const useHydrateChatStore = ({
       return
     }
 
-    const textContent = firstUserMessage.parts
-      ?.filter((part) => part.type === 'text')
-      .map((part) => (part.type === 'text' ? part.text : ''))
-      .join(' ')
+    const textContent = titleSourceText(firstUserMessage)
 
     if (!textContent) {
       return

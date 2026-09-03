@@ -46,6 +46,7 @@ USAGE
   thunderbolt acp --transport <wss|iroh> [--port N] -- <agent-cmd...>
   thunderbolt mcp --transport <wss|iroh> [--port N] -- <server-cmd...>
   thunderbolt acp connect <ticket|nodeid> [-- <local-client-cmd...>]
+  thunderbolt mcp connect <ticket|nodeid> [-- <local-client-cmd...>]
   thunderbolt iroh <id | pair | allow <nodeid>>
 
   With a prompt, runs it once and exits. With no prompt, starts an
@@ -62,10 +63,11 @@ SUBCOMMANDS
   iroh        manage the P2P identity / pairing ticket / peer allowlist
 
 TOOLS
-  bash    run shell commands
-  read    read a file
-  write   create or overwrite a file
-  edit    replace a span within a file
+  bash      run shell commands
+  read      read a file
+  write     create or overwrite a file
+  edit      replace a span within a file
+  webfetch  read a specific HTTP or HTTPS URL
 
 OPTIONS
   -m, --model <id>      per-process model override

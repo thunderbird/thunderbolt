@@ -642,6 +642,11 @@ describe('parseCommandSyntax — external bridge compatibility', () => {
 })
 
 describe('parseCommandSyntax — acp serve', () => {
+  test('version aliases short-circuit', () => {
+    expect(parseCommandSyntax(['acp', 'serve', '--version'])).toEqual({ kind: 'version' })
+    expect(parseCommandSyntax(['acp', 'serve', '-v'])).toEqual({ kind: 'version' })
+  })
+
   test('rejects a positional prompt', () => {
     expect(parseCommandSyntax(['acp', 'serve', 'unexpected'])).toEqual({
       kind: 'error',

@@ -343,8 +343,9 @@ const buildCommandExecutionConfig = (
 const parseServeSyntax = (
   rest: string[],
   cwd: string,
-): ParsedSyntaxKind<'acp-serve'> | SyntaxParseFailure => {
+): ParsedSyntaxKind<'acp-serve'> | ParsedSyntaxKind<'version'> | SyntaxParseFailure => {
   if (rest.includes('--help') || rest.includes('-h')) return { kind: 'help' }
+  if (rest.includes('--version') || rest.includes('-v')) return { kind: 'version' }
 
   const scan = scanTokens(rest, 0, defaultFlags)
   if (!scan.ok) return { kind: 'error', message: scan.message }

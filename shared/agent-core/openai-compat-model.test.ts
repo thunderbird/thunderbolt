@@ -22,8 +22,9 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import type { Context } from '@earendil-works/pi-ai'
-import { buildOpenAiCompatModel } from './openai-compat-model.ts'
+import type { Api, AssistantMessageEventStream, Context, Model } from '@earendil-works/pi-ai'
+import { builtinModels } from '@earendil-works/pi-ai/providers/all'
+import { buildOpenAiCompatModel, type OpenAiStreamFns } from './openai-compat-model.ts'
 
 /** A minimal, well-formed OpenAI Chat Completions SSE stream: one content delta
  *  then a stop, so the openai SDK parses a clean response rather than erroring. */
@@ -122,5 +123,105 @@ describe('buildOpenAiCompatModel — image modality', () => {
 
   it('advertises text-only when the model does not support images', () => {
     expect(build(false).input).toEqual(['text'])
+  })
+})
+
+describe('buildOpenAiCompatModel — CLI options', () => {
+  const fetch = async (): Promise<Response> => new Response('')
+  const options = {
+    modelId: 'local-model',
+    baseURL: 'http://localhost:11434/v1',
+    apiKey: 'local-key',
+    fetch,
+    reasoning: false,
+    supportsImages: false,
+  }
+
+  it('uses the legacy provider id when none is supplied', () => {
+    const { models, model } = buildOpenAiCompatModel(options)
+
+    expect(model.provider).toBe('openai-compat')
+    expect(models.getModel('openai-compat', 'local-model')).toBe(model)
+  })
+
+  it('omits compatibility metadata when none is supplied', () => {
+    const { model } = buildOpenAiCompatModel(options)
+
+    expect(Object.hasOwn(model, 'compat')).toBe(false)
+    expect(Object.hasOwn(model, 'thinkingLevelMap')).toBe(false)
+  })
+
+  it('rejects a model that does not use OpenAI completions', () => {
+    const { models, model } = buildOpenAiCompatModel(options)
+    const provider = models.getProvider('openai-compat')
+    if (!provider) throw new Error('provider not registered')
+    const mismatched = { ...model, api: 'anthropic-messages' } as Model<Api>
+
+    expect(() => provider.stream(mismatched, context)).toThrow()
+  })
+
+  it('uses injected stream functions for both provider entry points', () => {
+    const calls: { readonly name: keyof OpenAiStreamFns; readonly apiKey: string | undefined }[] = []
+    const inert = {} as AssistantMessageEventStream
+    const streamFns: OpenAiStreamFns = {
+      stream: ((_model, _context, streamOptions) => {
+        calls.push({ name: 'stream', apiKey: streamOptions?.apiKey })
+        return inert
+      }) as OpenAiStreamFns['stream'],
+      streamSimple: ((_model, _context, streamOptions) => {
+        calls.push({ name: 'streamSimple', apiKey: streamOptions?.apiKey })
+        return inert
+      }) as OpenAiStreamFns['streamSimple'],
+    }
+    const { models, model } = buildOpenAiCompatModel({ ...options, streamFns })
+    const provider = models.getProvider('openai-compat')
+    if (!provider) throw new Error('provider not registered')
+
+    provider.stream(model, context, { apiKey: 'per-call-key' })
+    provider.streamSimple(model, context)
+
+    expect(calls[0]?.apiKey).toBe(options.apiKey)
+    expect(calls).toEqual([
+      { name: 'stream', apiKey: options.apiKey },
+      { name: 'streamSimple', apiKey: options.apiKey },
+    ])
+  })
+
+  it('preserves GLM compatibility metadata so reasoning content streams', async () => {
+    const glm = builtinModels().getModel('zai', 'glm-5.2')
+    if (!glm) throw new Error('GLM 5.2 metadata unavailable')
+    const payloads: { readonly reasoning_effort?: unknown; readonly thinking?: unknown }[] = []
+    const reasoningBody = [
+      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"glm-5.2","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"thought"},"finish_reason":null}]}',
+      'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"glm-5.2","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+      '',
+    ].join('\n\n')
+    const reasoningFetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      payloads.push((await new Response(init?.body).json()) as (typeof payloads)[number])
+      return new Response(reasoningBody, { headers: { 'content-type': 'text/event-stream' } })
+    }
+    const { models, model } = buildOpenAiCompatModel({
+      ...options,
+      modelId: 'glm-5.2',
+      fetch: reasoningFetch,
+      reasoning: true,
+      compat: glm.compat,
+      thinkingLevelMap: glm.thinkingLevelMap,
+    })
+    const provider = models.getProvider('openai-compat')
+    if (!provider) throw new Error('provider not registered')
+    const thinking: string[] = []
+
+    for await (const event of provider.streamSimple(model, context, { reasoning: 'medium' })) {
+      if (event.type === 'thinking_delta') thinking.push(event.delta)
+    }
+
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0]).toMatchObject({
+      reasoning_effort: 'high',
+      thinking: { type: 'enabled', clear_thinking: false },
+    })
+    expect(thinking).toEqual(['thought'])
   })
 })

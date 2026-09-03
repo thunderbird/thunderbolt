@@ -4,10 +4,11 @@
 
 import type { Api, Model, Provider } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
+import { buildOpenAiCompatModel } from '../../../shared/agent-core/openai-compat-model.ts'
 import { builtinProviderEnvVars } from '../agent/defaults.ts'
 import type { CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
+import { createCredentialedFetch, getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
 import { buildBuiltinProfileModel } from '../agent/model.ts'
-import { buildOpenAiCompatModel } from '../agent/openai-compat-model.ts'
 import {
   noopBindingLifecycle,
   providerRuntimeError,
@@ -120,12 +121,15 @@ export const createByokBinding = async (
       throw createByokBindingError('config-invalid', `BYOK profile "${profile.id}" requires a base URL.`)
     }
     const credential = resolveCredential(profile, selection, environment, baseUrl)
+    const fetch = createCredentialedFetch(baseUrl, getUncredentialedFetch(), observeResponse)
     const built = buildOpenAiCompatModel({
       providerId: profile.id,
       modelId,
-      baseUrl,
+      baseURL: baseUrl,
       apiKey: credential.apiKey,
-      observeResponse,
+      fetch,
+      reasoning: false,
+      supportsImages: false,
     })
     const provider = built.models.getProvider(profile.id)
     if (!provider) {

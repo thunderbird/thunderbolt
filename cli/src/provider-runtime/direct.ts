@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { vendorSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
-import { buildOpenAiCompatModel, type OpenAiCompatFetch } from '../agent/openai-compat-model.ts'
-import type { CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
-import { getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
+import { buildOpenAiCompatModel } from '../../../shared/agent-core/openai-compat-model.ts'
+import type { CredentialedFetch, CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
+import { createCredentialedFetch, getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { noopBindingLifecycle, providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, ResolvedAccountCredential } from './types.ts'
@@ -39,7 +39,7 @@ const resolveDirectBaseUrl = (backendUrl: string): string => {
 
 /** Replace every SDK auth header with exactly the resolved account credential. */
 const authenticatedFetch =
-  (credential: ResolvedAccountCredential, request: OpenAiCompatFetch): OpenAiCompatFetch =>
+  (credential: ResolvedAccountCredential, request: CredentialedFetch): CredentialedFetch =>
   async (input, init) => {
     const headers = backendHeaders(init?.headers)
     headers.delete('authorization')
@@ -63,19 +63,25 @@ export const createManagedDirectBinding = async (options: ManagedDirectBindingOp
   }
 
   const baseUrl = resolveDirectBaseUrl(options.credential.backendUrl)
-  const request: OpenAiCompatFetch = options.fetchFn ?? getUncredentialedFetch()
-  const fetchFn = authenticatedFetch(options.credential, request)
+  const accountFetch = options.fetchFn
+  const request: CredentialedFetch = accountFetch
+    ? (input, init) => accountFetch(input instanceof Request ? input.url : input, init)
+    : getUncredentialedFetch()
+  const fetch = createCredentialedFetch(
+    baseUrl,
+    authenticatedFetch(options.credential, request),
+    options.observeResponse,
+  )
   const built = buildOpenAiCompatModel({
     providerId,
     modelId: options.model.model,
-    baseUrl,
+    baseURL: baseUrl,
     apiKey: sdkPlaceholderCredential,
-    fetchFn,
+    fetch,
     // The catalog has no per-model reasoning flag yet (THU-863).
     reasoning: true,
     contextWindow: options.model.contextWindow!,
     supportsImages: vendorSupportsImages(options.model.vendor),
-    observeResponse: options.observeResponse,
   })
   const provider = built.models.getProvider(providerId)
   if (!provider) throw new Error('Managed direct provider construction failed')

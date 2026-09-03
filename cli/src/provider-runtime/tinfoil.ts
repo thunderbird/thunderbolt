@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { vendorSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
+import { buildOpenAiCompatModel } from '../../../shared/agent-core/openai-compat-model.ts'
 import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared/inference-usage.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import {
@@ -19,7 +20,6 @@ import {
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { join } from 'node:path'
 import { SecureClient } from 'tinfoil'
-import { buildOpenAiCompatModel } from '../agent/openai-compat-model.ts'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
 import { thunderboltHomeDir } from '../paths.ts'
 import { providerRuntimeError } from './types.ts'
@@ -270,10 +270,9 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
   const built = buildOpenAiCompatModel({
     providerId,
     modelId: options.model.model,
-    baseUrl,
+    baseURL: baseUrl,
     apiKey: sdkPlaceholderCredential,
-    fetchFn,
-    prevalidatedFetch: true,
+    fetch: fetchFn,
     reasoning: true,
     contextWindow: options.model.contextWindow!,
     supportsImages: vendorSupportsImages(options.model.vendor),

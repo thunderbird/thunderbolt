@@ -154,7 +154,9 @@ describe('buildOpenAiCompatModel — CLI options', () => {
   it('rejects a model that does not use OpenAI completions', () => {
     const { models, model } = buildOpenAiCompatModel(options)
     const provider = models.getProvider('openai-compat')
-    if (!provider) throw new Error('provider not registered')
+    if (!provider) {
+      throw new Error('provider not registered')
+    }
     const mismatched = { ...model, api: 'anthropic-messages' } as Model<Api>
 
     expect(() => provider.stream(mismatched, context)).toThrow()
@@ -175,7 +177,9 @@ describe('buildOpenAiCompatModel — CLI options', () => {
     }
     const { models, model } = buildOpenAiCompatModel({ ...options, streamFns })
     const provider = models.getProvider('openai-compat')
-    if (!provider) throw new Error('provider not registered')
+    if (!provider) {
+      throw new Error('provider not registered')
+    }
 
     provider.stream(model, context, { apiKey: 'per-call-key' })
     provider.streamSimple(model, context)
@@ -189,7 +193,9 @@ describe('buildOpenAiCompatModel — CLI options', () => {
 
   it('preserves GLM compatibility metadata so reasoning content streams', async () => {
     const glm = builtinModels().getModel('zai', 'glm-5.2')
-    if (!glm) throw new Error('GLM 5.2 metadata unavailable')
+    if (!glm) {
+      throw new Error('GLM 5.2 metadata unavailable')
+    }
     const payloads: { readonly reasoning_effort?: unknown; readonly thinking?: unknown }[] = []
     const reasoningBody = [
       'data: {"id":"c","object":"chat.completion.chunk","created":1,"model":"glm-5.2","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"thought"},"finish_reason":null}]}',
@@ -210,11 +216,15 @@ describe('buildOpenAiCompatModel — CLI options', () => {
       thinkingLevelMap: glm.thinkingLevelMap,
     })
     const provider = models.getProvider('openai-compat')
-    if (!provider) throw new Error('provider not registered')
+    if (!provider) {
+      throw new Error('provider not registered')
+    }
     const thinking: string[] = []
 
     for await (const event of provider.streamSimple(model, context, { reasoning: 'medium' })) {
-      if (event.type === 'thinking_delta') thinking.push(event.delta)
+      if (event.type === 'thinking_delta') {
+        thinking.push(event.delta)
+      }
     }
 
     expect(payloads).toHaveLength(1)

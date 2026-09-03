@@ -305,10 +305,14 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
+            node_modules
             cli/node_modules
-          key: cli-bun-${{ hashFiles('cli/bun.lock') }}
+          key: cli-bun-${{ hashFiles('bun.lock', 'cli/bun.lock') }}
           restore-keys: |
             cli-bun-
+
+      - name: Install root dependencies
+        run: bun install --frozen-lockfile
 
       - name: Install cli dependencies
         run: cd cli && bun install --frozen-lockfile

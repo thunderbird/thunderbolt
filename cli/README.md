@@ -202,13 +202,15 @@ elsewhere on the machine are outside its workspace and unavailable.
 | `--api-key <key>`    | Compatibility-only provider key override; may leak via shell history.      |
 | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
 | `-y`, `--yolo`       | Start in yolo permission mode (alias: `--dangerously-skip-permissions`).   |
-| `--no-tui`           | Force plain readline REPL.                                                 |
+| `--no-tui`           | Force plain readline REPL (`agent` only).                                  |
+| `--fullscreen`       | Use the alternate screen; native scrollback is unavailable (`agent` only). |
 | `-h`, `--help`       | Show help and exit.                                                        |
 | `-v`, `--version`    | Print version and exit.                                                    |
 
 ACP/MCP bridge commands accept `--transport wss|iroh` (default `wss`) and
 `--port <0-65535>` for WSS (defaults: ACP `8839`, MCP `8840`). Arguments after
-`--` form the spawned stdio command.
+`--` form the spawned stdio command. `wss` is the selector name for the loopback
+WebSocket transport, and its advertised URL uses `ws://` on `127.0.0.1`.
 
 Supported BYOK providers:
 

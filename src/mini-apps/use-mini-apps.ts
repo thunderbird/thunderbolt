@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
-import { useHttpClient } from '@/contexts'
+import { useAuth, useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
@@ -84,12 +84,39 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
 
 export const useMiniApps = (): MiniAppsState => {
   const httpClient = useHttpClient()
+  const authClient = useAuth()
+  const { data: session, isPending } = authClient.useSession()
   const snapshot = useSyncExternalStore(subscribe, () => state)
+
+  /*
+   * Only a real signed-in user has a registry to fetch.
+   *
+   * `GET /mini-apps` refuses anonymous sessions by design — an app that trusts
+   * the identity token has no business being handed one for a synthetic
+   * account. Asking anyway produced a 403 and a `console.error` on every load
+   * for those users, which reads as a broken deployment rather than a feature
+   * they don't have. better-auth carries `isAnonymous` loosely, so the field is
+   * declared rather than cast (same pattern as `sidebar-footer.tsx`).
+   */
+  const sessionUser: { isAnonymous?: boolean | null } | undefined = session?.user
+  const isFullUser = Boolean(sessionUser) && !sessionUser?.isAnonymous
 
   // Fetching an external resource on mount — the one thing effects are for.
   useEffect(() => {
+    if (isPending || !isFullUser) {
+      return
+    }
     void loadMiniApps(httpClient)
-  }, [httpClient])
+  }, [httpClient, isPending, isFullUser])
+
+  /*
+   * Still resolving, or nothing to load: report `loading`, never `failed`.
+   * A signed-out visitor has no registry rather than a broken one, and the
+   * sidebar's failure banner would otherwise accuse a healthy deployment.
+   */
+  if (isPending || !isFullUser) {
+    return emptyState
+  }
 
   return snapshot
 }

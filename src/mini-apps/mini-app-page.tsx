@@ -8,7 +8,7 @@ import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { MousePointerClick, PanelRight } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
@@ -48,6 +48,14 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const [draftChatId, setDraftChatId] = useState<string | null>(null)
   const openChatId = draftChatId ?? searchParams.get('chat')
   const chats = useMiniAppChats(app.id)
+  /*
+   * Read through a ref, not a dependency. `handleChatOpen` is handed to the
+   * bridge, which keeps it for the life of the connection — depending on
+   * `openChatId` would rebuild the message listener every time a chat opens or
+   * closes, and its cleanup aborts in-flight guest requests.
+   */
+  const openChatIdRef = useRef<string | null>(null)
+  openChatIdRef.current = openChatId
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
 
@@ -84,8 +92,29 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     [setSearchParams],
   )
 
+  /*
+   * Open the chat panel, reusing the conversation already in it.
+   *
+   * This used to mint a fresh `uuidv7()` every time, which was fine for the
+   * toggle button — it only calls this when nothing is open — but wrong for the
+   * guest's `ui/open-chat`, which calls it unconditionally. An app asking to
+   * open the panel while the user had a conversation in it swapped that
+   * conversation out for an empty one.
+   *
+   * So a conversation is never discarded to satisfy a request to *open*
+   * something. A prompt seeds whichever chat ends up on screen, new or
+   * existing; the cost is overwriting an unsent draft in the open chat, which
+   * is a far smaller loss than the thread it would otherwise have replaced.
+   */
   const handleChatOpen = useCallback(
     (prompt: string | undefined) => {
+      const existing = openChatIdRef.current
+      if (existing) {
+        if (prompt) {
+          seedComposerDraft(existing, prompt)
+        }
+        return
+      }
       const id = uuidv7()
       if (prompt) {
         seedComposerDraft(id, prompt)

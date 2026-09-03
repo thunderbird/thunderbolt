@@ -22,7 +22,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet, useLocation } from 'react-router'
+import { Outlet } from 'react-router'
 import { PageFallback } from '@/loading'
 
 /**
@@ -31,11 +31,8 @@ import { PageFallback } from '@/loading'
  * on an embedded surface its scrim sits on top of the app's own header instead
  * of fading a scroll region beneath it.
  */
-const isChromelessRoute = (pathname: string): boolean => pathname.startsWith('/apps/')
-
 export default function Page() {
   const panelRef = usePanelRef()
-  const { pathname } = useLocation()
   const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
@@ -117,13 +114,7 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            {/* An app route hides the header because `MiniAppView` renders its own
-                sidebar toggle in the app's title bar. Below the breakpoint that
-                view never mounts — the route renders a size notice instead — so
-                suppressing the header there left no toggle, no header, and (with
-                a mouse, since the drawer's swipe is touch-only) no way back at
-                all. Chromeless is a desktop-layout concession, not a route one. */}
-            {(!isChromelessRoute(pathname) || isMobile) && <FloatingHeader />}
+            <FloatingHeader />
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

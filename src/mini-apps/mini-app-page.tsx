@@ -7,9 +7,7 @@ import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { useSidebar } from '@/components/ui/sidebar'
-import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
-import { MessageSquare, MousePointerSquareDashed, ShieldAlert, X } from 'lucide-react'
+import { MousePointerSquareDashed, PanelRight, ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -52,7 +50,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const [draftChatId, setDraftChatId] = useState<string | null>(null)
   const openChatId = draftChatId ?? searchParams.get('chat')
   const chats = useMiniAppChats(app.id)
-  const { toggleSidebar } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
   const pendingApproval = useMiniAppStore((s) => s.pendingApproval)
@@ -198,20 +195,16 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   )
 
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* This page is chromeless (`isChromelessRoute` in main-layout), so it owns
-          the sidebar toggle the app header would otherwise provide. */}
-      <header className="flex items-center gap-2 px-2 h-[var(--touch-height-default)] border-b shrink-0">
-        <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label={t`Toggle Sidebar`}>
-          <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-        </Button>
-        <app.icon className="size-[var(--icon-size-sm)] shrink-0" />
-        <span className="truncate text-[length:var(--font-size-body)] font-medium">{app.name}</span>
-        <div className="ml-auto">
-          <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
-        </div>
-      </header>
-
+    /*
+     * No header of its own. This used to be a chromeless route that rendered a
+     * title bar duplicating the app's own — two rows of chrome saying the same
+     * thing — and its hand-rolled sidebar toggle sat on top of the macOS
+     * traffic lights, which the shared `Header` already knows to clear.
+     *
+     * `--header-inset` because the app header floats over content rather than
+     * consuming layout height (see `floating-header.tsx`).
+     */
+    <div className="flex flex-col h-full w-full" style={{ paddingTop: 'var(--header-inset)' }}>
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
@@ -250,33 +243,34 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             {/* Thunderbolt's own affordances, floating over the app rather than
                 living inside it — the assistant belongs to the host, so a customer
                 app shouldn't have to render (or style) a button to reach it.
-                Laid out as a row rather than positioned individually: the Select
-                button used to sit at a hardcoded `right-40` measured against the
-                English width of the button beside it, which any translation moves. */}
+
+                Select stays a labelled button at the bottom: it starts a gesture,
+                and an unlabelled marquee icon is not guessable. Opening the chat
+                is a panel toggle, so it looks like every other panel toggle —
+                an icon, top right. It used to be a large accent-coloured pill
+                reading "Close chat", which is not how any other surface in the
+                app opens or closes a side panel. */}
             {showFloatingControls && (
-              <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
-                <Button onClick={startMarquee} variant="secondary" size="lg" className="shadow-lg rounded-full">
-                  <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
-                  <Trans>Select</Trans>
-                </Button>
-                <Button
-                  onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
-                  className="shadow-lg rounded-full"
-                  size="lg"
-                >
-                  {openChatId ? (
-                    <>
-                      <X className="size-[var(--icon-size-sm)]" />
-                      <Trans>Close chat</Trans>
-                    </>
-                  ) : (
-                    <>
-                      <MessageSquare className="size-[var(--icon-size-sm)]" />
-                      <Trans>Chat</Trans>
-                    </>
-                  )}
-                </Button>
-              </div>
+              <>
+                <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+                  <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
+                    aria-label={openChatId ? t`Close chat` : t`Open chat`}
+                    title={openChatId ? t`Close chat` : t`Open chat`}
+                  >
+                    <PanelRight className="size-[var(--icon-size-default)]" />
+                  </Button>
+                </div>
+                <div className="absolute bottom-4 right-4 z-10">
+                  <Button onClick={startMarquee} variant="secondary" size="lg" className="shadow-lg rounded-full">
+                    <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
+                    <Trans>Select</Trans>
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </ResizablePanel>

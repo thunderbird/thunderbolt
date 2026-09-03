@@ -578,8 +578,8 @@ msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Changes were saved, but reconnecting failed. Please retry."
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Chat"
-msgstr "Chat"
+#~ msgid "Chat"
+#~ msgstr "Chat"
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -2533,6 +2533,10 @@ msgstr "Open {title}"
 msgid "Open app"
 msgstr "Open app"
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open chat"
+msgstr "Open chat"
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "Open External Link"
@@ -3792,7 +3796,6 @@ msgstr "Toggle sidebar"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr "Toggle Sidebar"
 

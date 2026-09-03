@@ -566,8 +566,8 @@ msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Chat"
-msgstr ""
+#~ msgid "Chat"
+#~ msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -2521,6 +2521,10 @@ msgstr "{title} を開く"
 msgid "Open app"
 msgstr ""
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open chat"
+msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "外部リンクを開く"
@@ -3780,7 +3784,6 @@ msgstr "サイドバーの表示を切り替え"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr "サイドバーの表示を切り替え"
 

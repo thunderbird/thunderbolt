@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
+import { defaultModels } from '../agent/defaults.ts'
 import type { ProviderManagerIO, ProviderManagerItem } from '../provider-runtime/types.ts'
 import { collectByokProfile, collectByokRepair } from './wizard.ts'
 
@@ -32,29 +33,38 @@ describe('provider-manager BYOK prompts', () => {
     return { io, menus, output }
   }
 
-  test('collects one authenticated candidate without a persisted draft', async () => {
+  test('offers default, live, then remaining catalog models for an authenticated provider', async () => {
+    const liveIds = [defaultModels.anthropic, 'claude-live']
+    const catalogIds = builtinModels()
+      .getModels('anthropic')
+      .map(({ id }) => id)
+    if (!catalogIds.some((id) => !liveIds.includes(id))) {
+      throw new Error('Anthropic catalog fixture requires a catalog-only model')
+    }
+    const expectedIds = [...new Set([defaultModels.anthropic, ...liveIds, ...catalogIds])]
     const { io, menus, output } = managerIO({
-      choices: ['builtin:openai', 'gpt-live'],
-      texts: ['Work OpenAI'],
+      choices: ['builtin:anthropic', 'claude-live'],
+      texts: ['Work Anthropic'],
       secrets: ['new-secret'],
     })
 
     const result = await collectByokProfile(io, {
-      list: async () => ({ source: 'live', ids: ['gpt-live'], authenticated: true }),
+      list: async () => ({ source: 'live', ids: liveIds, authenticated: true }),
     })
 
     expect(result).toMatchObject({
       profile: {
         id: expect.stringMatching(/^byok-/),
-        label: 'Work OpenAI',
-        provider: 'openai',
-        defaultModel: 'gpt-live',
+        label: 'Work Anthropic',
+        provider: 'anthropic',
+        defaultModel: 'claude-live',
         apiKey: 'new-secret',
         credentialStatus: 'authenticated',
       },
       apiKey: 'new-secret',
     })
-    expect(menus[0]?.items.some(({ id }) => id === 'builtin:openai')).toBe(true)
+    expect(menus[0]?.items.some(({ id }) => id === 'builtin:anthropic')).toBe(true)
+    expect(menus[1]?.items.map(({ id }) => id)).toEqual(expectedIds)
     expect(output.join('')).not.toContain('new-secret')
   })
 

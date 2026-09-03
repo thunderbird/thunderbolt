@@ -89,9 +89,9 @@ const providerChoices: readonly ProviderChoice[] = [
   { id: 'compat:custom', kind: 'compat', label: 'Custom OpenAI-compatible endpoint', isLocal: false },
 ]
 
-/** Builds unique default-first model suggestions from live or Pi catalog ids. */
+/** Builds unique default-first model suggestions from live then Pi catalog ids. */
 const modelChoices = (provider: BuiltinProvider, ids: readonly string[]): readonly string[] => [
-  ...new Set([defaultModels[provider], ...ids]),
+  ...new Set([defaultModels[provider], ...ids, ...piBuiltinModels().getModels(provider).map(({ id }) => id)]),
 ]
 
 /** Reads one nonblank value, allowing the caller to supply an empty-input fallback. */

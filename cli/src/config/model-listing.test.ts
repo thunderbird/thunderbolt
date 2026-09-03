@@ -144,7 +144,7 @@ describe('listModels', () => {
     })
   })
 
-  test('sorts by created descending and limits live suggestions to eight', async () => {
+  test('sorts by created descending without truncating live suggestions', async () => {
     const fetchFn: ModelListingFetch = async () =>
       Response.json({
         data: Array.from({ length: 10 }, (_, index) => ({ id: `model-${index}`, created: index })),
@@ -152,7 +152,18 @@ describe('listModels', () => {
 
     expect(await listModels({ provider: 'groq', apiKey: 'key', fetchFn })).toEqual({
       source: 'live',
-      ids: ['model-9', 'model-8', 'model-7', 'model-6', 'model-5', 'model-4', 'model-3', 'model-2'],
+      ids: [
+        'model-9',
+        'model-8',
+        'model-7',
+        'model-6',
+        'model-5',
+        'model-4',
+        'model-3',
+        'model-2',
+        'model-1',
+        'model-0',
+      ],
       authenticated: true,
     })
   })

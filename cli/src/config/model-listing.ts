@@ -10,7 +10,6 @@ import { isSecureCloudUrl } from '../auth/config.ts'
 import { isRecord } from '../lib/json.ts'
 
 const defaultTimeoutMs = 3_000
-const maxLiveModels = 8
 const nonChatModelPattern =
   /embed(?:ding)?|whisper|tts|speech|transcri|dall-?e|gpt-image|imagen|(?:^|[-_/])sora(?:[-_/]|$)|moderation|rerank/i
 
@@ -140,8 +139,8 @@ const newestModelsFirst = (models: readonly ListedModel[]): readonly ListedModel
   return [...models].sort((left, right) => (rank(left) === rank(right) ? 0 : rank(right) - rank(left)))
 }
 
-/** Returns current Pi catalog ids using setup wizard's existing three-item
- *  limit. Reading the static Pi catalog for a built-in provider is trusted —
+/** Returns the first three current Pi catalog ids for fallback listings.
+ *  Reading the static Pi catalog for a built-in provider is trusted —
  *  a failure here is a real catalog regression and should surface loudly. */
 const catalogIds = (provider: ModelProvider): readonly string[] => {
   if (provider === 'openai-compat') return []
@@ -282,5 +281,5 @@ export const listModels = async (
   if (listedModels === null) return fallback()
   const models = newestModelsFirst(chatModels(listedModels))
   if (models.length === 0) return { ...fallback(), authenticated: true }
-  return { source: 'live', ids: models.slice(0, maxLiveModels).map(({ id }) => id), authenticated: true }
+  return { source: 'live', ids: models.map(({ id }) => id), authenticated: true }
 }

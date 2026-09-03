@@ -16,7 +16,6 @@ import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
 import {
   getDebugTranscriptErrorMessage,
-  getShareDebugTranscriptDisabledReason,
   shareDebugTranscriptReducer,
   type ShareDebugTranscriptEvent,
   type ShareDebugTranscriptState,
@@ -26,6 +25,7 @@ import {
 afterEach(cleanup)
 
 const reducerState: ShareDebugTranscriptState = {
+  consentAccepted: true,
   dialogOpen: true,
   errorMessage: 'Stale error',
   successToastOpen: true,
@@ -46,7 +46,7 @@ describe('shareDebugTranscriptReducer', () => {
     {
       name: 'successful submission closes and clears the form',
       event: { type: 'SUBMIT_SUCCEEDED' },
-      expected: { dialogOpen: false, errorMessage: null, successToastOpen: true, userNote: '' },
+      expected: { consentAccepted: false, dialogOpen: false, errorMessage: null, successToastOpen: true, userNote: '' },
     },
     {
       name: 'opening clears stale errors',
@@ -54,9 +54,14 @@ describe('shareDebugTranscriptReducer', () => {
       expected: { dialogOpen: true, errorMessage: null, successToastOpen: false },
     },
     {
-      name: 'closing clears the note',
+      name: 'closing clears the note and consent',
       event: { type: 'DIALOG_CLOSED' },
-      expected: { dialogOpen: false, errorMessage: null, userNote: '' },
+      expected: { consentAccepted: false, dialogOpen: false, errorMessage: null, userNote: '' },
+    },
+    {
+      name: 'records explicit consent',
+      event: { type: 'CONSENT_CHANGED', accepted: false },
+      expected: { consentAccepted: false },
     },
   ]
 
@@ -65,27 +70,6 @@ describe('shareDebugTranscriptReducer', () => {
       expect(shareDebugTranscriptReducer(reducerState, event)).toMatchObject(expected)
     })
   }
-})
-
-describe('getShareDebugTranscriptDisabledReason', () => {
-  it('explains response-in-flight states before message availability', () => {
-    expect(getShareDebugTranscriptDisabledReason({ hasMessages: false, chatStatus: 'submitted' })).toBe(
-      'Wait for the response to finish',
-    )
-    expect(getShareDebugTranscriptDisabledReason({ hasMessages: true, chatStatus: 'streaming' })).toBe(
-      'Wait for the response to finish',
-    )
-  })
-
-  it('explains that an empty conversation needs messages', () => {
-    expect(getShareDebugTranscriptDisabledReason({ hasMessages: false, chatStatus: 'ready' })).toBe(
-      'Available once the conversation has messages',
-    )
-  })
-
-  it('returns no reason when sharing is available', () => {
-    expect(getShareDebugTranscriptDisabledReason({ hasMessages: true, chatStatus: 'ready' })).toBeNull()
-  })
 })
 
 describe('getDebugTranscriptErrorMessage', () => {
@@ -160,6 +144,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.dialog.onConsentAcceptedChange(true))
       await flushSubmission(result.current.dialog.onSubmit)
       expect(result.current.dialog.errorMessage).toBe('Sign in to a full account to share a debug transcript.')
     } finally {
@@ -178,6 +163,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.dialog.onConsentAcceptedChange(true))
       await flushSubmission(result.current.dialog.onSubmit)
       expect(result.current.dialog.errorMessage).toBe(
         'We could not send the transcript. Please check your connection and try again.',
@@ -204,6 +190,7 @@ describe('useShareDebugTranscriptState errors', () => {
 
     try {
       act(() => result.current.action.onShare())
+      act(() => result.current.dialog.onConsentAcceptedChange(true))
       act(() => result.current.dialog.onSubmit())
       await act(flushMicrotasks)
 
@@ -235,6 +222,7 @@ describe('useShareDebugTranscriptState errors', () => {
     })
 
     try {
+      act(() => result.current.dialog.onConsentAcceptedChange(true))
       act(() => result.current.dialog.onSubmit())
       await act(flushMicrotasks)
       expect(pendingRequest.current).toBeDefined()

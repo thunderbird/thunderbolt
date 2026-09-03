@@ -11,7 +11,7 @@ import { ShareDebugTranscriptButton } from './share-debug-transcript-button'
 afterEach(cleanup)
 
 describe('ShareDebugTranscriptButton', () => {
-  it('shares directly and names the enabled action in a tooltip', () => {
+  it('shares directly and names the enabled action with a native tooltip', () => {
     const onShare = mock()
     render(<ShareDebugTranscriptButton disabledReason={null} onShare={onShare} />)
 
@@ -19,21 +19,18 @@ describe('ShareDebugTranscriptButton', () => {
     fireEvent.click(button)
     expect(onShare).toHaveBeenCalledTimes(1)
 
-    fireEvent.focus(button)
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Share debug transcript')
+    expect(button).toHaveAttribute('title', 'Share debug transcript')
   })
 
-  it('keeps the same focused button across disabled-state transitions', () => {
+  it('keeps the same button across disabled-state transitions', () => {
     const { rerender } = render(
       <ShareDebugTranscriptButton disabledReason="Wait for the response to finish" onShare={() => {}} />,
     )
     const button = screen.getByRole('button', { name: 'Share debug transcript' })
-    button.focus()
 
     rerender(<ShareDebugTranscriptButton disabledReason={null} onShare={() => {}} />)
 
     expect(screen.getByRole('button', { name: 'Share debug transcript' })).toBe(button)
-    expect(document.activeElement).toBe(button)
   })
 
   it('never shares from click, Enter, or Space while disabled', () => {
@@ -49,21 +46,12 @@ describe('ShareDebugTranscriptButton', () => {
   })
 
   for (const reason of ['Wait for the response to finish', 'Available once the conversation has messages']) {
-    it(`explains why sharing is disabled on focus and tap: ${reason}`, async () => {
+    it(`explains why sharing is disabled: ${reason}`, () => {
       render(<ShareDebugTranscriptButton disabledReason={reason} onShare={() => {}} />)
 
       const button = screen.getByRole('button', { name: 'Share debug transcript' })
-      expect(button).toHaveAttribute('aria-disabled', 'true')
-      const descriptionId = button.getAttribute('aria-describedby')
-      expect(descriptionId).not.toBeNull()
-      expect(document.getElementById(descriptionId ?? '')).toHaveTextContent(reason)
-
-      fireEvent.focus(button)
-      expect(await screen.findByRole('tooltip')).toHaveTextContent(reason)
-
-      fireEvent.blur(button)
-      fireEvent.click(button)
-      expect(await screen.findByRole('tooltip')).toHaveTextContent(reason)
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', reason)
     })
   }
 })

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
 import { ProjectBadge } from '@/projects/project-badge'
@@ -19,19 +19,13 @@ import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { useChatStore } from '@/chats/chat-store'
 import type { ChatSession } from '@/chats/chat-store'
-import { selectAllowCustomAgents, selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-store'
+import { selectAllowCustomAgents, useConfigStore } from '@/api/config-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useNavigate, useLocation } from 'react-router'
 import { useHistoryCeiling } from '@/hooks/use-history-ceiling'
 import { useChat } from '@ai-sdk/react'
 import { statusOnlyThrottleMs } from '@/chats/chat-throttle'
-import { useAuth } from '@/contexts/auth-context'
 import type { Agent } from '@/types/acp'
-
-const ShareDebugTranscriptAction = lazy(async () => {
-  const module = await import('@/components/share-debug-transcript')
-  return { default: module.ShareDebugTranscriptAction }
-})
 
 /** Marks an element as part of the Tauri desktop window's drag surface (empty
  *  on web/mobile where no custom title bar exists). */
@@ -53,7 +47,7 @@ type HeaderAgentSelectorProps = {
    *  chat, and docked top-right as a circular icon button once the thread
    *  exists (or a send is in flight). Both states share one element, so the
    *  submit transition animates instead of remounting. */
-  mobile?: { hasThread: boolean; hasAction: boolean; dragProps: TauriDragProps }
+  mobile?: { hasThread: boolean; dragProps: TauriDragProps }
   /** Rendered immediately left of the selector, inside its positioned wrapper on
    *  mobile so it docks with the pill instead of being laid out against a header
    *  column the pill has left. */
@@ -76,10 +70,7 @@ const HeaderAgentSelector = ({
   // Existing chats mount with `hasThread` already true, so they render docked
   // top-right with no transition (CSS transitions don't run on first paint).
   const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
-  const dockedTranslateClass =
-    mobile?.hasAction === true
-      ? '[translate:calc(50cqw-100%-var(--touch-height-lg)-0.5rem)_0]'
-      : '[translate:calc(50cqw-100%)_0]'
+  const dockedTranslateClass = '[translate:calc(50cqw-100%)_0]'
 
   const selector = (
     <AgentSelector
@@ -101,9 +92,6 @@ const HeaderAgentSelector = ({
     // column can't push the centered state off-center. Docked: a translate of
     // half the header width (50cqw — the header is a size container) minus the
     // pill's own width pins the right edge flush with the content edge. When a
-    // thread action exists, one control width plus a gap keeps the selector
-    // immediately to its left.
-    //
     // Only `translate` transitions — `left` stays fixed. Animating `left`
     // re-runs layout on the main thread every frame, and this slide fires at
     // the busiest main-thread moment in the app (first send mounts the message
@@ -191,27 +179,21 @@ export const Header = () => {
   const { openCreateItem } = useCreateItem()
   const location = useLocation()
   const allAgents = useAllAgents()
-  const authClient = useAuth()
-  const { data: authSession } = authClient.useSession()
-  const isAnonymous = authSession?.user?.isAnonymous === true
   const allowCustomAgents = useConfigStore((state) => selectAllowCustomAgents(state.config))
-  const debugTranscriptsEnabled = useConfigStore((state) => selectDebugTranscriptsEnabled(state.config))
 
-  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, debugTranscriptThreadId, hasThread } =
-    useChatStore(
-      useShallow((state) => {
-        const session = state.sessions.get(state.currentSessionId ?? '')
+  const { chatInstance, selectedAgent, setSelectedAgent, chatThreadId, hasThread } = useChatStore(
+    useShallow((state) => {
+      const session = state.sessions.get(state.currentSessionId ?? '')
 
-        return {
-          chatInstance: session?.chatInstance,
-          selectedAgent: session?.selectedAgent,
-          setSelectedAgent: state.setSelectedAgent,
-          chatThreadId: session?.id,
-          debugTranscriptThreadId: session?.chatThread?.id,
-          hasThread: session?.chatThread != null,
-        }
-      }),
-    )
+      return {
+        chatInstance: session?.chatInstance,
+        selectedAgent: session?.selectedAgent,
+        setSelectedAgent: state.setSelectedAgent,
+        chatThreadId: session?.id,
+        hasThread: session?.chatThread != null,
+      }
+    }),
+  )
 
   // Prefer the session's already-resolved agent (hydration resolves the
   // persisted thread agentId into `selectedAgent`). Re-searching `allAgents`
@@ -222,16 +204,6 @@ export const Header = () => {
 
   const isChatRoute = location.pathname.startsWith('/chats')
   const showAgentSelector = isChatRoute && chatInstance !== undefined && allAgents.length > 0
-  const shareDebugTranscriptAction =
-    isChatRoute && !isAnonymous && debugTranscriptsEnabled && debugTranscriptThreadId && chatInstance ? (
-      <Suspense fallback={null}>
-        <ShareDebugTranscriptAction
-          key={debugTranscriptThreadId}
-          chatInstance={chatInstance}
-          threadId={debugTranscriptThreadId}
-        />
-      </Suspense>
-    ) : null
 
   const handleAddAgent = () => {
     openCreateItem({ kind: 'agent' })
@@ -251,7 +223,7 @@ export const Header = () => {
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
       leading={isChatRoute && isMobile ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
-      mobile={isMobile ? { hasThread, hasAction: shareDebugTranscriptAction !== null, dragProps } : undefined}
+      mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
 
@@ -286,11 +258,7 @@ export const Header = () => {
 
         {agentSelector}
 
-        {/* The transcript action stays in this stable parent across agent hydration.
-            The agent selector docks to its left when both controls are present. */}
-        <div {...dragProps} className="flex flex-1 items-center justify-end">
-          {shareDebugTranscriptAction}
-        </div>
+        <div {...dragProps} className="flex flex-1" />
       </header>
     )
   }
@@ -326,7 +294,6 @@ export const Header = () => {
             the agent pill absolutely and has no room next to it. */}
         {isChatRoute && <ProjectBadge chatThreadId={chatThreadId ?? null} />}
       </div>
-      {shareDebugTranscriptAction}
     </header>
   )
 }

@@ -3,9 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-message'
+import type { ThunderboltUIMessage } from '@/types'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { mountMessageParts } from './assistant-message'
+import { cleanup, render, screen } from '@testing-library/react'
+import { AssistantMessage, mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
   ({
@@ -250,5 +252,30 @@ describe('mountMessageParts', () => {
 
       expect(result).toHaveLength(1)
     })
+  })
+})
+
+describe('AssistantMessage actions', () => {
+  it('renders the last-assistant action beside the copy button', () => {
+    const message: ThunderboltUIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Response' }],
+    }
+
+    render(
+      <AssistantMessage
+        message={message}
+        isStreaming={false}
+        isLastAssistantMessage
+        lastAssistantAction={<button type="button">Share transcript</button>}
+      />,
+    )
+
+    const copyButton = screen.getByRole('button', { name: 'Copy message' })
+    const shareButton = screen.getByRole('button', { name: 'Share transcript' })
+    expect(copyButton.parentElement).toBe(shareButton.parentElement)
+
+    cleanup()
   })
 })

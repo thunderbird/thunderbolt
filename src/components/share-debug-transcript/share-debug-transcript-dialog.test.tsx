@@ -11,11 +11,13 @@ import { ShareDebugTranscriptDialog } from './share-debug-transcript-dialog'
 const defaultProps = {
   open: true,
   userNote: '',
+  consentAccepted: false,
   errorMessage: null,
   isPending: false,
   onOpenChange: () => {},
   onCancel: () => {},
   onUserNoteChange: () => {},
+  onConsentAcceptedChange: () => {},
   onSubmit: () => {},
 }
 
@@ -25,13 +27,11 @@ describe('ShareDebugTranscriptDialog', () => {
   it('presents every consent fact in the accessible description', () => {
     render(<ShareDebugTranscriptDialog {...defaultProps} />)
 
-    const dialog = screen.getByRole('dialog', { name: 'Show the Thunderbolt team what happened?' })
+    const dialog = screen.getByRole('dialog', { name: 'Having a problem with this chat?' })
     expect(dialog).toBeVisible()
-    expect(dialog).toHaveAccessibleDescription(expect.stringContaining('tool calls'))
+    expect(dialog).toHaveAccessibleDescription(expect.stringContaining('data inputs and outputs'))
     expect(
-      screen.getByText(
-        'This sends the debug transcript to the Thunderbolt team — exactly what the agent did, step by step — so they can work out what went wrong.',
-      ),
+      screen.getByText('This will send the current chat with the Thunderbolt team so that they can debug the problem.'),
     ).toBeVisible()
 
     const whoQuestion = screen.getByText('Who can read it?')
@@ -46,13 +46,17 @@ describe('ShareDebugTranscriptDialog', () => {
     expect(contentsQuestion.tagName).toBe('DT')
     expect(
       screen.getByText(
-        'Your prompts, system prompts, tool calls with their inputs and outputs, errors, and timestamps. Older turns may be trimmed.',
+        'This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps.',
       ),
     ).toBeVisible()
 
     const storageQuestion = screen.getByText('Where is it kept?')
     expect(storageQuestion.tagName).toBe('DT')
-    expect(screen.getByText('On the connected server, in plaintext, until you delete your account.')).toBeVisible()
+    expect(
+      screen.getByText(
+        'The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted.',
+      ),
+    ).toBeVisible()
 
     const facts = whoQuestion.closest('dl')
     if (!facts) {
@@ -64,8 +68,8 @@ describe('ShareDebugTranscriptDialog', () => {
   it('focuses the note first and associates it with its label', () => {
     render(<ShareDebugTranscriptDialog {...defaultProps} />)
 
-    const label = screen.getByText('Tell them what happened (optional)', { selector: 'label' })
-    const note = screen.getByLabelText('Tell them what happened (optional)')
+    const label = screen.getByText("Anything else you'd like to share?", { selector: 'label' })
+    const note = screen.getByLabelText("Anything else you'd like to share?")
     expect(note).toHaveFocus()
     expect(note.id === label.getAttribute('for')).toBe(true)
     expect(note).toHaveAttribute('maxlength', '2000')
@@ -83,14 +87,16 @@ describe('ShareDebugTranscriptDialog', () => {
     if (!facts) {
       throw new Error('Consent facts must render as a description list')
     }
-    const note = screen.getByLabelText('Tell them what happened (optional)')
+    const note = screen.getByLabelText("Anything else you'd like to share?")
     expect(facts.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('submits only from the explicit confirmation action', () => {
     const onOpenChange = mock()
     const onSubmit = mock()
-    render(<ShareDebugTranscriptDialog {...defaultProps} onOpenChange={onOpenChange} onSubmit={onSubmit} />)
+    render(
+      <ShareDebugTranscriptDialog {...defaultProps} consentAccepted onOpenChange={onOpenChange} onSubmit={onSubmit} />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Send to the Thunderbolt team' }))
 
@@ -98,8 +104,19 @@ describe('ShareDebugTranscriptDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it('requires explicit consent before enabling submission', () => {
+    const onConsentAcceptedChange = mock()
+    render(<ShareDebugTranscriptDialog {...defaultProps} onConsentAcceptedChange={onConsentAcceptedChange} />)
+
+    expect(screen.getByRole('button', { name: 'Send to the Thunderbolt team' })).toBeDisabled()
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I agree to share this chat session with the Thunderbolt team.' }),
+    )
+    expect(onConsentAcceptedChange).toHaveBeenCalledWith(true)
+  })
+
   it('keeps a failed submission visible and offers retry', () => {
-    render(<ShareDebugTranscriptDialog {...defaultProps} errorMessage="Could not send." />)
+    render(<ShareDebugTranscriptDialog {...defaultProps} consentAccepted errorMessage="Could not send." />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Could not send.')
     expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()

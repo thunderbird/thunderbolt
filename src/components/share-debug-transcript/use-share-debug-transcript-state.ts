@@ -2,12 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useChat } from '@ai-sdk/react'
-import type { ChatStatus } from 'ai'
 import { useCallback, useReducer, useRef, useTransition } from 'react'
 import { z } from 'zod'
 
-import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
 import type { ChatSession } from '@/chats/chat-store'
 import { useAuth } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts/http-client-context'
@@ -29,12 +26,8 @@ const debugTranscriptErrorBodySchema = z.object({
 })
 const debugTranscriptUploadTimeoutMs = 30_000
 
-type ShareDisabledInput = {
-  hasMessages: boolean
-  chatStatus: ChatStatus
-}
-
 export type ShareDebugTranscriptState = {
+  consentAccepted: boolean
   dialogOpen: boolean
   errorMessage: string | null
   successToastOpen: boolean
@@ -45,6 +38,7 @@ export type ShareDebugTranscriptEvent =
   | { type: 'DIALOG_OPENED' }
   | { type: 'DIALOG_CLOSED' }
   | { type: 'NOTE_CHANGED'; note: string }
+  | { type: 'CONSENT_CHANGED'; accepted: boolean }
   | { type: 'SUBMIT_STARTED' }
   | { type: 'SUBMIT_SUCCEEDED' }
   | { type: 'SUBMIT_FAILED'; message: string }
@@ -56,6 +50,7 @@ type UseShareDebugTranscriptStateOptions = {
 }
 
 const initialState: ShareDebugTranscriptState = {
+  consentAccepted: false,
   dialogOpen: false,
   errorMessage: null,
   successToastOpen: false,
@@ -71,32 +66,27 @@ export const shareDebugTranscriptReducer = (
     case 'DIALOG_OPENED':
       return { ...state, dialogOpen: true, errorMessage: null, successToastOpen: false }
     case 'DIALOG_CLOSED':
-      return { ...state, dialogOpen: false, errorMessage: null, userNote: '' }
+      return { ...state, consentAccepted: false, dialogOpen: false, errorMessage: null, userNote: '' }
     case 'NOTE_CHANGED':
       return { ...state, userNote: action.note }
+    case 'CONSENT_CHANGED':
+      return { ...state, consentAccepted: action.accepted }
     case 'SUBMIT_STARTED':
       return { ...state, errorMessage: null }
     case 'SUBMIT_SUCCEEDED':
-      return { ...state, dialogOpen: false, errorMessage: null, successToastOpen: true, userNote: '' }
+      return {
+        ...state,
+        consentAccepted: false,
+        dialogOpen: false,
+        errorMessage: null,
+        successToastOpen: true,
+        userNote: '',
+      }
     case 'SUBMIT_FAILED':
       return { ...state, errorMessage: action.message }
     case 'TOAST_DISMISSED':
       return { ...state, successToastOpen: false }
   }
-}
-
-/** Explain why transcript sharing is unavailable for the current chat state. */
-export const getShareDebugTranscriptDisabledReason = ({
-  hasMessages,
-  chatStatus,
-}: ShareDisabledInput): string | null => {
-  if (chatStatus === 'submitted' || chatStatus === 'streaming') {
-    return 'Wait for the response to finish'
-  }
-  if (!hasMessages) {
-    return 'Available once the conversation has messages'
-  }
-  return null
 }
 
 /** Convert the debug-transcript API error contract into actionable user copy. */
@@ -137,7 +127,6 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   const httpClient = useHttpClient()
   const authClient = useAuth()
   const { data: authSession } = authClient.useSession()
-  const { messages, status } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
   const [state, dispatch] = useReducer(shareDebugTranscriptReducer, initialState)
   const [isPending, startTransition] = useTransition()
   const activeRequestRef = useRef<AbortController | null>(null)
@@ -157,6 +146,10 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   }
 
   const submit = () => {
+    if (!state.consentAccepted) {
+      return
+    }
+
     activeRequestRef.current?.abort()
     const controller = new AbortController()
     activeRequestRef.current = controller
@@ -207,24 +200,21 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   }
 
   const dismissToast = useCallback(() => dispatch({ type: 'TOAST_DISMISSED' }), [])
-  const disabledReason = getShareDebugTranscriptDisabledReason({
-    hasMessages: messages.length > 0,
-    chatStatus: status,
-  })
-
   return {
     action: {
-      disabledReason: isPending ? 'Sending…' : disabledReason,
+      disabledReason: isPending ? 'Sending…' : null,
       onShare: () => dispatch({ type: 'DIALOG_OPENED' }),
     },
     dialog: {
       open: state.dialogOpen,
       userNote: state.userNote,
+      consentAccepted: state.consentAccepted,
       errorMessage: state.errorMessage,
       isPending,
       onOpenChange: handleDialogOpenChange,
       onCancel: closeDialog,
       onUserNoteChange: (note: string) => dispatch({ type: 'NOTE_CHANGED', note }),
+      onConsentAcceptedChange: (accepted: boolean) => dispatch({ type: 'CONSENT_CHANGED', accepted }),
       onSubmit: submit,
     },
     toast: {

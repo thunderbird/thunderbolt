@@ -28,6 +28,7 @@ type AssistantMessageProps = {
   isStreaming: boolean
   isLastMessage?: boolean
   isLastAssistantMessage?: boolean
+  lastAssistantAction?: ReactNode
 }
 
 // While an answer streams, reserve enough room to keep the preceding user
@@ -114,7 +115,13 @@ export const mountMessageParts = (
 }
 
 export const AssistantMessage = memo(
-  ({ message, isStreaming, isLastMessage = false, isLastAssistantMessage = false }: AssistantMessageProps) => {
+  ({
+    message,
+    isStreaming,
+    isLastMessage = false,
+    isLastAssistantMessage = false,
+    lastAssistantAction,
+  }: AssistantMessageProps) => {
     // Memoize filtering and grouping to avoid recomputing on every render
     const groupedParts = useMemo(() => groupMessageParts(filterMessageParts(message.parts)), [message.parts])
 
@@ -191,7 +198,7 @@ export const AssistantMessage = memo(
       <div
         data-message-id={message.id}
         data-quotable-message-id={message.id}
-        className={showCopyOnHover ? 'group' : undefined}
+        className={showCopyOnHover ? 'group/assistant-message' : undefined}
         style={isLastMessage && isStreaming && !hasArtifact ? { minHeight: lastMessageMinHeight } : undefined}
       >
         {partElements.map((partElement, index) => (
@@ -201,11 +208,12 @@ export const AssistantMessage = memo(
             {partElement}
           </div>
         ))}
-        {!isStreaming && copyText && (
+        {!isStreaming && (copyText || lastAssistantAction) && (
           <div
-            className={`flex items-center gap-2.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:opacity-0 md:group-hover:opacity-100 md:transition-opacity' : ''}`}
+            className={`flex items-center gap-1.5 px-4 ${hasWidgets || lastPartIsReasoningGroup ? 'mt-1' : '-mt-6'} ${showCopyOnHover ? 'md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/assistant-message:pointer-events-auto md:group-hover/assistant-message:opacity-100' : ''}`}
           >
-            <CopyMessageButton text={copyText} />
+            {copyText && <CopyMessageButton text={copyText} />}
+            {lastAssistantAction}
           </div>
         )}
       </div>
@@ -219,7 +227,8 @@ export const AssistantMessage = memo(
       prevProps.message.metadata === nextProps.message.metadata &&
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
-      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage
+      prevProps.isLastAssistantMessage === nextProps.isLastAssistantMessage &&
+      prevProps.lastAssistantAction === nextProps.lastAssistantAction
     )
   },
 )

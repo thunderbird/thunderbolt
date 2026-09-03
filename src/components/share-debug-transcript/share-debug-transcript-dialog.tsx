@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { FormFooter } from '@/components/ui/form-footer'
 import { Label } from '@/components/ui/label'
 import {
@@ -19,39 +20,41 @@ import { useId } from 'react'
 type ShareDebugTranscriptDialogProps = {
   open: boolean
   userNote: string
+  consentAccepted: boolean
   errorMessage: string | null
   isPending: boolean
   onOpenChange: (open: boolean) => void
   onCancel: () => void
   onUserNoteChange: (note: string) => void
+  onConsentAcceptedChange: (accepted: boolean) => void
   onSubmit: () => void
 }
 
 export const ShareDebugTranscriptDialog = ({
   open,
   userNote,
+  consentAccepted,
   errorMessage,
   isPending,
   onOpenChange,
   onCancel,
   onUserNoteChange,
+  onConsentAcceptedChange,
   onSubmit,
 }: ShareDebugTranscriptDialogProps) => {
   const userNoteId = useId()
+  const consentId = useId()
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} showCloseButton={false}>
       <ResponsiveModalHeader className="text-left sm:text-left">
-        <ResponsiveModalTitle>Show the Thunderbolt team what happened?</ResponsiveModalTitle>
+        <ResponsiveModalTitle>Having a problem with this chat?</ResponsiveModalTitle>
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent className="flex flex-col gap-4 py-0">
         <ResponsiveModalDescription asChild>
           <div className="flex flex-col gap-4">
-            <p>
-              This sends the debug transcript to the Thunderbolt team — exactly what the agent did, step by step — so
-              they can work out what went wrong.
-            </p>
+            <p>This will send the current chat with the Thunderbolt team so that they can debug the problem.</p>
 
             <dl className="divide-y divide-border rounded-xl border border-border">
               <div className="flex flex-col gap-1 p-3">
@@ -64,14 +67,15 @@ export const ShareDebugTranscriptDialog = ({
               <div className="flex flex-col gap-1 p-3">
                 <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">What&apos;s in it?</dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  Your prompts, system prompts, tool calls with their inputs and outputs, errors, and timestamps. Older
-                  turns may be trimmed.
+                  This chat session, including the messages you sent and the responses from agent, the data inputs and
+                  outputs of any tools used, errors, and timestamps.
                 </dd>
               </div>
               <div className="flex flex-col gap-1 p-3">
                 <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">Where is it kept?</dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  On the connected server, in plaintext, until you delete your account.
+                  The chat will be retained by the current server as well as the Thunderbolt team until your account is
+                  deleted.
                 </dd>
               </div>
             </dl>
@@ -79,7 +83,7 @@ export const ShareDebugTranscriptDialog = ({
         </ResponsiveModalDescription>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={userNoteId}>Tell them what happened (optional)</Label>
+          <Label htmlFor={userNoteId}>Anything else you&apos;d like to share?</Label>
           <Textarea
             id={userNoteId}
             value={userNote}
@@ -88,6 +92,18 @@ export const ShareDebugTranscriptDialog = ({
             disabled={isPending}
             onChange={(event) => onUserNoteChange(event.target.value)}
           />
+        </div>
+
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id={consentId}
+            checked={consentAccepted}
+            disabled={isPending}
+            onCheckedChange={(checked) => onConsentAcceptedChange(checked === true)}
+          />
+          <Label htmlFor={consentId} className="cursor-pointer text-[length:var(--font-size-sm)] leading-normal">
+            I agree to share this chat session with the Thunderbolt team.
+          </Label>
         </div>
 
         {errorMessage && (
@@ -104,7 +120,13 @@ export const ShareDebugTranscriptDialog = ({
         <Button type="button" variant="outline" onClick={onCancel}>
           Not now
         </Button>
-        <Button type="button" isLoading={isPending} loadingLabel="Sending…" onClick={onSubmit}>
+        <Button
+          type="button"
+          isLoading={isPending}
+          loadingLabel="Sending…"
+          disabled={!consentAccepted}
+          onClick={onSubmit}
+        >
           {errorMessage ? 'Retry' : 'Send to the Thunderbolt team'}
         </Button>
       </FormFooter>

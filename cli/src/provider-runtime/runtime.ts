@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createHash } from 'node:crypto'
-import { managedModels, type ManagedModel, type ManagedModels } from '../../../shared/managed-models.ts'
+import type { SharedModel } from '../../../shared/defaults/models.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import type { CliDeviceMetadata, ensureRegisteredSession } from '../auth/account-client.ts'
@@ -13,6 +13,7 @@ import type { loadAuthConfig, resolveAccountCredential } from '../auth/token-sto
 import type { loadConfig, saveConfig } from '../config/config.ts'
 import { createSerialQueue } from '../lib/abort.ts'
 import type { createByokBinding } from './byok.ts'
+import { bundledManagedCatalog } from './catalog.ts'
 import type { createManagedDirectBinding } from './direct.ts'
 import type { createTinfoilBinding } from './tinfoil.ts'
 import type { ProviderStageContext, ProviderStageEntry } from './provider-stage.ts'
@@ -24,6 +25,7 @@ import type {
   CliConfig,
   FireworksModelApi,
   InvocationSelection,
+  ManagedCatalog,
   ManagedCatalogLoader,
   PreparedPiBinding,
   ProviderCommand,
@@ -91,9 +93,9 @@ const cloneConfig = (config: CliConfig): CliConfig => ({
 })
 
 /** Resolves a managed model by stable UUID or public slug. */
-const managedModel = (catalog: ManagedModels, selector: string): ManagedModel => {
+const managedModel = (catalog: ManagedCatalog, selector: string): SharedModel => {
   const model =
-    catalog.models.find(({ id }) => id === selector) ?? catalog.models.find(({ model }) => model === selector)
+    catalog.data.find(({ id }) => id === selector) ?? catalog.data.find(({ model }) => model === selector)
   if (model) return model
   throw providerRuntimeError('model-not-found', `Managed model "${selector}" was not found.`)
 }
@@ -127,7 +129,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     loadedConfig ?? {
       version: 3,
       activeProviderId: null,
-      thunderbolt: { defaultModelId: managedModels.defaultModelId },
+      thunderbolt: { defaultModelId: bundledManagedCatalog.defaultModelId },
       providers: [],
     },
   )
@@ -144,7 +146,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
   let effectiveManagedCredentialIdentity =
     initialCredential === null ? null : accountCredentialIdentity(initialCredential)
   let patStatus: ProviderStatus = 'not authenticated'
-  let latestCatalog: ManagedModels | null = null
+  let latestCatalog: ManagedCatalog | null = null
   let accountGeneration = 0
   const profileGenerations = new Map(currentConfig.providers.map(({ id }) => [id, 0]))
   const ephemeralByokStatuses = new Map<string, ProviderStatus>()
@@ -164,12 +166,12 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
       thunderbolt: {
         status: effectiveThunderboltStatus(),
         defaultModelId: currentConfig.thunderbolt.defaultModelId,
-        models: (latestCatalog?.models ?? []).map(({ id, model, name, description, transport }) => ({
+        models: (latestCatalog?.data ?? []).map(({ id, model, name, description, isConfidential }) => ({
           id,
           label: name,
-          description: `${model} — ${description}`,
+          description: description ? `${model} — ${description}` : model,
           wireModel: model,
-          confidential: transport === 'confidential',
+          confidential: isConfidential === 1,
         })),
       },
       providers: currentConfig.providers.map((profile) => ({
@@ -403,7 +405,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
         if (requested.providerId !== 'thunderbolt') exactProfile(requested.providerId)
         const selectedManagedModel =
           requested.providerId === 'thunderbolt' && requested.model !== undefined
-            ? managedModel(latestCatalog ?? managedModels, requested.model)
+            ? managedModel(latestCatalog ?? bundledManagedCatalog, requested.model)
             : null
         await commitConfig(
           {
@@ -602,7 +604,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     const catalog = await dependencies.loadCatalog(credential.backendUrl)
     assertAccountStateIsCurrent()
     const model = managedModel(catalog, selection.model ?? currentConfig.thunderbolt.defaultModelId)
-    if (credential.type === 'pat' && model.transport === 'confidential') throw webLoginRequiredError()
+    if (credential.type === 'pat' && model.isConfidential === 1) throw webLoginRequiredError()
 
     const registeredCredential = await (async (): Promise<ResolvedAccountCredential> => {
       if (credential.type === 'pat') return credential
@@ -649,7 +651,7 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
       })
     }
     const createBinding = async (): Promise<PreparedPiBinding> => {
-      if (model.transport !== 'direct') {
+      if (model.isConfidential === 1) {
         return dependencies.createTinfoilBinding({
           credential: registeredCredential as SessionCredential,
           model,

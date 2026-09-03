@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'bun:test'
-import { managedModels } from '../../../shared/managed-models.ts'
+import { defaultModelId } from '../../../shared/defaults/models.ts'
 import type { CliConfig } from '../provider-runtime/types.ts'
 import { loadConfig, saveConfig } from './config.ts'
 
@@ -29,7 +29,7 @@ const writeRawConfig = async (path: string, contents: string): Promise<void> => 
 const createConfig = (): CliConfig => ({
   version: 3,
   activeProviderId: 'profile-openai',
-  thunderbolt: { defaultModelId: managedModels.defaultModelId },
+  thunderbolt: { defaultModelId },
   providers: [
     {
       id: 'profile-openai',
@@ -149,7 +149,7 @@ describe('legacy CLI config migration', () => {
     const migrated = await loadConfig(path)
     const profile = migrated?.providers[0]
 
-    expect(migrated).toMatchObject({ version: 3, thunderbolt: { defaultModelId: managedModels.defaultModelId } })
+    expect(migrated).toMatchObject({ version: 3, thunderbolt: { defaultModelId } })
     expect(migrated?.activeProviderId).toBe(profile?.id)
     expect(profile).toMatchObject({
       provider: 'openai',

@@ -3,11 +3,28 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModels, type Api, type AssistantMessage, type Model } from '@earendil-works/pi-ai'
-import { managedModels } from '../../../shared/managed-models.ts'
+import { defaultModelDeepseekV4Flash, type SharedModel } from '../../../shared/defaults/models.ts'
+import { bundledManagedCatalog } from './catalog.ts'
 import { createProviderStageContext } from './provider-stage.ts'
 import { createProviderRuntime, type ProviderRuntimeDependencies } from './runtime.ts'
 import { noopBindingLifecycle } from './types.ts'
-import type { CliAuth, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
+import type { CliAuth, ManagedCatalog, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
+
+const futureDirectModelId = '019f0000-0000-7000-8000-000000000001'
+
+export const futureDirectModel: SharedModel = {
+  ...defaultModelDeepseekV4Flash,
+  id: futureDirectModelId,
+  model: 'future-direct-fixture',
+  name: 'Future Direct Fixture',
+  description: 'Test-only future direct managed model',
+}
+
+export const futureDirectCatalog: ManagedCatalog = {
+  version: 1,
+  defaultModelId: futureDirectModelId,
+  data: [futureDirectModel],
+}
 
 export const testSessionCredential = (
   overrides: Partial<Extract<ResolvedAccountCredential, { type: 'session' }>> = {},
@@ -87,7 +104,7 @@ export const createTestProviderRuntime = async (overrides: Partial<ProviderRunti
     resolveAccountCredential: async () => null,
     loadAuthConfig: async () => null,
     accountActions: { login: async () => auth, logout: async () => 'logged-out' },
-    loadCatalog: async () => managedModels,
+    loadCatalog: async () => bundledManagedCatalog,
     ensureRegisteredSession: async (credential) => credential,
     markSessionAuthenticationRequired: async () => {},
     metadata: { deviceName: 'Test CLI' },

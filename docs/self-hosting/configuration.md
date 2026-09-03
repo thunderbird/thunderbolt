@@ -113,7 +113,7 @@ Rollout has three mandatory, old-client-safe stages:
    enabling CLI registration on the backend.
 2. **Backend second:** deploy the public catalog, CLI registration/logout,
    revocation enforcement, and managed inference routes. Changes to shared
-   managed-model, default-model, or usage-receipt inputs must rebuild the backend
+   default-model or usage-receipt inputs must rebuild the backend
    image.
 3. **CLI last:** publish the native CLI artifacts only after the compatible
    existing clients and backend are live.

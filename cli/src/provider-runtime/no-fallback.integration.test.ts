@@ -4,17 +4,21 @@
 
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { describe, expect, it } from 'bun:test'
-import { createFutureDirectManagedModelsFixture } from '../../../shared/managed-models.test-fixtures.ts'
-import { managedModels, type ManagedModels } from '../../../shared/managed-models.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import { resolveAccountCredential } from '../auth/token-store.ts'
 import { createByokBinding } from './byok.ts'
-import { fetchManagedCatalog } from './catalog.ts'
+import { bundledManagedCatalog, fetchManagedCatalog } from './catalog.ts'
 import { createManagedDirectBinding } from './direct.ts'
 import { createProviderStageContext } from './provider-stage.ts'
 import type { ProviderRuntimeDependencies } from './runtime.ts'
-import { failedCompletion, runBinding, successfulCompletion, createTestProviderRuntime } from './test-fixtures.ts'
-import type { AccountFetch, CliConfig, PreparedPiBinding } from './types.ts'
+import {
+  createTestProviderRuntime,
+  failedCompletion,
+  futureDirectCatalog,
+  runBinding,
+  successfulCompletion,
+} from './test-fixtures.ts'
+import type { AccountFetch, CliConfig, ManagedCatalog, PreparedPiBinding } from './types.ts'
 
 type InferenceRequestSnapshot = {
   readonly url: string
@@ -34,7 +38,7 @@ const runHarnessPrompt = async (binding: PreparedPiBinding): Promise<AssistantMe
 }
 
 /** Create the real parser/runtime/direct-binding stack around one fixture catalog. */
-const createPatRuntime = async (catalog: ManagedModels, respond: InferenceResponder) => {
+const createPatRuntime = async (catalog: ManagedCatalog, respond: InferenceResponder) => {
   const inferenceRequests: InferenceRequestSnapshot[] = []
   const producerCalls = { byok: 0, direct: 0, confidential: 0, registration: 0 }
   const inferenceFetch: AccountFetch = async (input, init) => {
@@ -48,10 +52,12 @@ const createPatRuntime = async (catalog: ManagedModels, respond: InferenceRespon
   }
   const catalogFetch: AccountFetch = async () =>
     Response.json({
-      managedModels: {
-        ...catalog,
-        futureOnlyCatalogField: 'ignored',
-        models: catalog.models.map((model) => ({ ...model, futureOnlyModelField: 'ignored' })),
+      defaults: {
+        models: {
+          ...catalog,
+          futureOnlyCatalogField: 'ignored',
+          data: catalog.data.map((model) => ({ ...model, futureOnlyModelField: 'ignored' })),
+        },
       },
     })
   const config: CliConfig = {
@@ -101,8 +107,8 @@ const createPatRuntime = async (catalog: ManagedModels, respond: InferenceRespon
 }
 
 describe('ProviderRuntime acceptance without fallback or replay', () => {
-  it('sends a fixture-only schema-v1 direct row through normalization, parsing, binding, and PAT dispatch', async () => {
-    const futureCatalog = createFutureDirectManagedModelsFixture()
+  it('sends a fixture-only direct row through parsing, binding, and PAT dispatch', async () => {
+    const futureCatalog = futureDirectCatalog
     const harness = await createPatRuntime(futureCatalog, () => successfulCompletion('future-direct-fixture'))
 
     const binding = await harness.runtime.prepare({
@@ -127,9 +133,9 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
   })
 
   it('rejects PAT GLM with WEB_LOGIN_REQUIRED before any producer or inference request', async () => {
-    const confidentialModel = managedModels.models.find(({ transport }) => transport === 'confidential')
+    const confidentialModel = bundledManagedCatalog.data.find(({ isConfidential }) => isConfidential === 1)
     if (!confidentialModel) throw new Error('managed catalog requires a confidential acceptance model')
-    const harness = await createPatRuntime(managedModels, () => {
+    const harness = await createPatRuntime(bundledManagedCatalog, () => {
       throw new Error('PAT confidential selection must not send inference')
     })
 
@@ -148,7 +154,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
     ['quota', 429],
     ['provider', 503],
   ] as const)('makes one direct request after a %s failure with no replay or fallback', async (_case, status) => {
-    const futureCatalog = createFutureDirectManagedModelsFixture()
+    const futureCatalog = futureDirectCatalog
     const harness = await createPatRuntime(futureCatalog, () => failedCompletion(status))
     const binding = await harness.runtime.prepare({ providerId: 'thunderbolt', model: futureCatalog.defaultModelId })
 
@@ -179,7 +185,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
       loadConfig: async () => ({
         version: 3,
         activeProviderId: profile.id,
-        thunderbolt: { defaultModelId: managedModels.defaultModelId },
+        thunderbolt: { defaultModelId: bundledManagedCatalog.defaultModelId },
         providers: [profile],
       }),
       loadAuthConfig: async () => null,
@@ -193,7 +199,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
         },
         logout: async () => 'logged-out',
       },
-      loadCatalog: async () => managedModels,
+      loadCatalog: async () => bundledManagedCatalog,
       ensureRegisteredSession: async (credential) => credential,
       markSessionAuthenticationRequired: async () => {},
       metadata: { deviceName: 'Acceptance CLI' },

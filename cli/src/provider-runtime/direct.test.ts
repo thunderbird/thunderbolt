@@ -4,14 +4,17 @@
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import { describe, expect, test } from 'bun:test'
-import type { ManagedModel } from '../../../shared/managed-models.ts'
-import { createFutureDirectManagedModelsFixture } from '../../../shared/managed-models.test-fixtures.ts'
+import type { SharedModel } from '../../../shared/defaults/models.ts'
 import { cliVersion } from '../version.ts'
 import { createManagedDirectBinding } from './direct.ts'
-import { failedCompletion, runBinding, successfulCompletion, testSessionCredential } from './test-fixtures.ts'
+import {
+  failedCompletion,
+  futureDirectModel,
+  runBinding,
+  successfulCompletion,
+  testSessionCredential,
+} from './test-fixtures.ts'
 import type { AccountFetch, ResolvedAccountCredential } from './types.ts'
-
-const futureDirectModel = createFutureDirectManagedModelsFixture().models[0]!
 
 const sessionCredential = (backendUrl = 'https://api.test/v1'): ResolvedAccountCredential =>
   testSessionCredential({ backendUrl, bearer: 'stored-session-bearer' })
@@ -30,7 +33,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
     const catalogWithForbiddenOrigin = {
       ...futureDirectModel,
       baseUrl: 'https://catalog-controlled.example/v1',
-    } satisfies ManagedModel & { readonly baseUrl: string }
+    } satisfies SharedModel & { readonly baseUrl: string }
     const binding = await createManagedDirectBinding({
       credential: sessionCredential(),
       model: catalogWithForbiddenOrigin,
@@ -56,7 +59,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
       id: 'future-direct-fixture',
       provider: 'thunderbolt',
       reasoning: true,
-      contextWindow: futureDirectModel.capabilities.contextWindow,
+      contextWindow: futureDirectModel.contextWindow,
       input: ['text'],
     })
     expect(message.stopReason).toBe('stop')
@@ -68,9 +71,9 @@ describe('createManagedDirectBinding — generic managed model', () => {
   })
 
   test('maps image support from the public catalog without a model-specific branch', async () => {
-    const imageModel: ManagedModel = {
+    const imageModel: SharedModel = {
       ...futureDirectModel,
-      capabilities: { ...futureDirectModel.capabilities, input: ['text', 'image'] },
+      vendor: 'anthropic',
     }
     const binding = await createManagedDirectBinding({
       credential: patCredential(),
@@ -83,7 +86,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
   })
 
   test('rejects a confidential model at the direct producer seam', async () => {
-    const confidential: ManagedModel = { ...futureDirectModel, transport: 'confidential' }
+    const confidential: SharedModel = { ...futureDirectModel, isConfidential: 1 }
 
     await expect(
       createManagedDirectBinding({
@@ -91,7 +94,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
         model: confidential,
         observeResponse: async () => {},
       }),
-    ).rejects.toMatchObject({ code: 'transport-unsupported' })
+    ).rejects.toMatchObject({ code: 'config-invalid' })
   })
 })
 

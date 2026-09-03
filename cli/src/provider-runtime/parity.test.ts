@@ -7,7 +7,7 @@ import { AgentSideConnection } from '@agentclientprotocol/sdk'
 import type { Agent, Stream } from '@agentclientprotocol/sdk'
 import { InMemorySessionRepo } from '@earendil-works/pi-agent-core'
 import { fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai/providers/faux'
-import { managedModels } from '../../../shared/managed-models.ts'
+import { bundledManagedCatalog } from './catalog.ts'
 import { createHarnessAgent } from '../acp/harness-agent.ts'
 import type { SessionStore } from '../acp/session-store.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
@@ -25,7 +25,7 @@ import type {
   ResolvedAccountCredential,
 } from './types.ts'
 
-const directModel = managedModels.models.find(({ transport }) => transport === 'direct')
+const directModel = bundledManagedCatalog.data.find(({ isConfidential }) => isConfidential === 0)
 if (!directModel) throw new Error('managed model fixtures require one direct model')
 
 const byokProfile: ByokProfile = {
@@ -156,7 +156,7 @@ const createRuntimeProbe = async (provenance: ParityProvenance): Promise<Runtime
       }),
       logout: async () => 'logged-out',
     },
-    loadCatalog: async () => managedModels,
+    loadCatalog: async () => bundledManagedCatalog,
     ensureRegisteredSession: async (credential) => credential,
     markSessionAuthenticationRequired: async () => {
       calls.sessionAuthenticationRequired += 1

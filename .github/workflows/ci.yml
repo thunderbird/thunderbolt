@@ -51,8 +51,6 @@ jobs:
               - 'shared/agent-core/**'
             cli:
               - 'cli/**'
-              - 'shared/managed-models.ts'
-              - 'shared/managed-models.test-fixtures.ts'
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
               - 'package.json'

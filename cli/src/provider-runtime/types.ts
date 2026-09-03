@@ -5,12 +5,21 @@
 import type { AgentHarness, AgentHarnessEvent, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import type { Api, AssistantMessage, Model, MutableModels } from '@earendil-works/pi-ai'
 import type { RequestInfo } from 'undici-types'
-import type { ManagedModels } from '../../../shared/managed-models.ts'
+import type { SharedModel } from '../../../shared/defaults/models.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import type { LogoutResult } from '../auth/logout.ts'
 
 export type AccountFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-export type ManagedCatalogLoader = (backendUrl: string, fetchFn?: AccountFetch, timeoutMs?: number) => Promise<ManagedModels>
+export type ManagedCatalog = {
+  readonly version: number
+  readonly defaultModelId: string
+  readonly data: SharedModel[]
+}
+export type ManagedCatalogLoader = (
+  backendUrl: string,
+  fetchFn?: AccountFetch,
+  timeoutMs?: number,
+) => Promise<ManagedCatalog>
 export type ProviderStatus = 'authenticated' | 'not authenticated' | 'authentication required'
 export type DeviceGrantPresentation = {
   readonly showVerification: (value: {
@@ -126,7 +135,6 @@ export type ProviderSnapshot = {
 export type ProviderRuntimeError = {
   readonly code:
     | 'config-invalid'
-    | 'config-version-unsupported'
     | 'provider-not-found'
     | 'model-not-found'
     | 'authentication-required'
@@ -135,7 +143,6 @@ export type ProviderRuntimeError = {
     | 'WEB_LOGIN_REQUIRED'
     | 'network'
     | 'attestation-failed'
-    | 'transport-unsupported'
     | 'persistence-failed'
   readonly message: string
 }

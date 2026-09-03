@@ -35,7 +35,6 @@ on:
       - 'deploy/**'
       - 'backend/**'
       - 'src/**'
-      - 'shared/managed-models.ts'
       - 'shared/defaults/models.ts'
       - 'shared/inference-usage.ts'
       - 'package.json'

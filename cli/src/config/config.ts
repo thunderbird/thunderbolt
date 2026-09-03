@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
-import { managedModels } from '../../../shared/managed-models.ts'
+import { defaultModelId } from '../../../shared/defaults/models.ts'
 import { isBuiltinProvider } from '../agent/types.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import { hasExactKeys, isNonblankString, isRecord, parseJson, uuidPattern } from '../lib/json.ts'
@@ -169,7 +169,7 @@ const migrateLegacyConfig = (legacy: LegacyCliConfig): CliConfigV3 => {
   return {
     version: 3,
     activeProviderId: id,
-    thunderbolt: { defaultModelId: managedModels.defaultModelId },
+    thunderbolt: { defaultModelId },
     providers: [profile],
   }
 }

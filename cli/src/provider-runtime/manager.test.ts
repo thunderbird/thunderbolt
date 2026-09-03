@@ -4,7 +4,7 @@
 
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { describe, expect, test } from 'bun:test'
-import { managedModels } from '../../../shared/managed-models.ts'
+import { bundledManagedCatalog } from './catalog.ts'
 import type {
   ByokProfile,
   CliConfig,
@@ -36,8 +36,8 @@ const snapshot = (activeProviderId: string | null = byokId): ProviderSnapshot =>
   activeProviderId,
   thunderbolt: {
     status: 'not authenticated',
-    defaultModelId: '019c91c0-3cf7-7679-a44a-0c9199dc1f15',
-    models: managedModels.models.map(({ id, model, name, description }) => ({
+    defaultModelId: bundledManagedCatalog.defaultModelId,
+    models: bundledManagedCatalog.data.map(({ id, model, name, description }) => ({
       id,
       label: name,
       description: `${model} — ${description}`,
@@ -176,7 +176,7 @@ describe('provider manager deferred outcomes', () => {
   })
 
   test('uses the live Thunderbolt owner for models when persisted active remains BYOK', async () => {
-    const selectedModel = managedModels.models[1]
+    const selectedModel = bundledManagedCatalog.data[1]
     if (!selectedModel) throw new Error('managed catalog fixture needs two models')
     const { io, menus } = scriptedIO({ choices: [selectedModel.id] })
     const initial = snapshot(byokId)
@@ -190,7 +190,7 @@ describe('provider manager deferred outcomes', () => {
 
     const outcome = await manager(io, runtime, 'models', undefined, () => 'thunderbolt')
 
-    expect(menus[0]?.items).toHaveLength(managedModels.models.length)
+    expect(menus[0]?.items).toHaveLength(bundledManagedCatalog.data.length)
     expect(outcome).toEqual({
       kind: 'switch',
       selection: { providerId: 'thunderbolt', model: selectedModel.id },
@@ -231,13 +231,13 @@ describe('provider manager deferred outcomes', () => {
   })
 
   test('lists the complete managed catalog and persists its stable UUID instead of free text', async () => {
-    const chosen = managedModels.models[1]
+    const chosen = bundledManagedCatalog.data[1]
     if (!chosen) throw new Error('managed catalog fixture needs two models')
     const managedSnapshot: ProviderSnapshot = {
       ...snapshot('thunderbolt'),
       thunderbolt: {
         status: 'authenticated',
-        defaultModelId: managedModels.defaultModelId,
+        defaultModelId: bundledManagedCatalog.defaultModelId,
         models: snapshot('thunderbolt').thunderbolt.models,
       },
     }
@@ -246,7 +246,7 @@ describe('provider manager deferred outcomes', () => {
 
     const outcome = await runProviderManager(io, runtime, 'models')
 
-    expect(menus[0]?.items).toHaveLength(managedModels.models.length)
+    expect(menus[0]?.items).toHaveLength(bundledManagedCatalog.data.length)
     expect(menus[0]?.items[1]).toMatchObject({ id: chosen.id, label: chosen.name })
     expect(outcome).toEqual({
       kind: 'switch',
@@ -331,7 +331,7 @@ describe('provider manager deferred outcomes', () => {
   })
 
   test('returns the exact login switch only when Thunderbolt is already active', async () => {
-    const selectedModel = managedModels.models[1]
+    const selectedModel = bundledManagedCatalog.data[1]
     if (!selectedModel) throw new Error('managed catalog fixture needs two models')
     const { io, menus, verifications, statuses } = scriptedIO({ choices: [selectedModel.id] })
     const initial = snapshot('thunderbolt')
@@ -367,7 +367,7 @@ describe('provider manager deferred outcomes', () => {
       ['waiting', 'Waiting for approval…'],
       ['success', 'Login successful.'],
     ])
-    expect(menus.at(-1)?.items).toHaveLength(managedModels.models.length)
+    expect(menus.at(-1)?.items).toHaveLength(bundledManagedCatalog.data.length)
   })
 
   test('carries a manager cancellation signal on the account command', async () => {
@@ -583,7 +583,7 @@ describe('provider manager menus', () => {
     let persisted: CliConfig = {
       version: 3,
       activeProviderId: null,
-      thunderbolt: { defaultModelId: managedModels.defaultModelId },
+      thunderbolt: { defaultModelId: bundledManagedCatalog.defaultModelId },
       providers: [],
     }
     const dependencies: ProviderRuntimeDependencies = {
@@ -601,7 +601,7 @@ describe('provider manager menus', () => {
           throw new Error('unexpected logout')
         },
       },
-      loadCatalog: async () => managedModels,
+      loadCatalog: async () => bundledManagedCatalog,
       ensureRegisteredSession: async (credential) => credential,
       markSessionAuthenticationRequired: async () => {},
       metadata: { deviceName: 'Test CLI' },
@@ -650,7 +650,7 @@ describe('provider manager menus', () => {
     const emptyConfig: CliConfig = {
       version: 3,
       activeProviderId: null,
-      thunderbolt: { defaultModelId: managedModels.defaultModelId },
+      thunderbolt: { defaultModelId: bundledManagedCatalog.defaultModelId },
       providers: [],
     }
     const persistenceFailure = new Error('disk full')
@@ -670,7 +670,7 @@ describe('provider manager menus', () => {
           throw new Error('unexpected logout')
         },
       },
-      loadCatalog: async () => managedModels,
+      loadCatalog: async () => bundledManagedCatalog,
       ensureRegisteredSession: async (credential) => credential,
       markSessionAuthenticationRequired: async () => {},
       metadata: { deviceName: 'Test CLI' },

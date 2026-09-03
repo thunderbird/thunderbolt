@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { SharedModel } from '@shared/defaults/models'
-import type { ManagedModels } from '@shared/managed-models'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -17,14 +16,13 @@ export type AppConfig = {
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string
-  /** Public managed-model catalog used by account-backed clients. */
-  managedModels?: ManagedModels
   /** Server-shipped default sets, versioned so the client can pick between
    *  server and bundled by whichever declares the higher version. See
    *  "Reconciled defaults and version bumps" in AGENTS.md. */
   defaults?: {
     models?: {
       version: number
+      defaultModelId: string
       data: SharedModel[]
     }
   }

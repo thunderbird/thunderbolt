@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createTestDb } from '@/test-utils/db'
-import { managedModels } from '@shared/managed-models'
+import { defaultModels } from '@shared/defaults/models'
 import { managedGlmIdentity } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { managedDirectRuntimes, resolveManagedDirectRuntime } from './managed-models'
@@ -26,7 +26,7 @@ describe('managed model backend coverage', () => {
   })
 
   it('gives every public direct slug exactly one private runtime with a canonical price', async () => {
-    const directSlugs = managedModels.models.filter(({ transport }) => transport === 'direct').map(({ model }) => model)
+    const directSlugs = defaultModels.filter(({ isConfidential }) => isConfidential === 0).map(({ model }) => model)
 
     expect(new Set(directSlugs).size).toBe(directSlugs.length)
     expect(Object.keys(managedDirectRuntimes)).toEqual(directSlugs)
@@ -48,10 +48,9 @@ describe('managed model backend coverage', () => {
     expect(resolveManagedDirectRuntime(slug)).toBeUndefined()
   })
 
-  it('uses GLM as the only schema-v1 confidential policy and receipt identity', async () => {
-    const confidentialModels = managedModels.models.filter(({ transport }) => transport === 'confidential')
+  it('uses GLM as the only confidential policy and receipt identity', async () => {
+    const confidentialModels = defaultModels.filter(({ isConfidential }) => isConfidential === 1)
 
-    expect(managedModels.schemaVersion).toBe(1)
     expect(confidentialModels.map(({ model }) => model)).toEqual([managedGlmIdentity.model])
     expect(await loadInferencePrice(database, managedGlmIdentity)).not.toBeNull()
   })

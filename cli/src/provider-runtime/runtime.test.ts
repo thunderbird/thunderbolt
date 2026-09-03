@@ -5,14 +5,14 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, test } from 'bun:test'
-import { createFutureDirectManagedModelsFixture } from '../../../shared/managed-models.test-fixtures.ts'
-import { managedModels, type ManagedModels } from '../../../shared/managed-models.ts'
 import type { CliDeviceMetadata } from '../auth/account-client.ts'
 import { createCredentialedFetch, type CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
+import { bundledManagedCatalog } from './catalog.ts'
 import type {
   ByokProfile,
   CliAuth,
   CliConfig,
+  ManagedCatalog,
   PreparedPiBinding,
   ProviderRuntimeError,
   ResolvedAccountCredential,
@@ -20,10 +20,10 @@ import type {
 import { providerRuntimeError } from './types.ts'
 import { createProviderStageContext } from './provider-stage.ts'
 import type { ProviderRuntimeDependencies } from './runtime.ts'
-import { createTestProviderRuntime } from './test-fixtures.ts'
+import { createTestProviderRuntime, futureDirectCatalog } from './test-fixtures.ts'
 
-const directModel = managedModels.models.find(({ transport }) => transport === 'direct')
-const confidentialModel = managedModels.models.find(({ transport }) => transport === 'confidential')
+const directModel = bundledManagedCatalog.data.find(({ isConfidential }) => isConfidential === 0)
+const confidentialModel = bundledManagedCatalog.data.find(({ isConfidential }) => isConfidential === 1)
 if (!directModel || !confidentialModel) throw new Error('managed-model fixtures are incomplete')
 
 const metadata: CliDeviceMetadata = { deviceName: 'Test CLI' }
@@ -107,7 +107,7 @@ type RuntimeHarnessOptions = {
   readonly initialConfig?: CliConfig | null
   readonly credential?: ResolvedAccountCredential | null
   readonly auth?: CliAuth | null
-  readonly catalog?: ManagedModels
+  readonly catalog?: ManagedCatalog
   readonly saveFailure?: Error
   readonly byokBinding?: (
     profile: ByokProfile,
@@ -152,7 +152,7 @@ const createRuntimeHarness = async (options: RuntimeHarnessOptions = {}) => {
       }),
       logout: async () => 'logged-out',
     },
-    loadCatalog: async () => options.catalog ?? managedModels,
+    loadCatalog: async () => options.catalog ?? bundledManagedCatalog,
     ensureRegisteredSession: async (credential) => {
       calls.register += 1
       return credential
@@ -618,7 +618,7 @@ describe('ProviderRuntime one-producer managed dispatch', () => {
     await tinfoilHarness.runtime.prepare({ providerId: 'thunderbolt', model: confidentialModel.id })
     expect(tinfoilHarness.calls).toMatchObject({ byok: 0, direct: 0, tinfoil: 1, register: 1 })
 
-    const futureCatalog = createFutureDirectManagedModelsFixture()
+    const futureCatalog = futureDirectCatalog
     const futureHarness = await createRuntimeHarness({
       initialConfig: config({
         activeProviderId: 'thunderbolt',
@@ -629,7 +629,7 @@ describe('ProviderRuntime one-producer managed dispatch', () => {
     })
     await futureHarness.runtime.prepare({ providerId: 'thunderbolt', model: 'future-direct-fixture' })
     expect(futureHarness.calls).toMatchObject({ byok: 0, direct: 1, tinfoil: 0, register: 0 })
-    expect(futureHarness.directArguments[0]?.model).toEqual(futureCatalog.models[0])
+    expect(futureHarness.directArguments[0]?.model).toEqual(futureCatalog.data[0])
   })
 
   test('never tries an alternate producer after the selected producer fails', async () => {
@@ -729,7 +729,7 @@ describe('ProviderRuntime account registration and rejection policy', () => {
     await runtime.manage({ type: 'load-models', providerId: 'thunderbolt' })
     const options = runtime.snapshot().thunderbolt.models
 
-    expect(options).toHaveLength(managedModels.models.length)
+    expect(options).toHaveLength(bundledManagedCatalog.data.length)
     expect(calls).toMatchObject({ direct: 0, tinfoil: 0, register: 0 })
     expect(runtime.snapshot().thunderbolt.status).toBe('not authenticated')
   })
@@ -745,7 +745,7 @@ describe('ProviderRuntime account registration and rejection policy', () => {
       loadCatalog: async (backendUrl) => {
         catalogLoads += 1
         expect(backendUrl).toBe(sessionCredential.backendUrl)
-        return managedModels
+        return bundledManagedCatalog
       },
     })
 
@@ -756,18 +756,18 @@ describe('ProviderRuntime account registration and rejection policy', () => {
 
     expect(catalogLoads).toBe(1)
     expect(runtime.snapshot().thunderbolt.models).toEqual(
-      managedModels.models.map((model) => ({
+      bundledManagedCatalog.data.map((model) => ({
         id: model.id,
         label: model.name,
         description: `${model.model} — ${model.description}`,
         wireModel: model.model,
-        confidential: model.transport === 'confidential',
+        confidential: model.isConfidential === 1,
       })),
     )
   })
 
   test('persists the login-selected managed UUID in the same activation transaction', async () => {
-    const selected = managedModels.models[1]
+    const selected = bundledManagedCatalog.data[1]
     if (!selected) throw new Error('managed catalog fixture needs two models')
     const { runtime, saved } = await createRuntimeHarness({
       initialConfig: config({ activeProviderId: null }),

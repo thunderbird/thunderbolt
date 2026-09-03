@@ -6,8 +6,8 @@ import { describe, expect, test } from 'bun:test'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
+import { defaultModelGlm52, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared/inference-usage.ts'
-import type { ManagedModel } from '../../../shared/managed-models.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { cliVersion } from '../version.ts'
@@ -15,21 +15,15 @@ import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } fro
 import { testSessionCredential } from './test-fixtures.ts'
 import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoil.ts'
 
-const confidentialModel: ManagedModel = {
-  id: '019f227e-d640-727d-ba12-d51bd7d0a3d7',
+const confidentialModel: SharedModel = {
+  ...defaultModelGlm52,
   model: managedGlmIdentity.model,
   name: 'GLM 5.2',
   description: 'Confidential GLM',
   vendor: 'zai',
-  transport: 'confidential',
-  capabilities: {
-    input: ['text'],
-    tools: true,
-    parallelToolCalls: true,
-    reasoning: true,
-    contextWindow: 128_000,
-  },
-  defaults: { startWithReasoning: true },
+  contextWindow: 128_000,
+  startWithReasoning: 1,
+  supportsParallelToolCalls: 1,
 }
 
 const sessionCredential = (

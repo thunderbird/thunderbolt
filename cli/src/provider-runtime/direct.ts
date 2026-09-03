@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ManagedModel } from '../../../shared/managed-models.ts'
+import { vendorSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from '../agent/openai-compat-model.ts'
 import type { CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { getUncredentialedFetch } from '../agent/credentialed-fetch.ts'
@@ -12,7 +12,7 @@ import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, ResolvedAcc
 
 type ManagedDirectBindingOptions = {
   readonly credential: ResolvedAccountCredential
-  readonly model: ManagedModel
+  readonly model: SharedModel
   readonly observeResponse: CredentialResponseObserver
   readonly fetchFn?: AccountFetch
 }
@@ -24,7 +24,7 @@ const sdkPlaceholderCredential = 'thunderbolt-account-credential'
 
 /** Create a stable preparation error without exposing account credentials. */
 const createDirectBindingError = (
-  code: Extract<ProviderRuntimeError['code'], 'config-invalid' | 'transport-unsupported'>,
+  code: Extract<ProviderRuntimeError['code'], 'config-invalid'>,
   message: string,
 ): DirectBindingError => providerRuntimeError(code, message)
 
@@ -55,9 +55,9 @@ const authenticatedFetch =
 
 /** Prepare a generic public managed-direct catalog row for the Pi runtime. */
 export const createManagedDirectBinding = async (options: ManagedDirectBindingOptions): Promise<PreparedPiBinding> => {
-  if (options.model.transport !== 'direct') {
+  if (options.model.isConfidential !== 0) {
     throw createDirectBindingError(
-      'transport-unsupported',
+      'config-invalid',
       `Managed model "${options.model.model}" does not use the direct transport`,
     )
   }
@@ -71,9 +71,10 @@ export const createManagedDirectBinding = async (options: ManagedDirectBindingOp
     baseUrl,
     apiKey: sdkPlaceholderCredential,
     fetchFn,
-    reasoning: options.model.capabilities.reasoning,
-    contextWindow: options.model.capabilities.contextWindow,
-    supportsImages: options.model.capabilities.input.includes('image'),
+    // The catalog has no per-model reasoning flag yet (THU-863).
+    reasoning: true,
+    contextWindow: options.model.contextWindow!,
+    supportsImages: vendorSupportsImages(options.model.vendor),
     observeResponse: options.observeResponse,
   })
   const provider = built.models.getProvider(providerId)

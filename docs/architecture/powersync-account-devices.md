@@ -204,10 +204,9 @@ Summary for client:
 
 ### Managed Catalog Privacy
 
-`GET /v1/config` publishes only the versioned managed-model contract needed by
-clients: public identity, display metadata, capabilities, and transport class.
-Upstream provider endpoints, credentials, price tables, quota internals, and
-other deployment secrets remain backend-only.
+`GET /v1/config` publishes managed models through `defaults.models`: versioned
+`SharedModel` rows without `apiKey`, plus `defaultModelId`. Price tables, quota
+internals, credentials, and other deployment secrets remain backend-only.
 
 For the mandatory old-client-safe rollout order, see
 [CLI Device Rollout](../self-hosting/configuration.md#cli-device-rollout).

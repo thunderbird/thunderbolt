@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ManagedModel } from '../../../shared/managed-models.ts'
+import { vendorSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader } from '../../../shared/inference-usage.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import {
@@ -31,7 +31,7 @@ const sdkPlaceholderCredential = 'thunderbolt-session'
 
 export type CreateTinfoilBindingOptions = {
   readonly credential: SessionCredential
-  readonly model: ManagedModel
+  readonly model: SharedModel
   readonly onStoredSessionRejected: () => Promise<void>
   readonly fetchFn?: AccountFetch
   readonly receiptTimeoutMs?: number
@@ -217,7 +217,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
   ) {
     throw invalidTinfoilConfigError('The confidential cache secret must contain exactly 32 bytes.')
   }
-  if (options.model.transport !== 'confidential') {
+  if (options.model.isConfidential !== 1) {
     throw invalidTinfoilConfigError(`Managed model "${options.model.model}" does not use confidential transport.`)
   }
   if (!isSecureCloudUrl(options.credential.backendUrl)) {
@@ -258,9 +258,9 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     apiKey: sdkPlaceholderCredential,
     fetchFn,
     prevalidatedFetch: true,
-    reasoning: options.model.capabilities.reasoning,
-    contextWindow: options.model.capabilities.contextWindow,
-    supportsImages: options.model.capabilities.input.includes('image'),
+    reasoning: true,
+    contextWindow: options.model.contextWindow!,
+    supportsImages: vendorSupportsImages(options.model.vendor),
     compat: piGlm52.compat,
     thinkingLevelMap: piGlm52.thinkingLevelMap,
   })

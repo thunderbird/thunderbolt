@@ -79,6 +79,17 @@
       "allow": [
         {
           "path": "$APPDATA/*"
+        },
+        {
+          "path": "$DOWNLOAD/*"
+        }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/*"
         }
       ]
     }

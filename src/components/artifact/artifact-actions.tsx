@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useLingui } from '@lingui/react/macro'
+import { downloadFile } from '@/lib/download'
+import { useState } from 'react'
 import { Check, Copy, Download } from 'lucide-react'
 
 /** Filename-safe slug from a human title, e.g. "Sales Dashboard" → "sales-dashboard". */
@@ -34,19 +36,25 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
   const { t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
 
-  const handleDownload = () => {
-    // Ship the file with the same offline CSP the app renders it under, so opening the download in
-    // a browser can't run it unsandboxed with network access — a self-contained artifact needs none.
-    const url = URL.createObjectURL(new Blob([wrapArtifactPreviewHtml(html)], { type: 'text/html' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${toFileSlug(title)}.html`
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    // Defer revocation so the browser (notably WebKit in the Tauri webview) has time to start
-    // reading the blob — revoking synchronously after click() can cancel the download.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  const [isSaved, setIsSaved] = useState(false)
+
+  const handleDownload = async () => {
+    try {
+      await downloadFile({
+        name: `${toFileSlug(title)}.html`,
+        // Ship the file with the same offline CSP the app renders it under, so opening the download
+        // in a browser can't run it unsandboxed with network access — a self-contained artifact
+        // needs none.
+        contents: wrapArtifactPreviewHtml(html),
+        mimeType: 'text/html',
+      })
+      setIsSaved(true)
+    } catch (error) {
+      // The desktop path writes the file itself and can genuinely fail — a
+      // missing grant, a full disk. Reported rather than swallowed: this button
+      // silently doing nothing on desktop is the bug being fixed here.
+      console.error('[artifacts] Could not save the artifact', error)
+    }
   }
 
   return (
@@ -66,14 +74,14 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
       <Button
         onClick={(event) => {
           event.stopPropagation()
-          handleDownload()
+          void handleDownload()
         }}
         variant="ghost"
         size="icon"
         className={cn('size-8 shrink-0 rounded-full', buttonClassName)}
         title={t`Download HTML`}
       >
-        <Download className="size-4" />
+        {isSaved ? <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" /> : <Download className="size-4" />}
       </Button>
     </>
   )

@@ -122,6 +122,31 @@ export const defaultSettingLocationId: Setting = {
   userId: null,
 }
 
+/**
+ * The saved location in the active language — "Munique, Baviera, Alemanha" for
+ * the place `location_name` holds as "Munich, Bavaria, Germany".
+ *
+ * Stored rather than resolved on render because only the geocoding provider
+ * knows city and region names (CLDR has neither), so an offline or standalone
+ * device would otherwise be stuck showing the English name. Written for free
+ * when the place is picked, since the picker already searched in the user's
+ * language.
+ *
+ * A language change invalidates it by *clearing* it (`useLanguageSetting`),
+ * which costs no network and reaches the other devices as an invalidation they
+ * each act on. `useLocationNameDisplay` refills it lazily.
+ *
+ * Null while unresolved, and for rows written before it existed — the display
+ * falls back to `location_name` until a lookup fills it in.
+ */
+export const defaultSettingLocationNameDisplay: Setting = {
+  key: 'location_name_display',
+  value: null,
+  updatedAt: null,
+  defaultHash: null,
+  userId: null,
+}
+
 export const defaultSettingDistanceUnit: Setting = {
   key: 'distance_unit',
   value: null,
@@ -217,6 +242,7 @@ export const defaultSettings: ReadonlyArray<Setting> = [
   defaultSettingLocationLng,
   defaultSettingLocationCountryCode,
   defaultSettingLocationId,
+  defaultSettingLocationNameDisplay,
   defaultSettingDistanceUnit,
   defaultSettingTemperatureUnit,
   defaultSettingTimeFormat,
@@ -239,4 +265,4 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * The paired snapshot test in `settings.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSettingsVersion = 5
+export const defaultSettingsVersion = 6

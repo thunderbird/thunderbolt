@@ -8,7 +8,7 @@ import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSum
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
-import { useLocalizedLocationName } from '@/hooks/use-localized-location-name'
+import { useLocationNameDisplay } from '@/hooks/use-location-name-display'
 import { fetchEnglishLocationName, type LocationData } from '@/lib/locations'
 import { updateSettings } from '@/dal'
 import { useSettings } from '@/hooks/use-settings'
@@ -235,6 +235,7 @@ export default function PreferencesSettingsPage() {
     locationLng,
     locationCountryCode,
     locationId,
+    locationNameDisplay,
     dataCollection,
     experimentalFeatureTasks,
     experimentalFeatureVoice,
@@ -249,6 +250,7 @@ export default function PreferencesSettingsPage() {
     location_lng: '',
     location_country_code: '',
     location_id: '',
+    location_name_display: '',
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
@@ -262,7 +264,7 @@ export default function PreferencesSettingsPage() {
     currency: '',
   })
 
-  const localizedLocationName = useLocalizedLocationName(locationId.value, locationName.value)
+  const localizedLocationName = useLocationNameDisplay(locationId.value, locationName.value, locationNameDisplay)
 
   const { language, setLanguage, resetLanguage } = useLanguageSetting()
 
@@ -346,6 +348,10 @@ export default function PreferencesSettingsPage() {
         location_lng: String(location.coordinates.lng),
         location_country_code: location.countryCode,
         location_id: String(location.id),
+        // Free here — the picker searched in the user's language, so this is
+        // the row they clicked. Written in the same transaction as the rest so
+        // the display name cannot describe a different place than `location_id`.
+        location_name_display: location.name,
       })
     } catch (error) {
       // Resolving the English name is a live geocoding call, and the combobox
@@ -558,6 +564,7 @@ export default function PreferencesSettingsPage() {
       locationLng.reset(),
       locationCountryCode.reset(),
       locationId.reset(),
+      locationNameDisplay.reset(),
     ])
   }
 
@@ -736,6 +743,9 @@ export default function PreferencesSettingsPage() {
               as="label"
               id="localization-location-label"
               className="text-sm font-medium"
+              // `locationNameDisplay` is deliberately absent: it is derived from
+              // the keys above rather than set by the user, so it has nothing
+              // of its own to report as modified. It still resets with them.
               hasModifications={
                 locationName.isModified ||
                 locationLat.isModified ||

@@ -285,6 +285,9 @@ export const useOnboardingState = () => {
           location_lng: String(locationData.locationLng),
           location_country_code: locationData.locationCountryCode,
           location_id: String(locationData.locationId),
+          // The localized string the user picked, stored so the settings page
+          // never has to re-resolve it over the network.
+          location_name_display: locationData.locationName,
         })
 
         // Applied without a prompt, unlike the same change in preferences: the

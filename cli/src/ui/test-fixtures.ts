@@ -76,10 +76,11 @@ export const assistantUpdate = (
 ): AgentHarnessEvent => ({ type: 'message_update', message, assistantMessageEvent })
 
 /** Captures renderer subscription events. */
-export const rendererEvents = () => {
+export const rendererEvents = (providerId = 'thunderbolt') => {
   let listener: ((event: AgentHarnessEvent) => void) | undefined
   return {
     runtime: {
+      currentProviderId: () => providerId,
       subscribe: (next: (event: AgentHarnessEvent) => void) => {
         listener = next
         return () => {

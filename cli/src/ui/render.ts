@@ -18,8 +18,18 @@ const plainStreamingStatusText = `${workingStatusText} (Ctrl+C to interrupt)`
 const errorRecoveryHints = {
   network: 'check your connection — your message is kept in history (↑)',
   auth: 'run /login to sign in again',
+  byokAuth: "set the provider's environment variable, pass --api-key, or repair the profile with thunderbolt config",
   generic: 'retry the message — it is kept in history (↑)',
 } as const
+
+/** Selects the provider-error headline and recovery hint in priority order. */
+const turnErrorPresentation = (detail: string, providerId: string | null): readonly [string, string] => {
+  const normalized = detail.toLowerCase()
+  if (/network|fetch|connect|unreachable|econn/.test(normalized)) return [detail, errorRecoveryHints.network]
+  if (!/auth|session|unauthorized|401/.test(normalized)) return [detail, errorRecoveryHints.generic]
+  if (providerId === 'thunderbolt') return ['Session expired', errorRecoveryHints.auth]
+  return ['Provider rejected the credential', errorRecoveryHints.byokAuth]
+}
 
 /** Whether an assistant stream event carries content rather than protocol framing. */
 export const isAssistantDelta = (event: AssistantMessageEvent): boolean =>
@@ -183,18 +193,13 @@ export const formatToolEnd = (
  * the CLI would print nothing and look like a silent no-op.
  *
  * @param message - the assistant message attached to a `turn_end` event
+ * @param providerId - the provider that produced the turn
  * @returns the styled error line, or `undefined` when the turn did not error
  */
-export const formatTurnError = (message: AgentMessage): string | undefined => {
+export const formatTurnError = (message: AgentMessage, providerId: string | null): string | undefined => {
   if (!('stopReason' in message) || message.stopReason !== 'error') return undefined
   const detail = sanitizeTerminalText(message.errorMessage ?? 'the request failed')
-  const normalized = detail.toLowerCase()
-  const recovery = /network|fetch|connect|unreachable|econn/.test(normalized)
-    ? errorRecoveryHints.network
-    : /auth|session|unauthorized|401/.test(normalized)
-      ? errorRecoveryHints.auth
-      : errorRecoveryHints.generic
-  const headline = recovery === errorRecoveryHints.auth ? 'Session expired' : detail
+  const [headline, recovery] = turnErrorPresentation(detail, providerId)
   return `${red(`${symbols.fail} ${headline}`)}\n${dim(`  ${recovery}`)}`
 }
 
@@ -206,7 +211,7 @@ export const formatTurnError = (message: AgentMessage): string | undefined => {
  * @param runtime - the harness runtime whose run should be rendered
  */
 export const attachRenderer = (
-  runtime: Pick<HarnessRuntime, 'subscribe'>,
+  runtime: Pick<HarnessRuntime, 'currentProviderId' | 'subscribe'>,
   streams: RendererStreams = { stdout: process.stdout, stderr: process.stderr },
 ): void => {
   let status: string | undefined
@@ -267,7 +272,7 @@ export const attachRenderer = (
         break
       case 'turn_end': {
         clearStatus()
-        const error = formatTurnError(event.message)
+        const error = formatTurnError(event.message, runtime.currentProviderId())
         if (error) streams.stderr.write(`\n${error}\n`)
         break
       }

@@ -106,11 +106,15 @@ describe('attachRenderer — prompt status', () => {
       { type: 'message_end', message: assistantMessage() },
       { type: 'agent_end', messages: [] },
       { type: 'abort', clearedSteer: [], clearedFollowUp: [] },
-      { type: 'turn_end', message: { ...assistantMessage(), stopReason: 'error' }, toolResults: [] },
+      {
+        type: 'turn_end',
+        message: { ...assistantMessage(), stopReason: 'error', errorMessage: '401 unauthorized' },
+        toolResults: [],
+      },
     ]
 
     for (const terminalEvent of terminalEvents) {
-      const events = rendererEvents()
+      const events = rendererEvents('anthropic-profile')
       const stderr: string[] = []
       attachRenderer(events.runtime, {
         stdout: { write: () => {} },
@@ -121,6 +125,10 @@ describe('attachRenderer — prompt status', () => {
       events.emit(terminalEvent)
 
       expect(stderr).toContain('\r\x1b[2K')
+      if (terminalEvent.type === 'turn_end') {
+        expect(stderr.join('')).toContain('Provider rejected the credential')
+        expect(stderr.join('')).not.toContain('Session expired')
+      }
     }
   })
 })
@@ -253,17 +261,31 @@ describe('formatToolEnd — result preview', () => {
 describe('formatTurnError — error gate', () => {
   test('an errored turn returns its detail message', () => {
     const message = { stopReason: 'error', errorMessage: 'rate limited' } as unknown as AgentMessage
-    const line = formatTurnError(message)
+    const line = formatTurnError(message, 'thunderbolt')
     expect(line).toContain('rate limited')
     expect(line).toContain('retry the message — it is kept in history (↑)')
   })
 
-  test('network and expired-session errors include their specific recovery', () => {
-    const network: AgentMessage = { ...assistantMessage(), stopReason: 'error', errorMessage: 'network unreachable' }
+  test('network and auth errors include provider-specific recovery', () => {
+    const network: AgentMessage = {
+      ...assistantMessage(),
+      stopReason: 'error',
+      errorMessage: 'network authentication unreachable',
+    }
     const expired: AgentMessage = { ...assistantMessage(), stopReason: 'error', errorMessage: 'stored session expired' }
+    const networkError = formatTurnError(network, 'anthropic-profile')
+    const accountError = formatTurnError(expired, 'thunderbolt')
+    const byokError = formatTurnError(expired, 'anthropic-profile')
 
-    expect(formatTurnError(network)).toContain('check your connection — your message is kept in history (↑)')
-    expect(formatTurnError(expired)).toContain('run /login to sign in again')
+    expect(networkError).toContain('check your connection — your message is kept in history (↑)')
+    expect(networkError).toContain('network authentication unreachable')
+    expect(accountError).toContain('Session expired')
+    expect(accountError).toContain('run /login to sign in again')
+    expect(byokError).toContain('Provider rejected the credential')
+    expect(byokError).not.toContain('Session expired')
+    expect(byokError).toContain(
+      "set the provider's environment variable, pass --api-key, or repair the profile with thunderbolt config",
+    )
   })
 
   test('an errored turn strips terminal control sequences from provider detail', () => {
@@ -271,7 +293,7 @@ describe('formatTurnError — error gate', () => {
       stopReason: 'error',
       errorMessage: 'upstream\x1b]52;c;cHduZWQ=\x07\x1b[2J failed',
     } as unknown as AgentMessage
-    const line = formatTurnError(message)
+    const line = formatTurnError(message, 'thunderbolt')
 
     expect(line).toContain('upstream failed')
     expect(line).not.toContain('52;')
@@ -280,11 +302,11 @@ describe('formatTurnError — error gate', () => {
 
   test('an errored turn with no message uses a generic detail', () => {
     const message = { stopReason: 'error' } as unknown as AgentMessage
-    expect(formatTurnError(message)).toContain('the request failed')
+    expect(formatTurnError(message, 'thunderbolt')).toContain('the request failed')
   })
 
   test('a non-error turn returns undefined', () => {
     const message = { stopReason: 'endTurn' } as unknown as AgentMessage
-    expect(formatTurnError(message)).toBeUndefined()
+    expect(formatTurnError(message, 'thunderbolt')).toBeUndefined()
   })
 })

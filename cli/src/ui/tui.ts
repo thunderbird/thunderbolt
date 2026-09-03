@@ -169,7 +169,7 @@ const renderAssistantInto = (container: Container, message: AssistantMessage): v
  * @returns cleanup that unsubscribes and stops any live status Loader
  */
 export const subscribeTuiRenderer = (
-  harness: Pick<HarnessRuntime, 'subscribe'>,
+  harness: Pick<HarnessRuntime, 'currentProviderId' | 'subscribe'>,
   tui: TUI,
   scrollback: Container,
   statusContainer: Container,
@@ -254,7 +254,7 @@ export const subscribeTuiRenderer = (
         // A turn that errors while streaming text has no dedicated error line,
         // so surface it here (the message body shows the raw prose, not the
         // provider error). Tool-call turns get the same treatment.
-        const error = formatTurnError(event.message)
+        const error = formatTurnError(event.message, harness.currentProviderId())
         if (error) {
           scrollback.addChild(new Text(`\n${error}`))
           tui.requestRender()

@@ -10,6 +10,7 @@ import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { useScrollToMessage } from '@/chats/use-scroll-to-message'
 import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
+import { MiniAppApprovalHost } from '@/mini-apps/mini-app-approval-host'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
@@ -189,6 +190,7 @@ export default function ChatUI() {
             </AnimatePresence>
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
+              <MiniAppApprovalHost />
             </div>
             <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
               <ChatPromptInput />

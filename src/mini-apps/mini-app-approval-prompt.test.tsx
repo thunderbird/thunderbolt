@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { PendingToolApproval } from './mini-app-store'
-import { ToolApprovalBar } from './tool-approval-bar'
+import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 
@@ -24,9 +24,9 @@ const pending = (overrides: Partial<PendingToolApproval['tool']> = {}, args: unk
   }) as PendingToolApproval
 
 const renderBar = (approval: PendingToolApproval) =>
-  render(<ToolApprovalBar pending={approval} appName="Order Book" onDecide={() => {}} />)
+  render(<MiniAppApprovalPrompt pending={approval} appName="Order Book" onDecide={() => {}} />)
 
-describe('ToolApprovalBar', () => {
+describe('MiniAppApprovalPrompt', () => {
   it('leads with the author-written title, not the tool identifier', () => {
     renderBar(pending())
     expect(screen.getByText('Change an order status')).toBeTruthy()
@@ -80,29 +80,38 @@ describe('ToolApprovalBar', () => {
   })
 
   /*
-   * The bar renders after the iframe in DOM order, so a keyboard user would
-   * otherwise tab through the whole customer app to reach a decision they are
-   * being blocked on.
+   * Focus is deliberately left alone now that the prompt renders inline above
+   * the composer rather than as a bar over the iframe. In the old placement a
+   * keyboard user had to tab through the entire customer app to reach a decision
+   * blocking them, so it grabbed focus; inline it is already in reading order,
+   * and pulling focus out from under someone mid-sentence would be a new bug.
    */
-  it('takes focus when it appears, landing on Deny', () => {
+  it('leaves focus where the user put it', () => {
     renderBar(pending())
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Deny' }))
-  })
-
-  /** Deny, not Approve: a stray Enter should be the harmless one. The model can
-   *  ask again; an unwanted write cannot be taken back. */
-  it('does not put focus on Approve', () => {
-    renderBar(pending())
-
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Deny' }))
     expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Approve' }))
   })
 
+  /** Deny first in DOM order: a stray Enter or a rushed Tab should land on the
+   *  harmless one. The model can ask again; an unwanted write cannot be undone. */
+  it('puts Deny before Approve', () => {
+    renderBar(pending())
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent)
+
+    expect(buttons.indexOf('Deny')).toBeLessThan(buttons.indexOf('Approve'))
+  })
+
+  /*
+   * Named, but not `aria-modal`. It is inline content in the chat now, not an
+   * overlay trapping interaction — claiming modality for something the user can
+   * freely scroll past would misreport the page to a screen reader.
+   */
   it('names itself for a screen reader instead of announcing a bare dialog', () => {
     renderBar(pending({ annotations: { readOnlyHint: false, title: 'Change an order status' } }))
     const dialog = screen.getByRole('dialog')
 
-    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog.getAttribute('aria-modal')).toBeNull()
     expect(dialog).toHaveAccessibleName('Change an order status')
   })
 })

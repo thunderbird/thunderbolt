@@ -383,7 +383,7 @@ msgstr "Gilt für jeden Chat in diesem Projekt."
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "Genehmigen"
@@ -1310,7 +1310,7 @@ msgstr "Dichter gefrierender Nieselregen"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "Ablehnen"
@@ -2875,7 +2875,7 @@ msgstr "Anfrage abgelehnt"
 msgid "Request expired"
 msgstr "Anfrage abgelaufen"
 
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 msgid "Requested by {appName}"
 msgstr ""
 
@@ -4050,8 +4050,8 @@ msgid "Waiting for approval"
 msgstr "Warten auf Genehmigung"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Waiting for your approval in the app"
-msgstr ""
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"

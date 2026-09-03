@@ -383,7 +383,7 @@ msgstr "Applied to every chat in this project."
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "Approve"
@@ -1310,7 +1310,7 @@ msgstr "Dense freezing drizzle"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "Deny"
@@ -2875,7 +2875,7 @@ msgstr "Request denied"
 msgid "Request expired"
 msgstr "Request expired"
 
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 msgid "Requested by {appName}"
 msgstr "Requested by {appName}"
 
@@ -4050,8 +4050,8 @@ msgid "Waiting for approval"
 msgstr "Waiting for approval"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Waiting for your approval in the app"
-msgstr "Waiting for your approval in the app"
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr "Waiting for your approval in the app"
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"

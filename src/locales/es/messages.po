@@ -395,7 +395,7 @@ msgstr "Se aplica a todos los chats de este proyecto."
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "Aprobar"
@@ -1322,7 +1322,7 @@ msgstr "Llovizna helada densa"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "Denegar"
@@ -2887,7 +2887,7 @@ msgstr "Solicitud denegada"
 msgid "Request expired"
 msgstr "Solicitud caducada"
 
-#: src/mini-apps/tool-approval-bar.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 msgid "Requested by {appName}"
 msgstr ""
 
@@ -4062,8 +4062,8 @@ msgid "Waiting for approval"
 msgstr "Esperando aprobación"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Waiting for your approval in the app"
-msgstr ""
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"

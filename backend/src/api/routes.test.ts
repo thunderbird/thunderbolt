@@ -132,6 +132,23 @@ describe('Main Routes', () => {
     expect(new URL(requested[0]).searchParams.get('language')).toBe('en')
   })
 
+  /**
+   * `baseLanguage` builds an `Intl.Locale`, which throws a `RangeError` on a
+   * malformed tag, and `?language=` arrives as `''` rather than as a missing
+   * value — so it slips past the `'en'` default. Both have to be turned away at
+   * the boundary; reaching the handler makes them an opaque 500.
+   */
+  it.each(['', 'en_US', 'foo!', 'e', 'en-'])('should reject the malformed language tag %p', async (language) => {
+    const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+    const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+    const response = await testApp.handle(
+      new Request(`http://localhost/locations?query=London&language=${encodeURIComponent(language)}`),
+    )
+
+    expect(response.status).toBe(422)
+    expect(unreachedFetch).not.toHaveBeenCalled()
+  })
+
   describe('GET /locations/:id', () => {
     const byIdFetch = mock((input: RequestInfo | URL) =>
       Promise.resolve(
@@ -185,6 +202,15 @@ describe('Main Routes', () => {
       const testApp = createMainRoutes(mockAuthUnauthenticated, byIdFetch as unknown as typeof fetch)
       const response = await testApp.handle(new Request('http://localhost/locations/2867714'))
       expect(response.status).toBe(401)
+    })
+
+    it('should reject a malformed language tag', async () => {
+      const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+      const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714?language='))
+
+      expect(response.status).toBe(422)
+      expect(unreachedFetch).not.toHaveBeenCalled()
     })
   })
 

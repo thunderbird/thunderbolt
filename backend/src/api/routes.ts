@@ -42,6 +42,20 @@ type GeocodingPlace = {
 
 const geocodingBaseUrl = 'https://geocoding-api.open-meteo.com/v1'
 
+/**
+ * BCP-47 tag; normalized to its base subtag before it reaches Open-Meteo.
+ * Optional, defaulting to English so an older client keeps its behaviour.
+ *
+ * Well-formedness is checked here rather than in the handler because
+ * `baseLanguage` builds an `Intl.Locale`, which throws a `RangeError` on a
+ * malformed tag — and an empty value (`?language=`) reaches the handler as `''`,
+ * past the `?? 'en'` default. Validating at the boundary turns that into a 422
+ * instead of an opaque 500. The pattern admits only tags `Intl.Locale` accepts;
+ * it rejects `-u-`/`-t-` extension singletons, which carry nothing the base
+ * subtag needs.
+ */
+const languageQuery = t.Optional(t.String({ pattern: '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$' }))
+
 const toLocationResult = (place: GeocodingPlace): LocationResult => ({
   id: place.id ?? 0,
   name: place.name || '',
@@ -113,12 +127,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
         auth: true,
         query: t.Object({
           query: t.String(),
-          /**
-           * BCP-47 tag; normalized to its base subtag before it reaches
-           * Open-Meteo. Defaults to English so an older client keeps its
-           * current behaviour.
-           */
-          language: t.Optional(t.String()),
+          language: languageQuery,
         }),
       },
     )
@@ -159,7 +168,7 @@ export const createMainRoutes = (auth: Auth, fetchFn: typeof fetch = globalThis.
           id: t.Number(),
         }),
         query: t.Object({
-          language: t.Optional(t.String()),
+          language: languageQuery,
         }),
       },
     )

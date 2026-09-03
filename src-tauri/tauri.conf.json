@@ -50,7 +50,8 @@
         "MetalKit.framework",
         "Metal.framework"
       ],
-      "developmentTeam": "BUMSKVQ3D9"
+      "developmentTeam": "BUMSKVQ3D9",
+      "minimumSystemVersion": "15.0"
     },
     "android": {
       "versionCode": 1018

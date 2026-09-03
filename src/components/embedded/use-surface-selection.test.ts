@@ -5,162 +5,163 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 
-import type { SurfaceRect, SurfaceSelectionItem } from './types'
+import type { SurfaceHighlightedElement } from './types'
 import { useSurfaceSelection } from './use-surface-selection'
 
-const rect: SurfaceRect = { x: 0, y: 0, width: 100, height: 40 }
-const row = (id: string): SurfaceSelectionItem => ({ id, label: `Row ${id}`, text: `text ${id}` })
-
-/** A query the test resolves by hand, so `resolving` can be observed. */
-const deferredQuery = () => {
-  let release: (items: SurfaceSelectionItem[]) => void = () => {}
-  const query = () => new Promise<SurfaceSelectionItem[]>((resolve) => (release = resolve))
-  return { query, release: (items: SurfaceSelectionItem[]) => release(items) }
-}
+const element = (id: string): SurfaceHighlightedElement => ({
+  id,
+  label: `Row ${id}`,
+  text: `text ${id}`,
+  rect: { x: 0, y: 0, width: 100, height: 40 },
+})
 
 /** One deferred per call, so two in-flight queries can be settled out of order. */
 const deferredQueries = () => {
-  const releases: ((items: SurfaceSelectionItem[]) => void)[] = []
-  const query = () => new Promise<SurfaceSelectionItem[]>((resolve) => releases.push(resolve))
+  const releases: ((found: SurfaceHighlightedElement | null) => void)[] = []
+  const query = () => new Promise<SurfaceHighlightedElement | null>((resolve) => releases.push(resolve))
   return { query, releases }
 }
 
-const setup = (query: (rect: SurfaceRect) => Promise<SurfaceSelectionItem[]>) => {
+const setup = (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => {
   const asked: string[][] = []
   const hook = renderHook(() => useSurfaceSelection({ query, onAsk: (passages) => asked.push(passages) }))
   return { hook, asked }
 }
 
+const point = { x: 10, y: 20 }
+
 describe('useSurfaceSelection', () => {
   it('starts idle', () => {
-    const { hook } = setup(async () => [])
+    const { hook } = setup(async () => null)
     expect(hook.result.current.mode.kind).toBe('idle')
   })
 
-  /**
-   * The Mini App copy dropped out of drawing *before* awaiting the guest, so for
-   * up to the query timeout the dim vanished, the floating buttons popped back
-   * and a stale popover could reappear — it read as "my drag did nothing".
+  it('enters picking with nothing highlighted yet', () => {
+    const { hook } = setup(async () => null)
+    act(() => hook.result.current.startPicking())
+
+    expect(hook.result.current.mode).toMatchObject({ kind: 'picking', element: null })
+  })
+
+  it('shows what the guest found under the pointer', async () => {
+    const { hook } = setup(async () => element('a'))
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      await hook.result.current.pointAt(point)
+    })
+
+    expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element?.id).toBe('a')
+  })
+
+  /*
+   * A query rides every throttled pointer move, so answers arrive out of order
+   * under load. Without the token guard the outline snaps back to a position the
+   * pointer has already left.
    */
-  it('stays occupied while the guest is still answering', async () => {
-    const { query, release } = deferredQuery()
-    const { hook } = setup(query)
-
-    act(() => hook.result.current.startMarquee())
-    expect(hook.result.current.mode.kind).toBe('drawing')
-
-    act(() => void hook.result.current.resolveMarquee(rect))
-    expect(hook.result.current.mode.kind).toBe('resolving')
-
-    await act(async () => release([row('a')]))
-    expect(hook.result.current.mode.kind).toBe('reviewing')
-  })
-
-  it('treats an empty answer as a real answer, not a failure', async () => {
-    const { hook } = setup(async () => [])
-
-    act(() => hook.result.current.startMarquee())
-    await act(async () => await hook.result.current.resolveMarquee(rect))
-
-    expect(hook.result.current.mode).toEqual({ kind: 'reviewing', items: [] })
-  })
-
-  /**
-   * The two-flag version this replaces let a result bar sit pinned over an
-   * active marquee, which is why "Try again" needed a hand-written reset.
-   */
-  it('cannot be reviewing and drawing at once', async () => {
-    const { hook } = setup(async () => [])
-
-    act(() => hook.result.current.startMarquee())
-    await act(async () => await hook.result.current.resolveMarquee(rect))
-    act(() => hook.result.current.startMarquee())
-
-    expect(hook.result.current.mode.kind).toBe('drawing')
-  })
-
-  /** A late answer to a cancelled drag must not resurrect the review bar. */
-  it('discards an answer that arrives after the user gave up', async () => {
-    const { query, release } = deferredQuery()
-    const { hook } = setup(query)
-
-    act(() => hook.result.current.startMarquee())
-    act(() => void hook.result.current.resolveMarquee(rect))
-    act(() => hook.result.current.dismiss())
-
-    await act(async () => release([row('a')]))
-    expect(hook.result.current.mode.kind).toBe('idle')
-  })
-
-  /**
-   * The overlay stays mounted through `resolving`, so the user can release a
-   * second box while the first query is still out. Both answers land in the one
-   * slot, and without a token the reducer took whichever arrived first — box A's
-   * rows shown as if they were box B's.
-   */
-  it('ignores the answer to a box the user has already redrawn', async () => {
+  it('ignores a stale answer that lands after a newer one', async () => {
     const { query, releases } = deferredQueries()
     const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
 
-    act(() => hook.result.current.startMarquee())
-    act(() => void hook.result.current.resolveMarquee(rect))
-    act(() => void hook.result.current.resolveMarquee(rect))
+    let first: Promise<void> = Promise.resolve()
+    let second: Promise<void> = Promise.resolve()
+    act(() => {
+      first = hook.result.current.pointAt(point)
+      second = hook.result.current.pointAt({ x: 80, y: 90 })
+    })
+    // Newest answers first, then the stale one.
+    await act(async () => {
+      releases[1](element('new'))
+      releases[0](element('stale'))
+      await first
+      await second
+    })
 
-    await act(async () => releases[0]?.([row('a')]))
-    expect(hook.result.current.mode.kind).toBe('resolving')
-
-    await act(async () => releases[1]?.([row('b')]))
-    expect(hook.result.current.mode).toEqual({ kind: 'reviewing', items: [row('b')] })
+    expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element?.id).toBe('new')
   })
 
-  /**
-   * The same race across a cancel. Waiting on `resolving` alone was not enough:
-   * the user gives up on box A, draws box B, and A's straggling answer lands in
-   * a slot that is once again `resolving` — so B would show A's rows.
-   */
-  it('ignores a straggler from before the user gave up and redrew', async () => {
+  /** Clearing on every move would strobe the outline as the cursor travels. */
+  it('keeps the current outline while the next answer is in flight', async () => {
     const { query, releases } = deferredQueries()
     const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
 
-    act(() => hook.result.current.startMarquee())
-    act(() => void hook.result.current.resolveMarquee(rect))
-    act(() => hook.result.current.dismiss())
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      releases[0](element('a'))
+      await first
+    })
 
-    act(() => hook.result.current.startMarquee())
-    act(() => void hook.result.current.resolveMarquee(rect))
-
-    await act(async () => releases[0]?.([row('a')]))
-    expect(hook.result.current.mode.kind).toBe('resolving')
-
-    await act(async () => releases[1]?.([row('b')]))
-    expect(hook.result.current.mode).toEqual({ kind: 'reviewing', items: [row('b')] })
+    act(() => {
+      void hook.result.current.pointAt({ x: 40, y: 50 })
+    })
+    expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element?.id).toBe('a')
   })
 
-  it('sends the selection to the composer and closes', async () => {
-    const { hook, asked } = setup(async () => [row('a')])
+  /** Nothing under the pointer is a real answer, not a failure. */
+  it('clears the outline when the guest finds nothing', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
 
-    act(() => hook.result.current.startMarquee())
-    await act(async () => await hook.result.current.resolveMarquee(rect))
-    act(() => hook.result.current.askAboutItems([row('a')]))
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      releases[0](element('a'))
+      await first
+    })
 
-    expect(asked).toEqual([['Row a\ntext a']])
+    let second: Promise<void> = Promise.resolve()
+    act(() => {
+      second = hook.result.current.pointAt({ x: 1, y: 1 })
+    })
+    await act(async () => {
+      releases[1](null)
+      await second
+    })
+
+    expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element).toBeNull()
+  })
+
+  it('takes the picked element to the composer and leaves pick mode', () => {
+    const { hook, asked } = setup(async () => element('a'))
+    act(() => hook.result.current.startPicking())
+    act(() => hook.result.current.askAboutElement(element('a')))
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0][0]).toContain('text a')
     expect(hook.result.current.mode.kind).toBe('idle')
   })
 
-  /**
-   * Both surfaces now share `toSelectionPassages`. The artifact side used to do
-   * a naive `label\ntext` join, so a thirty-row marquee buried the composer in
-   * thirty chips while the same gesture in a Mini App produced one.
-   */
-  it('collapses a wide selection into a single passage', async () => {
-    const many = ['a', 'b', 'c', 'd', 'e'].map(row)
-    const { hook, asked } = setup(async () => many)
+  it('returns to idle when dismissed', () => {
+    const { hook } = setup(async () => element('a'))
+    act(() => hook.result.current.startPicking())
+    act(() => hook.result.current.dismiss())
 
-    act(() => hook.result.current.startMarquee())
-    await act(async () => await hook.result.current.resolveMarquee(rect))
-    act(() => hook.result.current.askAboutItems(many))
+    expect(hook.result.current.mode.kind).toBe('idle')
+  })
 
-    expect(asked[0]).toHaveLength(1)
-    expect(asked[0]?.[0]).toContain('5 selected items')
+  /** A late answer must not drag the user back into a gesture they cancelled. */
+  it('ignores an answer that lands after the user gave up', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook } = setup(query)
+    act(() => hook.result.current.startPicking())
+
+    let inFlight: Promise<void> = Promise.resolve()
+    act(() => {
+      inFlight = hook.result.current.pointAt(point)
+    })
+    act(() => hook.result.current.dismiss())
+    await act(async () => {
+      releases[0](element('late'))
+      await inFlight
+    })
+
+    expect(hook.result.current.mode.kind).toBe('idle')
   })
 })

@@ -64,7 +64,7 @@ which no Mini App does.
 | Mobile web            | —      | not offered — same gate                                                             |
 
 **Mini Apps are web and desktop only** (THU-830). The gate is on _viewport_, not platform: the split view,
-highlight-to-ask and the marquee all need pointer input and room, and a 700px browser window is as unworkable as a
+highlight-to-ask and element picking all need pointer input and room, and a 700px browser window is as unworkable as a
 phone. `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the desktop window keeps the feature
 while narrowing a browser does not.
 
@@ -174,7 +174,7 @@ not the field, and each instance surfaced as the feature simply not working: a s
 notification so "Ask about this" never appeared; a summary built from the app's own data dropped the context update so
 `get_app_context` kept describing the previous screen; a long display name dropped `initialize` so the app never
 connected at all; a large tool result was reported to the model as "may have timed out" after the tool had already
-run; and a wide table row failed the whole marquee answer, returning zero chips from exactly the content-dense views
+run; and a wide table row failed the whole selection answer, returning nothing from exactly the content-dense views
 the gesture exists for. None of them logged anything, because as far as the parser was concerned nothing arrived.
 
 The single exception is `context.data` / `context.selection`, which are arbitrary structure rather than text: cutting

@@ -3,108 +3,104 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * The marquee gesture, once, for both embedded surfaces.
+ * The element-picking gesture, once, for both embedded surfaces.
  *
- * It was written twice. The artifact copy modelled the flow as a reducer, with a
- * comment explaining that the two-flag version it replaced "allowed a result bar
- * to sit pinned over an active marquee"; the Mini App copy was still the two
- * flags, carrying that exact defect plus a hand-written `retrySelect` to paper
- * over it. Sharing the state machine means the fix is structural rather than
- * remembered.
+ * The user turns picking on, moves the pointer over the surface, and the element
+ * under it outlines itself. Clicking takes that element to the composer.
  *
- * Placement stays with each caller — a Mini App floats a large control in a row
- * beside its Chat button, an artifact card a small one in its corner — because
- * that difference is real. The states, the transitions and the passage
- * formatting are not.
+ * This replaced a marquee: drag a box, and the guest returned everything inside
+ * it. Two things were wrong with that. Aiming a rectangle at one row of a table
+ * is fiddly, and a rectangle forces the guest to guess which of the overlapping
+ * things the user meant — so it answered with a list, which then needed a
+ * confirm step to review, which is a lot of ceremony for "tell me about this".
+ * Pointing at one element is unambiguous, so the answer needs no review: the
+ * outline *is* the confirmation, and the click is the decision.
+ *
+ * Placement stays with each caller — a Mini App floats a large control beside
+ * its chat toggle, an artifact card a small one in its corner — because that
+ * difference is real. The states, the transitions and the passage formatting
+ * are not.
  */
 
 import { useCallback, useReducer, useRef } from 'react'
 
 import { toSelectionPassages } from './selection-passage'
-import type { SurfaceRect, SurfaceSelectionItem } from './types'
+import type { SurfaceHighlightedElement } from './types'
 
 export type SurfaceSelectionMode =
   | { kind: 'idle' }
-  | { kind: 'drawing' }
   /**
-   * The drag is released and the guest has been asked, but hasn't answered.
-   * `token` identifies which release we are waiting on — the overlay stays
-   * mounted through this state, so a second box can be drawn before the first
-   * query returns.
+   * Picking is on. `element` is whatever the guest last said was under the
+   * pointer, or null over padding and background — a normal answer, not a
+   * failure. `token` is the query this state is showing the answer to, so a
+   * slow reply for an earlier position can't overwrite a newer one.
    */
-  | { kind: 'resolving'; token: number }
-  /** The guest answered; an empty array is a real answer ("nothing there"). */
-  | { kind: 'reviewing'; items: SurfaceSelectionItem[] }
+  | { kind: 'picking'; element: SurfaceHighlightedElement | null; token: number }
 
 type Action =
-  | { type: 'marqueeStarted' }
-  | { type: 'marqueeReleased'; token: number }
-  | { type: 'marqueeAnswered'; token: number; items: SurfaceSelectionItem[] }
+  | { type: 'pickingStarted' }
+  | { type: 'pointerMoved'; token: number }
+  | { type: 'elementResolved'; token: number; element: SurfaceHighlightedElement | null }
   | { type: 'dismissed' }
 
 /**
- * One state machine rather than a boolean plus a nullable array, so "drawing"
- * and "reviewing" can't both be true.
+ * One state machine rather than a boolean plus a nullable element, so "not
+ * picking" and "showing an outline" can't both be true.
  *
- * `resolving` is the state the Mini App copy lacked: it dropped out of drawing
- * before awaiting the guest, so for up to the query timeout the dim vanished,
- * the floating buttons popped back, a stale popover could reappear, and then the
- * result bar slammed in. It read as "my drag did nothing", and the fix is to
- * have a state for "asked, still waiting" rather than to reorder two setters.
+ * The `token` guard is the same one the marquee needed and for the same reason:
+ * these queries are issued on every throttled pointer move and answered out of
+ * order under load, so without it the outline jumps back to a position the
+ * pointer has already left.
  */
 const modeReducer = (mode: SurfaceSelectionMode, action: Action): SurfaceSelectionMode => {
   switch (action.type) {
-    case 'marqueeStarted':
-      return { kind: 'drawing' }
-    case 'marqueeReleased':
-      return { kind: 'resolving', token: action.token }
-    case 'marqueeAnswered':
-      // Ignored unless we are still waiting for *this* answer. Two guards in
-      // one: a late answer to a drag the user has since cancelled must not
-      // resurrect the review bar, and a slow answer for box A must not be shown
-      // as the contents of box B, drawn while A was still in flight.
-      return mode.kind === 'resolving' && mode.token === action.token
-        ? { kind: 'reviewing', items: action.items }
-        : mode
+    case 'pickingStarted':
+      return { kind: 'picking', element: null, token: 0 }
+    case 'pointerMoved':
+      // Keep the current outline while the next answer is in flight. Clearing it
+      // here would make the outline strobe as the pointer moves.
+      return mode.kind === 'picking' ? { ...mode, token: action.token } : mode
+    case 'elementResolved':
+      return mode.kind === 'picking' && mode.token === action.token ? { ...mode, element: action.element } : mode
     case 'dismissed':
       return { kind: 'idle' }
   }
 }
 
 export type SurfaceSelectionDeps = {
-  /** Ask the guest what a rectangle covered. Resolves empty on anything odd. */
-  query: (rect: SurfaceRect) => Promise<SurfaceSelectionItem[]>
-  /** Attach the chosen passages to the composer as quote chips. */
+  /** Ask the guest what sits under a point. Resolves null on anything odd. */
+  query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>
+  /** Attach the chosen passage to the composer as a quote chip. */
   onAsk: (passages: string[]) => void
 }
 
 export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
-  const lastReleaseToken = useRef(0)
+  const lastQueryToken = useRef(0)
 
-  const startMarquee = useCallback(() => dispatch({ type: 'marqueeStarted' }), [])
+  const startPicking = useCallback(() => dispatch({ type: 'pickingStarted' }), [])
   const dismiss = useCallback(() => dispatch({ type: 'dismissed' }), [])
 
-  const resolveMarquee = useCallback(
-    async (rect: SurfaceRect) => {
+  const pointAt = useCallback(
+    async (point: { x: number; y: number }) => {
       // A ref rather than reducer state: the token has to be readable here, in
       // the same tick as the dispatch, and a dispatch doesn't hand back what it
       // produced.
-      const token = ++lastReleaseToken.current
-      dispatch({ type: 'marqueeReleased', token })
-      dispatch({ type: 'marqueeAnswered', token, items: await query(rect) })
+      const token = ++lastQueryToken.current
+      dispatch({ type: 'pointerMoved', token })
+      dispatch({ type: 'elementResolved', token, element: await query(point) })
     },
     [query],
   )
 
-  /** Take the reviewed items to the composer. */
-  const askAboutItems = useCallback(
-    (items: SurfaceSelectionItem[]) => {
-      onAsk(toSelectionPassages(items))
+  /** Take the highlighted element to the composer. */
+  const askAboutElement = useCallback(
+    (element: SurfaceHighlightedElement) => {
+      onAsk(toSelectionPassages([element]))
       dispatch({ type: 'dismissed' })
     },
     [onAsk],
   )
 
-  return { mode, startMarquee, dismiss, resolveMarquee, askAboutItems }
+  return { mode, startPicking, dismiss, pointAt, askAboutElement }
 }

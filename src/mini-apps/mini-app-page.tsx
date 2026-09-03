@@ -7,14 +7,13 @@ import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { MousePointerSquareDashed, PanelRight } from 'lucide-react'
+import { MousePointerClick, PanelRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
-import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
-import { SurfaceSelectionBar } from '@/components/embedded/surface-selection-bar'
+import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
@@ -110,7 +109,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     setOpenChatParam(null)
   }, [setOpenChatParam])
 
-  const { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad, reloadFrame } =
+  const { frameRef, status, selection, clearSelection, queryElementAt, runtimeError, handleFrameLoad, reloadFrame } =
     useMiniAppBridge({
       app,
       onChatOpen: handleChatOpen,
@@ -141,8 +140,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     [openChatId],
   )
 
-  const { mode, startMarquee, dismiss, resolveMarquee, askAboutItems } = useSurfaceSelection({
-    query: querySelection,
+  const { mode, startPicking, dismiss, pointAt, askAboutElement } = useSurfaceSelection({
+    query: queryElementAt,
     onAsk: attachToComposer,
   })
 
@@ -215,16 +214,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             {showFloatingControls && selection?.rect && (
               <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
             )}
-            {/* The dim stays up across `resolving`, so releasing the drag doesn't
-                flash the app back before the guest has answered. */}
-            {(mode.kind === 'drawing' || mode.kind === 'resolving') && (
-              <MarqueeOverlay onSelect={resolveMarquee} onCancel={dismiss} />
-            )}
-            {mode.kind === 'reviewing' && (
-              <SurfaceSelectionBar
-                items={mode.items}
-                onAsk={() => askAboutItems(mode.items)}
-                onRetry={startMarquee}
+            {mode.kind === 'picking' && (
+              <ElementPickOverlay
+                element={mode.element}
+                onPoint={pointAt}
+                onPick={askAboutElement}
                 onCancel={dismiss}
               />
             )}
@@ -253,8 +247,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                   </Button>
                 </div>
                 <div className="absolute bottom-4 right-4 z-10">
-                  <Button onClick={startMarquee} variant="secondary" size="lg" className="shadow-lg rounded-full">
-                    <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
+                  <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
+                    <MousePointerClick className="size-[var(--icon-size-sm)]" />
                     <Trans>Select</Trans>
                   </Button>
                 </div>

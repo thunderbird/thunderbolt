@@ -3,23 +3,22 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import type { ArtifactContext, ArtifactSelectionItem, ArtifactTextSelection } from '@/artifacts/harness'
+import type { ArtifactContext, ArtifactTextSelection } from '@/artifacts/harness'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { cn } from '@/lib/utils'
-import { MarqueeOverlay } from '@/components/embedded/marquee-overlay'
-import { SurfaceSelectionBar } from '@/components/embedded/surface-selection-bar'
+import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
-import type { SurfaceRect } from '@/components/embedded/types'
+import type { SurfaceHighlightedElement } from '@/components/embedded/types'
 import { Button } from '@/components/ui/button'
-import { MousePointerSquareDashed } from 'lucide-react'
+import { MousePointerClick } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 
 /**
  * An artifact you can point at.
  *
  * Same two gestures a Mini App has — highlight text for "Ask about this", or
- * drag a box over several things at once — reusing the very same overlay and
+ * point at an element to pick it out — reusing the very same overlay and
  * popover. A user who learns the gesture on one surface should find it on the
  * other; that they're sandboxed completely differently underneath is not
  * something they should ever have to know.
@@ -53,14 +52,17 @@ export const SelectableArtifact = ({
 
   // The resolver is held in a ref, not state: it changes only when the document
   // reloads, and storing it in state would re-render on every handshake.
-  const queryRef = useRef<((rect: SurfaceRect) => Promise<ArtifactSelectionItem[]>) | null>(null)
-  const handleQueryReady = useCallback((query: (rect: SurfaceRect) => Promise<ArtifactSelectionItem[]>) => {
-    queryRef.current = query
-  }, [])
+  const queryRef = useRef<((point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) | null>(null)
+  const handleQueryReady = useCallback(
+    (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => {
+      queryRef.current = query
+    },
+    [],
+  )
 
-  const query = useCallback(async (rect: SurfaceRect) => (await queryRef.current?.(rect)) ?? [], [])
+  const query = useCallback(async (point: { x: number; y: number }) => (await queryRef.current?.(point)) ?? null, [])
 
-  const { mode, startMarquee, dismiss, resolveMarquee, askAboutItems } = useSurfaceSelection({ query, onAsk })
+  const { mode, startPicking, dismiss, pointAt, askAboutElement } = useSurfaceSelection({ query, onAsk })
 
   const askAboutSelection = () => {
     if (selection) {
@@ -92,27 +94,18 @@ export const SelectableArtifact = ({
 
       {mode.kind === 'idle' && selection?.rect && <SelectionPopover rect={selection.rect} onAsk={askAboutSelection} />}
 
-      {(mode.kind === 'drawing' || mode.kind === 'resolving') && (
-        <MarqueeOverlay onSelect={resolveMarquee} onCancel={dismiss} />
-      )}
-
-      {mode.kind === 'reviewing' && (
-        <SurfaceSelectionBar
-          items={mode.items}
-          onAsk={() => askAboutItems(mode.items)}
-          onRetry={startMarquee}
-          onCancel={dismiss}
-        />
+      {mode.kind === 'picking' && (
+        <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={askAboutElement} onCancel={dismiss} />
       )}
 
       {mode.kind === 'idle' && !selection && (
         <Button
-          onClick={startMarquee}
+          onClick={startPicking}
           variant="secondary"
           size="sm"
           className="absolute bottom-3 right-3 z-10 rounded-full shadow-lg"
         >
-          <MousePointerSquareDashed className="size-[var(--icon-size-sm)]" />
+          <MousePointerClick className="size-[var(--icon-size-sm)]" />
           <Trans>Select</Trans>
         </Button>
       )}

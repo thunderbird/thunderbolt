@@ -22,14 +22,13 @@ import {
   miniAppRpcErrors,
   parseGuestMessage,
   parseGuestResult,
-  parseSelectionQueryResult,
+  elementAtResultSchema,
   toolsCallResultSchema,
   parseToolsList,
   type MiniAppGuestCapabilities,
   type MiniAppGuestMessage,
   type MiniAppHostRequest,
-  type MiniAppRect,
-  type MiniAppSelectionItem,
+  type MiniAppHighlightedElement,
   type MiniAppToolCallResult,
   type MiniAppHostMessage,
   type MiniAppInitializeResult,
@@ -49,7 +48,8 @@ import type { MiniAppDefinition } from './registry'
 const handshakeTimeoutMs = 8_000
 
 /** How long to wait for the guest to resolve a marquee before giving up. */
-const selectionQueryTimeoutMs = 2_000
+// One of these rides every throttled pointer move, so it must give up fast.
+const elementAtTimeoutMs = 600
 
 /** Tool discovery happens once at connect; a slow app shouldn't stall the UI. */
 const toolsRequestTimeoutMs = 3_000
@@ -516,24 +516,22 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   )
 
   /**
-   * Ask the guest what a marquee rectangle covers.
+   * Ask the guest what sits under a point in its own viewport.
    *
-   * Resolves to `[]` on anything unexpected — a guest that never answers, answers
-   * late, or answers with a shape we don't recognise. A selection tool that
-   * silently selects nothing is recoverable; one that hangs the UI is not.
+   * Resolves to `null` on anything unexpected — a guest that never answers,
+   * answers late, or answers with a shape we don't recognise. This runs on every
+   * throttled pointer move, so it has to fail quietly: an outline that
+   * occasionally doesn't appear is recoverable, one that hangs the pointer is
+   * not. Nothing is logged for the same reason — a miss here is routine (the
+   * cursor is over padding), unlike a malformed tool descriptor.
    */
-  const querySelection = useCallback(
-    (rect: MiniAppRect): Promise<MiniAppSelectionItem[]> =>
-      request(miniAppHostMethods.selectionQuery, { rect }, selectionQueryTimeoutMs).then((result) => {
-        const { items, dropped } = parseSelectionQueryResult(result)
-        if (dropped > 0) {
-          // Same reasoning as the tools log below: an item vanishing from a
-          // marquee is otherwise indistinguishable from the app not having it.
-          console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed selection item(s)`)
-        }
-        return items
+  const queryElementAt = useCallback(
+    (point: { x: number; y: number }): Promise<MiniAppHighlightedElement | null> =>
+      request(miniAppHostMethods.elementAt, point, elementAtTimeoutMs).then((result) => {
+        const parsed = elementAtResultSchema.safeParse(result)
+        return parsed.success ? parsed.data.element : null
       }),
-    [app.id, request],
+    [request],
   )
 
   /**
@@ -607,5 +605,5 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     }
   }, [app.url, resetGuest])
 
-  return { frameRef, status, selection, clearSelection, querySelection, runtimeError, handleFrameLoad, reloadFrame }
+  return { frameRef, status, selection, clearSelection, queryElementAt, runtimeError, handleFrameLoad, reloadFrame }
 }

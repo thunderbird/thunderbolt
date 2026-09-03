@@ -4,18 +4,17 @@
 
 import {
   artifactRequest,
-  artifactSelectionItemsSchema,
-  artifactSelectionQueryMethod,
+  artifactElementAtSchema,
+  artifactElementAtMethod,
   formatHarnessError,
   parseHarnessMessage,
   wrapArtifactHtml,
   wrapArtifactPreviewHtml,
   type ArtifactContext,
-  type ArtifactSelectionItem,
   type ArtifactTextSelection,
 } from '@/artifacts/harness'
 import { createPendingRequests } from '@/components/embedded/pending-requests'
-import type { SurfaceRect } from '@/components/embedded/types'
+import type { SurfaceHighlightedElement } from '@/components/embedded/types'
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -31,7 +30,8 @@ const maxAutoHeightPx = 20_000
  * finished; short enough that a page which threw before registering its handler
  * doesn't leave the confirm bar hanging.
  */
-const selectionQueryTimeoutMs = 2_000
+// One of these rides every throttled pointer move, so it must give up fast.
+const elementAtTimeoutMs = 600
 
 export type SandboxedHtmlFrameProps = {
   /** Complete, self-contained HTML document to render. */
@@ -69,7 +69,7 @@ export type SandboxedHtmlFrameProps = {
    * element are both private to this component, and the caller only ever needs
    * the one question.
    */
-  onQueryReady?: (query: (rect: SurfaceRect) => Promise<ArtifactSelectionItem[]>) => void
+  onQueryReady?: (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => void
   /**
    * What the page currently shows, derived by the harness and re-sent when the
    * page changes — so an artifact the user has interacted with reports what it
@@ -148,10 +148,10 @@ export const SandboxedHtmlFrame = ({
   // route through a single listener rather than one per request.
   const [pending] = useState(() => createPendingRequests())
   useEffect(() => {
-    onQueryReadyRef.current?.(async (rect) => {
+    onQueryReadyRef.current?.(async (point) => {
       const frame = iframeRef.current?.contentWindow
       if (!frame) {
-        return []
+        return null
       }
       const result = await pending.issue(
         // `'*'` is the only targetOrigin that can reach this frame, not a
@@ -160,18 +160,17 @@ export const SandboxedHtmlFrame = ({
         // a URL-derived targetOrigin — naming one would silently drop every
         // message. (The Mini App bridge, whose frames load from a real origin,
         // does pin `app.origin`; the difference is the sandbox, not the care.)
-        // What travels is a viewport rectangle and the per-mount nonce the
+        // What travels is a viewport coordinate and the per-mount nonce the
         // document was rendered with and already knows.
         // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin; see above
-        (id) => frame.postMessage(artifactRequest(nonce, id, artifactSelectionQueryMethod, { rect }), '*'),
-        selectionQueryTimeoutMs,
+        (id) => frame.postMessage(artifactRequest(nonce, id, artifactElementAtMethod, point), '*'),
+        elementAtTimeoutMs,
       )
-      // Parsed rather than cast: `Array.isArray` said nothing about the elements,
-      // so a page answering with `[{}]` rendered `undefined` into a composer chip.
-      // Anything unexpected resolves empty, which is this path's documented
-      // fallback everywhere else.
-      const parsed = artifactSelectionItemsSchema.safeParse(result)
-      return parsed.success ? parsed.data.items : []
+      // Parsed rather than cast: a page answering with `{}` would otherwise
+      // render `undefined` into an outline. Anything unexpected resolves null,
+      // which reads as "nothing here" — the routine answer over padding.
+      const parsed = artifactElementAtSchema.safeParse(result)
+      return parsed.success ? parsed.data.element : null
     })
   }, [nonce, srcDoc, pending])
 

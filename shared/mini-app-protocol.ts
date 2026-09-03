@@ -121,12 +121,19 @@ export const miniAppHostMethods = {
    */
   hostContextChanged: 'ui/notifications/host-context-changed',
   /**
-   * "What is inside this rectangle?" — sent when the user finishes dragging a
-   * marquee over the app. The *interaction* is entirely the host's (it draws the
-   * dim layer and the box over the frame); the guest only resolves geometry to
-   * content, because only it can see its own DOM.
+   * "What is under this point?" — sent as the user moves the pointer over the
+   * app in pick mode. The *interaction* is entirely the host's (it captures the
+   * pointer, draws the outline and the label, and decides what counts as a
+   * click); the guest only resolves a coordinate to the element there, because
+   * only it can see its own DOM.
+   *
+   * This replaced a rect-based `ui/selection-query`, where the user dragged a
+   * marquee and the guest returned everything inside it. Highlighting the one
+   * element under the cursor is both easier to aim and easier for an app to
+   * answer well: a rect forces the guest to guess which of the overlapping
+   * things the user meant, and it answered with a list nobody had reviewed.
    */
-  selectionQuery: 'ui/selection-query',
+  elementAt: 'ui/element-at',
   /** Discover the tools the app exposes to the model. Sent once, after handshake. */
   toolsList: 'tools/list',
   /** Invoke one of them. */
@@ -397,7 +404,7 @@ export type MiniAppHostRequest = {
   protocol: typeof miniAppProtocolMarker
   id: string | number
   method:
-    | typeof miniAppHostMethods.selectionQuery
+    | typeof miniAppHostMethods.elementAt
     | typeof miniAppHostMethods.toolsList
     | typeof miniAppHostMethods.toolsCall
   params: unknown
@@ -406,13 +413,13 @@ export type MiniAppHostRequest = {
 export type MiniAppHostMessage = MiniAppHostResult | MiniAppHostError | MiniAppHostNotification | MiniAppHostRequest
 
 /**
- * One thing the guest resolved a marquee down to.
+ * One element the guest resolved a point down to.
  *
- * The guest **snaps** to whole elements rather than returning whatever text the
- * rectangle happened to clip: dragging roughly around two table rows should yield
- * two rows, not two half-sentences. That judgement has to live in the guest —
- * only it knows what its own markup means — which is why the host asks a question
- * instead of doing geometry itself.
+ * The guest **snaps** to whole meaningful elements rather than answering with
+ * whatever leaf node happens to be under the cursor: pointing anywhere in a
+ * table row should give the row, not the one `<td>` beneath the pixel. That
+ * judgement has to live in the guest — only it knows what its own markup means
+ * — which is why the host asks a question instead of doing geometry itself.
  */
 export const miniAppSelectionItemSchema = z.object({
   /** Stable within one query; used as a React key and to de-duplicate. */
@@ -427,42 +434,21 @@ export const miniAppSelectionItemSchema = z.object({
 
 export type MiniAppSelectionItem = z.infer<typeof miniAppSelectionItemSchema>
 
-/** Most chips one marquee can put in the composer. */
-export const maxSelectionItems = 50
-
 /**
- * Parse the guest's answer to `ui/selection-query`, tolerating bad items.
+ * The guest's answer to `ui/element-at`.
  *
- * Same lesson as {@link parseToolsList}, and the same bug: parsing the array as
- * a unit meant one item cost all of them. The guests build `label` from the
- * row's first cell and `text` from the whole row, neither clamped and neither
- * guaranteed non-empty — so a wide table row, or a row whose first cell happens
- * to be blank, returned *nothing* from a marquee over exactly the content-dense
- * views the gesture exists for. The user saw the confirm bar appear with zero
- * chips and read it as "my drag did nothing".
- *
- * Long strings are therefore clamped by the item schema, over-count is sliced
- * rather than rejected, and only a genuinely malformed item is dropped — and
- * counted, so the caller can log it.
+ * `rect` is in the guest's own viewport coordinates — what
+ * `getBoundingClientRect()` returns inside the frame, already accounting for the
+ * app's scroll — so the host can outline the element by offsetting against the
+ * iframe's position. `null` means "nothing worth highlighting here", which is a
+ * normal answer over padding or a background.
  */
-export const parseSelectionQueryResult = (result: unknown): { items: MiniAppSelectionItem[]; dropped: number } => {
-  const envelope = z.object({ items: z.array(z.unknown()) }).safeParse(result)
-  if (!envelope.success) {
-    return { items: [], dropped: 0 }
-  }
+export const elementAtResultSchema = z.object({
+  element: miniAppSelectionItemSchema.extend({ rect: miniAppRectSchema }).nullable(),
+})
 
-  const items: MiniAppSelectionItem[] = []
-  let dropped = 0
-  for (const candidate of envelope.data.items.slice(0, maxSelectionItems)) {
-    const parsed = miniAppSelectionItemSchema.safeParse(candidate)
-    if (parsed.success) {
-      items.push(parsed.data)
-      continue
-    }
-    dropped += 1
-  }
-  return { items, dropped: dropped + Math.max(0, envelope.data.items.length - maxSelectionItems) }
-}
+export type MiniAppElementAtResult = z.infer<typeof elementAtResultSchema>
+export type MiniAppHighlightedElement = NonNullable<MiniAppElementAtResult['element']>
 
 /*
  * ─── Tools ───────────────────────────────────────────────────────────────────

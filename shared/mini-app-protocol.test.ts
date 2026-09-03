@@ -10,10 +10,9 @@ import {
   parseGuestMessage,
   parseGuestResult,
   parseToolsList,
-  maxSelectionItems,
   maxToolDescriptionChars,
   maxToolsPerApp,
-  parseSelectionQueryResult,
+  elementAtResultSchema,
   toolsCallResultSchema,
 } from './mini-app-protocol'
 
@@ -268,52 +267,40 @@ describe('parseGuestResult', () => {
   })
 })
 
-describe('parseSelectionQueryResult', () => {
-  const item = { id: 'a', label: 'Q3 row', text: 'Revenue: 4.2M' }
+describe('elementAtResultSchema', () => {
+  const rect = { x: 4, y: 8, width: 100, height: 40 }
+  const element = { id: 'a', label: 'Q3 row', text: 'Revenue: 4.2M', rect }
 
-  it('reads a well-formed item list', () => {
-    expect(parseSelectionQueryResult({ items: [item] })).toEqual({ items: [item], dropped: 0 })
+  it('reads the element under the pointer', () => {
+    const parsed = elementAtResultSchema.safeParse({ element })
+    expect(parsed.success && parsed.data.element).toEqual(element)
   })
 
-  it('reads an empty list — the marquee covered nothing selectable', () => {
-    expect(parseSelectionQueryResult({ items: [] })).toEqual({ items: [], dropped: 0 })
+  /** Over padding or a background there is nothing to outline, and that is a
+   *  normal answer rather than a failure. */
+  it('accepts null for nothing there', () => {
+    const parsed = elementAtResultSchema.safeParse({ element: null })
+    expect(parsed.success && parsed.data.element).toBeNull()
   })
 
   /*
-   * The bug this exists for, one layer over from the tools one: the guests build
-   * `text` from a whole table row and clamp nothing, so a marquee over exactly
-   * the content-dense view the gesture is for returned zero chips. The confirm
-   * bar appeared empty and it read as "my drag did nothing".
+   * Same lesson as parseToolsList: the guests build `text` from a whole table
+   * row and clamp nothing, so an over-long one used to cost the entire answer.
+   * Here that would mean the outline never appearing over exactly the
+   * content-dense views the gesture is for.
    */
-  it('clamps an over-long item instead of losing the whole selection', () => {
-    const { items, dropped } = parseSelectionQueryResult({
-      items: [item, { ...item, id: 'b', text: 'x'.repeat(20_001) }],
-    })
-
-    expect(dropped).toBe(0)
-    expect(items).toHaveLength(2)
-    expect(items[1].text).toHaveLength(20_000)
+  it('clamps an over-long text instead of rejecting the element', () => {
+    const parsed = elementAtResultSchema.safeParse({ element: { ...element, text: 'x'.repeat(20_001) } })
+    expect(parsed.success && parsed.data.element?.text).toHaveLength(20_000)
   })
 
-  it('keeps the good items when one is genuinely malformed', () => {
-    const { items, dropped } = parseSelectionQueryResult({ items: [item, { ...item, id: 'b', text: '' }] })
-
-    expect(items.map((entry) => entry.id)).toEqual(['a'])
-    expect(dropped).toBe(1)
+  it('rejects an element with no geometry to draw', () => {
+    expect(elementAtResultSchema.safeParse({ element: { ...element, rect: undefined } }).success).toBe(false)
   })
 
-  // A drag across the whole page shouldn't push hundreds of chips into the
-  // composer — but it should still yield the first fifty, not nothing.
-  it('slices past the cap rather than rejecting the answer', () => {
-    const many = Array.from({ length: maxSelectionItems + 3 }, (_, index) => ({ ...item, id: String(index) }))
-    const { items, dropped } = parseSelectionQueryResult({ items: many })
-
-    expect(items).toHaveLength(maxSelectionItems)
-    expect(dropped).toBe(3)
-  })
-
-  it('returns nothing for a reply that is not an item list', () => {
-    expect(parseSelectionQueryResult({ nope: true })).toEqual({ items: [], dropped: 0 })
+  it('rejects a non-finite coordinate rather than drawing at NaN', () => {
+    const hostile = { element: { ...element, rect: { ...rect, x: Number.NaN } } }
+    expect(elementAtResultSchema.safeParse(hostile).success).toBe(false)
   })
 })
 

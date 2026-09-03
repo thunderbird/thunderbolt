@@ -18,7 +18,7 @@ export type SurfaceRect = { x: number; y: number; width: number; height: number 
 /** Highlighted text plus where it sits in the guest frame's own viewport. */
 export type SurfaceTextSelection = { text: string; rect?: SurfaceRect }
 
-/** One thing a marquee covered, ready to become a composer chip. */
+/** One element the guest resolved, ready to become a composer chip. */
 export type SurfaceSelectionItem = {
   id: string
   label: string
@@ -26,3 +26,12 @@ export type SurfaceSelectionItem = {
   /** Structured payload, forwarded to the model uninterpreted. Mini Apps only. */
   data?: unknown
 }
+
+/**
+ * The element under the pointer, with the geometry needed to outline it.
+ *
+ * `rect` is in the guest's own viewport coordinates, so the host offsets it
+ * against the frame's position rather than trying to compute it — only the
+ * guest can measure its own layout and scroll.
+ */
+export type SurfaceHighlightedElement = SurfaceSelectionItem & { rect: SurfaceRect }

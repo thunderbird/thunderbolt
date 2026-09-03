@@ -59,7 +59,7 @@ export type ArtifactTextSelection = SurfaceTextSelection
 export type ArtifactSelectionItem = SurfaceSelectionItem
 
 /** Method name the host uses to resolve a marquee to content. */
-export const artifactSelectionQueryMethod = 'selection/query'
+export const artifactElementAtMethod = 'element/at'
 
 export type HarnessRequest = {
   artifactNonce: string
@@ -151,15 +151,17 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   }),
 ])
 
-/** Items a marquee resolved to. Validated separately: it rides `artifact-reply`'s
+/** The element under a point. Validated separately: it rides `artifact-reply`'s
  *  `unknown` result, which the caller narrows once it knows what it asked. */
-export const artifactSelectionItemsSchema = z.object({
-  items: z
-    .array(z.object({ id: clampedString(200), label: clampedString(500), text: clampedString(5_000) }))
-    // Clamped, not capped: the harness sends at most 50, but a hand-rolled one
-    // sending 60 would otherwise lose the marquee result entirely.
-    .max(500)
-    .transform((items) => items.slice(0, 50)),
+export const artifactElementAtSchema = z.object({
+  element: z
+    .object({
+      id: clampedString(200),
+      label: clampedString(500),
+      text: clampedString(5_000),
+      rect: rectSchema,
+    })
+    .nullable(),
 })
 
 export const parseHarnessMessage = (
@@ -245,21 +247,10 @@ const harnessScript = (nonce: string): string => `<script>
   });
 
   // ---- selection --------------------------------------------------------
-  // Ported from the mini-app SDK's hit-test so both surfaces answer a marquee
-  // the same way. Defined AFTER the error listeners above, deliberately: the
+  // Ported from the mini-app SDK's hit-test so both surfaces answer a point the
+  // same way. Defined AFTER the error listeners above, deliberately: the
   // listeners must win the race against agent code, this need not.
-  var CONTAINMENT = 0.6;
   var CANDIDATES = '[data-tb-select], tr, li, blockquote, figure, p, h1, h2, h3, h4, h5, h6';
-  var MAX_ITEMS = 50;
-
-  function ratio(el, box) {
-    var r = el.getBoundingClientRect();
-    var a = r.width * r.height;
-    if (a <= 0) { return 0; }
-    var w = Math.min(r.x + r.width, box.x + box.width) - Math.max(r.x, box.x);
-    var h = Math.min(r.y + r.height, box.y + box.height) - Math.max(r.y, box.y);
-    return w > 0 && h > 0 ? (w * h) / a : 0;
-  }
 
   function labelFor(el, i) {
     var explicit = el.getAttribute('data-tb-label');
@@ -285,23 +276,30 @@ const harnessScript = (nonce: string): string => `<script>
   }
 
   window.__artifactHandlers = window.__artifactHandlers || {};
-  window.__artifactHandlers['selection/query'] = function (params) {
-    var box = params && params.rect;
-    if (!box) { return { items: [] }; }
-    var hits = Array.prototype.slice.call(document.querySelectorAll(CANDIDATES)).filter(function (el) {
-      return ratio(el, box) >= CONTAINMENT;
-    });
-    // Collapse nested matches to their outermost ancestor, so a box over a table
-    // row yields the row and not the row plus each of its cells.
-    var outer = hits.filter(function (el) {
-      return !hits.some(function (other) { return other !== el && other.contains(el); });
-    });
-    var items = [];
-    outer.slice(0, MAX_ITEMS).forEach(function (el, i) {
-      var text = describeRow(el) || (el.textContent || '').trim();
-      if (text) { items.push({ id: i + '-' + labelFor(el, i), label: labelFor(el, i), text: text.slice(0, MAX_ITEM_TEXT) }); }
-    });
-    return { items: items };
+  window.__artifactHandlers['element/at'] = function (params) {
+    var x = params && params.x;
+    var y = params && params.y;
+    if (typeof x !== 'number' || typeof y !== 'number') { return { element: null }; }
+    var hit = document.elementFromPoint(x, y);
+    if (!hit) { return { element: null }; }
+    // Walk up to the nearest thing worth naming: pointing at a cell means the
+    // row, pointing inside a heading means the heading. closest() does exactly
+    // that walk and gives up at the document if nothing matches.
+    var el = hit.closest ? hit.closest(CANDIDATES) : null;
+    if (!el) { return { element: null }; }
+    var text = describeRow(el) || (el.textContent || '').trim();
+    if (!text) { return { element: null }; }
+    var r = el.getBoundingClientRect();
+    return {
+      element: {
+        // Stable for as long as the element is: the host uses it to tell "the
+        // pointer moved within one element" from "it moved to another".
+        id: labelFor(el, 0) + '@' + Math.round(r.x) + ',' + Math.round(r.y),
+        label: labelFor(el, 0),
+        text: text.slice(0, MAX_ITEM_TEXT),
+        rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+      },
+    };
   };
 
   // Report highlights so the host can float its "Ask about this" control. Debounced

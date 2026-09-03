@@ -24,10 +24,10 @@ msgstr ""
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
-msgid "# item selected"
-msgid_plural "# items selected"
-msgstr[0] ""
-msgstr[1] ""
+#~ msgid "# item selected"
+#~ msgid_plural "# items selected"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
 
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
@@ -48,10 +48,10 @@ msgstr[1] ""
 #. placeholder {0}: items.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
 #: src/components/embedded/surface-selection-bar.tsx
-msgid "Ask about it"
-msgid_plural "Ask about them"
-msgstr[0] ""
-msgstr[1] ""
+#~ msgid "Ask about it"
+#~ msgid_plural "Ask about them"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
 
 #. placeholder {0}: app.name
 #: src/mini-apps/mini-app-page.tsx
@@ -539,7 +539,6 @@ msgstr ""
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
 #: src/components/chat/external-link-dialog.tsx
-#: src/components/embedded/surface-selection-bar.tsx
 #: src/components/remove-bridge-dialog.tsx
 #: src/components/revoke-device-dialog.tsx
 #: src/components/set-node-id-dialog.tsx
@@ -2473,8 +2472,8 @@ msgid "Nothing completed the handshake at {0}. Check the app is running and that
 msgstr ""
 
 #: src/components/embedded/surface-selection-bar.tsx
-msgid "Nothing to ask about there. Try covering some content."
-msgstr ""
+#~ msgid "Nothing to ask about there. Try covering some content."
+#~ msgstr ""
 
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
@@ -3831,7 +3830,6 @@ msgstr ""
 msgid "Trusted devices"
 msgstr ""
 
-#: src/components/embedded/surface-selection-bar.tsx
 #: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx

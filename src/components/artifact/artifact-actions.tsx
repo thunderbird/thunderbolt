@@ -8,7 +8,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useLingui } from '@lingui/react/macro'
 import { downloadFile } from '@/lib/download'
-import { useState } from 'react'
+import { useTransientFlag } from '@/hooks/use-transient-flag'
 import { Check, Copy, Download } from 'lucide-react'
 
 /** Filename-safe slug from a human title, e.g. "Sales Dashboard" → "sales-dashboard". */
@@ -36,7 +36,9 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
   const { t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
 
-  const [isSaved, setIsSaved] = useState(false)
+  // Falls back on its own — the first version never cleared this, so one
+  // download left the tick showing forever and the next gave no feedback.
+  const { isSet: isSaved, flag: flagSaved } = useTransientFlag()
 
   const handleDownload = async () => {
     try {
@@ -48,7 +50,7 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
         contents: wrapArtifactPreviewHtml(html),
         mimeType: 'text/html',
       })
-      setIsSaved(true)
+      flagSaved()
     } catch (error) {
       // The desktop path writes the file itself and can genuinely fail — a
       // missing grant, a full disk. Reported rather than swallowed: this button

@@ -7,7 +7,8 @@ import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { MousePointerClick, PanelRight } from 'lucide-react'
+import { MessageSquare, MousePointerClick, X } from 'lucide-react'
+import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -17,6 +18,7 @@ import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
+import { useSidebar } from '@/components/ui/sidebar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
@@ -56,6 +58,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const openChatIdRef = useRef<string | null>(null)
   openChatIdRef.current = openChatId
+  const { toggleSidebar, state: sidebarState } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
 
@@ -215,15 +218,17 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
 
   return (
     /*
-     * No header of its own. This used to be a chromeless route that rendered a
-     * title bar duplicating the app's own — two rows of chrome saying the same
-     * thing — and its hand-rolled sidebar toggle sat on top of the macOS
-     * traffic lights, which the shared `Header` already knows to clear.
+     * No header, and no inset for one either — the app sits flush to the top of
+     * the pane. It briefly had a title bar of its own, which duplicated the
+     * app's own header, and then briefly sat under the shared floating header,
+     * which cost a strip of the app's space to say nothing it wasn't already
+     * saying. A customer's app is the content here, not a thing inside a frame
+     * we label.
      *
-     * `--header-inset` because the app header floats over content rather than
-     * consuming layout height (see `floating-header.tsx`).
+     * The cost is that the route is chromeless again, so the sidebar toggle has
+     * to come from somewhere — see the floating controls below.
      */
-    <div className="flex flex-col h-full w-full" style={{ paddingTop: 'var(--header-inset)' }}>
+    <div className="flex flex-col h-full w-full">
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
@@ -255,33 +260,40 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 living inside it — the assistant belongs to the host, so a customer
                 app shouldn't have to render (or style) a button to reach it.
 
-                Select stays a labelled button at the bottom: it starts a gesture,
-                and an unlabelled marquee icon is not guessable. Opening the chat
-                is a panel toggle, so it looks like every other panel toggle —
-                an icon, top right. It used to be a large accent-coloured pill
-                reading "Close chat", which is not how any other surface in the
-                app opens or closes a side panel. */}
+                One cluster, bottom right, and only what has nowhere better to
+                be. Once the chat is open it has a pane of its own, so the chat
+                controls move there rather than staying stacked over the app's
+                own top-right corner, which is where a customer app tends to put
+                its own controls.
+
+                The sidebar toggle appears only when the sidebar is collapsed,
+                mirroring `header.tsx` — this route draws no header, so without
+                it a mouse-only user with a collapsed sidebar has no way back. */}
             {showFloatingControls && (
-              <>
-                <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-                  <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
+              <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
+                {sidebarState === 'collapsed' && (
                   <Button
-                    variant="ghost"
+                    onClick={toggleSidebar}
+                    variant="secondary"
                     size="icon"
-                    onClick={() => (openChatId ? handleCloseChat() : handleChatOpen(undefined))}
-                    aria-label={openChatId ? t`Close chat` : t`Open chat`}
-                    title={openChatId ? t`Close chat` : t`Open chat`}
+                    className="shadow-lg rounded-full"
+                    aria-label={t`Toggle Sidebar`}
+                    title={t`Toggle Sidebar`}
                   >
-                    <PanelRight className="size-[var(--icon-size-default)]" />
+                    <PanelLeftRounded className="size-[var(--icon-size-sm)]" />
                   </Button>
-                </div>
-                <div className="absolute bottom-4 right-4 z-10">
-                  <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
-                    <MousePointerClick className="size-[var(--icon-size-sm)]" />
-                    <Trans>Select</Trans>
+                )}
+                <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
+                  <MousePointerClick className="size-[var(--icon-size-sm)]" />
+                  <Trans>Select</Trans>
+                </Button>
+                {!openChatId && (
+                  <Button onClick={() => handleChatOpen(undefined)} size="lg" className="shadow-lg rounded-full">
+                    <MessageSquare className="size-[var(--icon-size-sm)]" />
+                    <Trans>Chat</Trans>
                   </Button>
-                </div>
-              </>
+                )}
+              </div>
             )}
           </div>
         </ResizablePanel>
@@ -289,7 +301,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
           <>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
-              {chatPane}
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex items-center justify-end gap-1 px-2 pt-2">
+                  <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCloseChat}
+                    aria-label={t`Close chat`}
+                    title={t`Close chat`}
+                  >
+                    <X className="size-[var(--icon-size-default)]" />
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1">{chatPane}</div>
+              </div>
             </ResizablePanel>
           </>
         )}

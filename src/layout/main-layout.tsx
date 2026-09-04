@@ -22,7 +22,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
 
 /**
@@ -31,8 +31,11 @@ import { PageFallback } from '@/loading'
  * on an embedded surface its scrim sits on top of the app's own header instead
  * of fading a scroll region beneath it.
  */
+const isChromelessRoute = (pathname: string): boolean => pathname.startsWith('/apps/')
+
 export default function Page() {
   const panelRef = usePanelRef()
+  const { pathname } = useLocation()
   const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
@@ -114,7 +117,13 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            <FloatingHeader />
+            {/* An app route draws no header: the customer's app is the content,
+                and a bar above it duplicated the app's own. `MiniAppView` puts
+                the sidebar toggle in its floating controls when the sidebar is
+                collapsed, so chromeless doesn't strand a mouse-only user — the
+                regression this exception caused the first time round. Below the
+                breakpoint that view never mounts, so the header stays. */}
+            {(!isChromelessRoute(pathname) || isMobile) && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

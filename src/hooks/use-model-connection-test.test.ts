@@ -25,7 +25,8 @@ describe('createDefaultProbe', () => {
     const requests: Request[] = []
     const client = {
       getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      async fetch(input: RequestInfo | URL, init?: RequestInit) {
+        expect(this).toBe(client)
         requests.push(input instanceof Request ? input : new Request(input, init))
         return completionResponse()
       },

@@ -270,7 +270,6 @@ export const createEncryptionRoutes = (
                 }
               }
 
-              // Store envelope
               await upsertEnvelope(txDb, {
                 deviceId,
                 userId,

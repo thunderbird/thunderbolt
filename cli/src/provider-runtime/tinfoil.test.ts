@@ -334,6 +334,28 @@ describe('createTinfoilBinding', () => {
     }
   })
 
+  test('derives thinking semantics from each confidential model instead of GLM 5.2', async () => {
+    const requestEfforts: unknown[] = []
+    const model = { ...confidentialModel, model: 'glm-4.7', vendor: 'zhipu' }
+    const binding = await createTinfoilBinding({
+      ...bindingOptions(),
+      model,
+      createSecureClient: secureClientFactory(async (request) => {
+        const payload = (await request.json()) as { readonly reasoning_effort?: unknown }
+        requestEfforts.push(payload.reasoning_effort)
+        return successfulCompletion('')
+      }),
+    })
+    const runtime = await createRuntime(binding, 'medium')
+    try {
+      await runtime.prompt(crypto.randomUUID())
+
+      expect(requestEfforts).toEqual([undefined])
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   test('submits a provider receipt only from the actual AgentHarness terminal message_end', async () => {
     const secureRequests: Request[] = []
     const receiptRequests: Request[] = []

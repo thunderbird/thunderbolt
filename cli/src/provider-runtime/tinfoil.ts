@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { vendorSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
-import { inferenceUsageReceiptHeader } from '../../../shared/inference-usage.ts'
+import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared/inference-usage.ts'
 import { toError } from '@earendil-works/pi-agent-core'
 import {
   createAssistantMessageEventStream,
@@ -41,6 +41,17 @@ export type CreateTinfoilBindingOptions = {
 /** Build a non-secret preparation error for malformed confidential state. */
 const invalidTinfoilConfigError = (message: string): TinfoilBindingError =>
   providerRuntimeError('config-invalid', message)
+
+/** Resolve Pi request semantics from the managed model's own public identity. */
+const compatibilityModel = (model: SharedModel): Model<Api> => {
+  const provider = model.vendor === 'zhipu' ? 'zai' : model.vendor
+  const modelId = model.model === managedGlmIdentity.model ? 'glm-5.2' : model.model
+  const resolved = provider === null ? undefined : piBuiltinModels().getModel(provider, modelId)
+  if (!resolved) {
+    throw invalidTinfoilConfigError(`Managed model "${model.model}" has no Pi compatibility metadata.`)
+  }
+  return resolved
+}
 
 /** Build a stable, non-secret failure for a rejected confidential attestation. */
 const attestationFailedError = (): TinfoilBindingError =>
@@ -225,8 +236,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
       'Confidential backend URL must use https (or loopback http) without credentials, a query, or a fragment.',
     )
   }
-  const piGlm52 = piBuiltinModels().getModel('zai', 'glm-5.2')
-  if (!piGlm52) throw new Error('Pi GLM 5.2 compatibility metadata is unavailable.')
+  const compatible = compatibilityModel(options.model)
 
   const baseUrl = `${apiBaseUrl(options.credential.backendUrl)}/tinfoil`
   const createSecureClient = options.createSecureClient ?? ((clientOptions) => new SecureClient(clientOptions))
@@ -261,8 +271,8 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     reasoning: true,
     contextWindow: options.model.contextWindow!,
     supportsImages: vendorSupportsImages(options.model.vendor),
-    compat: piGlm52.compat,
-    thinkingLevelMap: piGlm52.thinkingLevelMap,
+    compat: compatible.compat,
+    thinkingLevelMap: compatible.thinkingLevelMap,
   })
   const sourceProvider = built.models.getProvider(providerId)
   if (!sourceProvider) throw new Error('Tinfoil provider construction failed.')

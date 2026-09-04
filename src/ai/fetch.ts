@@ -7,7 +7,6 @@ import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
-import { isSystemGlmModel, submitGlmStepUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import {
@@ -76,13 +75,6 @@ import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
 import { detectStreamChunk } from './smooth-chunking'
 import { createMessageMetadata } from './message-metadata'
-import {
-  evictSystemTinfoilClient,
-  evictUserTinfoilClient,
-  getSystemTinfoilClient,
-  getTinfoilClient,
-  isTinfoilTransportWedgedError,
-} from './tinfoil-client'
 
 /**
  * Sanitizes a server name into a valid tool prefix.
@@ -267,9 +259,8 @@ export type OpenAiCompatConnection = {
 /**
  * Resolve the raw OpenAI-compatible connection for a model, mirroring the
  * per-provider construction in {@link createModel}. Returns `null` for providers
- * the OpenAI wire doesn't serve (`anthropic` has its own SDK; `tinfoil` needs the
- * enclave client) or when required config is missing (no api key / url) — callers
- * fall back to the legacy pipeline rather than crash.
+ * the OpenAI wire doesn't serve (`anthropic` has its own SDK; `tinfoil` runs only
+ * through the Pi harness) or when required config is missing (no api key / url).
  *
  * Centralizes the intricate `thunderbolt` SSO-fetch logic so the legacy and Pi
  * paths can't drift.
@@ -334,20 +325,7 @@ export const resolveOpenAiCompatConnection = (
   }
 }
 
-/** Time a Tinfoil client acquisition without changing its error behavior. */
-const acquireTinfoilClient = async <Client>(
-  acquire: () => Promise<Client>,
-  telemetry?: TurnTelemetry,
-): Promise<Client> => {
-  telemetry?.startPhase('attestation')
-  try {
-    return await acquire()
-  } finally {
-    telemetry?.endPhase('attestation')
-  }
-}
-
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn, telemetry?: TurnTelemetry) => {
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
   // fetch lazily so a settings change between chat creation and this call
@@ -441,97 +419,6 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
         fetch: conn.fetch,
       })
       return openrouter(modelConfig.model)
-    }
-    case 'tinfoil': {
-      // System Tinfoil models proxy through Thunderbolt's backend; the bearer
-      // key is injected server-side, so we pass a placeholder here only to
-      // satisfy the SDK's apiKey requirement. User-added Tinfoil models keep
-      // the BYOK flow and require a real key.
-      if (modelConfig.isSystem) {
-        const client = await acquireTinfoilClient(
-          () =>
-            getSystemTinfoilClient({
-              trace_id: telemetry?.traceId,
-              engine: 'legacy',
-              provider: modelConfig.provider,
-              model_id: modelConfig.id,
-            }),
-          telemetry,
-        )
-        // Wrap SecureClient.fetch so the backend route's auth guard sees the
-        // real Thunderbolt session token (Bearer) or cookies (SSO), not the
-        // `Bearer thunderbolt-managed` placeholder the OpenAI SDK adds.
-        const sso = isSsoMode()
-        const token = getAuthToken()
-        const wrappedFetch: typeof fetch = Object.assign(
-          async (input: RequestInfo | URL, init?: RequestInit) => {
-            const headers = new Headers(init?.headers)
-            for (const [key, value] of Object.entries(appVersionHeader())) {
-              headers.set(key, value)
-            }
-            const upstreamInit: RequestInit = { ...init, headers }
-            if (sso && !token) {
-              upstreamInit.credentials = 'include'
-              headers.delete('authorization')
-            } else if (token) {
-              headers.set('Authorization', `Bearer ${token}`)
-            }
-            try {
-              const response = await client.fetch(input, upstreamInit)
-              // Routed through our backend, so the version gate applies here too.
-              handleAppVersionUnsupported(response.status)
-              return response
-            } catch (err) {
-              if (isTinfoilTransportWedgedError(err)) {
-                evictSystemTinfoilClient()
-              }
-              throw err
-            }
-          },
-          { preconnect: fetch.preconnect },
-        )
-        const tinfoil = createOpenAICompatible({
-          name: 'tinfoil',
-          baseURL: client.getBaseURL()!,
-          apiKey: 'thunderbolt-managed',
-          fetch: wrappedFetch,
-          ...(isSystemGlmModel(modelConfig) && { includeUsage: true }),
-        })
-        return tinfoil(modelConfig.model)
-      }
-      if (!modelConfig.apiKey) {
-        throw new Error('No API key provided')
-      }
-      const client = await acquireTinfoilClient(
-        () =>
-          getTinfoilClient({
-            trace_id: telemetry?.traceId,
-            engine: 'legacy',
-            provider: modelConfig.provider,
-            model_id: modelConfig.id,
-          }),
-        telemetry,
-      )
-      const evictingFetch: typeof fetch = Object.assign(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          try {
-            return await client.fetch(input, init)
-          } catch (err) {
-            if (isTinfoilTransportWedgedError(err)) {
-              evictUserTinfoilClient()
-            }
-            throw err
-          }
-        },
-        { preconnect: fetch.preconnect },
-      )
-      const tinfoil = createOpenAICompatible({
-        name: 'tinfoil',
-        baseURL: client.getBaseURL()!,
-        apiKey: modelConfig.apiKey,
-        fetch: evictingFetch,
-      })
-      return tinfoil(modelConfig.model)
     }
     default:
       throw new Error(`Unsupported provider: ${modelConfig.provider}`)
@@ -768,7 +655,7 @@ export const aiFetchStreamingResponse = async ({
   const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
-    const baseModel = await createModel(model, getProxyFetch, telemetry)
+    const baseModel = await createModel(model, getProxyFetch)
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,
@@ -843,13 +730,8 @@ export const aiFetchStreamingResponse = async ({
         },
 
         abortSignal,
-        onStepFinish: async (step) => {
+        onStepFinish: () => {
           telemetry?.recordStep()
-          try {
-            await submitGlmStepUsageReceipt({ model, step, httpClient })
-          } catch {
-            // Receipt submission failures must not interrupt the chat stream.
-          }
         },
         onError: ({ error }) => {
           console.error('streamText error', { kind: classifyErrorKind(error) ?? 'unknown' })

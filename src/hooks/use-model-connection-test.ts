@@ -4,9 +4,11 @@
 
 import { useLingui } from '@lingui/react/macro'
 import { createModel } from '@/ai/fetch'
+import { getTinfoilClient } from '@/ai/tinfoil-client'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { useProxyFetchGetter } from '@/lib/proxy-fetch-context'
 import type { Model } from '@/types'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { generateText } from 'ai'
 import { useCallback, useReducer, useRef } from 'react'
 
@@ -77,37 +79,70 @@ export type ConnectionTestProbe = (
   signal: AbortSignal,
 ) => Promise<void>
 
-const defaultProbe: ConnectionTestProbe = async (config, getProxyFetch, signal) => {
-  const aiModel = await createModel(
-    {
-      id: 'test',
-      name: 'Test Model',
-      provider: config.provider,
-      model: config.model,
-      url: config.url,
-      apiKey: config.apiKey,
-      isSystem: 0,
-      enabled: 1,
-      toolUsage: 1,
-      isConfidential: 0,
-      startWithReasoning: 0,
-      supportsParallelToolCalls: 1,
-      contextWindow: null,
-      deletedAt: null,
-      defaultHash: null,
-      vendor: null,
-      description: null,
-      userId: null,
-    },
-    getProxyFetch,
-  )
-  await generateText({
-    model: aiModel,
-    prompt: 'Say "test successful" if you can read this.',
-    maxRetries: 0,
-    abortSignal: signal,
-  })
+type DefaultProbeDependencies = {
+  getTinfoilClient?: typeof getTinfoilClient
+  createModel?: typeof createModel
+  generateText?: typeof generateText
 }
+
+/** Build the temporary model row consumed by the shared provider factory. */
+const connectionTestModel = (config: NormalizedConfig): Model => ({
+  id: 'test',
+  name: 'Test Model',
+  provider: config.provider,
+  model: config.model,
+  url: config.url,
+  apiKey: config.apiKey,
+  isSystem: 0,
+  enabled: 1,
+  toolUsage: 1,
+  isConfidential: 0,
+  startWithReasoning: 0,
+  supportsParallelToolCalls: 1,
+  contextWindow: null,
+  deletedAt: null,
+  defaultHash: null,
+  vendor: null,
+  description: null,
+  userId: null,
+})
+
+/** Build a BYOK Tinfoil probe model over an attested enclave client. */
+const createTinfoilProbeModel = async (config: NormalizedConfig, acquireClient: typeof getTinfoilClient) => {
+  if (!config.apiKey) {
+    throw new Error('No API key provided')
+  }
+  const client = await acquireClient()
+  const provider = createOpenAICompatible({
+    name: 'tinfoil',
+    baseURL: client.getBaseURL()!,
+    apiKey: config.apiKey,
+    fetch: client.fetch,
+  })
+  return provider(config.model)
+}
+
+/** Create the real Settings model probe with injectable external boundaries. */
+export const createDefaultProbe =
+  ({
+    getTinfoilClient: acquireTinfoilClient = getTinfoilClient,
+    createModel: createAiModel = createModel,
+    generateText: runGenerateText = generateText,
+  }: DefaultProbeDependencies = {}): ConnectionTestProbe =>
+  async (config, getProxyFetch, signal) => {
+    const aiModel =
+      config.provider === 'tinfoil'
+        ? await createTinfoilProbeModel(config, acquireTinfoilClient)
+        : await createAiModel(connectionTestModel(config), getProxyFetch)
+    await runGenerateText({
+      model: aiModel,
+      prompt: 'Say "test successful" if you can read this.',
+      maxRetries: 0,
+      abortSignal: signal,
+    })
+  }
+
+const defaultProbe = createDefaultProbe()
 
 /**
  * Manages the state machine for a "Test Model" round-trip: idle → testing →

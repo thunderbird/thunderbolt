@@ -12,10 +12,12 @@
 
 import '@/testing-library'
 
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
 import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model } from '@/types'
 import {
@@ -27,10 +29,12 @@ import {
   type BuiltInAdapterOptions,
   type ResolvedPiModel,
 } from './built-in-adapter'
-import type { BuildAppHarnessOptions, PiModelDescriptor } from '@shared/agent-core'
+import { createReceiptLifecycle, type BuildAppHarnessOptions, type PiModelDescriptor } from '@shared/agent-core'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { createPromptParts, type PromptParams } from '@/ai/prompt'
-import type { AgentHarness, AgentTool } from '@earendil-works/pi-agent-core'
+import type { AgentHarness, AgentHarnessEvent, AgentTool } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage } from '@earendil-works/pi-ai'
+import type { SecureClient } from 'tinfoil'
 
 const noopFetch = (async () => new Response('')) as PiModelDescriptor['fetch']
 
@@ -63,7 +67,8 @@ describe('isPiModelCandidate', () => {
         isPiModelCandidate({ provider: provider as Model['provider'], toolUsage: 1 }),
       ),
     ).toEqual([true, true, true, true, true])
-    expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(false)
+    expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 1 })).toBe(true)
+    expect(isPiModelCandidate({ provider: 'tinfoil', toolUsage: 0 })).toBe(true)
     expect(isPiModelCandidate({ provider: 'anthropic', toolUsage: 0 })).toBe(false)
   })
 })
@@ -185,14 +190,339 @@ describe('resolvePiModel — image capability (vendor-gated)', () => {
   const openaiModel = (vendor: string | null): Model =>
     ({ id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', vendor, toolUsage: 1 }) as Model
 
-  it('advertises image support for a vision-vendor model', () => {
-    const resolved = resolvePiModel(agentCore, contextFor(openaiModel('openai')), null)
+  it('advertises image support for a vision-vendor model', async () => {
+    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel('openai')), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: true })
   })
 
-  it('does not advertise image support when the vendor is unknown (custom/local)', () => {
-    const resolved = resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
+  it('does not advertise image support when the vendor is unknown (custom/local)', async () => {
+    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
+  })
+})
+
+const tinfoilModel = (overrides: Partial<Model> = {}): Model =>
+  ({
+    id: 'system-glm',
+    name: 'GLM 5.2',
+    provider: 'tinfoil',
+    model: 'glm-5-2',
+    vendor: 'zhipu',
+    apiKey: null,
+    isSystem: 1,
+    toolUsage: 1,
+    contextWindow: 131_072,
+    ...overrides,
+  }) as Model
+
+type SecureFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+const createSecureClient = (
+  fetchImpl: SecureFetch = async () => new Response(),
+  baseURL = 'https://enclave.example.com/v1',
+): SecureClient =>
+  ({
+    fetch: Object.assign(fetchImpl, { preconnect: () => Promise.resolve(false) }),
+    getBaseURL: () => baseURL,
+  }) as never
+
+const tinfoilContext = (model: Model, overrides: Partial<AgentAdapterContext> = {}): AgentAdapterContext =>
+  ({
+    threadId: 'thread-1',
+    selectedModel: model,
+    mcpClients: [],
+    reconnectClient: async () => null,
+    httpClient: {},
+    getProxyFetch: () => noopFetch,
+    onAcpSessionId: async () => {},
+    ...overrides,
+  }) as AgentAdapterContext
+
+const tinfoilAgentCore = { createReceiptLifecycle } as Parameters<typeof resolvePiModel>[0]
+
+const requireDescriptor = <Kind extends PiModelDescriptor['kind']>(
+  resolved: ResolvedPiModel | null,
+  kind: Kind,
+): Extract<PiModelDescriptor, { kind: Kind }> => {
+  if (!resolved || resolved.descriptor.kind !== kind) {
+    throw new Error(`Expected ${kind} descriptor`)
+  }
+  return resolved.descriptor as Extract<PiModelDescriptor, { kind: Kind }>
+}
+
+const assistantMessage = (): AssistantMessage => ({
+  role: 'assistant',
+  content: [{ type: 'text', text: 'answer' }],
+  api: 'openai-completions',
+  provider: 'tinfoil',
+  model: 'glm-5-2',
+  usage: {
+    input: 11,
+    output: 2,
+    cacheRead: 3,
+    cacheWrite: 2,
+    totalTokens: 18,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: 'stop',
+  timestamp: 0,
+})
+
+const createHarnessEvents = () => {
+  type Listener = Parameters<AgentHarness['subscribe']>[0]
+  const listeners = new Set<Listener>()
+  return {
+    harness: {
+      subscribe: (listener: Listener) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    },
+    emit: async (event: AgentHarnessEvent): Promise<void> => {
+      for (const listener of listeners) {
+        await listener(event)
+      }
+    },
+  }
+}
+
+describe('resolvePiModel — Tinfoil', () => {
+  it('resolves a managed model as a confidential descriptor and records Pi attestation', async () => {
+    const client = createSecureClient()
+    const getSystemTinfoilClient = mock(async () => client)
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+
+    const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel(), { telemetry }), null, {
+      getSystemTinfoilClient,
+    })
+
+    expect(requireDescriptor(resolved, 'confidential')).toMatchObject({
+      providerId: 'tinfoil',
+      modelId: 'glm-5-2',
+      vendor: 'zhipu',
+      baseURL: 'https://enclave.example.com/v1',
+      apiKey: 'thunderbolt-managed',
+      reasoning: true,
+      contextWindow: 131_072,
+      supportsImages: false,
+    })
+    expect(getSystemTinfoilClient).toHaveBeenCalledWith({
+      trace_id: 'trace-1',
+      engine: 'pi',
+      provider: 'tinfoil',
+      model_id: 'system-glm',
+    })
+    expect(telemetry.buildPayload('success')).toMatchObject({ attestation_ms: 0 })
+  })
+
+  it('uses SSO cookies without SDK authorization and bearer auth otherwise', async () => {
+    const calls: RequestInit[] = []
+    const client = createSecureClient(async (_input, init) => {
+      calls.push(init ?? {})
+      return new Response()
+    })
+    const env: { VITE_AUTH_MODE?: string; VITE_APP_VERSION?: string } = import.meta.env
+    const savedMode = env.VITE_AUTH_MODE
+    const savedVersion = env.VITE_APP_VERSION
+    const savedToken = getAuthToken()
+
+    try {
+      env.VITE_AUTH_MODE = 'sso'
+      env.VITE_APP_VERSION = '1.2.3'
+      clearAuthToken()
+      const descriptor = requireDescriptor(
+        await resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel()), null, {
+          getSystemTinfoilClient: async () => client,
+        }),
+        'confidential',
+      )
+      await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions', {
+        headers: { Authorization: 'Bearer thunderbolt-managed' },
+      })
+
+      env.VITE_AUTH_MODE = undefined
+      setAuthToken('session-token')
+      await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
+
+      expect(calls[0].credentials).toBe('include')
+      expect(new Headers(calls[0].headers).get('authorization')).toBeNull()
+      expect(new Headers(calls[0].headers).get('x-app-version')).toBe('1.2.3')
+      expect(calls[1].credentials).toBeUndefined()
+      expect(new Headers(calls[1].headers).get('authorization')).toBe('Bearer session-token')
+      expect(new Headers(calls[1].headers).get('x-app-version')).toBe('1.2.3')
+    } finally {
+      env.VITE_AUTH_MODE = savedMode
+      env.VITE_APP_VERSION = savedVersion
+      if (savedToken) {
+        setAuthToken(savedToken)
+      } else {
+        clearAuthToken()
+      }
+    }
+  })
+
+  it('evicts a managed client after a wedged transport error', async () => {
+    const error = new TypeError("Cannot read properties of null (reading 'fetch')")
+    const client = createSecureClient(async () => {
+      throw error
+    })
+    const evictSystemTinfoilClient = mock(() => {})
+    const descriptor = requireDescriptor(
+      await resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel()), null, {
+        getSystemTinfoilClient: async () => client,
+        evictSystemTinfoilClient,
+      }),
+      'confidential',
+    )
+
+    await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
+    expect(evictSystemTinfoilClient).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves BYOK directly as OpenAI-compatible without receipts', async () => {
+    const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
+    const client = createSecureClient(async () => {
+      throw error
+    })
+    const getTinfoilClient = mock(async () => client)
+    const evictUserTinfoilClient = mock(() => {})
+    const profile = { modelId: 'user-model', providerOptions: { reasoningEffort: 'high' } } as never
+    const model = tinfoilModel({
+      id: 'user-model',
+      model: 'private-model',
+      vendor: 'openai',
+      isSystem: 0,
+      apiKey: 'user-key',
+    })
+
+    const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), profile, {
+      getTinfoilClient,
+      evictUserTinfoilClient,
+    })
+    const descriptor = requireDescriptor(resolved, 'openai-compat')
+
+    expect(descriptor).toMatchObject({
+      providerId: 'tinfoil',
+      modelId: 'private-model',
+      baseURL: 'https://enclave.example.com/v1',
+      apiKey: 'user-key',
+      reasoning: true,
+      supportsImages: true,
+    })
+    expect('receipts' in descriptor).toBe(false)
+    expect(getTinfoilClient).toHaveBeenCalledWith({
+      trace_id: undefined,
+      engine: 'pi',
+      provider: 'tinfoil',
+      model_id: 'user-model',
+    })
+    await expect(descriptor.fetch('https://enclave.example.com/v1/chat/completions')).rejects.toBe(error)
+    expect(evictUserTinfoilClient).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a BYOK model without an API key', async () => {
+    await expect(resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel({ isSystem: 0 })), null)).rejects.toThrow(
+      'No API key provided for Tinfoil provider',
+    )
+  })
+
+  it('surfaces attestation failure without invoking the legacy fetch', async () => {
+    const error = new Error('Tinfoil attestation failed: endpoint unavailable')
+    const model = tinfoilModel()
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+    } satisfies PreparedAiRequestConfig
+    const aiFetch = mock(async () => new Response('legacy'))
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch,
+      loadAgentCore: async () => tinfoilAgentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => {
+        throw error
+      },
+    })
+
+    await expect(adapter.fetch({ body: '{}' }, tinfoilContext(model))).rejects.toBe(error)
+    expect(aiFetch).toHaveBeenCalledTimes(0)
+  })
+
+  it('submits one terminal receipt for every managed Tinfoil model', async () => {
+    const post = mock(async () => new Response())
+    const resolved = await resolvePiModel(
+      tinfoilAgentCore,
+      tinfoilContext(tinfoilModel({ model: 'deepseek-v4-flash', vendor: 'deepseek' }), {
+        httpClient: { post } as never,
+      }),
+      null,
+      { getSystemTinfoilClient: async () => createSecureClient() },
+    )
+    const descriptor = requireDescriptor(resolved, 'confidential')
+    const events = createHarnessEvents()
+    descriptor.receipts.attach(events.harness)
+    const message = assistantMessage()
+
+    descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
+    await events.emit({ type: 'message_end', message })
+    await events.emit({ type: 'message_end', message })
+
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post).toHaveBeenCalledWith('inference-usage/receipts', {
+      json: { receipt: 'signed-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
+      timeout: 3_000,
+    })
+  })
+
+  it('reports a managed receipt POST failure without rejecting the terminal event', async () => {
+    const error = new Error('receipt unavailable')
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    const resolved = await resolvePiModel(
+      tinfoilAgentCore,
+      tinfoilContext(tinfoilModel(), {
+        httpClient: {
+          post: async () => {
+            throw error
+          },
+        } as never,
+      }),
+      null,
+      { getSystemTinfoilClient: async () => createSecureClient() },
+    )
+    const descriptor = requireDescriptor(resolved, 'confidential')
+    const events = createHarnessEvents()
+    descriptor.receipts.attach(events.harness)
+    const message = assistantMessage()
+
+    try {
+      descriptor.receipts.completeProviderStep({ receipt: 'signed-receipt', message })
+      await expect(events.emit({ type: 'message_end', message })).resolves.toBeUndefined()
+      expect(consoleError).toHaveBeenCalledWith(error)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('keys the harness cache by attested client identity', async () => {
+    const firstClient = createSecureClient()
+    const secondClient = createSecureClient()
+    const resolveWith = (client: SecureClient) =>
+      resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel()), null, {
+        getSystemTinfoilClient: async () => client,
+      })
+
+    const first = await resolveWith(firstClient)
+    const same = await resolveWith(firstClient)
+    const second = await resolveWith(secondClient)
+
+    expect(first && harnessSignature(first, 'system')).toBe(same && harnessSignature(same, 'system'))
+    expect(first && harnessSignature(first, 'system')).not.toBe(second && harnessSignature(second, 'system'))
   })
 })
 
@@ -243,6 +573,212 @@ describe('createBuiltInAdapter engine telemetry', () => {
 })
 
 describe('createBuiltInAdapter persistent harness', () => {
+  it('reads the current bearer on every managed Tinfoil request without rebuilding the harness', async () => {
+    const model = tinfoilModel()
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+    } satisfies PreparedAiRequestConfig
+    const authToken = { current: 'first-token' }
+    const authorizationHeaders: Array<string | null> = []
+    const client = createSecureClient(async (_input, init) => {
+      authorizationHeaders.push(new Headers(init?.headers).get('authorization'))
+      return new Response()
+    })
+    const buildCalls: BuildAppHarnessOptions[] = []
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async (options: BuildAppHarnessOptions) => {
+        buildCalls.push(options)
+        return {
+          getTools: () => [],
+          setTools: async () => {},
+          prompt: async () => {
+            await options.model.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
+          },
+          waitForIdle: async () => {},
+          on: () => () => {},
+          abort: async () => ({ aborted: true }),
+          env: { remove: async () => {} },
+        } as never
+      },
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => client,
+      getAuthToken: () => authToken.current,
+      isSsoMode: () => false,
+    })
+    const request: RequestInit = {
+      body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
+    }
+
+    await (await adapter.fetch(request, tinfoilContext(model))).text()
+    authToken.current = 'second-token'
+    await (await adapter.fetch(request, tinfoilContext(model))).text()
+
+    expect(buildCalls).toHaveLength(1)
+    expect(authorizationHeaders).toEqual(['Bearer first-token', 'Bearer second-token'])
+  })
+
+  it('submits each managed receipt through the current context client without rebuilding the harness', async () => {
+    const model = tinfoilModel()
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+    } satisfies PreparedAiRequestConfig
+    const receiptIds = ['first-receipt', 'second-receipt']
+    const buildCalls: BuildAppHarnessOptions[] = []
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async (options: BuildAppHarnessOptions) => {
+        buildCalls.push(options)
+        if (options.model.kind !== 'confidential') {
+          throw new Error('Expected confidential descriptor')
+        }
+        const descriptor = options.model
+        const events = createHarnessEvents()
+        const harness = {
+          ...events.harness,
+          getTools: () => [],
+          setTools: async () => {},
+          prompt: async () => {
+            const receipt = receiptIds.shift()
+            if (!receipt) {
+              throw new Error('Expected a receipt for each prompt')
+            }
+            const message = assistantMessage()
+            descriptor.receipts.completeProviderStep({ receipt, message })
+            await events.emit({ type: 'message_end', message })
+          },
+          waitForIdle: async () => {},
+          on: () => () => {},
+          abort: async () => ({ aborted: true }),
+          env: { remove: async () => {} },
+        }
+        descriptor.receipts.attach(harness as never)
+        return harness as never
+      },
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const firstBodies: RequestOptions['json'][] = []
+    const secondBodies: RequestOptions['json'][] = []
+    const firstPost = mock(async (_url: string, options?: RequestOptions) => {
+      firstBodies.push(options?.json)
+      return new Response()
+    })
+    const secondPost = mock(async (_url: string, options?: RequestOptions) => {
+      secondBodies.push(options?.json)
+      return new Response()
+    })
+    const client = createSecureClient()
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => client,
+    })
+    const request: RequestInit = {
+      body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }),
+    }
+
+    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: firstPost } as never }))).text()
+    await (await adapter.fetch(request, tinfoilContext(model, { httpClient: { post: secondPost } as never }))).text()
+
+    expect(buildCalls).toHaveLength(1)
+    expect(firstPost).toHaveBeenCalledTimes(1)
+    expect(secondPost).toHaveBeenCalledTimes(1)
+    expect(firstBodies).toEqual([{ receipt: 'first-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 }])
+    expect(secondBodies).toEqual([
+      { receipt: 'second-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
+    ])
+  })
+
+  it('keeps every harness tool inactive when Tinfoil tool usage is off', async () => {
+    const model = tinfoilModel({ toolUsage: 0 })
+    const config = {
+      model,
+      profile: null,
+      supportsTools: false,
+      sourceCollector: [],
+      toolset: { weather: {} as never },
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+    } satisfies PreparedAiRequestConfig
+    const activeToolNames: Array<string[] | undefined> = []
+    const harness = {
+      getTools: () => [{ name: 'read' } as AgentTool],
+      setTools: async (_tools: AgentTool[], active?: string[]) => void activeToolNames.push(active),
+      prompt: async () => {},
+      waitForIdle: async () => {},
+      on: () => () => {},
+      abort: async () => ({ aborted: true }),
+      env: { remove: async () => {} },
+    }
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async () => harness as never,
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      toPiAgentTools: async () => [{ name: 'weather' } as AgentTool],
+      piHarnessToUiMessageStream: (_harness: AgentHarness, runPrompt: () => Promise<void>) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const aiFetch = mock(async () => new Response('legacy'))
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      aiFetch,
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => createSecureClient(),
+    })
+
+    const response = await adapter.fetch(
+      { body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }] }) },
+      tinfoilContext(model),
+    )
+    await response.text()
+
+    expect(activeToolNames).toEqual([[]])
+    expect(aiFetch).toHaveBeenCalledTimes(0)
+  })
+
   it('refreshes prompt/tools, rebuilds for regeneration, and applies the Pi web-budget floor', async () => {
     const model = {
       id: 'model-1',

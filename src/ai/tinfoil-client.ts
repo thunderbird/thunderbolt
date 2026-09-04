@@ -19,7 +19,7 @@ type TinfoilAttestationProperties = {
   error_name?: string
   client: TinfoilClientType
   trace_id?: string
-  engine?: 'pi' | 'legacy'
+  engine?: 'pi'
   provider?: string
   model_id?: string
   enclave_host?: string

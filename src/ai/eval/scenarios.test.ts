@@ -16,7 +16,7 @@ describe('eval model matrix', () => {
     expect(evalModels).toEqual([
       { id: defaultModelOpus5.id, name: 'opus', engineName: 'pi' },
       { id: defaultModelDeepseekV4Flash.id, name: 'flash', engineName: 'pi' },
-      { id: defaultModelGlm52.id, name: 'glm', engineName: 'legacy' },
+      { id: defaultModelGlm52.id, name: 'glm', engineName: 'pi' },
     ])
   })
 
@@ -31,12 +31,12 @@ describe('eval model matrix', () => {
 
 describe('getScenarios', () => {
   test('includes the engine in ids and filters by engine', () => {
-    const scenarios = getScenarios(['glm'], ['search'], ['legacy'])
+    const scenarios = getScenarios(['glm'], ['search'], ['pi'])
 
     expect(scenarios.length).toBeGreaterThan(0)
-    expect(scenarios.every((scenario) => scenario.engineName === 'legacy')).toBe(true)
-    expect(scenarios.every((scenario) => scenario.id.startsWith('glm/legacy/search/'))).toBe(true)
-    expect(getScenarios(['glm'], ['search'], ['pi'])).toEqual([])
+    expect(scenarios.every((scenario) => scenario.engineName === 'pi')).toBe(true)
+    expect(scenarios.every((scenario) => scenario.id.startsWith('glm/pi/search/'))).toBe(true)
+    expect(getScenarios(['glm'], ['search'], ['legacy'])).toEqual([])
   })
 
   test('does not require citations for stable chat prompts', () => {

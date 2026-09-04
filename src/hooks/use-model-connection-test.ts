@@ -117,7 +117,9 @@ const createTinfoilProbeModel = async (config: NormalizedConfig, acquireClient: 
     name: 'tinfoil',
     baseURL: client.getBaseURL()!,
     apiKey: config.apiKey,
-    fetch: client.fetch,
+    fetch: Object.assign((input: RequestInfo | URL, init?: RequestInit) => client.fetch(input, init), {
+      preconnect: () => Promise.resolve(false),
+    }),
   })
   return provider(config.model)
 }

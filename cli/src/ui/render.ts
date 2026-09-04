@@ -126,9 +126,9 @@ const truncate = (text: string, max: number): string => (text.length > max ? `${
  */
 const summarizeArgs = (args: ToolArguments): string => {
   if (args === null) return ''
-  if (args.command !== undefined) return sanitizeTerminalText(args.command)
-  if (args.path !== undefined) return sanitizeTerminalText(args.path)
-  return sanitizeTerminalText(JSON.stringify(args))
+  if (args.command !== undefined) return sanitizePermissionText(args.command)
+  if (args.path !== undefined) return sanitizePermissionText(args.path)
+  return sanitizePermissionText(JSON.stringify(args))
 }
 
 /**

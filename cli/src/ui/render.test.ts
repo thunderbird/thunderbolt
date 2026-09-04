@@ -204,6 +204,14 @@ describe('formatToolStart — argument summary', () => {
     expect(line).toContain('echo hi')
   })
 
+  test('renders a multiline command as one visible header line', () => {
+    const line = formatToolStart('bash', { command: 'echo safe\nFAKE STATUS\tprompt' })
+
+    expect(line).toContain('echo safe\\nFAKE STATUS\\tprompt')
+    expect(line).not.toContain('\n')
+    expect(line).not.toContain('\t')
+  })
+
   test('read/write summarize to the target path', () => {
     expect(formatToolStart('read', { path: 'src/a.ts' })).toContain('src/a.ts')
   })

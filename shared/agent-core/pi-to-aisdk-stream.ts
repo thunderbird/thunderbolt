@@ -111,6 +111,8 @@ type PiTranslator = {
   /** Close any open parts and emit the terminal `finish`. With `errorText`,
    *  an `error` chunk is emitted first. Idempotent once the stream has finished. */
   finish: (errorText?: string) => void
+  /** Whether the run has opened an assistant message (emitted `start`). */
+  hasStarted: () => boolean
 }
 
 export type PiStreamMetadata = {
@@ -342,7 +344,7 @@ const createPiTranslator = (
     }
   }
 
-  return { handle, finish }
+  return { handle, finish, hasStarted: () => started }
 }
 
 /**
@@ -363,12 +365,13 @@ const createPiTranslator = (
  * ```
  *
  * The stream is purely streaming — chunks are enqueued as events arrive, never
- * buffered for the whole run. Cancelling the consumer (e.g. the user stops
- * generation) aborts the harness and unsubscribes.
+ * buffered for the whole run. Cancelling the consumer aborts the harness and
+ * unsubscribes; so does aborting `signal`, which is how Stop reaches the run.
  *
  * @param harness - the harness whose run should be streamed
  * @param runPrompt - thunk that starts the run and resolves once it settles
  * @param metadata - initial, tool, and settled message metadata
+ * @param signal - the request's abort signal; aborting it stops the run (Stop)
  * @param now - millisecond clock used for reasoning and tool durations
  * @returns a `ReadableStream` of SSE-encoded AI SDK chunks for the `Response` body
  */
@@ -376,9 +379,11 @@ export const piHarnessToUiMessageStream = (
   harness: Pick<AgentHarness, 'subscribe' | 'abort'>,
   runPrompt: () => Promise<unknown>,
   metadata: PiStreamMetadata = {},
+  signal?: AbortSignal,
   now: () => number = Date.now,
 ): ReadableStream<Uint8Array> => {
   let unsubscribe: (() => void) | null = null
+  let detachSignal: (() => void) | null = null
   let closed = false
 
   return new ReadableStream<Uint8Array>({
@@ -394,6 +399,20 @@ export const piHarnessToUiMessageStream = (
       )
       unsubscribe = harness.subscribe((event) => translator.handle(event))
 
+      /** Drop both subscriptions so no further event or abort reaches a closed stream. */
+      const detach = (): void => {
+        detachSignal?.()
+        detachSignal = null
+        unsubscribe?.()
+        unsubscribe = null
+      }
+
+      const close = (): void => {
+        closed = true
+        controller.enqueue(encodeDone())
+        controller.close()
+      }
+
       const finalize = (errorText?: string): void => {
         if (closed) {
           return
@@ -401,12 +420,46 @@ export const piHarnessToUiMessageStream = (
         // Unsubscribe first so no further harness event races the terminal
         // sequence, let `finish` emit its chunks while the gate is still open,
         // and only then close the gate against any straggler from `cancel`.
-        unsubscribe?.()
-        unsubscribe = null
+        detach()
         translator.finish(errorText)
-        closed = true
-        controller.enqueue(encodeDone())
-        controller.close()
+        close()
+      }
+
+      /**
+       * Stop. The AI SDK only aborts the signal — it never cancels the response
+       * body — so without this the harness keeps looping (more model calls, more
+       * tool executions) long after the user pressed the button.
+       *
+       * The stream closes immediately rather than awaiting the teardown:
+       * `harness.abort()` awaits `waitForIdle()`, so awaiting it here would hang
+       * Stop behind any tool that doesn't honor the run's signal.
+       */
+      const onAbort = (): void => {
+        if (!closed) {
+          // Nothing has been emitted yet, so there is no assistant message to
+          // settle. Closing silently leaves none behind — a synthetic
+          // start/finish pair would read as an empty turn, and the chat
+          // auto-retries those, restarting the turn the user just cancelled.
+          if (translator.hasStarted()) {
+            finalize()
+          } else {
+            detach()
+            close()
+          }
+        }
+        void harness.abort().catch(() => {})
+      }
+
+      if (signal?.aborted) {
+        // Stopped while the harness was still being built: close without ever
+        // starting the run.
+        detach()
+        close()
+        return
+      }
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true })
+        detachSignal = () => signal.removeEventListener('abort', onAbort)
       }
 
       // Drive the run off this start callback. A failed turn resolves with a
@@ -423,6 +476,8 @@ export const piHarnessToUiMessageStream = (
     },
     async cancel() {
       closed = true
+      detachSignal?.()
+      detachSignal = null
       unsubscribe?.()
       unsubscribe = null
       await harness.abort()

@@ -297,10 +297,18 @@ export const chatOpenRequestSchema = envelopeSchema.extend({
  * control over the highlighted text.
  */
 export const miniAppRectSchema = z.object({
-  x: z.number(),
-  y: z.number(),
-  width: z.number(),
-  height: z.number(),
+  /*
+   * `.finite()` is redundant on zod 4 — a bare `z.number()` already rejects
+   * both NaN and Infinity, which it did not on zod 3. Stated anyway, because
+   * the artifact rect states it and because "coordinates are finite" is a
+   * property of this protocol rather than of whichever zod we happen to be on:
+   * an infinite coordinate reaches `ElementPickOverlay` as `left: Infinity` and
+   * draws the outline nowhere.
+   */
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite(),
+  height: z.number().finite(),
 })
 
 export type MiniAppRect = z.infer<typeof miniAppRectSchema>

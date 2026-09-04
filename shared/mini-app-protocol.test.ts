@@ -298,8 +298,27 @@ describe('elementAtResultSchema', () => {
     expect(elementAtResultSchema.safeParse({ element: { ...element, rect: undefined } }).success).toBe(false)
   })
 
-  it('rejects a non-finite coordinate rather than drawing at NaN', () => {
+  it('rejects a NaN coordinate rather than drawing at NaN', () => {
     const hostile = { element: { ...element, rect: { ...rect, x: Number.NaN } } }
+    expect(elementAtResultSchema.safeParse(hostile).success).toBe(false)
+  })
+
+  /*
+   * Pins the property, not the implementation: zod 4 rejects Infinity from a
+   * bare `z.number()` anyway, so this passes with or without the explicit
+   * `.finite()`. It is here because "coordinates are finite" is part of the
+   * protocol — an infinite one reaches the overlay as `left: Infinity` and
+   * draws the outline nowhere — and that has to survive a zod change.
+   */
+  it('rejects an infinite coordinate, which a bare number schema would allow', () => {
+    for (const value of [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const hostile = { element: { ...element, rect: { ...rect, x: value } } }
+      expect(elementAtResultSchema.safeParse(hostile).success).toBe(false)
+    }
+  })
+
+  it('rejects an infinite width, not just an infinite origin', () => {
+    const hostile = { element: { ...element, rect: { ...rect, width: Number.POSITIVE_INFINITY } } }
     expect(elementAtResultSchema.safeParse(hostile).success).toBe(false)
   })
 })

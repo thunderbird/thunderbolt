@@ -54,6 +54,17 @@ export type PendingRequests = {
  */
 type PendingEntry = { resolve: (result: unknown) => void }
 
+/**
+ * How long to wait for a guest's answer to `element-at`, in milliseconds.
+ *
+ * One of these rides every throttled pointer move, so it has to give up fast: a
+ * late answer is worth nothing once the cursor has moved on, and a slow one
+ * would queue behind the next. Shared by both surfaces because they run the
+ * same gesture — it lived twice, verbatim comment and all, which is exactly the
+ * drift this module exists to prevent.
+ */
+export const elementAtTimeoutMs = 600
+
 export const createPendingRequests = (): PendingRequests => {
   const waiting = new Map<number, PendingEntry>()
   let nextId = 1

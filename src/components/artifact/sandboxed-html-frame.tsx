@@ -13,7 +13,7 @@ import {
   type ArtifactContext,
   type ArtifactTextSelection,
 } from '@/artifacts/harness'
-import { createPendingRequests } from '@/components/embedded/pending-requests'
+import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded/pending-requests'
 import type { SurfaceHighlightedElement } from '@/components/embedded/types'
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -23,15 +23,6 @@ const defaultAutoHeightPx = 400
 const minAutoHeightPx = 60
 // Ceiling so a page (which knows its own nonce) can't report a huge height and blow out the transcript.
 const maxAutoHeightPx = 20_000
-/**
- * How long to wait for an artifact to resolve a marquee.
- *
- * Generous, because the page is doing DOM work on a drag the user just
- * finished; short enough that a page which threw before registering its handler
- * doesn't leave the confirm bar hanging.
- */
-// One of these rides every throttled pointer move, so it must give up fast.
-const elementAtTimeoutMs = 600
 
 export type SandboxedHtmlFrameProps = {
   /** Complete, self-contained HTML document to render. */

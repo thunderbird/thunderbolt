@@ -38,7 +38,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useActiveLocale } from '@/i18n/use-active-locale'
 import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
-import { createPendingRequests } from '@/components/embedded/pending-requests'
+import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded/pending-requests'
 import { useHttpClient } from '@/contexts'
 import { fetchMiniAppToken } from './mini-app-auth'
 import { useMiniAppStore } from './mini-app-store'
@@ -46,10 +46,6 @@ import type { MiniAppDefinition } from './registry'
 
 /** How long to wait for the guest's `initialize` before calling the app unreachable. */
 const handshakeTimeoutMs = 8_000
-
-/** How long to wait for the guest to resolve a marquee before giving up. */
-// One of these rides every throttled pointer move, so it must give up fast.
-const elementAtTimeoutMs = 600
 
 /** Tool discovery happens once at connect; a slow app shouldn't stall the UI. */
 const toolsRequestTimeoutMs = 3_000

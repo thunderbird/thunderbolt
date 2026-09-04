@@ -54,7 +54,15 @@ export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProp
           </div>
         ) : (
           chats.map((chat) => (
-            <DropdownMenuItem key={chat.id} onSelect={() => onOpenChat(chat.id)} className="flex flex-col items-start">
+            <DropdownMenuItem
+              key={chat.id}
+              onSelect={() => onOpenChat(chat.id)}
+              // `cursor-pointer` because the primitive ships shadcn's
+              // `cursor-default`, and every other menu in the app overrides it
+              // at the call site. Matching the convention rather than changing
+              // the primitive: that would silently restyle every menu we have.
+              className="flex cursor-pointer flex-col items-start"
+            >
               <span className="truncate w-full">{chat.title ?? t`Untitled chat`}</span>
               <span className="text-[length:var(--font-size-xs)] text-muted-foreground">
                 {formatters.relativeTime(chat.lastActivityAt)}

@@ -7,19 +7,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { cliVersion } from '../version.ts'
-import type {
-  AccountFetch,
-  CliAuth,
-  DeviceGrantPresentation,
-  SessionCredential,
-} from '../provider-runtime/types.ts'
+import type { AccountFetch, CliAuth, DeviceGrantPresentation, SessionCredential } from '../provider-runtime/types.ts'
 import { authConfigPath } from '../paths.ts'
 import { loadAuthConfig, resolveAccountCredential, storeAuthConfig } from './token-store.ts'
-import {
-  createAccountActions,
-  ensureRegisteredSession,
-  type CliDeviceMetadata,
-} from './account-client.ts'
+import { createAccountActions, ensureRegisteredSession, type CliDeviceMetadata } from './account-client.ts'
 
 const metadata: CliDeviceMetadata = { deviceName: 'Workstation' }
 const credential = (): SessionCredential => ({
@@ -220,6 +211,37 @@ describe('ensureRegisteredSession', () => {
       userCacheSecret: Buffer.from(rotated.userCacheSecret).toString('hex'),
       registration: 'registered',
       bearer: session.bearer,
+    })
+  })
+
+  it('rotates the installation once when switching accounts on the same backend', async () => {
+    const previous = credential()
+    await storeAuthConfig({
+      version: 2,
+      backendUrl: previous.backendUrl,
+      deviceId: previous.deviceId,
+      userCacheSecret: Buffer.from(previous.userCacheSecret).toString('hex'),
+      registration: 'registered',
+      bearer: 'previous-account-session',
+    })
+    const session = { ...previous, bearer: 'new-account-session' }
+    const { fetchFn, requests } = scriptedFetch([
+      () => Response.json({ code: 'DEVICE_ID_TAKEN' }, { status: 409 }),
+      () => {
+        const rotatedId = new Headers(requests[1]?.init?.headers).get('x-device-id')
+        return Response.json({ deviceId: rotatedId, state: 'registered' })
+      },
+    ])
+
+    const registered = await ensureRegisteredSession(session, metadata, fetchFn)
+
+    expect(requests).toHaveLength(2)
+    expect(registered.deviceId).not.toBe(previous.deviceId)
+    expect(registered.userCacheSecret).not.toEqual(previous.userCacheSecret)
+    expect(await loadAuthConfig()).toMatchObject({
+      deviceId: registered.deviceId,
+      registration: 'registered',
+      bearer: 'new-account-session',
     })
   })
 

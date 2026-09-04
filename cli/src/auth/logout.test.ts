@@ -7,7 +7,7 @@ import type { AccountFetch, CliAuth, DeviceGrantPresentation } from '../provider
 import { cliVersion } from '../version.ts'
 import { performLogout, type LogoutDeps } from './logout.ts'
 
-const auth = (): CliAuth => ({
+const auth = (): Extract<CliAuth, { bearer: string }> => ({
   version: 2,
   backendUrl: 'https://api.test/v1',
   deviceId: 'cli-00000000-0000-4000-8000-000000000001',
@@ -42,6 +42,10 @@ const createDeps = (fetchFn: AccountFetch, overrides: Partial<LogoutDeps> = {}) 
     fetchFn: async (input, init) => {
       events.push('remote')
       return fetchFn(input, init)
+    },
+    loadAuth: async () => {
+      events.push('load')
+      return auth()
     },
     compareAndSetAuth: async (_expected, next) => {
       if (next === null) {
@@ -104,6 +108,31 @@ describe('performLogout', () => {
     expect(statuses.map(({ status }) => status)).toEqual(['waiting', 'error'])
   })
 
+  it('reports authentication changed when a newer login wins the post-204 compare-and-set', async () => {
+    const newerAuth = {
+      ...auth(),
+      deviceId: 'cli-00000000-0000-4000-8000-000000000002' as const,
+      bearer: 'newer-session',
+    }
+    const authReads = { count: 0 }
+    const { deps, events, statuses } = createDeps(async () => new Response(null, { status: 204 }), {
+      compareAndSetAuth: async () => {
+        events.push('clear')
+        return false
+      },
+      loadAuth: async () => {
+        authReads.count += 1
+        return newerAuth
+      },
+    })
+
+    expect(await performLogout(deps)).toBe('authentication-changed')
+    expect(authReads.count).toBe(1)
+    expect(events).toEqual(['remote', 'clear'])
+    expect(statuses.map(({ status }) => status)).toEqual(['waiting', 'error'])
+    expect(statuses.at(-1)?.message).toContain('newer local session was retained')
+  })
+
   it('reports authoritative 401 plus local bearer-clear failure as confirmed persistence failure', async () => {
     const { deps, events } = createDeps(async () => new Response(null, { status: 401 }), {
       compareAndSetAuth: async () => {
@@ -138,6 +167,19 @@ describe('performLogout', () => {
         bearer: null,
       },
     ])
+    expect(statuses.map(({ status }) => status)).toEqual(['waiting', 'error'])
+  })
+
+  it('downgrades a legacy credential rejected because it has no server device binding', async () => {
+    const existing: CliAuth = { ...auth(), registration: 'legacy' }
+    const { deps, events, statuses, stored } = createDeps(
+      async () => Response.json({ code: 'CLI_DEVICE_NOT_BOUND' }, { status: 409 }),
+      { auth: existing },
+    )
+
+    expect(await performLogout(deps)).toBe('authentication-required')
+    expect(events).toEqual(['remote', 'store'])
+    expect(stored).toEqual([{ ...existing, registration: 'authentication-required', bearer: null }])
     expect(statuses.map(({ status }) => status)).toEqual(['waiting', 'error'])
   })
 
@@ -277,5 +319,4 @@ describe('performLogout', () => {
     expect(events).toEqual([])
     expect(stored).toEqual([])
   })
-
 })

@@ -19,12 +19,7 @@ import { systemClock } from './device-grant.ts'
 import { createHttpTransport } from './http-transport.ts'
 import { createTerminalQrBlock, performLogin } from './login.ts'
 import { performLogout } from './logout.ts'
-import {
-  compareAndSetAuthConfig,
-  loadAuthConfig,
-  toAuth,
-  type AuthStateExpectation,
-} from './token-store.ts'
+import { compareAndSetAuthConfig, loadAuthConfig, toAuth, type AuthStateExpectation } from './token-store.ts'
 
 type AccountClientError = Error & ProviderRuntimeError
 
@@ -42,10 +37,8 @@ export type AccountActionDependencies = {
 const defaultRegistrationTimeoutMs = 10_000
 
 /** Creates a stable provider-runtime error for account lifecycle failures. */
-const createAccountClientError = (
-  code: ProviderRuntimeError['code'],
-  message: string,
-): AccountClientError => providerRuntimeError(code, message)
+const createAccountClientError = (code: ProviderRuntimeError['code'], message: string): AccountClientError =>
+  providerRuntimeError(code, message)
 
 /** Creates or reuses the installation that is current after web approval completes. */
 const createSessionCredential = (backendUrl: string, bearer: string, stored: CliAuth | null): SessionCredential => {
@@ -77,13 +70,16 @@ const jsonBodyOrNull = async (response: Response): Promise<unknown | null> => {
   }
 }
 
-/** Checks the only server error that permits automatic installation rotation. */
-const isDeviceDisconnectedResponse = async (response: Response): Promise<boolean> => {
+/** Identifies server responses that require a fresh local installation identity. */
+const installationConflict = async (response: Response): Promise<'device-disconnected' | 'device-id-taken' | null> => {
   const body = await jsonBodyOrNull(response)
-  return isRecord(body) && body.code === 'DEVICE_DISCONNECTED'
+  if (!isRecord(body)) return null
+  if (response.status === 403 && body.code === 'DEVICE_DISCONNECTED') return 'device-disconnected'
+  if (response.status === 409 && body.code === 'DEVICE_ID_TAKEN') return 'device-id-taken'
+  return null
 }
 
-/** Creates a fresh installation identity after a revoked tombstone response. */
+/** Creates a fresh installation identity after a conflicting or revoked response. */
 const rotateInstallation = (credential: SessionCredential): SessionCredential => ({
   ...credential,
   deviceId: `cli-${randomUUID()}`,
@@ -136,7 +132,7 @@ const isRegisteredResponse = async (response: Response, credential: SessionCrede
 
 /**
  * Registers or touches a session-backed CLI installation before managed use.
- * A revoked device identity is rotated and retried exactly once.
+ * A conflicting or revoked installation identity is rotated and retried exactly once.
  */
 export const ensureRegisteredSession = async (
   credential: SessionCredential,
@@ -189,10 +185,16 @@ export const ensureRegisteredSession = async (
       throw createAccountClientError('authentication-required', 'the stored Thunderbolt session is no longer valid')
     }
 
-    if (response.status === 403 && (await abortable(isDeviceDisconnectedResponse(response), signal))) {
+    const conflict =
+      response.status === 403 || response.status === 409
+        ? await abortable(installationConflict(response), signal)
+        : null
+    if (conflict !== null) {
       if (!rotated) return ensure(rotateInstallation(current), true, expectedAuth)
       await persistAuth({ kind: 'exact', auth: expectedAuth }, toAuth(current, 'authentication-required'))
-      throw createAccountClientError('device-disconnected', 'the Thunderbolt CLI device was disconnected')
+      if (conflict === 'device-disconnected') {
+        throw createAccountClientError('device-disconnected', 'the Thunderbolt CLI device was disconnected')
+      }
     }
 
     throw createAccountClientError(
@@ -241,6 +243,7 @@ export const createAccountActions = (dependencies: AccountActionDependencies): A
         auth: await loadAuthConfig(),
         patToken: dependencies.patToken,
         fetchFn: dependencies.fetchFn,
+        loadAuth: loadAuthConfig,
         compareAndSetAuth: compareAndSetAuthConfig,
         presentation,
         signal,

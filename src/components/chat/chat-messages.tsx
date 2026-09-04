@@ -30,7 +30,7 @@ type ChatMessagesProps = {
 // intended throttle cadence. It takes no props that change (`useChat` defaults
 // to the real hook), so the shallow prop compare holds across parent renders.
 export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, retryCount, retriesExhausted, stopping } = useCurrentChatSession()
 
   const {
     error: chatError,
@@ -59,6 +59,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     hasChatError: chatError != null,
     retriesExhausted,
     retryCount,
+    stopRequested: stopping,
   })
 
   const wasStreaming = useRef(false)

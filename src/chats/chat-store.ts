@@ -49,6 +49,9 @@ export type ChatSession = {
   pendingPermission: PendingPermission | null
   retryCount: number
   retriesExhausted: boolean
+  /** The user pressed Stop and the turn is still unwinding (an ACP
+   *  `session/cancel` round-trip, or the in-browser harness draining its loop). */
+  stopping: boolean
   selectedAgent: Agent
   selectedModel: Model
   /**

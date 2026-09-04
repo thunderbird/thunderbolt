@@ -15,7 +15,7 @@ const filledAssistant: ThunderboltUIMessage = {
   parts: [{ type: 'text', text: 'hello' }],
 }
 
-const base = { hasChatError: false, retriesExhausted: false, retryCount: 0 }
+const base = { hasChatError: false, retriesExhausted: false, retryCount: 0, stopRequested: false }
 
 describe('getTurnActivity', () => {
   it('is active while the model is thinking (submitted)', () => {
@@ -77,5 +77,28 @@ describe('getTurnActivity', () => {
     const activity = getTurnActivity({ ...base, status: 'submitted', lastMessage: filledAssistant })
     expect(activity.showSubmittedLoading).toBe(false)
     expect(activity.isActive).toBe(true)
+  })
+})
+
+describe('getTurnActivity stopping', () => {
+  it('reports stopping while the aborted request is still unwinding', () => {
+    const activity = getTurnActivity({
+      ...base,
+      status: 'streaming',
+      lastMessage: filledAssistant,
+      stopRequested: true,
+    })
+    expect(activity.isStopping).toBe(true)
+    expect(activity.isActive).toBe(true)
+  })
+
+  it('clears stopping once the request settles, even if the flag lingers', () => {
+    const activity = getTurnActivity({
+      ...base,
+      status: 'ready',
+      lastMessage: filledAssistant,
+      stopRequested: true,
+    })
+    expect(activity.isStopping).toBe(false)
   })
 })

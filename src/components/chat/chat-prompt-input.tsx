@@ -199,6 +199,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       id: chatThreadId,
       retryCount,
       retriesExhausted,
+      stopping,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
@@ -258,12 +259,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     // Show the Stop button whenever the thread is busy — the same signal
     // `ChatMessages` uses for its loading spinner, so the two stay in sync.
-    const { isActive: isBusy } = getTurnActivity({
+    const { isActive: isBusy, isStopping } = getTurnActivity({
       status,
       lastMessage: messages[messages.length - 1],
       hasChatError: chatError != null,
       retriesExhausted,
       retryCount,
+      stopRequested: stopping,
     })
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
@@ -846,6 +848,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
             isLoading={isBusy || isConnecting}
             isStreaming={isBusy}
+            isStopping={isStopping}
             onStop={stop}
             // Desktop always autofocuses. The native mobile app autofocuses on a
             // fresh chat (opening the app should land ready to type, keyboard up —

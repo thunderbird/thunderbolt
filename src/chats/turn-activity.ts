@@ -12,6 +12,8 @@ export type TurnActivityInput = {
   hasChatError: boolean
   retriesExhausted: boolean
   retryCount: number
+  /** The session's `stopping` flag — set by `chatInstance.stop`. */
+  stopRequested: boolean
 }
 
 export type TurnActivity = {
@@ -32,6 +34,12 @@ export type TurnActivity = {
    * can't disagree (THU-791 was exactly that disagreement).
    */
   isActive: boolean
+  /**
+   * Stop was pressed and the turn hasn't unwound yet. Derived from the live
+   * request rather than read straight off the flag, so a `stopping` left behind
+   * by a turn that settled some other way can't strand the composer.
+   */
+  isStopping: boolean
 }
 
 /**
@@ -45,6 +53,7 @@ export const getTurnActivity = ({
   hasChatError,
   retriesExhausted,
   retryCount,
+  stopRequested,
 }: TurnActivityInput): TurnActivity => {
   const isStreaming = status === 'streaming'
   const isGenerating = status === 'submitted' || isStreaming
@@ -61,5 +70,6 @@ export const getTurnActivity = ({
     pendingEmptyTurnRecovery,
     hasError,
     isActive,
+    isStopping: stopRequested && isGenerating,
   }
 }

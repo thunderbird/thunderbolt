@@ -3329,6 +3329,10 @@ msgstr "Statut"
 msgid "Stop generating"
 msgstr "Arrêter la génération"
 
+#: src/components/ui/prompt-input.tsx
+msgid "Stopping"
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "Storage is disabled"
 msgstr "Le stockage est désactivé"

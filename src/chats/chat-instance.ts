@@ -661,6 +661,9 @@ export const createChatInstance = (
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
   let lastError: Error | null = null
+  /** Set by `stop`, cleared when the user starts the next turn. Suppresses the
+   *  SDK's automatic re-send — see `sendAutomaticallyWhen` below. */
+  let stopRequested = false
 
   const emitTurnCompleted = (
     turn: TurnState,
@@ -698,6 +701,10 @@ export const createChatInstance = (
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
+    // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
+    // runs `resetRetryStateForNewTurn` on the aborted turn itself, and clearing
+    // the flag there would re-open the auto-send it exists to block.
+    stopRequested = false
     initializeTurnForCurrentSession(currentTurn)
   }
 
@@ -717,8 +724,14 @@ export const createChatInstance = (
     messages,
     transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
-    // Automatically send messages when the last one is a user message (used for automations)
-    sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
+    // Automatically send messages when the last one is a user message (used for
+    // automations). The SDK evaluates this after every turn and gates it on
+    // `isError` only — not on `isAbort` — so a stopped turn whose assistant
+    // message never materialized (Stop pressed while `submitted`) leaves the
+    // user message trailing and gets re-sent on the spot. That is THU-791's
+    // "Stop does nothing": the turn restarted faster than the UI could settle.
+    sendAutomaticallyWhen: ({ messages }) =>
+      !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
       const resetRetryStateIfUnswapped = () => {
@@ -729,17 +742,12 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Settle the aborted turn so no spinner survives the stop (THU-791). Three
-        // cases, keyed off the trailing assistant message:
+        // Settle the aborted turn so no spinner survives the stop (THU-791),
+        // keyed off the trailing assistant message.
         const lastIndex = instance.messages.length - 1
         const lastMessage = instance.messages[lastIndex]
 
-        if (isEmptyAssistantMessage(lastMessage)) {
-          // Stopped on the loader, before any content: the empty assistant shell
-          // re-triggers the empty-turn-recovery spinner and the Stop button stays
-          // up (a second press was needed). Drop it so one press settles to idle.
-          instance.messages = instance.messages.slice(0, -1)
-        } else if (hasStreamingReasoning(lastMessage)) {
+        if (hasStreamingReasoning(lastMessage)) {
           // Stopped mid-reasoning: the reasoning part is left `streaming`, so its
           // spinner never stops. Finalize it in the live list and the saved copy.
           const finalized = finalizeReasoning(lastMessage!)
@@ -981,12 +989,20 @@ export const createChatInstance = (
    * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
    * would swap `currentTurn` out from under it. Backoff/recovery fires no
    * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.
+   *
+   * `stopRequested` outlives this call: the SDK re-checks `sendAutomaticallyWhen`
+   * once the aborted request unwinds, and only an explicit send lifts it again.
    */
   instance.stop = async function () {
+    stopRequested = true
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
     }
+    // A turn stopped while its tool-permission dialog is open would leave the
+    // dialog on screen awaiting an answer the cancelled turn will never use.
+    // No-ops when nothing is pending.
+    useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
     if (instance.status === 'streaming' || instance.status === 'submitted') {
       void originalStop()
       return

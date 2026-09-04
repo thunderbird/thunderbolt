@@ -18,6 +18,7 @@ import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/c
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
+import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { Chat } from '@ai-sdk/react'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -53,6 +54,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
   const budgets: TurnBudget[] = []
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
   let onError: ((error: Error) => void) | undefined
+  let sendAutomaticallyWhen: ChatInit<ThunderboltUIMessage>['sendAutomaticallyWhen']
   const wakeAdapterReconnect = mock(() => {})
   const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
 
@@ -65,6 +67,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
   const createChat = (init: ChatInit<ThunderboltUIMessage>) => {
     onFinish = init.onFinish
     onError = init.onError
+    sendAutomaticallyWhen = init.sendAutomaticallyWhen
     return {
       id: init.id ?? sessionId,
       messages: init.messages ?? [],
@@ -147,6 +150,9 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
 
   const getTurnBudget = () => budgets.at(-1)!
 
+  /** Ask the SDK's auto-send predicate what it would do with the current messages. */
+  const wouldAutoSend = () => sendAutomaticallyWhen!({ messages: instance.messages })
+
   return {
     finishSuccessfully,
     finishAborted,
@@ -158,6 +164,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     sendMessage,
     trackEvent,
     wakeAdapterReconnect,
+    wouldAutoSend,
   }
 }
 
@@ -458,7 +465,7 @@ describe('createChatInstance — retry policy', () => {
     expect(autoRetry?.attempt).toBe(1)
   })
 
-  it('drops the empty assistant shell left when a loader turn is aborted', async () => {
+  it('leaves the message list untouched when a loader turn is aborted', async () => {
     const { instance, finishAbortedEmpty } = createRetryHarness()
     instance.messages = [
       { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
@@ -467,10 +474,54 @@ describe('createChatInstance — retry policy', () => {
 
     await finishAbortedEmpty()
 
-    // Without the drop, this empty shell re-triggers the recovery spinner and the
-    // Stop button stays up, forcing a second press (THU-791).
-    expect(instance.messages).toHaveLength(1)
-    expect(instance.messages[0]!.role).toBe('user')
+    // Dropping the shell here would leave the user message trailing, and the SDK
+    // re-checks `sendAutomaticallyWhen` the moment the aborted request unwinds —
+    // which re-sent the turn the user had just stopped (THU-791).
+    expect(instance.messages).toHaveLength(2)
+  })
+
+  it('suppresses the SDK auto-send after a stop, so the turn cannot restart itself', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    // Stop pressed while the model was still thinking: nothing streamed, so no
+    // assistant message was ever pushed and the user message is trailing.
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    expect(wouldAutoSend()).toBe(true)
+
+    await instance.stop()
+
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('lifts the auto-send suppression on the next explicit send', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    await instance.stop()
+    await instance.sendMessage({ text: 'again' })
+
+    expect(wouldAutoSend()).toBe(true)
+  })
+
+  it('resolves an open tool-permission dialog when the turn is stopped', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    const resolve = mock((_response: RequestPermissionResponse) => {})
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId: 'agent-1',
+      requestId: 'req-1',
+      request: {} as never,
+      resolve,
+    })
+
+    await instance.stop()
+
+    // Left pending, the dialog stays on screen awaiting an answer the cancelled
+    // turn will never consume.
+    expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).toBeNull()
   })
 
   it('finalizes a reasoning part left streaming when a turn is aborted mid-thinking', async () => {

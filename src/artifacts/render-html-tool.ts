@@ -140,6 +140,7 @@ export const renderHtmlTool: ToolConfig = {
   description: [
     'Render a self-contained HTML page (HTML/CSS/JS) as a visual artifact the user can see, instead of describing it in prose.',
     'Use this whenever a visual or interactive result is more useful than text: charts and data visualizations, diagrams, dashboards, formatted layouts, animations, simulations, games, or small web apps.',
+    'Do NOT use it to reproduce something a built-in widget already renders. When one of the available skills offers a `<widget:…>` component covering what was asked, emit that tag instead of rebuilding it in HTML.',
     'The page is automatically verified before it is shown: its inline JS/CSS syntax is checked and it is rendered in a sandbox to confirm it loads without errors. If the result is { ok: false }, read the errors, fix the HTML, and call render_html again. Do not narrate the HTML source to the user.',
   ].join(' '),
   verb: 'Rendering artifact',

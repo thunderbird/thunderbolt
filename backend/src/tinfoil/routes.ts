@@ -35,6 +35,18 @@ const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMess
 const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
 const tinfoilProxyTimingHeader = 'X-Proxy-Timing'
 const serverTimingHeader = 'Server-Timing'
+const upstreamRequestHeaderBlocklist = new Set([
+  'authorization',
+  'x-api-key',
+  'host',
+  'cookie',
+  'connection',
+  tinfoilEnclaveUrlHeader,
+  'x-app-version',
+  'x-app-language',
+  'x-device-id',
+  'x-device-name',
+])
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
@@ -258,15 +270,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
 
     const headers = new Headers()
     request.headers.forEach((value, key) => {
-      const lower = key.toLowerCase()
-      if (
-        lower === 'authorization' ||
-        lower === 'x-api-key' ||
-        lower === 'host' ||
-        lower === 'cookie' ||
-        lower === 'connection' ||
-        lower === tinfoilEnclaveUrlHeader
-      ) {
+      if (upstreamRequestHeaderBlocklist.has(key.toLowerCase())) {
         return
       }
       headers.set(key, value)

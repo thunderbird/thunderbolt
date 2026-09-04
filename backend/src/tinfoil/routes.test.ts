@@ -285,6 +285,31 @@ describe('createTinfoilRoutes', () => {
       expect(sent.get('x-tinfoil-enclave-url')).toBeNull()
     })
 
+    it('does not forward Thunderbolt client identity headers upstream', async () => {
+      const app = buildApp()
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'X-App-Version': '1.2.3',
+              'X-App-Language': 'de',
+              'X-Device-ID': 'cli-device-id',
+              'X-Device-Name': 'Workstation',
+            },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const sent = init.headers as Headers
+      expect(sent.get('x-app-version')).toBeNull()
+      expect(sent.get('x-app-language')).toBeNull()
+      expect(sent.get('x-device-id')).toBeNull()
+      expect(sent.get('x-device-name')).toBeNull()
+    })
+
     it('strips response hop-by-hop headers while preserving content encoding', async () => {
       mockFetch.mockResolvedValueOnce(
         makeOkResponse('opaque', {

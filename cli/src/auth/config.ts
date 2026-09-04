@@ -27,6 +27,7 @@ const bakedAppUrl = process.env.THUNDERBOLT_BUILD_APP_URL
 
 export const cliClientId = 'thunderbolt-cli'
 
+/** Preserves caller headers and adds the outer-hop app version sent to the Thunderbolt backend. */
 export const backendHeaders = (headers?: RequestInit['headers']): Headers => {
   const result = new Headers(headers)
   result.set('X-App-Version', cliVersion)
@@ -66,7 +67,8 @@ export const resolvePatToken = (env: Env = process.env): string | undefined => e
 export const patRemainsActiveNote = 'THUNDERBOLT_TOKEN remains active until it is removed from the environment.'
 
 /** Hosts for which plain HTTP is safe (the token never leaves the machine). */
-const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const loopbackHosts = new Set(['localhost', '::1', '[::1]'])
+const ipv4LoopbackPattern = /^127(?:\.\d{1,3}){3}$/
 
 /** Parses only backend URLs that are safe to use for account credentials. */
 const parseSecureCloudUrl = (cloudUrl: string): URL | null => {
@@ -74,7 +76,12 @@ const parseSecureCloudUrl = (cloudUrl: string): URL | null => {
   const url = new URL(cloudUrl)
   if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') return null
   if (url.protocol === 'https:') return url
-  if (url.protocol === 'http:' && (loopbackHosts.has(url.hostname) || url.hostname.endsWith('.localhost'))) return url
+  if (
+    url.protocol === 'http:' &&
+    (loopbackHosts.has(url.hostname) || ipv4LoopbackPattern.test(url.hostname) || url.hostname.endsWith('.localhost'))
+  ) {
+    return url
+  }
   return null
 }
 
@@ -95,7 +102,9 @@ const normalizeApiBaseUrl = (url: URL): string => {
 export const apiBaseUrl = (cloudUrl: string): string => {
   const url = parseSecureCloudUrl(cloudUrl)
   if (url === null)
-    throw new Error('insecure backend URL: must use https (or loopback http) without credentials, a query, or a fragment')
+    throw new Error(
+      'insecure backend URL: must use https (or loopback http) without credentials, a query, or a fragment',
+    )
   return normalizeApiBaseUrl(url)
 }
 

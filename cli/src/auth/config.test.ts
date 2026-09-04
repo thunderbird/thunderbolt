@@ -102,11 +102,13 @@ describe('isSecureCloudUrl', () => {
   test('accepts plain http only for loopback hosts', () => {
     expect(isSecureCloudUrl('http://localhost:8000/v1')).toBe(true)
     expect(isSecureCloudUrl('http://127.0.0.1:8000/v1')).toBe(true)
+    expect(isSecureCloudUrl('http://127.0.0.2:8000/v1')).toBe(true)
     expect(isSecureCloudUrl('http://api.localhost/v1')).toBe(true)
   })
 
   test('rejects plain http to a remote host (would leak the bearer)', () => {
     expect(isSecureCloudUrl('http://selfhost.example/v1')).toBe(false)
+    expect(isSecureCloudUrl('http://127.0.0.1.example.com/v1')).toBe(false)
   })
 
   test.each([

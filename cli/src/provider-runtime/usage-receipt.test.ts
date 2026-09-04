@@ -2,10 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 import type { AssistantMessage } from '@earendil-works/pi-ai'
 import { cliVersion } from '../version.ts'
+import { readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
 
 const assistantMessage = (
@@ -45,6 +49,13 @@ const createHarnessEvents = () => {
     },
   }
 }
+
+const receiptOutboxDirectory = await mkdtemp(join(tmpdir(), 'thunderbolt-receipt-tests-'))
+const testOutboxPath = (): string => join(receiptOutboxDirectory, `${crypto.randomUUID()}.json`)
+
+afterAll(async () => {
+  await rm(receiptOutboxDirectory, { recursive: true, force: true })
+})
 
 describe('submitInferenceUsageReceipt', () => {
   test('submits exact usage to the authenticated backend receipt endpoint', async () => {
@@ -104,7 +115,7 @@ describe('submitInferenceUsageReceipt', () => {
 
   test.each([
     [401, 1],
-    [403, 1],
+    [403, 0],
     [429, 0],
     [503, 0],
   ] as const)(
@@ -163,9 +174,110 @@ describe('submitInferenceUsageReceipt', () => {
     expect(requests).toBe(1)
     expect(unauthorized).toBe(0)
   })
+
+  test('keeps a known unauthorized response non-retryable when its observer fails', async () => {
+    const observerFailure = new Error('auth persistence failed')
+    const reported: Error[] = []
+    const requests: Request[] = []
+    const submission = submitInferenceUsageReceipt({
+      backendUrl: 'https://app.example.com/v1',
+      bearer: 'stored-session',
+      usage: {
+        receipt: 'iu1.canonicalPayload.canonicalSignature',
+        promptTokens: 16,
+        completionTokens: 2,
+        totalTokens: 18,
+      },
+      onUnauthorized: async () => {
+        throw observerFailure
+      },
+      reportError: (error) => {
+        reported.push(error)
+      },
+      fetchFn: async (input, init) => {
+        requests.push(new Request(String(input), init))
+        return new Response(null, { status: 401 })
+      },
+    })
+
+    await expect(submission).rejects.toThrow('HTTP 401')
+    expect(requests).toHaveLength(1)
+    expect(reported).toEqual([observerFailure])
+  })
 })
 
 describe('createUsageReceiptLifecycle', () => {
+  test('retries a failed receipt with backoff before retaining it in the durable outbox', async () => {
+    const outboxPath = testOutboxPath()
+    const attempts: string[] = []
+    const delays: number[] = []
+    const lifecycle = await createUsageReceiptLifecycle({
+      submit: async (usage) => {
+        attempts.push(usage.receipt)
+        throw new Error('temporarily unavailable')
+      },
+      outboxPath,
+      wait: async (milliseconds) => {
+        delays.push(milliseconds)
+      },
+    })
+    const events = createHarnessEvents()
+    lifecycle.attach(events.harness)
+    const message = assistantMessage('answer survives retry exhaustion')
+
+    lifecycle.completeProviderStep({ receipt: 'retry-receipt', message })
+    await events.emit({ type: 'message_end', message })
+
+    expect(attempts).toEqual(['retry-receipt', 'retry-receipt', 'retry-receipt'])
+    expect(delays).toEqual([100, 500])
+    expect(JSON.parse(await readFile(outboxPath, 'utf8'))).toEqual([
+      { receipt: 'retry-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 },
+    ])
+  })
+
+  test('flushes a durable receipt outbox when the next lifecycle starts', async () => {
+    const outboxPath = testOutboxPath()
+    const usage = { receipt: 'persisted-receipt', promptTokens: 16, completionTokens: 2, totalTokens: 18 }
+    await writeSecureFile(outboxPath, `${JSON.stringify([usage])}\n`)
+    const submissions: typeof usage[] = []
+
+    await createUsageReceiptLifecycle({
+      submit: async (pending) => {
+        submissions.push(pending)
+      },
+      outboxPath,
+      wait: async () => {},
+    })
+
+    expect(submissions).toEqual([usage])
+    expect(await readFileOrNull(outboxPath)).toBeNull()
+  })
+
+  test('reports an outbox persistence failure without rejecting the completed message event', async () => {
+    const parentPath = join(receiptOutboxDirectory, crypto.randomUUID())
+    const outboxPath = join(parentPath, 'outbox.json')
+    await mkdir(parentPath)
+    const reported: Error[] = []
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath,
+      reportError: (error) => {
+        reported.push(error)
+      },
+      submit: async () => {},
+    })
+    await rm(parentPath, { recursive: true })
+    await writeFile(parentPath, 'not a directory')
+    const events = createHarnessEvents()
+    lifecycle.attach(events.harness)
+    const message = assistantMessage('answer survives outbox failure')
+
+    lifecycle.completeProviderStep({ receipt: 'unpersisted-receipt', message })
+    await expect(events.emit({ type: 'message_end', message })).resolves.toBeUndefined()
+
+    expect(reported).toHaveLength(1)
+    expect(reported[0]?.message).toContain('not a directory')
+  })
+
   test('consumes a completed provider step only at its exact assistant message_end', async () => {
     const submissions: Array<{
       readonly receipt: string
@@ -173,7 +285,9 @@ describe('createUsageReceiptLifecycle', () => {
       readonly completionTokens: number
       readonly totalTokens: number
     }> = []
-    const lifecycle = createUsageReceiptLifecycle({
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath: testOutboxPath(),
+      wait: async () => {},
       submit: async (usage) => {
         submissions.push(usage)
       },
@@ -207,7 +321,8 @@ describe('createUsageReceiptLifecycle', () => {
 
   test('clears an unconsumed provider receipt when the harness run ends', async () => {
     const submissions: string[] = []
-    const lifecycle = createUsageReceiptLifecycle({
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath: testOutboxPath(),
       submit: async (usage) => {
         submissions.push(usage.receipt)
       },
@@ -225,7 +340,9 @@ describe('createUsageReceiptLifecycle', () => {
 
   test('isolates submission failure and still accepts the next completed step', async () => {
     const attempts: string[] = []
-    const lifecycle = createUsageReceiptLifecycle({
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath: testOutboxPath(),
+      wait: async () => {},
       submit: async (usage) => {
         attempts.push(usage.receipt)
         if (usage.receipt === 'failed-receipt') throw new Error('receipt backend unavailable')
@@ -241,12 +358,21 @@ describe('createUsageReceiptLifecycle', () => {
     lifecycle.completeProviderStep({ receipt: 'next-receipt', message: nextMessage })
     await events.emit({ type: 'message_end', message: nextMessage })
 
-    expect(attempts).toEqual(['failed-receipt', 'next-receipt'])
+    expect(attempts).toEqual([
+      'failed-receipt',
+      'failed-receipt',
+      'failed-receipt',
+      'failed-receipt',
+      'failed-receipt',
+      'failed-receipt',
+      'next-receipt',
+    ])
   })
 
   test('clears pending state on abort before a terminal message arrives', async () => {
     const submissions: string[] = []
-    const lifecycle = createUsageReceiptLifecycle({
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath: testOutboxPath(),
       submit: async (usage) => {
         submissions.push(usage.receipt)
       },
@@ -264,7 +390,8 @@ describe('createUsageReceiptLifecycle', () => {
 
   test('unsubscribe is idempotent and clears pending state', async () => {
     const submissions: string[] = []
-    const lifecycle = createUsageReceiptLifecycle({
+    const lifecycle = await createUsageReceiptLifecycle({
+      outboxPath: testOutboxPath(),
       submit: async (usage) => {
         submissions.push(usage.receipt)
       },

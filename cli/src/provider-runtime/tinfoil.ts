@@ -17,12 +17,15 @@ import {
   type StreamOptions,
 } from '@earendil-works/pi-ai'
 import { builtinModels as piBuiltinModels } from '@earendil-works/pi-ai/providers/all'
+import { join } from 'node:path'
 import { SecureClient } from 'tinfoil'
 import { buildOpenAiCompatModel } from '../agent/openai-compat-model.ts'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
+import { thunderboltHomeDir } from '../paths.ts'
 import { providerRuntimeError } from './types.ts'
 import type { AccountFetch, PreparedPiBinding, ProviderRuntimeError, SessionCredential } from './types.ts'
 import { createUsageReceiptLifecycle, submitInferenceUsageReceipt } from './usage-receipt.ts'
+import type { UsageReceiptLifecycle } from './usage-receipt.ts'
 
 type TinfoilBindingError = Error & ProviderRuntimeError
 
@@ -35,6 +38,9 @@ export type CreateTinfoilBindingOptions = {
   readonly onStoredSessionRejected: () => Promise<void>
   readonly fetchFn?: AccountFetch
   readonly receiptTimeoutMs?: number
+  readonly receiptOutboxPath?: string
+  readonly receiptRetryWait?: (milliseconds: number) => Promise<void>
+  readonly reportError?: (error: Error) => void
   readonly createSecureClient?: (options: ConstructorParameters<typeof SecureClient>[0]) => SecureClient
 }
 
@@ -132,7 +138,7 @@ const captureProviderReceipt = (
   source: AssistantMessageEventStream,
   model: Model<Api>,
   getReceipt: () => string | null,
-  receipts: ReturnType<typeof createUsageReceiptLifecycle>,
+  receipts: UsageReceiptLifecycle,
   takeAttestationFailure: () => TinfoilBindingError | null,
   signal?: AbortSignal,
 ): AssistantMessageEventStream => {
@@ -182,7 +188,7 @@ const captureProviderReceipt = (
 /** Wrap the OpenAI-compatible provider at the provider-stream boundary. */
 const createReceiptCapturingProvider = (
   provider: Provider,
-  receipts: ReturnType<typeof createUsageReceiptLifecycle>,
+  receipts: UsageReceiptLifecycle,
   clearAttestationFailure: () => void,
   takeAttestationFailure: () => TinfoilBindingError | null,
 ): Provider => {
@@ -277,7 +283,14 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
   const sourceProvider = built.models.getProvider(providerId)
   if (!sourceProvider) throw new Error('Tinfoil provider construction failed.')
 
-  const receipts = createUsageReceiptLifecycle({
+  const reportError =
+    options.reportError ?? ((error: Error) => console.error('Confidential usage receipt bookkeeping failed.', error))
+  const receipts = await createUsageReceiptLifecycle({
+    outboxPath:
+      options.receiptOutboxPath ??
+      join(thunderboltHomeDir(), 'inference-usage-receipts', `${options.credential.deviceId}.json`),
+    reportError,
+    wait: options.receiptRetryWait,
     submit: (usage) =>
       submitInferenceUsageReceipt({
         backendUrl: options.credential.backendUrl,
@@ -285,6 +298,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
         usage,
         fetchFn: options.fetchFn,
         onUnauthorized: options.onStoredSessionRejected,
+        reportError,
         timeoutMs: options.receiptTimeoutMs,
       }),
   })

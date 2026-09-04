@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, describe, expect, test } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
@@ -10,6 +13,7 @@ import { defaultModelGlm52, type SharedModel } from '../../../shared/defaults/mo
 import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared/inference-usage.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
+import { readFileOrNull } from '../lib/secure-fs.ts'
 import { cliVersion } from '../version.ts'
 import type { HarnessRuntime, PreparedPiBinding, ResolvedAccountCredential } from './types.ts'
 import { testSessionCredential } from './test-fixtures.ts'
@@ -25,6 +29,13 @@ const confidentialModel: SharedModel = {
   startWithReasoning: 1,
   supportsParallelToolCalls: 1,
 }
+
+const receiptOutboxDirectory = await mkdtemp(join(tmpdir(), 'thunderbolt-tinfoil-'))
+const testOutboxPath = (): string => join(receiptOutboxDirectory, `${crypto.randomUUID()}.json`)
+
+afterAll(async () => {
+  await rm(receiptOutboxDirectory, { recursive: true, force: true })
+})
 
 const sessionCredential = (
   overrides: Partial<Extract<ResolvedAccountCredential, { type: 'session' }>> = {},
@@ -42,6 +53,9 @@ const bindingOptions = (
   credential,
   model: confidentialModel,
   onStoredSessionRejected: async () => {},
+  receiptOutboxPath: testOutboxPath(),
+  receiptRetryWait: async () => {},
+  reportError: () => {},
 })
 
 const successfulCompletion = (receipt: string): Response =>
@@ -602,19 +616,86 @@ describe('createTinfoilBinding', () => {
       expect(message.stopReason).toBe('stop')
       expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
       expect(inferenceRequests).toBe(1)
-      expect(receiptRequests).toBe(1)
+      expect(receiptRequests).toBe(3)
     } finally {
       await runtime.dispose()
     }
   })
 
-  test.each([401, 403] as const)(
-    'marks the stored session rejected when receipt submission returns %i',
-    async (status) => {
+  test('does not flush account A receipts with account B credentials after an account switch', async () => {
+    const previousHome = process.env.THUNDERBOLT_HOME
+    process.env.THUNDERBOLT_HOME = receiptOutboxDirectory
+    const credentialA = sessionCredential({
+      bearer: 'account-a-session',
+      deviceId: 'cli-00000000-0000-7000-8000-00000000000a',
+    })
+    const credentialB = sessionCredential({
+      bearer: 'account-b-session',
+      deviceId: 'cli-00000000-0000-7000-8000-00000000000b',
+    })
+    const accountBReceiptRequests: Request[] = []
+    const accountBDemotions: string[] = []
+
+    try {
+      const bindingA = await createTinfoilBinding({
+        credential: credentialA,
+        model: confidentialModel,
+        onStoredSessionRejected: async () => {},
+        receiptRetryWait: async () => {},
+        createSecureClient: secureClientFactory(() => successfulCompletion('account-a-receipt')),
+        fetchFn: async () => new Response(null, { status: 503 }),
+      })
+      const runtimeA = await createRuntime(bindingA)
+      try {
+        await runtimeA.prompt('account A request')
+      } finally {
+        await runtimeA.dispose()
+      }
+
+      const bindingB = await createTinfoilBinding({
+        credential: credentialB,
+        model: confidentialModel,
+        onStoredSessionRejected: async () => {
+          accountBDemotions.push('demoted')
+        },
+        receiptRetryWait: async () => {},
+        createSecureClient: secureClientFactory(() => successfulCompletion('')),
+        fetchFn: async (input, init) => {
+          accountBReceiptRequests.push(new Request(String(input), init))
+          return new Response(null, { status: 403 })
+        },
+      })
+      await bindingB.dispose()
+
+      expect(accountBReceiptRequests).toEqual([])
+      expect(accountBDemotions).toEqual([])
+      expect(
+        await readFileOrNull(
+          join(
+            receiptOutboxDirectory,
+            'inference-usage-receipts',
+            `${credentialA.deviceId}.json`,
+          ),
+        ),
+      ).not.toBeNull()
+    } finally {
+      if (previousHome === undefined) delete process.env.THUNDERBOLT_HOME
+      else process.env.THUNDERBOLT_HOME = previousHome
+    }
+  })
+
+  test.each([
+    [401, 1, true],
+    [403, 0, false],
+  ] as const)(
+    'handles receipt submission HTTP %i with %i auth rejection(s)',
+    async (status, expectedRejections, retained) => {
       const rejected: string[] = []
+      const outboxPath = testOutboxPath()
       const ready = secureClientFactory(() => successfulCompletion('expired-session-receipt'))
       const binding = await createTinfoilBinding({
         ...bindingOptions(),
+        receiptOutboxPath: outboxPath,
         createSecureClient: ready,
         onStoredSessionRejected: async () => {
           rejected.push('session')
@@ -626,7 +707,8 @@ describe('createTinfoilBinding', () => {
         const message = await runtime.prompt('answer before receipt authentication fails')
 
         expect(message.stopReason).toBe('stop')
-        expect(rejected).toEqual(['session'])
+        expect(rejected).toHaveLength(expectedRejections)
+        expect((await readFileOrNull(outboxPath)) !== null).toBe(retained)
       } finally {
         await runtime.dispose()
       }

@@ -5,7 +5,6 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useDatabase } from '@/contexts'
 import { getAllDevices, getPendingDevices, type Device } from '@/dal'
-import { isPairableDeviceType } from '@/dal/devices'
 import { getDeviceId } from '@/lib/auth-token'
 import { PageHeader } from '@/components/ui/page-header'
 import { ApproveDeviceDialog } from '@/components/approve-device-dialog'
@@ -152,7 +151,7 @@ const TrustedDeviceRow = ({
   const isRevoked = device.revokedAt != null
   const isBridge = device.deviceType === 'bridge'
   const isCli = device.deviceType === 'cli'
-  const supportsPairing = isPairableDeviceType(device.deviceType) || isBridge
+  const supportsPairing = device.deviceType === null || device.deviceType === 'normal' || isBridge
   const pairingPanelId = `device-pairing-${device.id}`
   return (
     <DeviceCard>

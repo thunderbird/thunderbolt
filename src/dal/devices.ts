@@ -23,9 +23,6 @@ export type Device = {
   nodeIdAttestedAt: string | null
 }
 
-export const isPairableDeviceType = (deviceType: Device['deviceType']): boolean =>
-  deviceType === null || deviceType === 'normal'
-
 /**
  * Gets a single device by id from the local DB (synced via PowerSync).
  */

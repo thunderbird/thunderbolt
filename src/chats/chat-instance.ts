@@ -446,6 +446,22 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
   }
 }
 
+const isEmptyAssistantMessage = (message: ThunderboltUIMessage | undefined): boolean =>
+  message?.role === 'assistant' && !message.parts?.length
+
+/** A reasoning part still mid-stream keeps its spinner running (reasoning-group.tsx)
+ *  even after the turn settles — true when an aborted turn stopped during thinking. */
+const hasStreamingReasoning = (message: ThunderboltUIMessage | undefined): boolean =>
+  !!message?.parts?.some((part) => part.type === 'reasoning' && part.state === 'streaming')
+
+/** Mark every still-streaming reasoning part `done` so its spinner stops. */
+const finalizeReasoning = (message: ThunderboltUIMessage): ThunderboltUIMessage => ({
+  ...message,
+  parts: message.parts.map((part) =>
+    part.type === 'reasoning' && part.state === 'streaming' ? { ...part, state: 'done' as const } : part,
+  ),
+})
+
 type ChatMessageInput = Parameters<Chat<ThunderboltUIMessage>['sendMessage']>[0]
 
 /** Count user-authored text across both AI SDK message input shapes. */
@@ -645,6 +661,9 @@ export const createChatInstance = (
   let retryCount = 0
   let retryTimeout: ReturnType<typeof setTimeout> | null = null
   let lastError: Error | null = null
+  /** Set by `stop`, cleared when the user starts the next turn. Suppresses the
+   *  SDK's automatic re-send — see `sendAutomaticallyWhen` below. */
+  let stopRequested = false
 
   const emitTurnCompleted = (
     turn: TurnState,
@@ -677,11 +696,15 @@ export const createChatInstance = (
     retryCount = 0
     lastError = null
     currentTurn = createTurnState()
-    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false, stopping: false })
   }
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
+    // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
+    // runs `resetRetryStateForNewTurn` on the aborted turn itself, and clearing
+    // the flag there would re-open the auto-send it exists to block.
+    stopRequested = false
     initializeTurnForCurrentSession(currentTurn)
   }
 
@@ -701,8 +724,14 @@ export const createChatInstance = (
     messages,
     transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
-    // Automatically send messages when the last one is a user message (used for automations)
-    sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
+    // Automatically send messages when the last one is a user message (used for
+    // automations). The SDK evaluates this after every turn and gates it on
+    // `isError` only — not on `isAbort` — so a stopped turn whose assistant
+    // message never materialized (Stop pressed while `submitted`) leaves the
+    // user message trailing and gets re-sent on the spot. That is THU-791's
+    // "Stop does nothing": the turn restarted faster than the UI could settle.
+    sendAutomaticallyWhen: ({ messages }) =>
+      !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
       const resetRetryStateIfUnswapped = () => {
@@ -713,13 +742,37 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Persist whatever streamed before the user hit Stop. Streaming partial
-        // saves are throttled and their pending trailing write is cancelled the
-        // moment streaming stops (see SavePartialAssistantMessagesHandler), so
-        // onFinish is the authoritative final save on abort just as it is on
-        // success — without this, the last streamed chunk of an aborted turn
-        // would be lost on reload.
-        if (message?.parts?.length) {
+        // Settle the aborted turn so no spinner survives the stop (THU-791),
+        // keyed off the trailing assistant message.
+        const lastIndex = instance.messages.length - 1
+        const lastMessage = instance.messages[lastIndex]
+
+        if (isEmptyAssistantMessage(lastMessage)) {
+          // Stopped after the turn opened but before it produced anything (the
+          // model's first turn hadn't begun). The shell renders as an empty-turn
+          // recovery spinner that nothing will ever recover, so drop it.
+          //
+          // Load-bearing: this is only safe because `stopRequested` gates
+          // `sendAutomaticallyWhen`. Dropping the shell leaves the user message
+          // trailing, and the SDK re-checks that predicate the moment this
+          // request unwinds — ungated, the stopped turn re-sends itself.
+          instance.messages = instance.messages.slice(0, -1)
+        } else if (hasStreamingReasoning(lastMessage)) {
+          // Stopped mid-reasoning: the reasoning part is left `streaming`, so its
+          // spinner never stops. Finalize it in the live list and the saved copy.
+          const finalized = finalizeReasoning(lastMessage!)
+          const next = instance.messages.slice()
+          next[lastIndex] = finalized
+          instance.messages = next
+          finishedTurn.telemetry?.startPhase('final_save')
+          await saveMessages({ id, messages: [finalized] })
+          finishedTurn.telemetry?.endPhase('final_save')
+        } else if (message?.parts?.length) {
+          // Stopped mid-answer: persist the partial. Streaming partial saves are
+          // throttled and their pending trailing write is cancelled the moment
+          // streaming stops (see SavePartialAssistantMessagesHandler), so onFinish
+          // is the authoritative final save on abort — without this the last
+          // streamed chunk would be lost on reload.
           finishedTurn.telemetry?.startPhase('final_save')
           await saveMessages({ id, messages: [message] })
           finishedTurn.telemetry?.endPhase('final_save')
@@ -937,6 +990,42 @@ export const createChatInstance = (
       } as ThunderboltUIMessage,
       options,
     )
+  }
+
+  const originalStop = instance.stop.bind(instance)
+
+  /**
+   * Stop the active turn and settle to idle (THU-791). In-flight aborts let
+   * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
+   * would swap `currentTurn` out from under it. Backoff/recovery fires no
+   * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.
+   *
+   * `stopRequested` outlives this call: the SDK re-checks `sendAutomaticallyWhen`
+   * once the aborted request unwinds, and only an explicit send lifts it again.
+   */
+  instance.stop = async function () {
+    stopRequested = true
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
+    // A turn stopped while its tool-permission dialog is open would leave the
+    // dialog on screen awaiting an answer the cancelled turn will never use.
+    // No-ops when nothing is pending.
+    useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
+    if (instance.status === 'streaming' || instance.status === 'submitted') {
+      // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
+      // round-trip, and the in-browser harness has to unwind its loop — so flag
+      // the wait for the composer instead of leaving the button looking inert.
+      useChatStore.getState().updateSession(id, { stopping: true })
+      void originalStop()
+      return
+    }
+    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
+      instance.messages = instance.messages.slice(0, -1)
+    }
+    emitTurnCompleted(currentTurn, 'abort')
+    resetRetryStateForNewTurn()
   }
 
   return instance

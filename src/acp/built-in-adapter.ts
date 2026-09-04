@@ -527,6 +527,10 @@ const fetchViaHarness = async (
           ...(config.sourceCollector.length > 0 ? { sources: [...config.sourceCollector] } : {}),
         }),
       },
+      // Stop: the AI SDK aborts this signal and nothing else. The harness runs
+      // in-browser, so unless it sees the signal the loop keeps calling the
+      // model and executing tools after the user pressed the button.
+      init.signal ?? undefined,
     ),
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   )

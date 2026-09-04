@@ -405,3 +405,84 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(telemetry.getEngine()).toBe('pi')
   })
 })
+
+describe('createBuiltInAdapter stop', () => {
+  it("forwards the request's abort signal to the harness stream", async () => {
+    const model = {
+      id: 'model-1',
+      name: 'Claude',
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      apiKey: 'sk-a',
+      toolUsage: 1,
+    } as Model
+    const config: PreparedAiRequestConfig = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {} as PreparedAiRequestConfig['toolset'],
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable prompt',
+      volatileSystemPrompt: 'volatile prompt',
+    }
+    const harness = {
+      getTools: () => [],
+      setTools: async () => {},
+      setActiveTools: async () => {},
+      prompt: async () => {},
+      waitForIdle: async () => {},
+      on: () => () => {},
+      abort: async () => ({ clearedSteer: [], clearedFollowUp: [] }),
+      env: { remove: async () => {} },
+    } as unknown as AgentHarness
+    const signals: Array<AbortSignal | undefined> = []
+    const agentCore = {
+      isKnownAnthropicModel: () => true,
+      buildAppHarness: async () => harness,
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (
+        _harness: AgentHarness,
+        runPrompt: () => Promise<unknown>,
+        _metadata: unknown,
+        signal?: AbortSignal,
+      ) => {
+        signals.push(signal)
+        return new ReadableStream<Uint8Array>({
+          start: (controller) => void runPrompt().then(() => controller.close()),
+        })
+      },
+    } as unknown as Awaited<ReturnType<NonNullable<BuiltInAdapterOptions['loadAgentCore']>>>
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: (async () => config) as NonNullable<BuiltInAdapterOptions['prepareConfig']>,
+    })
+    const context = {
+      threadId: 'thread-1',
+      selectedModel: model,
+      mcpClients: [],
+      reconnectClient: async () => null,
+      httpClient: {},
+      getProxyFetch: () => noopFetch,
+      onAcpSessionId: async () => {},
+      regenerationRevision: 0,
+      telemetry: createTurnTelemetry({ generateId: () => 'trace-pi' }),
+    } as unknown as AgentAdapterContext
+    const controller = new AbortController()
+
+    const response = await adapter.fetch(
+      {
+        body: JSON.stringify({ messages: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }] }),
+        signal: controller.signal,
+      },
+      context,
+    )
+    await response.text()
+
+    // Without this the in-browser loop keeps calling the model and running tools
+    // after Stop — the AI SDK only aborts the signal, it never cancels the body.
+    expect(signals).toEqual([controller.signal])
+  })
+})

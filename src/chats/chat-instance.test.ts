@@ -18,11 +18,13 @@ import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/c
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
+import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { Chat } from '@ai-sdk/react'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useChatStore } from './chat-store'
 import { createAgentRoutingFetch, createChatInstance } from './chat-instance'
+import { getTurnActivity } from './turn-activity'
 
 const sessionId = 'sess-1'
 const httpClient: HttpClient = {} as HttpClient
@@ -53,6 +55,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
   const budgets: TurnBudget[] = []
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
   let onError: ((error: Error) => void) | undefined
+  let sendAutomaticallyWhen: ChatInit<ThunderboltUIMessage>['sendAutomaticallyWhen']
   const wakeAdapterReconnect = mock(() => {})
   const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
 
@@ -65,11 +68,14 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
   const createChat = (init: ChatInit<ThunderboltUIMessage>) => {
     onFinish = init.onFinish
     onError = init.onError
+    sendAutomaticallyWhen = init.sendAutomaticallyWhen
     return {
       id: init.id ?? sessionId,
       messages: init.messages ?? [],
+      status: 'ready',
       regenerate,
       sendMessage,
+      stop: mock(() => Promise.resolve()),
     } as unknown as Chat<ThunderboltUIMessage>
   }
 
@@ -134,11 +140,24 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
       isError: false,
     })
 
+  const finishAbortedEmpty = () =>
+    onFinish!({
+      message: { id: 'aborted-empty', role: 'assistant', parts: [] },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
   const getTurnBudget = () => budgets.at(-1)!
+
+  /** Ask the SDK's auto-send predicate what it would do with the current messages. */
+  const wouldAutoSend = () => sendAutomaticallyWhen!({ messages: instance.messages })
 
   return {
     finishSuccessfully,
     finishAborted,
+    finishAbortedEmpty,
     finishWithError,
     getTurnBudget,
     instance,
@@ -146,6 +165,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     sendMessage,
     trackEvent,
     wakeAdapterReconnect,
+    wouldAutoSend,
   }
 }
 
@@ -444,6 +464,163 @@ describe('createChatInstance — retry policy', () => {
     const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
     expect(autoRetry?.reason).toBe('empty-response')
     expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
+    const { instance, finishAbortedEmpty, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Two halves of one invariant, asserted together because each masks the
+    // other's regression: kept, the shell renders an empty-turn recovery spinner
+    // nothing will recover; dropped without the `stopRequested` gate, the now
+    // trailing user message makes the SDK re-send the stopped turn (THU-791).
+    expect(instance.messages).toHaveLength(1)
+    expect(instance.messages[0]!.role).toBe('user')
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('settles the composer to idle after an aborted loader turn', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    const activity = getTurnActivity({
+      status: 'ready',
+      lastMessage: instance.messages[instance.messages.length - 1],
+      hasChatError: false,
+      retriesExhausted: session?.retriesExhausted ?? false,
+      retryCount: session?.retryCount ?? 0,
+      stopRequested: session?.stopping ?? false,
+    })
+    expect(activity.isActive).toBe(false)
+  })
+
+  it('suppresses the SDK auto-send after a stop, so the turn cannot restart itself', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    // Stop pressed while the model was still thinking: nothing streamed, so no
+    // assistant message was ever pushed and the user message is trailing.
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    expect(wouldAutoSend()).toBe(true)
+
+    await instance.stop()
+
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('lifts the auto-send suppression on the next explicit send', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    await instance.stop()
+    await instance.sendMessage({ text: 'again' })
+
+    expect(wouldAutoSend()).toBe(true)
+  })
+
+  it('stop() flags the session as stopping while the abort unwinds', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+
+    await instance.stop()
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+  })
+
+  it('resolves an open tool-permission dialog when the turn is stopped', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    const resolve = mock((_response: RequestPermissionResponse) => {})
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId: 'agent-1',
+      requestId: 'req-1',
+      request: {} as never,
+      resolve,
+    })
+
+    await instance.stop()
+
+    // Left pending, the dialog stays on screen awaiting an answer the cancelled
+    // turn will never consume.
+    expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).toBeNull()
+  })
+
+  it('finalizes a reasoning part left streaming when a turn is aborted mid-thinking', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'List things' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'reasoning', text: 'The user is asking…', state: 'streaming' }] },
+    ] as never
+
+    await finishAborted()
+
+    // Left streaming, the reasoning part keeps its spinner running after the stop
+    // (reasoning-group.tsx) even though the turn has settled (THU-791).
+    const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
+    expect(last.parts[0]!.state).toBe('done')
+  })
+
+  it('keeps a partial assistant message when an aborted turn had content', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    await finishAborted()
+
+    expect(instance.messages).toHaveLength(2)
+    expect(instance.messages[1]!.role).toBe('assistant')
+  })
+
+  it('stop() delegates an in-flight abort to onFinish (no drop/reset in the handler)', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+
+    // The abort's onFinish settles the turn on the correct `currentTurn`; the
+    // handler must not swap it out early, so it neither drops the shell nor resets.
+    expect(instance.messages).toHaveLength(2)
+  })
+
+  it('stop() cancels a pending auto-retry and settles the session to idle', async () => {
+    const { finishWithError, regenerate, instance } = createRetryHarness()
+
+    await finishWithError()
+    // A retry is scheduled and the store reflects the in-flight recovery.
+    expect(useChatStore.getState().sessions.get(sessionId)?.retryCount).toBe(1)
+
+    await instance.stop()
+
+    // The scheduled retry is cancelled — advancing past every backoff never fires.
+    await getClock().tickAsync(30_000)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    expect(session?.retryCount).toBe(0)
+    expect(session?.retriesExhausted).toBe(false)
   })
 
   it('keeps exponential backoff for empty-turn retries after the first', async () => {

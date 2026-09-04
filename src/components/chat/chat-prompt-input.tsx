@@ -32,6 +32,7 @@ import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
+import { getTurnActivity } from '@/chats/turn-activity'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, X } from 'lucide-react'
@@ -196,6 +197,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       connectionStatus,
       connectionError,
       id: chatThreadId,
+      retryCount,
+      retriesExhausted,
+      stopping,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
@@ -203,7 +207,13 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // member expression inside a macro extracts as positional `{0}`.
     const agentName = selectedAgent.name
 
-    const { messages, status, stop, sendMessage } = useChat({
+    const {
+      messages,
+      status,
+      stop,
+      sendMessage,
+      error: chatError,
+    } = useChat({
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
     })
@@ -247,7 +257,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [skillBySlug, isEnabled, agentCommandNames],
     )
 
-    const isStreaming = status === 'streaming'
+    // Show the Stop button whenever the thread is busy — the same signal
+    // `ChatMessages` uses for its loading spinner, so the two stay in sync.
+    const { isActive: isBusy, isStopping } = getTurnActivity({
+      status,
+      lastMessage: messages[messages.length - 1],
+      hasChatError: chatError != null,
+      retriesExhausted,
+      retryCount,
+      stopRequested: stopping,
+    })
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -532,9 +551,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with no text, attachments, or quotes.
+        // Prevent submitting while a turn is in flight, or with no text, attachments, or quotes.
         const textToSend = normalizedInput.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
+        if (isBusy || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -827,8 +846,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
             canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
-            isLoading={isStreaming || isConnecting}
-            isStreaming={isStreaming}
+            isLoading={isBusy || isConnecting}
+            isStreaming={isBusy}
+            isStopping={isStopping}
             onStop={stop}
             // Desktop always autofocuses. The native mobile app autofocuses on a
             // fresh chat (opening the app should land ready to type, keyboard up —
@@ -837,7 +857,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // history the user came to read would be hostile. Mobile web keeps no
             // autofocus: browsers won't show the keyboard for it anyway.
             autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
-            submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            submitOnEnter={!isBusy && !shouldInsertNewlineOnEnter}
             // Voice mode covers the composer with an overlay; make the underlying
             // input non-interactive so Tab/Enter can't reach the hidden textarea.
             inert={voice.active}

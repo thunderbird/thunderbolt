@@ -54,11 +54,10 @@ import {
 } from '@earendil-works/pi-ai/api/openai-completions'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
-type AgentFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
+type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
 
 /** The Pi API this provider exclusively serves. */
 const apiName = 'openai-completions'
-const defaultProviderId = 'openai-compat'
 
 /** Context window used when the app model carries none. Only consumed by Pi's
  *  token-budget math (irrelevant to openai-completions, which never caps tokens
@@ -72,8 +71,9 @@ const defaultMaxTokens = 8_192
 
 /** Inputs for {@link buildOpenAiCompatModel}. */
 export type BuildOpenAiCompatModelOptions = {
-  /** Pi provider id; defaults to the legacy `openai-compat` provider. */
-  readonly providerId?: string
+  /** Pi provider id. Must equal the synthetic model's `provider` so
+   * `MutableModels` dispatch resolves this provider. */
+  readonly providerId: string
   /** Upstream model id sent on the wire, e.g. `opus-4.8` or `gpt-5`. */
   readonly modelId: string
   /** OpenAI-compatible base URL (e.g. `cloudUrl`, `https://openrouter.ai/api/v1`). */
@@ -82,7 +82,7 @@ export type BuildOpenAiCompatModelOptions = {
    *  fetch supplies auth itself, e.g. thunderbolt SSO). */
   readonly apiKey: string
   /** Fetch every request is routed through. */
-  readonly fetch: AgentFetch
+  readonly fetch: OpenAiCompatFetch
   /** Whether the model should request a reasoning effort. When false, Pi clamps
    *  any thinking level to `off` and sends no `reasoning_effort`. */
   readonly reasoning: boolean
@@ -96,17 +96,7 @@ export type BuildOpenAiCompatModelOptions = {
   readonly compat?: Model<typeof apiName>['compat']
   /** Provider-specific mapping from Pi thinking levels to wire efforts. */
   readonly thinkingLevelMap?: Model<typeof apiName>['thinkingLevelMap']
-  /** Raw Pi stream entry points, injectable for tests. */
-  readonly streamFns?: OpenAiStreamFns
 }
-
-/** The raw Pi stream entry points wrapped by this provider. */
-export type OpenAiStreamFns = {
-  readonly stream: typeof openaiStream
-  readonly streamSimple: typeof openaiStreamSimple
-}
-
-const defaultStreamFns: OpenAiStreamFns = { stream: openaiStream, streamSimple: openaiStreamSimple }
 
 /**
  * Synchronously route `globalThis.fetch` through `fetchImpl` for the duration of
@@ -118,9 +108,9 @@ const defaultStreamFns: OpenAiStreamFns = { stream: openaiStream, streamSimple: 
  * it is race-free (see the module header). Only the synchronous prefix of a
  * harness `onPayload`/`onResponse` listener can run before the global is restored.
  */
-const withInjectedFetch = <T>(fetchImpl: AgentFetch, run: () => T): T => {
+const withInjectedFetch = <T>(fetchImpl: OpenAiCompatFetch, run: () => T): T => {
   const original = globalThis.fetch
-  globalThis.fetch = fetchImpl as unknown as typeof globalThis.fetch
+  globalThis.fetch = fetchImpl as typeof globalThis.fetch
   try {
     return run()
   } finally {
@@ -147,15 +137,15 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiN
   id: opts.modelId,
   name: opts.modelId,
   api: apiName,
-  provider: opts.providerId ?? defaultProviderId,
+  provider: opts.providerId,
   baseUrl: opts.baseURL,
   reasoning: opts.reasoning,
   input: opts.supportsImages ? ['text', 'image'] : ['text'],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: opts.contextWindow ?? defaultContextWindow,
   maxTokens: defaultMaxTokens,
-  ...(opts.compat && { compat: opts.compat }),
-  ...(opts.thinkingLevelMap && { thinkingLevelMap: opts.thinkingLevelMap }),
+  compat: opts.compat,
+  thinkingLevelMap: opts.thinkingLevelMap,
 })
 
 /**
@@ -168,31 +158,29 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiN
  */
 export const buildOpenAiCompatModel = (opts: BuildOpenAiCompatModelOptions): { models: Models; model: Model<Api> } => {
   const model = synthesizeModel(opts)
-  const providerId = opts.providerId ?? defaultProviderId
-  const streamFns = opts.streamFns ?? defaultStreamFns
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`)
   // and bind the fetch only around client construction via the synchronous swap.
   const api: ProviderStreams = {
     stream: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        streamFns.stream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStream(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
       ),
     streamSimple: (resolved, context, options) =>
       withInjectedFetch(opts.fetch, () =>
-        streamFns.streamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
+        openaiStreamSimple(requireOpenAiCompletions(resolved), context, { ...options, apiKey: opts.apiKey }),
       ),
   }
 
   const models = createModels()
   models.setProvider(
     createProvider({
-      id: providerId,
-      name: providerId,
+      id: opts.providerId,
+      name: opts.providerId,
       baseUrl: opts.baseURL,
       // Advisory only: the real credential rides on the per-call options above.
       // An empty env list makes resolution a graceful no-op in the browser.
-      auth: { apiKey: envApiKeyAuth(`${providerId} API key`, []) },
+      auth: { apiKey: envApiKeyAuth(`${opts.providerId} API key`, []) },
       models: [model],
       api,
     }),

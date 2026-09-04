@@ -22,9 +22,9 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import type { Api, AssistantMessageEventStream, Context, Model } from '@earendil-works/pi-ai'
+import type { Api, Context, Model } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
-import { buildOpenAiCompatModel, type OpenAiStreamFns } from './openai-compat-model.ts'
+import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 
 /** A minimal, well-formed OpenAI Chat Completions SSE stream: one content delta
  *  then a stop, so the openai SDK parses a clean response rather than erroring. */
@@ -62,10 +62,10 @@ describe('buildOpenAiCompatModel — withInjectedFetch', () => {
     }
 
     let sentinelCalls = 0
-    const sentinel = (async () => {
+    const sentinel = (async (_input: RequestInfo | URL, _init?: RequestInit) => {
       sentinelCalls += 1
       return new Response('', { status: 500 })
-    }) as unknown as typeof globalThis.fetch
+    }) as typeof globalThis.fetch
     globalThis.fetch = sentinel
 
     const { models, model } = buildOpenAiCompatModel({
@@ -90,12 +90,8 @@ describe('buildOpenAiCompatModel — withInjectedFetch', () => {
 
     // The request itself fires lazily on iteration (global is the sentinel by now);
     // the captured injected fetch must still be what serves it.
-    try {
-      for await (const event of stream) {
-        void event
-      }
-    } catch {
-      // A parse hiccup doesn't matter — the fetch-routing assertions below are the contract.
+    for await (const event of stream) {
+      void event
     }
 
     expect(injectedCalls).toBe(1)
@@ -129,6 +125,7 @@ describe('buildOpenAiCompatModel — image modality', () => {
 describe('buildOpenAiCompatModel — CLI options', () => {
   const fetch = async (): Promise<Response> => new Response('')
   const options = {
+    providerId: 'openai-compat',
     modelId: 'local-model',
     baseURL: 'http://localhost:11434/v1',
     apiKey: 'local-key',
@@ -136,20 +133,6 @@ describe('buildOpenAiCompatModel — CLI options', () => {
     reasoning: false,
     supportsImages: false,
   }
-
-  it('uses the legacy provider id when none is supplied', () => {
-    const { models, model } = buildOpenAiCompatModel(options)
-
-    expect(model.provider).toBe('openai-compat')
-    expect(models.getModel('openai-compat', 'local-model')).toBe(model)
-  })
-
-  it('omits compatibility metadata when none is supplied', () => {
-    const { model } = buildOpenAiCompatModel(options)
-
-    expect(Object.hasOwn(model, 'compat')).toBe(false)
-    expect(Object.hasOwn(model, 'thinkingLevelMap')).toBe(false)
-  })
 
   it('rejects a model that does not use OpenAI completions', () => {
     const { models, model } = buildOpenAiCompatModel(options)
@@ -159,36 +142,30 @@ describe('buildOpenAiCompatModel — CLI options', () => {
     }
     const mismatched = { ...model, api: 'anthropic-messages' } as Model<Api>
 
-    expect(() => provider.stream(mismatched, context)).toThrow()
+    expect(() => provider.stream(mismatched, context)).toThrow(/Expected an "openai-completions" model/)
+    expect(() => provider.streamSimple(mismatched, context)).toThrow(/got "anthropic-messages"/)
   })
 
-  it('uses injected stream functions for both provider entry points', () => {
-    const calls: { readonly name: keyof OpenAiStreamFns; readonly apiKey: string | undefined }[] = []
-    const inert = {} as AssistantMessageEventStream
-    const streamFns: OpenAiStreamFns = {
-      stream: ((_model, _context, streamOptions) => {
-        calls.push({ name: 'stream', apiKey: streamOptions?.apiKey })
-        return inert
-      }) as OpenAiStreamFns['stream'],
-      streamSimple: ((_model, _context, streamOptions) => {
-        calls.push({ name: 'streamSimple', apiKey: streamOptions?.apiKey })
-        return inert
-      }) as OpenAiStreamFns['streamSimple'],
+  it('uses the configured API key for both provider entry points', async () => {
+    const authorizationHeaders: (string | null)[] = []
+    const authenticatedFetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      authorizationHeaders.push(new Headers(init?.headers).get('authorization'))
+      return makeSseResponse()
     }
-    const { models, model } = buildOpenAiCompatModel({ ...options, streamFns })
+    const { models, model } = buildOpenAiCompatModel({ ...options, fetch: authenticatedFetch })
     const provider = models.getProvider('openai-compat')
     if (!provider) {
       throw new Error('provider not registered')
     }
 
-    provider.stream(model, context, { apiKey: 'per-call-key' })
-    provider.streamSimple(model, context)
+    for await (const event of provider.stream(model, context, { apiKey: 'per-call-key' })) {
+      void event
+    }
+    for await (const event of provider.streamSimple(model, context)) {
+      void event
+    }
 
-    expect(calls[0]?.apiKey).toBe(options.apiKey)
-    expect(calls).toEqual([
-      { name: 'stream', apiKey: options.apiKey },
-      { name: 'streamSimple', apiKey: options.apiKey },
-    ])
+    expect(authorizationHeaders).toEqual(['Bearer local-key', 'Bearer local-key'])
   })
 
   it('preserves GLM compatibility metadata so reasoning content streams', async () => {

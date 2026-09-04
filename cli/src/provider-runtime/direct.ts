@@ -63,10 +63,7 @@ export const createManagedDirectBinding = async (options: ManagedDirectBindingOp
   }
 
   const baseUrl = resolveDirectBaseUrl(options.credential.backendUrl)
-  const accountFetch = options.fetchFn
-  const request: CredentialedFetch = accountFetch
-    ? (input, init) => accountFetch(input instanceof Request ? input.url : input, init)
-    : getUncredentialedFetch()
+  const request: CredentialedFetch = options.fetchFn ?? getUncredentialedFetch()
   const fetch = createCredentialedFetch(
     baseUrl,
     authenticatedFetch(options.credential, request),

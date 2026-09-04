@@ -151,8 +151,8 @@ A trusted web device can revoke a CLI device through the regular device list.
 The revoked CLI cannot continue using the bound session and must complete web
 login again. Personal access tokens are separate: `THUNDERBOLT_TOKEN` supports
 headless direct managed inference only, is not device-bound, and must be revoked
-through the PAT lifecycle rather than CLI logout. Confidential GLM always
-requires a web session; a PAT request fails with `WEB_LOGIN_REQUIRED` without
+through the PAT lifecycle rather than CLI logout. Confidential models (GLM and DeepSeek V4 Flash) always
+require a web session; a PAT request fails with `WEB_LOGIN_REQUIRED` without
 fallback or replay.
 
 ### Auth Token and Device ID

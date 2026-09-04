@@ -21,8 +21,8 @@ Response contains plaintext `key` once. Store that value as `THUNDERBOLT_TOKEN`.
 
 The CLI treats a PAT as environment-managed, headless authentication. Managed
 inference through a PAT is direct-only; a PAT does not register a CLI device and
-cannot use confidential GLM. GLM depends on session-bound cache material, so use
-`thunderbolt login`; PAT-only GLM requests fail with `WEB_LOGIN_REQUIRED` and are
+cannot use confidential models (GLM and DeepSeek V4 Flash). These models depend on session-bound cache material, so use
+`thunderbolt login`; PAT-only confidential requests fail with `WEB_LOGIN_REQUIRED` and are
 not replayed through another provider.
 
 ## List

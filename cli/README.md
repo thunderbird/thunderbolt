@@ -278,7 +278,7 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 | `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
 | `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
 | `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).        |
-| `THUNDERBOLT_TOKEN`                          | Personal access token for headless direct managed inference and bridges only. It cannot use confidential GLM, bind a CLI device, or be cleared by `thunderbolt logout`; remove it from the environment or revoke it in the web account. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run. |
+| `THUNDERBOLT_TOKEN`                          | Personal access token for headless direct managed inference and bridges only. It cannot use confidential models (GLM and DeepSeek V4 Flash), bind a CLI device, or be cleared by `thunderbolt logout`; remove it from the environment or revoke it in the web account. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run. |
 | `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
 | `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
 | `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
@@ -287,8 +287,8 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
 
 `THUNDERBOLT_TOKEN` takes precedence over a stored web session for the current
-process. PATs support direct managed models only. Confidential GLM uses
-session-bound cache material and therefore requires `thunderbolt login`; the CLI
+process. PATs support direct managed models only. Confidential models (GLM and DeepSeek V4 Flash) use
+session-bound cache material and therefore require `thunderbolt login`; the CLI
 returns `WEB_LOGIN_REQUIRED` instead of falling back to direct inference or a
 BYOK provider.
 

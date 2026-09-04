@@ -21,8 +21,12 @@ type ElementPickOverlayProps = {
   element: SurfaceHighlightedElement | null
   /** Ask what sits at a point, in overlay-local (== guest viewport) coordinates. */
   onPoint: (point: { x: number; y: number }) => void
-  /** The user clicked while an element was outlined. */
-  onPick: (element: SurfaceHighlightedElement) => void
+  /**
+   * The user committed, at this point. The point rather than the outlined
+   * element because the outline can be one answer behind the pointer — see
+   * `pickAt`, which decides which of the two the click meant.
+   */
+  onPick: (point: { x: number; y: number }) => void
   onCancel: () => void
 }
 
@@ -46,6 +50,9 @@ type ElementPickOverlayProps = {
 export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: ElementPickOverlayProps) => {
   const layerRef = useRef<HTMLDivElement>(null)
   const lastSentAt = useRef(0)
+  /** The most recent position the throttle suppressed, waiting on the flush. */
+  const pendingPoint = useRef<{ x: number; y: number } | null>(null)
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /** Pointer position relative to the overlay, which is flush with the iframe. */
   const toLocal = useCallback((event: { clientX: number; clientY: number }) => {
@@ -64,18 +71,52 @@ export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: Eleme
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onCancel])
 
+  // A pending flush outlives the gesture otherwise, asking the guest about a
+  // position on a surface the user has already left.
+  useEffect(
+    () => () => {
+      if (flushTimer.current) {
+        clearTimeout(flushTimer.current)
+      }
+    },
+    [],
+  )
+
+  const send = useCallback(
+    (point: { x: number; y: number }) => {
+      lastSentAt.current = performance.now()
+      pendingPoint.current = null
+      onPoint(point)
+    },
+    [onPoint],
+  )
+
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     /*
-     * Throttled on a timestamp rather than debounced. A debounce would only ask
-     * once the pointer stopped, so the outline would lag behind a moving cursor
-     * and then snap — the opposite of the feel this gesture needs.
+     * Throttled rather than debounced: a debounce would only ask once the
+     * pointer stopped, so the outline would lag behind a moving cursor and then
+     * snap — the opposite of the feel this gesture needs.
+     *
+     * But leading edge alone dropped the *last* move of a gesture. Suppress a
+     * position because it arrived 20ms after the previous one, and if the
+     * pointer then stops — which is exactly what it does before a click — no
+     * further event ever comes to replace it, so the outline stays on an
+     * element the pointer has left, permanently. The trailing flush below is
+     * what makes the final position always arrive.
      */
-    const now = event.timeStamp
-    if (now - lastSentAt.current < pointerThrottleMs) {
+    const point = toLocal(event)
+    const wait = pointerThrottleMs - (performance.now() - lastSentAt.current)
+    if (wait <= 0) {
+      send(point)
       return
     }
-    lastSentAt.current = now
-    onPoint(toLocal(event))
+    pendingPoint.current = point
+    flushTimer.current ??= setTimeout(() => {
+      flushTimer.current = null
+      if (pendingPoint.current) {
+        send(pendingPoint.current)
+      }
+    }, wait)
   }
 
   return (
@@ -85,7 +126,7 @@ export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: Eleme
       onPointerMove={handlePointerMove}
       // `onClick` rather than pointerdown: a click is the commit, and committing
       // on press would fire before the guest had answered for that position.
-      onClick={() => element && onPick(element)}
+      onClick={(event) => onPick(toLocal(event))}
     >
       {element && (
         <div

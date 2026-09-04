@@ -250,7 +250,17 @@ const harnessScript = (nonce: string): string => `<script>
   // Ported from the mini-app SDK's hit-test so both surfaces answer a point the
   // same way. Defined AFTER the error listeners above, deliberately: the
   // listeners must win the race against agent code, this need not.
-  var CANDIDATES = '[data-tb-select], tr, li, blockquote, figure, p, h1, h2, h3, h4, h5, h6';
+  // Elements worth naming in preference to whatever the pointer literally hit:
+  // pointing at a cell means the row, pointing inside a heading means the
+  // heading. NOT a whitelist of what can be picked — it used to be, and a page
+  // built from divs and spans (a to-do list, a dashboard of cards) had almost
+  // nothing selectable in it. Anything at all can be picked now; this only
+  // decides where the walk *stops preferring* an ancestor.
+  var PREFERRED = '[data-tb-select], tr, li, blockquote, figure, p, h1, h2, h3, h4, h5, h6';
+
+  // A pick that outlines the whole page tells the model nothing, and there is
+  // no smaller thing to fall back to.
+  var UNPICKABLE = { HTML: 1, BODY: 1 };
 
   function labelFor(el, i) {
     var explicit = el.getAttribute('data-tb-label');
@@ -259,7 +269,14 @@ const harnessScript = (nonce: string): string => `<script>
     var cellText = cell && cell.textContent ? cell.textContent.trim() : '';
     if (cellText) { return cellText; }
     var t = (el.textContent || '').trim();
-    return t ? t.slice(0, 40) + (t.length > 40 ? '…' : '') : 'Item ' + (i + 1);
+    if (t) { return t.slice(0, 40) + (t.length > 40 ? '…' : ''); }
+    // Textless but real: an image, a chart canvas, an icon button. Named from
+    // whatever the author gave it, and by tag as a last resort, so it can still
+    // be picked instead of being skipped for having nothing to read.
+    var described = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') ||
+      el.getAttribute('placeholder') || el.getAttribute('name');
+    if (described) { return described; }
+    return el.tagName ? el.tagName.toLowerCase() : 'Item ' + (i + 1);
   }
 
   // Read a table row as "Header: value" pairs so a bare number reaches the model
@@ -281,22 +298,27 @@ const harnessScript = (nonce: string): string => `<script>
     var y = params && params.y;
     if (typeof x !== 'number' || typeof y !== 'number') { return { element: null }; }
     var hit = document.elementFromPoint(x, y);
-    if (!hit) { return { element: null }; }
-    // Walk up to the nearest thing worth naming: pointing at a cell means the
-    // row, pointing inside a heading means the heading. closest() does exactly
-    // that walk and gives up at the document if nothing matches.
-    var el = hit.closest ? hit.closest(CANDIDATES) : null;
-    if (!el) { return { element: null }; }
+    if (!hit || UNPICKABLE[hit.tagName]) { return { element: null }; }
+    // Prefer the nearest thing worth naming, and fall back to what the pointer
+    // actually hit. closest() does the walk and gives up at the document if
+    // nothing matches — which used to mean "nothing here", so a div-and-span
+    // page was unselectable. Devtools-like: whatever is under the cursor can be
+    // picked; the semantic ancestor is a preference, not a requirement.
+    var preferred = hit.closest ? hit.closest(PREFERRED) : null;
+    var el = preferred && !UNPICKABLE[preferred.tagName] ? preferred : hit;
     var text = describeRow(el) || (el.textContent || '').trim();
-    if (!text) { return { element: null }; }
     var r = el.getBoundingClientRect();
+    // Zero-area elements can't be outlined and aren't what the user meant.
+    if (!r.width || !r.height) { return { element: null }; }
     return {
       element: {
         // Stable for as long as the element is: the host uses it to tell "the
         // pointer moved within one element" from "it moved to another".
         id: labelFor(el, 0) + '@' + Math.round(r.x) + ',' + Math.round(r.y),
         label: labelFor(el, 0),
-        text: text.slice(0, MAX_ITEM_TEXT),
+        // Falls back to the label so a textless element (an image, a canvas)
+        // still arrives as something the model can talk about.
+        text: (text || labelFor(el, 0)).slice(0, MAX_ITEM_TEXT),
         rect: { x: r.x, y: r.y, width: r.width, height: r.height },
       },
     };

@@ -128,14 +128,74 @@ describe('useSurfaceSelection', () => {
     expect(hook.result.current.mode.kind === 'picking' && hook.result.current.mode.element).toBeNull()
   })
 
-  it('takes the picked element to the composer and leaves pick mode', () => {
+  it('takes the outlined element to the composer and leaves pick mode', async () => {
     const { hook, asked } = setup(async () => element('a'))
     act(() => hook.result.current.startPicking())
-    act(() => hook.result.current.askAboutElement(element('a')))
+    await act(async () => {
+      await hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      await hook.result.current.pickAt(point)
+    })
 
     expect(asked).toHaveLength(1)
     expect(asked[0][0]).toContain('text a')
     expect(hook.result.current.mode.kind).toBe('idle')
+  })
+
+  /**
+   * Move, then click before the guest has answered — which is the ordinary case
+   * at 60ms per query, not an edge one. The outline still shows the previous
+   * element, so committing it would attach a passage for something the pointer
+   * has left. The click resolves its own position instead.
+   */
+  it('does not commit a stale outline when a newer lookup is in flight', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook, asked } = setup(query)
+    act(() => hook.result.current.startPicking())
+
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      releases[0](element('a'))
+      await first
+    })
+
+    // Pointer moves onto 'b'; that answer has not landed yet.
+    act(() => {
+      void hook.result.current.pointAt({ x: 90, y: 90 })
+    })
+    let picked: Promise<void> = Promise.resolve()
+    act(() => {
+      picked = hook.result.current.pickAt({ x: 90, y: 90 })
+    })
+    await act(async () => {
+      // releases[1] is the in-flight move, releases[2] the click's own query.
+      releases[1](element('b'))
+      releases[2](element('b'))
+      await picked
+    })
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0][0]).toContain('text b')
+  })
+
+  /** Clicking background commits nothing and leaves picking on, rather than
+   *  sending an empty passage. */
+  it('ignores a click with nothing under it', async () => {
+    const { hook, asked } = setup(async () => null)
+    act(() => hook.result.current.startPicking())
+    await act(async () => {
+      await hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      await hook.result.current.pickAt(point)
+    })
+
+    expect(asked).toEqual([])
+    expect(hook.result.current.mode.kind).toBe('picking')
   })
 
   it('returns to idle when dismissed', () => {

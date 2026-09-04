@@ -32,10 +32,17 @@ export type SurfaceSelectionMode =
   /**
    * Picking is on. `element` is whatever the guest last said was under the
    * pointer, or null over padding and background — a normal answer, not a
-   * failure. `token` is the query this state is showing the answer to, so a
-   * slow reply for an earlier position can't overwrite a newer one.
+   * failure. `token` is the newest query issued; `answeredToken` is the one
+   * `element` actually answers, so a slow reply for an earlier position can't
+   * overwrite a newer one — and a click arriving mid-flight can tell that the
+   * outline it is looking at is already out of date.
    */
-  | { kind: 'picking'; element: SurfaceHighlightedElement | null; token: number }
+  | {
+      kind: 'picking'
+      element: SurfaceHighlightedElement | null
+      token: number
+      answeredToken: number
+    }
 
 type Action =
   | { type: 'pickingStarted' }
@@ -55,13 +62,15 @@ type Action =
 const modeReducer = (mode: SurfaceSelectionMode, action: Action): SurfaceSelectionMode => {
   switch (action.type) {
     case 'pickingStarted':
-      return { kind: 'picking', element: null, token: 0 }
+      return { kind: 'picking', element: null, token: 0, answeredToken: 0 }
     case 'pointerMoved':
       // Keep the current outline while the next answer is in flight. Clearing it
       // here would make the outline strobe as the pointer moves.
       return mode.kind === 'picking' ? { ...mode, token: action.token } : mode
     case 'elementResolved':
-      return mode.kind === 'picking' && mode.token === action.token ? { ...mode, element: action.element } : mode
+      return mode.kind === 'picking' && mode.token === action.token
+        ? { ...mode, element: action.element, answeredToken: action.token }
+        : mode
     case 'dismissed':
       return { kind: 'idle' }
   }
@@ -93,14 +102,34 @@ export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
     [query],
   )
 
-  /** Take the highlighted element to the composer. */
-  const askAboutElement = useCallback(
-    (element: SurfaceHighlightedElement) => {
+  /**
+   * Commit the click at `point`.
+   *
+   * The outline is the confirmation, so a click takes the element the user was
+   * looking at — but only while that outline is the truth. `pointerMoved` keeps
+   * the previous element on screen while the next answer is in flight (clearing
+   * it would make the outline strobe), which means a click landing in that
+   * window used to commit an element the pointer had already left. When the
+   * outline is stale, the click asks about its own position instead, and the
+   * answer to *that* is what gets committed.
+   *
+   * Either way nothing is committed for a point with nothing under it: clicking
+   * background leaves picking on, rather than sending an empty passage.
+   */
+  const pickAt = useCallback(
+    async (point: { x: number; y: number }) => {
+      if (mode.kind !== 'picking') {
+        return
+      }
+      const element = mode.token === mode.answeredToken ? mode.element : await query(point)
+      if (!element) {
+        return
+      }
       onAsk([toSelectionPassage(element)])
       dispatch({ type: 'dismissed' })
     },
-    [onAsk],
+    [mode, onAsk, query],
   )
 
-  return { mode, startPicking, dismiss, pointAt, askAboutElement }
+  return { mode, startPicking, dismiss, pointAt, pickAt }
 }

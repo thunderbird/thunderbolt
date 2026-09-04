@@ -62,7 +62,7 @@ export const SelectableArtifact = ({
 
   const query = useCallback(async (point: { x: number; y: number }) => (await queryRef.current?.(point)) ?? null, [])
 
-  const { mode, startPicking, dismiss, pointAt, askAboutElement } = useSurfaceSelection({ query, onAsk })
+  const { mode, startPicking, dismiss, pointAt, pickAt } = useSurfaceSelection({ query, onAsk })
 
   const askAboutSelection = () => {
     if (selection) {
@@ -95,7 +95,7 @@ export const SelectableArtifact = ({
       {mode.kind === 'idle' && selection?.rect && <SelectionPopover rect={selection.rect} onAsk={askAboutSelection} />}
 
       {mode.kind === 'picking' && (
-        <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={askAboutElement} onCancel={dismiss} />
+        <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={pickAt} onCancel={dismiss} />
       )}
 
       {mode.kind === 'idle' && !selection && (

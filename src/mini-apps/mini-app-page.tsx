@@ -200,7 +200,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     [openChatId],
   )
 
-  const { mode, startPicking, dismiss, pointAt, askAboutElement } = useSurfaceSelection({
+  const { mode, startPicking, dismiss, pointAt, pickAt } = useSurfaceSelection({
     query: queryElementAt,
     onAsk: attachToComposer,
   })
@@ -277,12 +277,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
               <SelectionPopover rect={selection.rect} onAsk={handleAskAboutSelection} />
             )}
             {mode.kind === 'picking' && (
-              <ElementPickOverlay
-                element={mode.element}
-                onPoint={pointAt}
-                onPick={askAboutElement}
-                onCancel={dismiss}
-              />
+              <ElementPickOverlay element={mode.element} onPoint={pointAt} onPick={pickAt} onCancel={dismiss} />
             )}
             {/* Thunderbolt's own affordances, floating over the app rather than
                 living inside it — the assistant belongs to the host, so a customer

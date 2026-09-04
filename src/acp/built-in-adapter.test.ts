@@ -97,6 +97,7 @@ describe('reply-language directive delivery', () => {
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
+      supportsTools: true,
     })
 
     expect(composed).toContain('# Language')
@@ -109,6 +110,7 @@ describe('reply-language directive delivery', () => {
     const composed = composeAppHarnessSystemPrompt({
       stableSystemPrompt: stablePrompt,
       volatileSystemPrompt: volatilePrompt,
+      supportsTools: true,
     })
 
     expect(stablePrompt).toContain('# Language')
@@ -121,6 +123,23 @@ describe('reply-language directive delivery', () => {
     expect(harnessSignature(anthropic(), languagePromptParts('ja').stablePrompt)).not.toBe(
       harnessSignature(anthropic(), languagePromptParts('pt-BR').stablePrompt),
     )
+  })
+})
+
+describe('composeAppHarnessSystemPrompt', () => {
+  it.each([false, true])('describes coding tools only when supportsTools is true (%s)', (supportsTools) => {
+    const composed = composeAppHarnessSystemPrompt({
+      stableSystemPrompt: 'Stable instructions',
+      volatileSystemPrompt: 'Current date/time: 2026-09-04',
+      supportsTools,
+    })
+
+    for (const text of ['# Environment', '`bash`', '`read`', '`write`', '`edit`', '`render_html`']) {
+      expect(composed.includes(text)).toBe(supportsTools)
+    }
+    expect(composed.startsWith('Stable instructions\n\n')).toBe(true)
+    expect(composed).toContain('Client environment:')
+    expect(composed.endsWith('\n\nCurrent date/time: 2026-09-04')).toBe(true)
   })
 })
 

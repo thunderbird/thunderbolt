@@ -113,7 +113,10 @@ type CachedHarness = {
 type HarnessCache = Map<string, CachedHarness>
 
 /** Stable and volatile prompt parts needed by the Pi harness. */
-type AppHarnessSystemPromptConfig = Pick<PreparedAiRequestConfig, 'stableSystemPrompt' | 'volatileSystemPrompt'>
+type AppHarnessSystemPromptConfig = Pick<
+  PreparedAiRequestConfig,
+  'stableSystemPrompt' | 'volatileSystemPrompt' | 'supportsTools'
+>
 
 /** Production injection point — production binds to `aiFetchStreamingResponse`. */
 export type AiFetchStreamingResponseFn = typeof aiFetchStreamingResponse
@@ -500,7 +503,8 @@ export const composeAppHarnessSystemPrompt = (config: AppHarnessSystemPromptConf
     environment,
     appVersion: import.meta.env.VITE_APP_VERSION,
   })
-  return `${config.stableSystemPrompt}\n\n${clientIdentity}\n\n${appHarnessEnvironmentPrompt}\n\n${config.volatileSystemPrompt}`
+  const environmentBlock = config.supportsTools ? `\n\n${appHarnessEnvironmentPrompt}` : ''
+  return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
 }
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the

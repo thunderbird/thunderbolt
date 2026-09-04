@@ -14,6 +14,12 @@
  * session resolves to the same two terminal states — apps, or none. There is no
  * third "you may not ask" state to model, which is what used to leave
  * `/apps/:id` on `loading` forever for anonymous and signed-out callers.
+ *
+ * Every path out of `loading` is now bounded. Removing the auth gate fixed the
+ * cases where we *chose* not to ask; it left the case where we ask and are never
+ * answered, and an accepted-but-unanswered request kept `loading` true forever —
+ * which `MiniAppPage` renders as a permanently blank screen with nothing logged.
+ * Hence the deadline below.
  */
 
 import { useEffect, useSyncExternalStore } from 'react'
@@ -35,6 +41,17 @@ export type MiniAppsState = {
    */
   failed: boolean
 }
+
+/**
+ * How long to wait for the registry before calling the deployment unreachable.
+ *
+ * `HttpClient` only applies a timeout when asked, and nothing else bounds this
+ * request: a server that accepts the connection and never answers leaves the
+ * whole feature on `loading`, which renders as a blank `/apps/:id`. Generous,
+ * because the answer gates a route rather than a keystroke — but finite, because
+ * "we don't know yet" is not a state the UI can sit in indefinitely.
+ */
+const registryTimeoutMs = 10_000
 
 const emptyState: MiniAppsState = { apps: [], loading: true, failed: false }
 
@@ -63,7 +80,9 @@ const subscribe = (listener: () => void) => {
 const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
   inFlight ??= (async () => {
     try {
-      const registry = parseMiniAppRegistry(await httpClient.get('mini-apps').json<unknown>())
+      const registry = parseMiniAppRegistry(
+        await httpClient.get('mini-apps', { timeout: registryTimeoutMs }).json<unknown>(),
+      )
       // Thrown, not folded into an empty registry: a body we can't read is the
       // `failed` case, and `body.apps ?? []` used to report it as the healthy
       // "this deployment runs no apps" — erasing the one distinction below.
@@ -85,6 +104,19 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
     }
   })()
   return inFlight
+}
+
+/**
+ * @internal Reset the module store between tests.
+ *
+ * The store is module-level so the sidebar and the route share one answer, which
+ * also means a test that drives it leaks into every later file in the process.
+ * Same shape as `resetAppVersionBlockedForTesting`.
+ */
+export const resetMiniAppsForTesting = () => {
+  state = emptyState
+  inFlight = null
+  listeners.clear()
 }
 
 export const useMiniApps = (): MiniAppsState => {

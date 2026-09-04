@@ -5,6 +5,7 @@
 import ChatUI from '@/components/chat/chat-ui'
 import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
 import { useChatDestination } from '@/mini-apps/use-chat-destination'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
 import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useState } from 'react'
@@ -136,9 +137,27 @@ export const useNewChatId = (isNew: boolean, projectId: string | null): string =
  */
 const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
   const { miniAppId } = useCurrentChatSession()
+  const { loading, failed } = useMiniApps()
   const chatDestination = useChatDestination()
 
   if (!miniAppId) {
+    return <ChatUI />
+  }
+
+  /*
+   * Decide nothing until the registry has answered.
+   *
+   * `useChatDestination` resolves against the app list, and an unanswered
+   * registry looks exactly like a deregistered app — so a cold deep link used to
+   * mount and hydrate the chat here, then redirect into `/apps/:id` the moment
+   * the list landed, tearing the session down and rebuilding it. The banner and
+   * `MiniAppPage` both wait on this for the same reason.
+   *
+   * A *failed* registry falls through deliberately: it may never answer, and the
+   * conversation is more useful than a spinner. The banner stays quiet in that
+   * state rather than claiming the app is gone.
+   */
+  if (loading && !failed) {
     return <ChatUI />
   }
 
@@ -148,9 +167,9 @@ const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
    * search palette, a shared URL. `replace` because `/chats/:id` was never a
    * place the user meant to be — Back should return where they came from.
    *
-   * When the app route can't host it (feature off, phone, app deregistered)
-   * `useChatDestination` hands back this same URL, and the banner below says
-   * where the conversation started instead.
+   * When the app route can't host it (a phone, an app that is no longer
+   * registered) `useChatDestination` hands back this same URL, and the banner
+   * below says where the conversation started instead.
    */
   const destination = chatDestination(chatThreadId, miniAppId)
   if (destination !== `/chats/${chatThreadId}`) {

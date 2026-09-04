@@ -1103,6 +1103,10 @@ msgstr "Impossible d'enregistrer {fieldName}. Veuillez réessayer."
 msgid "Couldn't save the new order."
 msgstr "Impossible d'enregistrer le nouvel ordre."
 
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "Impossible de désépingler {name}."

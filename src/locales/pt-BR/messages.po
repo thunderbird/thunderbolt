@@ -1103,6 +1103,10 @@ msgstr "Não foi possível salvar {fieldName}. Tente novamente."
 msgid "Couldn't save the new order."
 msgstr "Não foi possível salvar a nova ordem."
 
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "Não foi possível desafixar {name}."

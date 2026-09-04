@@ -1079,6 +1079,10 @@ msgstr "{fieldName}を保存できませんでした。もう一度お試しく�
 msgid "Couldn't save the new order."
 msgstr "新しい並び順を保存できませんでした。"
 
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "{name} のピン留めを解除できませんでした。"

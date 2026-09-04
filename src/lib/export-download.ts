@@ -2,26 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { downloadFile } from './download'
+
 /**
- * Serializes the payload to JSON and triggers a browser download.
+ * Serializes the payload to JSON and saves it.
  *
- * Works on both web and Tauri's WebView via the universal `<a download>` blob-
- * URL pattern. The blob URL is revoked on the next macrotask, not synchronously
- * after the click — WebKit (Safari / iOS / Tauri's iOS WebView) will sometimes
- * cancel the download if the URL is revoked before the browser starts streaming
- * the blob to disk.
+ * Delegates to {@link downloadFile} rather than clicking its own blob-URL
+ * anchor. It used to do the latter, with a comment claiming the anchor works in
+ * Tauri's webview — it does not. There is no download manager behind it there,
+ * so Settings → Export did nothing at all in the desktop app, the same way the
+ * artifact download button did before THU-857. One implementation means one
+ * platform gap to fix, once.
+ *
+ * Resolves to the name the file was written under, which may carry a numeric
+ * suffix if the folder already had one.
  */
-export const downloadJson = (filename: string, payload: unknown): void => {
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
-}
+export const downloadJson = (filename: string, payload: unknown): Promise<string> =>
+  downloadFile({ name: filename, contents: JSON.stringify(payload), mimeType: 'application/json' })
 
 /**
  * Returns the canonical export filename for a given timestamp.

@@ -79,9 +79,6 @@
       "allow": [
         {
           "path": "$APPDATA/*"
-        },
-        {
-          "path": "$DOWNLOAD/*"
         }
       ]
     },

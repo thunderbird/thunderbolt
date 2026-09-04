@@ -1091,6 +1091,10 @@ msgstr "{fieldName} konnte nicht gespeichert werden. Bitte versuchen Sie es erne
 msgid "Couldn't save the new order."
 msgstr "Die neue Reihenfolge konnte nicht gespeichert werden."
 
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "{name} konnte nicht losgelöst werden."

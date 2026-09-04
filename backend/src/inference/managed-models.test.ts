@@ -4,9 +4,8 @@
 
 import { createTestDb } from '@/test-utils/db'
 import { defaultModels } from '@shared/defaults/models'
-import { managedGlmIdentity } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { managedDirectRuntimes, resolveManagedDirectRuntime } from './managed-models'
+import { managedDirectRuntimes, resolveManagedDirectRuntime, resolveConfidentialManagedModel } from './managed-models'
 import { loadInferencePrice } from './usage-ledger'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
@@ -46,12 +45,20 @@ describe('managed model backend coverage', () => {
 
   it.each(['toString', 'constructor', '__proto__'])('does not resolve prototype-property slug %s', (slug) => {
     expect(resolveManagedDirectRuntime(slug)).toBeUndefined()
+    expect(resolveConfidentialManagedModel(slug)).toBeUndefined()
   })
 
-  it('uses GLM as the only confidential policy and receipt identity', async () => {
+  it('gives every confidential catalog model its canonical price and excludes direct models', async () => {
     const confidentialModels = defaultModels.filter(({ isConfidential }) => isConfidential === 1)
 
-    expect(confidentialModels.map(({ model }) => model)).toEqual([managedGlmIdentity.model])
-    expect(await loadInferencePrice(database, managedGlmIdentity)).not.toBeNull()
+    expect(confidentialModels.map(({ model }) => model)).toEqual(['deepseek-v4-flash', 'glm-5-2'])
+    for (const { model } of confidentialModels) {
+      const identity = resolveConfidentialManagedModel(model)
+      expect(identity).toEqual({ provider: 'tinfoil', model })
+      expect(await loadInferencePrice(database, identity!)).not.toBeNull()
+      expect(resolveManagedDirectRuntime(model)).toBeUndefined()
+    }
+    expect(resolveConfidentialManagedModel('opus-5')).toBeUndefined()
+    expect(resolveConfidentialManagedModel('unknown')).toBeUndefined()
   })
 })

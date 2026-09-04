@@ -40,14 +40,14 @@ const successfulCompletion = (): Response =>
         id: 'chatcmpl-cli-device',
         object: 'chat.completion.chunk',
         created: 1,
-        model: 'deepseek-v4-flash',
+        model: 'claude-opus-5',
         choices: [{ index: 0, delta: { role: 'assistant', content: 'registered CLI' }, finish_reason: null }],
       })}`,
       `data: ${JSON.stringify({
         id: 'chatcmpl-cli-device',
         object: 'chat.completion.chunk',
         created: 1,
-        model: 'deepseek-v4-flash',
+        model: 'claude-opus-5',
         choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
         usage: { prompt_tokens: 2, completion_tokens: 2, total_tokens: 4 },
       })}`,
@@ -109,7 +109,7 @@ const requestDirectInference = (harness: TestAppHandle, bearer: string, content:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         messages: [{ role: 'user', content }],
         stream: true,
       }),
@@ -118,8 +118,7 @@ const requestDirectInference = (harness: TestAppHandle, bearer: string, content:
 
 const originalEnvironment = {
   POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
-  TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
-  TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   CLI_DEVICE_REGISTRATION_ENABLED: process.env.CLI_DEVICE_REGISTRATION_ENABLED,
 }
 
@@ -136,8 +135,7 @@ afterEach(() => {
 
 describe('CLI device cross-stack acceptance', () => {
   it('revokes a registered device-grant CLI before a second direct provider request', async () => {
-    process.env.TINFOIL_API_KEY = 'cli-device-provider-key'
-    process.env.TINFOIL_ENCLAVE_URL = 'https://cli-device-provider.example/v1'
+    process.env.ANTHROPIC_API_KEY = 'cli-device-provider-key'
     process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
     delete process.env.POSTHOG_API_KEY
     clearSettingsCache()
@@ -295,8 +293,7 @@ describe('CLI device cross-stack acceptance', () => {
   })
 
   it('does not require device registration when the rollout flag is off', async () => {
-    process.env.TINFOIL_API_KEY = 'cli-device-provider-key'
-    process.env.TINFOIL_ENCLAVE_URL = 'https://cli-device-provider.example/v1'
+    process.env.ANTHROPIC_API_KEY = 'cli-device-provider-key'
     process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'false'
     delete process.env.POSTHOG_API_KEY
     clearSettingsCache()

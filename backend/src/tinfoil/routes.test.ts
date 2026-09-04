@@ -11,7 +11,7 @@ import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -152,7 +152,7 @@ describe('createTinfoilRoutes', () => {
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
         upstreamOriginStore: overrides.upstreamOriginStore,
-        captureInferenceErrorFn: overrides.captureInferenceErrorFn,
+        captureInferenceErrorFn: overrides.captureInferenceErrorFn ?? (() => {}),
         rateLimit: overrides.rateLimit,
       }),
     )
@@ -445,7 +445,60 @@ describe('createTinfoilRoutes', () => {
     })
   })
 
-  describe('managed GLM usage policy', () => {
+  describe('confidential managed usage policy', () => {
+    it.each(['unknown', 'opus-5', 'constructor', '__proto__', ''])(
+      'rejects invalid model header %s before forwarding',
+      async (model) => {
+        const response = await buildApp().handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
+        expect(response.status).toBe(400)
+        expect(await response.text()).toContain(inferenceModelHeader)
+        expect(mockFetch).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each([
+      ['glm-5-2', '1500', '5250'],
+      ['deepseek-v4-flash', '300', '700'],
+    ])(
+      'uses the catalog price and receipt identity for %s without forwarding the model header',
+      async (model, inputRate, outputRate) => {
+        const entries: Parameters<InferenceLogger['info']>[0][] = []
+        const response = await buildApp({
+          usageLogger: {
+            info: (entry) => {
+              entries.push(entry)
+            },
+          },
+        }).handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
+        expect(response.status).toBe(200)
+        const receipt = response.headers.get(inferenceUsageReceiptHeader)!
+        expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
+          provider: 'tinfoil',
+          model,
+          inputNanoUsdPerToken: inputRate,
+          outputNanoUsdPerToken: outputRate,
+        })
+        const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+        expect(new Headers(init.headers).has(inferenceModelHeader)).toBe(false)
+        expect(entries).toEqual([
+          expect.objectContaining({ event: 'inference_usage_receipt_issued', provider: 'tinfoil', model }),
+        ])
+        await response.arrayBuffer()
+      },
+    )
+
     it.each([
       [
         'prefixed base',
@@ -575,24 +628,28 @@ describe('createTinfoilRoutes', () => {
       await response.arrayBuffer()
     })
 
-    it('returns the shared minimal 503 before fetch when the canonical price is missing', async () => {
-      await database
-        .delete(inferencePrices)
-        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-2')))
-      const app = buildApp()
+    it.each([undefined, 'glm-5-2', 'deepseek-v4-flash'])(
+      'rejects before fetch when the price for header %s is missing',
+      async (model) => {
+        await database
+          .delete(inferencePrices)
+          .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, model ?? 'glm-5-2')))
+        const app = buildApp()
 
-      const response = await app.handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
-          method: 'POST',
-          body: 'opaque-bytes',
-        }),
-      )
+        const response = await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: model === undefined ? {} : { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
 
-      expect(response.status).toBe(503)
-      expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
-      expect(mockFetch).not.toHaveBeenCalled()
-    })
+        expect(response.status).toBe(503)
+        expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
+        expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
+        expect(mockFetch).not.toHaveBeenCalled()
+      },
+    )
 
     it.each([
       ['anonymous', true, '5h', 10, 0],

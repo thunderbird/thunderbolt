@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export const managedGlmIdentity = { provider: 'tinfoil', model: 'glm-5-2' } as const
+export const inferenceModelHeader = 'X-Inference-Model'
 export const inferenceUsageReceiptHeader = 'X-Inference-Usage-Receipt'
 export const inferenceUsageReceiptPath = 'inference-usage/receipts'
 

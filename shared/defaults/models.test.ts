@@ -4,7 +4,14 @@
 
 import { describe, expect, test } from 'bun:test'
 import { hashValues } from '../lib/hash'
-import { defaultModelOpus5, defaultModels, defaultModelsVersion, hashModel, vendorSupportsImages } from './models'
+import {
+  defaultModelDeepseekV4Flash,
+  defaultModelOpus5,
+  defaultModels,
+  defaultModelsVersion,
+  hashModel,
+  vendorSupportsImages,
+} from './models'
 
 /**
  * Snapshot pinning the shipped defaults to their declared version. When you
@@ -29,12 +36,28 @@ const computeMetadataHash = () =>
   defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
 
 const expected = {
-  version: 4,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:n56kdk|1:019f227e-d640-727d-ba12-d51bd7d0a3d6:bvaax2|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
-  metadataHash: '0:vzhyk4|1:-x2wlw2|2:-cajkcl',
+  version: 5,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:n56kdk|1:01a06dd7-67ee-75be-b957-2b746271c49d:-qr9gn9|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-g7x2jr',
+  metadataHash: '0:vzhyk4|1:-joubfb|2:-cajkcl',
 }
 
 describe('defaultModels version snapshot', () => {
+  test('replaces direct Flash with a fresh confidential row', () => {
+    expect(defaultModelDeepseekV4Flash).toMatchObject({
+      id: '01a06dd7-67ee-75be-b957-2b746271c49d',
+      provider: 'tinfoil',
+      model: 'deepseek-v4-flash',
+      isSystem: 1,
+      isConfidential: 1,
+      vendor: 'deepseek',
+      contextWindow: 131072,
+      toolUsage: 1,
+      supportsParallelToolCalls: 0,
+      startWithReasoning: 0,
+    })
+    expect(defaultModels.some(({ id }) => id === '019f227e-d640-727d-ba12-d51bd7d0a3d6')).toBe(false)
+  })
+
   test('ships Opus 5 as the sole model using its canonical id', () => {
     expect(defaultModelOpus5).toMatchObject({
       id: '019af08a-c27b-7074-8aac-95315d1ef3fd',

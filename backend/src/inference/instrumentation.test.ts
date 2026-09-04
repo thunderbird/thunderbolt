@@ -26,11 +26,8 @@ const successfulStream =
   'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
   'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":0,"model":"test","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}\n\n' +
   'data: [DONE]\n\n'
-const tinfoilEnclaveUrl = 'https://staging-inference.tinfoil.sh/v1/'
 
 describe('inference attempt instrumentation', () => {
-  let originalTinfoilApiKey: string | undefined
-  let originalTinfoilEnclaveUrl: string | undefined
   let originalAnthropicApiKey: string | undefined
   let originalPostHogApiKey: string | undefined
   let database: TestDatabase
@@ -47,12 +44,8 @@ describe('inference attempt instrumentation', () => {
       emailVerified: true,
       isAnonymous: false,
     })
-    originalTinfoilApiKey = process.env.TINFOIL_API_KEY
-    originalTinfoilEnclaveUrl = process.env.TINFOIL_ENCLAVE_URL
     originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
     originalPostHogApiKey = process.env.POSTHOG_API_KEY
-    process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
-    process.env.TINFOIL_ENCLAVE_URL = tinfoilEnclaveUrl
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     delete process.env.POSTHOG_API_KEY
     clearSettingsCache()
@@ -61,16 +54,6 @@ describe('inference attempt instrumentation', () => {
   })
 
   afterEach(async () => {
-    if (originalTinfoilApiKey === undefined) {
-      delete process.env.TINFOIL_API_KEY
-    } else {
-      process.env.TINFOIL_API_KEY = originalTinfoilApiKey
-    }
-    if (originalTinfoilEnclaveUrl === undefined) {
-      delete process.env.TINFOIL_ENCLAVE_URL
-    } else {
-      process.env.TINFOIL_ENCLAVE_URL = originalTinfoilEnclaveUrl
-    }
     if (originalAnthropicApiKey === undefined) {
       delete process.env.ANTHROPIC_API_KEY
     } else {
@@ -87,20 +70,11 @@ describe('inference attempt instrumentation', () => {
     await cleanup()
   })
 
-  it.each([
-    {
-      model: 'deepseek-v4-flash',
-      provider: 'tinfoil' as const,
-      host: new URL(tinfoilEnclaveUrl).hostname,
-      apiKey: 'test-tinfoil-key',
-    },
-    {
-      model: 'opus-5',
-      provider: 'anthropic' as const,
-      host: 'api.anthropic.com',
-      apiKey: 'test-anthropic-key',
-    },
-  ])('logs $provider 429 retry and surfaces attempts=2 after success', async ({ model, provider, host, apiKey }) => {
+  it('logs an Anthropic 429 retry and surfaces attempts=2 after success', async () => {
+    const model = 'opus-5'
+    const provider = 'anthropic'
+    const host = 'api.anthropic.com'
+    const apiKey = 'test-anthropic-key'
     const logs: Array<{ context: InferenceLog; message: string }> = []
     const upstreamBodies: string[] = []
     let callCount = 0
@@ -197,7 +171,7 @@ describe('inference attempt instrumentation', () => {
     expect(rows[0]).toMatchObject({
       userId: 'test-user',
       provider,
-      model: model === 'opus-5' ? 'claude-opus-5' : 'deepseek-v4-flash',
+      model: 'claude-opus-5',
       promptTokens: 2,
       completionTokens: 3,
       totalTokens: 5,

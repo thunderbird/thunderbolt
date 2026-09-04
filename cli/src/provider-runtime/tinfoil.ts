@@ -8,6 +8,7 @@ import {
   isConfidentialModelError,
   resolveConfidentialModelCompatibility,
 } from '../../../shared/agent-core/confidential-model.ts'
+import { inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import { join } from 'node:path'
 import { SecureClient } from 'tinfoil'
 import { apiBaseUrl, backendHeaders, isSecureCloudUrl } from '../auth/config.ts'
@@ -44,6 +45,7 @@ const cacheSecretHex = (secret: Uint8Array): string => Buffer.from(secret).toStr
 const authenticatedSecureFetch =
   (
     credential: SessionCredential,
+    model: string,
     getClient: () => SecureClient | null,
     observeStatus: (status: number) => void,
   ): AccountFetch =>
@@ -51,6 +53,7 @@ const authenticatedSecureFetch =
     const client = getClient()
     if (client === null) throw new Error('Tinfoil binding is disposed.')
     const headers = backendHeaders(init?.headers)
+    headers.set(inferenceModelHeader, model)
     headers.delete('authorization')
     headers.delete('x-api-key')
     headers.set('authorization', `Bearer ${credential.bearer}`)
@@ -93,6 +96,7 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
   let storedSessionUnauthorized = false
   const fetchFn = authenticatedSecureFetch(
     options.credential,
+    options.model.model,
     () => client,
     (status) => {
       storedSessionUnauthorized = status === 401 || status === 403

@@ -149,7 +149,7 @@ describe('inference usage receipts', () => {
     ['missing provider', { provider: undefined }],
     ['wrong provider', { provider: 'anthropic' }],
     ['missing model', { model: undefined }],
-    ['wrong model', { model: 'deepseek-v4-flash' }],
+    ['wrong model', { model: 'opus-5' }],
     ['extra claim', { unexpected: true }],
   ])('rejects non-strict claims: %s', (_name, changes) => {
     const claims = { ...validClaims, ...changes }

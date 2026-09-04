@@ -6,9 +6,10 @@ import { getSettings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { elapsedMs } from '@/utils/timing'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
-import type { managedGlmIdentity } from '@shared/inference-usage'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
+import type { PostHog } from 'posthog-node'
+import type { ManagedInferenceIdentity } from './usage-ledger'
 
 export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic' | 'tinfoil'
 
@@ -56,7 +57,7 @@ export type InferenceUsageLog =
       eventId: string
       outcome: 'inserted' | 'duplicate'
     }
-  | (typeof managedGlmIdentity & {
+  | (ManagedInferenceIdentity & {
       event: 'inference_usage_receipt_issued'
       eventId: string
       route: string
@@ -91,6 +92,8 @@ export const logInferenceSafely = (
 }
 
 export type InferenceClientOptions = {
+  /** Caller-owned analytics client; never stored in the provider cache. */
+  posthogClient?: PostHog
   fetchFn?: typeof fetch
   logger?: InferenceLogger
   /** Monotonic clock used for upstream-attempt instrumentation. */
@@ -201,11 +204,6 @@ export const createInferenceFetch = ({
 let fireworksClient: OpenAI | PostHogOpenAI | null = null
 
 /**
- * Lazily initialized direct Tinfoil client
- */
-let tinfoilDirectClient: OpenAI | PostHogOpenAI | null = null
-
-/**
  * Lazily initialized Mistral client
  */
 let mistralClient: OpenAI | PostHogOpenAI | null = null
@@ -219,9 +217,8 @@ let anthropicClient: OpenAI | PostHogOpenAI | null = null
  * Get the Fireworks AI client
  */
 const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn } = options
-  // Don't use cache when fetchFn is provided (primarily for testing)
-  if (fireworksClient && !fetchFn) {
+  const { fetchFn, logger, nowFn, posthogClient } = options
+  if (fireworksClient && !fetchFn && !posthogClient) {
     return fireworksClient
   }
 
@@ -241,49 +238,12 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
-        posthog: getPostHogClient(fetchFn),
+        posthog: posthogClient ?? getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
-  // Only cache if no custom fetchFn was provided
-  if (!fetchFn) {
+  if (!fetchFn && !posthogClient) {
     fireworksClient = client
-  }
-
-  return client
-}
-
-/**
- * Get the direct Tinfoil OpenAI-compatible client.
- * This path uses standard HTTPS without SecureClient attestation or EHBP.
- */
-const getTinfoilDirectClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn } = options
-  if (tinfoilDirectClient && !fetchFn) {
-    return tinfoilDirectClient
-  }
-
-  const settings = getSettings()
-
-  if (!settings.tinfoilApiKey) {
-    throw new Error('Tinfoil API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.tinfoilApiKey,
-    baseURL: settings.tinfoilEnclaveUrl.replace(/\/$/, ''),
-    fetch: createInferenceFetch({ provider: 'tinfoil', fetchFn, logger, nowFn }),
-  }
-
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  if (!fetchFn) {
-    tinfoilDirectClient = client
   }
 
   return client
@@ -293,8 +253,8 @@ const getTinfoilDirectClient = (options: InferenceClientOptions = {}): OpenAI | 
  * Get the Mistral AI client using OpenAI-compatible API
  */
 const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn } = options
-  if (mistralClient && !fetchFn) {
+  const { fetchFn, logger, nowFn, posthogClient } = options
+  if (mistralClient && !fetchFn && !posthogClient) {
     return mistralClient
   }
 
@@ -313,11 +273,11 @@ const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHo
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
-        posthog: getPostHogClient(fetchFn),
+        posthog: posthogClient ?? getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
-  if (!fetchFn) {
+  if (!fetchFn && !posthogClient) {
     mistralClient = client
   }
 
@@ -328,8 +288,8 @@ const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHo
  * Get the Anthropic AI client using OpenAI-compatible API
  */
 const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn } = options
-  if (anthropicClient && !fetchFn) {
+  const { fetchFn, logger, nowFn, posthogClient } = options
+  if (anthropicClient && !fetchFn && !posthogClient) {
     return anthropicClient
   }
 
@@ -348,11 +308,11 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({
         ...params,
-        posthog: getPostHogClient(fetchFn),
+        posthog: posthogClient ?? getPostHogClient(fetchFn),
       })
     : new OpenAI(params)
 
-  if (!fetchFn) {
+  if (!fetchFn && !posthogClient) {
     anthropicClient = client
   }
 
@@ -364,15 +324,14 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
  * Clients are lazily initialized and reused across requests
  */
 export const getInferenceClient = (
-  provider: InferenceProvider,
+  provider: Exclude<InferenceProvider, 'tinfoil'>,
   options: InferenceClientOptions = {},
 ): InferenceClient => {
   const clientMap = {
     mistral: () => getMistralClient(options),
     anthropic: () => getAnthropicClient(options),
     fireworks: () => getFireworksClient(options),
-    tinfoil: () => getTinfoilDirectClient(options),
-  } satisfies Record<InferenceProvider, () => OpenAI | PostHogOpenAI>
+  } satisfies Record<Exclude<InferenceProvider, 'tinfoil'>, () => OpenAI | PostHogOpenAI>
 
   const client = clientMap[provider]()
 
@@ -388,7 +347,6 @@ export const getInferenceClient = (
  */
 export const clearInferenceClientCache = () => {
   fireworksClient = null
-  tinfoilDirectClient = null
   mistralClient = null
   anthropicClient = null
 }

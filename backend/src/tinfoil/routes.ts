@@ -14,6 +14,7 @@ import {
   getInferenceQuotaLimits,
   type InferenceDatabase,
 } from '@/inference/usage-ledger'
+import { resolveConfidentialManagedModel } from '@/inference/managed-models'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
 import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -22,7 +23,7 @@ import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
-import { inferenceUsageReceiptHeader, managedGlmIdentity } from '@shared/inference-usage'
+import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
@@ -47,6 +48,7 @@ const upstreamRequestHeaderBlocklist = new Set([
   'x-app-language',
   'x-device-id',
   'x-device-name',
+  inferenceModelHeader.toLowerCase(),
 ])
 
 export type TinfoilProxyLatencyLog = {
@@ -238,12 +240,18 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     upstreamOriginStore.record(upstreamUrl)
 
     let receipt: { eventId: string; token: string } | null = null
-    const isManagedGlmChat =
+    const isManagedChat =
       method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
-    if (isManagedGlmChat) {
+    // Clients predating inferenceModelHeader still send GLM requests without the header.
+    const identity = resolveConfidentialManagedModel(request.headers.get(inferenceModelHeader) ?? 'glm-5-2')
+    if (isManagedChat && !identity) {
+      recordLatency({ status: 400, completedAt: nowFn() })
+      return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)
+    }
+    if (isManagedChat && identity) {
       const admission = await checkManagedInferenceAdmission(
         database,
-        managedGlmIdentity,
+        identity,
         distinctId,
         getInferenceQuotaLimits(settings, isAnonymous),
       )
@@ -262,7 +270,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         token: issueInferenceUsageReceipt({
           eventId,
           userId: distinctId,
-          price: { ...price, ...managedGlmIdentity },
+          price,
           secret: settings.betterAuthSecret,
           nowSeconds: Math.floor(Date.now() / 1_000),
         }),
@@ -313,13 +321,13 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         inferenceUsageReceiptHeader,
         /^access-control-/i,
       ])
-      if (upstream.ok && receipt) {
+      if (upstream.ok && receipt && identity) {
         responseHeaders.set(inferenceUsageReceiptHeader, receipt.token)
         logInferenceSafely(
           usageLogger,
           {
             event: 'inference_usage_receipt_issued',
-            ...managedGlmIdentity,
+            ...identity,
             eventId: receipt.eventId,
             route,
           },
@@ -365,7 +373,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         upstreamHeadersReceivedAt,
       })
 
-      // The enclave body is HPKE-opaque (and the model lives inside it), so only
+      // The enclave body is HPKE-opaque, so only
       // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
       // failure stays diagnosable from telemetry without touching the stream.
       if (!upstream.ok) {

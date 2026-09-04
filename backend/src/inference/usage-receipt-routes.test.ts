@@ -6,11 +6,7 @@ import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import {
-  inferenceUsageReceiptPath,
-  managedGlmIdentity,
-  type InferenceUsageReceiptRequest,
-} from '@shared/inference-usage'
+import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -22,7 +18,6 @@ import { maxPostgresInteger, type InferencePrice } from './usage-ledger'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type TestApp = { handle: Elysia['handle'] }
-type GlmPrice = InferencePrice & { provider: 'tinfoil'; model: 'glm-5-2' }
 type TestReceiptBody = {
   receipt?: string | number | null
   promptTokens?: number | string | boolean | null
@@ -47,8 +42,9 @@ type CapturedLog = {
 const secret = 'receipt-route-secret'
 const nowSeconds = 1_787_616_000
 const keyDomain = 'thunderbolt/inference-usage-receipt/key/v1'
-const glmPrice: GlmPrice = {
-  ...managedGlmIdentity,
+const glmPrice: InferencePrice = {
+  provider: 'tinfoil',
+  model: 'glm-5-2',
   inputNanoUsdPerToken: 1_500n,
   outputNanoUsdPerToken: 5_250n,
 }
@@ -68,7 +64,7 @@ const issueReceipt = (
   options: Readonly<{
     eventId?: string
     userId?: string
-    price?: GlmPrice
+    price?: InferencePrice
     issuedAt?: number
   }> = {},
 ) =>
@@ -231,9 +227,12 @@ describe('inference usage receipt routes', () => {
     expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))).toHaveLength(1)
   })
 
-  it('stores identity and exact rates from the signed receipt and returns an empty 204', async () => {
+  it.each([
+    glmPrice,
+    { provider: 'tinfoil', model: 'deepseek-v4-flash', inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+  ] satisfies InferencePrice[])('stores signed identity and rates for $model with an empty 204', async (price) => {
     const eventId = crypto.randomUUID()
-    const response = await postJson(app, { receipt: issueReceipt({ eventId }), ...defaultCounts })
+    const response = await postJson(app, { receipt: issueReceipt({ eventId, price }), ...defaultCounts })
 
     await expectEmptyResponse(response, 204)
     const [row] = await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))
@@ -241,18 +240,18 @@ describe('inference usage receipt routes', () => {
       id: eventId,
       userId: 'test-user',
       provider: 'tinfoil',
-      model: 'glm-5-2',
+      model: price.model,
       promptTokens: 10,
       completionTokens: 20,
       totalTokens: 30,
-      costNanoUsd: 120_000n,
+      costNanoUsd: 10n * price.inputNanoUsdPerToken + 20n * price.outputNanoUsdPerToken,
     })
     expect(logs).toEqual([
       {
         context: {
           event: 'inference_usage_inserted',
           provider: 'tinfoil',
-          model: 'glm-5-2',
+          model: price.model,
           eventId,
           outcome: 'inserted',
         },
@@ -305,7 +304,8 @@ describe('inference usage receipt routes', () => {
       version: 1,
       eventId: crypto.randomUUID(),
       userId: 'u'.repeat(4_096),
-      ...managedGlmIdentity,
+      provider: 'tinfoil',
+      model: 'glm-5-2',
       inputNanoUsdPerToken: '1500',
       outputNanoUsdPerToken: '5250',
       issuedAt: nowSeconds,
@@ -391,7 +391,7 @@ describe('inference usage receipt routes', () => {
         eventId: crypto.randomUUID(),
         userId: 'test-user',
         provider: 'tinfoil',
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         inputNanoUsdPerToken: '1500',
         outputNanoUsdPerToken: '5250',
         issuedAt: nowSeconds,
@@ -404,7 +404,7 @@ describe('inference usage receipt routes', () => {
 
   it('maps signed cost overflow to an empty 400 without inserting a row', async () => {
     const eventId = crypto.randomUUID()
-    const overflowPrice: GlmPrice = {
+    const overflowPrice: InferencePrice = {
       ...glmPrice,
       inputNanoUsdPerToken: 9_223_372_036_854_775_808n,
       outputNanoUsdPerToken: 0n,

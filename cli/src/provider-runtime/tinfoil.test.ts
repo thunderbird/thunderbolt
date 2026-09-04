@@ -9,8 +9,8 @@ import { join } from 'node:path'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
-import { defaultModelGlm52, type SharedModel } from '../../../shared/defaults/models.ts'
-import { inferenceUsageReceiptHeader, managedGlmIdentity } from '../../../shared/inference-usage.ts'
+import { defaultModelGlm52, defaultModelDeepseekV4Flash, type SharedModel } from '../../../shared/defaults/models.ts'
+import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
 import { readFileOrNull } from '../lib/secure-fs.ts'
@@ -21,7 +21,6 @@ import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoi
 
 const confidentialModel: SharedModel = {
   ...defaultModelGlm52,
-  model: managedGlmIdentity.model,
   name: 'GLM 5.2',
   description: 'Confidential GLM',
   vendor: 'zai',
@@ -385,12 +384,13 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test('submits a provider receipt only from the actual AgentHarness terminal message_end', async () => {
+  test.each([confidentialModel, defaultModelDeepseekV4Flash])('sends $model identity and submits terminal usage', async (model) => {
     const secureRequests: Request[] = []
     const receiptRequests: Request[] = []
     const receipt = 'iu1.canonicalPayload.canonicalSignature'
     const binding = await createTinfoilBinding({
       ...bindingOptions(),
+      model,
       createSecureClient: secureClientFactory((request) => {
         secureRequests.push(request)
         return successfulCompletion(receipt)
@@ -418,6 +418,7 @@ describe('createTinfoilBinding', () => {
       })
       expect(message.content).toContainEqual({ type: 'text', text: 'private answer' })
       expect(secureRequests).toHaveLength(1)
+      expect(secureRequests[0]?.headers.get(inferenceModelHeader)).toBe(model.model)
       expect(secureRequests[0]?.url).toBe('https://app.example.com/v1/tinfoil/chat/completions')
       expect(secureRequests[0]?.headers.get('authorization')).toBe('Bearer stored-session')
       expect(secureRequests[0]?.headers.get('x-app-version')).toBe(cliVersion)
@@ -425,13 +426,9 @@ describe('createTinfoilBinding', () => {
       const requestPayload = (await secureRequests[0]?.json()) as {
         readonly model?: unknown
         readonly stream?: unknown
-        readonly thinking?: unknown
-        readonly reasoning_effort?: unknown
       }
-      expect(requestPayload.model).toBe('glm-5-2')
+      expect(requestPayload.model).toBe(model.model)
       expect(requestPayload.stream).toBe(true)
-      expect(requestPayload.thinking).toEqual({ type: 'enabled', clear_thinking: false })
-      expect(requestPayload.reasoning_effort).toBe('high')
       expect(receiptRequests).toHaveLength(1)
       expect(await receiptRequests[0]?.json()).toEqual({
         receipt,

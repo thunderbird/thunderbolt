@@ -60,7 +60,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
       provider: 'thunderbolt',
       reasoning: true,
       contextWindow: futureDirectModel.contextWindow,
-      input: ['text'],
+      input: ['text', 'image'],
     })
     expect(message.stopReason).toBe('stop')
     expect(requests).toHaveLength(1)
@@ -70,10 +70,10 @@ describe('createManagedDirectBinding — generic managed model', () => {
     })
   })
 
-  test('maps image support from the public catalog without a model-specific branch', async () => {
+  test.each([['anthropic', ['text', 'image']], [null, ['text']]] as const)('maps image support from catalog vendor %s', async (vendor, input) => {
     const imageModel: SharedModel = {
       ...futureDirectModel,
-      vendor: 'anthropic',
+      vendor,
     }
     const binding = await createManagedDirectBinding({
       credential: patCredential(),
@@ -82,7 +82,7 @@ describe('createManagedDirectBinding — generic managed model', () => {
       fetchFn: async () => successfulCompletion(imageModel.model),
     })
 
-    expect(binding.piModel.input).toEqual(['text', 'image'])
+    expect(binding.piModel.input).toEqual([...input])
   })
 
   test('rejects a confidential model at the direct producer seam', async () => {

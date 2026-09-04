@@ -232,7 +232,7 @@ describe('API key authentication', () => {
       createInferenceRoutes({
         auth: createAuth(harness.db),
         database: harness.db,
-        getClient: () => ({ client, provider: 'tinfoil' }),
+        getClient: () => ({ client, provider: 'anthropic' }),
         isPostHogConfiguredFn: () => false,
       }),
     )
@@ -242,7 +242,7 @@ describe('API key authentication', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': key },
         body: JSON.stringify({
-          model: 'deepseek-v4-flash',
+          model: 'opus-5',
           messages: [{ role: 'user', content: 'direct request' }],
           stream: true,
         }),

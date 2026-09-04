@@ -12,6 +12,7 @@
 
 import '@/testing-library'
 
+import { inferenceModelHeader } from '@shared/inference-usage'
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import type { PreparedAiRequestConfig } from '@/ai/fetch'
 import { createTurnTelemetry } from '@/ai/turn-telemetry'
@@ -315,51 +316,56 @@ describe('resolvePiModel — Tinfoil', () => {
     expect(telemetry.buildPayload('success')).toMatchObject({ attestation_ms: 0 })
   })
 
-  it('uses SSO cookies without SDK authorization and bearer auth otherwise', async () => {
-    const calls: RequestInit[] = []
-    const client = createSecureClient(async (_input, init) => {
-      calls.push(init ?? {})
-      return new Response()
-    })
-    const env: { VITE_AUTH_MODE?: string; VITE_APP_VERSION?: string } = import.meta.env
-    const savedMode = env.VITE_AUTH_MODE
-    const savedVersion = env.VITE_APP_VERSION
-    const savedToken = getAuthToken()
-
-    try {
-      env.VITE_AUTH_MODE = 'sso'
-      env.VITE_APP_VERSION = '1.2.3'
-      clearAuthToken()
-      const descriptor = requireDescriptor(
-        await resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel()), null, {
-          getSystemTinfoilClient: async () => client,
-        }),
-        'confidential',
-      )
-      await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions', {
-        headers: { Authorization: 'Bearer thunderbolt-managed' },
+  it.each(['glm-5-2', 'deepseek-v4-flash'])(
+    'sends the %s model header with SSO cookies or bearer auth',
+    async (model) => {
+      const calls: RequestInit[] = []
+      const client = createSecureClient(async (_input, init) => {
+        calls.push(init ?? {})
+        return new Response()
       })
+      const env: { VITE_AUTH_MODE?: string; VITE_APP_VERSION?: string } = import.meta.env
+      const savedMode = env.VITE_AUTH_MODE
+      const savedVersion = env.VITE_APP_VERSION
+      const savedToken = getAuthToken()
 
-      env.VITE_AUTH_MODE = undefined
-      setAuthToken('session-token')
-      await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
-
-      expect(calls[0].credentials).toBe('include')
-      expect(new Headers(calls[0].headers).get('authorization')).toBeNull()
-      expect(new Headers(calls[0].headers).get('x-app-version')).toBe('1.2.3')
-      expect(calls[1].credentials).toBeUndefined()
-      expect(new Headers(calls[1].headers).get('authorization')).toBe('Bearer session-token')
-      expect(new Headers(calls[1].headers).get('x-app-version')).toBe('1.2.3')
-    } finally {
-      env.VITE_AUTH_MODE = savedMode
-      env.VITE_APP_VERSION = savedVersion
-      if (savedToken) {
-        setAuthToken(savedToken)
-      } else {
+      try {
+        env.VITE_AUTH_MODE = 'sso'
+        env.VITE_APP_VERSION = '1.2.3'
         clearAuthToken()
+        const descriptor = requireDescriptor(
+          await resolvePiModel(tinfoilAgentCore, tinfoilContext(tinfoilModel({ model })), null, {
+            getSystemTinfoilClient: async () => client,
+          }),
+          'confidential',
+        )
+        await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions', {
+          headers: { Authorization: 'Bearer thunderbolt-managed', [inferenceModelHeader]: 'wrong-model' },
+        })
+
+        env.VITE_AUTH_MODE = undefined
+        setAuthToken('session-token')
+        await descriptor.fetch('https://cloud.example.com/v1/tinfoil/chat/completions')
+
+        expect(new Headers(calls[0].headers).get(inferenceModelHeader)).toBe(model)
+        expect(new Headers(calls[1].headers).get(inferenceModelHeader)).toBe(model)
+        expect(calls[0].credentials).toBe('include')
+        expect(new Headers(calls[0].headers).get('authorization')).toBeNull()
+        expect(new Headers(calls[0].headers).get('x-app-version')).toBe('1.2.3')
+        expect(calls[1].credentials).toBeUndefined()
+        expect(new Headers(calls[1].headers).get('authorization')).toBe('Bearer session-token')
+        expect(new Headers(calls[1].headers).get('x-app-version')).toBe('1.2.3')
+      } finally {
+        env.VITE_AUTH_MODE = savedMode
+        env.VITE_APP_VERSION = savedVersion
+        if (savedToken) {
+          setAuthToken(savedToken)
+        } else {
+          clearAuthToken()
+        }
       }
-    }
-  })
+    },
+  )
 
   it('evicts a managed client after a wedged transport error', async () => {
     const error = new TypeError("Cannot read properties of null (reading 'fetch')")
@@ -381,7 +387,8 @@ describe('resolvePiModel — Tinfoil', () => {
 
   it('resolves BYOK directly as OpenAI-compatible without receipts', async () => {
     const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
-    const client = createSecureClient(async () => {
+    const client = createSecureClient(async (_input, init) => {
+      expect(new Headers(init?.headers).has(inferenceModelHeader)).toBe(false)
       throw error
     })
     const getTinfoilClient = mock(async () => client)

@@ -19,6 +19,10 @@ import { createInferenceRoutes } from './routes'
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type InferenceLogContext = Parameters<InferenceLogger['info']>[0]
 
+/** Keep provider-error telemetry local unless a test supplies its own observer. */
+const createTestInferenceRoutes = (options: Parameters<typeof createInferenceRoutes>[0]) =>
+  createInferenceRoutes({ captureInferenceErrorFn: () => {}, ...options })
+
 const insertUser = async (database: TestDatabase, id: string, isAnonymous = false) => {
   await database.insert(user).values({
     id,
@@ -48,7 +52,7 @@ describe('Inference Routes', () => {
 
   const getInferenceClientMock = mock(() => ({
     client: mockOpenAIClient,
-    provider: 'tinfoil' as const,
+    provider: 'anthropic' as const,
   }))
   const isPostHogConfiguredMock = mock(() => false)
 
@@ -70,7 +74,7 @@ describe('Inference Routes', () => {
     cleanup = testDb.cleanup
     await insertUser(database, 'test-user')
     app = new Elysia().use(
-      createInferenceRoutes({
+      createTestInferenceRoutes({
         auth: mockAuth,
         database,
         getClient: getInferenceClientMock,
@@ -89,7 +93,7 @@ describe('Inference Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: 'deepseek-v4-flash',
+      model: 'opus-5',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -100,15 +104,15 @@ describe('Inference Routes', () => {
       if (rejection === 'missing-price') {
         await database
           .delete(inferencePrices)
-          .where(sql`${inferencePrices.provider} = 'tinfoil' and ${inferencePrices.model} = 'deepseek-v4-flash'`)
+          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
         return
       }
 
       await database.insert(inferenceUsage).values({
         id: 'telemetry-quota-usage',
         userId: 'test-user',
-        provider: 'tinfoil',
-        model: 'deepseek-v4-flash',
+        provider: 'anthropic',
+        model: 'claude-opus-5',
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
@@ -125,7 +129,7 @@ describe('Inference Routes', () => {
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient,
-        provider: 'tinfoil' as const,
+        provider: 'anthropic' as const,
       }))
     })
 
@@ -151,9 +155,8 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'deepseek-v4-flash',
+        model: 'claude-opus-5',
         messages: validRequestBody.messages,
-        temperature: validRequestBody.temperature,
         tools: undefined,
         tool_choice: undefined,
         stream: true,
@@ -182,7 +185,7 @@ describe('Inference Routes', () => {
       )
     })
 
-    it('should route DeepSeek V4 Flash to the Tinfoil provider', async () => {
+    it('should route Opus 5 to the Anthropic provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
@@ -195,25 +198,20 @@ describe('Inference Routes', () => {
       )
 
       expect(response.status).toBe(200)
-      expect(getInferenceClientMock).toHaveBeenCalledWith('tinfoil')
+      expect(getInferenceClientMock).toHaveBeenCalledWith('anthropic')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'deepseek-v4-flash',
+          model: 'claude-opus-5',
         }),
       )
     })
 
-    it('declares stream-usage support for exactly the two direct models', () => {
+    it('declares stream-usage support for the direct model', () => {
       expect(managedDirectRuntimes).toEqual({
         'opus-5': {
           provider: 'anthropic',
           internalName: 'claude-opus-5',
           omitTemperature: true,
-          supportsStreamUsage: true,
-        },
-        'deepseek-v4-flash': {
-          provider: 'tinfoil',
-          internalName: 'deepseek-v4-flash',
           supportsStreamUsage: true,
         },
       })
@@ -263,7 +261,7 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
           posthogProperties: expect.objectContaining({
-            model_provider: 'tinfoil',
+            model_provider: 'anthropic',
             endpoint: '/chat/completions',
             has_tools: false,
             temperature: validRequestBody.temperature,
@@ -311,8 +309,8 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
 
-    it.each(['toString', 'constructor', '__proto__'])(
-      'rejects prototype-property model %s as model not found',
+    it.each(['toString', 'constructor', '__proto__', 'deepseek-v4-flash'])(
+      'rejects unsupported direct model %s as model not found',
       async (model) => {
         const response = await app.handle(
           new Request('http://localhost/chat/completions', {
@@ -331,7 +329,7 @@ describe('Inference Routes', () => {
     it('returns a minimal 503 before client construction when the canonical price is missing', async () => {
       await database
         .delete(inferencePrices)
-        .where(sql`${inferencePrices.provider} = 'tinfoil' and ${inferencePrices.model} = 'deepseek-v4-flash'`)
+        .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
 
       const response = await app.handle(
         new Request('http://localhost/chat/completions', {
@@ -365,8 +363,8 @@ describe('Inference Routes', () => {
           await database.insert(inferenceUsage).values({
             id: `usage-${userId}`,
             userId,
-            provider: 'tinfoil',
-            model: 'deepseek-v4-flash',
+            provider: 'anthropic',
+            model: 'claude-opus-5',
             promptTokens: 0,
             completionTokens: 0,
             totalTokens: 0,
@@ -374,7 +372,7 @@ describe('Inference Routes', () => {
             createdAt: new Date(Date.now() - ageHours * 60 * 60 * 1_000),
           })
           const quotaApp = new Elysia().use(
-            createInferenceRoutes({
+            createTestInferenceRoutes({
               auth: createMockAuth(userId, isAnonymous),
               database,
               getClient: getInferenceClientMock,
@@ -422,8 +420,8 @@ describe('Inference Routes', () => {
         {
           id: 'both-window-older',
           userId,
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
@@ -432,7 +430,7 @@ describe('Inference Routes', () => {
         },
       ])
       const quotaApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: createMockAuth(userId, false),
           database,
           getClient: getInferenceClientMock,
@@ -462,7 +460,7 @@ describe('Inference Routes', () => {
       const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
       const timestamps = [100, 120, 170]
       const telemetryApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -492,8 +490,8 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'tinfoil',
-            model: 'deepseek-v4-flash',
+            provider: 'anthropic',
+            model: 'opus-5',
             status,
             preMs: 20,
             upstreamMs: null,
@@ -513,7 +511,7 @@ describe('Inference Routes', () => {
     ] as const)('preserves the %s rejection when latency logging throws', async (rejection, status, body) => {
       await arrangePolicyRejection(rejection)
       const throwingLoggerApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -557,7 +555,7 @@ describe('Inference Routes', () => {
     it('captures body-free structured metadata from an API error', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -587,9 +585,9 @@ describe('Inference Routes', () => {
 
       expect(response.status).toBe(400)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'tinfoil',
+        provider: 'anthropic',
         status: 400,
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         errorKind: 'context_length',
         errorType: 'invalid_request_error',
         errorCode: 'context_length_exceeded',
@@ -605,7 +603,7 @@ describe('Inference Routes', () => {
       const captureInferenceErrorMock = mock(() => {})
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const faultApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -627,9 +625,9 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(await response.json()).toEqual({ success: false, data: null, error: 'Internal Server Error' })
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'tinfoil',
+        provider: 'anthropic',
         status: 500,
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         errorKind: 'unknown',
         errorType: undefined,
         errorCode: undefined,
@@ -644,7 +642,7 @@ describe('Inference Routes', () => {
     it('captures body-free structured metadata from a mid-stream API error', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -698,7 +696,7 @@ describe('Inference Routes', () => {
     it('does not capture downstream cancellation as a stream error', async () => {
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -744,7 +742,7 @@ describe('Inference Routes', () => {
       const captureInferenceErrorMock = mock(() => {})
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -769,9 +767,9 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'tinfoil',
+        provider: 'anthropic',
         status: 500,
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         errorKind: 'connection',
         errorType: undefined,
         errorCode: undefined,
@@ -781,8 +779,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_connection_timeout',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           route: '/chat/completions',
         },
         message: 'Connection timeout to inference provider',
@@ -799,7 +797,7 @@ describe('Inference Routes', () => {
       const captureInferenceErrorMock = mock(() => {})
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -823,9 +821,9 @@ describe('Inference Routes', () => {
       expect(response.status).toBe(500)
       expect(captureInferenceErrorMock).toHaveBeenCalledTimes(1)
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
-        provider: 'tinfoil',
+        provider: 'anthropic',
         status: 500,
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         errorKind: 'connection',
         errorType: undefined,
         errorCode: undefined,
@@ -835,8 +833,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_connection_failed',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           route: '/chat/completions',
         },
         message: 'Failed to connect to inference provider',
@@ -853,7 +851,7 @@ describe('Inference Routes', () => {
       const sentinel = 'SECRET_PROMPT_FRAGMENT_XYZ'
       const captureInferenceErrorMock = mock(() => {})
       const captureApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -887,7 +885,7 @@ describe('Inference Routes', () => {
       const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
       const timestamps = [100, 120, 170]
       const timingApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -919,8 +917,8 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'tinfoil',
-            model: 'deepseek-v4-flash',
+            provider: 'anthropic',
+            model: 'opus-5',
             status: 200,
             preMs: 20,
             upstreamMs: 50,
@@ -936,7 +934,7 @@ describe('Inference Routes', () => {
       const entries: Array<{ context: InferenceProxyLatencyLog; message: string }> = []
       const timestamps = [200, 230, 310]
       const timingApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -964,8 +962,8 @@ describe('Inference Routes', () => {
           context: {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
-            provider: 'tinfoil',
-            model: 'deepseek-v4-flash',
+            provider: 'anthropic',
+            model: 'opus-5',
             status: 500,
             preMs: 30,
             upstreamMs: 80,
@@ -1022,12 +1020,12 @@ describe('Inference Routes', () => {
 
     it.each([
       {
-        publicModel: 'deepseek-v4-flash',
-        provider: 'tinfoil',
-        internalName: 'deepseek-v4-flash',
+        publicModel: 'opus-5',
+        provider: 'anthropic',
+        internalName: 'claude-opus-5',
         userId: 'test-user',
         isAnonymous: false,
-        expectedCost: 2_700n,
+        expectedCost: 85_000n,
       },
       {
         publicModel: 'opus-5',
@@ -1044,7 +1042,7 @@ describe('Inference Routes', () => {
           await insertUser(database, userId, true)
         }
         const routeApp = new Elysia().use(
-          createInferenceRoutes({
+          createTestInferenceRoutes({
             auth: createMockAuth(userId, isAnonymous),
             database,
             getClient: getInferenceClientMock,
@@ -1096,7 +1094,7 @@ describe('Inference Routes', () => {
         await database
           .update(inferencePrices)
           .set({ inputNanoUsdPerToken: 9_000n, outputNanoUsdPerToken: 11_000n })
-          .where(sql`${inferencePrices.provider} = 'tinfoil' and ${inferencePrices.model} = 'deepseek-v4-flash'`)
+          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
         return createMockStream([{ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }])
       })
 
@@ -1110,7 +1108,7 @@ describe('Inference Routes', () => {
       await response.text()
 
       const [row] = await database.select().from(inferenceUsage)
-      expect(row.costNanoUsd).toBe(2_700n)
+      expect(row.costNanoUsd).toBe(85_000n)
     })
 
     it.each([
@@ -1125,7 +1123,7 @@ describe('Inference Routes', () => {
     ] as const)('does not insert usage when provider usage is %s', async (_label, chunk) => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const missingUsageApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1150,8 +1148,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_usage_missing',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           route: '/chat/completions',
         },
         message: 'Inference usage missing',
@@ -1164,7 +1162,7 @@ describe('Inference Routes', () => {
     it('completes the caller stream and logs body-free metadata when the usage insert fails', async () => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const failingApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1196,8 +1194,8 @@ describe('Inference Routes', () => {
         expect.objectContaining({
           context: expect.objectContaining({
             event: 'inference_usage_completed',
-            provider: 'tinfoil',
-            model: 'deepseek-v4-flash',
+            provider: 'anthropic',
+            model: 'claude-opus-5',
             transport: 'direct',
           }),
           message: 'Inference usage completed',
@@ -1206,8 +1204,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_usage_callback_failed',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           route: '/chat/completions',
         },
         message: 'Inference usage callback failed',
@@ -1222,7 +1220,7 @@ describe('Inference Routes', () => {
     it('logs completed then inserted for a newly persisted usage event', async () => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const telemetryApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1253,8 +1251,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_usage_completed',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           eventId: row.id,
           transport: 'direct',
         },
@@ -1263,8 +1261,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_usage_inserted',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           eventId: row.id,
           outcome: 'inserted',
         },
@@ -1276,7 +1274,7 @@ describe('Inference Routes', () => {
       const attemptedEvents: string[] = []
       const telemetryError = new Error('Telemetry sink failed')
       const throwingLoggerApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1322,8 +1320,8 @@ describe('Inference Routes', () => {
       await database.insert(inferenceUsage).values({
         id: eventId,
         userId: 'test-user',
-        provider: 'tinfoil',
-        model: 'deepseek-v4-flash',
+        provider: 'anthropic',
+        model: 'claude-opus-5',
         promptTokens: 1,
         completionTokens: 1,
         totalTokens: 2,
@@ -1332,7 +1330,7 @@ describe('Inference Routes', () => {
       const randomUUIDSpy = spyOn(crypto, 'randomUUID').mockReturnValue(eventId)
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const telemetryApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1367,8 +1365,8 @@ describe('Inference Routes', () => {
       expect(logs).toContainEqual({
         context: {
           event: 'inference_usage_inserted',
-          provider: 'tinfoil',
-          model: 'deepseek-v4-flash',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
           eventId,
           outcome: 'duplicate',
         },
@@ -1380,7 +1378,7 @@ describe('Inference Routes', () => {
       const completed = Promise.withResolvers<void>()
       const inserted = Promise.withResolvers<void>()
       const lateCancelApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1430,7 +1428,7 @@ describe('Inference Routes', () => {
     it('completes without a row when observer-valid usage exceeds persistence range', async () => {
       const logs: Array<{ context: InferenceLogContext; message: string }> = []
       const overflowApp = new Elysia().use(
-        createInferenceRoutes({
+        createTestInferenceRoutes({
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
@@ -1491,8 +1489,8 @@ describe('Inference Routes', () => {
             expect.objectContaining({
               posthogDistinctId: 'test-user',
               posthogProperties: expect.objectContaining({
-                model_provider: 'tinfoil',
-                model: 'deepseek-v4-flash',
+                model_provider: 'anthropic',
+                model: 'claude-opus-5',
               }),
             }),
           )
@@ -1508,14 +1506,16 @@ describe('Inference Routes', () => {
   describe('authentication', () => {
     it('should return 401 when session is null', async () => {
       mockCreateCompletion.mockClear()
-      const unauthenticatedApp = new Elysia().use(createInferenceRoutes({ auth: mockAuthUnauthenticated, database }))
+      const unauthenticatedApp = new Elysia().use(
+        createTestInferenceRoutes({ auth: mockAuthUnauthenticated, database }),
+      )
 
       const response = await unauthenticatedApp.handle(
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'deepseek-v4-flash',
+            model: 'opus-5',
             messages: [{ role: 'user', content: 'Hello' }],
             stream: true,
           }),
@@ -1535,7 +1535,7 @@ describe('Inference Routes', () => {
       isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient,
-        provider: 'tinfoil' as const,
+        provider: 'anthropic' as const,
       }))
       mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
     })
@@ -1545,7 +1545,7 @@ describe('Inference Routes', () => {
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'deepseek-v4-flash', messages, stream: true }),
+          body: JSON.stringify({ model: 'opus-5', messages, stream: true }),
         }),
       )
 

@@ -6,11 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import {
-  inferenceUsageReceiptPath,
-  managedGlmIdentity,
-  type InferenceUsageReceiptRequest,
-} from '@shared/inference-usage'
+import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { z } from 'zod'
 import { logInferenceSafely, type InferenceLogger } from './client'
@@ -86,7 +82,7 @@ const parseReceiptRequest = async (request: Request): Promise<InferenceUsageRece
 /** Create a truly body-free receipt endpoint response. */
 const emptyResponse = (status: 204 | 400 | 403 | 503): Response => new Response(null, { status })
 
-/** Create the authenticated managed GLM usage receipt endpoint. */
+/** Create the authenticated confidential managed usage receipt endpoint. */
 export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions): AnyElysia => {
   const { auth, database, logger, rateLimit, secret } = options
   const { cliDeviceRegistrationEnabled } = getSettings()
@@ -139,7 +135,8 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
               logger,
               {
                 event: 'inference_usage_inserted',
-                ...managedGlmIdentity,
+                provider: claims.provider,
+                model: claims.model,
                 eventId: claims.eventId,
                 outcome,
               },
@@ -154,7 +151,8 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
               logger?.info(
                 {
                   event: 'inference_usage_callback_failed',
-                  ...managedGlmIdentity,
+                  provider: claims.provider,
+                  model: claims.model,
                   route: new URL(request.url).pathname,
                 },
                 'Inference usage callback failed',

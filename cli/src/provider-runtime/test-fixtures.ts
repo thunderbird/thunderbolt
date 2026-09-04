@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createModels, type Api, type AssistantMessage, type Model } from '@earendil-works/pi-ai'
-import { defaultModelDeepseekV4Flash, type SharedModel } from '../../../shared/defaults/models.ts'
+import { defaultModelOpus5, type SharedModel } from '../../../shared/defaults/models.ts'
 import { bundledManagedCatalog } from './catalog.ts'
 import { createProviderStageContext } from './provider-stage.ts'
 import { createProviderRuntime, type ProviderRuntimeDependencies } from './runtime.ts'
@@ -13,7 +13,7 @@ import type { CliAuth, ManagedCatalog, PreparedPiBinding, ResolvedAccountCredent
 const futureDirectModelId = '019f0000-0000-7000-8000-000000000001'
 
 export const futureDirectModel: SharedModel = {
-  ...defaultModelDeepseekV4Flash,
+  ...defaultModelOpus5,
   id: futureDirectModelId,
   model: 'future-direct-fixture',
   name: 'Future Direct Fixture',

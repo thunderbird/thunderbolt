@@ -62,6 +62,7 @@ import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { vendorSupportsImages } from '@shared/defaults/models'
+import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import type { SecureClient } from 'tinfoil'
 import {
@@ -332,6 +333,7 @@ export const resolvePiModel = async (
       const fetch: PiModelDescriptor['fetch'] = async (input, init) => {
         const token = readAuthToken()
         const headers = new Headers(init?.headers)
+        headers.set(inferenceModelHeader, model.model)
         for (const [key, value] of Object.entries(appVersionHeader())) {
           headers.set(key, value)
         }

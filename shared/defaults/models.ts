@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '../lib/hash'
-import { managedGlmIdentity } from '../inference-usage'
 
 /**
  * Shape of a shipped model default. Structurally a subset of the frontend
@@ -105,27 +104,18 @@ export const defaultModelOpus5: SharedModel = {
 export const defaultModelId = defaultModelOpus5.id
 
 /**
- * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
- * would flip `isConfidential` 1 → 0 on threads that were created encrypted
- * (`isEncrypted` mirrors the model's `isConfidential` at creation), stranding
- * them because the model picker and send guard both enforce
- * `isEncrypted === isConfidential`. The retired Pro row is instead
- * soft-deleted by `cleanupRemovedDefaults`, so encrypted threads bound to it
- * surface as "model retired" rather than broken chats.
- *
- * The reconciler's `frozenFields: ['isConfidential', 'provider']` guard
- * enforces the same invariant from the OTA side — an OTA payload that ships
- * an existing id with `isConfidential` flipped is silently ignored on those
- * two columns. New values for either field must ship under a fresh id.
+ * Confidential Flash ships under a fresh id because reconciliation freezes
+ * `provider` and `isConfidential`. Reusing its direct row would strand existing
+ * unencrypted threads, whose send guard enforces `isEncrypted === isConfidential`.
  */
 export const defaultModelDeepseekV4Flash: SharedModel = {
-  id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',
+  id: '01a06dd7-67ee-75be-b957-2b746271c49d',
   name: 'DeepSeek V4 Flash',
-  provider: 'thunderbolt',
+  provider: 'tinfoil',
   model: 'deepseek-v4-flash',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
+  isConfidential: 1,
   contextWindow: 131072,
   toolUsage: 1,
   startWithReasoning: 0,
@@ -134,7 +124,7 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
   url: null,
   defaultHash: null,
   vendor: 'deepseek',
-  description: 'Fast DeepSeek reasoning',
+  description: 'Confidential DeepSeek reasoning via Thunderbolt',
   userId: null,
 }
 
@@ -143,7 +133,8 @@ export const defaultModelGlm52: SharedModel = {
   name: 'GLM 5.2',
   // `provider` is the internal transport. The UI presents system-managed
   // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
-  ...managedGlmIdentity,
+  provider: 'tinfoil',
+  model: 'glm-5-2',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -169,6 +160,8 @@ export const defaultModelGlm52: SharedModel = {
  * soft-deleted by `cleanupRemovedDefaults` on next reconcile; unedited copies
  * disappear cleanly, user-edited copies survive but point at retired ids and
  * will surface upstream errors when used.
+ * Retired in V5: direct Flash (`019f227e-d640-727d-ba12-d51bd7d0a3d6`),
+ * replaced by confidential Flash under a fresh id with the same cleanup policy.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus5,
@@ -186,4 +179,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 4
+export const defaultModelsVersion = 5

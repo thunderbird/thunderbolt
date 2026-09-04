@@ -22,9 +22,8 @@ import {
   type InferenceClient,
   type InferenceLogger,
   type InferenceProxyLatencyLog,
-  type InferenceProvider,
 } from './client'
-import { resolveManagedDirectRuntime } from './managed-models'
+import { resolveManagedDirectRuntime, type ManagedDirectRuntime } from './managed-models'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
@@ -49,7 +48,7 @@ export type CreateInferenceRoutesOptions = {
   captureInferenceErrorFn?: typeof captureInferenceError
   database: InferenceDatabase
   fetchFn?: typeof fetch
-  getClient?: (provider: InferenceProvider) => InferenceClient
+  getClient?: (provider: ManagedDirectRuntime['provider']) => InferenceClient
   isPostHogConfiguredFn?: () => boolean
   logger?: InferenceLogger
   /** Monotonic clock used for route latency and upstream-attempt instrumentation. */
@@ -80,7 +79,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
   const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
   const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
   const getClient =
-    options.getClient ?? ((provider: InferenceProvider) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
+    options.getClient ??
+    ((provider: ManagedDirectRuntime['provider']) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const app = new Elysia({
     prefix: '/chat',
   })

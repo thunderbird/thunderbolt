@@ -10,7 +10,7 @@ import { createInferenceRoutes } from '@/inference/routes'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createTinfoilRoutes } from '@/tinfoil/routes'
-import { inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
+import { inferenceModelHeader, inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { expect, it } from 'bun:test'
 import { asc, eq, inArray } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -93,7 +93,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
   const sessionToken = `managed-usage-session-${suffix}`
   const signedBearerToken = signBearerToken(sessionToken)
   const sessionId = `managed-usage-session-row-${suffix}`
-  const directTinfoilOrigin = 'https://direct-managed-fixture.tinfoil.sh/v1'
   const opaqueTinfoilOrigin = 'https://opaque-managed-fixture.tinfoil.sh/v1'
   const providerCalls: ProviderCall[] = []
   const glmRequestBytes = Uint8Array.from([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255])
@@ -105,7 +104,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
     INFERENCE_QUOTA_ANONYMOUS_7D_CENTS: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
     TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
-    TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL,
   }
 
   process.env.ANTHROPIC_API_KEY = 'managed-usage-anthropic-fixture-key'
@@ -113,7 +111,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
   process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS = '10'
   process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS = '60'
   process.env.TINFOIL_API_KEY = 'managed-usage-tinfoil-fixture-key'
-  process.env.TINFOIL_ENCLAVE_URL = directTinfoilOrigin
   delete process.env.POSTHOG_API_KEY
   clearSettingsCache()
 
@@ -173,12 +170,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           const bodyJson = bodyText === null ? null : directProviderBodySchema.parse(JSON.parse(bodyText))
           providerCalls.push({ url: request.url, method: request.method, bodyBytes, bodyJson })
 
-          if (request.url === `${directTinfoilOrigin}/chat/completions`) {
-            return new Response(createOpenAiSse('chatcmpl-deepseek', 'deepseek-v4-flash', deepseekCounts), {
-              status: 200,
-              headers: { 'Content-Type': 'text/event-stream' },
-            })
-          }
           if (request.url === 'https://api.anthropic.com/v1/chat/completions') {
             return new Response(createOpenAiSse('chatcmpl-opus', 'claude-opus-5', opusCounts), {
               status: 200,
@@ -235,20 +226,25 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       ).rows
 
       const deepseekResponse = await app.handle(
-        new Request('http://localhost/v1/chat/completions', {
+        new Request('http://localhost/v1/tinfoil/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${signedBearerToken}`, [inferenceModelHeader]: 'deepseek-v4-flash' },
+          body: glmRequestBytes.slice().buffer,
+        }),
+      )
+      expect(deepseekResponse.status).toBe(200)
+      expect(new Uint8Array(await deepseekResponse.arrayBuffer())).toEqual(glmResponseBytes)
+      const deepseekReceiptResponse = await app.handle(
+        new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'deepseek-v4-flash',
-            messages: [{ role: 'user', content: 'deepseek fixture' }],
-            stream: true,
-            stream_options: { include_usage: false, client_value: 'ignored' },
+            receipt: deepseekResponse.headers.get(inferenceUsageReceiptHeader),
+            ...deepseekCounts,
           }),
         }),
       )
-      const deepseekBody = await deepseekResponse.text()
-      expect(deepseekResponse.status).toBe(200)
-      expect(deepseekBody).toContain('data: [DONE]\n\n')
+      expect(deepseekReceiptResponse.status).toBe(204)
 
       const opusResponse = await app.handle(
         new Request('http://localhost/v1/chat/completions', {
@@ -307,7 +303,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'deepseek-v4-flash',
+            model: 'opus-5',
             messages: [{ role: 'user', content: 'must be rejected before transport' }],
             stream: true,
           }),
@@ -399,15 +395,12 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       ).rows
       expect(BigInt(totalCost)).toBe(101_250_000n)
       expect(providerCalls.map(({ url, method }) => ({ url, method }))).toEqual([
-        { url: `${directTinfoilOrigin}/chat/completions`, method: 'POST' },
+        { url: `${opaqueTinfoilOrigin}/chat/completions`, method: 'POST' },
         { url: 'https://api.anthropic.com/v1/chat/completions', method: 'POST' },
         { url: `${opaqueTinfoilOrigin}/chat/completions`, method: 'POST' },
       ])
-      expect(providerCalls[0].bodyJson).toMatchObject({
-        model: 'deepseek-v4-flash',
-        stream: true,
-        stream_options: { include_usage: true },
-      })
+      expect(providerCalls[0].bodyJson).toBeNull()
+      expect(providerCalls[0].bodyBytes).toEqual(glmRequestBytes)
       expect(providerCalls[1].bodyJson).toMatchObject({
         model: 'claude-opus-5',
         stream: true,

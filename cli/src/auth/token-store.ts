@@ -5,9 +5,9 @@
 /** Versioned persistence and resolution for CLI account credentials. */
 
 import { randomBytes, randomUUID } from 'node:crypto'
-import { createSerialQueue, type SerialQueue } from '../lib/abort.ts'
-import { hasExactKeys, isNonblankString, isRecord, parseJson, uuidPattern } from '../lib/json.ts'
-import { readFileOrNull, removeSecureFile, writeSecureFile } from '../lib/secure-fs.ts'
+import { isCliDeviceId } from '../../../shared/cli-device-id.ts'
+import { hasExactKeys, isNonblankString, isRecord, parseJson } from '../lib/json.ts'
+import { readFileOrNull, removeSecureFile, withSecureFileLock, writeSecureFile } from '../lib/secure-fs.ts'
 import { createStateError } from '../lib/state-error.ts'
 import { authConfigPath } from '../paths.ts'
 import type { CliAuth, ResolvedAccountCredential, SessionCredential } from '../provider-runtime/types.ts'

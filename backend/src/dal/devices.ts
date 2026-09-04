@@ -4,14 +4,16 @@
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { devicesTable } from '@/db/schema'
+import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
 import { and, count, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
+
+export { cliDeviceIdPrefix, isCliDeviceId }
 
 /** Deterministic device id for a bridge, derived from (userId, nodeId). Keying the row on this
  * makes re-registration of the same bridge an idempotent upsert on (userId, nodeId) without a
  * dedicated unique constraint, and guarantees one account can never collide with another's id. */
 export const bridgeDeviceIdPrefix = 'bridge-'
-export const cliDeviceIdPrefix = 'cli-'
 export const maxActiveDevicesPerUser = 10
 
 /** Hold the per-account transaction lock while re-reading, counting, and mutating active devices. */
@@ -23,12 +25,6 @@ export const withUserDeviceRegistrationLock = async <Result>(
   await database.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
   return operation()
 }
-
-const canonicalLowercaseUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-
-/** Return whether a value is a reserved CLI device ID with a canonical lowercase UUID. */
-export const isCliDeviceId = (value: string): boolean =>
-  value.startsWith(cliDeviceIdPrefix) && canonicalLowercaseUuidPattern.test(value.slice(cliDeviceIdPrefix.length))
 
 /** Return whether a device is a trusted, account-owned app or bridge device. */
 export const isTrustedAppDevice = (

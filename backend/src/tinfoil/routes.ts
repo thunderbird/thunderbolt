@@ -242,7 +242,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     let receipt: { eventId: string; token: string } | null = null
     const isManagedChat =
       method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
-    // Clients predating inferenceModelHeader still send GLM requests without the header.
+    // Preserve the default for clients predating the header.
     const identity = resolveConfidentialManagedModel(request.headers.get(inferenceModelHeader) ?? 'glm-5-2')
     if (isManagedChat && !identity) {
       recordLatency({ status: 400, completedAt: nowFn() })

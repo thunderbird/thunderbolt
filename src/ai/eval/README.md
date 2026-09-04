@@ -36,7 +36,7 @@ EVAL_MODELS=opus EVAL_MODES=search bun run eval
 
 The matrix is derived from `defaultModels`, so every shipped system model is included automatically. Each turn goes through `createBuiltInAdapter`, which applies the same routing as production:
 
-- Every shipped eval model uses the Pi harness, including Tinfoil GLM through its confidential transport.
+- Every shipped eval model uses the Pi harness, including confidential models through their confidential transport.
 
 ```
 User prompt → createBuiltInAdapter() → Pi harness → UI message stream → Parse & Score
@@ -417,7 +417,7 @@ Inference, Tinfoil, search, and universal-proxy routes reject unauthenticated re
 The repository needs these Actions secrets:
 
 - `ANTHROPIC_API_KEY` — Opus inference and Opus judge calls
-- `TINFOIL_API_KEY` — DeepSeek V4 Flash and confidential GLM inference
+- `TINFOIL_API_KEY` — inference for confidential models
 - `EXA_API_KEY` — web search tool calls
 
 ### Manual runs

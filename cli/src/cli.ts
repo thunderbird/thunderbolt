@@ -111,7 +111,7 @@ ACCOUNT AUTHENTICATION
   the QR) and approve in the app to bind this CLI to your account. Set
   THUNDERBOLT_CLOUD_URL to a self-hosted backend (default ${defaultCloudUrl}).
   THUNDERBOLT_TOKEN is an environment-managed PAT for direct managed inference and bridges only.
-  It cannot be cleared or device-bound by the CLI. Confidential GLM requires web login.
+  It cannot be cleared or device-bound by the CLI. Confidential models require web login.
 
 EXAMPLES
   thunderbolt "fix the failing test in utils.ts"

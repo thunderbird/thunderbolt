@@ -14,8 +14,8 @@ EVAL_SMOKE=1 bun run eval
 # Test only Opus
 EVAL_MODELS=opus bun run eval
 
-# Test the legacy engine only
-EVAL_ENGINES=legacy bun run eval
+# Test the Pi engine only
+EVAL_ENGINES=pi bun run eval
 
 # Test only Chat mode across all models
 EVAL_MODES=chat bun run eval
@@ -36,11 +36,10 @@ EVAL_MODELS=opus EVAL_MODES=search bun run eval
 
 The matrix is derived from `defaultModels`, so every shipped system model is included automatically. Each turn goes through `createBuiltInAdapter`, which applies the same routing as production:
 
-- Tool-capable `anthropic`, `openai`, `custom`, `openrouter`, and `thunderbolt` models use the Pi harness.
-- Other models, including `tinfoil`, use the legacy AI pipeline.
+- Every shipped eval model uses the Pi harness, including Tinfoil GLM through its confidential transport.
 
 ```
-User prompt → createBuiltInAdapter() → Pi or legacy → UI message stream → Parse & Score
+User prompt → createBuiltInAdapter() → Pi harness → UI message stream → Parse & Score
 ```
 
 One in-memory database is initialized for the run and shared read-only by all scenarios. Each scenario gets a fresh thread id, which is reused across that scenario's turns so persistent Pi harness behavior matches production. The adapter is disconnected after the run.

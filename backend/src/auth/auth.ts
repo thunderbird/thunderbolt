@@ -14,6 +14,7 @@ import {
   validateOtpChallenge,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
@@ -213,6 +214,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           before: async (userData) => ({
             data: { ...userData, email: normalizeEmail(userData.email) },
           }),
+        },
+      },
+      session: {
+        create: {
+          before: async (sessionData, context) =>
+            context?.path === deviceTokenPath
+              ? { data: { ...sessionData, deviceId: cliRegistrationPendingDeviceId } }
+              : undefined,
         },
       },
     },

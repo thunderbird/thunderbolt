@@ -6,7 +6,7 @@ import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
-import { linkSessionToDevice } from '@/dal'
+import { linkCliSessionToDevice } from '@/dal/sessions'
 import { hashCanarySecret } from '@/lib/canary'
 import { createTestDb } from '@/test-utils/db'
 import { registerCliDevice } from '@/test-utils/cli-device'
@@ -340,18 +340,18 @@ describe('Account API', () => {
       const token = p('cli-bind-delete-token')
       const deviceId = `cli-${crypto.randomUUID()}`
       await createCliSession(userId, token)
-      const deleteBeforeBind: typeof linkSessionToDevice = async (
+      const deleteBeforeBind: typeof linkCliSessionToDevice = async (
         database,
         sessionId,
         targetDeviceId,
         targetUserId,
       ) => {
         await database.delete(sessionTable).where(eq(sessionTable.id, sessionId))
-        return linkSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
+        return linkCliSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
       }
       const boundaryApp = new Elysia({ prefix: '/v1' }).use(
         createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
-          linkSessionToDevice: deleteBeforeBind,
+          linkCliSessionToDevice: deleteBeforeBind,
         }),
       )
 
@@ -367,7 +367,7 @@ describe('Account API', () => {
       const token = p('cli-bind-expiry-token')
       const deviceId = `cli-${crypto.randomUUID()}`
       await createCliSession(userId, token)
-      const expireBeforeBind: typeof linkSessionToDevice = async (
+      const expireBeforeBind: typeof linkCliSessionToDevice = async (
         database,
         sessionId,
         targetDeviceId,
@@ -377,11 +377,11 @@ describe('Account API', () => {
           .update(sessionTable)
           .set({ expiresAt: new Date(Date.now() - 1_000) })
           .where(eq(sessionTable.id, sessionId))
-        return linkSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
+        return linkCliSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
       }
       const boundaryApp = new Elysia({ prefix: '/v1' }).use(
         createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
-          linkSessionToDevice: expireBeforeBind,
+          linkCliSessionToDevice: expireBeforeBind,
         }),
       )
 
@@ -398,13 +398,13 @@ describe('Account API', () => {
       const deviceId = `cli-${crypto.randomUUID()}`
       const competingDeviceId = `cli-${crypto.randomUUID()}`
       await createCliSession(userId, token)
-      const bindCompetingDevice: typeof linkSessionToDevice = async (database, sessionId) => {
+      const bindCompetingDevice: typeof linkCliSessionToDevice = async (database, sessionId) => {
         await database.update(sessionTable).set({ deviceId: competingDeviceId }).where(eq(sessionTable.id, sessionId))
         return { status: 'conflict' }
       }
       const boundaryApp = new Elysia({ prefix: '/v1' }).use(
         createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
-          linkSessionToDevice: bindCompetingDevice,
+          linkCliSessionToDevice: bindCompetingDevice,
         }),
       )
 

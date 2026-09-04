@@ -6,7 +6,13 @@ import { session, user } from '@/db/auth-schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { getActivePersistedSession, linkSessionToDevice, revokeDeviceSessions } from './sessions'
+import {
+  cliRegistrationPendingDeviceId,
+  getActivePersistedSession,
+  linkCliSessionToDevice,
+  linkSessionToDevice,
+  revokeDeviceSessions,
+} from './sessions'
 
 describe('sessions DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -107,6 +113,28 @@ describe('sessions DAL', () => {
 
       const [row] = await db.select().from(session).where(eq(session.id, 'relink-session'))
       expect(row.deviceId).toBe('old-device')
+    })
+
+    it('only replaces the server marker through the CLI registration binder', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'cli-pending-session',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: 'cli-pending-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: cliRegistrationPendingDeviceId,
+      })
+
+      expect(await linkSessionToDevice(db, 'cli-pending-session', 'normal-device', userId)).toEqual({
+        status: 'conflict',
+      })
+      expect(await linkCliSessionToDevice(db, 'cli-pending-session', 'cli-device', userId)).toEqual({
+        status: 'bound',
+      })
+      const [row] = await db.select().from(session).where(eq(session.id, 'cli-pending-session'))
+      expect(row.deviceId).toBe('cli-device')
     })
 
     it('reports an invalid session without creating a binding', async () => {

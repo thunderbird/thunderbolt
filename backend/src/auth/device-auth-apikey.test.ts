@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
-import { apikey } from '@/db/auth-schema'
+import { clearSettingsCache } from '@/config/settings'
+import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { apikey, session as sessionTable } from '@/db/auth-schema'
 import { createInferenceRoutes } from '@/inference/routes'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { inferenceUsageReceiptPath } from '@shared/inference-usage'
@@ -103,6 +105,13 @@ describe('Device Authorization Grant (RFC 8628)', () => {
     expect(tokenRes.headers.get('set-cookie')).toBeNull()
     expect(tokenRes.headers.get('access-control-expose-headers')?.toLowerCase()).toContain('set-auth-token')
 
+    const [persistedSession] = await harness.db
+      .select({ deviceId: sessionTable.deviceId })
+      .from(sessionTable)
+      .where(eq(sessionTable.token, granted.access_token))
+      .limit(1)
+    expect(persistedSession?.deviceId).toBe(cliRegistrationPendingDeviceId)
+
     const rawTokenRes = await harness.app.handle(
       new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(granted.access_token) }),
     )
@@ -132,13 +141,23 @@ describe('Device Authorization Grant (RFC 8628)', () => {
 
 describe('API key authentication', () => {
   let harness: TestAppHandle
+  let savedRegistrationFlag: string | undefined
 
   beforeEach(async () => {
+    savedRegistrationFlag = process.env.CLI_DEVICE_REGISTRATION_ENABLED
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
+    clearSettingsCache()
     harness = await createTestApp()
   })
 
   afterEach(async () => {
     await harness.cleanup()
+    if (savedRegistrationFlag === undefined) {
+      delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+    } else {
+      process.env.CLI_DEVICE_REGISTRATION_ENABLED = savedRegistrationFlag
+    }
+    clearSettingsCache()
   })
 
   /** Create an API key owned by the harness user through Better Auth's public endpoint. */

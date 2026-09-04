@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { authHeaders, createTestApp } from '@/test-utils/e2e'
+import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { clearSettingsCache } from '@/config/settings'
 import { user as userTable } from '@/db/auth-schema'
 import { devicesTable, waitlist } from '@/db/schema'
@@ -10,6 +10,7 @@ import { inferenceUsage } from '@/db/inference-usage-schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
 import { countActiveDevices } from '@/dal'
 import { hashCanarySecret } from '@/lib/canary'
+import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
@@ -71,6 +72,50 @@ const postAuthJson = (
     }),
   )
 
+/** Complete the real device grant and return its signed session bearer. */
+const issueCliBearer = async (harness: TestAppHandle): Promise<string> => {
+  const codeResponse = await postAuthJson(harness.app, '/device/code', { client_id: 'thunderbolt-cli' })
+  expect(codeResponse.status).toBe(200)
+  const code = (await codeResponse.json()) as DeviceCodeResponse
+
+  const approval = await postAuthJson(
+    harness.app,
+    '/device/approve',
+    { userCode: code.user_code },
+    authHeaders(harness.bearerToken),
+  )
+  expect(approval.status).toBe(200)
+
+  const tokenResponse = await postAuthJson(harness.app, '/device/token', {
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    device_code: code.device_code,
+    client_id: 'thunderbolt-cli',
+  })
+  expect(tokenResponse.status).toBe(200)
+  const bearer = tokenResponse.headers.get('set-auth-token')
+  if (!bearer) {
+    throw new Error('device grant did not expose a signed CLI bearer')
+  }
+  return bearer
+}
+
+/** Send one managed direct-inference request with the supplied bearer. */
+const requestDirectInference = (harness: TestAppHandle, bearer: string, content: string) =>
+  harness.app.handle(
+    new Request('http://localhost/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'deepseek-v4-flash',
+        messages: [{ role: 'user', content }],
+        stream: true,
+      }),
+    }),
+  )
+
 const originalEnvironment = {
   POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
   TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
@@ -115,44 +160,14 @@ describe('CLI device cross-stack acceptance', () => {
     })
 
     try {
-      const codeResponse = await postAuthJson(harness.app, '/device/code', { client_id: 'thunderbolt-cli' })
-      expect(codeResponse.status).toBe(200)
-      const code = (await codeResponse.json()) as DeviceCodeResponse
+      const directRequest = (bearer: string) => requestDirectInference(harness, bearer, 'acceptance request')
+      const webInference = await directRequest(harness.bearerToken)
+      expect(webInference.status).toBe(200)
+      expect(await webInference.text()).toContain('registered CLI')
+      expect(providerRequests).toHaveLength(1)
+      providerRequests.length = 0
 
-      const approval = await postAuthJson(
-        harness.app,
-        '/device/approve',
-        { userCode: code.user_code },
-        authHeaders(harness.bearerToken),
-      )
-      expect(approval.status).toBe(200)
-
-      const tokenResponse = await postAuthJson(harness.app, '/device/token', {
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: code.device_code,
-        client_id: 'thunderbolt-cli',
-      })
-      expect(tokenResponse.status).toBe(200)
-      const cliBearer = tokenResponse.headers.get('set-auth-token')
-      expect(cliBearer).toBeString()
-      if (!cliBearer) {
-        throw new Error('device grant did not expose a signed CLI bearer')
-      }
-
-      const registration = await harness.app.handle(
-        new Request('http://localhost/v1/account/devices/cli', {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${cliBearer}`,
-            'X-Device-ID': cliDeviceId,
-            'X-Device-Name': 'Acceptance CLI',
-            'X-App-Version': '1.0.0-test',
-          },
-        }),
-      )
-      expect(registration.status).toBe(200)
-      expect(await registration.json()).toEqual({ deviceId: cliDeviceId, state: 'registered' })
-
+      const cliBearer = await issueCliBearer(harness)
       const attemptedRebind = await harness.app.handle(
         new Request('http://localhost/v1/devices', {
           method: 'POST',
@@ -172,27 +187,52 @@ describe('CLI device cross-stack acceptance', () => {
       expect(
         await harness.db.select().from(devicesTable).where(eq(devicesTable.id, attemptedNormalDeviceId)),
       ).toHaveLength(0)
+
+      const unboundRequests = [
+        () => directRequest(cliBearer),
+        () =>
+          harness.app.handle(
+            new Request('http://localhost/v1/tinfoil/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${cliBearer}` },
+              body: 'opaque-bytes',
+            }),
+          ),
+        () =>
+          harness.app.handle(
+            new Request(`http://localhost/v1/${inferenceUsageReceiptPath}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${cliBearer}`, 'Content-Type': 'application/json' },
+              body: '{}',
+            }),
+          ),
+      ]
+      for (const request of unboundRequests) {
+        const response = await request()
+        expect(response.status).toBe(409)
+        expect(await response.json()).toEqual({ code: 'CLI_DEVICE_NOT_BOUND' })
+      }
+      expect(providerRequests).toHaveLength(0)
+
+      const registration = await harness.app.handle(
+        new Request('http://localhost/v1/account/devices/cli', {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${cliBearer}`,
+            'X-Device-ID': cliDeviceId,
+            'X-Device-Name': 'Acceptance CLI',
+            'X-App-Version': '1.0.0-test',
+          },
+        }),
+      )
+      expect(registration.status).toBe(200)
+      expect(await registration.json()).toEqual({ deviceId: cliDeviceId, state: 'registered' })
+
       const [registeredCliDevice] = await harness.db.select().from(devicesTable).where(eq(devicesTable.id, cliDeviceId))
       acceptanceUserId = registeredCliDevice.userId
       expect(await countActiveDevices(harness.db, acceptanceUserId)).toBe(1)
 
-      const directRequest = () =>
-        harness.app.handle(
-          new Request('http://localhost/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${cliBearer}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'deepseek-v4-flash',
-              messages: [{ role: 'user', content: 'acceptance request' }],
-              stream: true,
-            }),
-          }),
-        )
-
-      const firstInference = await directRequest()
+      const firstInference = await directRequest(cliBearer)
       expect(firstInference.status).toBe(200)
       expect(await firstInference.text()).toContain('registered CLI')
       expect(providerRequests).toHaveLength(1)
@@ -234,7 +274,7 @@ describe('CLI device cross-stack acceptance', () => {
       )
       expect(revoke.status).toBe(204)
 
-      const revokedInference = await directRequest()
+      const revokedInference = await directRequest(cliBearer)
       expect(revokedInference.status).toBe(401)
       expect(providerRequests).toHaveLength(1)
     } finally {
@@ -252,5 +292,26 @@ describe('CLI device cross-stack acceptance', () => {
     expect(await harness.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, acceptanceUserId))).toEqual(
       [],
     )
+  })
+
+  it('does not require device registration when the rollout flag is off', async () => {
+    process.env.TINFOIL_API_KEY = 'cli-device-provider-key'
+    process.env.TINFOIL_ENCLAVE_URL = 'https://cli-device-provider.example/v1'
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'false'
+    delete process.env.POSTHOG_API_KEY
+    clearSettingsCache()
+
+    const harness = await createTestApp({
+      fetchFn: Object.assign(async () => successfulCompletion(), { preconnect: () => undefined }),
+    })
+    try {
+      const cliBearer = await issueCliBearer(harness)
+      const response = await requestDirectInference(harness, cliBearer, 'flag-off request')
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('registered CLI')
+    } finally {
+      await harness.cleanup()
+    }
   })
 })

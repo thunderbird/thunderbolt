@@ -17,13 +17,13 @@ import {
   getEncryptionMetadata,
   isCliDeviceId,
   isTrustedAppDevice,
-  linkSessionToDevice,
   maxActiveDevicesPerUser,
   upsertCliDevice,
   withUserDeviceRegistrationLock,
 } from '@/dal'
 import { user as userTable } from '@/db/auth-schema'
 import type { db as DbType, QueryableDatabase } from '@/db/client'
+import { cliRegistrationPendingDeviceId, linkCliSessionToDevice } from '@/dal/sessions'
 import { verifyCanaryProofWithMetadata } from '@/lib/canary'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { eq } from 'drizzle-orm'
@@ -33,7 +33,7 @@ class SessionDeviceBindingConflictError extends Error {}
 class PersistedSessionInvalidError extends Error {}
 
 type AccountRouteDependencies = {
-  linkSessionToDevice?: typeof linkSessionToDevice
+  linkCliSessionToDevice?: typeof linkCliSessionToDevice
 }
 
 /** Extract and verify the raw Better Auth token from a signed Authorization bearer. */
@@ -71,7 +71,7 @@ export const createAccountRoutes = (
   auth: Auth,
   settings: Settings,
   database: typeof DbType,
-  { linkSessionToDevice: bindSessionToDevice = linkSessionToDevice }: AccountRouteDependencies = {},
+  { linkCliSessionToDevice: bindSessionToDevice = linkCliSessionToDevice }: AccountRouteDependencies = {},
 ) => {
   const { betterAuthSecret, cliDeviceRegistrationEnabled } = settings
 
@@ -125,7 +125,11 @@ export const createAccountRoutes = (
               return { ok: false as const, status: 401 as const, body: { error: 'Unauthorized' as const } }
             }
 
-            if (persistedSession.deviceId !== null && persistedSession.deviceId !== deviceId) {
+            if (
+              persistedSession.deviceId !== null &&
+              persistedSession.deviceId !== cliRegistrationPendingDeviceId &&
+              persistedSession.deviceId !== deviceId
+            ) {
               return {
                 ok: false as const,
                 status: 409 as const,

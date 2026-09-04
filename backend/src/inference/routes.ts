@@ -32,6 +32,7 @@ import {
   type InferenceDatabase,
 } from './usage-ledger'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from './usage-responses'
+import { rejectUnregisteredCliDevice } from './cli-device'
 
 type Message = { role: string; content: unknown }
 
@@ -94,6 +95,9 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     })
 
   return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+    guardedApp.onBeforeHandle(({ request, session, user }) =>
+      rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, { request, session, user }),
+    )
     if (rateLimit) {
       guardedApp.use(rateLimit)
     }

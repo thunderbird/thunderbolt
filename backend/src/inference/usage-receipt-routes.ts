@@ -4,6 +4,7 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
+import { getSettings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
   inferenceUsageReceiptPath,
@@ -21,6 +22,7 @@ import {
   recordInferenceUsage,
 } from './usage-ledger'
 import { rejectPersonalAccessToken } from './web-session'
+import { rejectUnregisteredCliDevice } from './cli-device'
 
 export type ReceiptRouteOptions = Readonly<{
   auth: Auth
@@ -87,13 +89,16 @@ const emptyResponse = (status: 204 | 400 | 403 | 503): Response => new Response(
 /** Create the authenticated managed GLM usage receipt endpoint. */
 export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions): AnyElysia => {
   const { auth, database, logger, rateLimit, secret } = options
+  const { cliDeviceRegistrationEnabled } = getSettings()
   const nowSeconds = options.nowSeconds ?? (() => Math.floor(Date.now() / 1_000))
 
   return new Elysia()
     .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (app) => {
-      const webSessionApp = app.onBeforeHandle(rejectPersonalAccessToken)
+      const webSessionApp = app
+        .onBeforeHandle(rejectPersonalAccessToken)
+        .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, cliDeviceRegistrationEnabled, ctx))
       if (rateLimit) {
         webSessionApp.use(rateLimit)
       }

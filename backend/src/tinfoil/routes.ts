@@ -15,6 +15,7 @@ import {
   type InferenceDatabase,
 } from '@/inference/usage-ledger'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
+import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -427,7 +428,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     })
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
-      const webSessionApp = g.onBeforeHandle(rejectPersonalAccessToken)
+      const webSessionApp = g
+        .onBeforeHandle(rejectPersonalAccessToken)
+        .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, ctx))
       if (rateLimit) {
         return webSessionApp
           .use(rateLimit)

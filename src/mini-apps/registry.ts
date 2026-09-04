@@ -68,19 +68,26 @@ export type MiniAppResponse = z.infer<typeof miniAppResponseSchema>
  * An allowlist rather than a dynamic lookup: config is operator-supplied, and
  * turning an arbitrary string into a component import is a larger surface than
  * a customer picking an icon justifies.
+ *
+ * A `Map`, not an object literal — for the same reason the backend registry is
+ * one (see `getMiniApps`). Indexing an object with an operator-supplied key made
+ * `"icon": "toString"` resolve to an inherited `Object.prototype` member, which
+ * is truthy, so the fallback below never fired and React was handed something
+ * that isn't a component. A `Map` only ever returns what was `set` on it, so the
+ * class of bug is gone rather than guarded against.
  */
-const iconsByKey: Record<string, LucideIcon> = {
-  'app-window': AppWindow,
-  'bar-chart': BarChart3,
-  'file-search': FileSearch,
-  'line-chart': LineChart,
-  route: Route,
-  stethoscope: Stethoscope,
-  table: Table,
-}
+const iconsByKey = new Map<string, LucideIcon>([
+  ['app-window', AppWindow],
+  ['bar-chart', BarChart3],
+  ['file-search', FileSearch],
+  ['line-chart', LineChart],
+  ['route', Route],
+  ['stethoscope', Stethoscope],
+  ['table', Table],
+])
 
 /** Unknown or missing icon keys render as a generic window rather than nothing. */
-export const resolveMiniAppIcon = (key: string): LucideIcon => iconsByKey[key] ?? AppWindow
+export const resolveMiniAppIcon = (key: string): LucideIcon => iconsByKey.get(key) ?? AppWindow
 
 export const toMiniAppDefinition = (app: MiniAppResponse): MiniAppDefinition => ({
   id: app.id,

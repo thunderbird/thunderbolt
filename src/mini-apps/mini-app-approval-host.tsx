@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useCurrentChatSession } from '@/chats/chat-store'
-import { useMiniAppStore } from './mini-app-store'
 import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 
 /**
@@ -11,13 +10,20 @@ import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
  *
  * The sibling of {@link PermissionDialogHost}, mounted in the same slot in
  * `ChatUI` and for the same reason: a decision the turn is blocked on belongs
- * where the user is already reading. In an ordinary chat there is no active app
- * and so nothing to render, which is why this can sit unconditionally in the
- * shared chat surface rather than only in the Mini App panel.
+ * where the user is already reading.
  *
  * It reads the queue off the *current session*, like `PermissionDialogHost`
  * does — a global queue meant switching chats could show a prompt belonging to
  * a conversation the user had left.
+ *
+ * Everything it renders comes from the queued entry, including which app to
+ * name — captured when the call was made, so it cannot drift and does not need
+ * the app to still be mounted or even still registered. Reading the name off
+ * the *mounted* app instead was wrong twice: a tool closure captured while app
+ * X was open can be answered after the route has moved to app Y, which
+ * labelled X's write with Y's name; and gating on the mounted app meant an
+ * entry queued for an app that had since closed rendered nothing at all while
+ * its turn stayed blocked for the full deadline.
  *
  * The deadline lives with the request, not here — see `requestMiniAppApproval`.
  * A prompt that unmounts (the user navigates away mid-decision) must still
@@ -25,19 +31,18 @@ import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
  * component.
  */
 export const MiniAppApprovalHost = () => {
-  const activeApp = useMiniAppStore((state) => state.activeApp)
   const { miniAppApprovalQueue } = useCurrentChatSession()
   // The head of this chat's queue is the one on screen; the rest wait their turn.
   const pendingApproval = miniAppApprovalQueue[0] ?? null
 
-  if (!pendingApproval || !activeApp) {
+  if (!pendingApproval) {
     return null
   }
 
   return (
     <MiniAppApprovalPrompt
       pending={pendingApproval}
-      appName={activeApp.name}
+      appName={pendingApproval.appName}
       /* Bound to the entry that was rendered, so a double-click or a click
        * racing the deadline cannot answer the request that just took its
        * place. `decide` is idempotent, so the second one is dropped. */

@@ -46,6 +46,14 @@ export type PendingPermission = {
 export type PendingMiniAppApproval = {
   /** The app the call is for; the sweep on close/re-handshake keys on it. */
   appId: string
+  /**
+   * The app's display name, captured when the call was made.
+   *
+   * Carried rather than looked up at render time: the prompt must name the app
+   * whose tool this is, which is not necessarily the app on screen by the time
+   * the user answers — and an app can be deregistered in between.
+   */
+  appName: string
   tool: MiniAppTool
   args: unknown
   /** Resolves the blocked `execute`. Safe to call more than once. */

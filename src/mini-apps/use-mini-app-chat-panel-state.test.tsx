@@ -201,9 +201,40 @@ describe('attaching a highlighted passage', () => {
     expect(usePendingQuotesStore.getState().quotesByThread['thread-1']?.[0]?.data.text).toBe('Q3 revenue: 4,214,000')
   })
 
-  /** The panel being closed is not a reason to lose the passage — it opens a
-   *  chat and attaches in the same tick. */
-  it('mints a chat when the panel is closed', () => {
+  /**
+   * The two ways into this panel have to agree about whether closing ended the
+   * conversation. `openChat` resumes it; this used to mint a fresh draft and
+   * quietly abandon it, so a passage picked after a close started a new chat.
+   */
+  it('resumes the closed conversation rather than starting a new one', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    act(() => result.current.closeChat())
+    act(() => result.current.attachToComposer(['Q3 revenue: 4,214,000']))
+
+    expect(result.current.openChatId).toBe('thread-1')
+    expect(result.current.chatParam).toBe('thread-1')
+    expect(usePendingQuotesStore.getState().quotesByThread['thread-1']?.[0]?.data.text).toBe('Q3 revenue: 4,214,000')
+  })
+
+  /** A closed draft has no row, so resuming it must stay out of the URL. */
+  it('resumes a closed draft without putting it in the URL', () => {
+    const { result } = setup()
+
+    act(() => result.current.openChat())
+    const id = result.current.openChatId ?? ''
+    seedSession(id, null)
+    act(() => result.current.closeChat())
+    act(() => result.current.attachToComposer(['a passage']))
+
+    expect(result.current.draftChatId).toBe(id)
+    expect(result.current.chatParam).toBeNull()
+    expect(usePendingQuotesStore.getState().quotesByThread[id]?.[0]?.data.text).toBe('a passage')
+  })
+
+  /** The panel being closed with nothing behind it is not a reason to lose the
+   *  passage — it opens a chat and attaches in the same tick. */
+  it('mints a chat when nothing has been open', () => {
     const { result } = setup()
 
     act(() => result.current.attachToComposer(['Q3 revenue: 4,214,000']))

@@ -67,9 +67,26 @@ describe('parseMiniAppRegistry', () => {
 })
 
 describe('resolveMiniAppIcon', () => {
+  it('resolves a configured key', () => {
+    expect(resolveMiniAppIcon('line-chart')).toBe(LineChart)
+  })
+
   it('falls back to a generic window for an unknown key', () => {
     expect(resolveMiniAppIcon('no-such-icon')).toBe(AppWindow)
   })
+
+  /**
+   * The icon key comes from operator config, so it can name anything. Looking it
+   * up in an object literal returned inherited `Object.prototype` members —
+   * truthy, so the fallback never fired and React was handed a value that isn't
+   * a component. Same class the backend registry closed with a `Map`.
+   */
+  it.each(['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'falls back rather than resolving the inherited %s',
+    (key) => {
+      expect(resolveMiniAppIcon(key)).toBe(AppWindow)
+    },
+  )
 })
 
 describe('findMiniApp', () => {

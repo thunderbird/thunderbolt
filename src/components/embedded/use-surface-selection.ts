@@ -86,9 +86,20 @@ export type SurfaceSelectionDeps = {
 export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
   const [mode, dispatch] = useReducer(modeReducer, { kind: 'idle' })
   const lastQueryToken = useRef(0)
+  /**
+   * Which gesture is live. Incremented on every start and every dismissal, so
+   * work awaiting a guest reply can tell that the gesture it belongs to is over.
+   */
+  const gestureRef = useRef(0)
 
-  const startPicking = useCallback(() => dispatch({ type: 'pickingStarted' }), [])
-  const dismiss = useCallback(() => dispatch({ type: 'dismissed' }), [])
+  const startPicking = useCallback(() => {
+    gestureRef.current += 1
+    dispatch({ type: 'pickingStarted' })
+  }, [])
+  const dismiss = useCallback(() => {
+    gestureRef.current += 1
+    dispatch({ type: 'dismissed' })
+  }, [])
 
   const pointAt = useCallback(
     async (point: { x: number; y: number }) => {
@@ -121,8 +132,21 @@ export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
       if (mode.kind !== 'picking') {
         return
       }
-      const element = mode.token === mode.answeredToken ? mode.element : await query(point)
-      if (!element) {
+      const isOutlineCurrent = mode.token === mode.answeredToken
+      // Bumped by `dismissed`, so a gesture the user gave up on can be
+      // recognised after the await below.
+      const gesture = gestureRef.current
+      const element = isOutlineCurrent ? mode.element : await query(point)
+      /*
+       * Re-checked after the await, not just before it.
+       *
+       * The lookup can take as long as the guest's deadline, and Escape during
+       * that window unmounts the overlay and returns this reducer to idle — but
+       * this closure kept going and attached a passage for a gesture the user
+       * had cancelled. The pre-await guard cannot see that, because it ran
+       * before the wait.
+       */
+      if (!element || gesture !== gestureRef.current) {
         return
       }
       onAsk([toSelectionPassage(element)])

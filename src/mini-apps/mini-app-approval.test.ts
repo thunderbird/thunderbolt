@@ -221,6 +221,23 @@ describe('requestMiniAppApproval', () => {
     expect(await decision).toBe(false)
   })
 
+  /**
+   * The prompt names the app whose tool this is, captured when the call was
+   * made — not whichever app happens to be mounted when the user answers. A
+   * tool closure from one app can be answered after the route has moved to
+   * another, and the label used to follow the route.
+   */
+  it('carries the requesting app’s name, not the mounted one', async () => {
+    const decision = ask('chat-a', {}, otherApp)
+
+    expect(useMiniAppStore.getState().activeApp?.name).toBe('Finance Model')
+    expect(queueOf('chat-a')[0]?.appName).toBe('Patient Journeys')
+    expect(queueOf('chat-a')[0]?.appId).toBe('patient-journeys')
+
+    queueOf('chat-a')[0]?.decide(true)
+    expect(await decision).toBe(true)
+  })
+
   /** Keyed by app, so closing one app cannot answer a call another app is
    *  waiting on. */
   it('leaves another app’s approvals alone', async () => {

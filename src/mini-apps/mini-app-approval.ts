@@ -84,7 +84,7 @@ export const requestMiniAppApproval = ({
 
     const timer = setTimeout(() => settle(false), approvalTimeoutMs)
 
-    const pending: PendingMiniAppApproval = { appId: app.id, tool, args, decide: settle }
+    const pending: PendingMiniAppApproval = { appId: app.id, appName: app.name, tool, args, decide: settle }
 
     if (!useChatStore.getState().enqueueMiniAppApproval(chatThreadId, pending)) {
       settle(false)

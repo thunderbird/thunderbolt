@@ -139,6 +139,27 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   )
 
   /**
+   * Put `chatThreadId` on screen, in the URL when it has a row and in local
+   * state when it does not.
+   *
+   * Both entry points (the toggle/`ui/open-chat`, and attaching a passage) go
+   * through this so they cannot disagree: an unsaved id in `?chat=` promises
+   * hydration a thread it can't find, and a saved id kept out of the URL
+   * hydrates an empty conversation over a thread that has messages.
+   */
+  const showChat = useCallback(
+    (chatThreadId: string, persisted: boolean) => {
+      if (persisted) {
+        openExistingChat(chatThreadId)
+        return
+      }
+      setDraftChatId(chatThreadId)
+      setOpenChatParam(null)
+    },
+    [openExistingChat, setOpenChatParam],
+  )
+
+  /**
    * Open the chat panel, reusing the conversation already in it.
    *
    * This used to mint a fresh `uuidv7()` every time, which was fine for the
@@ -173,12 +194,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
         // hydration can't find and bounces the user to Not Found — the reason
         // drafts stay out of the URL in the first place.
         if (!openChatIdRef.current) {
-          if (closed?.persisted) {
-            openExistingChat(existing)
-          } else {
-            setDraftChatId(existing)
-            setOpenChatParam(null)
-          }
+          showChat(existing, closed?.persisted === true)
         }
         return
       }
@@ -186,10 +202,9 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
       if (prompt) {
         setPendingPrompt(id, prompt)
       }
-      setDraftChatId(id)
-      setOpenChatParam(null)
+      showChat(id, false)
     },
-    [openExistingChat, setOpenChatParam],
+    [showChat],
   )
 
   /*
@@ -220,16 +235,27 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    * attach in the same tick, because the store is keyed, not ordered, and
    * doesn't care that the chat has yet to mount.
    */
-  const attachToComposer = useCallback((passages: string[]) => {
-    const threadId = openChatIdRef.current ?? uuidv7()
-    if (!openChatIdRef.current) {
-      setDraftChatId(threadId)
-    }
-    const { addQuote } = usePendingQuotesStore.getState()
-    for (const text of passages) {
-      addQuote(threadId, { text })
-    }
-  }, [])
+  const attachToComposer = useCallback(
+    (passages: string[]) => {
+      /*
+       * Resumes a closed conversation rather than starting a new one, for the same
+       * reason `openChat` does — and it has to agree with `openChat`, or the two
+       * ways into this panel disagree about whether closing ended the chat. It
+       * used to mint a fresh id whenever the panel was shut, quietly abandoning
+       * the conversation the user had just been having.
+       */
+      const closed = lastChatRef.current
+      const threadId = openChatIdRef.current ?? closed?.id ?? uuidv7()
+      if (!openChatIdRef.current) {
+        showChat(threadId, closed?.persisted === true)
+      }
+      const { addQuote } = usePendingQuotesStore.getState()
+      for (const text of passages) {
+        addQuote(threadId, { text })
+      }
+    },
+    [showChat],
+  )
 
   return {
     openChatId,

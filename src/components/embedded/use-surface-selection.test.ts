@@ -182,6 +182,34 @@ describe('useSurfaceSelection', () => {
     expect(asked[0][0]).toContain('text b')
   })
 
+  /**
+   * The mirror of "ignores an answer that lands after the user gave up", for the
+   * commit path rather than the outline path. Escape while the click's own
+   * lookup is in flight must not attach a passage — the gesture is over.
+   */
+  it('does not commit a pick the user cancelled while it was in flight', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook, asked } = setup(query)
+    act(() => hook.result.current.startPicking())
+
+    // Move so the outline is stale, making the click take the awaiting path.
+    act(() => {
+      void hook.result.current.pointAt(point)
+    })
+    let picked: Promise<void> = Promise.resolve()
+    act(() => {
+      picked = hook.result.current.pickAt(point)
+    })
+    act(() => hook.result.current.dismiss())
+    await act(async () => {
+      releases.forEach((release) => release(element('a')))
+      await picked
+    })
+
+    expect(asked).toEqual([])
+    expect(hook.result.current.mode.kind).toBe('idle')
+  })
+
   /** Clicking background commits nothing and leaves picking on, rather than
    *  sending an empty passage. */
   it('ignores a click with nothing under it', async () => {

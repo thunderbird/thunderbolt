@@ -219,10 +219,9 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   usePageTracking()
   useDeepLinkListener()
 
-  const { experimentalFeatureTasks, experimentalFeatureVoice, experimentalFeatureMiniApps } = useSettings({
+  const { experimentalFeatureTasks, experimentalFeatureVoice } = useSettings({
     experimental_feature_tasks: initData.experimentalFeatureTasks,
     experimental_feature_voice: initData.experimentalFeatureVoice,
-    experimental_feature_mini_apps: initData.experimentalFeatureMiniApps,
   })
 
   const ssoMode = isSsoMode()
@@ -263,7 +262,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                   is one place a project is edited. */}
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:projectId" element={<ProjectsPage />} />
-              {experimentalFeatureMiniApps.value && <Route path="apps/:appId" element={<MiniAppPage />} />}
+              <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

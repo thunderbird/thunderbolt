@@ -22,8 +22,8 @@ const computeSnapshotHash = () =>
   defaultSettings.map((setting, index) => `${index}:${setting.key}:${hashSetting(setting)}`).join('|')
 
 const expected = {
-  version: 7,
-  hash: '0:data_collection:9xnigq|1:is_triggers_enabled:eonvmh|2:experimental_feature_tasks:-zg8zmz|3:experimental_feature_voice:6l2ce1|4:experimental_feature_mini_apps:tlzza9|5:preferred_name:-5w6dil|6:location_name:27rtqf|7:location_lat:-tpss8p|8:location_lng:-tpsiwv|9:location_country_code:-ee3q2s|10:location_id:-yieo9|11:location_name_display:qbbf38|12:distance_unit:-3esuvm|13:temperature_unit:-dmzg9f|14:time_format:we6fw3|15:currency:avihzf|16:integrations_pro_is_enabled:bbnpv0|17:user_has_completed_onboarding:-hxwxxt|18:content_view_width:8pnzc5|19:integrations_do_not_ask_again:yv9tj5|20:language:p3z19g',
+  version: 8,
+  hash: '0:data_collection:9xnigq|1:is_triggers_enabled:eonvmh|2:experimental_feature_tasks:-zg8zmz|3:experimental_feature_voice:6l2ce1|4:preferred_name:-5w6dil|5:location_name:27rtqf|6:location_lat:-tpss8p|7:location_lng:-tpsiwv|8:location_country_code:-ee3q2s|9:location_id:-yieo9|10:location_name_display:qbbf38|11:distance_unit:-3esuvm|12:temperature_unit:-dmzg9f|13:time_format:we6fw3|14:currency:avihzf|15:integrations_pro_is_enabled:bbnpv0|16:user_has_completed_onboarding:-hxwxxt|17:content_view_width:8pnzc5|18:integrations_do_not_ask_again:yv9tj5|19:language:p3z19g',
 }
 
 describe('defaultSettings version snapshot', () => {

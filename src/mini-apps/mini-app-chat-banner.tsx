@@ -18,7 +18,6 @@ import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useSettings } from '@/hooks/use-settings'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
 
@@ -64,16 +63,8 @@ type MiniAppChatBannerProps = {
 }
 
 export const MiniAppChatBanner = ({ appId, chatThreadId }: MiniAppChatBannerProps) => {
-  const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
   const { isMobile } = useIsMobile()
   const { apps, loading, failed } = useMiniApps()
-
-  // Chats sync; the feature flag doesn't. A chat started on a device with Mini
-  // Apps on can land on one with them off, where `/apps/:appId` isn't even a
-  // route. Saying where it came from would only point at a door that isn't there.
-  if (!experimentalFeatureMiniApps.value) {
-    return null
-  }
 
   // The registry arrives over the network. Rendering "no longer available"
   // while it's still in flight — or after the fetch simply failed — would

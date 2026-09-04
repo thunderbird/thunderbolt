@@ -239,7 +239,6 @@ export default function PreferencesSettingsPage() {
     dataCollection,
     experimentalFeatureTasks,
     experimentalFeatureVoice,
-    experimentalFeatureMiniApps,
     distanceUnit,
     temperatureUnit,
     timeFormat,
@@ -255,7 +254,6 @@ export default function PreferencesSettingsPage() {
     data_collection: false,
     experimental_feature_tasks: false,
     experimental_feature_voice: false,
-    experimental_feature_mini_apps: false,
     // Empty, not a US default. `useUnitDefaults` seeds these asynchronously, so
     // an existing user who skipped the location step can reach this page before
     // the write lands — and a confidently wrong "Imperial (mi)" is worse than a
@@ -964,24 +962,6 @@ export default function PreferencesSettingsPage() {
                 checked={experimentalFeatureTasks.value}
                 onCheckedChange={handleExperimentalFeaturesToggle}
                 aria-label={t`Tasks`}
-              />
-            </div>
-
-            <div className="flex-row flex items-center gap-4">
-              <div className="flex-1">
-                <ModificationIndicator
-                  as="label"
-                  className="text-sm font-medium"
-                  hasModifications={experimentalFeatureMiniApps.isModified}
-                  onReset={experimentalFeatureMiniApps.reset}
-                >
-                  <Trans>Mini Apps</Trans>
-                </ModificationIndicator>
-              </div>
-              <Switch
-                checked={experimentalFeatureMiniApps.value}
-                onCheckedChange={(value) => experimentalFeatureMiniApps.setValue(value)}
-                aria-label={t`Mini Apps`}
               />
             </div>
 

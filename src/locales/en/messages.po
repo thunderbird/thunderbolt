@@ -2184,8 +2184,8 @@ msgid "Metric"
 msgstr "Metric"
 
 #: src/settings/preferences.tsx
-msgid "Mini Apps"
-msgstr "Mini Apps"
+#~ msgid "Mini Apps"
+#~ msgstr "Mini Apps"
 
 #: src/mini-apps/mini-app-page.tsx
 msgid "Mini Apps are only available on desktop"

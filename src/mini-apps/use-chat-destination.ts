@@ -18,7 +18,6 @@
  */
 
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useSettings } from '@/hooks/use-settings'
 import { useCallback } from 'react'
 import { findMiniApp } from './registry'
 import { useMiniApps } from './use-mini-apps'
@@ -28,18 +27,16 @@ export const miniAppChatPath = (appId: string, chatThreadId: string): string =>
   `/apps/${encodeURIComponent(appId)}?chat=${encodeURIComponent(chatThreadId)}`
 
 export const useChatDestination = (): ((chatThreadId: string, miniAppId?: string | null) => string) => {
-  const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
   const { apps } = useMiniApps()
   const { isMobile } = useIsMobile()
-  const miniAppsEnabled = experimentalFeatureMiniApps.value
 
   return useCallback(
     (chatThreadId, miniAppId) => {
-      if (!miniAppId || !miniAppsEnabled || isMobile || !findMiniApp(apps, miniAppId)) {
+      if (!miniAppId || isMobile || !findMiniApp(apps, miniAppId)) {
         return `/chats/${chatThreadId}`
       }
       return miniAppChatPath(miniAppId, chatThreadId)
     },
-    [apps, isMobile, miniAppsEnabled],
+    [apps, isMobile],
   )
 }

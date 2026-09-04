@@ -37,7 +37,6 @@ export type InitData = {
   httpClient: HttpClient
   experimentalFeatureTasks: boolean
   experimentalFeatureVoice: boolean
-  experimentalFeatureMiniApps: boolean
 }
 
 /**

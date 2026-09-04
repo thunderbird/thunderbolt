@@ -83,32 +83,33 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
   return (
     new Elysia({ prefix: '/mini-apps' })
       .onError(safeErrorHandler)
-      .derive(async ({ request }) => {
-        const session = await auth.api.getSession({ headers: request.headers })
-        return { user: (session?.user as User | undefined) ?? null }
-      })
       /**
        * The registry the frontend renders from — same config as the token route
-       * reads, minus the secrets. Session-gated: which apps a deployment runs is
-       * not a secret exactly, but it isn't for anonymous callers either.
+       * reads, minus the secrets.
+       *
+       * Unauthenticated on purpose. There is nothing here to protect: the
+       * response is `getPublicMiniApps`, which strips every app's secret, and
+       * the token route below is what actually guards identity. Session-gating
+       * it only cost behaviour — a 403 for anonymous and signed-out callers
+       * left the client unable to say "this deployment runs no apps" without
+       * inventing a permanent `loading` state, so `/apps/:id` hung blank
+       * forever for them.
+       *
+       * What that gives up is app ids and origins being enumerable by anyone
+       * who can reach the deployment. Accepted while the registry is
+       * operator-declared config; revisit alongside the first customer
+       * deployment, when we know whether naming their apps is sensitive.
        */
-      .get('/', async ({ set, user }) => {
-        if (!user) {
-          set.status = 401
-          return { error: 'Unauthorized' }
-        }
-        // Anonymous sessions are real sessions, so `!user` alone let them
-        // through — which the comment above already said it shouldn't. Matches
-        // the token route, which has always checked this.
-        if (user.isAnonymous) {
-          set.status = 403
-          return { error: 'Forbidden' }
-        }
-        return { apps: getPublicMiniApps(settings) }
-      })
+      .get('/', () => ({ apps: getPublicMiniApps(settings) }))
       .post(
         '/:appId/token',
-        async ({ params, request, set, user }) => {
+        async ({ params, request, set }) => {
+          // Resolved here rather than in a `.derive` on the instance: the
+          // registry route above needs no session, and deriving one made every
+          // sidebar render pay for an auth lookup it never read.
+          const session = await auth.api.getSession({ headers: request.headers })
+          const user = (session?.user as User | undefined) ?? null
+
           if (!validateOrigin(request, settings)) {
             set.status = 403
             return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }

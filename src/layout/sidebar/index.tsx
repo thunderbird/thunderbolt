@@ -45,9 +45,8 @@ export default function Sidebar() {
 
   const { activeSection, setActiveSection } = useSidebarSection(location.pathname)
 
-  const { experimentalFeatureTasks, experimentalFeatureMiniApps } = useSettings({
+  const { experimentalFeatureTasks } = useSettings({
     experimental_feature_tasks: false,
-    experimental_feature_mini_apps: false,
   })
 
   const { data } = useQuery({
@@ -158,7 +157,7 @@ export default function Sidebar() {
             showTasks={experimentalFeatureTasks.value}
             // Web and desktop only, gated on viewport to match `MiniAppPage`
             // (which explains itself if a deep link lands here anyway).
-            showMiniApps={experimentalFeatureMiniApps.value && !isMobile}
+            showMiniApps={!isMobile}
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}

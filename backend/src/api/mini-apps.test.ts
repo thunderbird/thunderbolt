@@ -193,19 +193,23 @@ describe('GET /mini-apps', () => {
     expect(await response.text()).not.toContain(financeSecret)
   })
 
-  it('rejects an unauthenticated caller', async () => {
-    expect((await get(authWithUser(null))).status).toBe(401)
+  /**
+   * The registry carries no secret, so it is unauthenticated — and it has to
+   * answer these callers rather than 403 them, or the client has no terminal
+   * state to render and `/apps/:id` hangs on `loading` forever.
+   */
+  it('answers an unauthenticated caller', async () => {
+    const response = await get(authWithUser(null))
+    const body = (await response.json()) as { apps: { id: string }[] }
+
+    expect(response.status).toBe(200)
+    expect(body.apps.map((app) => app.id)).toEqual(['finance-model', 'patient-journeys'])
   })
 
-  /**
-   * An anonymous session is still a session, so a `!user` check alone let it
-   * through — which this route's own comment said it should not. Which apps a
-   * deployment runs is not quite a secret, but it isn't public either.
-   */
-  it('refuses anonymous users, matching the token route', async () => {
+  it('answers an anonymous session, unlike the token route', async () => {
     const anonymous = { ...realUser, isAnonymous: true }
 
-    expect((await get(authWithUser(anonymous))).status).toBe(403)
+    expect((await get(authWithUser(anonymous))).status).toBe(200)
   })
 
   /**

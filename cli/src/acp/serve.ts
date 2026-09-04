@@ -17,7 +17,9 @@
  */
 
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
-import type { ServeConfig } from '../agent/types.ts'
+import type { CommandSyntaxServeConfig } from '../agent/types.ts'
+import { prepareProviderBinding } from '../provider-runtime/provider-stage.ts'
+import type { ProviderRuntime } from '../provider-runtime/types.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import { createSessionStore, defaultSessionsDir } from './session-store.ts'
 
@@ -33,18 +35,47 @@ const stdoutWritable = (): WritableStream<Uint8Array> =>
       }),
   })
 
-/**
- * Serve the built-in harness as an ACP agent over stdio until the client
- * disconnects (the stream closes). Returns when the connection is fully closed.
- *
- * @param config - the resolved serve configuration (model, thinking, yolo)
- */
-export const runAcpServe = async (config: ServeConfig): Promise<void> => {
-  // One process serves one connection, but the store's fs must outlive every
-  // per-session harness (it captures the fs for each turn's appends), so build it
-  // once here rather than per session.
+/** Validates and releases one provider binding before the process claims ACP stdio. */
+const probeProvider = async (
+  config: CommandSyntaxServeConfig,
+  runtime: ProviderRuntime,
+  signal: AbortSignal,
+): Promise<void> => {
+  const probe = await prepareProviderBinding(runtime, config.selection, { signal })
+  await probe.dispose()
+}
+
+/** Owns production stdio only after provider startup validation succeeds. */
+const serveStdioConnection = async (config: CommandSyntaxServeConfig, runtime: ProviderRuntime): Promise<void> => {
   const store = createSessionStore(defaultSessionsDir())
   const stream = ndJsonStream(stdoutWritable(), Bun.stdin.stream())
-  const connection = new AgentSideConnection((conn) => createHarnessAgent(conn, config, store), stream)
+  const connection = new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, runtime), stream)
   await connection.closed
+}
+
+/** Runs startup preparation under process cancellation, then hands ownership to the ACP connection signal. */
+export const runAcpServe = async (
+  config: CommandSyntaxServeConfig,
+  runtime: ProviderRuntime,
+  {
+    serveConnection = serveStdioConnection,
+    signal,
+  }: {
+    readonly serveConnection?: (config: CommandSyntaxServeConfig, runtime: ProviderRuntime) => Promise<void>
+    readonly signal?: AbortSignal
+  } = {},
+): Promise<void> => {
+  const controller = new AbortController()
+  const abort = (): void => controller.abort()
+  const preparationSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal
+  process.once('SIGINT', abort)
+  process.once('SIGTERM', abort)
+  try {
+    await probeProvider(config, runtime, preparationSignal)
+    preparationSignal.throwIfAborted()
+  } finally {
+    process.off('SIGINT', abort)
+    process.off('SIGTERM', abort)
+  }
+  await serveConnection(config, runtime)
 }

@@ -6,7 +6,7 @@ import { Trans } from '@lingui/react/macro'
 import { useEffect, useState } from 'react'
 import { http } from '@/lib/http'
 import { setAuthToken } from '@/lib/auth-token'
-import { isSafeUrl } from '@/lib/url-utils'
+import { isSafeUrl, normalizeBackendUrl } from '@/lib/url-utils'
 import { isTauri } from '@/lib/platform'
 import { startSsoFlowLoopback } from '@/lib/sso-loopback'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -27,11 +27,12 @@ const SsoRedirect = () => {
   const analytics = useAnonymousPromotionAnalytics()
   const [error, setError] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
+  const normalizedCloudUrl = normalizeBackendUrl(cloudUrl)
 
   useEffect(() => {
     setError(false)
     const abortController = new AbortController()
-    const baseUrl = cloudUrl.replace(/\/v1$/, '')
+    const baseUrl = normalizedCloudUrl.replace(/\/v1$/, '')
 
     const redirectToSso = async () => {
       try {
@@ -81,7 +82,7 @@ const SsoRedirect = () => {
     redirectToSso()
 
     return () => abortController.abort()
-  }, [cloudUrl, retryKey])
+  }, [normalizedCloudUrl, retryKey])
 
   if (error) {
     return (

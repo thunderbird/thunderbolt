@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useConfigStore } from '@/api/config-store'
+import { normalizeClientAppVersion } from '@shared/agent-core/client-identity'
 import { compareSemver } from '@shared/compare-semver'
 import { isAppVersionBlocked } from './app-version-unsupported'
 
@@ -14,8 +15,10 @@ import { isAppVersionBlocked } from './app-version-unsupported'
  * spread it unconditionally. Only attach this to requests bound for the
  * Thunderbolt backend — never to external LLM/MCP upstreams.
  */
-export const appVersionHeader = (): Record<string, string> =>
-  import.meta.env.VITE_APP_VERSION ? { 'X-App-Version': import.meta.env.VITE_APP_VERSION } : {}
+export const appVersionHeader = (): Record<string, string> => {
+  const appVersion = normalizeClientAppVersion(import.meta.env.VITE_APP_VERSION)
+  return appVersion ? { 'X-App-Version': appVersion } : {}
+}
 
 /**
  * Whether `appVersion` is older than the server-enforced `minAppVersion`. Either
@@ -45,4 +48,7 @@ export const isVersionBelowMinimum = (appVersion?: string, minAppVersion?: strin
  */
 export const isAppVersionUnsupported = (): boolean =>
   isAppVersionBlocked() ||
-  isVersionBelowMinimum(import.meta.env.VITE_APP_VERSION, useConfigStore.getState().config.minAppVersion)
+  isVersionBelowMinimum(
+    normalizeClientAppVersion(import.meta.env.VITE_APP_VERSION),
+    useConfigStore.getState().config.minAppVersion,
+  )

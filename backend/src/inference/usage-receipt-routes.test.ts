@@ -87,20 +87,20 @@ const signTestClaims = (claims: TestSignedClaims): string => {
   return `iu1.${payloadSegment}.${signature}`
 }
 
-const postJson = (app: TestApp, body: TestReceiptBody) =>
+const postJson = (app: TestApp, body: TestReceiptBody, headers: Record<string, string> = {}) =>
   app.handle(
     new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
     }),
   )
 
-const postRaw = (app: TestApp, body: string) =>
+const postRaw = (app: TestApp, body: string, headers: Record<string, string> = {}) =>
   app.handle(
     new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body,
     }),
   )
@@ -158,6 +158,32 @@ describe('inference usage receipt routes', () => {
 
     expect(response.status).toBe(401)
     expect(await response.text()).toBe('Unauthorized')
+  })
+
+  it('rejects an authenticated x-api-key before parsing the request body', async () => {
+    const rateLimitCalls = mock(() => {})
+    const rejectingRateLimit = new Elysia()
+      .onBeforeHandle(({ set }) => {
+        rateLimitCalls()
+        set.status = 429
+        return { error: 'Too many requests' }
+      })
+      .as('scoped')
+    const rateLimitedApp = new Elysia().use(
+      createInferenceUsageReceiptRoutes({
+        auth: mockAuth,
+        database,
+        secret,
+        nowSeconds: () => nowSeconds,
+        rateLimit: rejectingRateLimit,
+      }),
+    )
+
+    const response = await postRaw(rateLimitedApp, '{', { 'x-api-key': 'valid-personal-access-token' })
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
+    expect(rateLimitCalls).not.toHaveBeenCalled()
   })
 
   it('sanitizes an internal authentication error without exposing its raw message', async () => {

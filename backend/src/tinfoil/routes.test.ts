@@ -136,6 +136,7 @@ describe('createTinfoilRoutes', () => {
       upstreamIdleTimeoutMs?: number
       upstreamOriginStore?: TinfoilUpstreamOriginStore
       captureInferenceErrorFn?: Parameters<typeof createTinfoilRoutes>[0]['captureInferenceErrorFn']
+      rateLimit?: Parameters<typeof createTinfoilRoutes>[0]['rateLimit']
     } = {},
   ) =>
     new Elysia().use(
@@ -152,6 +153,7 @@ describe('createTinfoilRoutes', () => {
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
         upstreamOriginStore: overrides.upstreamOriginStore,
         captureInferenceErrorFn: overrides.captureInferenceErrorFn,
+        rateLimit: overrides.rateLimit,
       }),
     )
 
@@ -183,6 +185,41 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('header handling', () => {
+    it('rejects an authenticated x-api-key before rate limiting, admission, or upstream forwarding', async () => {
+      let policySelectCalls = 0
+      const rateLimitCalls = mock(() => {})
+      const countingDatabase: InferenceDatabase = {
+        insert: database.insert,
+        select: ((fields) => {
+          policySelectCalls += 1
+          return database.select(fields)
+        }) as InferenceDatabase['select'],
+      }
+      const rejectingRateLimit = new Elysia()
+        .onBeforeHandle(({ set }) => {
+          rateLimitCalls()
+          set.status = 429
+          return { error: 'Too many requests' }
+        })
+        .as('scoped')
+      const app = buildApp({ database: countingDatabase, rateLimit: rejectingRateLimit })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'x-api-key': 'valid-personal-access-token' },
+          body: 'opaque-bytes',
+        }),
+      )
+      const body = await response.text()
+
+      expect(response.status).toBe(403)
+      expect(JSON.parse(body)).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
+      expect(rateLimitCalls).not.toHaveBeenCalled()
+      expect(policySelectCalls).toBe(0)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('strips inbound Authorization and injects the server bearer key', async () => {
       const app = buildApp()
       await drain(
@@ -214,6 +251,7 @@ describe('createTinfoilRoutes', () => {
             headers: {
               cookie: 'session=abc',
               connection: 'keep-alive',
+              host: 'client-supplied.example',
             },
             body: 'opaque-bytes',
           }),
@@ -224,6 +262,7 @@ describe('createTinfoilRoutes', () => {
       const sent = init.headers as Headers
       expect(sent.get('cookie')).toBeNull()
       expect(sent.get('connection')).toBeNull()
+      expect(sent.get('host')).toBeNull()
       expect(sent.get('x-tinfoil-request-usage-metrics')).toBeNull()
       expect(sent.get('te')).toBeNull()
       expect(sent.get('trailer')).toBeNull()
@@ -244,6 +283,31 @@ describe('createTinfoilRoutes', () => {
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       const sent = init.headers as Headers
       expect(sent.get('x-tinfoil-enclave-url')).toBeNull()
+    })
+
+    it('does not forward Thunderbolt client identity headers upstream', async () => {
+      const app = buildApp()
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'X-App-Version': '1.2.3',
+              'X-App-Language': 'de',
+              'X-Device-ID': 'cli-device-id',
+              'X-Device-Name': 'Workstation',
+            },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const sent = init.headers as Headers
+      expect(sent.get('x-app-version')).toBeNull()
+      expect(sent.get('x-app-language')).toBeNull()
+      expect(sent.get('x-device-id')).toBeNull()
+      expect(sent.get('x-device-name')).toBeNull()
     })
 
     it('strips response hop-by-hop headers while preserving content encoding', async () => {

@@ -166,7 +166,7 @@ const useBootstrapSystemAgents = () => {
       return
     }
     void (async () => {
-      const result = await refreshSystemAgents(db, cloudUrl, httpClient)
+      const result = await refreshSystemAgents(db, httpClient)
       if (!result.refreshed) {
         return
       }

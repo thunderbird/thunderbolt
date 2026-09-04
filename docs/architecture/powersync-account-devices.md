@@ -134,6 +134,27 @@ The local `config/config.yaml` uses HS256 with the same secret (base64) and kid 
    - **Immediate:** The app watches the current device’s row via React Query (`getDevice(deviceId)`). When the synced row has `status === ‘REVOKED’` or `revoked_at` set, the app runs the reset flow.
    - **On token refresh:** Backend returns **403 Forbidden** with `code: ‘DEVICE_DISCONNECTED’`; the connector dispatches credentials invalid and the app resets.
 
+### CLI Devices
+
+The CLI uses account-first onboarding and a stable `cli-<uuid>` installation.
+See [CLI Device Registration and Logout](#cli-device-registration-and-logout)
+for the registration, binding, logout, and revocation contract.
+
+CLI devices are account/revocation records, not PowerSync clients. The backend
+rejects `cli-` IDs from PowerSync token and upload flows. The `cli-` namespace
+is server-reserved, so a `device_type = 'cli'` row cannot reach these flows under
+another ID. CLI provider profiles, model selection, account tokens, and confidential
+cache material stay in the CLI's local state root and do not sync to the web app
+or another CLI installation.
+
+A trusted web device can revoke a CLI device through the regular device list.
+The revoked CLI cannot continue using the bound session and must complete web
+login again. Personal access tokens are separate: `THUNDERBOLT_TOKEN` supports
+headless direct managed inference only, is not device-bound, and must be revoked
+through the PAT lifecycle rather than CLI logout. Confidential GLM always
+requires a web session; a PAT request fails with `WEB_LOGIN_REQUIRED` without
+fallback or replay.
+
 ### Auth Token and Device ID
 
 - **Auth token:** In `localStorage` (fixed key). Cleared on reset via `localStorage.clear()`.
@@ -170,6 +191,25 @@ Summary for client:
 - Requires authenticated user (session).
 - Runs in a transaction: deletes the device's envelope, then sets `status` to `REVOKED` and `revoked_at` for the device that belongs to the current user.
 - **204** on success (idempotent for already-revoked devices).
+
+### CLI Device Registration and Logout
+
+- `PUT /v1/account/devices/cli` requires a valid non-anonymous persisted web
+  session plus canonical CLI device, device-name, and app-version headers. It
+  registers or touches the installation and binds that session to the device.
+- `POST /v1/account/devices/cli/logout` is remote-first: it revokes the bound CLI
+  device and all of its sessions before returning **204**.
+- Revoked devices return `DEVICE_DISCONNECTED`; invalid or expired sessions
+  return **401**. Clients do not replay a failed inference request after login.
+
+### Managed Catalog Privacy
+
+`GET /v1/config` publishes managed models through `defaults.models`: versioned
+`SharedModel` rows without `apiKey`, plus `defaultModelId`. Price tables, quota
+internals, credentials, and other deployment secrets remain backend-only.
+
+For the mandatory old-client-safe rollout order, see
+[CLI Device Rollout](../self-hosting/configuration.md#cli-device-rollout).
 
 ### Encryption API Endpoints
 

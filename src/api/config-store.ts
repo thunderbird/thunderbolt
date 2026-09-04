@@ -22,6 +22,7 @@ export type AppConfig = {
   defaults?: {
     models?: {
       version: number
+      defaultModelId: string
       data: SharedModel[]
     }
   }

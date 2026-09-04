@@ -6,8 +6,11 @@ import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
+import { linkCliSessionToDevice } from '@/dal/sessions'
 import { hashCanarySecret } from '@/lib/canary'
 import { createTestDb } from '@/test-utils/db'
+import { registerCliDevice } from '@/test-utils/cli-device'
+import { createTestSettings } from '@/test-utils/settings'
 import { createHmac } from 'crypto'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -39,7 +42,8 @@ const counterKey = Symbol.for('account-test-runId')
 const testCanarySecret = 'test-canary-secret-for-revoke-proof'
 
 describe('Account API', () => {
-  let app: ReturnType<typeof createAccountRoutes>
+  let app: { handle: (request: Request) => Promise<Response> }
+  let auth: ReturnType<typeof createAuth>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
   /** Prefix IDs with the current runId — see top-of-file comment for why. */
@@ -51,10 +55,10 @@ describe('Account API', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    const auth = createAuth(db)
-    app = new Elysia({ prefix: '/v1' }).use(createAccountRoutes(auth, db)) as unknown as ReturnType<
-      typeof createAccountRoutes
-    >
+    auth = createAuth(db)
+    app = new Elysia({ prefix: '/v1' }).use(
+      createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db),
+    )
   })
 
   afterEach(async () => {
@@ -99,6 +103,46 @@ describe('Account API', () => {
     return now
   }
 
+  /** Create a user and persisted session for CLI-account route tests. */
+  const createCliSession = async (
+    userId: string,
+    token: string,
+    options: { deviceId?: string; expiresAt?: Date; isAnonymous?: boolean } = {},
+  ) => {
+    const now = new Date()
+    await db.insert(user).values({
+      id: userId,
+      name: 'CLI User',
+      email: `${userId}@example.com`,
+      emailVerified: !options.isAnonymous,
+      isAnonymous: options.isAnonymous ?? false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db.insert(sessionTable).values({
+      id: `cli-session-${userId}`,
+      expiresAt: options.expiresAt ?? new Date(now.getTime() + 3600_000),
+      token,
+      createdAt: now,
+      updatedAt: now,
+      userId,
+      deviceId: options.deviceId ?? null,
+    })
+    return now
+  }
+
+  const registerCli = (token: string, deviceId: string, options: { name?: string; appVersion?: string | null } = {}) =>
+    registerCliDevice(app, signToken(token), deviceId, options)
+
+  /** Send the bodyless CLI logout request. */
+  const logoutCli = (token: string) =>
+    app.handle(
+      new Request('http://localhost/v1/account/devices/cli/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${signToken(token)}` },
+      }),
+    )
+
   /** Insert encryption metadata with a known canary secret hash. */
   const insertCanaryWithSecret = async (userId: string) => {
     const hash = await hashCanarySecret(testCanarySecret)
@@ -132,6 +176,595 @@ describe('Account API', () => {
       body,
     })
   }
+
+  describe('CLI account device lifecycle', () => {
+    it('keeps CLI registration unavailable until the server rollout gate is enabled', async () => {
+      const userId = p('cli-rollout-disabled-user')
+      const token = p('cli-rollout-disabled-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      const disabledApp = new Elysia({ prefix: '/v1' }).use(
+        createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: false }), db),
+      )
+
+      const response = await registerCliDevice(disabledApp, signToken(token), deviceId)
+
+      expect(response.status).toBe(404)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
+    it('registers an exact CLI row, binds the real session, and idempotently touches the same row', async () => {
+      const userId = p('cli-register-user')
+      const token = p('cli-register-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+
+      const registered = await registerCli(token, deviceId, { name: 'Workstation', appVersion: '1.0.0' })
+      expect(registered.status).toBe(200)
+      expect(await registered.json()).toEqual({ deviceId, state: 'registered' })
+
+      const [firstRow] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(firstRow).toMatchObject({
+        id: deviceId,
+        userId,
+        name: 'Workstation',
+        appVersion: '1.0.0',
+        deviceType: 'cli',
+        trusted: true,
+        approvalPending: false,
+        publicKey: null,
+        mlkemPublicKey: null,
+        nodeId: null,
+        nodeIdAttestedAt: null,
+        revokedAt: null,
+      })
+      const [boundSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(boundSession.deviceId).toBe(deviceId)
+
+      await db.insert(devicesTable).values(
+        Array.from({ length: 9 }, (_, index) => ({
+          id: p(`cli-touch-cap-device-${index}`),
+          userId,
+          name: `Device ${index}`,
+          trusted: true,
+          lastSeen: firstRow.lastSeen!,
+          createdAt: firstRow.createdAt!,
+        })),
+      )
+
+      const touched = await registerCli(token, deviceId, { name: 'Renamed Workstation', appVersion: '1.1.0' })
+      expect(touched.status).toBe(200)
+      expect(await touched.json()).toEqual({ deviceId, state: 'registered' })
+      const rows = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        name: 'Renamed Workstation',
+        appVersion: '1.1.0',
+        createdAt: firstRow.createdAt,
+        deviceType: 'cli',
+        trusted: true,
+        approvalPending: false,
+      })
+      expect(rows[0].lastSeen!.getTime()).toBeGreaterThanOrEqual(firstRow.lastSeen!.getTime())
+    })
+
+    it('rejects malformed and non-canonical CLI device IDs without creating a row', async () => {
+      const userId = p('cli-invalid-id-user')
+      const token = p('cli-invalid-id-token')
+      await createCliSession(userId, token)
+      const invalidIds = ['cli-not-a-uuid', 'cli-019F0000-0000-7000-8000-000000000001', crypto.randomUUID()]
+
+      for (const deviceId of invalidIds) {
+        const response = await registerCli(token, deviceId)
+        expect(response.status).toBe(400)
+        expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      }
+    })
+
+    it('rejects a missing X-App-Version without creating or binding a CLI device', async () => {
+      const userId = p('cli-missing-version-user')
+      const token = p('cli-missing-version-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+
+      const response = await registerCli(token, deviceId, { appVersion: null })
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ code: 'INVALID_APP_VERSION' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('rejects a blank X-App-Version without creating or binding a CLI device', async () => {
+      const userId = p('cli-blank-version-user')
+      const token = p('cli-blank-version-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+
+      const response = await registerCli(token, deviceId, { appVersion: '   ' })
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ code: 'INVALID_APP_VERSION' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('requires the persisted session binding to be null or the same CLI device', async () => {
+      const userId = p('cli-bound-user')
+      const token = p('cli-bound-token')
+      const existingDeviceId = `cli-${crypto.randomUUID()}`
+      const attemptedDeviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token, { deviceId: existingDeviceId })
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id: existingDeviceId,
+        userId,
+        name: 'Existing CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await registerCli(token, attemptedDeviceId)
+
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ code: 'SESSION_DEVICE_MISMATCH' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, attemptedDeviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBe(existingDeviceId)
+    })
+
+    it('serializes competing registrations so only one device wins the session bind', async () => {
+      const userId = p('cli-bind-race-user')
+      const token = p('cli-bind-race-token')
+      const deviceIds = [`cli-${crypto.randomUUID()}`, `cli-${crypto.randomUUID()}`]
+      await createCliSession(userId, token)
+
+      const responses = await Promise.all(deviceIds.map((deviceId) => registerCli(token, deviceId)))
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409])
+
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(deviceIds).toContain(persistedSession.deviceId!)
+      const winnerRows = await db.select().from(devicesTable).where(eq(devicesTable.id, persistedSession.deviceId!))
+      const losingDeviceId = deviceIds.find((deviceId) => deviceId !== persistedSession.deviceId)!
+      const loserRows = await db.select().from(devicesTable).where(eq(devicesTable.id, losingDeviceId))
+      expect(winnerRows).toHaveLength(1)
+      expect(loserRows).toHaveLength(0)
+    })
+
+    it('returns authoritative 401 and rolls back the CLI row when the session is deleted before bind', async () => {
+      const userId = p('cli-bind-delete-user')
+      const token = p('cli-bind-delete-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      const deleteBeforeBind: typeof linkCliSessionToDevice = async (
+        database,
+        sessionId,
+        targetDeviceId,
+        targetUserId,
+      ) => {
+        await database.delete(sessionTable).where(eq(sessionTable.id, sessionId))
+        return linkCliSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
+      }
+      const boundaryApp = new Elysia({ prefix: '/v1' }).use(
+        createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
+          linkCliSessionToDevice: deleteBeforeBind,
+        }),
+      )
+
+      const response = await registerCliDevice(boundaryApp, signToken(token), deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({ error: 'Unauthorized' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
+    it('returns authoritative 401 and rolls back the CLI row when the session expires before bind', async () => {
+      const userId = p('cli-bind-expiry-user')
+      const token = p('cli-bind-expiry-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      const expireBeforeBind: typeof linkCliSessionToDevice = async (
+        database,
+        sessionId,
+        targetDeviceId,
+        targetUserId,
+      ) => {
+        await database
+          .update(sessionTable)
+          .set({ expiresAt: new Date(Date.now() - 1_000) })
+          .where(eq(sessionTable.id, sessionId))
+        return linkCliSessionToDevice(database, sessionId, targetDeviceId, targetUserId)
+      }
+      const boundaryApp = new Elysia({ prefix: '/v1' }).use(
+        createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
+          linkCliSessionToDevice: expireBeforeBind,
+        }),
+      )
+
+      const response = await registerCliDevice(boundaryApp, signToken(token), deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await response.json()).toEqual({ error: 'Unauthorized' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
+    it('returns 409 and rolls back the CLI row when bind discovers an active session bound elsewhere', async () => {
+      const userId = p('cli-bind-conflict-user')
+      const token = p('cli-bind-conflict-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const competingDeviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      const bindCompetingDevice: typeof linkCliSessionToDevice = async (database, sessionId) => {
+        await database.update(sessionTable).set({ deviceId: competingDeviceId }).where(eq(sessionTable.id, sessionId))
+        return { status: 'conflict' }
+      }
+      const boundaryApp = new Elysia({ prefix: '/v1' }).use(
+        createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
+          linkCliSessionToDevice: bindCompetingDevice,
+        }),
+      )
+
+      const response = await registerCliDevice(boundaryApp, signToken(token), deviceId)
+
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ code: 'SESSION_DEVICE_MISMATCH' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
+    it('enforces the active-device cap for a new CLI row', async () => {
+      const userId = p('cli-cap-user')
+      const token = p('cli-cap-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(userId, token)
+      await db.insert(devicesTable).values(
+        Array.from({ length: 10 }, (_, index) => ({
+          id: p(`cli-cap-device-${index}`),
+          userId,
+          name: `Device ${index}`,
+          trusted: true,
+          lastSeen: now,
+          createdAt: now,
+        })),
+      )
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(422)
+      expect(await response.json()).toEqual({ code: 'DEVICE_LIMIT_REACHED' })
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('does not convert a colliding row owned by another account', async () => {
+      const ownerId = p('cli-collision-owner')
+      const callerId = p('cli-collision-caller')
+      const callerToken = p('cli-collision-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(ownerId, p('cli-collision-owner-token'))
+      await createCliSession(callerId, callerToken)
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId: ownerId,
+        name: 'Owner Device',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await registerCli(callerToken, deviceId)
+
+      expect(response.status).toBe(409)
+      expect(await response.json()).toEqual({ code: 'DEVICE_ID_TAKEN' })
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persisted).toMatchObject({ userId: ownerId, name: 'Owner Device', deviceType: 'cli' })
+      const [callerSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, callerToken))
+      expect(callerSession.deviceId).toBeNull()
+    })
+
+    it('returns DEVICE_DISCONNECTED without resurrecting a CLI tombstone', async () => {
+      const userId = p('cli-tombstone-user')
+      const token = p('cli-tombstone-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(userId, token)
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Revoked CLI',
+        deviceType: 'cli',
+        trusted: false,
+        revokedAt: now,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_DISCONNECTED' })
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persisted).toMatchObject({ name: 'Revoked CLI', trusted: false, revokedAt: now })
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('rejects an expired but correctly signed bearer on registration without mutation', async () => {
+      const userId = p('cli-expired-register-user')
+      const token = p('cli-expired-register-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token, { expiresAt: new Date(Date.now() - 1_000) })
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('rejects an expired but correctly signed bearer on logout without mutation', async () => {
+      const userId = p('cli-expired-logout-user')
+      const token = p('cli-expired-logout-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(userId, token, {
+        deviceId,
+        expiresAt: new Date(Date.now() - 1_000),
+      })
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Expired Session CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await logoutCli(token)
+
+      expect(response.status).toBe(401)
+      const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persistedDevice.revokedAt).toBeNull()
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.token, token))).toHaveLength(1)
+    })
+
+    it('rejects PAT authentication without creating or binding a CLI device', async () => {
+      const userId = p('cli-pat-user')
+      const token = p('cli-pat-session-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token)
+      const apiKey = await auth.api.createApiKey({
+        body: {},
+        headers: new Headers({ Authorization: `Bearer ${signToken(token)}` }),
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/cli', {
+          method: 'PUT',
+          headers: {
+            'x-api-key': apiKey.key,
+            'X-Device-ID': deviceId,
+            'X-Device-Name': 'PAT CLI',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+
+      const logoutResponse = await app.handle(
+        new Request('http://localhost/v1/account/devices/cli/logout', {
+          method: 'POST',
+          headers: { 'x-api-key': apiKey.key },
+        }),
+      )
+      expect(logoutResponse.status).toBe(401)
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.token, token))).toHaveLength(1)
+    })
+
+    it('rejects a synthetic authenticated session that has no persisted session row', async () => {
+      const userId = p('cli-synthetic-user')
+      const now = new Date()
+      await db.insert(user).values({
+        id: userId,
+        name: 'Synthetic User',
+        email: `${userId}@example.com`,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      const deviceId = `cli-${crypto.randomUUID()}`
+
+      const response = await app.handle(
+        new Request('http://localhost/v1/account/devices/cli', {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${signToken(p('synthetic-token'))}`,
+            'X-Device-ID': deviceId,
+            'X-Device-Name': 'Synthetic CLI',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+    })
+
+    it('rejects an anonymous persisted account session', async () => {
+      const userId = p('cli-anonymous-user')
+      const token = p('cli-anonymous-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      await createCliSession(userId, token, { isAnonymous: true })
+
+      const response = await registerCli(token, deviceId)
+
+      expect(response.status).toBe(401)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
+      const [persistedSession] = await db.select().from(sessionTable).where(eq(sessionTable.token, token))
+      expect(persistedSession.deviceId).toBeNull()
+    })
+
+    it('self-logout soft-revokes the bound CLI device and deletes every linked session', async () => {
+      const userId = p('cli-self-logout-user')
+      const token = p('cli-self-logout-token')
+      const deviceId = `cli-${crypto.randomUUID()}`
+      const now = await createCliSession(userId, token, { deviceId })
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Logout CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: p('cli-self-logout-second-session'),
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: p('cli-self-logout-second-token'),
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId,
+      })
+
+      const response = await logoutCli(token)
+
+      expect(response.status).toBe(204)
+      expect(await response.text()).toBe('')
+      const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persistedDevice.revokedAt).not.toBeNull()
+      expect(persistedDevice.trusted).toBe(false)
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, deviceId))).toHaveLength(0)
+    })
+
+    it('does not log out or revoke a session bound to a non-CLI device', async () => {
+      const userId = p('cli-logout-normal-user')
+      const token = p('cli-logout-normal-token')
+      const deviceId = p('cli-logout-normal-device')
+      const now = await createCliSession(userId, token, { deviceId })
+      await db.insert(devicesTable).values({
+        id: deviceId,
+        userId,
+        name: 'Normal Device',
+        deviceType: 'normal',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      const response = await logoutCli(token)
+
+      expect(response.status).toBe(409)
+      const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))
+      expect(persistedDevice.revokedAt).toBeNull()
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.token, token))).toHaveLength(1)
+    })
+
+    it('remote revoke uses the same soft-revoke and linked-session deletion path for a CLI target', async () => {
+      const userId = p('cli-remote-revoke-user')
+      const token = p('cli-remote-revoke-token')
+      const callerDeviceId = p('cli-remote-revoke-caller')
+      const targetDeviceId = `cli-${crypto.randomUUID()}`
+      const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
+      await db.insert(devicesTable).values({
+        id: targetDeviceId,
+        userId,
+        name: 'Remote CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: p('cli-remote-linked-session'),
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: p('cli-remote-linked-token'),
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: targetDeviceId,
+      })
+
+      const response = await app.handle(revokeRequest(targetDeviceId, token, { callerDeviceId }))
+
+      expect(response.status).toBe(204)
+      const [persistedDevice] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
+      expect(persistedDevice.revokedAt).not.toBeNull()
+      expect(await db.select().from(sessionTable).where(eq(sessionTable.deviceId, targetDeviceId))).toHaveLength(0)
+    })
+
+    it('rejects a trusted CLI caller for E2EE remote revoke', async () => {
+      const userId = p('cli-e2ee-revoke-user')
+      const token = p('cli-e2ee-revoke-token')
+      const callerDeviceId = `cli-${crypto.randomUUID()}`
+      const targetDeviceId = p('cli-e2ee-revoke-target')
+      const now = await createCliSession(userId, token, { deviceId: callerDeviceId })
+      await db.insert(devicesTable).values([
+        {
+          id: callerDeviceId,
+          userId,
+          name: 'CLI Caller',
+          deviceType: 'cli',
+          trusted: true,
+          lastSeen: now,
+          createdAt: now,
+        },
+        {
+          id: targetDeviceId,
+          userId,
+          name: 'Normal Target',
+          deviceType: 'normal',
+          trusted: true,
+          lastSeen: now,
+          createdAt: now,
+        },
+      ])
+      await insertCanaryWithSecret(userId)
+
+      const response = await app.handle(
+        revokeRequest(targetDeviceId, token, { callerDeviceId, canarySecret: testCanarySecret }),
+      )
+
+      expect(response.status).toBe(403)
+      const [persistedTarget] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
+      expect(persistedTarget.revokedAt).toBeNull()
+    })
+
+    it('rejects a trusted bridge caller for E2EE remote revoke', async () => {
+      const userId = p('bridge-e2ee-revoke-user')
+      const token = p('bridge-e2ee-revoke-token')
+      const callerDeviceId = p('bridge-e2ee-revoke-caller')
+      const targetDeviceId = p('bridge-e2ee-revoke-target')
+      const now = await createUserSessionAndDevice(userId, token, callerDeviceId)
+      await db.update(devicesTable).set({ deviceType: 'bridge' }).where(eq(devicesTable.id, callerDeviceId))
+      await db.insert(devicesTable).values({
+        id: targetDeviceId,
+        userId,
+        name: 'Normal Target',
+        deviceType: 'normal',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+      await insertCanaryWithSecret(userId)
+
+      const response = await app.handle(
+        revokeRequest(targetDeviceId, token, { callerDeviceId, canarySecret: testCanarySecret }),
+      )
+
+      expect(response.status).toBe(403)
+      const [persistedTarget] = await db.select().from(devicesTable).where(eq(devicesTable.id, targetDeviceId))
+      expect(persistedTarget.revokedAt).toBeNull()
+    })
+  })
 
   describe('POST /v1/account/devices/:id/revoke (session behavior)', () => {
     it('revokes only sessions linked to the revoked device', async () => {

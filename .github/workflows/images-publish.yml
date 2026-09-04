@@ -35,6 +35,8 @@ on:
       - 'deploy/**'
       - 'backend/**'
       - 'src/**'
+      - 'shared/defaults/models.ts'
+      - 'shared/inference-usage.ts'
       - 'package.json'
 
 env:

@@ -20,12 +20,13 @@ type RevokeDeviceDialogProps = {
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
   isPending: boolean
-  variant: 'trusted' | 'pending'
+  variant: 'trusted' | 'pending' | 'cli'
 }
 
 const descriptions = {
   trusted: msg`The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync.`,
   pending: msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,
+  cli: msg`The CLI will be signed out and must sign in again before it can use your Thunderbolt account.`,
 }
 
 export const RevokeDeviceDialog = ({ open, onOpenChange, onConfirm, isPending, variant }: RevokeDeviceDialogProps) => {
@@ -37,7 +38,13 @@ export const RevokeDeviceDialog = ({ open, onOpenChange, onConfirm, isPending, v
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {isPendingVariant ? <Trans>Deny this device?</Trans> : <Trans>Revoke this device?</Trans>}
+            {isPendingVariant ? (
+              <Trans>Deny this device?</Trans>
+            ) : variant === 'cli' ? (
+              <Trans>Revoke this CLI?</Trans>
+            ) : (
+              <Trans>Revoke this device?</Trans>
+            )}
           </AlertDialogTitle>
           <AlertDialogDescription>{i18n._(descriptions[variant])}</AlertDialogDescription>
         </AlertDialogHeader>

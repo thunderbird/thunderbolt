@@ -24,6 +24,7 @@ import {
   type InferenceProxyLatencyLog,
   type InferenceProvider,
 } from './client'
+import { resolveManagedDirectRuntime } from './managed-models'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
@@ -31,6 +32,7 @@ import {
   type InferenceDatabase,
 } from './usage-ledger'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from './usage-responses'
+import { rejectUnregisteredCliDevice } from './cli-device'
 
 type Message = { role: string; content: unknown }
 
@@ -41,28 +43,6 @@ const serverTimingHeader = 'Server-Timing'
 /** Downgrade developer/system roles to user for all messages except the first (the legitimate system prompt). */
 const sanitizeMessageRoles = (messages: Message[]): Message[] =>
   messages.map((msg, i) => (i > 0 && privilegedRoles.has(msg.role) ? { ...msg, role: 'user' } : msg))
-
-type ModelConfig = {
-  provider: 'anthropic' | 'tinfoil'
-  internalName: string
-  supportsStreamUsage: boolean
-  /** Whether to omit `temperature` from the upstream payload. */
-  omitTemperature?: boolean
-}
-
-export const supportedModels: Record<string, ModelConfig> = {
-  'opus-5': {
-    provider: 'anthropic',
-    internalName: 'claude-opus-5',
-    omitTemperature: true,
-    supportsStreamUsage: true,
-  },
-  'deepseek-v4-flash': {
-    provider: 'tinfoil',
-    internalName: 'deepseek-v4-flash',
-    supportsStreamUsage: true,
-  },
-}
 
 export type CreateInferenceRoutesOptions = {
   auth: Auth
@@ -115,6 +95,9 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     })
 
   return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
+    guardedApp.onBeforeHandle(({ request, session, user }) =>
+      rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, { request, session, user }),
+    )
     if (rateLimit) {
       guardedApp.use(rateLimit)
     }
@@ -128,12 +111,12 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         throw new Error('Non-streaming requests are not supported')
       }
 
-      const modelConfig = supportedModels[body.model]
+      const modelConfig = resolveManagedDirectRuntime(body.model)
       if (!modelConfig) {
         throw new Error('Model not found')
       }
 
-      const { provider, internalName, omitTemperature, supportsStreamUsage } = modelConfig
+      const { provider, internalName, supportsStreamUsage, omitTemperature } = modelConfig
       const route = new URL(ctx.request.url).pathname
       const attemptTracker = createInferenceAttemptTracker()
       /** Emit route phase telemetry in structured logs and response headers. */

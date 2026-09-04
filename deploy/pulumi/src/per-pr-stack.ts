@@ -41,6 +41,10 @@ export type PerPrStackArgs = {
   thunderboltInferenceUrl?: pulumi.Input<string>
   /** Optional Tinfoil enclave URL — same value across all stacks today. */
   tinfoilEnclaveUrl?: pulumi.Input<string>
+  /** Minimum compatible app semver enforced before CLI device registration is enabled. */
+  minAppVersion: string
+  /** Enables server-owned CLI device registration after compatible app clients ship. */
+  cliDeviceRegistrationEnabled: boolean
 }
 
 export type PerPrStackOutputs = {
@@ -360,6 +364,11 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POWERSYNC_URL', value: shared.powersyncPublicUrl },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'MIN_APP_VERSION', value: args.minAppVersion },
+          {
+            name: 'CLI_DEVICE_REGISTRATION_ENABLED',
+            value: args.cliDeviceRegistrationEnabled ? 'true' : 'false',
+          },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },

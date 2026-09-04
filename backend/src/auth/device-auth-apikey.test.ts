@@ -2,10 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { apikey } from '@/db/auth-schema'
+import { createAuth } from '@/auth/auth'
+import { clearSettingsCache } from '@/config/settings'
+import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
+import { apikey, session as sessionTable } from '@/db/auth-schema'
+import { createInferenceRoutes } from '@/inference/routes'
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
+import { inferenceUsageReceiptPath } from '@shared/inference-usage'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
+import { Elysia } from 'elysia'
+import OpenAI from 'openai'
 
 const authBase = 'http://localhost/v1/api/auth'
 const clientId = 'thunderbolt-cli'
@@ -98,6 +105,13 @@ describe('Device Authorization Grant (RFC 8628)', () => {
     expect(tokenRes.headers.get('set-cookie')).toBeNull()
     expect(tokenRes.headers.get('access-control-expose-headers')?.toLowerCase()).toContain('set-auth-token')
 
+    const [persistedSession] = await harness.db
+      .select({ deviceId: sessionTable.deviceId })
+      .from(sessionTable)
+      .where(eq(sessionTable.token, granted.access_token))
+      .limit(1)
+    expect(persistedSession?.deviceId).toBe(cliRegistrationPendingDeviceId)
+
     const rawTokenRes = await harness.app.handle(
       new Request('http://localhost/v1/devices/allowlist', { headers: authHeaders(granted.access_token) }),
     )
@@ -127,13 +141,23 @@ describe('Device Authorization Grant (RFC 8628)', () => {
 
 describe('API key authentication', () => {
   let harness: TestAppHandle
+  let savedRegistrationFlag: string | undefined
 
   beforeEach(async () => {
+    savedRegistrationFlag = process.env.CLI_DEVICE_REGISTRATION_ENABLED
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
+    clearSettingsCache()
     harness = await createTestApp()
   })
 
   afterEach(async () => {
     await harness.cleanup()
+    if (savedRegistrationFlag === undefined) {
+      delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+    } else {
+      process.env.CLI_DEVICE_REGISTRATION_ENABLED = savedRegistrationFlag
+    }
+    clearSettingsCache()
   })
 
   /** Create an API key owned by the harness user through Better Auth's public endpoint. */
@@ -190,6 +214,74 @@ describe('API key authentication', () => {
     )
 
     expect(res.status).toBe(200)
+  })
+
+  it('accepts a valid api key for direct managed inference', async () => {
+    const { key } = await createApiKey()
+    const createCompletion = mock(() =>
+      Promise.resolve({
+        [Symbol.asyncIterator]: async function* () {
+          yield { choices: [{ delta: { content: 'direct response' } }] }
+        },
+      }),
+    )
+    const client = Object.assign(new OpenAI({ apiKey: 'test' }), {
+      chat: { completions: { create: createCompletion } },
+    })
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: createAuth(harness.db),
+        database: harness.db,
+        getClient: () => ({ client, provider: 'tinfoil' }),
+        isPostHogConfiguredFn: () => false,
+      }),
+    )
+
+    const response = await app.handle(
+      new Request('http://localhost/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({
+          model: 'deepseek-v4-flash',
+          messages: [{ role: 'user', content: 'direct request' }],
+          stream: true,
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('direct response')
+    expect(createCompletion).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires web login when a valid api key calls the Tinfoil proxy', async () => {
+    const { key } = await createApiKey()
+
+    const response = await harness.app.handle(
+      new Request('http://localhost/v1/tinfoil/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'x-api-key': key },
+        body: 'opaque-bytes',
+      }),
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
+  })
+
+  it.each([
+    ['Tinfoil proxy', '/v1/tinfoil/chat/completions', 'application/octet-stream', 'opaque-bytes'],
+    ['inference usage receipt', `/v1/${inferenceUsageReceiptPath}`, 'application/json', '{}'],
+  ])('returns 401 when an invalid api key calls the %s', async (_name, path, contentType, body) => {
+    const response = await harness.app.handle(
+      new Request(`http://localhost${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': contentType, 'x-api-key': 'not-a-real-key' },
+        body,
+      }),
+    )
+
+    expect(response.status).toBe(401)
   })
 
   it('returns 401 from protected routes for an expired api key', async () => {

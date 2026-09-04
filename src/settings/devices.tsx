@@ -150,6 +150,8 @@ const TrustedDeviceRow = ({
   const lastSeen = formatLastSeen(formatters, device.lastSeen)
   const isRevoked = device.revokedAt != null
   const isBridge = device.deviceType === 'bridge'
+  const isCli = device.deviceType === 'cli'
+  const supportsPairing = device.deviceType === null || device.deviceType === 'normal' || isBridge
   const pairingPanelId = `device-pairing-${device.id}`
   return (
     <DeviceCard>
@@ -160,6 +162,16 @@ const TrustedDeviceRow = ({
             {isBridge && (
               <DeviceBadge>
                 <Trans>Bridge</Trans>
+              </DeviceBadge>
+            )}
+            {isCli && (
+              <DeviceBadge>
+                <Trans>CLI</Trans>
+              </DeviceBadge>
+            )}
+            {isCli && !isRevoked && (
+              <DeviceBadge>
+                <Trans>Active</Trans>
               </DeviceBadge>
             )}
             {isCurrent && (
@@ -210,7 +222,7 @@ const TrustedDeviceRow = ({
         </div>
       </div>
 
-      {!isRevoked && (
+      {!isRevoked && supportsPairing && (
         <div className="mt-3 flex flex-col gap-2 border-t pt-3">
           <p className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
             <Trans>Pairing identity</Trans>
@@ -288,7 +300,10 @@ export default function DevicesSettingsPage() {
   const pairing = useDevicePairing()
 
   const dialogDevice = devices.find((d) => d.id === pairing.dialogFor) ?? null
-
+  const revokeDevice =
+    confirmationTarget?.action === 'revoke'
+      ? devices.find((device) => device.id === confirmationTarget.deviceId)
+      : undefined
   const confirmSetNodeId = async (nodeId: string) => {
     if (!pairing.dialogFor) {
       return
@@ -395,7 +410,7 @@ export default function DevicesSettingsPage() {
         onOpenChange={(open) => !open && setConfirmationTarget(null)}
         onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
-        variant="trusted"
+        variant={revokeDevice?.deviceType === 'cli' ? 'cli' : 'trusted'}
       />
 
       <RevokeDeviceDialog

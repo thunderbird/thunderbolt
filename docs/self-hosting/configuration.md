@@ -12,23 +12,23 @@ Variables marked **required** must be set before the backend will start.
 
 ## Authentication
 
-| Variable                  | Default                    | Required | Description                                                                                 |
-| ------------------------- | -------------------------- | :------: | ------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`               | `consumer`                 |          | `consumer` for magic-link + Google/Microsoft OAuth, `oidc` for OIDC SSO, `saml` for SAML SSO |
-| `BETTER_AUTH_SECRET`      | —                          | **yes**  | Non-empty string used to sign sessions. Generate with `openssl rand -hex 32`.               |
-| `BETTER_AUTH_URL`         | `http://localhost:8000`    |          | Public URL the backend is served at; used in OAuth redirects                                |
-| `GOOGLE_CLIENT_ID`        | —                          |          | Google OAuth client ID (consumer mode)                                                      |
-| `GOOGLE_CLIENT_SECRET`    | —                          |          | Google OAuth client secret                                                                  |
-| `MICROSOFT_CLIENT_ID`     | —                          |          | Microsoft OAuth client ID                                                                   |
-| `MICROSOFT_CLIENT_SECRET` | —                          |          | Microsoft OAuth client secret                                                               |
-| `OIDC_ISSUER`             | —                          |          | OIDC issuer URL (required when `AUTH_MODE=oidc`)                                            |
+| Variable                  | Default                                           | Required | Description                                                                                                                                                                                        |
+| ------------------------- | ------------------------------------------------- | :------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`               | `consumer`                                        |          | `consumer` for magic-link + Google/Microsoft OAuth, `oidc` for OIDC SSO, `saml` for SAML SSO                                                                                                       |
+| `BETTER_AUTH_SECRET`      | —                                                 | **yes**  | Non-empty string used to sign sessions. Generate with `openssl rand -hex 32`.                                                                                                                      |
+| `BETTER_AUTH_URL`         | `http://localhost:8000`                           |          | Public URL the backend is served at; used in OAuth redirects                                                                                                                                       |
+| `GOOGLE_CLIENT_ID`        | —                                                 |          | Google OAuth client ID (consumer mode)                                                                                                                                                             |
+| `GOOGLE_CLIENT_SECRET`    | —                                                 |          | Google OAuth client secret                                                                                                                                                                         |
+| `MICROSOFT_CLIENT_ID`     | —                                                 |          | Microsoft OAuth client ID                                                                                                                                                                          |
+| `MICROSOFT_CLIENT_SECRET` | —                                                 |          | Microsoft OAuth client secret                                                                                                                                                                      |
+| `OIDC_ISSUER`             | —                                                 |          | OIDC issuer URL (required when `AUTH_MODE=oidc`)                                                                                                                                                   |
 | `OIDC_DISCOVERY_URL`      | `${OIDC_ISSUER}/.well-known/openid-configuration` |          | Optional override for the OIDC discovery endpoint. Use when backend reaches the IdP at an internal hostname (e.g. `http://keycloak:8080/...`) but tokens are issued with a browser-facing hostname |
-| `OIDC_CLIENT_ID`          | —                          |          | OIDC client ID                                                                              |
-| `OIDC_CLIENT_SECRET`      | —                          |          | OIDC client secret                                                                          |
-| `SAML_ENTRY_POINT`        | —                          |          | SAML IdP SSO URL (required when `AUTH_MODE=saml`)                                           |
-| `SAML_ENTITY_ID`             | —                          |          | SP entity ID — must match the SAML client ID in the IdP (e.g. `thunderbolt-saml-sp`)        |
-| `SAML_IDP_ISSUER`            | —                          |          | IdP entity ID / issuer (e.g. `https://keycloak.example.com/realms/thunderbolt`)             |
-| `SAML_CERT`               | —                          |          | SAML IdP signing certificate (base64, no PEM headers)                                       |
+| `OIDC_CLIENT_ID`          | —                                                 |          | OIDC client ID                                                                                                                                                                                     |
+| `OIDC_CLIENT_SECRET`      | —                                                 |          | OIDC client secret                                                                                                                                                                                 |
+| `SAML_ENTRY_POINT`        | —                                                 |          | SAML IdP SSO URL (required when `AUTH_MODE=saml`)                                                                                                                                                  |
+| `SAML_ENTITY_ID`          | —                                                 |          | SP entity ID — must match the SAML client ID in the IdP (e.g. `thunderbolt-saml-sp`)                                                                                                               |
+| `SAML_IDP_ISSUER`         | —                                                 |          | IdP entity ID / issuer (e.g. `https://keycloak.example.com/realms/thunderbolt`)                                                                                                                    |
+| `SAML_CERT`               | —                                                 |          | SAML IdP signing certificate (base64, no PEM headers)                                                                                                                                              |
 
 Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by default (email-delivered OTP). Hook up a provider by also setting the OAuth credentials above. Enterprise mode delegates entirely to an OIDC or SAML identity provider (Keycloak by default). See [OIDC local dev](../../backend/docs/oidc-local-dev.md) and [SAML local dev](../../backend/docs/saml-local-dev.md) for setup guides.
 
@@ -38,37 +38,37 @@ Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by d
 
 Set any subset; the app exposes each provider whose key is present.
 
-| Variable                         | Description                                          |
-| -------------------------------- | ---------------------------------------------------- |
-| `ANTHROPIC_API_KEY`              | Anthropic (Claude)                                   |
-| `FIREWORKS_API_KEY`              | Fireworks                                            |
-| `MISTRAL_API_KEY`                | Mistral                                              |
-| `EXA_API_KEY`                    | Exa search (for web-grounded retrieval)              |
-| `THUNDERBOLT_INFERENCE_URL`      | Custom OpenAI-compatible inference endpoint          |
-| `THUNDERBOLT_INFERENCE_API_KEY`  | Key for the custom inference endpoint                |
+| Variable                        | Description                                 |
+| ------------------------------- | ------------------------------------------- |
+| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                          |
+| `FIREWORKS_API_KEY`             | Fireworks                                   |
+| `MISTRAL_API_KEY`               | Mistral                                     |
+| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)     |
+| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint |
+| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint       |
 
 User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
 
 ## PowerSync
 
-| Variable                         | Default  | Required         | Description                                                                  |
-| -------------------------------- | -------- | ---------------- | ---------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | —        | yes (for sync)   | URL of the PowerSync service (e.g. `http://localhost:8080` for local dev)    |
-| `POWERSYNC_JWT_SECRET`           | —        | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**              |
-| `POWERSYNC_JWT_KID`              | —        |                  | Key ID for PowerSync to pick among multiple secrets during rotation          |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`   |                  | PowerSync JWT lifetime                                                       |
+| Variable                         | Default | Required         | Description                                                               |
+| -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------- |
+| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service (e.g. `http://localhost:8080` for local dev) |
+| `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
+| `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                    |
 
 The JWT secret must match the `k` value the PowerSync service loads at runtime. For self-hosted deploys, `deploy/config/powersync-config.yaml` reads it from the `PS_JWT_KEY_BASE64` env var (base64 of the raw secret); `POWERSYNC_JWT_KID` on the backend must match `PS_JWT_KID` set on the PowerSync service. For local dev, both values are baked into `powersync-service/config/config.yaml`.
 
 ## CORS
 
-| Variable                  | Default                                                              | Description                                                                    |
-| ------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `CORS_ORIGINS`            | `http://localhost:1420,tauri://localhost,http://tauri.localhost`     | Exact-match allowed origins (comma-separated)                                  |
-| `CORS_ALLOW_CREDENTIALS`  | `true`                                                               | Whether browsers may send cookies                                              |
-| `CORS_ALLOW_METHODS`      | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                                  | Allowed HTTP methods                                                           |
-| `CORS_ALLOW_HEADERS`      | _(see [settings.ts](../backend/src/config/settings.ts))_             | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
-| `CORS_EXPOSE_HEADERS`     | _(see `settings.ts`)_                                                | Response headers exposed to the client                                         |
+| Variable                 | Default                                                          | Description                                                                        |
+| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                                      |
+| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                                                  |
+| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                                               |
+| `CORS_ALLOW_HEADERS`     | _(see [settings.ts](../backend/src/config/settings.ts))_         | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
+| `CORS_EXPOSE_HEADERS`    | _(see `settings.ts`)_                                            | Response headers exposed to the client                                             |
 
 When you add a new custom header to a client request (e.g. `X-Device-ID`), you **must** add it to `CORS_ALLOW_HEADERS` — otherwise browser preflight fails and the request never reaches your handler.
 
@@ -92,11 +92,37 @@ Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass
 
 ## App Version Gate
 
-| Variable          | Default | Description                                                                                                                                                                                                      |
-| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Variable          | Default | Description                                                                                                                                                                                                                                          |
+| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MIN_APP_VERSION` | `""`    | Minimum client version (semver). Empty disables the gate. When set, requests from older clients get `426 Upgrade Required`, except on exempt bootstrap/callback routes (`/v1/config`, `/v1/health`, SSO/device callbacks, PostHog, proxy WebSocket). |
 
 Settings are read once at startup, so **restart the backend** after changing `MIN_APP_VERSION` — it is not picked up live.
+
+## CLI Device Rollout
+
+| Variable                          | Default | Description                                                     |
+| --------------------------------- | ------- | --------------------------------------------------------------- |
+| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking   |
+| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true` |
+
+Rollout has three mandatory, old-client-safe stages:
+
+1. **Existing clients first:** ship web, desktop, and mobile schema/UI support
+   that can safely parse and display `deviceType: cli`. If the compatible
+   installed base cannot be guaranteed, enforce a minimum-version gate before
+   enabling CLI registration on the backend.
+2. **Backend second:** deploy the public catalog, CLI registration/logout,
+   revocation enforcement, and managed inference routes. Changes to shared
+   default-model or usage-receipt inputs must rebuild the backend
+   image.
+3. **CLI last:** publish the native CLI artifacts only after the compatible
+   existing clients and backend are live.
+
+This remains backend-first relative to the CLI binary while preventing an older
+web, desktop, or mobile client from receiving a device type its schema or UI
+cannot handle. It also prevents a new CLI from discovering a catalog whose
+required auth or inference contracts the deployed backend does not yet
+implement.
 
 ## Waitlist
 
@@ -118,22 +144,22 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 
 ## General
 
-| Variable           | Default                 | Description                                                          |
-| ------------------ | ----------------------- | -------------------------------------------------------------------- |
-| `PORT`             | `8000`                  | HTTP port the backend listens on                                     |
-| `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                              |
-| `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                              |
+| Variable           | Default                 | Description                                                           |
+| ------------------ | ----------------------- | --------------------------------------------------------------------- |
+| `PORT`             | `8000`                  | HTTP port the backend listens on                                      |
+| `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                               |
+| `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                               |
 | `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
-| `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                     |
+| `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                      |
 
 ## Frontend Build Args
 
 The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:
 
-| Arg                          | Default | Purpose                                                                       |
-| ---------------------------- | ------- | ----------------------------------------------------------------------------- |
-| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                      |
-| `VITE_AUTH_MODE`             | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer        |
+| Arg                          | Default | Purpose                                                                |
+| ---------------------------- | ------- | ---------------------------------------------------------------------- |
+| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)               |
+| `VITE_AUTH_MODE`             | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer |
 
 ## Validating Your Config
 

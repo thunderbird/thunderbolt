@@ -19,6 +19,12 @@ curl --fail-with-body --silent --show-error \
 
 Response contains plaintext `key` once. Store that value as `THUNDERBOLT_TOKEN`. New keys expire after `API_KEY_DEFAULT_EXPIRES_IN` seconds; default is `7776000` seconds (90 days). Creation may include `expiresIn` in seconds to request another plugin-supported lifetime (currently 1–365 days). Listing never returns plaintext key.
 
+The CLI treats a PAT as environment-managed, headless authentication. Managed
+inference through a PAT is direct-only; a PAT does not register a CLI device and
+cannot use confidential GLM. GLM depends on session-bound cache material, so use
+`thunderbolt login`; PAT-only GLM requests fail with `WEB_LOGIN_REQUIRED` and are
+not replayed through another provider.
+
 ## List
 
 ```bash
@@ -39,4 +45,11 @@ curl --fail-with-body --silent --show-error \
   --data '{"keyId":"<key-id>"}'
 ```
 
-Deletion revokes key immediately. If PAT may be compromised, revoke it, replace stored `THUNDERBOLT_TOKEN`, and issue a new key. CLI reads PAT from `THUNDERBOLT_TOKEN` and sends it as `x-api-key`; API-key sessions and disabled per-key rate limiting are deliberate for headless automation. Account/IP-level limits still apply.
+Deletion revokes key immediately. If PAT may be compromised, revoke it, replace
+stored `THUNDERBOLT_TOKEN`, and issue a new key. `thunderbolt logout` only revokes
+the stored web session and its bound CLI device; it cannot remove a token from
+the process environment or revoke that PAT remotely.
+
+The CLI reads PAT from `THUNDERBOLT_TOKEN` and sends it as `x-api-key`; API-key
+sessions and disabled per-key rate limiting are deliberate for headless
+automation. Account/IP-level limits still apply.

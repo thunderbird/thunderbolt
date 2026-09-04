@@ -73,9 +73,18 @@ mv "thunderbolt-cli-$TARGET" ~/.local/bin/thunderbolt
 
 ## First run
 
-Run `thunderbolt` in a terminal. When no usable API key exists, guided setup
-asks for provider, API key, and model, saves defaults, then continues directly
-into the requested REPL or a one-shot task. API key input is not echoed.
+Run `thunderbolt` in a terminal. First-run setup offers two connection paths:
+Interactive REPL setup stays inside the TUI; one-shot and `--no-tui` runs use the plain prompts.
+
+- **Thunderbolt account (recommended):** opens a verification link (and prints a
+  QR code) so you can approve this CLI in the web app. The resulting web session
+  is bound to this CLI installation before managed inference starts.
+- **Provider API key:** creates a named BYOK profile for a built-in provider or
+  an OpenAI-compatible endpoint. API key input is not echoed.
+
+Setup then continues into the requested REPL or one-shot task. Use the same
+Thunderbolt account as the web app when you want managed models; no provider API
+key is required for that path.
 
 Run setup again anytime:
 
@@ -83,27 +92,34 @@ Run setup again anytime:
 thunderbolt config
 ```
 
-Config lives at `~/.thunderbolt/config.json`, or
-`$THUNDERBOLT_HOME/config.json` when `THUNDERBOLT_HOME` is set. File mode is
-`0600` because config may contain a plaintext API key.
+You can also manage the account session directly:
 
-```json
-{
-  "provider": "openai-compat",
-  "model": "upstream-model",
-  "apiKey": "sk-...",
-  "baseUrl": "https://host.example/v1"
-}
+```sh
+thunderbolt login
+thunderbolt logout
 ```
 
-`apiKey` and `baseUrl` are optional. Saved keys apply only when saved provider
-and base URL match effective provider and base URL, preventing cross-provider or
-cross-endpoint credential forwarding. Missing, malformed, or invalid config is
-treated as absent.
+When a stored web session exists, `thunderbolt logout` revokes the bound CLI
+device and its web session before clearing local authentication. Removing or
+revoking this CLI from the web app also invalidates its session; run
+`thunderbolt login` to bind it again.
 
-Resolution order is explicit flag, supported provider environment variable,
-config file, then built-in default. Current environment tier contains credential
-variables only; provider, model, and base URL have no environment override.
+Provider configuration lives at `~/.thunderbolt/config.json`, and account
+authentication has a separate file under the same directory. Set
+`THUNDERBOLT_HOME` to move that state root. Files are written with mode `0600`
+because BYOK profiles may contain plaintext API keys. Profiles, selected models,
+and account authentication are local to this CLI installation: the CLI does not
+use PowerSync and does not sync this state to other devices.
+
+Each BYOK profile has its own stable ID, label, provider, default model, and
+credential scope. Saved keys apply only to the matching provider and, for
+OpenAI-compatible profiles, matching base URL. Missing or rejected credentials
+can be repaired without changing another profile.
+
+For BYOK profiles, credential resolution is explicit `--api-key`, the selected
+provider's dedicated environment variable, then that profile's saved key.
+Provider, model, key, and URL flags affect only the current process and are never
+persisted.
 
 ## Usage
 
@@ -124,12 +140,34 @@ thunderbolt
 | Command                                                                      | Purpose                                                        |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `thunderbolt agent [options] [prompt]`                                       | Run coding agent; `agent` is optional/default.                 |
-| `thunderbolt config`                                                         | Run guided provider setup and overwrite saved defaults.        |
+| `thunderbolt config`                                                         | Manage the Thunderbolt account and local BYOK profiles.         |
+| `thunderbolt login`                                                          | Bind this CLI to a Thunderbolt account through web login.       |
+| `thunderbolt logout`                                                         | Revoke and clear the stored Thunderbolt web session.            |
 | `thunderbolt acp serve [options]`                                            | Expose built-in coding agent as stdio ACP server.              |
 | `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>`       | Bridge stdio ACP agent.                                        |
 | `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>`      | Bridge stdio MCP server.                                       |
 | `thunderbolt <acp\|mcp> connect <ticket\|nodeid> [-- <local-client-cmd...>]` | Dial iroh bridge.                                              |
 | `thunderbolt iroh id` / `pair` / `allow <nodeid>`                            | Inspect ACP identity, print pairing ticket, or authorize peer. |
+
+### Interactive commands
+
+The TUI and plain REPL share these commands:
+
+| Command        | Purpose                                                        |
+| -------------- | -------------------------------------------------------------- |
+| `/providers`   | Manage the account connection and local BYOK profiles.         |
+| `/models`      | Select a model for the active provider.                        |
+| `/login`       | Bind this CLI to a Thunderbolt account through web login.      |
+| `/logout`      | Revoke and clear the stored Thunderbolt web session.           |
+| `/permissions` | Choose any tool permission mode.                               |
+
+While a TUI turn is running, Enter queues another message. Press ↑ to select a
+queued message, then Enter to send it immediately, Backspace/Delete to remove
+it, or Esc to return to the editor; interrupting a turn keeps the queue for later.
+
+The picker always offers `ask`, `accept-edits`, `read-only`, and `yolo`. In the
+TUI, Shift+Tab cycles through those modes in that order. `--yolo` only selects
+the initial mode; it does not limit later switching.
 
 ### Served agent workspace
 
@@ -159,28 +197,30 @@ elsewhere on the machine are outside its workspace and unavailable.
 | Flag                 | Description                                                                |
 | -------------------- | -------------------------------------------------------------------------- |
 | `-m`, `--model <id>` | Provider model id (provider-specific default).                             |
-| `--provider <name>`  | Built-in provider or `openai-compat` (default: `anthropic`).               |
+| `--provider <id>`    | Profile ID or unique provider/label shorthand for this process.           |
 | `--base-url <url>`   | Custom endpoint URL (required for `openai-compat`).                        |
-| `--api-key <key>`    | Explicit key for any provider; overrides provider environment.             |
+| `--api-key <key>`    | Compatibility-only provider key override; may leak via shell history.      |
 | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
-| `-y`, `--yolo`       | Auto-approve tool calls (alias: `--dangerously-skip-permissions`).         |
-| `--no-tui`           | Force plain readline REPL.                                                 |
+| `-y`, `--yolo`       | Start in yolo permission mode (alias: `--dangerously-skip-permissions`).   |
+| `--no-tui`           | Force plain readline REPL (`agent` only).                                  |
+| `--fullscreen`       | Use the alternate screen; native scrollback is unavailable (`agent` only). |
 | `-h`, `--help`       | Show help and exit.                                                        |
 | `-v`, `--version`    | Print version and exit.                                                    |
 
 ACP/MCP bridge commands accept `--transport wss|iroh` (default `wss`) and
 `--port <0-65535>` for WSS (defaults: ACP `8839`, MCP `8840`). Arguments after
-`--` form the spawned stdio command.
+`--` form the spawned stdio command. `wss` is the selector name for the loopback
+WebSocket transport, and its advertised URL uses `ws://` on `127.0.0.1`.
 
-Supported built-in providers:
+Supported BYOK providers:
 
 `anthropic`, `openai`, `google`, `xai`, `deepseek`, `zai`, `mistral`, `groq`,
 `openrouter`, `moonshotai`, `minimax`, `cerebras`, `together`, `fireworks`.
 
-Each built-in provider uses Pi's generated model catalog and standard API-key
-environment variable. `--api-key` overrides that environment key; matching
-saved config supplies fallback credentials. Unknown model errors list valid
-catalog ids for the selected provider.
+Each BYOK provider uses Pi's generated model catalog and dedicated API-key
+environment variable. Managed Thunderbolt models instead come from the public
+backend catalog and never expose private upstream endpoints, provider
+credentials, or pricing data.
 
 `openai-compat` remains the custom-endpoint escape hatch:
 
@@ -234,16 +274,22 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 | `TOGETHER_API_KEY`                           | Together API key.                                                                                               |
 | `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
 | `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
-| `THUNDERBOLT_HOME`                           | CLI state root containing `config.json`, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
+| `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
 | `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
 | `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).        |
-| `THUNDERBOLT_TOKEN`                          | Personal access token for headless use (CI, scripts): skips interactive login and authenticates as `x-api-key`. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run.  |
+| `THUNDERBOLT_TOKEN`                          | Personal access token for headless direct managed inference and bridges only. It cannot use confidential GLM, bind a CLI device, or be cleared by `thunderbolt logout`; remove it from the environment or revoke it in the web account. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run. |
 | `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
 | `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
 | `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
 | `NO_COLOR`                                   | Disable terminal color when set.                                                                                |
 
 Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
+
+`THUNDERBOLT_TOKEN` takes precedence over a stored web session for the current
+process. PATs support direct managed models only. Confidential GLM uses
+session-bound cache material and therefore requires `thunderbolt login`; the CLI
+returns `WEB_LOGIN_REQUIRED` instead of falling back to direct inference or a
+BYOK provider.
 
 ## Demo
 

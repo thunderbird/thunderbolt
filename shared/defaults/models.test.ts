@@ -58,6 +58,15 @@ describe('defaultModels version snapshot', () => {
       metadataHash: computeMetadataHash(),
     }).toEqual(expected)
   })
+
+  test('ships complete public presentation metadata for every managed model', () => {
+    for (const model of defaultModels) {
+      expect(model.name).not.toBe('')
+      expect(model.description).not.toBeNull()
+      expect(model.vendor).not.toBeNull()
+      expect(model.contextWindow).toBeGreaterThan(0)
+    }
+  })
 })
 
 describe('vendorSupportsImages', () => {

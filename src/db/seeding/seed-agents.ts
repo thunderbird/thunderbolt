@@ -42,10 +42,9 @@ export type RefreshSystemAgentsResult =
  */
 export const refreshSystemAgents = async (
   db: AnyDrizzleDatabase,
-  cloudUrl: string,
   httpClient: HttpClient,
 ): Promise<RefreshSystemAgentsResult> => {
-  const payload = await fetchDiscovery(cloudUrl, httpClient)
+  const payload = await fetchDiscovery(httpClient)
 
   if (payload.kind === 'unauthenticated') {
     await db.delete(agentsSystemTable)
@@ -106,12 +105,12 @@ export const refreshSystemAgents = async (
 
 type DiscoveryFetch = { kind: 'ok'; data: AgentDiscoveryResponse } | { kind: 'unauthenticated' } | { kind: 'error' }
 
-/** Hits `GET {cloudUrl}/agents` and classifies the outcome into a closed union.
+/** Hits `GET /agents` through the preconfigured client and classifies the outcome into a closed union.
  *  Kept private — callers consume `refreshSystemAgents` which folds this into
  *  the local-table reconciliation. */
-const fetchDiscovery = async (cloudUrl: string, httpClient: HttpClient): Promise<DiscoveryFetch> => {
+const fetchDiscovery = async (httpClient: HttpClient): Promise<DiscoveryFetch> => {
   try {
-    const data = await httpClient.get(`${cloudUrl}/agents`).json<AgentDiscoveryResponse>()
+    const data = await httpClient.get('agents').json<AgentDiscoveryResponse>()
     return { kind: 'ok', data }
   } catch (err) {
     if (err instanceof HttpError) {

@@ -51,6 +51,11 @@ jobs:
               - 'shared/agent-core/**'
             cli:
               - 'cli/**'
+              - 'shared/agent-core/**'
+              - 'shared/cli-device-id.ts'
+              - 'shared/defaults/models.ts'
+              - 'shared/inference-usage.ts'
+              - 'package.json'
             wasm-artifact:
               - 'src/acp/iroh/pkg/**'
             # Inputs that change the compiled wasm (README.md excluded — it doesn't).
@@ -279,10 +284,9 @@ jobs:
       - name: Run agent-core tests (5x)
         run: bun run test:agent-core:5x
 
-  # cli/ is a self-contained package (own bun.lock, no imports from src/ or shared/),
-  # so its tests and typecheck aren't reached by the `typescript` job. Gate on the
-  # `cli/**` path filter — same detect-changes mechanism as the `rust` and
-  # `agent-core` jobs — so it runs only when cli/ changes.
+  # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
+  # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`
+  # path filter — same detect-changes mechanism as the `rust` and `agent-core` jobs.
   cli:
     needs: detect-changes
     if: needs.detect-changes.outputs.cli == 'true'
@@ -314,6 +318,15 @@ jobs:
 
       - name: Run cli tests (5x)
         run: cd cli && bun run test:5x
+
+      - name: Build cli
+        run: cd cli && bun run build
+
+      - name: Smoke cli artifact
+        working-directory: cli
+        run: |
+          ./dist/thunderbolt --version
+          ./dist/thunderbolt --help >/dev/null
 
   # The iroh ACP client (P2P/QUIC crypto core) ships as a prebuilt wasm artifact at
   # src/acp/iroh/pkg so the web app imports it without a wasm toolchain in CI. The

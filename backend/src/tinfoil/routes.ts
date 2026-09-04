@@ -8,12 +8,14 @@ import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
 import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
+import { rejectPersonalAccessToken } from '@/inference/web-session'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
   type InferenceDatabase,
 } from '@/inference/usage-ledger'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
+import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -34,6 +36,18 @@ const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMess
 const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
 const tinfoilProxyTimingHeader = 'X-Proxy-Timing'
 const serverTimingHeader = 'Server-Timing'
+const upstreamRequestHeaderBlocklist = new Set([
+  'authorization',
+  'x-api-key',
+  'host',
+  'cookie',
+  'connection',
+  tinfoilEnclaveUrlHeader,
+  'x-app-version',
+  'x-app-language',
+  'x-device-id',
+  'x-device-name',
+])
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
@@ -257,14 +271,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
 
     const headers = new Headers()
     request.headers.forEach((value, key) => {
-      const lower = key.toLowerCase()
-      if (
-        lower === 'authorization' ||
-        lower === 'host' ||
-        lower === 'cookie' ||
-        lower === 'connection' ||
-        lower === tinfoilEnclaveUrlHeader
-      ) {
+      if (upstreamRequestHeaderBlocklist.has(key.toLowerCase())) {
         return
       }
       headers.set(key, value)
@@ -421,8 +428,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     })
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
+      const webSessionApp = g
+        .onBeforeHandle(rejectPersonalAccessToken)
+        .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, ctx))
       if (rateLimit) {
-        return g
+        return webSessionApp
           .use(rateLimit)
           .all(
             '/*',
@@ -439,7 +449,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             { parse: 'none' },
           )
       }
-      return g.all(
+      return webSessionApp.all(
         '/*',
         (ctx) =>
           proxyToEnclave(

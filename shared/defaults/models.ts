@@ -102,6 +102,8 @@ export const defaultModelOpus5: SharedModel = {
   userId: null,
 }
 
+export const defaultModelId = defaultModelOpus5.id
+
 /**
  * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
  * would flip `isConfidential` 1 → 0 on threads that were created encrypted

@@ -3,46 +3,101 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createInterface } from 'node:readline/promises'
-import type { PermissionDecision, PermissionRequest, TerminalIO } from '../agent/types.ts'
+import { Writable } from 'node:stream'
+import type { PermissionDecision, PermissionRequest } from '../agent/types.ts'
 
-/**
- * Creates the interactive terminal I/O used by both the REPL input loop and the
- * permission gate. A single `node:readline/promises` interface backs every read
- * so the two never contend for stdin.
- *
- * @returns a {@link TerminalIO} bound to process stdin/stdout
- */
-export const createTerminalIO = (): TerminalIO => {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  // readline emits 'close' when stdin ends (Ctrl-D / closed pipe). A pending
-  // `question()` otherwise hangs forever, so abort it on close — that rejects
-  // the read, which `readLine` turns into a `null` end-of-input signal.
-  const eof = new AbortController()
-  rl.on('close', () => eof.abort())
+export type TerminalIO = {
+  readonly readLine: (prompt: string) => Promise<string | null>
+  readonly readSecret: (prompt: string) => Promise<string | null>
+  readonly write: (text: string) => void
+  readonly ask: (request: PermissionRequest) => Promise<PermissionDecision>
+  readonly isTTY: boolean
+  readonly signal: AbortSignal
+  readonly close: () => void
+}
+type SignalSource = {
+  readonly on: (event: 'SIGINT', listener: () => void) => void
+  readonly off: (event: 'SIGINT', listener: () => void) => void
+}
 
-  const readLine = async (prompt: string): Promise<string | null> => {
+/** Creates shared prompt/manager I/O over explicit streams for production and tests. */
+export const createTerminalIOFromStreams = (
+  input: NodeJS.ReadableStream & { readonly isTTY?: boolean },
+  output: NodeJS.WritableStream,
+  options: { readonly signalSource?: SignalSource } = {},
+): TerminalIO => {
+  let muted = false
+  const readlineOutput = new Writable({
+    write: (chunk, _encoding, callback) => {
+      if (!muted) output.write(chunk)
+      callback()
+    },
+  })
+  const rl = createInterface({ input, output: readlineOutput, terminal: Boolean(input.isTTY) })
+  const cancellation = new AbortController()
+  const inputClosed = new AbortController()
+  const questionSignal = AbortSignal.any([cancellation.signal, inputClosed.signal])
+  let closed = false
+  const removeSigintListener = (): void => {
+    options.signalSource?.off('SIGINT', onSigint)
+  }
+  const close = (): void => {
+    if (closed) return
+    closed = true
+    cancellation.abort()
+    rl.close()
+    removeSigintListener()
+  }
+  const onSigint = (): void => close()
+  options.signalSource?.on('SIGINT', onSigint)
+  rl.on('close', () => inputClosed.abort())
+
+  /** Reads one answer while suppressing terminal echo only for secrets. */
+  const question = async (prompt: string, isSecret: boolean): Promise<string | null> => {
+    if (isSecret) {
+      output.write(prompt)
+      muted = true
+    }
     try {
-      const answer = await rl.question(prompt, { signal: eof.signal })
-      return answer.trim()
-    } catch {
-      return null
+      return await rl.question(isSecret ? '' : prompt, { signal: questionSignal })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return null
+      throw error
+    } finally {
+      if (isSecret) {
+        muted = false
+        output.write('\n')
+      }
     }
   }
 
+  const readLine = (prompt: string): Promise<string | null> => question(prompt, false)
+  const readSecret = (prompt: string): Promise<string | null> => question(prompt, true)
+  const write = (text: string): void => {
+    output.write(text)
+  }
   const ask = async (request: PermissionRequest): Promise<PermissionDecision> => {
     const block = ['', `\x1b[33m⚠ allow ${request.toolName}?\x1b[0m`, `  ${request.summary}`]
     if (request.detail) block.push('', request.detail)
-    process.stdout.write(`${block.join('\n')}\n`)
+    write(`${block.join('\n')}\n`)
 
-    const answer = (await readLine('Allow? [y]es / [a]lways / [N]o: '))?.toLowerCase()
+    const answer = (await readLine('Allow? [y]es / [a]lways / [N]o: '))?.trim().toLowerCase()
     if (answer === 'y' || answer === 'yes') return 'allow-once'
     if (answer === 'a' || answer === 'always') return 'allow-session'
     return 'deny'
   }
 
-  const close = (): void => {
-    rl.close()
+  return {
+    isTTY: Boolean(input.isTTY),
+    readLine,
+    readSecret,
+    write,
+    ask,
+    signal: cancellation.signal,
+    close,
   }
-
-  return { readLine, ask, close }
 }
+
+/** Creates the production terminal I/O shared by onboarding, REPL, and permissions. */
+export const createTerminalIO = (): TerminalIO =>
+  createTerminalIOFromStreams(process.stdin, process.stdout, { signalSource: process })

@@ -11,88 +11,35 @@
  * request round-trips to the client, and `session/cancel` yields `cancelled`.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { realpath } from 'node:fs/promises'
-import {
-  AgentSideConnection,
-  ClientSideConnection,
-  PROTOCOL_VERSION,
-  ndJsonStream,
-} from '@agentclientprotocol/sdk'
-import type {
-  Client,
-  RequestPermissionRequest,
-  SessionNotification,
-  Stream,
-} from '@agentclientprotocol/sdk'
-import type { StopReason as PiStopReason, AssistantMessage } from '@earendil-works/pi-ai'
-import { InMemorySessionRepo } from '@earendil-works/pi-agent-core'
-import type {
-  AgentHarnessEvent,
-  Session as PiSession,
-  ToolCallEvent,
-  ToolCallResult,
-} from '@earendil-works/pi-agent-core'
+import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
+import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
+import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
-import type { ServeConfig } from '../agent/types.ts'
+import type { CommandSyntaxServeConfig } from '../agent/types.ts'
+import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
+import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
 
-const config: ServeConfig = { model: 'fake', cwd: process.cwd(), yolo: false, thinking: 'medium' }
-
-/** A fake {@link SessionStore} backed by Pi's real in-memory repo (no disk, no
- *  mocks): each id maps to one session, and it records the new/resume calls so a
- *  test can assert the agent routed to the right one. */
-const fakeStore = (): SessionStore & {
-  created: Array<{ id: string; cwd: string }>
-  resumed: Array<{ id: string; cwd: string }>
-} => {
-  const repo = new InMemorySessionRepo()
-  const byId = new Map<string, Promise<PiSession>>()
-  const created: Array<{ id: string; cwd: string }> = []
-  const resumed: Array<{ id: string; cwd: string }> = []
-  const get = (id: string): Promise<PiSession> => {
-    const existing = byId.get(id)
-    if (existing) return existing
-    const fresh = repo.create({ id })
-    byId.set(id, fresh)
-    return fresh
+const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
+  try {
+    await operation
+  } catch (error) {
+    return error
   }
-  return {
-    created,
-    resumed,
-    createSession: (id, cwd) => {
-      created.push({ id, cwd })
-      return get(id)
-    },
-    openSession: (id, cwd) => {
-      resumed.push({ id, cwd })
-      return get(id)
-    },
-  }
+  throw new Error('Expected operation to reject.')
 }
 
-/** A minimal-but-valid Pi assistant message; the translator only reads the
- *  streamed deltas and the final `stopReason`, but the event types require a
- *  fully-shaped message, so this fills in the rest with zeros. */
-const assistantMessage = (stopReason: PiStopReason): AssistantMessage => ({
-  role: 'assistant',
-  content: [],
-  api: 'anthropic-messages',
-  provider: 'anthropic',
-  model: 'fake',
-  usage: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  },
-  stopReason,
-  timestamp: 0,
-})
+const selection = { providerId: 'selected-profile', model: 'selected-model' }
+const config: CommandSyntaxServeConfig = {
+  cwd: process.cwd(),
+  yolo: false,
+  thinking: 'medium',
+  selection,
+}
 
 /** Wire a client and the built-in agent together over an in-memory ndjson pipe
  *  pair, returning the client connection plus the buffers the client records. */
@@ -100,6 +47,7 @@ const connectPair = (
   buildServeHarness: BuildServeHarness,
   store: SessionStore = fakeStore(),
   permissionOptionId: 'allow-once' | 'allow-always' | 'reject-once' = 'allow-once',
+  runtime: ProviderRuntime = providerRuntime(),
 ): {
   client: ClientSideConnection
   updates: SessionNotification[]
@@ -110,7 +58,7 @@ const connectPair = (
   const agentStream: Stream = ndJsonStream(agentToClient.writable, clientToAgent.readable)
   const clientStream: Stream = ndJsonStream(clientToAgent.writable, agentToClient.readable)
 
-  new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, buildServeHarness), agentStream)
+  new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, runtime, buildServeHarness), agentStream)
 
   const updates: SessionNotification[] = []
   const permissions: RequestPermissionRequest[] = []
@@ -127,46 +75,61 @@ const connectPair = (
   return { client, updates, permissions }
 }
 
+const restoreSpies: (() => void)[] = []
+beforeAll(() => {
+  const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+  const stderrWrite = spyOn(process.stderr, 'write').mockImplementation(() => true)
+  restoreSpies.push(() => consoleError.mockRestore(), () => stderrWrite.mockRestore())
+})
+afterAll(() => {
+  for (const restore of restoreSpies) restore()
+})
+
 /** A fake harness whose prompt streams a text delta, asks to run `bash` (driving
  *  the permission round-trip), then reports the tool completing. */
 const streamingBuilder: BuildServeHarness = async () => {
   let emit: (event: AgentHarnessEvent) => void = () => {}
   let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
-  return {
-    harness: {
-      subscribe: (listener) => {
-        emit = listener
-        return () => {
-          emit = () => {}
-        }
-      },
-      registerToolCallGate: (h) => {
-        gate = h
-      },
-      prompt: async (text) => {
-        emit({
-          type: 'message_update',
-          message: assistantMessage('stop'),
-          assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: `you said: ${text}`, partial: assistantMessage('stop') },
-        })
-        const decision = await gate?.({ type: 'tool_call', toolCallId: 't1', toolName: 'bash', input: { command: 'echo hi' } })
-        if (!decision?.block) {
-          emit({ type: 'tool_execution_start', toolCallId: 't1', toolName: 'bash', args: { command: 'echo hi' } })
-          emit({
-            type: 'tool_execution_end',
-            toolCallId: 't1',
-            toolName: 'bash',
-            result: { content: [{ type: 'text', text: 'hi' }], details: {} },
-            isError: false,
-          })
-        }
-        return assistantMessage('stop')
-      },
-      waitForIdle: async () => {},
-      abort: async () => {},
+  return fakeHarness({
+    subscribe: (listener) => {
+      emit = listener
+      return () => {
+        emit = () => {}
+      }
     },
-    dispose: async () => {},
-  }
+    registerToolCallGate: (handler) => {
+      gate = handler
+    },
+    prompt: async (text) => {
+      emit({
+        type: 'message_update',
+        message: assistantMessage(),
+        assistantMessageEvent: {
+          type: 'text_delta',
+          contentIndex: 0,
+          delta: `you said: ${text}`,
+          partial: assistantMessage(),
+        },
+      })
+      const decision = await gate?.({
+        type: 'tool_call',
+        toolCallId: 't1',
+        toolName: 'bash',
+        input: { command: 'echo hi' },
+      })
+      if (!decision?.block) {
+        emit({ type: 'tool_execution_start', toolCallId: 't1', toolName: 'bash', args: { command: 'echo hi' } })
+        emit({
+          type: 'tool_execution_end',
+          toolCallId: 't1',
+          toolName: 'bash',
+          result: { content: [{ type: 'text', text: 'hi' }], details: {} },
+          isError: false,
+        })
+      }
+      return assistantMessage()
+    },
+  })
 }
 
 describe('createHarnessAgent (ACP server)', () => {
@@ -184,16 +147,7 @@ describe('createHarnessAgent (ACP server)', () => {
     const capturedSkills: Array<readonly SkillDefinition[]> = []
     const capturingBuilder: BuildServeHarness = async (harnessConfig) => {
       capturedSkills.push(harnessConfig.skills ?? [])
-      return {
-        harness: {
-          subscribe: () => () => {},
-          registerToolCallGate: () => {},
-          prompt: async () => assistantMessage('stop'),
-          waitForIdle: async () => {},
-          abort: async () => {},
-        },
-        dispose: async () => {},
-      }
+      return fakeHarness()
     }
     const skills: SkillDefinition[] = [
       {
@@ -220,18 +174,9 @@ describe('createHarnessAgent (ACP server)', () => {
   test('session/resume opens the stored session by id and injects it into the harness (no replay)', async () => {
     const store = fakeStore()
     const injected: PiSession[] = []
-    const capturingBuilder: BuildServeHarness = async (_config, session) => {
+    const capturingBuilder: BuildServeHarness = async (_config, _binding, session) => {
       injected.push(session)
-      return {
-        harness: {
-          subscribe: () => () => {},
-          registerToolCallGate: () => {},
-          prompt: async () => assistantMessage('stop'),
-          waitForIdle: async () => {},
-          abort: async () => {},
-        },
-        dispose: async () => {},
-      }
+      return fakeHarness()
     }
 
     const threadId = '11111111-1111-4111-8111-111111111111'
@@ -272,18 +217,11 @@ describe('createHarnessAgent (ACP server)', () => {
     let n = 0
     const trackingBuilder: BuildServeHarness = async () => {
       const id = n++
-      return {
-        harness: {
-          subscribe: () => () => {},
-          registerToolCallGate: () => {},
-          prompt: async () => assistantMessage('stop'),
-          waitForIdle: async () => {},
-          abort: async () => {},
-        },
+      return fakeHarness({
         dispose: async () => {
           disposed.push(id)
         },
-      }
+      })
     }
 
     const threadId = '22222222-2222-4222-8222-222222222222'
@@ -294,6 +232,219 @@ describe('createHarnessAgent (ACP server)', () => {
 
     // The first harness (id 0) was torn down when the second replaced it.
     expect(disposed).toEqual([0])
+  })
+
+  test('connection cleanup still disposes a session when its unsubscribe callback throws', async () => {
+    const events: string[] = []
+    const disposed = Promise.withResolvers<void>()
+    const builder: BuildServeHarness = async () =>
+      fakeHarness({
+        subscribe: () => () => {
+          events.push('unsubscribe')
+          throw new Error('unsubscribe failed')
+        },
+        dispose: async () => {
+          events.push('dispose')
+          disposed.resolve()
+        },
+      })
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), builder),
+    )
+
+    await controlled.agent.newSession({ cwd: '/', mcpServers: [] })
+    controlled.close()
+    await disposed.promise
+
+    expect(events).toEqual(['unsubscribe', 'dispose'])
+  })
+
+  test('disposes a candidate when event subscription fails before publication', async () => {
+    let disposals = 0
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), async () =>
+        fakeHarness({
+          subscribe: () => {
+            throw new Error('subscribe failed')
+          },
+          dispose: async () => {
+            disposals += 1
+          },
+        }),
+      ),
+    )
+
+    await expect(controlled.agent.newSession({ cwd: '/', mcpServers: [] })).rejects.toThrow('subscribe failed')
+    expect(disposals).toBe(1)
+    controlled.close()
+  })
+
+  test('unsubscribes and disposes a candidate when permission-gate wiring fails', async () => {
+    const events: string[] = []
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), async () =>
+        fakeHarness({
+          subscribe: () => () => {
+            events.push('unsubscribe')
+          },
+          registerToolCallGate: () => {
+            throw new Error('gate failed')
+          },
+          dispose: async () => {
+            events.push('dispose')
+          },
+        }),
+      ),
+    )
+
+    await expect(controlled.agent.newSession({ cwd: '/', mcpServers: [] })).rejects.toThrow('gate failed')
+    expect(events).toEqual(['unsubscribe', 'dispose'])
+    controlled.close()
+  })
+
+  test('aggregates wiring and cleanup failures while keeping the candidate unpublished', async () => {
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), async () =>
+        fakeHarness({
+          subscribe: () => {
+            throw new Error('subscribe failed')
+          },
+          dispose: async () => {
+            throw new Error('dispose failed')
+          },
+        }),
+      ),
+    )
+
+    const failure = await captureRejection(controlled.agent.newSession({ cwd: '/', mcpServers: [] }))
+
+    expect(failure).toBeInstanceOf(AggregateError)
+    if (!(failure instanceof AggregateError)) throw new Error('expected aggregate wiring failure')
+    expect(failure.errors.map((error) => String(error))).toEqual(['Error: subscribe failed', 'Error: dispose failed'])
+    controlled.close()
+  })
+
+  test('failed replacement attempts every old and candidate cleanup without publishing the candidate', async () => {
+    const events: string[] = []
+    let build = 0
+    const builder: BuildServeHarness = async () => {
+      const id = build++
+      return fakeHarness({
+        subscribe: () => () => {
+          events.push(`${id}:unsubscribe`)
+          if (id === 0) throw new Error('old unsubscribe failed')
+        },
+        dispose: async () => {
+          events.push(`${id}:dispose`)
+          if (id === 0) throw new Error('old dispose failed')
+        },
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), providerRuntime(), builder),
+    )
+    const sessionId = '22222222-2222-4222-8222-222222222222'
+    if (!controlled.agent.resumeSession) throw new Error('ACP agent did not advertise resume')
+    await controlled.agent.resumeSession({ sessionId, cwd: '/', mcpServers: [] })
+
+    await expect(controlled.agent.resumeSession({ sessionId, cwd: '/', mcpServers: [] })).rejects.toBeInstanceOf(
+      AggregateError,
+    )
+
+    expect(events).toEqual(['0:unsubscribe', '0:dispose', '1:unsubscribe', '1:dispose'])
+    controlled.close()
+  })
+
+  test('new and resume concurrently prepare independent bindings and dispose both runtimes', async () => {
+    const preparedSelections: Parameters<ProviderRuntime['prepare']>[0][] = []
+    const bindings: PreparedPiBinding[] = []
+    const disposals: string[] = []
+    const receiptState: string[][] = []
+    const allDisposed = Promise.withResolvers<void>()
+    const runtime = providerRuntime(async (requested) => {
+      preparedSelections.push(requested)
+      const id = String(bindings.length)
+      const binding = preparedBinding(id, async () => {
+        disposals.push(id)
+        if (disposals.length === 2) allDisposed.resolve()
+      })
+      bindings.push(binding)
+      return binding
+    })
+    const harnessConfigs: Parameters<BuildServeHarness>[0][] = []
+    const builtBindings: PreparedPiBinding[] = []
+    const builder: BuildServeHarness = async (harnessConfig, binding) => {
+      harnessConfigs.push(harnessConfig)
+      builtBindings.push(binding)
+      const receipts: string[] = []
+      receiptState.push(receipts)
+      return fakeHarness({
+        prompt: async (text) => {
+          await Promise.resolve()
+          receipts.push(`${binding.providerId}:${text}`)
+          return assistantMessage()
+        },
+        dispose: binding.dispose,
+      })
+    }
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), runtime, builder),
+    )
+    const { agent } = controlled
+    const resumeId = '33333333-3333-4333-8333-333333333333'
+    if (!agent.resumeSession) throw new Error('ACP agent did not advertise resume')
+
+    const [fresh] = await Promise.all([
+      agent.newSession({ cwd: '/', mcpServers: [] }),
+      agent.resumeSession({ sessionId: resumeId, cwd: '/', mcpServers: [] }),
+    ])
+    await Promise.all([
+      agent.prompt({ sessionId: fresh.sessionId, prompt: [{ type: 'text', text: 'fresh' }] }),
+      agent.prompt({ sessionId: resumeId, prompt: [{ type: 'text', text: 'resumed' }] }),
+    ])
+    controlled.close()
+    await allDisposed.promise
+
+    expect(preparedSelections).toEqual([selection, selection])
+    expect(bindings).toHaveLength(2)
+    expect(bindings[0]).not.toBe(bindings[1])
+    expect(builtBindings).toEqual(bindings)
+    expect(harnessConfigs).toEqual([
+      expect.objectContaining({ cwd: await realpath(config.cwd) }),
+      expect.objectContaining({ cwd: await realpath(config.cwd) }),
+    ])
+    for (const harnessConfig of harnessConfigs) {
+      expect(harnessConfig).not.toHaveProperty('provider')
+      expect(harnessConfig).not.toHaveProperty('baseUrl')
+      expect(harnessConfig).not.toHaveProperty('apiKey')
+    }
+    expect(receiptState.flat().sort()).toEqual([
+      `${bindings[0]?.providerId}:fresh`,
+      `${bindings[1]?.providerId}:resumed`,
+    ])
+    expect(disposals.sort()).toEqual(['0', '1'])
+  })
+
+  test('connection close cancels a hanging session preparation and never builds a harness', async () => {
+    const started = Promise.withResolvers<void>()
+    const runtime = providerRuntime(async () => {
+      started.resolve()
+      return new Promise<PreparedPiBinding>(() => {})
+    })
+    let builds = 0
+    const controlled = controlledAgent((connection) =>
+      createHarnessAgent(connection, config, fakeStore(), runtime, async (_config, _binding, _session) => {
+        builds += 1
+        throw new Error('harness must not be built after connection close')
+      }),
+    )
+
+    const pending = controlled.agent.newSession({ cwd: '/', mcpServers: [] })
+    await started.promise
+    controlled.close()
+
+    await expect(pending).rejects.toBeDefined()
+    expect(builds).toBe(0)
   })
 
   test('a prompt streams text + tool-call updates and round-trips a permission request', async () => {
@@ -324,12 +475,43 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(toolDone?.update).toMatchObject({ toolCallId: 't1', status: 'completed' })
   })
 
+  test('uses the complete HarnessRuntime prompt operation and remains available after an error', async () => {
+    const promptTexts: string[] = []
+    let prepareCalls = 0
+    const runtime = providerRuntime(async () => {
+      prepareCalls += 1
+      return preparedBinding('prompt-error')
+    })
+    const builder: BuildServeHarness = async () =>
+      fakeHarness({
+        prompt: async (text) => {
+          promptTexts.push(text)
+          if (promptTexts.length === 1) {
+            return { ...assistantMessage('error'), errorMessage: 'OpenAI API error (401): expired credential' }
+          }
+          return assistantMessage()
+        },
+      })
+    const { client } = connectPair(builder, fakeStore(), 'allow-once', runtime)
+    await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const { sessionId } = await client.newSession({ cwd: '/', mcpServers: [] })
+
+    await expect(client.prompt({ sessionId, prompt: [{ type: 'text', text: 'fail exactly once' }] })).rejects.toThrow(
+      'Internal error',
+    )
+    const recovered = await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'still available' }] })
+
+    expect(recovered.stopReason).toBe('end_turn')
+    expect(promptTexts).toEqual(['fail exactly once', 'still available'])
+    expect(prepareCalls).toBe(1)
+  })
+
   test('session/new ignores client cwd and binds store plus harness to trusted launch directory', async () => {
     const store = fakeStore()
     const harnessCwds: string[] = []
-    const capturingBuilder: BuildServeHarness = async (harnessConfig, session) => {
+    const capturingBuilder: BuildServeHarness = async (harnessConfig, binding, session) => {
       harnessCwds.push(harnessConfig.cwd)
-      return streamingBuilder(harnessConfig, session)
+      return streamingBuilder(harnessConfig, binding, session)
     }
     const { client } = connectPair(capturingBuilder, store)
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
@@ -346,29 +528,38 @@ describe('createHarnessAgent (ACP server)', () => {
     const decisions: Array<ToolCallResult | undefined> = []
     const readBuilder: BuildServeHarness = async () => {
       let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
-      return {
-        harness: {
-          subscribe: () => () => {},
-          registerToolCallGate: (handler) => {
-            gate = handler
-          },
-          prompt: async () => {
-            decisions.push(
-              await gate?.({ type: 'tool_call', toolCallId: 'inside', toolName: 'read', input: { path: 'package.json' } }),
-            )
-            decisions.push(
-              await gate?.({ type: 'tool_call', toolCallId: 'outside-1', toolName: 'read', input: { path: '/etc/passwd' } }),
-            )
-            decisions.push(
-              await gate?.({ type: 'tool_call', toolCallId: 'outside-2', toolName: 'read', input: { path: '/etc/passwd' } }),
-            )
-            return assistantMessage('stop')
-          },
-          waitForIdle: async () => {},
-          abort: async () => {},
+      return fakeHarness({
+        registerToolCallGate: (handler) => {
+          gate = handler
         },
-        dispose: async () => {},
-      }
+        prompt: async () => {
+          decisions.push(
+            await gate?.({
+              type: 'tool_call',
+              toolCallId: 'inside',
+              toolName: 'read',
+              input: { path: 'package.json' },
+            }),
+          )
+          decisions.push(
+            await gate?.({
+              type: 'tool_call',
+              toolCallId: 'outside-1',
+              toolName: 'read',
+              input: { path: '/etc/passwd' },
+            }),
+          )
+          decisions.push(
+            await gate?.({
+              type: 'tool_call',
+              toolCallId: 'outside-2',
+              toolName: 'read',
+              input: { path: '/etc/passwd' },
+            }),
+          )
+          return assistantMessage()
+        },
+      })
     }
 
     const { client, permissions } = connectPair(readBuilder, fakeStore(), 'allow-always')
@@ -384,39 +575,33 @@ describe('createHarnessAgent (ACP server)', () => {
     const decisions: Array<ToolCallResult | undefined> = []
     const webBuilder: BuildServeHarness = async () => {
       let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
-      return {
-        harness: {
-          subscribe: () => () => {},
-          registerToolCallGate: (handler) => {
-            gate = handler
-          },
-          prompt: async () => {
-            decisions.push(
-              await gate?.({
-                type: 'tool_call',
-                toolCallId: 'web',
-                toolName: 'webfetch',
-                input: { url: 'https://example.com' },
-              }),
-            )
-            decisions.push(
-              await gate?.({
-                type: 'tool_call',
-                toolCallId: 'skill',
-                toolName: 'skill',
-                input: { name: 'daily-brief' },
-              }),
-            )
-            decisions.push(
-              await gate?.({ type: 'tool_call', toolCallId: 'shell', toolName: 'bash', input: { command: 'curl x' } }),
-            )
-            return assistantMessage('stop')
-          },
-          waitForIdle: async () => {},
-          abort: async () => {},
+      return fakeHarness({
+        registerToolCallGate: (handler) => {
+          gate = handler
         },
-        dispose: async () => {},
-      }
+        prompt: async () => {
+          decisions.push(
+            await gate?.({
+              type: 'tool_call',
+              toolCallId: 'web',
+              toolName: 'webfetch',
+              input: { url: 'https://example.com' },
+            }),
+          )
+          decisions.push(
+            await gate?.({
+              type: 'tool_call',
+              toolCallId: 'skill',
+              toolName: 'skill',
+              input: { name: 'daily-brief' },
+            }),
+          )
+          decisions.push(
+            await gate?.({ type: 'tool_call', toolCallId: 'shell', toolName: 'bash', input: { command: 'curl x' } }),
+          )
+          return assistantMessage()
+        },
+      })
     }
 
     const { client, permissions } = connectPair(webBuilder, fakeStore(), 'reject-once')
@@ -432,7 +617,7 @@ describe('createHarnessAgent (ACP server)', () => {
     const agentToClient = new TransformStream<Uint8Array, Uint8Array>()
     const clientToAgent = new TransformStream<Uint8Array, Uint8Array>()
     new AgentSideConnection(
-      (conn) => createHarnessAgent(conn, config, fakeStore(), streamingBuilder),
+      (conn) => createHarnessAgent(conn, config, fakeStore(), providerRuntime(), streamingBuilder),
       ndJsonStream(agentToClient.writable, clientToAgent.readable),
     )
     const updates: SessionNotification[] = []
@@ -442,7 +627,10 @@ describe('createHarnessAgent (ACP server)', () => {
       },
       requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'reject-once' } }),
     }
-    const client = new ClientSideConnection(() => denyingClient, ndJsonStream(clientToAgent.writable, agentToClient.readable))
+    const client = new ClientSideConnection(
+      () => denyingClient,
+      ndJsonStream(clientToAgent.writable, agentToClient.readable),
+    )
 
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
     const { sessionId } = await client.newSession({ cwd: process.cwd(), mcpServers: [] })
@@ -457,22 +645,17 @@ describe('createHarnessAgent (ACP server)', () => {
   test('session/cancel aborts the in-flight turn and resolves as cancelled', async () => {
     let release: (() => void) | null = null
     let abortedEarly = false
-    const cancellingBuilder: BuildServeHarness = async () => ({
-      harness: {
-        subscribe: () => () => {},
-        registerToolCallGate: () => {},
+    const cancellingBuilder: BuildServeHarness = async () =>
+      fakeHarness({
         prompt: async () => {
           if (!abortedEarly) await new Promise<void>((resolve) => (release = resolve))
           return assistantMessage('aborted')
         },
-        waitForIdle: async () => {},
         abort: async () => {
           abortedEarly = true
           release?.()
         },
-      },
-      dispose: async () => {},
-    })
+      })
 
     const { client } = connectPair(cancellingBuilder)
     await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })

@@ -23,6 +23,20 @@ const mockFetch = (response: Partial<Response> = {}) => {
   )
 }
 
+/** Create a client with the deployed relative prefix without leaking the test origin into later cases. */
+const createRelativePrefixClient = (
+  getToken: () => string | null,
+  config: NonNullable<Parameters<typeof createAuthenticatedClient>[2]>,
+): ReturnType<typeof createAuthenticatedClient> => {
+  const previousUrl = window.location.href
+  window.location.href = 'https://app.example.com/settings/devices'
+  try {
+    return createAuthenticatedClient('/v1', getToken, config)
+  } finally {
+    window.location.href = previousUrl
+  }
+}
+
 describe('createClient', () => {
   it('makes GET requests', async () => {
     const fetch = mockFetch()
@@ -181,6 +195,29 @@ describe('createAuthenticatedClient', () => {
       const req = fetch.mock.calls[0][0] as Request
       expect(req.headers.get('X-Device-ID')).toBe('test-device-id')
       expect(req.headers.get('X-Device-Name')).toBeTruthy()
+    })
+
+    it('injects device headers when the backend prefix is relative', async () => {
+      const fetch = mockFetch()
+      const client = createRelativePrefixClient(() => 'app-token', { fetch })
+
+      await client.post('account/devices/device-id/revoke')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.url).toBe('https://app.example.com/v1/account/devices/device-id/revoke')
+      expect(req.headers.get('X-Device-ID')).toBe('test-device-id')
+      expect(req.headers.get('X-Device-Name')).toBeTruthy()
+    })
+
+    it('does NOT treat a same-origin path sharing only the prefix text as the backend', async () => {
+      const fetch = mockFetch()
+      const client = createRelativePrefixClient(() => 'app-token', { fetch })
+
+      await client.get('https://app.example.com/v10/account/devices')
+
+      const req = fetch.mock.calls[0][0] as Request
+      expect(req.headers.get('X-Device-ID')).toBeNull()
+      expect(req.headers.get('X-App-Version')).toBeNull()
     })
 
     it('does NOT inject device headers for external API URLs', async () => {
@@ -379,6 +416,31 @@ describe('createAuthenticatedClient', () => {
       await expect(client.get('https://api.example.com/v1/foo')).rejects.toBeInstanceOf(HttpError)
 
       expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('dispatches on a backend 401 when the configured prefix is relative', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createRelativePrefixClient(() => 'app-token', { fetch })
+
+      await expect(client.get('account/devices')).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1)
+      const event = dispatchSpy.mock.calls[0][0] as CustomEvent
+      expect(event.type).toBe('powersync_credentials_invalid')
+      expect(event.detail).toEqual({ reason: 'session_expired' })
+    })
+
+    it('does not dispatch on an external 401 sharing a relative backend path', async () => {
+      const fetch = mock<FetchFn>(() => Promise.resolve(new Response('Unauthorized', { status: 401 })))
+      const client = createRelativePrefixClient(() => 'app-token', { fetch })
+
+      await expect(
+        client.get('https://external.example.com/v1/account/devices', {
+          headers: { Authorization: 'Bearer external-token' },
+        }),
+      ).rejects.toBeInstanceOf(HttpError)
+
+      expect(dispatchSpy).not.toHaveBeenCalled()
     })
   })
 })

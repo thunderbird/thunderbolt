@@ -2,12 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { getOAuthRedirectUri } from './oauth-redirect'
 
 describe('getOAuthRedirectUri', () => {
+  const locationDescriptor = Object.getOwnPropertyDescriptor(window, 'location')
+
+  afterEach(() => {
+    if (locationDescriptor) {
+      Object.defineProperty(window, 'location', locationDescriptor)
+    }
+  })
+
   it('returns web callback for non-Tauri environment', () => {
-    const originalLocation = window.location
     const mockLocation = { origin: 'https://app.example.com' } as Location
     Object.defineProperty(window, 'location', {
       value: mockLocation,
@@ -18,13 +25,6 @@ describe('getOAuthRedirectUri', () => {
     const uri = getOAuthRedirectUri()
 
     expect(uri).toBe('https://app.example.com/oauth/callback')
-
-    // Restore
-    Object.defineProperty(window, 'location', {
-      value: originalLocation,
-      writable: true,
-      configurable: true,
-    })
   })
 
   it('returns App Link for mobile platforms', () => {
@@ -35,7 +35,6 @@ describe('getOAuthRedirectUri', () => {
   })
 
   it('returns valid URL format', () => {
-    const originalLocation = window.location
     const mockLocation = { origin: 'https://test.example.com' } as Location
     Object.defineProperty(window, 'location', {
       value: mockLocation,
@@ -50,12 +49,5 @@ describe('getOAuthRedirectUri', () => {
 
     // Should end with /oauth/callback
     expect(uri).toMatch(/\/oauth\/callback$/)
-
-    // Restore
-    Object.defineProperty(window, 'location', {
-      value: originalLocation,
-      writable: true,
-      configurable: true,
-    })
   })
 })

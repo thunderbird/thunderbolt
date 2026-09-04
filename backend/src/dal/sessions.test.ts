@@ -6,7 +6,13 @@ import { session, user } from '@/db/auth-schema'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { getActiveSessionByToken, linkSessionToDevice, revokeDeviceSessions } from './sessions'
+import {
+  cliRegistrationPendingDeviceId,
+  getActivePersistedSession,
+  linkCliSessionToDevice,
+  linkSessionToDevice,
+  revokeDeviceSessions,
+} from './sessions'
 
 describe('sessions DAL', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -35,43 +41,43 @@ describe('sessions DAL', () => {
     }
   })
 
-  it('returns session for valid non-expired token', async () => {
-    const now = new Date()
-    const future = new Date(now.getTime() + 3600_000)
-    await db.insert(session).values({
-      id: 's1',
-      expiresAt: future,
-      token: 'valid-token',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-    const result = await getActiveSessionByToken(db, 'valid-token')
-    expect(result).toEqual({ userId })
-  })
+  describe('getActivePersistedSession', () => {
+    it('returns the persisted session identity and current device binding for an unexpired raw token', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'persisted-session',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: 'persisted-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'persisted-device',
+      })
 
-  it('returns null for expired token', async () => {
-    const now = new Date()
-    const past = new Date(now.getTime() - 3600_000)
-    await db.insert(session).values({
-      id: 's2',
-      expiresAt: past,
-      token: 'expired-token',
-      createdAt: now,
-      updatedAt: now,
-      userId,
+      expect(await getActivePersistedSession(db, 'persisted-token')).toEqual({
+        id: 'persisted-session',
+        userId,
+        deviceId: 'persisted-device',
+      })
     })
-    const result = await getActiveSessionByToken(db, 'expired-token')
-    expect(result).toBeNull()
-  })
 
-  it('returns null for nonexistent token', async () => {
-    const result = await getActiveSessionByToken(db, 'no-such-token')
-    expect(result).toBeNull()
+    it('returns null for an expired persisted session', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'expired-persisted-session',
+        expiresAt: new Date(now.getTime() - 1),
+        token: 'expired-persisted-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      expect(await getActivePersistedSession(db, 'expired-persisted-token')).toBeNull()
+    })
   })
 
   describe('linkSessionToDevice', () => {
-    it('sets deviceId on the session', async () => {
+    it('binds an unbound session and permits an idempotent bind to the same device', async () => {
       const now = new Date()
       const future = new Date(now.getTime() + 3600_000)
       await db.insert(session).values({
@@ -83,13 +89,14 @@ describe('sessions DAL', () => {
         userId,
       })
 
-      await linkSessionToDevice(db, 'link-session', 'device-abc', userId)
+      expect(await linkSessionToDevice(db, 'link-session', 'device-abc', userId)).toEqual({ status: 'bound' })
+      expect(await linkSessionToDevice(db, 'link-session', 'device-abc', userId)).toEqual({ status: 'bound' })
 
       const [row] = await db.select().from(session).where(eq(session.id, 'link-session'))
       expect(row.deviceId).toBe('device-abc')
     })
 
-    it('overwrites previous deviceId', async () => {
+    it('rejects rebinding a session that is already bound to another device', async () => {
       const now = new Date()
       const future = new Date(now.getTime() + 3600_000)
       await db.insert(session).values({
@@ -102,10 +109,80 @@ describe('sessions DAL', () => {
         deviceId: 'old-device',
       })
 
-      await linkSessionToDevice(db, 'relink-session', 'new-device', userId)
+      expect(await linkSessionToDevice(db, 'relink-session', 'new-device', userId)).toEqual({ status: 'conflict' })
 
       const [row] = await db.select().from(session).where(eq(session.id, 'relink-session'))
-      expect(row.deviceId).toBe('new-device')
+      expect(row.deviceId).toBe('old-device')
+    })
+
+    it('only replaces the server marker through the CLI registration binder', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'cli-pending-session',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: 'cli-pending-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: cliRegistrationPendingDeviceId,
+      })
+
+      expect(await linkSessionToDevice(db, 'cli-pending-session', 'normal-device', userId)).toEqual({
+        status: 'conflict',
+      })
+      expect(await linkCliSessionToDevice(db, 'cli-pending-session', 'cli-device', userId)).toEqual({
+        status: 'bound',
+      })
+      const [row] = await db.select().from(session).where(eq(session.id, 'cli-pending-session'))
+      expect(row.deviceId).toBe('cli-device')
+    })
+
+    it('reports an invalid session without creating a binding', async () => {
+      expect(await linkSessionToDevice(db, 'missing-session', 'device-abc', userId)).toEqual({
+        status: 'invalid-session',
+      })
+    })
+
+    it('reports an expired session as invalid without changing its device binding', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'expired-link-session',
+        expiresAt: new Date(now.getTime() - 1),
+        token: 'expired-link-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      expect(await linkSessionToDevice(db, 'expired-link-session', 'device-abc', userId)).toEqual({
+        status: 'invalid-session',
+      })
+      const [persisted] = await db.select().from(session).where(eq(session.id, 'expired-link-session'))
+      expect(persisted.deviceId).toBeNull()
+    })
+
+    it('atomically allows only one of two competing device bindings', async () => {
+      const now = new Date()
+      await db.insert(session).values({
+        id: 'race-session',
+        expiresAt: new Date(now.getTime() + 3600_000),
+        token: 'race-token',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+
+      const results = await Promise.all([
+        linkSessionToDevice(db, 'race-session', 'race-device-a', userId),
+        linkSessionToDevice(db, 'race-session', 'race-device-b', userId),
+      ])
+
+      expect(results.map(({ status }) => status).sort()).toEqual(['bound', 'conflict'])
+      const [persisted] = await db.select().from(session).where(eq(session.id, 'race-session'))
+      if (!persisted.deviceId) {
+        throw new Error('winning session binding was not persisted')
+      }
+      expect(['race-device-a', 'race-device-b']).toContain(persisted.deviceId)
     })
   })
 

@@ -10,32 +10,30 @@ import { createTestProvider } from '@/test-utils/test-provider'
 import { getClock } from '@/testing-library'
 import '@testing-library/jest-dom'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { LogoutModal } from './logout-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
 
 const env = import.meta.env as Record<string, string | undefined>
 
-// Mock window.location
-const mockReload = mock()
-const mockReplace = mock()
-Object.defineProperty(window, 'location', {
-  value: { reload: mockReload, replace: mockReplace },
-  writable: true,
-})
-
 describe('LogoutModal', () => {
   let consoleSpies: ConsoleSpies
   let mockOnOpenChange: ReturnType<typeof mock>
+  let mockReload: ReturnType<typeof spyOn>
+  let mockReplace: ReturnType<typeof spyOn>
   let mockSignOut: ReturnType<typeof mock>
 
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
     await setupTestDatabase()
+    mockReload = spyOn(window.location, 'reload').mockImplementation(() => undefined)
+    mockReplace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
   })
 
   afterAll(async () => {
+    mockReload.mockRestore()
+    mockReplace.mockRestore()
     consoleSpies.restore()
     await teardownTestDatabase()
   })
@@ -279,6 +277,7 @@ describe('LogoutModal', () => {
         await getClock().runAllAsync()
       })
 
+      expect(mockSignOut).toHaveBeenCalledWith({ fetchOptions: { disableSignal: true } })
       expect(mockReplace).toHaveBeenCalledWith('/signed-out')
       expect(mockReload).not.toHaveBeenCalled()
     })

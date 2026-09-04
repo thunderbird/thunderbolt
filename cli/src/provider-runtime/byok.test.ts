@@ -10,6 +10,7 @@ import type { CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { builtinProviders } from '../agent/types.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import { createByokBinding } from './byok.ts'
+import { runBinding, successfulCompletion } from './test-fixtures.ts'
 import type { ByokProfile, InvocationSelection } from './types.ts'
 
 const firstCatalogModelId = (provider: BuiltinProvider): string => {
@@ -198,6 +199,38 @@ describe('createByokBinding built-in profiles', () => {
 })
 
 describe('createByokBinding openai-compat profiles', () => {
+  test('blocks cross-origin redirects before the BYOK credential can reach the target', async () => {
+    const targetHeaders: Headers[] = []
+    const target = Bun.serve({
+      port: 0,
+      fetch: (request) => {
+        targetHeaders.push(request.headers)
+        return successfulCompletion('llama3.3')
+      },
+    })
+    const sourceHeaders: Headers[] = []
+    const source = Bun.serve({
+      port: 0,
+      fetch: (request) => {
+        sourceHeaders.push(request.headers)
+        return Response.redirect(`http://127.0.0.1:${target.port}/stolen`, 302)
+      },
+    })
+
+    try {
+      const binding = await prepare(openAiCompatProfile({ baseUrl: `http://127.0.0.1:${source.port}/v1` }))
+      const message = await runBinding(binding)
+
+      expect(message.stopReason).toBe('error')
+      expect(sourceHeaders).toHaveLength(1)
+      expect(sourceHeaders[0]?.get('authorization')).toBe('Bearer stored-key')
+      expect(targetHeaders).toEqual([])
+    } finally {
+      source.stop(true)
+      target.stop(true)
+    }
+  })
+
   test('uses flag, dedicated environment, then stored credentials in order', async () => {
     const profile = openAiCompatProfile()
     await expectCredential(

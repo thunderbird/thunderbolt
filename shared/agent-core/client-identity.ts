@@ -4,6 +4,10 @@
 
 export type ClientEnvironment = 'cli' | 'web' | 'desktop' | 'ios' | 'android'
 
+/** Treat Bun's stringified undefined env assignment as a missing build version. */
+export const normalizeClientAppVersion = (appVersion?: string): string | undefined =>
+  appVersion && appVersion !== 'undefined' ? appVersion : undefined
+
 /** Builds the client identity disclosed to an agent system prompt. */
 export const buildClientIdentityBlock = ({
   environment,
@@ -11,4 +15,7 @@ export const buildClientIdentityBlock = ({
 }: {
   environment: ClientEnvironment
   appVersion?: string
-}): string => `Client environment: ${environment}${appVersion ? `\nApp version: ${appVersion}` : ''}`
+}): string => {
+  const version = normalizeClientAppVersion(appVersion)
+  return `Client environment: ${environment}${version ? `\nApp version: ${version}` : ''}`
+}

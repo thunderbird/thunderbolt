@@ -9,11 +9,8 @@ import { Button } from '@/components/ui/button'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { MessageSquare, MousePointerClick } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate, useParams, useSearchParams } from 'react-router'
-import { v7 as uuidv7 } from 'uuid'
-import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
-import { setPendingPrompt } from '@/chats/pending-prompt-store'
+import { useCallback, useEffect } from 'react'
+import { Navigate, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
@@ -26,32 +23,16 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useMiniAppBridge } from './use-mini-app-bridge'
 import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
+import { useMiniAppChatPanelState } from './use-mini-app-chat-panel-state'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
 const appPanelSize = '66%'
 const chatPanelSize = '34%'
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
-  /*
-   * Two sources, because they are genuinely two states. A persisted thread is
-   * addressable, so it lives in `?chat=` and survives a reload or a shared link.
-   * A chat the user just opened has no row yet — putting its id in the URL would
-   * promise a thread that reloading couldn't find, and hydration would bounce to
-   * Not Found. It stays local only until the first message makes it real, at
-   * which point `onCreated` promotes it into `?chat=`.
-   */
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [draftChatId, setDraftChatId] = useState<string | null>(null)
-  const openChatId = draftChatId ?? searchParams.get('chat')
+  const { openChatId, draftChatId, openChat, openExistingChat, closeChat, attachToComposer, handleChatCreated } =
+    useMiniAppChatPanelState()
   const chats = useMiniAppChats(app.id)
-  /*
-   * Read through a ref, not a dependency. `handleChatOpen` is handed to the
-   * bridge, which keeps it for the life of the connection — depending on
-   * `openChatId` would rebuild the message listener every time a chat opens or
-   * closes, and its cleanup aborts in-flight guest requests.
-   */
-  const openChatIdRef = useRef<string | null>(null)
-  openChatIdRef.current = openChatId
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
 
@@ -69,148 +50,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     return () => closeApp()
   }, [app, openApp, closeApp])
 
-  /** Edit only `chat`, leaving any other query the route grows later alone. */
-  const setOpenChatParam = useCallback(
-    (chatThreadId: string | null) => {
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current)
-          if (chatThreadId) {
-            next.set('chat', chatThreadId)
-          } else {
-            next.delete('chat')
-          }
-          return next
-        },
-        { replace: true },
-      )
-    },
-    [setSearchParams],
-  )
-
-  const handleOpenExistingChat = useCallback(
-    (chatThreadId: string) => {
-      setDraftChatId(null)
-      setOpenChatParam(chatThreadId)
-    },
-    [setOpenChatParam],
-  )
-
-  /*
-   * Open the chat panel, reusing the conversation already in it.
-   *
-   * This used to mint a fresh `uuidv7()` every time, which was fine for the
-   * toggle button — it only calls this when nothing is open — but wrong for the
-   * guest's `ui/open-chat`, which calls it unconditionally. An app asking to
-   * open the panel while the user had a conversation in it swapped that
-   * conversation out for an empty one.
-   *
-   * So a conversation is never discarded to satisfy a request to *open*
-   * something. A prompt seeds whichever chat ends up on screen, new or
-   * existing; the cost is overwriting an unsent draft in the open chat, which
-   * is a far smaller loss than the thread it would otherwise have replaced.
-   *
-   * The seed goes through the pending-prompt channel rather than the
-   * `draft:<id>` localStorage key, which reached the composer in neither case:
-   * a mounted composer never re-reads storage, and an unsaved chat doesn't read
-   * it at all. See `pending-prompt-store.ts`.
-   */
-  const handleChatOpen = useCallback(
-    (prompt: string | undefined) => {
-      const closed = lastChatRef.current
-      const existing = openChatIdRef.current ?? closed?.id ?? null
-      if (existing) {
-        if (prompt) {
-          setPendingPrompt(existing, prompt)
-        }
-        // Only re-open when it isn't already on screen; reusing the *open* chat
-        // must not churn the URL and remount the session under the user.
-        //
-        // A chat that never got a first message has no row, so it goes back as
-        // a draft. Putting an unsaved id in `?chat=` promises a thread that
-        // hydration can't find and bounces the user to Not Found — the reason
-        // drafts stay out of the URL in the first place. Which of the two this
-        // is was recorded when the panel closed, not guessed from the history
-        // query — see `lastChatRef`.
-        if (!openChatIdRef.current) {
-          if (closed?.persisted) {
-            handleOpenExistingChat(existing)
-          } else {
-            setDraftChatId(existing)
-            setOpenChatParam(null)
-          }
-        }
-        return
-      }
-      const id = uuidv7()
-      if (prompt) {
-        setPendingPrompt(id, prompt)
-      }
-      setDraftChatId(id)
-      setOpenChatParam(null)
-    },
-    [handleOpenExistingChat, setOpenChatParam],
-  )
-
-  /*
-   * Closing the panel hides the conversation; it doesn't end it.
-   *
-   * Both ids were simply cleared, so reopening minted a fresh thread and the
-   * conversation you had just been having was reachable only through the
-   * history menu. "Close" on a panel means put it away — the next open resumes
-   * where you left off, which is what every other panel in the app does.
-   */
-  /*
-   * What was in the panel when it closed, including whether it had a row yet.
-   *
-   * The `persisted` half used to be re-derived on reopen from
-   * `chats.some(chat => chat.id === existing)` — a live query that answers `[]`
-   * while it loads. Reopening in that window judged a real thread a draft, put
-   * it in local state instead of `?chat=`, and hydrated it as an empty
-   * conversation. Recording the answer at close time is not a race: the panel
-   * knew perfectly well which of the two it was holding.
-   */
-  const lastChatRef = useRef<{ id: string; persisted: boolean } | null>(null)
-  const draftChatIdRef = useRef<string | null>(null)
-  draftChatIdRef.current = draftChatId
-
-  const handleCloseChat = useCallback(() => {
-    const closing = openChatIdRef.current
-    lastChatRef.current = closing ? { id: closing, persisted: draftChatIdRef.current === null } : null
-    setDraftChatId(null)
-    setOpenChatParam(null)
-  }, [setOpenChatParam])
-
   const { frameRef, status, selection, clearSelection, queryElementAt, runtimeError, handleFrameLoad, reloadFrame } =
     useMiniAppBridge({
       app,
-      onChatOpen: handleChatOpen,
+      onChatOpen: openChat,
     })
-
-  /**
-   * Promote a highlighted passage into the composer as a quote chip.
-   *
-   * Reuses the quote-reply channel (`pending-quotes-store`) that the "Reply" button
-   * on an assistant message already uses: same chip, same removal affordance, and
-   * on send the passage becomes a real quote part rather than string-concatenated
-   * into the user's text. Keyed by thread id, so the chat session must exist first —
-   * when the panel is closed we mint the session and attach in the same tick,
-   * because the store is keyed, not ordered, and doesn't care that the chat has yet
-   * to mount.
-   */
-  const attachToComposer = useCallback(
-    (passages: string[]) => {
-      const threadId = openChatId ?? uuidv7()
-      if (!openChatId) {
-        setDraftChatId(threadId)
-      }
-      const { addQuote } = usePendingQuotesStore.getState()
-      for (const text of passages) {
-        addQuote(threadId, { text })
-      }
-    },
-    [openChatId],
-  )
 
   const { mode, startPicking, dismiss, pointAt, pickAt } = useSurfaceSelection({
     query: queryElementAt,
@@ -250,7 +94,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       // The moment the thread is real it becomes addressable, so it moves out of
       // local state and into the URL. Without this a reload dropped the panel:
       // the id only ever lived in `draftChatId`, which doesn't survive one.
-      onCreated={setOpenChatParam}
+      onCreated={handleChatCreated}
     >
       <ChatUI />
     </ChatHydrateHandler>
@@ -317,7 +161,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                   <Trans>Select</Trans>
                 </Button>
                 {!openChatId && (
-                  <Button onClick={() => handleChatOpen(undefined)} size="lg" className="shadow-lg rounded-full">
+                  <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
                     <MessageSquare className="size-[var(--icon-size-sm)]" />
                     <Trans>Chat</Trans>
                   </Button>
@@ -337,8 +181,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                     clearance this panel needs in the window's top-right. */}
                 <ContentViewHeader
                   title={app.name}
-                  onClose={handleCloseChat}
-                  actions={<MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />}
+                  onClose={closeChat}
+                  actions={<MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} />}
                 />
                 <div className="min-h-0 flex-1">{chatPane}</div>
               </div>

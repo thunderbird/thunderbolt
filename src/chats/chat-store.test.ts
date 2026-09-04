@@ -155,6 +155,7 @@ describe('chat-store', () => {
               connectionError: null,
               id: 'test-id',
               pendingPermission: null,
+              miniAppApprovalQueue: [],
               selectedAgent: builtInAgent,
               retryCount: 0,
               retriesExhausted: false,

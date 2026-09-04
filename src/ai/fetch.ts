@@ -6,6 +6,7 @@ import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } 
 import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
+import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
@@ -659,14 +660,16 @@ export const prepareAiRequestConfig = async ({
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we
   // discover at runtime.
-  const { invokeTool, requestApproval } = useMiniAppStore.getState()
+  const { invokeTool } = useMiniAppStore.getState()
+  // Approvals are queued on the chat that provoked them, so the request needs
+  // the thread id — a global queue showed one chat's prompt over another's.
   const miniAppTools =
-    supportsTools && miniApp && invokeTool
+    supportsTools && miniApp && invokeTool && chatThreadId
       ? createMiniAppTools({
           app: miniApp,
           tools: miniAppSnapshot.tools,
           invoke: invokeTool,
-          requestApproval,
+          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
         })
       : {}
   // Tracked, not just counted: a tool skipped for a name conflict is not

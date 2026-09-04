@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useCurrentChatSession } from '@/chats/chat-store'
 import { useMiniAppStore } from './mini-app-store'
 import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 
@@ -14,19 +15,33 @@ import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
  * and so nothing to render, which is why this can sit unconditionally in the
  * shared chat surface rather than only in the Mini App panel.
  *
- * The deadline lives in the store, not here — see `approvalTimeoutMs`. A prompt
- * that unmounts (the user navigates away mid-decision) must still resolve the
- * `execute` it is blocking, so the timer cannot belong to the component.
+ * It reads the queue off the *current session*, like `PermissionDialogHost`
+ * does — a global queue meant switching chats could show a prompt belonging to
+ * a conversation the user had left.
+ *
+ * The deadline lives with the request, not here — see `requestMiniAppApproval`.
+ * A prompt that unmounts (the user navigates away mid-decision) must still
+ * resolve the `execute` it is blocking, so the timer cannot belong to a
+ * component.
  */
 export const MiniAppApprovalHost = () => {
   const activeApp = useMiniAppStore((state) => state.activeApp)
-  // The head of the queue is the one on screen; the rest wait their turn.
-  const pendingApproval = useMiniAppStore((state) => state.approvalQueue[0] ?? null)
-  const resolveApproval = useMiniAppStore((state) => state.resolveApproval)
+  const { miniAppApprovalQueue } = useCurrentChatSession()
+  // The head of this chat's queue is the one on screen; the rest wait their turn.
+  const pendingApproval = miniAppApprovalQueue[0] ?? null
 
   if (!pendingApproval || !activeApp) {
     return null
   }
 
-  return <MiniAppApprovalPrompt pending={pendingApproval} appName={activeApp.name} onDecide={resolveApproval} />
+  return (
+    <MiniAppApprovalPrompt
+      pending={pendingApproval}
+      appName={activeApp.name}
+      /* Bound to the entry that was rendered, so a double-click or a click
+       * racing the deadline cannot answer the request that just took its
+       * place. `decide` is idempotent, so the second one is dropped. */
+      onDecide={pendingApproval.decide}
+    />
+  )
 }

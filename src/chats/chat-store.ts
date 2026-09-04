@@ -13,6 +13,7 @@ import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/t
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 
 /** Outstanding ACP permission request awaiting user response. The promise
@@ -24,6 +25,31 @@ export type PendingPermission = {
   requestId: string
   request: RequestPermissionRequest
   resolve: (response: RequestPermissionResponse) => void
+}
+
+/**
+ * A Mini App write-tool call waiting on the user, and the promise it blocks.
+ *
+ * Lives on the session for the same reason {@link PendingPermission} does: the
+ * decision belongs to the conversation that provoked it. Held globally, one
+ * chat's prompt appeared over another chat after a switch, and the answer went
+ * to whichever request happened to be at the head of the shared queue.
+ *
+ * A queue rather than a single slot, unlike ACP's: the AI SDK runs a step's
+ * tool calls concurrently, so one response can produce two writes, and each is
+ * holding its own turn open. Superseding would auto-deny the first before the
+ * user ever saw it.
+ *
+ * `decide` is idempotent and drops this entry by identity — never by position,
+ * which is what let a double-click answer the next, unseen request.
+ */
+export type PendingMiniAppApproval = {
+  /** The app the call is for; the sweep on close/re-handshake keys on it. */
+  appId: string
+  tool: MiniAppTool
+  args: unknown
+  /** Resolves the blocked `execute`. Safe to call more than once. */
+  decide: (approved: boolean) => void
 }
 
 /** Keys a remembered allowance for this agent on the ACP tool kind. */
@@ -47,6 +73,9 @@ export type ChatSession = {
   connectionError: Error | null
   id: string
   pendingPermission: PendingPermission | null
+  /** Mini App write-tool calls this chat is blocked on, oldest first. The head
+   *  is the one on screen; the rest wait their turn. */
+  miniAppApprovalQueue: PendingMiniAppApproval[]
   retryCount: number
   retriesExhausted: boolean
   selectedAgent: Agent
@@ -91,6 +120,9 @@ type ChatStoreActions = {
   setModels(models: Model[]): void
   setPendingPermission(id: string, permission: PendingPermission | null): void
   resolvePendingPermission(id: string, response: RequestPermissionResponse): void
+  enqueueMiniAppApproval(id: string, pending: PendingMiniAppApproval): boolean
+  dequeueMiniAppApproval(id: string, pending: PendingMiniAppApproval): void
+  cancelMiniAppApprovals(appId: string): void
   setSelectedAgent(id: string, agent: Agent): Promise<void>
   setSelectedModel(id: string, modelId: string | null, deps?: SetSelectedModelDeps): Promise<void>
   updateSession(id: string, session: Partial<Omit<ChatSession, 'id'>>): void
@@ -240,6 +272,66 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     set({ sessions: nextSessions })
 
     resolve(response)
+  },
+
+  /**
+   * Queue an approval on the chat that provoked it.
+   *
+   * Returns false when that chat has no live session — a call racing a closed
+   * tab has nobody to ask, and the caller denies rather than hanging the turn.
+   * Deliberately not a throw like `setPendingPermission`'s: an absent session
+   * here is a race, not a bug.
+   */
+  enqueueMiniAppApproval: (id, pending) => {
+    const { sessions } = get()
+    const session = sessions.get(id)
+
+    if (!session) {
+      return false
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, { ...session, miniAppApprovalQueue: [...session.miniAppApprovalQueue, pending] })
+    set({ sessions: nextSessions })
+    return true
+  },
+
+  /** Drop one entry by identity. It may be answering from the queue's middle,
+   *  if its own deadline expired while another was on screen. */
+  dequeueMiniAppApproval: (id, pending) => {
+    const { sessions } = get()
+    const session = sessions.get(id)
+
+    if (!session) {
+      return
+    }
+
+    const nextSessions = new Map(sessions)
+    nextSessions.set(id, {
+      ...session,
+      miniAppApprovalQueue: session.miniAppApprovalQueue.filter((entry) => entry !== pending),
+    })
+    set({ sessions: nextSessions })
+  },
+
+  /**
+   * Deny every queued approval for one app, across every chat.
+   *
+   * Called when the app closes or re-handshakes: the document that would have
+   * serviced these calls is gone, so nothing can honour them, and an `execute`
+   * awaiting a prompt nobody can answer hangs its turn. Sweeps all sessions
+   * because the queues are per-chat now while the app is a single surface —
+   * the same shape as `cancelPendingPermissionsForAgent`.
+   *
+   * `decide` dequeues itself, so this only has to call it.
+   */
+  cancelMiniAppApprovals: (appId) => {
+    // Snapshotted before deciding: each `decide` writes back through the store,
+    // so iterating the live map would walk a collection being replaced.
+    const doomed = [...get().sessions.values()].flatMap((session) =>
+      session.miniAppApprovalQueue.filter((pending) => pending.appId === appId),
+    )
+    doomed.forEach((pending) => pending.decide(false))
   },
 
   setSelectedAgent: async (id, agent) => {

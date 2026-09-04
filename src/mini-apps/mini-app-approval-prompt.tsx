@@ -6,7 +6,7 @@ import { useId } from 'react'
 import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ShieldAlert } from 'lucide-react'
-import type { PendingToolApproval } from './mini-app-store'
+import type { PendingMiniAppApproval } from '@/chats/chat-store'
 
 /**
  * Render one argument value for a human.
@@ -35,7 +35,7 @@ const toArgEntries = (args: unknown): { key: string; value: string }[] | null =>
 }
 
 type MiniAppApprovalPromptProps = {
-  pending: PendingToolApproval
+  pending: PendingMiniAppApproval
   appName: string
   onDecide: (approved: boolean) => void
 }

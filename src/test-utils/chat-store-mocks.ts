@@ -189,6 +189,7 @@ export const hydrateStore = (state: {
       connectionError: null,
       id: state.id,
       pendingPermission: null,
+      miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: false,
       selectedAgent: builtInAgent,

@@ -295,6 +295,7 @@ export const useHydrateChatStore = ({
       connectionError: null,
       id,
       pendingPermission: null,
+      miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
       // Persisted via `chatThreads.agentId`; resolved above (first available

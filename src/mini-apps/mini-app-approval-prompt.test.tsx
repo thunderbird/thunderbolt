@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { PendingToolApproval } from './mini-app-store'
+import type { PendingMiniAppApproval } from '@/chats/chat-store'
 import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -12,7 +12,7 @@ afterEach(cleanup)
 const modelFacingDescription =
   'Change the status of one order. Valid statuses: open, shipped, cancelled. Use this when the user asks to ship, cancel or reopen an order.'
 
-const pending = (overrides: Partial<PendingToolApproval['tool']> = {}, args: unknown = {}): PendingToolApproval =>
+const pending = (overrides: Partial<PendingMiniAppApproval['tool']> = {}, args: unknown = {}): PendingMiniAppApproval =>
   ({
     tool: {
       name: 'set_order_status',
@@ -21,9 +21,9 @@ const pending = (overrides: Partial<PendingToolApproval['tool']> = {}, args: unk
       ...overrides,
     },
     args,
-  }) as PendingToolApproval
+  }) as PendingMiniAppApproval
 
-const renderBar = (approval: PendingToolApproval) =>
+const renderBar = (approval: PendingMiniAppApproval) =>
   render(<MiniAppApprovalPrompt pending={approval} appName="Order Book" onDecide={() => {}} />)
 
 describe('MiniAppApprovalPrompt', () => {

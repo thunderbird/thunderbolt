@@ -10,7 +10,6 @@ import { useChatScrollHandler } from '@/chats/use-chat-scroll-handler'
 import { useScrollToMessage } from '@/chats/use-scroll-to-message'
 import { loadChatMessageList } from './chat-messages-loader'
 import { ChatPromptInput } from './chat-prompt-input'
-import { MiniAppApprovalHost } from '@/mini-apps/mini-app-approval-host'
 import { PermissionDialogHost } from './permission-dialog-host'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat } from '@ai-sdk/react'
@@ -20,6 +19,10 @@ import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { AppLogo } from '../app-logo'
 import { getGreeting } from './chat-ui-greeting'
 import { useLingui } from '@lingui/react/macro'
+
+const MiniAppApprovalHost = lazy(() =>
+  import('@/mini-apps/mini-app-approval-host').then((module) => ({ default: module.MiniAppApprovalHost })),
+)
 
 const ChatMessageList = lazy(() => loadChatMessageList().then((module) => ({ default: module.ChatMessageList })))
 
@@ -42,7 +45,7 @@ const EmptyChatGreeting = () => {
 
 export default function ChatUI() {
   const { i18n } = useLingui()
-  const { chatInstance } = useCurrentChatSession()
+  const { chatInstance, miniAppApprovalQueue } = useCurrentChatSession()
 
   // ChatUI only needs the structural "are there any messages" signal (to switch
   // between the empty-state logo and the message list), not per-token content —
@@ -190,7 +193,20 @@ export default function ChatUI() {
             </AnimatePresence>
             <div className="w-full max-w-[696px] min-w-[268px]">
               <PermissionDialogHost />
-              <MiniAppApprovalHost />
+              {/* Mini App code is kept out of the chat bundle: `ChatUI` is on the
+                  landing path, and a static import put the approval prompt —
+                  and everything it reaches — into the entry chunk for every
+                  user, including the ones who never open an app.
+
+                  Gated on the queue rather than mounted lazily and
+                  unconditionally, which would fetch the chunk on every chat view
+                  and defeat the split. The queue lives on the session, so the
+                  check itself costs no Mini App import. */}
+              {miniAppApprovalQueue.length > 0 && (
+                <Suspense fallback={null}>
+                  <MiniAppApprovalHost />
+                </Suspense>
+              )}
             </div>
             <m.div className="w-full max-w-[696px] min-w-[268px] rounded-2xl" layout transition={firstSendTween}>
               <ChatPromptInput />

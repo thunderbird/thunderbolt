@@ -41,7 +41,7 @@
 import {
   type Api,
   type Model,
-  type Models,
+  type MutableModels,
   type ProviderStreams,
   createModels,
   createProvider,
@@ -54,7 +54,7 @@ import {
 } from '@earendil-works/pi-ai/api/openai-completions'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
-type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
+export type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
 
 /** The Pi API this provider exclusively serves. */
 const apiName = 'openai-completions'
@@ -156,7 +156,9 @@ const synthesizeModel = (opts: BuildOpenAiCompatModelOptions): Model<typeof apiN
  * @param opts - provider id, model id, base URL, api key, injected fetch, reasoning flag
  * @returns the wired provider collection and the synthetic model
  */
-export const buildOpenAiCompatModel = (opts: BuildOpenAiCompatModelOptions): { models: Models; model: Model<Api> } => {
+export const buildOpenAiCompatModel = (
+  opts: BuildOpenAiCompatModelOptions,
+): { models: MutableModels; model: Model<Api> } => {
   const model = synthesizeModel(opts)
 
   // Inject the api key on every call (Pi's openai client reads `options.apiKey`)

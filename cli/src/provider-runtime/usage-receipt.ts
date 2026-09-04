@@ -3,8 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '../../../shared/inference-usage.ts'
-import { toError, type AgentHarness } from '@earendil-works/pi-agent-core'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import {
+  createReceiptLifecycle,
+  isNonnegativeSafeInteger,
+  type ReceiptLifecycle,
+} from '../../../shared/agent-core/confidential-model.ts'
+import { toError } from '@earendil-works/pi-agent-core'
 import { apiBaseUrl, backendHeaders } from '../auth/config.ts'
 import { abortable, createSerialQueue } from '../lib/abort.ts'
 import { isRecord } from '../lib/json.ts'
@@ -31,16 +35,7 @@ export type SubmitInferenceUsageReceiptOptions = {
   readonly timeoutMs?: number
 }
 
-export type CompletedProviderStep = {
-  readonly receipt: string
-  readonly message: AssistantMessage
-}
-
-export type UsageReceiptLifecycle = {
-  readonly completeProviderStep: (step: CompletedProviderStep) => void
-  readonly clear: () => void
-  readonly attach: (harness: Pick<AgentHarness, 'subscribe'>) => () => void
-}
+export type UsageReceiptLifecycle = ReceiptLifecycle
 
 type UsageReceiptLifecycleOptions = {
   readonly submit: (usage: InferenceUsageReceiptRequest) => Promise<void>
@@ -48,9 +43,6 @@ type UsageReceiptLifecycleOptions = {
   readonly reportError?: (error: Error) => void
   readonly wait?: (milliseconds: number) => Promise<void>
 }
-
-/** Check that a provider token count is safe to serialize and persist. */
-const isNonnegativeSafeInteger = (value: number): boolean => Number.isSafeInteger(value) && value >= 0
 
 /** Validate one persisted receipt before submitting local outbox state. */
 const isReceiptUsage = (value: unknown): value is InferenceUsageReceiptRequest =>
@@ -120,30 +112,7 @@ const flushOutbox = async (
   await writeOutbox(path, remaining)
 }
 
-/** Map one terminal Pi message to the backend's receipt accounting contract. */
-const toReceiptUsage = (step: CompletedProviderStep): InferenceUsageReceiptRequest | null => {
-  const { input, cacheRead, cacheWrite, output, totalTokens } = step.message.usage
-  const promptTokens = input + cacheRead + cacheWrite
-  if (
-    step.receipt.length === 0 ||
-    !isNonnegativeSafeInteger(input) ||
-    !isNonnegativeSafeInteger(cacheRead) ||
-    !isNonnegativeSafeInteger(cacheWrite) ||
-    !isNonnegativeSafeInteger(promptTokens) ||
-    !isNonnegativeSafeInteger(output) ||
-    !isNonnegativeSafeInteger(totalTokens)
-  ) {
-    return null
-  }
-  return {
-    receipt: step.receipt,
-    promptTokens,
-    completionTokens: output,
-    totalTokens,
-  }
-}
-
-/** Correlate provider receipts with the exact terminal assistant event that owns their usage. */
+/** Flush durable state, then correlate new receipts through the shared lifecycle. */
 export const createUsageReceiptLifecycle = async (
   options: UsageReceiptLifecycleOptions,
 ): Promise<UsageReceiptLifecycle> => {
@@ -154,49 +123,17 @@ export const createUsageReceiptLifecycle = async (
   await withSecureFileLock(outboxPath, async () =>
     flushOutbox(outboxPath, await readOutbox(outboxPath), options.submit, wait),
   )
-  let pending: CompletedProviderStep | null = null
-  const clear = (): void => {
-    pending = null
-  }
-  const completeProviderStep = (step: CompletedProviderStep): void => {
-    pending = step
-  }
-  const attach: UsageReceiptLifecycle['attach'] = (harness) => {
-    const unsubscribeHarness = harness.subscribe(async (event) => {
-      if (event.type === 'abort' || event.type === 'agent_end' || event.type === 'settled') {
-        clear()
-        return
-      }
-      if (event.type !== 'message_end' || pending === null) return
-
-      const completed = pending
-      if (event.message !== completed.message) return
-      clear()
-      if (completed.message.stopReason === 'error' || completed.message.stopReason === 'aborted') return
-
-      const usage = toReceiptUsage(completed)
-      if (usage === null) return
-      try {
-        await queue.run(() =>
-          withSecureFileLock(outboxPath, async () => {
-            const entries = [...(await readOutbox(outboxPath)), usage]
-            await writeOutbox(outboxPath, entries)
-            await flushOutbox(outboxPath, entries, options.submit, wait)
-          }),
-        )
-      } catch (error) {
-        reportError(toError(error))
-      }
-    })
-    let subscribed = true
-    return () => {
-      if (!subscribed) return
-      subscribed = false
-      unsubscribeHarness()
-      clear()
-    }
-  }
-  return { completeProviderStep, clear, attach }
+  return createReceiptLifecycle({
+    reportError,
+    submit: (usage) =>
+      queue.run(() =>
+        withSecureFileLock(outboxPath, async () => {
+          const entries = [...(await readOutbox(outboxPath)), usage]
+          await writeOutbox(outboxPath, entries)
+          await flushOutbox(outboxPath, entries, options.submit, wait)
+        }),
+      ),
+  })
 }
 
 /** Submit one confidential-inference usage receipt with the stored session bearer. */

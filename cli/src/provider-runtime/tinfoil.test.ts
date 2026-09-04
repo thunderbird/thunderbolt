@@ -248,6 +248,21 @@ describe('createTinfoilBinding', () => {
     ).rejects.toMatchObject({ code: 'config-invalid' })
   })
 
+  test('maps missing Pi compatibility metadata to the CLI config error contract', async () => {
+    await expect(
+      createTinfoilBinding({
+        ...bindingOptions(),
+        model: { ...confidentialModel, model: 'unknown-model', vendor: 'unknown' },
+        createSecureClient: () => {
+          throw new Error('SecureClient must not be constructed for invalid model metadata.')
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'config-invalid',
+      message: 'Managed model "unknown-model" has no Pi compatibility metadata.',
+    })
+  })
+
   test('preserves a real Tinfoil stream attestation failure instead of Pi Connection error', async () => {
     let readyCalls = 0
     const rejected: string[] = []

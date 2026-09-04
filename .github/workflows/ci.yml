@@ -51,6 +51,8 @@ jobs:
               - 'shared/agent-core/**'
             cli:
               - 'cli/**'
+              - 'shared/agent-core/**'
+              - 'shared/cli-device-id.ts'
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
               - 'package.json'

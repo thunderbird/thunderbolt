@@ -96,6 +96,86 @@ CSP will allow, which makes it deployment config rather than user preference —
 to scope it to. Per-user preferences over those apps (hide, reorder) would be fine in settings; the registry
 itself would not.
 
+## The three-party interface: model, Thunderbolt, app
+
+Three parties, and it matters which pair is talking, because they trust each other differently.
+
+```
+   model  ←──── tools + prompt ────→  Thunderbolt  ←──── JSON-RPC / postMessage ────→  app
+(untrusted output)                  (the only party           (untrusted input,
+                                     that trusts anyone)       a different origin)
+```
+
+The model never touches the app, and the app never touches the model. Everything crosses through Thunderbolt,
+which is the only place a decision gets made. Both outer parties are untrusted: an app is third-party code on a
+different origin, and a model's output is influenced by whatever it just read — including, possibly, text the app
+supplied.
+
+### What the app tells Thunderbolt
+
+Four things, all guest-initiated, all optional:
+
+| It says                   | When                                          | Reaches the model as                      |
+| ------------------------- | --------------------------------------------- | ----------------------------------------- |
+| `ui/initialize`           | Once per document                             | Nothing. Capability negotiation only      |
+| `ui/update-model-context` | Whenever what's on screen changes             | The `get_app_context` tool's return value |
+| `tools/list` (as a reply) | Once, after handshake, if it declared `tools` | Tool definitions, prefixed `app_`         |
+| `ui/notifications/error`  | On an uncaught error                          | Nothing. Host UI only                     |
+
+Note what's **absent**: there is no way for an app to send text directly to the model, or to make the model say
+something. `ui/open-chat` can seed the _composer_ with a prompt, which the user then reads and chooses to send —
+a suggestion to the user, not an instruction to the model.
+
+### What Thunderbolt tells the model
+
+Two channels, and the distinction is the whole design:
+
+**The system prompt** carries the app's _identity_ — its name and the description from `MINI_APPS`. Operator-authored,
+so it's trusted, and it's stable for the turn, which keeps the cached prefix intact. The app's own tool
+descriptions also ride here, capped and fenced in `<app-provided-tool-list>` (see [Descriptor limits](#descriptor-limits)).
+
+**Tool calls** carry the app's _state_, on demand:
+
+- `get_app_context` returns the last `ui/update-model-context` the app published. A tool rather than an injection,
+  because app state changes on every click and injecting it would invalidate the cacheable prompt prefix on every
+  send. It's a cache with no pull: the protocol has no way for the host to _ask_ for context, so an app that
+  stops publishing goes stale silently. That is the contract — publish on every meaningful change.
+- `app_<name>` calls the app's own tools. Arguments come from the model; results come back as text.
+
+### What the model can and cannot cause
+
+The model can read app state and call app tools. It cannot navigate the app, read the DOM, see the user's
+selection unless the user promotes it, or reach anything the app didn't volunteer.
+
+A write tool blocks on an approval prompt before it runs. Be precise about what that buys: the gate reads
+`readOnlyHint`, which is the **app's own word about its own tool**, so it defends against a _confused model_ — one
+that has read something persuasive in the app's content and decided to act on it — and not against a hostile app,
+which could perform the same action directly without asking anyone. See [Security posture](#security-posture).
+
+### Where the trust boundaries actually are
+
+| Boundary                 | Enforced by                                                  | What it stops                                  |
+| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------- |
+| app → Thunderbolt        | origin + source check on every message; zod on every payload | Another frame impersonating the app            |
+| app → model              | length caps, `<app-provided-tool-list>` fencing              | An app's text being read as instructions       |
+| model → app              | host-side approval on write tools                            | A prompt-injected model writing through a tool |
+| app → Thunderbolt's data | the browser's same-origin policy                             | Reading Thunderbolt's storage, cookies, DOM    |
+
+The last one is the only boundary the _browser_ enforces rather than us, and it is by far the strongest. Everything
+above it is our code, and worth reading with that in mind.
+
+### A turn, end to end
+
+1. User opens the app. The frame loads; the guest posts `ui/initialize`; the host replies with its capabilities and,
+   if asked, a scoped identity token.
+2. The host asks `tools/list` if the app declared the capability, and registers what comes back as `app_*` tools.
+3. The user asks a question. `src/ai/fetch.ts` builds the toolset and adds a prompt section naming the app.
+4. The model calls `get_app_context`; the host answers from its cache of the last published context.
+5. The model calls `app_set_order_status`. It's a write, so the host shows the approval prompt above the composer
+   and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
+6. The app's state changed, so it publishes a new `ui/update-model-context` unprompted. The next
+   `get_app_context` sees it.
+
 ## Identity
 
 An embedded app integrates with **one** issuer — us — rather than with every customer's IdP. However the user

@@ -24,6 +24,7 @@ import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useChatStore } from './chat-store'
 import { createAgentRoutingFetch, createChatInstance } from './chat-instance'
+import { getTurnActivity } from './turn-activity'
 
 const sessionId = 'sess-1'
 const httpClient: HttpClient = {} as HttpClient
@@ -465,19 +466,47 @@ describe('createChatInstance — retry policy', () => {
     expect(autoRetry?.attempt).toBe(1)
   })
 
-  it('leaves the message list untouched when a loader turn is aborted', async () => {
-    const { instance, finishAbortedEmpty } = createRetryHarness()
+  it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
+    const { instance, finishAbortedEmpty, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
     instance.messages = [
       { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
       { id: 'a-empty', role: 'assistant', parts: [] },
     ] as never
 
+    await instance.stop()
     await finishAbortedEmpty()
 
-    // Dropping the shell here would leave the user message trailing, and the SDK
-    // re-checks `sendAutomaticallyWhen` the moment the aborted request unwinds —
-    // which re-sent the turn the user had just stopped (THU-791).
-    expect(instance.messages).toHaveLength(2)
+    // Two halves of one invariant, asserted together because each masks the
+    // other's regression: kept, the shell renders an empty-turn recovery spinner
+    // nothing will recover; dropped without the `stopRequested` gate, the now
+    // trailing user message makes the SDK re-send the stopped turn (THU-791).
+    expect(instance.messages).toHaveLength(1)
+    expect(instance.messages[0]!.role).toBe('user')
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('settles the composer to idle after an aborted loader turn', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    const activity = getTurnActivity({
+      status: 'ready',
+      lastMessage: instance.messages[instance.messages.length - 1],
+      hasChatError: false,
+      retriesExhausted: session?.retriesExhausted ?? false,
+      retryCount: session?.retryCount ?? 0,
+      stopRequested: session?.stopping ?? false,
+    })
+    expect(activity.isActive).toBe(false)
   })
 
   it('suppresses the SDK auto-send after a stop, so the turn cannot restart itself', async () => {

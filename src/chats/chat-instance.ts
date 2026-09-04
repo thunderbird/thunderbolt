@@ -747,7 +747,17 @@ export const createChatInstance = (
         const lastIndex = instance.messages.length - 1
         const lastMessage = instance.messages[lastIndex]
 
-        if (hasStreamingReasoning(lastMessage)) {
+        if (isEmptyAssistantMessage(lastMessage)) {
+          // Stopped after the turn opened but before it produced anything (the
+          // model's first turn hadn't begun). The shell renders as an empty-turn
+          // recovery spinner that nothing will ever recover, so drop it.
+          //
+          // Load-bearing: this is only safe because `stopRequested` gates
+          // `sendAutomaticallyWhen`. Dropping the shell leaves the user message
+          // trailing, and the SDK re-checks that predicate the moment this
+          // request unwinds — ungated, the stopped turn re-sends itself.
+          instance.messages = instance.messages.slice(0, -1)
+        } else if (hasStreamingReasoning(lastMessage)) {
           // Stopped mid-reasoning: the reasoning part is left `streaming`, so its
           // spinner never stops. Finalize it in the live list and the saved copy.
           const finalized = finalizeReasoning(lastMessage!)

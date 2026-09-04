@@ -138,6 +138,49 @@ describe('SavePartialAssistantMessagesHandler', () => {
     expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
   })
 
+  it('should not save an assistant turn that has opened but produced no part', async () => {
+    const mockSaveStreamingMessage = mock(() => Promise.resolve())
+    const messages: ThunderboltUIMessage[] = [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hi' }],
+      },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [],
+      },
+    ]
+    const mockChatInstance = createMockChatInstance(messages, 'streaming')
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+
+    render(
+      <SavePartialAssistantMessagesHandler saveStreamingMessage={mockSaveStreamingMessage} useChat={mockUseChat}>
+        Test
+      </SavePartialAssistantMessagesHandler>,
+      { wrapper: createQueryTestWrapper() },
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(600)
+    })
+
+    // Nothing to crash-recover, and persisting it outlives the in-memory drop an
+    // aborted turn performs — the stopped turn would return as a failed one.
+    expect(mockSaveStreamingMessage).not.toHaveBeenCalled()
+  })
+
   it('should save partial assistant message when streaming', async () => {
     const mockSaveStreamingMessage = mock(() => Promise.resolve())
     const messages: ThunderboltUIMessage[] = [

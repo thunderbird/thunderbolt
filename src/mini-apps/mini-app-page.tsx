@@ -117,7 +117,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const handleChatOpen = useCallback(
     (prompt: string | undefined) => {
-      const existing = openChatIdRef.current ?? lastChatIdRef.current
+      const closed = lastChatRef.current
+      const existing = openChatIdRef.current ?? closed?.id ?? null
       if (existing) {
         if (prompt) {
           setPendingPrompt(existing, prompt)
@@ -128,10 +129,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
         // A chat that never got a first message has no row, so it goes back as
         // a draft. Putting an unsaved id in `?chat=` promises a thread that
         // hydration can't find and bounces the user to Not Found — the reason
-        // drafts stay out of the URL in the first place.
+        // drafts stay out of the URL in the first place. Which of the two this
+        // is was recorded when the panel closed, not guessed from the history
+        // query — see `lastChatRef`.
         if (!openChatIdRef.current) {
-          const persisted = chats.some((chat) => chat.id === existing)
-          if (persisted) {
+          if (closed?.persisted) {
             handleOpenExistingChat(existing)
           } else {
             setDraftChatId(existing)
@@ -147,7 +149,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       setDraftChatId(id)
       setOpenChatParam(null)
     },
-    [chats, handleOpenExistingChat, setOpenChatParam],
+    [handleOpenExistingChat, setOpenChatParam],
   )
 
   /*
@@ -158,10 +160,23 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * history menu. "Close" on a panel means put it away — the next open resumes
    * where you left off, which is what every other panel in the app does.
    */
-  const lastChatIdRef = useRef<string | null>(null)
+  /*
+   * What was in the panel when it closed, including whether it had a row yet.
+   *
+   * The `persisted` half used to be re-derived on reopen from
+   * `chats.some(chat => chat.id === existing)` — a live query that answers `[]`
+   * while it loads. Reopening in that window judged a real thread a draft, put
+   * it in local state instead of `?chat=`, and hydrated it as an empty
+   * conversation. Recording the answer at close time is not a race: the panel
+   * knew perfectly well which of the two it was holding.
+   */
+  const lastChatRef = useRef<{ id: string; persisted: boolean } | null>(null)
+  const draftChatIdRef = useRef<string | null>(null)
+  draftChatIdRef.current = draftChatId
 
   const handleCloseChat = useCallback(() => {
-    lastChatIdRef.current = openChatIdRef.current
+    const closing = openChatIdRef.current
+    lastChatRef.current = closing ? { id: closing, persisted: draftChatIdRef.current === null } : null
     setDraftChatId(null)
     setOpenChatParam(null)
   }, [setOpenChatParam])

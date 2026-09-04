@@ -6,7 +6,7 @@ import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availa
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
-import { useConsumePendingPrompt } from '@/chats/pending-prompt-store'
+import { mergeIntoDraft, useConsumePendingPrompt } from '@/chats/pending-prompt-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
@@ -262,10 +262,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
-    // Composer text proposed from outside this subtree (a Mini App's
-    // `ui/open-chat`). Delivered once and dropped; it replaces the draft, which
-    // is the documented trade — see `pending-prompt-store.ts`.
-    useConsumePendingPrompt(chatThreadId, setInput)
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
     // Quote-reply passages pulled in from the "Reply" button on a response. Held
@@ -283,6 +279,17 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     // racing with the microtask could silently discard the user's text.
     const inputRef = useRef(input)
     inputRef.current = input
+    /*
+     * Composer text proposed from outside this subtree (a Mini App's
+     * `ui/open-chat`). Delivered once and dropped.
+     *
+     * Merged into the draft rather than replacing it, and read through
+     * `inputRef` so the merge sees what is in the composer at delivery time
+     * rather than at the render that scheduled it. Replacing was the original
+     * behaviour and it silently ate whatever the user had typed when an app
+     * decided to propose something.
+     */
+    useConsumePendingPrompt(chatThreadId, (prompt) => setInput(mergeIntoDraft(inputRef.current, prompt)))
     const formRef = useRef<HTMLFormElement>(null)
     // Discovered lazily — the form ref is set after the first render, and we
     // need a stable ref to pass to `useSlashCommand` so it can focus / set

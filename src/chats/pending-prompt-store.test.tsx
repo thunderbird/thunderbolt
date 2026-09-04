@@ -4,13 +4,19 @@
 
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 import { render } from '@testing-library/react'
-import { setPendingPrompt, useConsumePendingPrompt, usePendingPromptStore } from './pending-prompt-store'
+import { StrictMode } from 'react'
+import {
+  mergeIntoDraft,
+  setPendingPrompt,
+  useConsumePendingPrompt,
+  usePendingPromptStore,
+} from './pending-prompt-store'
 
 const { getState, setState } = usePendingPromptStore
 
 afterEach(() => setState({ promptsByThread: {} }))
 
-/** Lets the `queueMicrotask` handover in `useConsumePendingPrompt` run. */
+/** Lets the effect-phase handover in `useConsumePendingPrompt` settle. */
 const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve))
 
 const Consumer = ({ threadId, onConsume }: { threadId: string; onConsume: (prompt: string) => void }) => {
@@ -97,5 +103,53 @@ describe('useConsumePendingPrompt', () => {
     await flushMicrotasks()
 
     expect(onConsume).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('mergeIntoDraft', () => {
+  test('takes the prompt when the composer is empty', () => {
+    expect(mergeIntoDraft('', 'summarize this')).toBe('summarize this')
+  })
+
+  /** Whitespace is not typing. A composer holding a stray newline should still
+   *  read as empty rather than producing a leading blank line. */
+  test('treats whitespace as empty', () => {
+    expect(mergeIntoDraft('\n  ', 'summarize this')).toBe('summarize this')
+  })
+
+  /**
+   * The data loss this exists to stop: an app proposing a prompt used to
+   * replace whatever the user had typed and not yet sent.
+   */
+  test('keeps what the user typed, appending the proposal below it', () => {
+    expect(mergeIntoDraft('my own question', 'summarize this')).toBe('my own question\n\nsummarize this')
+  })
+
+  test('does not stutter a proposal already sitting at the end', () => {
+    const merged = mergeIntoDraft('my own question', 'summarize this')
+
+    expect(mergeIntoDraft(merged, 'summarize this')).toBe(merged)
+  })
+})
+
+describe('useConsumePendingPrompt under StrictMode', () => {
+  /**
+   * The handover moved out of the render pass for this: React double-renders
+   * here, and a delivery scheduled during render ran once per render pass —
+   * including for a pass that was thrown away.
+   */
+  test('delivers exactly once despite the double render', async () => {
+    setPendingPrompt('t1', 'explain this chart')
+    const onConsume = mock()
+
+    render(
+      <StrictMode>
+        <Consumer threadId="t1" onConsume={onConsume} />
+      </StrictMode>,
+    )
+    await flushMicrotasks()
+
+    expect(onConsume).toHaveBeenCalledTimes(1)
+    expect(getState().promptsByThread.t1).toBeUndefined()
   })
 })

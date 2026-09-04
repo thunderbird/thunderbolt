@@ -11,8 +11,8 @@ import { downloadFile } from './download'
  * anchor. It used to do the latter, with a comment claiming the anchor works in
  * Tauri's webview — it does not. There is no download manager behind it there,
  * so Settings → Export did nothing at all in the desktop app, the same way the
- * artifact download button did before THU-857. One implementation means one
- * platform gap to fix, once.
+ * artifact download button did until it grew a desktop path of its own. One
+ * implementation means one platform gap to fix, once.
  *
  * Resolves to the name the file was written under, which may carry a numeric
  * suffix if the folder already had one.

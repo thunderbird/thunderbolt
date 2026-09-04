@@ -20,7 +20,8 @@ import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
  */
 export const MiniAppApprovalHost = () => {
   const activeApp = useMiniAppStore((state) => state.activeApp)
-  const pendingApproval = useMiniAppStore((state) => state.pendingApproval)
+  // The head of the queue is the one on screen; the rest wait their turn.
+  const pendingApproval = useMiniAppStore((state) => state.approvalQueue[0] ?? null)
   const resolveApproval = useMiniAppStore((state) => state.resolveApproval)
 
   if (!pendingApproval || !activeApp) {

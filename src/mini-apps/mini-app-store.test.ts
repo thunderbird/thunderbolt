@@ -32,7 +32,7 @@ beforeEach(() => {
     context: null,
     tools: [],
     invokeTool: null,
-    pendingApproval: null,
+    approvalQueue: [],
   })
 })
 
@@ -45,7 +45,7 @@ describe('requestApproval', () => {
     store().openApp(app)
     const decision = store().requestApproval(writeTool, { growth: 0.2 })
 
-    expect(store().pendingApproval?.tool.name).toBe('set_assumption')
+    expect(store().approvalQueue[0]?.tool.name).toBe('set_assumption')
     store().resolveApproval(true)
 
     expect(await decision).toBe(true)
@@ -61,14 +61,38 @@ describe('requestApproval', () => {
 
   /** A second prompt behind the first would be invisible, so it supersedes —
    *  but the superseded turn still has to be told something. */
-  it('denies the previous request when a second arrives', async () => {
+  /*
+   * The AI SDK runs a step's tool calls concurrently, so a model emitting two
+   * writes in one response used to have the first auto-denied before the user
+   * saw it — and was told the user had declined.
+   */
+  it('queues a second request behind the first instead of denying it', async () => {
     store().openApp(app)
     const first = store().requestApproval(writeTool, { n: 1 })
     const second = store().requestApproval(writeTool, { n: 2 })
 
-    expect(await first).toBe(false)
+    expect(store().approvalQueue).toHaveLength(2)
+    expect(store().approvalQueue[0]?.args).toEqual({ n: 1 })
+
     store().resolveApproval(true)
-    expect(await second).toBe(true)
+    expect(await first).toBe(true)
+
+    // Answering the first promotes the second rather than settling both.
+    expect(store().approvalQueue[0]?.args).toEqual({ n: 2 })
+    store().resolveApproval(false)
+    expect(await second).toBe(false)
+  })
+
+  it('denies everything still queued when the app closes', async () => {
+    store().openApp(app)
+    const first = store().requestApproval(writeTool, { n: 1 })
+    const second = store().requestApproval(writeTool, { n: 2 })
+
+    store().closeApp()
+
+    expect(await first).toBe(false)
+    expect(await second).toBe(false)
+    expect(store().approvalQueue).toEqual([])
   })
 
   /** The app the call would have acted on is gone; leaving it pending would
@@ -79,7 +103,7 @@ describe('requestApproval', () => {
     store().closeApp()
 
     expect(await decision).toBe(false)
-    expect(store().pendingApproval).toBeNull()
+    expect(store().approvalQueue[0] ?? null).toBeNull()
   })
 
   /**
@@ -94,7 +118,7 @@ describe('requestApproval', () => {
     await getClock().runAllAsync()
 
     expect(await decision).toBe(false)
-    expect(store().pendingApproval).toBeNull()
+    expect(store().approvalQueue[0] ?? null).toBeNull()
   })
 
   /**
@@ -117,7 +141,7 @@ describe('requestApproval', () => {
     // Past the first prompt's deadline, well short of the second's.
     await getClock().tickAsync(70_000)
 
-    expect(store().pendingApproval?.args).toEqual({ n: 2 })
+    expect(store().approvalQueue[0]?.args).toEqual({ n: 2 })
     store().resolveApproval(true)
     expect(await second).toBe(true)
   })

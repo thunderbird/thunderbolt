@@ -188,7 +188,7 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 }
 
 beforeEach(() => {
-  useMiniAppStore.setState({ context: null, tools: [], invokeTool: null, pendingApproval: null })
+  useMiniAppStore.setState({ context: null, tools: [], invokeTool: null, approvalQueue: [] })
 })
 
 describe('useMiniAppBridge message handling', () => {

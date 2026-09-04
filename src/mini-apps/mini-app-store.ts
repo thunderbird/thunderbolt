@@ -40,8 +40,11 @@ type MiniAppState = {
   tools: MiniAppTool[]
   /** Bridge-installed invoker, or null when no app is connected. */
   invokeTool: MiniAppToolInvoker | null
-  /** The approval prompt currently on screen, if any. */
-  pendingApproval: PendingToolApproval | null
+  /**
+   * Write-tool calls waiting on the user, oldest first. The head is the one on
+   * screen; the rest are queued behind it, each still holding its own turn open.
+   */
+  approvalQueue: PendingToolApproval[]
 }
 
 type MiniAppActions = {
@@ -66,7 +69,7 @@ type MiniAppActions = {
    * so a call that races an unmount is denied rather than left hanging.
    */
   requestApproval: (tool: MiniAppTool, args: unknown) => Promise<boolean>
-  /** Answer the on-screen prompt. */
+  /** Answer the prompt on screen — the head of the queue. */
   resolveApproval: (approved: boolean) => void
 }
 
@@ -79,24 +82,24 @@ type MiniAppActions = {
  */
 const approvalTimeoutMs = 120_000
 
-const emptyAppState = { activeApp: null, context: null, tools: [], invokeTool: null, pendingApproval: null }
+const emptyAppState = { activeApp: null, context: null, tools: [], invokeTool: null, approvalQueue: [] }
 
 export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => ({
   ...emptyAppState,
   openApp: (app) => set({ ...emptyAppState, activeApp: app }),
   closeApp: () => {
-    // Deny anything still waiting: the app it would have acted on is gone, and a
-    // tool `execute` awaiting a prompt nobody can answer would hang the turn.
-    get().pendingApproval?.decide(false)
+    // Deny everything still waiting: the app they would have acted on is gone,
+    // and a tool `execute` awaiting a prompt nobody can answer hangs the turn.
+    get().approvalQueue.forEach((pending) => pending.decide(false))
     set(emptyAppState)
   },
   setContext: (context) => set({ context }),
   setTools: (tools, invokeTool) => set({ tools, invokeTool }),
   resetGuest: () => {
-    // Same reasoning as `closeApp`: the document that would have serviced this
-    // approval is gone, so nothing can honour it.
-    get().pendingApproval?.decide(false)
-    set({ context: null, tools: [], invokeTool: null, pendingApproval: null })
+    // Same reasoning as `closeApp`: the document that would have serviced these
+    // approvals is gone, so nothing can honour them.
+    get().approvalQueue.forEach((pending) => pending.decide(false))
+    set({ context: null, tools: [], invokeTool: null, approvalQueue: [] })
   },
   requestApproval: (tool, args) =>
     new Promise<boolean>((resolve) => {
@@ -104,10 +107,6 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
         resolve(false)
         return
       }
-      // Supersede rather than queue: a second prompt behind the first would be
-      // invisible, and the model shouldn't have two writes in flight anyway.
-      get().pendingApproval?.decide(false)
-
       /*
        * Deny on a deadline.
        *
@@ -119,22 +118,39 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
        * The window is deliberately long: a decision about someone's data is
        * worth reading properly, and the cost of being slightly too patient is
        * much lower than the cost of approving something by timeout.
+       *
+       * The clock starts when the call is made, not when its prompt reaches the
+       * screen. A queued call is holding its turn open just as much as the one
+       * on screen is.
        */
-      const timer = setTimeout(() => get().pendingApproval?.decide(false), approvalTimeoutMs)
+      const timer = setTimeout(() => pending.decide(false), approvalTimeoutMs)
 
-      set({
-        pendingApproval: {
-          tool,
-          args,
-          decide: (approved) => {
-            clearTimeout(timer)
-            set({ pendingApproval: null })
-            resolve(approved)
-          },
+      const pending: PendingToolApproval = {
+        tool,
+        args,
+        decide: (approved) => {
+          clearTimeout(timer)
+          // Drop by identity, not by position: this may be answering from the
+          // queue's middle if its own deadline expired while another was up.
+          set((state) => ({ approvalQueue: state.approvalQueue.filter((entry) => entry !== pending) }))
+          resolve(approved)
         },
-      })
+      }
+
+      /*
+       * Queue, don't supersede.
+       *
+       * This used to deny whatever was already waiting, reasoning that a second
+       * prompt behind the first would be invisible and the model shouldn't have
+       * two writes in flight anyway. Nothing stops it: the AI SDK runs a step's
+       * tool calls concurrently, so a model emitting two writes in one response
+       * had the first auto-denied before the user ever saw it — and was told the
+       * user had declined it. One prompt after another is exactly what someone
+       * asked to approve two things expects.
+       */
+      set((state) => ({ approvalQueue: [...state.approvalQueue, pending] }))
     }),
-  resolveApproval: (approved) => get().pendingApproval?.decide(approved),
+  resolveApproval: (approved) => get().approvalQueue[0]?.decide(approved),
 }))
 
 /**

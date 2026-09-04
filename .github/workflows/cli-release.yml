@@ -119,11 +119,16 @@ jobs:
           restore-keys: |
             cli-bun-${{ matrix.os }}-
 
+      # Shared CLI imports need root packages, not root lifecycle scripts.
       - name: Install root dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install CLI dependencies
         run: cd cli && bun install --frozen-lockfile
+
+      # Shared agent core resolves these from root while CLI code resolves them from cli/.
+      - name: Check shared CLI dependency versions
+        run: bun -e 'for (const name of ["@earendil-works/pi-ai", "openai"]) { const root = (await Bun.file(`node_modules/${name}/package.json`).json()).version; const cli = (await Bun.file(`cli/node_modules/${name}/package.json`).json()).version; if (root !== cli) throw new Error(`${name} root ${root} != CLI ${cli}`) }'
 
       - name: Type check CLI
         run: cd cli && bun run typecheck

@@ -56,6 +56,7 @@ jobs:
               - 'shared/defaults/models.ts'
               - 'shared/inference-usage.ts'
               - 'package.json'
+              - 'bun.lock'
             wasm-artifact:
               - 'src/acp/iroh/pkg/**'
             # Inputs that change the compiled wasm (README.md excluded — it doesn't).
@@ -311,11 +312,16 @@ jobs:
           restore-keys: |
             cli-bun-
 
+      # Shared CLI imports need root packages, not root lifecycle scripts.
       - name: Install root dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install cli dependencies
         run: cd cli && bun install --frozen-lockfile
+
+      # Shared agent core resolves these from root while CLI code resolves them from cli/.
+      - name: Check shared CLI dependency versions
+        run: bun -e 'for (const name of ["@earendil-works/pi-ai", "openai"]) { const root = (await Bun.file(`node_modules/${name}/package.json`).json()).version; const cli = (await Bun.file(`cli/node_modules/${name}/package.json`).json()).version; if (root !== cli) throw new Error(`${name} root ${root} != CLI ${cli}`) }'
 
       - name: Type check cli
         run: cd cli && bun run typecheck

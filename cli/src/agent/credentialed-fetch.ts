@@ -52,8 +52,8 @@ export const createCredentialedFetch = (
     const response = await fetchFn(input, { ...init, redirect: 'error' })
     try {
       await observeResponse(response)
-    } catch {
-      // Status bookkeeping must never alter a completed provider response.
+    } catch (error) {
+      console.error('Credential response observer failed.', error)
     }
     return response
   }

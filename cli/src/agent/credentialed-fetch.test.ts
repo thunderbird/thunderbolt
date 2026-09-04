@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import { createCredentialedFetch, withCredentialedFetch } from './credentialed-fetch.ts'
 
 type ObservedRequest = { request?: Request; init?: RequestInit }
@@ -168,21 +168,27 @@ describe('createCredentialedFetch', () => {
   })
 
   test('preserves a paid 2xx response when status bookkeeping fails', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     let requests = 0
-    const wrapped = createCredentialedFetch(
-      'https://provider.example/v1',
-      async () => {
-        requests += 1
-        return Response.json({ answer: 'preserved' })
-      },
-      async () => {
-        throw new Error('disk full')
-      },
-    )
+    try {
+      const wrapped = createCredentialedFetch(
+        'https://provider.example/v1',
+        async () => {
+          requests += 1
+          return Response.json({ answer: 'preserved' })
+        },
+        async () => {
+          throw new Error('disk full')
+        },
+      )
 
-    const response = await wrapped('https://provider.example/v1/messages')
+      const response = await wrapped('https://provider.example/v1/messages')
 
-    expect(await response.json()).toEqual({ answer: 'preserved' })
-    expect(requests).toBe(1)
+      expect(await response.json()).toEqual({ answer: 'preserved' })
+      expect(requests).toBe(1)
+      expect(errorLog).toHaveBeenCalledWith('Credential response observer failed.', expect.any(Error))
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 })

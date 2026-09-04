@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AgentHarness } from '@earendil-works/pi-agent-core'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import type { SharedModel } from '../../../shared/defaults/models.ts'
 import { cliVersion } from '../version.ts'
 import { createManagedDirectBinding } from './direct.ts'
@@ -100,23 +100,29 @@ describe('createManagedDirectBinding — generic managed model', () => {
 
 describe('createManagedDirectBinding — credential isolation', () => {
   test('preserves a managed response when its status observer fails', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     let requests = 0
-    const binding = await createManagedDirectBinding({
-      credential: patCredential(),
-      model: futureDirectModel,
-      observeResponse: async () => {
-        throw new Error('disk full')
-      },
-      fetchFn: async () => {
-        requests += 1
-        return successfulCompletion(futureDirectModel.model)
-      },
-    })
+    try {
+      const binding = await createManagedDirectBinding({
+        credential: patCredential(),
+        model: futureDirectModel,
+        observeResponse: async () => {
+          throw new Error('disk full')
+        },
+        fetchFn: async () => {
+          requests += 1
+          return successfulCompletion(futureDirectModel.model)
+        },
+      })
 
-    const message = await runBinding(binding)
+      const message = await runBinding(binding)
 
-    expect(message.stopReason).toBe('stop')
-    expect(requests).toBe(1)
+      expect(message.stopReason).toBe('stop')
+      expect(requests).toBe(1)
+      expect(errorLog).toHaveBeenCalledTimes(1)
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 
   test.each([

@@ -4,7 +4,7 @@
 
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import type { CliDeviceMetadata } from '../auth/account-client.ts'
 import { createCredentialedFetch, type CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
 import { createByokBinding } from './byok.ts'
@@ -1147,6 +1147,7 @@ describe('ProviderRuntime account registration and rejection policy', () => {
   })
 
   test('keeps a successful provider response usable when persisted status bookkeeping fails', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     const initialProfile = profile({
       id: 'bookkeeping-profile',
       label: 'Bookkeeping',
@@ -1159,10 +1160,15 @@ describe('ProviderRuntime account registration and rejection policy', () => {
     })
     await runtime.prepare({})
 
-    await expect(observeHttpResponse(byokArguments[0]!.observeResponse, 200)).resolves.toBeUndefined()
+    try {
+      await expect(observeHttpResponse(byokArguments[0]!.observeResponse, 200)).resolves.toBeUndefined()
 
-    expect(saved).toEqual([])
-    expect(runtime.snapshot().providers[0]?.status).toBe('not authenticated')
+      expect(saved).toEqual([])
+      expect(runtime.snapshot().providers[0]?.status).toBe('not authenticated')
+      expect(errorLog).toHaveBeenCalledTimes(1)
+    } finally {
+      errorLog.mockRestore()
+    }
   })
 
   test('ignores late evidence from a BYOK binding replaced by a repaired key', async () => {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AssistantMessage } from '@earendil-works/pi-ai'
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import { resolveAccountCredential } from '../auth/token-store.ts'
 import { createByokBinding } from './byok.ts'
@@ -164,6 +164,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
   })
 
   it('preserves a paid response when stored-status persistence fails', async () => {
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
     const requests: Request[] = []
     const server = Bun.serve({
       port: 0,
@@ -225,6 +226,7 @@ describe('ProviderRuntime acceptance without fallback or replay', () => {
       expect(requests).toHaveLength(1)
       expect(runtime.snapshot().providers[0]?.status).toBe('not authenticated')
     } finally {
+      errorLog.mockRestore()
       server.stop(true)
     }
   })

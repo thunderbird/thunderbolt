@@ -138,22 +138,27 @@ describe('ensureRegisteredSession', () => {
   })
 
   it.each([
-    ['caller cancellation', (controller: AbortController) => controller.signal],
-    ['caller deadline', () => AbortSignal.timeout(5)],
+    ['caller cancellation', (controller: AbortController) => controller.abort(), 'AbortError'],
+    [
+      'caller deadline',
+      (controller: AbortController) =>
+        controller.abort(new DOMException('The operation timed out.', 'TimeoutError')),
+      'TimeoutError',
+    ],
   ] as const)(
     'settles a never-resolving registration on %s while retaining installation metadata',
-    async (_name, signalFor) => {
+    async (_name, abort, errorName) => {
       const controller = new AbortController()
       const requestStarted = Promise.withResolvers<void>()
       const fetchFn: AccountFetch = async () => {
         requestStarted.resolve()
         return new Promise<Response>(() => {})
       }
-      const pending = ensureRegisteredSession(credential(), metadata, fetchFn, signalFor(controller))
+      const pending = ensureRegisteredSession(credential(), metadata, fetchFn, controller.signal)
       await requestStarted.promise
-      if (_name === 'caller cancellation') controller.abort()
+      abort(controller)
 
-      await expect(pending).rejects.toMatchObject({ name: expect.stringMatching(/^(Abort|Timeout)Error$/) })
+      await expect(pending).rejects.toMatchObject({ name: errorName })
       expect(await loadAuthConfig()).toMatchObject({
         deviceId: credential().deviceId,
         userCacheSecret: Buffer.from(credential().userCacheSecret).toString('hex'),

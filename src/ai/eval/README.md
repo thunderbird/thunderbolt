@@ -286,7 +286,7 @@ Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-ca
 
 ### Judge design
 
-Only the four semantic assertions above invoke an LLM judge; deterministic web-call counting never does. DeepSeek V4 Flash judges Opus. Opus judges Flash and GLM. A model never judges itself, and GLM is never a judge because its Tinfoil connection cannot be resolved through the OpenAI-compatible connection used here.
+The four semantic assertions above use an LLM judge; deterministic web-call counting never does. Opus judges every model, including itself, because confidential models cannot be reached through the judge's OpenAI-compatible connection. The "never judges itself" rule is suspended until another direct managed model is available.
 
 Judge scope is fixed by category:
 

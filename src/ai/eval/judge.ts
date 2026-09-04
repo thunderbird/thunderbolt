@@ -6,7 +6,7 @@ import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { defaultModelDeepseekV4Flash, defaultModelOpus5 } from '@shared/defaults/models'
+import { defaultModelOpus5 } from '@shared/defaults/models'
 import { englishLanguageName } from '@shared/i18n/locales'
 import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
@@ -24,7 +24,7 @@ const judgeVerdictSchema = z
   .strict()
 
 export type JudgeVerdict = z.infer<typeof judgeVerdictSchema>
-export type JudgeModelName = 'opus' | 'flash'
+export type JudgeModelName = 'opus'
 
 class RetryableJudgeError extends Error {}
 
@@ -42,13 +42,12 @@ const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
   return () => clearTimeout(timer)
 }
 
-const judgeModels: Record<JudgeModelName, Model> = {
+export const judgeModels = {
   opus: { ...defaultModelOpus5, apiKey: null },
-  flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
-}
+} satisfies Record<JudgeModelName, Model>
 
 const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> = {
-  opus: 'flash',
+  opus: 'opus',
   flash: 'opus',
   glm: 'opus',
 }
@@ -109,7 +108,8 @@ const verdictFieldList = [...semanticAssertions.map(({ verdictKey }) => verdictK
 const declaredAssertions = (criteria: EvalCriteria): SemanticAssertion[] =>
   semanticAssertions.filter(({ criteriaKey }) => criteria[criteriaKey])
 
-/** Select a capable judge that is neither GLM nor the model under evaluation. */
+/** Select a direct, non-confidential managed judge for the OpenAI-compatible connection.
+ *  Opus is currently the only such model, so it also judges itself. */
 export const getJudgeModelName = (testedModelName: string): JudgeModelName => {
   const judgeModelName = judgeModelAssignments[testedModelName]
   if (!judgeModelName) {

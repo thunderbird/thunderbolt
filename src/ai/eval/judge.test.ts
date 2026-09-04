@@ -4,11 +4,14 @@
 
 import { describe, expect, test } from 'bun:test'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { resolveOpenAiCompatConnection } from '@/ai/fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import {
   applyJudgeVerdict,
   buildJudgePrompt,
   evaluateWithJudge,
   getJudgeModelName,
+  judgeModels,
   parseJudgeVerdict,
   requestJudgeVerdict,
   requiresJudge,
@@ -52,18 +55,29 @@ const acceptedVerdict = {
 }
 
 describe('judge model assignment', () => {
-  test('uses Flash for Opus and Opus for Flash and GLM', () => {
-    expect(getJudgeModelName('opus')).toBe('flash')
-    expect(getJudgeModelName('flash')).toBe('opus')
-    expect(getJudgeModelName('glm')).toBe('opus')
+  test('assigns every eval model to Opus, including Opus itself', () => {
+    for (const testedModel of evalModels) {
+      expect(getJudgeModelName(testedModel.name)).toBe('opus')
+    }
   })
 
-  test('assigns every eval model to a resolvable external judge', () => {
-    for (const testedModel of evalModels) {
-      const judge = getJudgeModelName(testedModel.name)
-      expect(['opus', 'flash']).toContain(judge)
-      expect(judge).not.toBe(testedModel.name)
-      expect(judge).not.toBe('glm')
+  test('only uses non-confidential judge models', () => {
+    for (const judgeModel of Object.values(judgeModels)) {
+      expect(judgeModel.provider).not.toBe('tinfoil')
+      expect(judgeModel.isConfidential).toBe(0)
+    }
+  })
+
+  test('resolves an OpenAI-compatible connection for every judge model', () => {
+    const proxyFetch: FetchFn = Object.assign(
+      async () => {
+        throw new Error('Connection resolution must not make network requests')
+      },
+      { preconnect: () => Promise.resolve(false) },
+    )
+
+    for (const judgeModel of Object.values(judgeModels)) {
+      expect(resolveOpenAiCompatConnection(judgeModel, () => proxyFetch)).not.toBeNull()
     }
   })
 

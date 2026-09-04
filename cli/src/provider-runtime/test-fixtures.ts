@@ -26,6 +26,7 @@ export const futureDirectCatalog: ManagedCatalog = {
   data: [futureDirectModel],
 }
 
+/** Creates a valid stored-session credential for provider-runtime tests. */
 export const testSessionCredential = (
   overrides: Partial<Extract<ResolvedAccountCredential, { type: 'session' }>> = {},
 ): Extract<ResolvedAccountCredential, { type: 'session' }> => ({
@@ -50,6 +51,7 @@ const createTestBinding = (
   ...noopBindingLifecycle,
 })
 
+/** Creates a successful OpenAI-compatible streaming completion response. */
 export const successfulCompletion = (model: string): Response =>
   new Response(
     [
@@ -73,9 +75,11 @@ export const successfulCompletion = (model: string): Response =>
     { status: 200, headers: { 'content-type': 'text/event-stream' } },
   )
 
+/** Creates a failed OpenAI-compatible completion response. */
 export const failedCompletion = (status: number): Response =>
   Response.json({ error: { message: `direct failure ${status}`, type: 'test_error' } }, { status })
 
+/** Installs and executes a prepared binding through Pi's model registry. */
 export const runBinding = async (binding: PreparedPiBinding): Promise<AssistantMessage> => {
   const models = createModels()
   binding.install(models)

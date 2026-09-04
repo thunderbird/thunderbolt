@@ -35,6 +35,7 @@ export const builtinProviders = [
   'fireworks',
 ] as const
 
+/** Whether a provider ID names one of Pi's built-in providers. */
 export const isBuiltinProvider = (value: string): value is BuiltinProvider =>
   (builtinProviders as readonly string[]).includes(value)
 

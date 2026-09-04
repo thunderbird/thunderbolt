@@ -16,6 +16,7 @@ export const abortable = async <Value>(operation: Promise<Value>, signal?: Abort
   }
 }
 
+/** Waits for an operation while deliberately discarding its rejection. */
 export const settleBestEffort = async (operation: Promise<unknown>): Promise<void> => {
   await Promise.allSettled([operation])
 }

@@ -147,11 +147,13 @@ export type ProviderRuntimeError = {
   readonly message: string
 }
 
+/** Creates an Error carrying a stable provider-runtime error code. */
 export const providerRuntimeError = <Code extends ProviderRuntimeError['code']>(
   code: Code,
   message: string,
 ): Error & ProviderRuntimeError & { readonly code: Code } => Object.assign(new Error(message), { code, message })
 
+/** Narrows an Error to the provider-runtime contract and optional exact code. */
 export const isProviderRuntimeError = <Code extends ProviderRuntimeError['code']>(
   error: Error,
   code?: Code,

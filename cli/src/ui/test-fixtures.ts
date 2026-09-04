@@ -52,6 +52,7 @@ export class MemoryTerminal implements Terminal {
   setProgress(): void {}
 }
 
+/** Creates a minimal assistant message for UI tests. */
 export const assistantMessage = (stopReason: AssistantMessage['stopReason'] = 'stop'): AssistantMessage => ({
   role: 'assistant',
   content: [],
@@ -70,6 +71,7 @@ export const assistantMessage = (stopReason: AssistantMessage['stopReason'] = 's
   timestamp: 0,
 })
 
+/** Wraps an assistant stream update in the harness event shape used by UI tests. */
 export const assistantUpdate = (
   message: AssistantMessage,
   assistantMessageEvent: AssistantMessageEvent,

@@ -51,6 +51,16 @@ export const miniAppProtocolMarker = 'thunderbolt-miniapp'
  * optional capability is backwards compatible and must not bump it.
  *
  * v2 renamed every method to the `ui/` namespace — see the note below.
+ *
+ * **Why the `ui/selection-query` → `ui/element-at` rename did not bump this.**
+ * A method rename *is* breaking: an out-of-date guest handshakes on 2, then has
+ * no handler for the new name, and selection fails silently rather than loudly.
+ * It is only safe because the rename and the SDK landed together — the canonical
+ * SDK (`thunderbolt-miniapp-template`) answers `ui/element-at` on version 2, and
+ * no guest ever shipped speaking 2 with the old name. There is no third-party
+ * guest to strand yet. Once one exists, that argument expires: a renamed or
+ * removed method has to bump this, so the handshake rejects an old guest with a
+ * reason instead of leaving a feature quietly dead.
  */
 export const miniAppProtocolVersion = 2
 

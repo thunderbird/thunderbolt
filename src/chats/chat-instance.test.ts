@@ -505,6 +505,15 @@ describe('createChatInstance — retry policy', () => {
     expect(wouldAutoSend()).toBe(true)
   })
 
+  it('stop() flags the session as stopping while the abort unwinds', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+
+    await instance.stop()
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+  })
+
   it('resolves an open tool-permission dialog when the turn is stopped', async () => {
     const { instance } = createRetryHarness()
     ;(instance as unknown as { status: string }).status = 'streaming'

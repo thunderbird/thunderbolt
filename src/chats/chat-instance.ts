@@ -696,7 +696,7 @@ export const createChatInstance = (
     retryCount = 0
     lastError = null
     currentTurn = createTurnState()
-    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false, stopping: false })
   }
 
   const startNewTurn = () => {
@@ -1004,6 +1004,10 @@ export const createChatInstance = (
     // No-ops when nothing is pending.
     useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
     if (instance.status === 'streaming' || instance.status === 'submitted') {
+      // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
+      // round-trip, and the in-browser harness has to unwind its loop — so flag
+      // the wait for the composer instead of leaving the button looking inert.
+      useChatStore.getState().updateSession(id, { stopping: true })
       void originalStop()
       return
     }

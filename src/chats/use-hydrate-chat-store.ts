@@ -271,6 +271,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
+      stopping: false,
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,

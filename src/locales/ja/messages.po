@@ -3305,6 +3305,10 @@ msgstr "ステータス"
 msgid "Stop generating"
 msgstr "生成を停止"
 
+#: src/components/ui/prompt-input.tsx
+msgid "Stopping"
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "Storage is disabled"
 msgstr "ストレージが無効です"

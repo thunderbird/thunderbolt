@@ -319,9 +319,21 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, M
   return new Map(entries)
 }
 
-/** The registry as the frontend receives it, with secrets stripped. */
+/**
+ * The registry as the frontend receives it, with secrets stripped.
+ *
+ * Takes an already-parsed registry rather than `Settings`, so a route can parse
+ * once at construction and answer from that. Deriving it from `Settings` per
+ * call re-ran `JSON.parse` and the per-entry validation on every request — and
+ * re-emitted the "Dropping <id>" log each time, which on an unauthenticated
+ * route means any caller can drive the log volume.
+ */
+export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): PublicMiniApp[] =>
+  [...apps].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
+
+/** {@link toPublicMiniApps} for a caller that holds only `Settings`. */
 export const getPublicMiniApps = (settings: Pick<Settings, 'miniApps'>): PublicMiniApp[] =>
-  [...getMiniApps(settings)].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
+  toPublicMiniApps(getMiniApps(settings))
 
 /**
  * Parse and validate environment variables into settings

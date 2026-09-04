@@ -179,6 +179,38 @@ describe('POST /mini-apps/:appId/token', () => {
 })
 
 describe('GET /mini-apps', () => {
+  /**
+   * The route is unauthenticated, so anything it recomputes per request is
+   * something an anonymous caller can drive. It used to re-parse `MINI_APPS` and
+   * re-log every malformed entry on each call, turning a startup diagnostic into
+   * unbounded log volume; the registry is parsed once at construction instead.
+   */
+  it('parses the registry once, not per request', async () => {
+    const withBadEntry = JSON.stringify({
+      good: { name: 'Good', origin: 'https://good.test', secret: financeSecret },
+      bad: { name: 'Bad', origin: 'https://bad.test', secret: 'tooshort' },
+    })
+    const dropped: unknown[] = []
+    const original = console.error
+    console.error = (...args: unknown[]) => dropped.push(args)
+
+    try {
+      const routes = createMiniAppRoutes(
+        authWithUser(realUser),
+        createTestSettings({ miniApps: withBadEntry, appUrl: 'http://localhost:1420' }),
+      )
+      const atConstruction = dropped.length
+
+      await routes.handle(new Request('http://localhost/mini-apps'))
+      await routes.handle(new Request('http://localhost/mini-apps'))
+
+      expect(atConstruction).toBe(1)
+      expect(dropped).toHaveLength(atConstruction)
+    } finally {
+      console.error = original
+    }
+  })
+
   it('lists the configured apps for a signed-in user', async () => {
     const response = await get(authWithUser(realUser))
     const body = (await response.json()) as { apps: { id: string }[] }

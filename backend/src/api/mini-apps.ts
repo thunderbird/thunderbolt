@@ -29,7 +29,7 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { getMiniApps, getPublicMiniApps, isOriginAllowed } from '@/config/settings'
+import { getMiniApps, isOriginAllowed, toPublicMiniApps } from '@/config/settings'
 import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { SignJWT } from 'jose'
@@ -69,6 +69,16 @@ const validateOrigin = (request: Request, settings: Settings): boolean => {
  */
 export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
   const apps = getMiniApps(settings)
+  /*
+   * Derived once, beside the registry it comes from.
+   *
+   * `getSettings()` memoizes per process, so config cannot change without a
+   * restart and there is nothing to recompute — while doing it per request
+   * re-parsed `MINI_APPS` and re-logged every malformed entry on each call. This
+   * route is unauthenticated, so that turned a startup diagnostic into
+   * log volume any caller could drive.
+   */
+  const publicApps = toPublicMiniApps(apps)
 
   // Mounted even with an empty registry. Skipping the routes made `GET
   // /mini-apps` 404, which the client cannot tell apart from a network failure
@@ -88,7 +98,7 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
        * reads, minus the secrets.
        *
        * Unauthenticated on purpose. There is nothing here to protect: the
-       * response is `getPublicMiniApps`, which strips every app's secret, and
+       * response is `toPublicMiniApps`, which strips every app's secret, and
        * the token route below is what actually guards identity. Session-gating
        * it only cost behaviour — a 403 for anonymous and signed-out callers
        * left the client unable to say "this deployment runs no apps" without
@@ -100,7 +110,7 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
        * operator-declared config; revisit alongside the first customer
        * deployment, when we know whether naming their apps is sensitive.
        */
-      .get('/', () => ({ apps: getPublicMiniApps(settings) }))
+      .get('/', () => ({ apps: publicApps }))
       .post(
         '/:appId/token',
         async ({ params, request, set }) => {

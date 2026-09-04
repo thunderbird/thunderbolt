@@ -749,8 +749,8 @@ msgid "Close"
 msgstr "Close"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Close chat"
-msgstr "Close chat"
+#~ msgid "Close chat"
+#~ msgstr "Close chat"
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -3821,7 +3821,6 @@ msgstr "Toggle sidebar"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr "Toggle Sidebar"
 

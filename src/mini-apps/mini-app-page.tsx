@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
+import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { MessageSquare, MousePointerClick, X } from 'lucide-react'
-import { PanelLeftRounded } from '@/components/icons/panel-left-rounded'
+import { MessageSquare, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
@@ -19,7 +19,6 @@ import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
-import { useSidebar } from '@/components/ui/sidebar'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
@@ -33,7 +32,6 @@ const appPanelSize = '66%'
 const chatPanelSize = '34%'
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
-  const { t } = useLingui()
   /*
    * Two sources, because they are genuinely two states. A persisted thread is
    * addressable, so it lives in `?chat=` and survives a reload or a shared link.
@@ -54,7 +52,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const openChatIdRef = useRef<string | null>(null)
   openChatIdRef.current = openChatId
-  const { toggleSidebar, state: sidebarState } = useSidebar()
   const openApp = useMiniAppStore((s) => s.openApp)
   const closeApp = useMiniAppStore((s) => s.closeApp)
 
@@ -246,17 +243,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
 
   return (
     /*
-     * No header, and no inset for one either — the app sits flush to the top of
-     * the pane. It briefly had a title bar of its own, which duplicated the
-     * app's own header, and then briefly sat under the shared floating header,
-     * which cost a strip of the app's space to say nothing it wasn't already
-     * saying. A customer's app is the content here, not a thing inside a frame
-     * we label.
+     * Inset for the shared floating header, like every other route.
      *
-     * The cost is that the route is chromeless again, so the sidebar toggle has
-     * to come from somewhere — see the floating controls below.
+     * This went back and forth: a title bar of our own duplicated the app's own
+     * header, so it went away, and then the whole header went away on the
+     * reasoning that a customer's app is the content rather than a thing inside
+     * a frame we label. What that cost was back/forward, the sidebar toggle and
+     * the frameless drag region, with floating substitutes overlapping the
+     * app's content — a worse trade than the strip of space it saved.
+     *
+     * `--header-inset` rather than letting the header float over the frame: the
+     * app is an opaque cross-origin document, so a header floating above it
+     * would sit on top of the app's own controls rather than over a scrim it
+     * can fade against.
      */
-    <div className="flex flex-col h-full w-full">
+    <div className="flex h-full w-full flex-col pt-[var(--header-inset)]">
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
@@ -289,23 +290,13 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 own top-right corner, which is where a customer app tends to put
                 its own controls.
 
-                The sidebar toggle appears only when the sidebar is collapsed,
-                mirroring `header.tsx` — this route draws no header, so without
-                it a mouse-only user with a collapsed sidebar has no way back. */}
+                No sidebar toggle here: the shared header carries it, on this
+                route like every other. A copy of it in this cluster was both a
+                second control for one job and — because the cluster is gated on
+                the app being ready — missing exactly when a failed or slow app
+                made getting back out most urgent. */}
             {showFloatingControls && (
               <div className="absolute bottom-4 right-4 z-10 flex items-center gap-2">
-                {sidebarState === 'collapsed' && (
-                  <Button
-                    onClick={toggleSidebar}
-                    variant="secondary"
-                    size="icon"
-                    className="shadow-lg rounded-full"
-                    aria-label={t`Toggle Sidebar`}
-                    title={t`Toggle Sidebar`}
-                  >
-                    <PanelLeftRounded className="size-[var(--icon-size-sm)]" />
-                  </Button>
-                )}
                 <Button onClick={startPicking} variant="secondary" size="lg" className="shadow-lg rounded-full">
                   <MousePointerClick className="size-[var(--icon-size-sm)]" />
                   <Trans>Select</Trans>
@@ -325,18 +316,15 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
               <div className="flex h-full min-h-0 flex-col">
-                <div className="flex items-center justify-end gap-1 px-2 pt-2">
-                  <MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleCloseChat}
-                    aria-label={t`Close chat`}
-                    title={t`Close chat`}
-                  >
-                    <X className="size-[var(--icon-size-default)]" />
-                  </Button>
-                </div>
+                {/* The same header every other side panel uses, rather than a
+                    strip of our own: it already carries the round close button,
+                    the macOS traffic-light clearance and the frameless-caption
+                    clearance this panel needs in the window's top-right. */}
+                <ContentViewHeader
+                  title={app.name}
+                  onClose={handleCloseChat}
+                  actions={<MiniAppChatHistory chats={chats} onOpenChat={handleOpenExistingChat} />}
+                />
                 <div className="min-h-0 flex-1">{chatPane}</div>
               </div>
             </ResizablePanel>

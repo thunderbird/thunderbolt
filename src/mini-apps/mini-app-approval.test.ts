@@ -19,7 +19,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { getClock } from '@/testing-library'
 import type { Model } from '@/types'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import { requestMiniAppApproval } from './mini-app-approval'
 import { useMiniAppStore } from './mini-app-store'
@@ -58,6 +58,17 @@ const queueOf = (id: string) => useChatStore.getState().sessions.get(id)?.miniAp
 
 const ask = (chatThreadId: string, args: unknown, forApp = app) =>
   requestMiniAppApproval({ chatThreadId, app: forApp, tool: writeTool, args })
+
+/*
+ * The store is a module-level singleton shared by every test file in the
+ * process, so opening an app here has to be undone. Leaving `activeApp` set
+ * leaked into whichever file ran next under `--randomize` — the bridge tests
+ * assume no app is open and failed as a block, on one seed in four.
+ */
+afterEach(() => {
+  useMiniAppStore.setState({ activeApp: null, context: null, tools: [], invokeTool: null })
+  useChatStore.setState({ sessions: new Map(), currentSessionId: null })
+})
 
 beforeEach(() => {
   useMiniAppStore.setState({ activeApp: app, context: null, tools: [], invokeTool: null })

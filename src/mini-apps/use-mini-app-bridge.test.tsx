@@ -188,7 +188,9 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 }
 
 beforeEach(() => {
-  useMiniAppStore.setState({ context: null, tools: [], invokeTool: null })
+  // `activeApp` included: it is module-level state another file may have left
+  // set, and these tests assume nothing is open until they open it.
+  useMiniAppStore.setState({ activeApp: null, context: null, tools: [], invokeTool: null })
 })
 
 describe('useMiniAppBridge message handling', () => {

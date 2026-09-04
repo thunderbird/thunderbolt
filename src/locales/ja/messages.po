@@ -737,8 +737,8 @@ msgid "Close"
 msgstr "閉じる"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Close chat"
-msgstr ""
+#~ msgid "Close chat"
+#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -3809,7 +3809,6 @@ msgstr "サイドバーの表示を切り替え"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr "サイドバーの表示を切り替え"
 

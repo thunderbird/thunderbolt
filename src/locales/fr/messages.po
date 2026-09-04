@@ -761,8 +761,8 @@ msgid "Close"
 msgstr "Fermer"
 
 #: src/mini-apps/mini-app-page.tsx
-msgid "Close chat"
-msgstr ""
+#~ msgid "Close chat"
+#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -3833,7 +3833,6 @@ msgstr "Afficher/masquer la barre latérale"
 #: src/components/ui/header.tsx
 #: src/components/ui/sidebar.tsx
 #: src/layout/sidebar/sidebar-header.tsx
-#: src/mini-apps/mini-app-page.tsx
 msgid "Toggle Sidebar"
 msgstr "Afficher/masquer la barre latérale"
 

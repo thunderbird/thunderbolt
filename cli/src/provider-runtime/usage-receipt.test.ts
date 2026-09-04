@@ -113,6 +113,40 @@ describe('submitInferenceUsageReceipt', () => {
     expect(signal?.aborted).toBeTrue()
   })
 
+  test('bounds a stalled unauthorized observer with the request deadline', async () => {
+    const reported: Error[] = []
+    let requests = 0
+    let unauthorizedCalls = 0
+    const submission = submitInferenceUsageReceipt({
+      backendUrl: 'https://app.example.com/v1',
+      bearer: 'stored-session',
+      usage: {
+        receipt: 'iu1.canonicalPayload.canonicalSignature',
+        promptTokens: 16,
+        completionTokens: 2,
+        totalTokens: 18,
+      },
+      timeoutMs: 1,
+      onUnauthorized: async () => {
+        unauthorizedCalls += 1
+        return new Promise<void>(() => {})
+      },
+      reportError: (error) => {
+        reported.push(error)
+      },
+      fetchFn: async () => {
+        requests += 1
+        return new Response(null, { status: 401 })
+      },
+    })
+
+    await expect(submission).rejects.toThrow('HTTP 401')
+    expect(requests).toBe(1)
+    expect(unauthorizedCalls).toBe(1)
+    expect(reported).toHaveLength(1)
+    expect(reported[0]).toMatchObject({ name: 'TimeoutError' })
+  })
+
   test.each([
     [401, 1],
     [403, 0],

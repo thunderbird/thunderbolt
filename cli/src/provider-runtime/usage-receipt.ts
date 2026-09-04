@@ -204,38 +204,45 @@ export const submitInferenceUsageReceipt = async (options: SubmitInferenceUsageR
   const fetchFn = options.fetchFn ?? fetch
   const reportError = options.reportError ?? ((error: Error) => console.error('Usage receipt auth observer failed.', error))
   const signal = AbortSignal.timeout(options.timeoutMs ?? receiptPostTimeoutMs)
-  const response = await abortable(
-    fetchFn(`${apiBaseUrl(options.backendUrl)}/${inferenceUsageReceiptPath}`, {
-      method: 'POST',
-      headers: backendHeaders({
-        Authorization: `Bearer ${options.bearer}`,
-        'Content-Type': 'application/json',
+  // Bun may release an AbortSignal.timeout timer when sequential races briefly have no listener.
+  const retainDeadline = (): void => {}
+  signal.addEventListener('abort', retainDeadline, { once: true })
+  try {
+    const response = await abortable(
+      fetchFn(`${apiBaseUrl(options.backendUrl)}/${inferenceUsageReceiptPath}`, {
+        method: 'POST',
+        headers: backendHeaders({
+          Authorization: `Bearer ${options.bearer}`,
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify(options.usage),
+        redirect: 'error',
+        signal,
       }),
-      body: JSON.stringify(options.usage),
-      redirect: 'error',
       signal,
-    }),
-    signal,
-  )
-  if (response.status === 401) {
-    const failure = new ReceiptHttpError('Inference usage receipt request failed with HTTP 401', 'retain')
-    if (options.onUnauthorized) {
-      try {
-        await abortable(options.onUnauthorized(), signal)
-      } catch (error) {
-        reportError(toError(error))
-      }
-    }
-    throw failure
-  }
-  if (response.status === 403) {
-    // The backend reserves 403 for a receipt owned by another user; retrying it can never succeed for this account.
-    throw new ReceiptHttpError('Inference usage receipt request failed with HTTP 403', 'discard')
-  }
-  if (!response.ok) {
-    throw new ReceiptHttpError(
-      `Inference usage receipt request failed with HTTP ${response.status}`,
-      response.status === 429 || response.status >= 500 ? 'retry' : 'retain',
     )
+    if (response.status === 401) {
+      const failure = new ReceiptHttpError('Inference usage receipt request failed with HTTP 401', 'retain')
+      if (options.onUnauthorized) {
+        try {
+          await abortable(options.onUnauthorized(), signal)
+        } catch (error) {
+          reportError(toError(error))
+        }
+      }
+      throw failure
+    }
+    if (response.status === 403) {
+      // The backend reserves 403 for a receipt owned by another user; retrying it can never succeed for this account.
+      throw new ReceiptHttpError('Inference usage receipt request failed with HTTP 403', 'discard')
+    }
+    if (!response.ok) {
+      throw new ReceiptHttpError(
+        `Inference usage receipt request failed with HTTP ${response.status}`,
+        response.status === 429 || response.status >= 500 ? 'retry' : 'retain',
+      )
+    }
+  } finally {
+    signal.removeEventListener('abort', retainDeadline)
   }
 }

@@ -95,6 +95,14 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     [setSearchParams],
   )
 
+  const handleOpenExistingChat = useCallback(
+    (chatThreadId: string) => {
+      setDraftChatId(null)
+      setOpenChatParam(chatThreadId)
+    },
+    [setOpenChatParam],
+  )
+
   /*
    * Open the chat panel, reusing the conversation already in it.
    *
@@ -111,10 +119,26 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const handleChatOpen = useCallback(
     (prompt: string | undefined) => {
-      const existing = openChatIdRef.current
+      const existing = openChatIdRef.current ?? lastChatIdRef.current
       if (existing) {
         if (prompt) {
           seedComposerDraft(existing, prompt)
+        }
+        // Only re-open when it isn't already on screen; reusing the *open* chat
+        // must not churn the URL and remount the session under the user.
+        //
+        // A chat that never got a first message has no row, so it goes back as
+        // a draft. Putting an unsaved id in `?chat=` promises a thread that
+        // hydration can't find and bounces the user to Not Found — the reason
+        // drafts stay out of the URL in the first place.
+        if (!openChatIdRef.current) {
+          const persisted = chats.some((chat) => chat.id === existing)
+          if (persisted) {
+            handleOpenExistingChat(existing)
+          } else {
+            setDraftChatId(existing)
+            setOpenChatParam(null)
+          }
         }
         return
       }
@@ -125,18 +149,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       setDraftChatId(id)
       setOpenChatParam(null)
     },
-    [setOpenChatParam],
+    [chats, handleOpenExistingChat, setOpenChatParam],
   )
 
-  const handleOpenExistingChat = useCallback(
-    (chatThreadId: string) => {
-      setDraftChatId(null)
-      setOpenChatParam(chatThreadId)
-    },
-    [setOpenChatParam],
-  )
+  /*
+   * Closing the panel hides the conversation; it doesn't end it.
+   *
+   * Both ids were simply cleared, so reopening minted a fresh thread and the
+   * conversation you had just been having was reachable only through the
+   * history menu. "Close" on a panel means put it away — the next open resumes
+   * where you left off, which is what every other panel in the app does.
+   */
+  const lastChatIdRef = useRef<string | null>(null)
 
   const handleCloseChat = useCallback(() => {
+    lastChatIdRef.current = openChatIdRef.current
     setDraftChatId(null)
     setOpenChatParam(null)
   }, [setOpenChatParam])

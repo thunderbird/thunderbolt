@@ -58,7 +58,7 @@ export type ArtifactTextSelection = SurfaceTextSelection
 
 export type ArtifactSelectionItem = SurfaceSelectionItem
 
-/** Method name the host uses to resolve a marquee to content. */
+/** Method name the host uses to resolve a point to the element under it. */
 export const artifactElementAtMethod = 'element/at'
 
 export type HarnessRequest = {

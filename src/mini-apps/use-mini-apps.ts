@@ -13,6 +13,7 @@
 
 import { useEffect, useSyncExternalStore } from 'react'
 import { useAuth, useHttpClient } from '@/contexts'
+import { useSettings } from '@/hooks/use-settings'
 import type { HttpClient } from '@/lib/http'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
@@ -86,7 +87,20 @@ export const useMiniApps = (): MiniAppsState => {
   const httpClient = useHttpClient()
   const authClient = useAuth()
   const { data: session, isPending } = authClient.useSession()
+  const { experimentalFeatureMiniApps } = useSettings({ experimental_feature_mini_apps: false })
   const snapshot = useSyncExternalStore(subscribe, () => state)
+
+  /*
+   * The flag gate lives here rather than at each call site.
+   *
+   * It was a call-site rule and the rule leaked: `useChatDestination` and
+   * `MiniAppChatBanner` both mount on every signed-in session — the sidebar and
+   * every `/chats/:id` — and both read the flag *after* calling this hook, so
+   * `GET /mini-apps` fired on flag-off devices anyway. "A device with the
+   * feature off has no registry" is one fact; stating it once is the only way
+   * a new caller can't forget it.
+   */
+  const miniAppsEnabled = experimentalFeatureMiniApps.value
 
   /*
    * Only a real signed-in user has a registry to fetch.
@@ -103,18 +117,19 @@ export const useMiniApps = (): MiniAppsState => {
 
   // Fetching an external resource on mount — the one thing effects are for.
   useEffect(() => {
-    if (isPending || !isFullUser) {
+    if (isPending || !isFullUser || !miniAppsEnabled) {
       return
     }
     void loadMiniApps(httpClient)
-  }, [httpClient, isPending, isFullUser])
+  }, [httpClient, isPending, isFullUser, miniAppsEnabled])
 
   /*
    * Still resolving, or nothing to load: report `loading`, never `failed`.
-   * A signed-out visitor has no registry rather than a broken one, and the
-   * sidebar's failure banner would otherwise accuse a healthy deployment.
+   * A signed-out visitor — or one with the feature off — has no registry rather
+   * than a broken one, and the sidebar's failure banner would otherwise accuse
+   * a healthy deployment.
    */
-  if (isPending || !isFullUser) {
+  if (isPending || !isFullUser || !miniAppsEnabled) {
     return emptyState
   }
 

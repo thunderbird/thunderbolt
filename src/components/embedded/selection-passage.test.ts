@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { SurfaceSelectionItem } from './types'
-import { collapseChipsAbove, toSelectionPassages } from './selection-passage'
+import { toSelectionPassage } from './selection-passage'
 
 const item = (n: number, data?: unknown): SurfaceSelectionItem => ({
   id: `row-${n}`,
@@ -13,51 +13,32 @@ const item = (n: number, data?: unknown): SurfaceSelectionItem => ({
   ...(data === undefined ? {} : { data }),
 })
 
-const many = (count: number) => Array.from({ length: count }, (_, index) => item(index + 1))
-
-describe('toSelectionPassages', () => {
-  it('returns nothing for an empty selection', () => {
-    expect(toSelectionPassages([])).toEqual([])
-  })
-
-  it('keeps one passage per item while there are few of them', () => {
-    const passages = toSelectionPassages(many(collapseChipsAbove))
-    expect(passages).toHaveLength(collapseChipsAbove)
-    expect(passages[0]).toBe('Row 1\nContents of row 1')
-  })
-
-  it('collapses to a single passage once there are enough to be noise', () => {
-    const passages = toSelectionPassages(many(collapseChipsAbove + 1))
-    expect(passages).toHaveLength(1)
-    expect(passages[0]).toStartWith(`${collapseChipsAbove + 1} selected items`)
-    expect(passages[0]).toContain('Contents of row 4')
+describe('toSelectionPassage', () => {
+  it('joins the label and the text when there is no payload', () => {
+    expect(toSelectionPassage(item(1))).toBe('Row 1\nContents of row 1')
   })
 
   /**
-   * The point of `resolveSelection` returning domain objects: an app that hands
-   * over structure must get more to the model than one that scrapes text, or
-   * there was never a reason to implement the better path.
+   * The point of the guest returning domain objects: an app that hands over
+   * structure must get more to the model than one that scrapes text, or there
+   * was never a reason to implement the better path.
    */
   it('carries structured data through to the passage', () => {
-    const [passage] = toSelectionPassages([item(1, { orderId: 'A-1041', total: 12400 })])
-    expect(passage).toContain('"orderId":"A-1041"')
+    expect(toSelectionPassage(item(1, { orderId: 'A-1041', total: 12400 }))).toContain('"orderId":"A-1041"')
   })
 
   it('drops a payload too large to be worth the context, keeping the text', () => {
-    const [passage] = toSelectionPassages([item(1, { blob: 'x'.repeat(5_000) })])
-    expect(passage).toBe('Row 1\nContents of row 1')
+    expect(toSelectionPassage(item(1, { blob: 'x'.repeat(5_000) }))).toBe('Row 1\nContents of row 1')
   })
 
-  it('survives a cyclic payload rather than losing the whole selection', () => {
+  it('survives a cyclic payload rather than losing the selection', () => {
     const cyclic: Record<string, unknown> = { name: 'loop' }
     cyclic.self = cyclic
 
-    const passages = toSelectionPassages([item(1, cyclic), item(2)])
-    expect(passages).toEqual(['Row 1\nContents of row 1', 'Row 2\nContents of row 2'])
+    expect(toSelectionPassage(item(1, cyclic))).toBe('Row 1\nContents of row 1')
   })
 
   it('ignores a payload that JSON cannot represent at all', () => {
-    const [passage] = toSelectionPassages([item(1, () => 'not serialisable')])
-    expect(passage).toBe('Row 1\nContents of row 1')
+    expect(toSelectionPassage(item(1, () => 'not serialisable'))).toBe('Row 1\nContents of row 1')
   })
 })

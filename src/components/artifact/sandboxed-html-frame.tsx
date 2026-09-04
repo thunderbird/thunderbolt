@@ -53,8 +53,9 @@ export type SandboxedHtmlFrameProps = {
    */
   onSelectionChange?: (selection: ArtifactTextSelection | null) => void
   /**
-   * Receives a resolver for marquee selection: hand it a rect in the artifact's
-   * own viewport coordinates and it answers with what that rect covers.
+   * Receives a resolver for element picking: hand it a point in the artifact's
+   * own viewport coordinates and it answers with the element under it, or null
+   * over padding and background.
    *
    * Passed out rather than exposed on a ref because the nonce and the frame
    * element are both private to this component, and the caller only ever needs
@@ -123,11 +124,11 @@ export const SandboxedHtmlFrame = ({
   onContextChangeRef.current = onContextChange
 
   /**
-   * Hand the caller a marquee resolver, once per document.
+   * Hand the caller an element-at resolver, once per document.
    *
    * Re-issued at each document boundary, so a resolver captured before a reload
    * cannot be answered by the new document — the outstanding query is aborted
-   * and resolves empty instead of returning the previous artifact's rows.
+   * and resolves empty instead of pointing at the previous artifact's DOM.
    *
    * The nonce alone could not do this: it comes from `useState` and is stable
    * for the component's lifetime, while `srcDoc` recomputes when the HTML

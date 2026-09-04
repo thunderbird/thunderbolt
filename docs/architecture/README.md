@@ -113,6 +113,7 @@ Assistant responses can embed rich interactive components (weather, link preview
 | `/v1/inference/*` | Gated LLM inference calls (rate-limited, provider-agnostic)   |
 | `/v1/pro/*`       | Backend proxies for widget data fetching (link preview, etc.) |
 | `/v1/mcp-proxy/*` | Model Context Protocol pass-through                           |
+| `/v1/mini-apps/*` | Mini App registry and per-app identity tokens                 |
 | `/v1/posthog/*`   | Analytics event relay                                         |
 | `/v1/swagger`     | OpenAPI spec (gated by `SWAGGER_ENABLED`)                     |
 

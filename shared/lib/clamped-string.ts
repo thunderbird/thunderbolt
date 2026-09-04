@@ -16,7 +16,7 @@ import { z } from 'zod'
  *
  * A `.max()` on such a field therefore rejects the whole **message**, not the
  * field. That produced the same bug over and over, always looking like the
- * feature simply not working: the error strip never appeared, the marquee
+ * feature simply not working: the error strip never appeared, element picking
  * resolved to nothing, `get_app_context` reported a busy page as silent, and a
  * long app name dropped the handshake so the app never connected at all. None
  * of them logged anything, because from the parser's point of view nothing

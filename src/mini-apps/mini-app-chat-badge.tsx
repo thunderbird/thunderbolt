@@ -48,9 +48,9 @@ export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
   // device where they're off, and `/apps/:appId` isn't even a route there — so
   // painting an app's iconography on the row points at a door that isn't there.
   //
-  // The gate is a wrapper rather than an early return inside the icon so a
-  // flag-off device doesn't mount `useMiniApps` at all, and never fires the
-  // registry fetch for a badge it isn't going to draw.
+  // A wrapper rather than an early return inside the icon, so a flag-off device
+  // doesn't mount `useMiniApps` at all. Not fetching is `useMiniApps`'s own job
+  // now — this only keeps a subscription off a row that draws nothing.
   if (!experimentalFeatureMiniApps.value) {
     return null
   }

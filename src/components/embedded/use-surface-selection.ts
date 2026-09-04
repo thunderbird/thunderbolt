@@ -24,7 +24,7 @@
 
 import { useCallback, useReducer, useRef } from 'react'
 
-import { toSelectionPassages } from './selection-passage'
+import { toSelectionPassage } from './selection-passage'
 import type { SurfaceHighlightedElement } from './types'
 
 export type SurfaceSelectionMode =
@@ -96,7 +96,7 @@ export const useSurfaceSelection = ({ query, onAsk }: SurfaceSelectionDeps) => {
   /** Take the highlighted element to the composer. */
   const askAboutElement = useCallback(
     (element: SurfaceHighlightedElement) => {
-      onAsk(toSelectionPassages([element]))
+      onAsk([toSelectionPassage(element)])
       dispatch({ type: 'dismissed' })
     },
     [onAsk],

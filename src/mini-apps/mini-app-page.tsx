@@ -218,7 +218,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * with a size gate above, so the split is the only layout that ships.
    */
   /** Nothing floats over the app while it is still connecting, or while the
-   *  marquee owns the surface. */
+   *  element picker owns the surface. */
   const showFloatingControls = status === 'ready' && mode.kind === 'idle'
 
   const chatPane = openChatId && (
@@ -365,8 +365,8 @@ export default function MiniAppPage() {
 
   /*
    * Mini Apps are desktop only, gated on viewport rather than platform: the
-   * split view, highlight-to-ask and the marquee are all pointer-first and need
-   * the room, and a 700px browser window is as unworkable as a phone.
+   * split view, highlight-to-ask and the element picker are all pointer-first
+   * and need the room, and a 700px browser window is as unworkable as a phone.
    * `useIsMobile` exempts the Tauri desktop app at any width, so narrowing the
    * desktop window keeps the feature.
    *

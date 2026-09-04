@@ -17,7 +17,6 @@ const settingsSchema = z
   .object({
     // API Keys
     fireworksApiKey: z.string().default(''),
-    mistralApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
@@ -182,7 +181,6 @@ const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
-    mistralApiKey: process.env.MISTRAL_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',

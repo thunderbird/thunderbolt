@@ -78,7 +78,6 @@ backend:
   aiSecrets:
     anthropicApiKeyBase64: ""
     fireworksApiKeyBase64: ""
-    mistralApiKeyBase64: ""
     thunderboltInferenceApiKeyBase64: ""
     exaApiKeyBase64: ""
   # -- Pod annotations applied to backend pods. Merged with top-level

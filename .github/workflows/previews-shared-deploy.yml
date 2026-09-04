@@ -106,7 +106,6 @@ jobs:
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
-          INPUT_MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           INPUT_THUNDERBOLT_INFERENCE_API_KEY: ${{ secrets.THUNDERBOLT_INFERENCE_API_KEY }}
           INPUT_EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
           INPUT_TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
@@ -127,7 +126,6 @@ jobs:
           fi
           [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
-          [ -n "$INPUT_MISTRAL_API_KEY" ]               && pulumi config set --secret mistralApiKey               "$INPUT_MISTRAL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" ] && pulumi config set --secret thunderboltInferenceApiKey "$INPUT_THUNDERBOLT_INFERENCE_API_KEY" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_EXA_API_KEY" ]                   && pulumi config set --secret exaApiKey                   "$INPUT_EXA_API_KEY"                   -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_TINFOIL_API_KEY" ]               && pulumi config set --secret tinfoilApiKey              "$INPUT_TINFOIL_API_KEY"               -s "$INPUT_STACK_NAME" --non-interactive

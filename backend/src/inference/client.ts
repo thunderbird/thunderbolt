@@ -11,7 +11,7 @@ import OpenAI from 'openai'
 import type { PostHog } from 'posthog-node'
 import type { ManagedInferenceIdentity } from './usage-ledger'
 
-export type InferenceProvider = 'fireworks' | 'mistral' | 'anthropic' | 'tinfoil'
+export type InferenceProvider = 'fireworks' | 'anthropic' | 'tinfoil'
 
 export type InferenceClient = {
   client: OpenAI | PostHogOpenAI
@@ -204,11 +204,6 @@ export const createInferenceFetch = ({
 let fireworksClient: OpenAI | PostHogOpenAI | null = null
 
 /**
- * Lazily initialized Mistral client
- */
-let mistralClient: OpenAI | PostHogOpenAI | null = null
-
-/**
  * Lazily initialized Anthropic client
  */
 let anthropicClient: OpenAI | PostHogOpenAI | null = null
@@ -244,41 +239,6 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
 
   if (!fetchFn && !posthogClient) {
     fireworksClient = client
-  }
-
-  return client
-}
-
-/**
- * Get the Mistral AI client using OpenAI-compatible API
- */
-const getMistralClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn, posthogClient } = options
-  if (mistralClient && !fetchFn && !posthogClient) {
-    return mistralClient
-  }
-
-  const settings = getSettings()
-
-  if (!settings.mistralApiKey) {
-    throw new Error('Mistral API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.mistralApiKey,
-    baseURL: 'https://api.mistral.ai/v1',
-    fetch: createInferenceFetch({ provider: 'mistral', fetchFn, logger, nowFn }),
-  }
-
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: posthogClient ?? getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  if (!fetchFn && !posthogClient) {
-    mistralClient = client
   }
 
   return client
@@ -328,7 +288,6 @@ export const getInferenceClient = (
   options: InferenceClientOptions = {},
 ): InferenceClient => {
   const clientMap = {
-    mistral: () => getMistralClient(options),
     anthropic: () => getAnthropicClient(options),
     fireworks: () => getFireworksClient(options),
   } satisfies Record<Exclude<InferenceProvider, 'tinfoil'>, () => OpenAI | PostHogOpenAI>
@@ -347,7 +306,6 @@ export const getInferenceClient = (
  */
 export const clearInferenceClientCache = () => {
   fireworksClient = null
-  mistralClient = null
   anthropicClient = null
 }
 

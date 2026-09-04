@@ -42,7 +42,6 @@ Set any subset; the app exposes each provider whose key is present.
 | ------------------------------- | ------------------------------------------- |
 | `ANTHROPIC_API_KEY`             | Anthropic (Claude)                          |
 | `FIREWORKS_API_KEY`             | Fireworks                                   |
-| `MISTRAL_API_KEY`               | Mistral                                     |
 | `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)     |
 | `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint |
 | `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint       |

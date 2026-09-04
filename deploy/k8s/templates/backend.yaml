@@ -127,11 +127,6 @@ spec:
                 secretKeyRef:
                   name: thunderbolt-secrets
                   key: fireworks-api-key
-            - name: MISTRAL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: thunderbolt-secrets
-                  key: mistral-api-key
             - name: THUNDERBOLT_INFERENCE_API_KEY
               valueFrom:
                 secretKeyRef:

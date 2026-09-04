@@ -77,7 +77,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       POSTHOG_HOST: process.env.POSTHOG_HOST,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
-      MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
     }
 
     capturedFetches = []
@@ -174,7 +173,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
     it.each([
       ['anthropic', 'ANTHROPIC_API_KEY'],
       ['fireworks', 'FIREWORKS_API_KEY'],
-      ['mistral', 'MISTRAL_API_KEY'],
     ] as const)('keeps an owned PostHog client out of the %s provider cache', (provider, apiKeyName) => {
       process.env[apiKeyName] = 'test-provider-key'
       delete process.env.POSTHOG_API_KEY

@@ -25,7 +25,6 @@ const signToken = (token: string): string => {
 
 const powersyncSettings: Settings = {
   fireworksApiKey: '',
-  mistralApiKey: '',
   anthropicApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',

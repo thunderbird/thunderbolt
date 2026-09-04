@@ -23,7 +23,6 @@ type Secrets = {
   powersyncDbPassword: pulumi.Output<string>
   anthropicApiKey: pulumi.Output<string>
   fireworksApiKey: pulumi.Output<string>
-  mistralApiKey: pulumi.Output<string>
   thunderboltInferenceApiKey: pulumi.Output<string>
   exaApiKey: pulumi.Output<string>
   tinfoilApiKey: pulumi.Output<string>
@@ -390,9 +389,6 @@ export const createServices = (args: ServiceArgs) => {
     fireworksApiKey: new aws.secretsmanager.Secret(`${name}-fireworks-api-key`, {
       tags: { Name: `${name}-fireworks-api-key` },
     }),
-    mistralApiKey: new aws.secretsmanager.Secret(`${name}-mistral-api-key`, {
-      tags: { Name: `${name}-mistral-api-key` },
-    }),
     thunderboltInferenceApiKey: new aws.secretsmanager.Secret(`${name}-tb-inference-api-key`, {
       tags: { Name: `${name}-tb-inference-api-key` },
     }),
@@ -428,10 +424,6 @@ export const createServices = (args: ServiceArgs) => {
     secretId: backendSecrets.fireworksApiKey.id,
     secretString: args.secrets.fireworksApiKey,
   })
-  new aws.secretsmanager.SecretVersion(`${name}-mistral-api-key-version`, {
-    secretId: backendSecrets.mistralApiKey.id,
-    secretString: args.secrets.mistralApiKey,
-  })
   new aws.secretsmanager.SecretVersion(`${name}-tb-inference-api-key-version`, {
     secretId: backendSecrets.thunderboltInferenceApiKey.id,
     secretString: args.secrets.thunderboltInferenceApiKey,
@@ -461,7 +453,6 @@ export const createServices = (args: ServiceArgs) => {
           backendSecrets.powersyncDbPassword.arn,
           backendSecrets.anthropicApiKey.arn,
           backendSecrets.fireworksApiKey.arn,
-          backendSecrets.mistralApiKey.arn,
           backendSecrets.thunderboltInferenceApiKey.arn,
           backendSecrets.exaApiKey.arn,
           backendSecrets.tinfoilApiKey.arn,
@@ -522,7 +513,6 @@ export const createServices = (args: ServiceArgs) => {
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: backendSecrets.powersyncJwtSecret.arn },
           { name: 'ANTHROPIC_API_KEY', valueFrom: backendSecrets.anthropicApiKey.arn },
           { name: 'FIREWORKS_API_KEY', valueFrom: backendSecrets.fireworksApiKey.arn },
-          { name: 'MISTRAL_API_KEY', valueFrom: backendSecrets.mistralApiKey.arn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: backendSecrets.thunderboltInferenceApiKey.arn },
           { name: 'EXA_API_KEY', valueFrom: backendSecrets.exaApiKey.arn },
           { name: 'TINFOIL_API_KEY', valueFrom: backendSecrets.tinfoilApiKey.arn },

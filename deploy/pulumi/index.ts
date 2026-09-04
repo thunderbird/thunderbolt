@@ -73,7 +73,6 @@ if (isSharedStack) {
     aiSecrets: {
       anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
       fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
-      mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
       thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
       exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
       tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),
@@ -240,7 +239,6 @@ if (isSharedStack) {
     // AI provider keys — empty default so enterprise stacks don't need them set.
     anthropicApiKey: config.getSecret('anthropicApiKey') ?? pulumi.output(''),
     fireworksApiKey: config.getSecret('fireworksApiKey') ?? pulumi.output(''),
-    mistralApiKey: config.getSecret('mistralApiKey') ?? pulumi.output(''),
     thunderboltInferenceApiKey: config.getSecret('thunderboltInferenceApiKey') ?? pulumi.output(''),
     exaApiKey: config.getSecret('exaApiKey') ?? pulumi.output(''),
     tinfoilApiKey: config.getSecret('tinfoilApiKey') ?? pulumi.output(''),

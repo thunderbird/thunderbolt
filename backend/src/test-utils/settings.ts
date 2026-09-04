@@ -11,7 +11,6 @@ import type { Settings } from '@/config/settings'
  */
 export const createTestSettings = (overrides: Partial<Settings> = {}): Settings => ({
   fireworksApiKey: '',
-  mistralApiKey: '',
   anthropicApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',

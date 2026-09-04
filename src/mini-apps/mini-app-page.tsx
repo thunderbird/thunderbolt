@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { setPendingPrompt } from '@/chats/pending-prompt-store'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
@@ -30,11 +31,6 @@ import { MiniAppChatHistory } from './mini-app-chat-history'
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
 const appPanelSize = '66%'
 const chatPanelSize = '34%'
-
-/** Composer drafts are stored as plain text under this key (see `use-draft-input.ts`). */
-const seedComposerDraft = (chatThreadId: string, prompt: string) => {
-  localStorage.setItem(`draft:${chatThreadId}`, prompt)
-}
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const { t } = useLingui()
@@ -116,13 +112,18 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * something. A prompt seeds whichever chat ends up on screen, new or
    * existing; the cost is overwriting an unsent draft in the open chat, which
    * is a far smaller loss than the thread it would otherwise have replaced.
+   *
+   * The seed goes through the pending-prompt channel rather than the
+   * `draft:<id>` localStorage key, which reached the composer in neither case:
+   * a mounted composer never re-reads storage, and an unsaved chat doesn't read
+   * it at all. See `pending-prompt-store.ts`.
    */
   const handleChatOpen = useCallback(
     (prompt: string | undefined) => {
       const existing = openChatIdRef.current ?? lastChatIdRef.current
       if (existing) {
         if (prompt) {
-          seedComposerDraft(existing, prompt)
+          setPendingPrompt(existing, prompt)
         }
         // Only re-open when it isn't already on screen; reusing the *open* chat
         // must not churn the URL and remount the session under the user.
@@ -144,7 +145,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       }
       const id = uuidv7()
       if (prompt) {
-        seedComposerDraft(id, prompt)
+        setPendingPrompt(id, prompt)
       }
       setDraftChatId(id)
       setOpenChatParam(null)

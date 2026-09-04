@@ -6,6 +6,7 @@ import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availa
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { useConsumePendingPrompt } from '@/chats/pending-prompt-store'
 import { useCreateItem } from '@/components/create-item/context'
 import { estimateTokensForText } from '@/ai/tokenizers'
 import { useContextTracking as useContextTracking_default } from '@/hooks/use-context-tracking'
@@ -261,6 +262,10 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [showOverflowModal, setShowOverflowModal] = useState(false)
     const isNewChat = !chatThread
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
+    // Composer text proposed from outside this subtree (a Mini App's
+    // `ui/open-chat`). Delivered once and dropped; it replaces the draft, which
+    // is the documented trade — see `pending-prompt-store.ts`.
+    useConsumePendingPrompt(chatThreadId, setInput)
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
     // Quote-reply passages pulled in from the "Reply" button on a response. Held

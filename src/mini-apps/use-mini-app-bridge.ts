@@ -117,7 +117,10 @@ const connectionReducer = (state: ConnectionState, action: ConnectionAction): Co
       // clear theirs on document change; this is the same moment.
       return { status: 'ready', epoch: state.epoch + 1, error: null }
     case 'documentChanged':
-      return { ...state, status: 'connecting' }
+      // Same reasoning as `handshaked`: the error belonged to the document that
+      // just went away, and leaving it pinned over the one now loading blames
+      // the new page for the old page's failure.
+      return { ...state, status: 'connecting', error: null }
     case 'timedOut':
       return { ...state, status: 'unreachable' }
     case 'reloading':

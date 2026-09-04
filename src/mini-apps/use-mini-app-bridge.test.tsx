@@ -390,6 +390,16 @@ describe('useMiniAppBridge message handling', () => {
     expect(useMiniAppStore.getState().context).toBeNull()
   })
 
+  it('clears a runtime error when a new document loads without handshaking', async () => {
+    const { bridge, send, envelope, handshake } = mountBridge()
+    await handshake()
+    await send(envelope({ method: 'ui/notifications/error', params: { message: 'Chart failed to render' } }))
+    act(() => bridge.current?.handleFrameLoad())
+    act(() => bridge.current?.handleFrameLoad())
+
+    expect(bridge.current?.runtimeError).toBeNull()
+  })
+
   // A guest posts `initialize` from its script, which runs before the frame's
   // load event reaches us — so the first load must not undo the handshake.
   it('stays ready through the load event of the document that handshaked', async () => {

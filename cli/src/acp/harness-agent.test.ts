@@ -24,6 +24,15 @@ import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
 import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
 
+const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
+  try {
+    await operation
+  } catch (error) {
+    return error
+  }
+  throw new Error('Expected operation to reject.')
+}
+
 const selection = { providerId: 'selected-profile', model: 'selected-model' }
 const config: CommandSyntaxServeConfig = {
   cwd: process.cwd(),
@@ -307,7 +316,7 @@ describe('createHarnessAgent (ACP server)', () => {
       ),
     )
 
-    const failure = await controlled.agent.newSession({ cwd: '/', mcpServers: [] }).catch((error: Error) => error)
+    const failure = await captureRejection(controlled.agent.newSession({ cwd: '/', mcpServers: [] }))
 
     expect(failure).toBeInstanceOf(AggregateError)
     if (!(failure instanceof AggregateError)) throw new Error('expected aggregate wiring failure')

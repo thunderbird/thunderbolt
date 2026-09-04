@@ -49,6 +49,7 @@ describe('prepareProviderBinding', () => {
       const controller = new AbortController()
       const started = Promise.withResolvers<void>()
       const result = Promise.withResolvers<PreparedPiBinding>()
+      const disposed = Promise.withResolvers<void>()
       let receivedSignal: AbortSignal | undefined
       let disposals = 0
       const binding: PreparedPiBinding = {
@@ -61,6 +62,7 @@ describe('prepareProviderBinding', () => {
         observePromptError: async () => {},
         dispose: async () => {
           disposals += 1
+          disposed.resolve()
         },
       }
       const runtime: ProviderRuntime = {
@@ -92,7 +94,7 @@ describe('prepareProviderBinding', () => {
       })
       expect(receivedSignal?.aborted).toBeTrue()
       result.resolve(binding)
-      await Bun.sleep(0)
+      await disposed.promise
       expect(disposals).toBe(1)
     },
   )

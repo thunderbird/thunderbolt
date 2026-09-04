@@ -14,6 +14,15 @@ import {
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { HarnessBindingTransaction, HarnessRuntime, PreparedPiBinding } from './types.ts'
 
+const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
+  try {
+    await operation
+  } catch (error) {
+    return error
+  }
+  throw new Error('Expected operation to reject.')
+}
+
 type PackageManifest = {
   readonly dependencies?: Readonly<Record<string, string>>
 }
@@ -501,15 +510,15 @@ describe('HarnessRuntime', () => {
     const models = active.installedModels[0]
     events.length = 0
 
-    const failure = await runtime
-      .deactivate(
+    const failure = await captureRejection(
+      runtime.deactivate(
         async () => {
           events.push('persist')
           throw persistenceFailure
         },
         { onPersistFailure: 'remain-deactivated' },
-      )
-      .catch((error: Error) => error)
+      ),
+    )
 
     expect(failure).toBeInstanceOf(AggregateError)
     if (!(failure instanceof AggregateError)) throw new Error('expected aggregate deactivation failure')

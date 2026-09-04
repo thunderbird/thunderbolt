@@ -44,16 +44,24 @@ export const fetchManagedCatalog: ManagedCatalogLoader = async (backendUrl, fetc
   const init = { method: 'GET', headers: backendHeaders({ accept: 'application/json' }), redirect: 'error', signal } as const
   const url = catalogUrl(backendUrl)
   // Fetch failure classes are runtime-specific (Bun rejects with a plain Error), so both boundaries map every rejection.
-  const response = await abortable(fetchFn ? fetchFn(url, init) : fetch(url, init), signal).catch(() => {
-    throw networkError()
-  })
+  const response = await (async (): Promise<Response> => {
+    try {
+      return await abortable(fetchFn ? fetchFn(url, init) : fetch(url, init), signal)
+    } catch {
+      throw networkError()
+    }
+  })()
   if (!response.ok) {
     if (response.body) void settleBestEffort(response.body.cancel())
     throw networkError(`Managed model catalog request failed with HTTP ${response.status}`)
   }
-  const body = await response.text().catch(() => {
-    throw networkError()
-  })
+  const body = await (async (): Promise<string> => {
+    try {
+      return await response.text()
+    } catch {
+      throw networkError()
+    }
+  })()
   try {
     const parsed: unknown = JSON.parse(body)
     if (!isRecord(parsed) || !isRecord(parsed.defaults) || !isRecord(parsed.defaults.models)) {

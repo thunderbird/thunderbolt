@@ -64,7 +64,7 @@ export const createHarnessRuntime = async (
     const unsubscribeWebSearch = harness.on('before_provider_payload', ({ model: requestModel, payload }) => ({
       payload: configureNativeWebSearch(requestModel, payload),
     }))
-    return createPiHarnessRuntime({
+    return await createPiHarnessRuntime({
       harness,
       models,
       binding,

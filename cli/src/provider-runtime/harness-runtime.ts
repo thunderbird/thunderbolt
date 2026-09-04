@@ -72,10 +72,10 @@ const cleanupBindingState = async (state: BindingCleanupState): Promise<Error[]>
  * Wrap one Pi harness and mutable registry with binding and transaction ownership.
  * The initial binding must already be installed in `models`.
  */
-export const createPiHarnessRuntime = (options: PiHarnessRuntimeOptions): HarnessRuntime => {
+export const createPiHarnessRuntime = async (options: PiHarnessRuntimeOptions): Promise<HarnessRuntime> => {
   const { harness, models } = options
+  await harness.setSteeringMode('one-at-a-time')
   const initialUnsubscribe = options.binding.attach(harness)
-  void harness.setSteeringMode('one-at-a-time')
   let activeBinding: BindingCleanupState | null = createBindingCleanupState(options.binding, initialUnsubscribe)
   const retiredBindings = new Set<BindingCleanupState>()
   const runtimeSubscriptions = new Set<() => void>()

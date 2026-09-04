@@ -213,6 +213,10 @@ export const runCli = async (
       case 'iroh-admin':
         await dependencies.runIrohAdmin(parsed.action)
         return
+      default: {
+        const unsupported: never = parsed
+        throw new Error(`Unsupported command syntax: ${JSON.stringify(unsupported)}`)
+      }
     }
   } catch (error) {
     dependencies.writeError(`thunderbolt: ${toError(error).message}\n`)

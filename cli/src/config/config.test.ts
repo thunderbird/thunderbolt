@@ -7,10 +7,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { defaultModelId } from '../../../shared/defaults/models.ts'
+import { childProcessBarrierModuleUrl, spawnBarrierChild } from '../lib/child-process-test-barrier.ts'
 import type { CliConfig } from '../provider-runtime/types.ts'
 import { loadConfig, saveConfig } from './config.ts'
 
 const tempDirs: string[] = []
+const configModuleUrl = new URL('./config.ts', import.meta.url).href
 
 /** Allocates one nested config path and tracks its temp root for cleanup. */
 const temporaryConfigPath = async (): Promise<string> => {
@@ -24,6 +26,26 @@ const writeRawConfig = async (path: string, contents: string): Promise<void> => 
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, contents)
 }
+
+/** Starts one independent config writer that loads before waiting at the shared barrier. */
+const spawnConfigWriter = (path: string, activeProviderId: string) =>
+  spawnBarrierChild(
+    `
+      import { waitForParentRelease } from ${JSON.stringify(childProcessBarrierModuleUrl)}
+      import { loadConfig, saveConfig } from ${JSON.stringify(configModuleUrl)}
+      const [path, activeProviderId] = process.argv.slice(1)
+      const config = await loadConfig(path)
+      if (config === null) throw new Error('missing config')
+      await waitForParentRelease()
+      try {
+        await saveConfig({ ...config, activeProviderId: activeProviderId === 'null' ? null : activeProviderId }, path)
+        console.log('saved')
+      } catch (error) {
+        console.log(error instanceof Error ? error.message : String(error))
+      }
+    `,
+    [path, activeProviderId],
+  )
 
 /** Creates a representative valid v3 config. */
 const createConfig = (): CliConfig => ({
@@ -54,6 +76,19 @@ describe('CLI config v3 persistence', () => {
     await saveConfig(config, path)
 
     expect(await loadConfig(path)).toEqual(config)
+  })
+
+  test('rejects one of two cross-process writers that loaded the same predecessor', async () => {
+    const path = await temporaryConfigPath()
+    await saveConfig(createConfig(), path)
+    const writers = await Promise.all([spawnConfigWriter(path, 'thunderbolt'), spawnConfigWriter(path, 'null')])
+    writers.forEach((writer) => writer.release())
+
+    const outputs = await Promise.all(writers.map((writer) => writer.result()))
+    expect(outputs.sort()).toEqual(['Provider configuration changed on disk. Retry the command.', 'saved'])
+    const persisted = await loadConfig(path)
+    if (persisted === null) throw new Error('one config writer must persist')
+    expect(['thunderbolt', null]).toContain(persisted.activeProviderId)
   })
 
   test('roundtrips Fireworks protocol metadata only on Fireworks profiles', async () => {

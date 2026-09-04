@@ -17,10 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { toError } from '@earendil-works/pi-agent-core'
 import { thunderboltHomeDir } from '../paths.ts'
-import {
-  readFileOrNull,
-  writeSecureFile,
-} from './secure-fs.ts'
+import { readFileOrNull, withSecureFileLock, writeSecureFile } from './secure-fs.ts'
 
 let dir: string
 
@@ -44,6 +41,74 @@ const getRejectedError = async (action: () => Promise<void>): Promise<Error | nu
     return toError(error)
   }
 }
+
+describe('withSecureFileLock', () => {
+  it('reclaims a lock whose recorded owner process no longer exists', async () => {
+    const path = join(dir, 'credential')
+    await writeFile(`${path}.lock`, '2147483647\n')
+
+    expect(await withSecureFileLock(path, async () => 'acquired')).toBe('acquired')
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('never overlaps contenders that both observe the same stale lock', async () => {
+    const path = join(dir, 'credential')
+    const lockPath = `${path}.lock`
+    await writeFile(lockPath, '2147483647\n')
+    const bothStaleReads = Promise.withResolvers<void>()
+    const firstEntered = Promise.withResolvers<void>()
+    const contenderAdvanced = Promise.withResolvers<void>()
+    const releaseFirst = Promise.withResolvers<void>()
+    const readOpens = { count: 0 }
+    const mainUnlinks = { count: 0 }
+    const active = { count: 0, max: 0 }
+    const readFlags = constants.O_RDONLY | constants.O_NOFOLLOW
+    const realOpen = fsPromises.open
+    const realUnlink = fsPromises.unlink
+    const openSpy = spyOn(fsPromises, 'open').mockImplementation(async (candidate, flags, mode) => {
+      const handle = await realOpen(candidate, flags, mode)
+      if (String(candidate) !== lockPath || Number(flags) !== readFlags) return handle
+      readOpens.count += 1
+      if (readOpens.count === 2) bothStaleReads.resolve()
+      if (readOpens.count <= 2) await bothStaleReads.promise
+      else contenderAdvanced.resolve()
+      return handle
+    })
+    const unlinkSpy = spyOn(fsPromises, 'unlink').mockImplementation(async (candidate) => {
+      if (String(candidate) !== lockPath) return realUnlink(candidate)
+      const index = mainUnlinks.count
+      mainUnlinks.count += 1
+      if (index === 1) await firstEntered.promise
+      return realUnlink(candidate)
+    })
+    const operation = async (): Promise<void> => {
+      active.count += 1
+      active.max = Math.max(active.max, active.count)
+      if (active.count === 1) {
+        firstEntered.resolve()
+        await releaseFirst.promise
+      } else {
+        contenderAdvanced.resolve()
+      }
+      active.count -= 1
+    }
+
+    try {
+      const contenders = [withSecureFileLock(path, operation), withSecureFileLock(path, operation)]
+      await firstEntered.promise
+      await contenderAdvanced.promise
+      const maxActive = active.max
+      releaseFirst.resolve()
+      await Promise.all(contenders)
+
+      expect(maxActive).toBe(1)
+    } finally {
+      releaseFirst.resolve()
+      openSpy.mockRestore()
+      unlinkSpy.mockRestore()
+    }
+  })
+})
 
 describe('readFileOrNull', () => {
   it('returns null for a non-existent file (expected first-run, not a failure)', async () => {
@@ -193,9 +258,7 @@ describe('writeSecureFile', () => {
     await writeFile(destinationFile, 'outside-original')
     await symlink(destination, linkedAncestor)
 
-    const error = await getRejectedError(() =>
-      writeSecureFile(join(stateRoot, 'credentials.json'), 'replacement'),
-    )
+    const error = await getRejectedError(() => writeSecureFile(join(stateRoot, 'credentials.json'), 'replacement'))
 
     expect(error).toBeInstanceOf(Error)
     expect(error?.message).toContain('symlink')

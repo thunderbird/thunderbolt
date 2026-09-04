@@ -28,6 +28,8 @@ const dirMode = 0o700
 const readFileFlags = constants.O_RDONLY | constants.O_NOFOLLOW
 const readDirectoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
 const createTempFlags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW
+const lockRetryMs = 10
+const malformedLockStaleMs = 60_000
 
 /** Reads path metadata without following the final path component. */
 const lstatOrNull = async (path: string): Promise<Stats | null> => {
@@ -134,6 +136,121 @@ const writeExclusiveTempFile = async (path: string, contents: string): Promise<v
     await handle.chmod(fileMode)
   } finally {
     await handle.close()
+  }
+}
+
+/** Returns whether a recorded lock owner no longer exists. */
+const isProcessGone = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return false
+  } catch (error) {
+    const failure = toError(error)
+    if ('code' in failure && failure.code === 'ESRCH') return true
+    if ('code' in failure && failure.code === 'EPERM') return false
+    throw error
+  }
+}
+
+/** Reads a contended lock while treating a replaced regular entry as a retry. */
+const readLockFileOrNull = async (path: string): Promise<string | null> => {
+  const expected = await lstatOrNull(path)
+  if (expected === null) return null
+  assertRegularFile(path, expected)
+  const handle = await (async (): Promise<FileHandle | null> => {
+    try {
+      return await fsPromises.open(path, readFileFlags)
+    } catch (error) {
+      const failure = toError(error)
+      if ('code' in failure && failure.code === 'ENOENT') return null
+      throw error
+    }
+  })()
+  if (handle === null) return null
+  try {
+    const opened = await handle.stat()
+    assertRegularFile(path, opened)
+    if (expected.dev !== opened.dev || expected.ino !== opened.ino) return null
+    await handle.chmod(fileMode)
+    return await handle.readFile({ encoding: 'utf8' })
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Returns whether an abandoned or malformed lock file can be removed. */
+const isStaleLock = async (path: string): Promise<boolean> => {
+  const contents = await readLockFileOrNull(path)
+  if (contents === null) return true
+  const pid = Number(contents.trim())
+  if (Number.isSafeInteger(pid) && pid > 0) return isProcessGone(pid)
+  const stats = await lstatOrNull(path)
+  return stats !== null && Date.now() - stats.mtimeMs >= malformedLockStaleMs
+}
+
+/** Creates one lock file and cleans it up if recording ownership fails. */
+const createSecureFileLock = async (path: string): Promise<FileHandle> => {
+  const handle = await fsPromises.open(path, createTempFlags, fileMode)
+  try {
+    await handle.writeFile(`${process.pid}\n`, 'utf8')
+    return handle
+  } catch (error) {
+    await handle.close()
+    await fsPromises.rm(path, { force: true })
+    throw error
+  }
+}
+
+/** Releases only the same lock entry identified by the retained descriptor. */
+const releaseSecureFileLock = async (path: string, handle: FileHandle): Promise<void> => {
+  const owned = await handle.stat()
+  await handle.close()
+  const current = await lstatOrNull(path)
+  if (current !== null && current.dev === owned.dev && current.ino === owned.ino) await fsPromises.unlink(path)
+}
+
+/** Rechecks and removes one stale lock while holding its exclusive reclaimer lock. */
+const reclaimStaleLock = async (path: string): Promise<void> => {
+  const reclaimerPath = `${path}.reclaim`
+  const reclaimer = await acquireSecureFileLock(reclaimerPath)
+  try {
+    if (!(await isStaleLock(path))) return
+    try {
+      await fsPromises.unlink(path)
+    } catch (error) {
+      const failure = toError(error)
+      if (!('code' in failure) || failure.code !== 'ENOENT') throw error
+    }
+  } finally {
+    await releaseSecureFileLock(reclaimerPath, reclaimer)
+  }
+}
+
+/** Creates and retains one exclusive lock file descriptor. */
+const acquireSecureFileLock = async (path: string): Promise<FileHandle> => {
+  try {
+    return await createSecureFileLock(path)
+  } catch (error) {
+    const failure = toError(error)
+    if (!('code' in failure) || failure.code !== 'EEXIST') throw error
+    if (await isStaleLock(path)) {
+      await reclaimStaleLock(path)
+      return acquireSecureFileLock(path)
+    }
+    await new Promise((resolve) => setTimeout(resolve, lockRetryMs))
+    return acquireSecureFileLock(path)
+  }
+}
+
+/** Runs a secure state-file transaction under an exclusive cross-process lock. */
+export const withSecureFileLock = async <Value>(path: string, operation: () => Promise<Value>): Promise<Value> => {
+  const lockPath = `${path}.lock`
+  await secureDirectoryPath(dirname(lockPath), true)
+  const handle = await acquireSecureFileLock(lockPath)
+  try {
+    return await operation()
+  } finally {
+    await releaseSecureFileLock(lockPath, handle)
   }
 }
 

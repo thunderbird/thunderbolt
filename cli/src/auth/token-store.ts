@@ -42,27 +42,6 @@ export type CompareAndSetAuth = (
 
 const cacheSecretPattern = /^[0-9a-f]{64}$/
 const authKeys = ['version', 'backendUrl', 'deviceId', 'userCacheSecret', 'registration', 'bearer'] as const
-type AuthMutationQueue = { readonly queue: SerialQueue; pending: number }
-const authMutationQueues = new Map<string, AuthMutationQueue>()
-
-/** Serializes every auth mutation and legacy migration for one durable file path. */
-const serializeAuthState = <Value>(path: string, operation: () => Promise<Value>): Promise<Value> => {
-  const entry = authMutationQueues.get(path) ?? { queue: createSerialQueue(), pending: 0 }
-  entry.pending += 1
-  authMutationQueues.set(path, entry)
-  return (async () => {
-    try {
-      return await entry.queue.run(operation)
-    } finally {
-      entry.pending -= 1
-      if (entry.pending === 0) authMutationQueues.delete(path)
-    }
-  })()
-}
-
-/** Narrows the server-reserved canonical CLI device namespace. */
-const isCliDeviceId = (value: unknown): value is `cli-${string}` =>
-  typeof value === 'string' && value.startsWith('cli-') && uuidPattern.test(value.slice(4))
 
 /** Reconstructs the strict v2 auth schema from untrusted JSON. */
 const parseAuthV2 = (value: unknown): CliAuth | null => {
@@ -159,13 +138,13 @@ const loadAuthConfigUnlocked = async (path: string): Promise<CliAuth | null> => 
 
 /** Loads v2 auth state and singleflights historical bearer migration per durable path. */
 export const loadAuthConfig = (path: string = authConfigPath()): Promise<CliAuth | null> =>
-  serializeAuthState(path, () => loadAuthConfigUnlocked(path))
+  withSecureFileLock(path, () => loadAuthConfigUnlocked(path))
 
 /** Persists only frozen v2 auth state. */
 export const storeAuthConfig = (auth: CliAuth, path: string = authConfigPath()): Promise<void> => {
   const canonical = parseAuthV2(auth)
   if (canonical === null) throw createStateError('auth config', 'config-invalid', path)
-  return serializeAuthState(path, () => writeSecureFile(path, `${JSON.stringify(canonical, null, 2)}\n`))
+  return withSecureFileLock(path, () => writeSecureFile(path, `${JSON.stringify(canonical, null, 2)}\n`))
 }
 
 /** Conditionally replaces durable auth while holding the same lane as stores, clears, and migration. */
@@ -174,7 +153,7 @@ export const compareAndSetAuthConfig = (
   next: CliAuth | null,
   path: string = authConfigPath(),
 ): Promise<boolean> =>
-  serializeAuthState(path, async () => {
+  withSecureFileLock(path, async () => {
     const current = await loadAuthConfigUnlocked(path)
     if (!authMatchesExpectation(current, expected)) return false
 
@@ -190,7 +169,7 @@ export const compareAndSetAuthConfig = (
 
 /** Clears the entire stored installation without following symlinks. */
 export const clearAuthConfig = (path: string = authConfigPath()): Promise<void> =>
-  serializeAuthState(path, () => removeSecureFile(path))
+  withSecureFileLock(path, () => removeSecureFile(path))
 
 /**
  * Resolves the effective managed-inference credential. Environment PATs have

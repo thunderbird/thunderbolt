@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { childProcessBarrierModuleUrl, spawnBarrierChild } from '../lib/child-process-test-barrier.ts'
 import type { CliAuth } from '../provider-runtime/types.ts'
 import { defaultCloudUrl } from './config.ts'
 import {
@@ -19,6 +20,7 @@ import {
 } from './token-store.ts'
 
 let home: string
+const tokenStoreModuleUrl = new URL('./token-store.ts', import.meta.url).href
 
 /** Resolves the isolated auth path used by the current test. */
 const authPath = (): string => join(home, 'auth.json')
@@ -31,6 +33,27 @@ const storeAuthConfig = (auth: CliAuth) => storeStoredAuth(auth, authPath())
 const clearAuthConfig = () => clearStoredAuth(authPath())
 const compareAndSetAuthConfig = (expected: AuthStateExpectation, next: CliAuth | null) =>
   compareAndSetStoredAuth(expected, next, authPath())
+
+/** Starts one independent auth writer waiting to compare-and-set the same predecessor. */
+const spawnAuthWriter = (path: string, expected: CliAuth, next: CliAuth) =>
+  spawnBarrierChild(
+    `
+      import { waitForParentRelease } from ${JSON.stringify(childProcessBarrierModuleUrl)}
+      import { compareAndSetAuthConfig } from ${JSON.stringify(tokenStoreModuleUrl)}
+      const [path, expectedJson, nextJson] = process.argv.slice(1)
+      await waitForParentRelease()
+      try {
+        console.log(await compareAndSetAuthConfig(
+          { kind: 'exact', auth: JSON.parse(expectedJson) },
+          JSON.parse(nextJson),
+          path,
+        ))
+      } catch (error) {
+        console.log(error instanceof Error ? error.message : String(error))
+      }
+    `,
+    [path, JSON.stringify(expected), JSON.stringify(next)],
+  )
 
 /** Creates a representative valid registered auth installation. */
 const createAuth = (): Extract<CliAuth, { bearer: string }> => ({
@@ -120,6 +143,23 @@ describe('token store v2', () => {
     expect([registeredA, registeredB].map((candidate) => JSON.stringify(candidate))).toContain(JSON.stringify(durable))
   })
 
+  it('allows only one cross-process compare-and-set writer to match the predecessor', async () => {
+    const pending: CliAuth = { ...createAuth(), registration: 'authentication-required', bearer: null }
+    await storeAuthConfig(pending)
+    const writers = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        spawnAuthWriter(authPath(), pending, {
+          ...createAuth(),
+          bearer: `session-${index}`,
+        }),
+      ),
+    )
+    writers.forEach((writer) => writer.release())
+
+    const outputs = await Promise.all(writers.map((writer) => writer.result()))
+    expect(outputs.sort()).toEqual(['false', 'false', 'false', 'false', 'false', 'false', 'false', 'true'])
+  })
+
   it('rejects a symlink target on clear without changing its destination', async () => {
     const destination = join(home, 'destination')
     await writeFile(destination, 'original')
@@ -200,10 +240,12 @@ describe('resolveAccountCredential', () => {
     await writeFile(authPath(), '{invalid-stored-auth')
 
     expect(
-      await resolveAccountCredential(environment({
-        THUNDERBOLT_TOKEN: 'pat-xyz',
-        THUNDERBOLT_CLOUD_URL: 'https://ci.example/v1',
-      })),
+      await resolveAccountCredential(
+        environment({
+          THUNDERBOLT_TOKEN: 'pat-xyz',
+          THUNDERBOLT_CLOUD_URL: 'https://ci.example/v1',
+        }),
+      ),
     ).toEqual({ type: 'pat', backendUrl: 'https://ci.example/v1', token: 'pat-xyz' })
   })
 

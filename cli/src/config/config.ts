@@ -10,7 +10,7 @@ import { defaultModelId } from '../../../shared/defaults/models.ts'
 import { isBuiltinProvider } from '../agent/types.ts'
 import type { BuiltinProvider } from '../agent/types.ts'
 import { hasExactKeys, isNonblankString, isRecord, parseJson, uuidPattern } from '../lib/json.ts'
-import { readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
+import { readFileOrNull, withSecureFileLock, writeSecureFile } from '../lib/secure-fs.ts'
 import { createStateError } from '../lib/state-error.ts'
 import { configPath } from '../paths.ts'
 import type { ByokProfile, CliConfig as CliConfigV3 } from '../provider-runtime/types.ts'
@@ -23,6 +23,7 @@ export type LegacyCliConfig =
   | { readonly provider: BuiltinProvider; readonly model: string; readonly apiKey?: string }
 
 type ParsedConfig = { readonly config: CliConfigV3; readonly migrated: boolean }
+const observedConfigContents = new Map<string, string | null>()
 
 const baseProfileKeys = ['id', 'label', 'defaultModel', 'apiKey', 'credentialStatus', 'provider'] as const
 const isV3CredentialStatus = (status: unknown): status is ByokProfile['credentialStatus'] =>
@@ -191,18 +192,32 @@ const parseStoredConfig = (contents: string, path: string): ParsedConfig => {
 }
 
 /** Loads strict v3 state and atomically migrates historical single-profile state. */
-export const loadConfig = async (path: string = configPath()): Promise<CliConfigV3 | null> => {
-  const contents = await readFileOrNull(path)
-  if (contents === null) return null
+export const loadConfig = (path: string = configPath()): Promise<CliConfigV3 | null> =>
+  withSecureFileLock(path, async () => {
+    const contents = await readFileOrNull(path)
+    if (contents === null) {
+      observedConfigContents.set(path, null)
+      return null
+    }
 
-  const parsed = parseStoredConfig(contents, path)
-  if (parsed.migrated) await saveConfig(parsed.config, path)
-  return parsed.config
-}
+    const parsed = parseStoredConfig(contents, path)
+    const canonicalContents = parsed.migrated ? `${JSON.stringify(parsed.config, null, 2)}\n` : contents
+    if (parsed.migrated) await writeSecureFile(path, canonicalContents)
+    observedConfigContents.set(path, canonicalContents)
+    return parsed.config
+  })
 
 /** Validates and atomically persists strict v3 state. */
 export const saveConfig = async (config: CliConfigV3, path: string = configPath()): Promise<void> => {
   const canonical = parseConfig(config)
   if (canonical === null) throw createStateError('config', 'config-invalid', path)
-  await writeSecureFile(path, `${JSON.stringify(canonical, null, 2)}\n`)
+  const contents = `${JSON.stringify(canonical, null, 2)}\n`
+  await withSecureFileLock(path, async () => {
+    const expectedContents = observedConfigContents.get(path)
+    if (expectedContents !== undefined && (await readFileOrNull(path)) !== expectedContents) {
+      throw new Error('Provider configuration changed on disk. Retry the command.')
+    }
+    await writeSecureFile(path, contents)
+    observedConfigContents.set(path, contents)
+  })
 }

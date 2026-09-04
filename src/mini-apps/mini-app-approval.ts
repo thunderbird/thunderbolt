@@ -16,6 +16,7 @@
  */
 
 import { useChatStore, type PendingMiniAppApproval } from '@/chats/chat-store'
+import type { MiniAppApprovalOutcome } from './approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import type { MiniAppDefinition } from './registry'
 
@@ -39,8 +40,10 @@ export type RequestMiniAppApprovalOptions = {
 /**
  * Block until the user approves this call, denying on a deadline.
  *
- * Resolves false rather than hanging when there is nothing to ask: no live
- * session for the originating chat, or the deadline passing.
+ * Always settles, and says how: `denied` when the user refuses, `expired` when
+ * the deadline passes, `unavailable` when there was nobody to ask. The caller
+ * needs the difference — three of the four endings never reached the user, and
+ * describing those as a refusal put words in their mouth.
  *
  * Denying on a deadline matters because this promise is holding the model's
  * streaming request open, so a prompt the user walks away from doesn't just sit
@@ -59,8 +62,8 @@ export const requestMiniAppApproval = ({
   app,
   tool,
   args,
-}: RequestMiniAppApprovalOptions): Promise<boolean> =>
-  new Promise<boolean>((resolve) => {
+}: RequestMiniAppApprovalOptions): Promise<MiniAppApprovalOutcome> =>
+  new Promise<MiniAppApprovalOutcome>((resolve) => {
     /*
      * Answered exactly once.
      *
@@ -72,21 +75,24 @@ export const requestMiniAppApproval = ({
      */
     let settled = false
 
-    const settle = (approved: boolean) => {
+    const settle = (outcome: MiniAppApprovalOutcome) => {
       if (settled) {
         return
       }
       settled = true
       clearTimeout(timer)
       useChatStore.getState().dequeueMiniAppApproval(chatThreadId, pending)
-      resolve(approved)
+      resolve(outcome)
     }
 
-    const timer = setTimeout(() => settle(false), approvalTimeoutMs)
+    const timer = setTimeout(() => settle('expired'), approvalTimeoutMs)
 
     const pending: PendingMiniAppApproval = { appId: app.id, appName: app.name, tool, args, decide: settle }
 
     if (!useChatStore.getState().enqueueMiniAppApproval(chatThreadId, pending)) {
-      settle(false)
+      // Nobody to ask, and the reason matters: reporting this as a refusal
+      // credited the user with a decision they were never offered.
+      console.warn(`[mini-apps] No live chat session for ${chatThreadId}; ${tool.name} was not offered for approval`)
+      settle('unavailable')
     }
   })

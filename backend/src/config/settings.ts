@@ -331,10 +331,6 @@ export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, M
 export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): PublicMiniApp[] =>
   [...apps].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
 
-/** {@link toPublicMiniApps} for a caller that holds only `Settings`. */
-export const getPublicMiniApps = (settings: Pick<Settings, 'miniApps'>): PublicMiniApp[] =>
-  toPublicMiniApps(getMiniApps(settings))
-
 /**
  * Parse and validate environment variables into settings
  */

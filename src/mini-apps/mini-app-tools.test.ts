@@ -6,6 +6,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { Tool, ToolCallOptions } from 'ai'
 import { LineChart } from 'lucide-react'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
+import type { MiniAppApprovalOutcome } from './approval-outcome'
 import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from './mini-app-tools'
 import type { MiniAppDefinition } from './registry'
 
@@ -37,9 +38,12 @@ const callOptions: ToolCallOptions = { toolCallId: 'test-call', messages: [] }
 /** Run a built tool's `execute`, which the AI SDK types as optional. */
 const run = async (tool: Tool, args: unknown) => await tool.execute?.(args as never, callOptions)
 
-const build = (tools: MiniAppTool[], overrides: { approve?: boolean; invoke?: ReturnType<typeof mock> } = {}) => {
+const build = (
+  tools: MiniAppTool[],
+  overrides: { outcome?: MiniAppApprovalOutcome; invoke?: ReturnType<typeof mock> } = {},
+) => {
   const invoke = overrides.invoke ?? mock(async () => ({ content: 'done' }))
-  const requestApproval = mock(async () => overrides.approve ?? true)
+  const requestApproval = mock(async () => overrides.outcome ?? 'approved')
   const toolset = createMiniAppTools({ app, tools, invoke, requestApproval })
   return { toolset, invoke, requestApproval }
 }
@@ -69,10 +73,33 @@ describe('createMiniAppTools', () => {
   })
 
   it('does not invoke the app when the user denies', async () => {
-    const { toolset, invoke } = build([writeTool], { approve: false })
+    const { toolset, invoke } = build([writeTool], { outcome: 'denied' })
     const result = await run(toolset.app_set_assumption, { key: 'growthRate' })
     expect(invoke).not.toHaveBeenCalled()
     expect(String(result)).toContain('declined')
+  })
+
+  /**
+   * Three of the four endings never reach the user, and all three used to be
+   * reported as a refusal — so the model told the user they had declined a
+   * prompt that timed out, or that was swept when the app closed.
+   */
+  it('does not call an unanswered prompt a refusal', async () => {
+    const { toolset, invoke } = build([writeTool], { outcome: 'expired' })
+    const result = await run(toolset.app_set_assumption, { key: 'growthRate' })
+
+    expect(invoke).not.toHaveBeenCalled()
+    expect(String(result)).not.toContain('declined')
+    expect(String(result)).toContain('not answered in time')
+  })
+
+  it('does not call a request it could not even offer a refusal', async () => {
+    const { toolset, invoke } = build([writeTool], { outcome: 'unavailable' })
+    const result = await run(toolset.app_set_assumption, { key: 'growthRate' })
+
+    expect(invoke).not.toHaveBeenCalled()
+    expect(String(result)).not.toContain('declined')
+    expect(String(result)).toContain('could not be offered')
   })
 
   /*

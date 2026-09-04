@@ -21,6 +21,7 @@
 
 import { dynamicTool, jsonSchema, type Tool } from 'ai'
 import { requiresApproval, type MiniAppTool } from '@shared/mini-app-protocol'
+import type { MiniAppApprovalOutcome } from './approval-outcome'
 import type { MiniAppDefinition } from './registry'
 import type { MiniAppToolInvoker } from './mini-app-store'
 
@@ -46,8 +47,32 @@ export type MiniAppToolDeps = {
   app: MiniAppDefinition
   tools: MiniAppTool[]
   invoke: MiniAppToolInvoker
-  /** Blocks until the user approves. Only consulted for non-read-only tools. */
-  requestApproval: (tool: MiniAppTool, args: unknown) => Promise<boolean>
+  /**
+   * Asks the user about a write. Only consulted for non-read-only tools.
+   *
+   * Reports *how* it ended rather than just whether it succeeded — three of the
+   * four endings never reach the user, and the model has to say something
+   * different about each.
+   */
+  requestApproval: (tool: MiniAppTool, args: unknown) => Promise<MiniAppApprovalOutcome>
+}
+
+/**
+ * What to tell the model when a write was not approved.
+ *
+ * Each ending gets its own sentence, and only one of them mentions a decision by
+ * the user. The two that describe a vanished opportunity invite the model to
+ * offer the action again, because nothing about the user's intent was learned.
+ */
+const refusalMessage = (outcome: Exclude<MiniAppApprovalOutcome, 'approved'>, toolName: string): string => {
+  switch (outcome) {
+    case 'denied':
+      return `The user declined to run ${toolName}. Do not retry it; ask what they would like instead.`
+    case 'expired':
+      return `The request to run ${toolName} was not answered in time, so it did not run. The user may not have seen it — offer it again if it is still what they want.`
+    case 'unavailable':
+      return `${toolName} could not be offered for approval, so it did not run. The app may have closed. Tell the user it didn't run rather than assuming they refused.`
+  }
 }
 
 /**
@@ -77,10 +102,15 @@ export const createMiniAppTools = ({ app, tools, invoke, requestApproval }: Mini
       description,
       inputSchema: jsonSchema(declared.inputSchema ?? noParameters),
       execute: async (args: unknown) => {
-        if (requiresApproval(declared) && !(await requestApproval(declared, args))) {
-          // Returned, not thrown: a refusal is a normal outcome the model should
-          // narrate ("you declined"), not a failure it should retry around.
-          return `The user declined to run ${declared.name}. Do not retry it; ask what they would like instead.`
+        if (requiresApproval(declared)) {
+          const outcome = await requestApproval(declared, args)
+          if (outcome !== 'approved') {
+            // Returned, not thrown: none of these is a failure the model should
+            // retry around, and each needs a different sentence — telling the
+            // user they declined something they were never shown is worse than
+            // saying nothing.
+            return refusalMessage(outcome, declared.name)
+          }
         }
         const { content, isError } = await invoke(declared.name, args)
         return isError ? `${declared.name} failed: ${content}` : content

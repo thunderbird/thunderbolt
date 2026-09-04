@@ -13,6 +13,7 @@ import type { AutomationRun, ChatThread, Model, ThunderboltUIMessage } from '@/t
 import { create } from 'zustand'
 import type { Chat } from '@ai-sdk/react'
 import type { PermissionOption, RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -57,7 +58,7 @@ export type PendingMiniAppApproval = {
   tool: MiniAppTool
   args: unknown
   /** Resolves the blocked `execute`. Safe to call more than once. */
-  decide: (approved: boolean) => void
+  decide: (outcome: MiniAppApprovalOutcome) => void
 }
 
 /** Keys a remembered allowance for this agent on the ACP tool kind. */
@@ -339,7 +340,9 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const doomed = [...get().sessions.values()].flatMap((session) =>
       session.miniAppApprovalQueue.filter((pending) => pending.appId === appId),
     )
-    doomed.forEach((pending) => pending.decide(false))
+    // `unavailable`, not `denied`: the user never saw these, so telling the model
+    // they were declined would put a decision in their mouth.
+    doomed.forEach((pending) => pending.decide('unavailable'))
   },
 
   setSelectedAgent: async (id, agent) => {

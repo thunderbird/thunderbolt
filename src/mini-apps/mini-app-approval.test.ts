@@ -83,23 +83,23 @@ beforeEach(() => {
 
 describe('requestMiniAppApproval', () => {
   it('denies immediately when the chat has no live session, rather than hanging', async () => {
-    expect(await ask('closed-tab', {})).toBe(false)
+    expect(await ask('closed-tab', {})).toBe('unavailable')
   })
 
   it('surfaces the prompt on the asking chat and resolves with the decision', async () => {
     const decision = ask('chat-a', { growth: 0.2 })
 
     expect(queueOf('chat-a')[0]?.tool.name).toBe('set_assumption')
-    queueOf('chat-a')[0]?.decide(true)
+    queueOf('chat-a')[0]?.decide('approved')
 
-    expect(await decision).toBe(true)
+    expect(await decision).toBe('approved')
   })
 
-  it('resolves false when denied', async () => {
+  it('resolves denied when the user refuses', async () => {
     const decision = ask('chat-a', {})
-    queueOf('chat-a')[0]?.decide(false)
+    queueOf('chat-a')[0]?.decide('denied')
 
-    expect(await decision).toBe(false)
+    expect(await decision).toBe('denied')
   })
 
   /**
@@ -113,21 +113,21 @@ describe('requestMiniAppApproval', () => {
     expect(queueOf('chat-a')).toHaveLength(1)
     expect(queueOf('chat-b')).toEqual([])
 
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await decision).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await decision).toBe('approved')
   })
 
   it('lets two chats hold their own approvals at once', async () => {
     const first = ask('chat-a', { n: 1 })
     const second = ask('chat-b', { n: 2 })
 
-    queueOf('chat-b')[0]?.decide(true)
-    expect(await second).toBe(true)
+    queueOf('chat-b')[0]?.decide('approved')
+    expect(await second).toBe('approved')
     // Answering one chat's prompt leaves the other's exactly where it was.
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 1 })
 
-    queueOf('chat-a')[0]?.decide(false)
-    expect(await first).toBe(false)
+    queueOf('chat-a')[0]?.decide('denied')
+    expect(await first).toBe('denied')
   })
 
   /*
@@ -142,13 +142,13 @@ describe('requestMiniAppApproval', () => {
     expect(queueOf('chat-a')).toHaveLength(2)
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 1 })
 
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await first).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await first).toBe('approved')
 
     // Answering the first promotes the second rather than settling both.
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 2 })
-    queueOf('chat-a')[0]?.decide(false)
-    expect(await second).toBe(false)
+    queueOf('chat-a')[0]?.decide('denied')
+    expect(await second).toBe('denied')
   })
 
   /**
@@ -161,15 +161,15 @@ describe('requestMiniAppApproval', () => {
     const second = ask('chat-a', { n: 2 })
     const onScreen = queueOf('chat-a')[0]
 
-    onScreen?.decide(true)
-    onScreen?.decide(true)
+    onScreen?.decide('approved')
+    onScreen?.decide('approved')
 
-    expect(await first).toBe(true)
+    expect(await first).toBe('approved')
     // Still waiting to be read, not approved by a stray click.
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 2 })
 
-    queueOf('chat-a')[0]?.decide(false)
-    expect(await second).toBe(false)
+    queueOf('chat-a')[0]?.decide('denied')
+    expect(await second).toBe('denied')
   })
 
   /** Same shape, from the other direction: the click lands after the deadline
@@ -179,46 +179,46 @@ describe('requestMiniAppApproval', () => {
     const onScreen = queueOf('chat-a')[0]
 
     await getClock().runAllAsync()
-    expect(await first).toBe(false)
+    expect(await first).toBe('expired')
 
     const second = ask('chat-a', { n: 2 })
-    onScreen?.decide(true)
+    onScreen?.decide('approved')
 
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 2 })
-    queueOf('chat-a')[0]?.decide(false)
-    expect(await second).toBe(false)
+    queueOf('chat-a')[0]?.decide('denied')
+    expect(await second).toBe('denied')
   })
 
-  it('denies everything still queued when the app closes', async () => {
+  it('settles everything still queued when the app closes', async () => {
     const first = ask('chat-a', { n: 1 })
     const second = ask('chat-a', { n: 2 })
 
     useMiniAppStore.getState().closeApp()
 
-    expect(await first).toBe(false)
-    expect(await second).toBe(false)
+    expect(await first).toBe('unavailable')
+    expect(await second).toBe('unavailable')
     expect(queueOf('chat-a')).toEqual([])
   })
 
   /** The sweep reaches every chat, not just the one on screen: the app those
    *  calls would have acted on is gone from all of them. */
-  it('denies queued approvals in chats the user is not looking at', async () => {
+  it('settles queued approvals in chats the user is not looking at', async () => {
     const background = ask('chat-b', { n: 1 })
 
     useMiniAppStore.getState().closeApp()
 
-    expect(await background).toBe(false)
+    expect(await background).toBe('unavailable')
     expect(queueOf('chat-b')).toEqual([])
   })
 
   /** A re-handshake replaces the document behind the frame, so its pending
    *  calls describe a page that no longer exists. */
-  it('denies queued approvals when the guest re-handshakes', async () => {
+  it('settles queued approvals when the guest re-handshakes', async () => {
     const decision = ask('chat-a', {})
 
     useMiniAppStore.getState().resetGuest()
 
-    expect(await decision).toBe(false)
+    expect(await decision).toBe('unavailable')
   })
 
   /**
@@ -234,8 +234,8 @@ describe('requestMiniAppApproval', () => {
     expect(queueOf('chat-a')[0]?.appName).toBe('Patient Journeys')
     expect(queueOf('chat-a')[0]?.appId).toBe('patient-journeys')
 
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await decision).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await decision).toBe('approved')
   })
 
   /** Keyed by app, so closing one app cannot answer a call another app is
@@ -246,8 +246,8 @@ describe('requestMiniAppApproval', () => {
     useMiniAppStore.getState().closeApp()
 
     expect(queueOf('chat-a')).toHaveLength(1)
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await other).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await other).toBe('approved')
   })
 
   /**
@@ -255,25 +255,25 @@ describe('requestMiniAppApproval', () => {
    * streaming request open, so a prompt the user walks away from doesn't just
    * sit there — it wedges the turn behind a spinner with no explanation.
    */
-  it('denies itself if nobody ever answers', async () => {
+  it('expires itself if nobody ever answers', async () => {
     const decision = ask('chat-a', {})
 
     await getClock().runAllAsync()
 
-    expect(await decision).toBe(false)
+    expect(await decision).toBe('expired')
     expect(queueOf('chat-a')).toEqual([])
   })
 
   /**
    * The case `clearTimeout` actually protects, and the reason it isn't just
    * tidiness: an answered prompt's timer, left running, fires 120s later and
-   * calls `decide(false)` on whatever is pending *then* — denying a later,
+   * calls `decide('denied')` on whatever is pending *then* — denying a later,
    * unrelated request the user never saw.
    */
   it('does not let an answered prompt time out a later one', async () => {
     const first = ask('chat-a', { n: 1 })
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await first).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await first).toBe('approved')
 
     // The second request has to arrive *later*, or both deadlines land on the
     // same virtual instant and the test proves nothing.
@@ -284,16 +284,16 @@ describe('requestMiniAppApproval', () => {
     await getClock().tickAsync(70_000)
 
     expect(queueOf('chat-a')[0]?.args).toEqual({ n: 2 })
-    queueOf('chat-a')[0]?.decide(true)
-    expect(await second).toBe(true)
+    queueOf('chat-a')[0]?.decide('approved')
+    expect(await second).toBe('approved')
   })
 
-  it('does not deny after the user already approved', async () => {
+  it('does not expire after the user already approved', async () => {
     const decision = ask('chat-a', {})
-    queueOf('chat-a')[0]?.decide(true)
+    queueOf('chat-a')[0]?.decide('approved')
 
     await getClock().runAllAsync()
 
-    expect(await decision).toBe(true)
+    expect(await decision).toBe('approved')
   })
 })

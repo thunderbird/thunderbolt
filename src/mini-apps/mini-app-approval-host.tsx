@@ -45,8 +45,12 @@ export const MiniAppApprovalHost = () => {
       appName={pendingApproval.appName}
       /* Bound to the entry that was rendered, so a double-click or a click
        * racing the deadline cannot answer the request that just took its
-       * place. `decide` is idempotent, so the second one is dropped. */
-      onDecide={pendingApproval.decide}
+       * place. `decide` is idempotent, so the second one is dropped.
+       *
+       * The button reports a choice; the outcome vocabulary is wider than that
+       * (a deadline and a swept app are not refusals), so the mapping happens
+       * here rather than in the prompt. */
+      onDecide={(approved) => pendingApproval.decide(approved ? 'approved' : 'denied')}
     />
   )
 }

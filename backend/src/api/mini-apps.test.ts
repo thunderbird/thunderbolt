@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { jwtVerify } from 'jose'
 import type { Auth } from '@/auth/elysia-plugin'
-import { getMiniApps, getPublicMiniApps } from '@/config/settings'
+import { getMiniApps, toPublicMiniApps } from '@/config/settings'
 import { createTestSettings } from '@/test-utils/settings'
 import { createMiniAppRoutes } from './mini-apps'
 
@@ -100,16 +100,21 @@ describe('getMiniApps', () => {
   })
 })
 
-describe('getPublicMiniApps', () => {
+describe('toPublicMiniApps', () => {
+  const published = () => toPublicMiniApps(getMiniApps({ miniApps: registry }))
+
   it('never includes the signing secret', () => {
-    const published = JSON.stringify(getPublicMiniApps({ miniApps: registry }))
-    expect(published).not.toContain(financeSecret)
-    expect(published).not.toContain('secret')
+    const serialised = JSON.stringify(published())
+    expect(serialised).not.toContain(financeSecret)
+    expect(serialised).not.toContain(journeysSecret)
   })
 
   it('carries the id alongside the presentation fields', () => {
-    const [first] = getPublicMiniApps({ miniApps: registry })
-    expect(first).toMatchObject({ id: 'finance-model', name: 'Finance Model', origin: 'http://localhost:5174' })
+    expect(published()[0]).toMatchObject({
+      id: 'finance-model',
+      name: 'Finance Model',
+      origin: 'http://localhost:5174',
+    })
   })
 })
 

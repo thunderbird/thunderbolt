@@ -32,6 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/thunderbird/thunderbolt/main/instal
 Requires [Bun](https://bun.sh):
 
 ```sh
+bun install         # installs dependencies for the shared model builder
 cd cli
 bun install
 bun run build      # compiles dist/thunderbolt

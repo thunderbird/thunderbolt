@@ -289,7 +289,10 @@ const runPlainSession = async (
     dependencies.attachPermissionGate(harness, { getMode: () => permissionState.mode, ask: terminal.ask })
     if (bootstrapped.config.mode === 'oneshot') {
       const result = await promptOneShot(harness, bootstrapped.config.prompt, terminal.signal)
-      if (result === null) return
+      if (result === null) {
+        dependencies.setExitCode(130)
+        return
+      }
       if (result.stopReason === 'error') dependencies.setExitCode(1)
       terminal.write('\n')
       return

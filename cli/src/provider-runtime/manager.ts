@@ -40,7 +40,7 @@ const switchProvider = (providerId: string): CommandOutcome => ({
   forceReplace: false,
 })
 
-/** Performs web login while deferring replacement only for an already-live Thunderbolt binding. */
+/** Performs web login, activating an empty configuration while preserving an active BYOK provider. */
 const login = async (
   io: ProviderManagerIO,
   runtime: ProviderRuntime,
@@ -48,7 +48,7 @@ const login = async (
   liveProviderId: LiveProviderId | undefined,
   signal?: AbortSignal,
 ): Promise<CommandOutcome> => {
-  const wasThunderboltActive = activeProviderId(runtime.snapshot(), liveProviderId) === 'thunderbolt'
+  const previousProviderId = activeProviderId(runtime.snapshot(), liveProviderId)
   const state = await runtime.manage({
     type: 'login',
     presentation: io,
@@ -57,14 +57,15 @@ const login = async (
   const options = state.thunderbolt.models ?? []
   if (options.length === 0) throw new Error('Managed model catalog is unavailable after login.')
   const selectedModel = (await io.choose('Models', options)) ?? state.thunderbolt.defaultModelId
-  if (!forceActivation && !wasThunderboltActive) {
+  if (!forceActivation && previousProviderId !== null && previousProviderId !== 'thunderbolt') {
     await runtime.manage({ type: 'select-model', providerId: 'thunderbolt', model: selectedModel })
     return handled
   }
+  const activate = forceActivation || previousProviderId === null
   return {
     kind: 'switch',
     selection: { providerId: 'thunderbolt', model: selectedModel },
-    persist: forceActivation
+    persist: activate
       ? { type: 'use', providerId: 'thunderbolt', model: selectedModel }
       : { type: 'select-model', providerId: 'thunderbolt', model: selectedModel },
     forceReplace: true,

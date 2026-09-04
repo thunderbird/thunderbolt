@@ -330,7 +330,7 @@ describe('provider manager deferred outcomes', () => {
     expect(JSON.stringify(result)).not.toContain('replacement-key')
   })
 
-  test('returns the exact login switch only when Thunderbolt is already active', async () => {
+  test('refreshes the live binding when login starts with Thunderbolt active', async () => {
     const selectedModel = bundledManagedCatalog.data[1]
     if (!selectedModel) throw new Error('managed catalog fixture needs two models')
     const { io, menus, verifications, statuses } = scriptedIO({ choices: [selectedModel.id] })
@@ -368,6 +368,24 @@ describe('provider manager deferred outcomes', () => {
       ['success', 'Login successful.'],
     ])
     expect(menus.at(-1)?.items).toHaveLength(bundledManagedCatalog.data.length)
+  })
+
+  test('activates Thunderbolt when standalone login starts without an active provider', async () => {
+    const selectedModel = bundledManagedCatalog.data[1]
+    if (!selectedModel) throw new Error('managed catalog fixture needs two models')
+    const { io } = scriptedIO({ choices: [selectedModel.id] })
+    const { runtime, managed } = runtimeHarness(snapshot(null))
+
+    const outcome = await runProviderManager(io, runtime, 'login')
+
+    expect(outcome).toEqual({
+      kind: 'switch',
+      selection: { providerId: 'thunderbolt', model: selectedModel.id },
+      persist: { type: 'use', providerId: 'thunderbolt', model: selectedModel.id },
+      forceReplace: true,
+    })
+    expect(managed).toHaveLength(1)
+    expect(managed[0]).toMatchObject({ type: 'login', presentation: io })
   })
 
   test('carries a manager cancellation signal on the account command', async () => {

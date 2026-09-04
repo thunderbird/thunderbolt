@@ -5,6 +5,7 @@
 import type { Api, AssistantMessage, Model } from '@earendil-works/pi-ai'
 import { describe, expect, test } from 'bun:test'
 import { getEventListeners } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { bundledManagedCatalog } from '../provider-runtime/catalog.ts'
 import { defaultProviderStageContext } from '../provider-runtime/provider-stage.ts'
 import { createProviderManager, runProviderManager } from '../provider-runtime/manager.ts'
@@ -21,7 +22,7 @@ import type {
   ProviderSnapshot,
 } from '../provider-runtime/types.ts'
 import { providerRuntimeError } from '../provider-runtime/types.ts'
-import type { TerminalIO } from '../ui/prompt.ts'
+import { createTerminalIOFromStreams, type TerminalIO } from '../ui/prompt.ts'
 import { applyCommandOutcome, bootstrapBeforeHarness, createRunAgent, shouldUseTui } from './run.ts'
 import type { RunAgentDependencies } from './run.ts'
 import { permissionModeItems, type PermissionMode } from './permissions.ts'
@@ -915,11 +916,37 @@ describe('runAgent orchestration', () => {
     expect(terminal.closes()).toBe(1)
   })
 
+  test('runs an argv one-shot after stdin has already reached EOF', async () => {
+    const input = new PassThrough()
+    const terminal = createTerminalIOFromStreams(input, new PassThrough())
+    const eof = terminal.readLine('')
+    input.end()
+    await expect(eof).resolves.toBeNull()
+    const prompts: string[] = []
+    const state = runtime()
+    const runner = makeRunner({
+      createTerminalIO: () => terminal,
+      createHarnessRuntime: async () =>
+        harnessRuntime({
+          prompt: async (prompt) => {
+            prompts.push(prompt)
+            return successMessage
+          },
+        }),
+      terminalEnvironment: () => ({ interactive: false, stdoutIsTty: false, noTuiEnv: true }),
+    })
+
+    await runner(oneshot({ prompt: 'argv prompt' }), state.runtime)
+
+    expect(prompts).toEqual(['argv prompt'])
+  })
+
   test('one-shot SIGINT aborts an active harness prompt and removes its scoped listener', async () => {
     const terminal = terminalIO()
     const promptStarted = Promise.withResolvers<void>()
     const promptCompleted = Promise.withResolvers<AssistantMessage>()
     let aborts = 0
+    const exitCodes: number[] = []
     const state = runtime()
     const runner = makeRunner({
       createTerminalIO: () => terminal.terminal,
@@ -935,6 +962,7 @@ describe('runAgent orchestration', () => {
           },
         }),
       terminalEnvironment: () => ({ interactive: false, stdoutIsTty: false, noTuiEnv: false }),
+      setExitCode: (code) => exitCodes.push(code),
     })
 
     const running = runner(oneshot(), state.runtime)
@@ -944,6 +972,7 @@ describe('runAgent orchestration', () => {
     await running
 
     expect(aborts).toBe(1)
+    expect(exitCodes).toEqual([130])
     expect(getEventListeners(terminal.signal, 'abort')).toHaveLength(0)
   })
 

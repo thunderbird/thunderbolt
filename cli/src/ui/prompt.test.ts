@@ -59,7 +59,7 @@ test('SIGINT aborts pending input and removes its scoped listener on close', asy
   expect(interrupts.listenerCount('SIGINT')).toBe(0)
 })
 
-test('Ctrl-D closes pending input and removes its scoped SIGINT listener', async () => {
+test('Ctrl-D ends input without cancelling non-interactive work', async () => {
   const input = new PassThrough()
   const interrupts = new EventEmitter()
   const terminal = createTerminalIOFromStreams(input, new PassThrough(), { signalSource: interrupts })
@@ -68,6 +68,8 @@ test('Ctrl-D closes pending input and removes its scoped SIGINT listener', async
   input.end()
 
   await expect(pending).resolves.toBeNull()
-  expect(terminal.signal.aborted).toBeTrue()
+  expect(terminal.signal.aborted).toBeFalse()
+  expect(interrupts.listenerCount('SIGINT')).toBe(1)
+  terminal.close()
   expect(interrupts.listenerCount('SIGINT')).toBe(0)
 })

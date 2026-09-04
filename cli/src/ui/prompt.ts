@@ -34,25 +34,23 @@ export const createTerminalIOFromStreams = (
     },
   })
   const rl = createInterface({ input, output: readlineOutput, terminal: Boolean(input.isTTY) })
-  const eof = new AbortController()
+  const cancellation = new AbortController()
+  const inputClosed = new AbortController()
+  const questionSignal = AbortSignal.any([cancellation.signal, inputClosed.signal])
   let closed = false
   const removeSigintListener = (): void => {
     options.signalSource?.off('SIGINT', onSigint)
   }
-  const onClose = (): void => {
-    eof.abort()
-    removeSigintListener()
-  }
   const close = (): void => {
     if (closed) return
     closed = true
-    eof.abort()
+    cancellation.abort()
     rl.close()
     removeSigintListener()
   }
   const onSigint = (): void => close()
   options.signalSource?.on('SIGINT', onSigint)
-  rl.on('close', onClose)
+  rl.on('close', () => inputClosed.abort())
 
   /** Reads one answer while suppressing terminal echo only for secrets. */
   const question = async (prompt: string, isSecret: boolean): Promise<string | null> => {
@@ -61,7 +59,7 @@ export const createTerminalIOFromStreams = (
       muted = true
     }
     try {
-      return await rl.question(isSecret ? '' : prompt, { signal: eof.signal })
+      return await rl.question(isSecret ? '' : prompt, { signal: questionSignal })
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return null
       throw error
@@ -95,7 +93,7 @@ export const createTerminalIOFromStreams = (
     readSecret,
     write,
     ask,
-    signal: eof.signal,
+    signal: cancellation.signal,
     close,
   }
 }

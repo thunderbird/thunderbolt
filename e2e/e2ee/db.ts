@@ -189,6 +189,18 @@ export const getEncryptionServerSnapshot = async (userId: string): Promise<Encry
   }
 }
 
+/** The account's KDF salt — needed to reproduce the phrase-derived recovery keypair. */
+export const getKdfSalt = async (userId: string): Promise<string> => {
+  const rows = await sql<{ kdf_salt: string | null }[]>`
+    SELECT kdf_salt FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  const salt = rows[0]?.kdf_salt
+  if (!salt) {
+    throw new Error(`No kdf_salt for ${userId}`)
+  }
+  return salt
+}
+
 export const getSchemeVersion = async (userId: string): Promise<number | null> => {
   const rows = await sql<{ scheme_version: number }[]>`
     SELECT scheme_version FROM encryption_metadata WHERE user_id = ${userId}

@@ -41,6 +41,46 @@ const collectHarnessMessages = (
     { srcdoc, nonce, settleMs },
   )
 
+/**
+ * Ask the harness what sits at a point, the way the host does.
+ *
+ * `document.elementFromPoint` is the whole subject here, so this can only live
+ * in a real browser — happy-dom has no layout to hit-test against.
+ */
+const askElementAt = (
+  page: import('@playwright/test').Page,
+  srcdoc: string,
+  nonce: string,
+  point: { x: number; y: number },
+): Promise<{ element: { label: string; text: string } | null } | null> =>
+  page.evaluate(
+    ({ srcdoc, nonce, point }) =>
+      new Promise<{ element: { label: string; text: string } | null } | null>((resolve) => {
+        const iframe = document.createElement('iframe')
+        iframe.setAttribute('sandbox', 'allow-scripts')
+        iframe.style.cssText = 'width:400px;height:400px;border:0'
+        window.addEventListener('message', (event) => {
+          const data = event.data as { artifactNonce?: string; type?: string; result?: unknown } | undefined
+          if (event.source !== iframe.contentWindow || data?.artifactNonce !== nonce) {
+            return
+          }
+          if (data.type === 'artifact-ready') {
+            iframe.contentWindow?.postMessage(
+              { artifactNonce: nonce, type: 'artifact-request', id: 1, method: 'element/at', params: point },
+              '*',
+            )
+          }
+          if (data.type === 'artifact-reply') {
+            resolve(data.result as { element: { label: string; text: string } | null } | null)
+          }
+        })
+        iframe.srcdoc = srcdoc
+        document.body.appendChild(iframe)
+        setTimeout(() => resolve(null), 2000)
+      }),
+    { srcdoc, nonce, point },
+  )
+
 test.describe('artifact harness (real browser)', () => {
   test.beforeEach(async ({ page }) => {
     await page.setContent('<!doctype html><html><body></body></html>')
@@ -95,5 +135,63 @@ test.describe('artifact harness (real browser)', () => {
     const types = messages.map((m) => m.type)
     expect(types).toContain('artifact-ready')
     expect(types).not.toContain('artifact-error')
+  })
+
+  /**
+   * The reported bug: element picking worked on a table and a list and almost
+   * nowhere else, because the hit-test only accepted an allowlist of semantic
+   * tags. A to-do list built from divs had two selectable things in it. Anything
+   * under the pointer is pickable now.
+   */
+  test('picks a plain div a semantic-tag allowlist would have missed', async ({ page }) => {
+    const nonce = 'nonce-div'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml(
+        '<div style="position:absolute;top:0;left:0;width:200px;height:60px">Buy milk</div>',
+        nonce,
+      ),
+      nonce,
+      { x: 40, y: 20 },
+    )
+
+    expect(result?.element?.text).toContain('Buy milk')
+  })
+
+  /** The semantic walk is still a preference: pointing at a cell means the row,
+   *  so the model gets the whole record rather than one number. */
+  test('still prefers the table row over the cell that was hit', async ({ page }) => {
+    const nonce = 'nonce-row'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml(
+        '<table style="position:absolute;top:0;left:0"><thead><tr><th>Item</th><th>Qty</th></tr></thead>' +
+          '<tbody><tr><td style="width:100px">Milk</td><td>2</td></tr></tbody></table>',
+        nonce,
+      ),
+      nonce,
+      { x: 20, y: 30 },
+    )
+
+    expect(result?.element?.text).toContain('Item: Milk')
+    expect(result?.element?.text).toContain('Qty: 2')
+  })
+
+  /** An outline around the whole page names nothing useful, and there is no
+   *  smaller thing to fall back to. */
+  test('reports nothing for the page background', async ({ page }) => {
+    const nonce = 'nonce-bg'
+    const result = await askElementAt(
+      page,
+      wrapArtifactHtml('<div style="position:absolute;top:0;left:0;width:10px;height:10px">x</div>', nonce),
+      nonce,
+      { x: 300, y: 300 },
+    )
+
+    // `result` first: `askElementAt` resolves null on its own timeout, so
+    // `result?.element` alone passed identically when the iframe never loaded,
+    // never handshaked, or never registered the handler.
+    expect(result).not.toBeNull()
+    expect(result?.element).toBeNull()
   })
 })

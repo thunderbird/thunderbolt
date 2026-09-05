@@ -9,7 +9,6 @@ import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
@@ -20,11 +19,28 @@ import { edgeSpacing } from '@/lib/constants'
 import { isTauri } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
-import { Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
 import { PageFallback } from '@/loading'
 
+/*
+ * Lazy, and the only content view that is.
+ *
+ * It reaches the whole shared element-picking stack — the overlay, the popover,
+ * the selection state machine — none of which any other entry-bundle module
+ * needs. A static import put roughly a thousand lines of it into the chunk every
+ * user downloads to see a chat, for a panel that only opens when someone clicks
+ * an artifact. The inline artifact card keeps `SandboxedHtmlFrame` in the entry
+ * bundle on purpose, because chat renders artifacts inline; picking is the part
+ * that can wait.
+ */
+const ArtifactSidebarContent = lazy(() =>
+  import('@/content-view/artifact-sidebar-content').then((module) => ({ default: module.ArtifactSidebarContent })),
+)
+
+/** The main app shell: sidebar-inset content area, floating header, and the
+ *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
   const { state, close, previewHidden } = useContentView()
@@ -95,7 +111,11 @@ export default function Page() {
       {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
-      {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
+      {state.type === 'artifact' && (
+        <Suspense fallback={<PageFallback />}>
+          <ArtifactSidebarContent data={state.data} onClose={close} />
+        </Suspense>
+      )}
     </>
   )
 
@@ -108,6 +128,14 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
+            {/* Every route, app routes included. `/apps/` was chromeless for a
+                while, on the reasoning that a customer's app is the content and
+                a bar above it duplicates the app's own header. What that
+                actually cost was the whole shared toolbar: back/forward, the
+                sidebar toggle, and — on frameless Windows/Linux — the only
+                drag region the window had. Hand-rebuilding those as floating
+                controls got two of the three, in the wrong shape, overlapping
+                the app's content. One header, everywhere. */}
             <FloatingHeader />
             {!isTauri() && (
               <>

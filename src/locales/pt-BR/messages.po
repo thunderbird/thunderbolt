@@ -21,6 +21,14 @@ msgstr "“{filename}” é muito grande (máx. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "“{filename}” não é um tipo de arquivo compatível."
 
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "# item selected"
+#~ msgid_plural "# items selected"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -38,6 +46,19 @@ msgid_plural "# tools"
 msgstr[0] "# ferramenta"
 msgstr[1] "# ferramentas"
 msgstr[2] "# ferramentas"
+
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Ask about it"
+#~ msgid_plural "Ask about them"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-page.tsx
+msgid "{0} is only available on desktop"
+msgstr ""
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
@@ -378,6 +399,7 @@ msgstr "Aplicado a todas as conversas deste projeto."
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "Aprovar"
@@ -418,6 +440,10 @@ msgstr "Artefatos"
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
 msgstr "Perguntar"
+
+#: src/components/embedded/selection-popover.tsx
+msgid "Ask about this"
+msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
@@ -566,6 +592,10 @@ msgstr "Alterar o idioma?"
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "As alterações foram salvas, mas a reconexão falhou. Tente novamente."
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Chat"
+msgstr ""
+
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
 msgstr "Ações da conversa"
@@ -579,6 +609,10 @@ msgstr "Nome da conversa"
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "Conversas"
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "Chats from this app"
+msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Chats in a project inherit its instructions."
@@ -725,6 +759,10 @@ msgstr "Área de transferência indisponível. Selecione a frase acima e copie m
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Fechar"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Close chat"
+#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -1025,6 +1063,10 @@ msgstr "Não foi possível baixar a atualização: {error}"
 msgid "Couldn't download the update."
 msgstr "Não foi possível baixar a atualização."
 
+#: src/components/embedded/surface-status.tsx
+msgid "Couldn't load {name}"
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "Não foi possível carregar a lista de emojis. Feche e abra o seletor novamente para tentar de novo."
@@ -1032,6 +1074,10 @@ msgstr "Não foi possível carregar a lista de emojis. Feche e abra o seletor no
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "Não foi possível carregar a identidade de emparelhamento deste app: {error}"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Couldn't load your apps. Check your connection and reload."
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -1056,6 +1102,10 @@ msgstr "Não foi possível salvar {fieldName}. Tente novamente."
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't save the new order."
 msgstr "Não foi possível salvar a nova ordem."
+
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
@@ -1283,6 +1333,7 @@ msgstr "Garoa congelante densa"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "Recusar"
@@ -1730,6 +1781,11 @@ msgstr "Nevoeiro"
 msgid "Food & drink"
 msgstr "Comida e bebida"
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From {0}"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr "Gerando chaves…"
@@ -2050,6 +2106,10 @@ msgstr "Ouvindo"
 msgid "Load models"
 msgstr "Carregar modelos"
 
+#: src/components/embedded/surface-status.tsx
+msgid "Loading {name}…"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Loading code…"
 msgstr "Carregando o código…"
@@ -2138,6 +2198,18 @@ msgstr "Mensagens"
 #: src/i18n/unit-labels.ts
 msgid "Metric"
 msgstr "Métrico"
+
+#: src/settings/preferences.tsx
+#~ msgid "Mini Apps"
+#~ msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Mini Apps are only available on desktop"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+#~ msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Minimize"
@@ -2302,6 +2374,10 @@ msgstr "Ainda não há conversas"
 msgid "No chats yet."
 msgstr "Ainda não há conversas."
 
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "No chats yet. Anything you ask beside this app shows up here."
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "Ainda não há dispositivos. Entre com a sincronização para vê-los aqui."
@@ -2415,6 +2491,20 @@ msgstr "Agora não"
 msgid "Not tested"
 msgstr "Não testado"
 
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
+msgstr ""
+
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgstr ""
+
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Nothing to ask about there. Try covering some content."
+#~ msgstr ""
+
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
 msgstr "Emissor OAuth divergente — autorização rejeitada."
@@ -2468,6 +2558,14 @@ msgstr "Abrir {skillName}"
 msgid "Open {title}"
 msgstr "Abrir {title}"
 
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Open app"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Open chat"
+#~ msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "Abrir link externo"
@@ -2496,6 +2594,10 @@ msgstr "Abrir na barra lateral"
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
 msgstr "Abrir na barra lateral"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
@@ -2802,6 +2904,10 @@ msgstr "Solicitação recusada"
 msgid "Request expired"
 msgstr "Solicitação expirada"
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Requested by {appName}"
+msgstr ""
+
 #: src/components/chat/file-card.tsx
 msgid "Resend as images"
 msgstr "Reenviar como imagens"
@@ -3028,6 +3134,11 @@ msgstr "Veja o documento na tela."
 #: src/voice/speakable.ts
 msgid "See the equation on screen."
 msgstr "Veja a equação na tela."
+
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Select"
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
@@ -3316,6 +3427,15 @@ msgstr "Começar a usar o Thunderbolt"
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
 msgstr "Iniciar o modo de voz"
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from {0}"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an app that is no longer available"
+msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Starting…"
@@ -3757,6 +3877,7 @@ msgstr "Viagens e lugares"
 msgid "Trusted devices"
 msgstr "Dispositivos confiáveis"
 
+#: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Try again"
@@ -3811,6 +3932,7 @@ msgid "Unreachable {relative}"
 msgstr "Inacessível {relative}"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "Conversa sem título"
 
@@ -3971,6 +4093,10 @@ msgstr "Modo de voz: {status}"
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
 msgstr "Aguardando aprovação"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"

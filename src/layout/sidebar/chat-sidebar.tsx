@@ -34,6 +34,8 @@ import {
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
 import { useState } from 'react'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
@@ -55,12 +57,14 @@ type ChatSidebarContentProps = {
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
   threadIdRef: RefObject<string | null>
   showTasks: boolean
+  showMiniApps: boolean
   activeSection: SidebarSection
   onSectionChange: (section: SidebarSection) => void
   onCreateNewChat: () => void
   onTasksClick: () => void
+  onMiniAppClick: (appId: string) => void
   onProjectsClick: () => void
-  onChatClick: (threadId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
 }
@@ -100,6 +104,31 @@ const ProjectsMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
   )
 }
 
+/**
+ * One entry per registered Mini App. Rendered straight from the registry so
+ * onboarding a customer app is a config entry, not a sidebar change.
+ */
+const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (appId: string) => void }) => {
+  const { apps } = useMiniApps()
+  return (
+    <>
+      {apps.map((app) => (
+        <SidebarMenuItem key={app.id}>
+          <SidebarMenuButton
+            onClick={() => onClick(app.id)}
+            tooltip={app.description}
+            className="cursor-pointer"
+            isActive={pathname === miniAppPath(app.id)}
+          >
+            <app.icon className="size-[var(--icon-size-default)]" />
+            <span>{app.name}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </>
+  )
+}
+
 export const ChatSidebarContent = ({
   isMobile,
   isCollapsed,
@@ -111,10 +140,12 @@ export const ChatSidebarContent = ({
   deleteChatDialogRef,
   threadIdRef,
   showTasks,
+  showMiniApps,
   activeSection,
   onSectionChange,
   onCreateNewChat,
   onTasksClick,
+  onMiniAppClick,
   onProjectsClick,
   onChatClick,
   onRename,
@@ -142,13 +173,13 @@ export const ChatSidebarContent = ({
   }
 
   /**
+   * Shared by the drop handler and the menu.
+   *
    * dnd-kit ignores the promise this returns, so a rejected write would leave the
    * chat where it was with nothing said about it. There is no notification surface
    * in the sidebar, so the failure is logged with its target — the same treatment
    * `chat-instance.ts` gives its own fire-and-forget writes.
    */
-  /** Shared by the drop and the menu: failures are logged because the sidebar has
-   *  no notification surface. */
   const runMove = async (chatThreadId: string, projectId: string | null) => {
     try {
       await moveChatToProject({ chatThreadId, projectId })
@@ -212,6 +243,7 @@ export const ChatSidebarContent = ({
                 {showTasks && (
                   <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />
                 )}
+                {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
               </SidebarMenu>
               {/* Drop targets for dragging a chat into a project. */}
               <ProjectDropList
@@ -238,6 +270,7 @@ export const ChatSidebarContent = ({
             <SidebarMenu className="mt-2 flex-shrink-0">
               <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
               {showTasks && <TasksMenuItem isActive={location.pathname.startsWith('/tasks')} onClick={onTasksClick} />}
+              {showMiniApps && <MiniAppMenuItems pathname={location.pathname} onClick={onMiniAppClick} />}
             </SidebarMenu>
           }
           onChatClick={onChatClick}

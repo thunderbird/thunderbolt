@@ -42,6 +42,13 @@ export type PromptParams = {
    * builder only decides *where* it sits.
    */
   projectSection?: string | null
+  /**
+   * Pre-rendered `# Mini App` section when an embedded app is open (see
+   * `src/mini-apps/mini-app-prompt.ts`). Carries the app's identity only — its
+   * live state is read through the `get_app_context` tool, so this stays stable
+   * across a session and doesn't invalidate the prompt cache.
+   */
+  miniAppSection?: string | null
 }
 
 export type PromptParts = {
@@ -79,6 +86,7 @@ export const createPromptParts = (
     skills = [],
     supportsTools = true,
     projectSection = null,
+    miniAppSection = null,
     appLanguage = sourceLocale,
   }: PromptParams,
   currentDate: Date = new Date(),
@@ -132,7 +140,7 @@ Reasoning: low
 
 # Context
 ${contextSection}
-${projectSection ? `\n${projectSection}\n` : ''}
+${projectSection ? `\n${projectSection}\n` : ''}${miniAppSection ? `\n${miniAppSection}\n` : ''}
 # Tools
 Choose one policy bucket before answering:
 • never_search — Stable facts, math, code, creative work, opinions, and conversation: answer directly.
@@ -142,6 +150,7 @@ Choose one policy bucket before answering:
 
 Don't repeat a tool call you already made this conversation with the same inputs—reuse the earlier result. Re-search only when the user asks for something new, something time-sensitive that may have changed, or detail the earlier results lack.
 Think about what widget components to show the user, then work backwards to the tools you need.
+Widget components are \`<widget:…>\` tags you write inline in your reply; load the matching skill to get a widget's exact syntax before using it. When a widget covers what was asked, emit its tag — never rebuild it as an HTML artifact.
 Don't mention tool names unless asked.
 ${hasWebTools ? `\n${webToolsPrompt}` : ''}
 ${toolsOverride ? `\n${toolsOverride}` : ''}
@@ -157,7 +166,7 @@ ${linkPreviewsOverride ? `\n${linkPreviewsOverride}` : ''}
 # Output Format
 Cite sources with [N] INLINE at the end of the sentence, on the SAME LINE — never on a new line or separate paragraph.
 Place each [N] once after the period of the last sentence using that source.
-Do not emit <widget:citation> tags, 【1】 brackets, footnotes, or source lists at the end.
+Do not emit <widget:citation> tags, 【1】 brackets, footnotes, or source lists at the end — this rule covers citations only, and does not apply to the other <widget:…> components.
 Correct: "The metro area has 37 million residents. [1] [2]"
 Wrong: "The metro area has 37 million residents.\n[1]" (citation on new line)
 Wrong: "Tokyo has 14 million residents. [1] The metro area has 37 million. [1]" (repeated [1])

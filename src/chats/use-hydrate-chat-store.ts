@@ -26,7 +26,7 @@ import { builtInAgent } from '@/defaults/agents'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
-import { generateTitle } from '@/lib/title-generator'
+import { generateTitle, titleSourceText } from '@/lib/title-generator'
 import { convertDbChatMessageToUIMessage } from '@/lib/utils'
 import type { Model, SaveMessagesFunction, SaveStreamingMessageFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
@@ -43,6 +43,27 @@ type UseHydrateChatStoreParams = {
    *  Passed in rather than read from `window.location` so the value is part of
    *  this hook's inputs and can be tested. */
   projectId?: string | null
+  /** Mini App a brand-new chat starts from. Same lazy-write reasoning as
+   *  `projectId`: the app is known when the panel opens, but nothing is
+   *  persisted until the first message. */
+  miniAppId?: string | null
+  /**
+   * Whether the first save should navigate to `/chats/<id>`.
+   *
+   * True for the chat route, where the URL must move off `/chats/new` so the
+   * thread is linkable and survives reload.
+   *
+   * A host that supplies this takes over: nothing navigates, and recording the
+   * new id is entirely its business. That is what the Mini App side panel needs
+   * — navigating there would unmount the host page mid-send, taking the app, its
+   * bridge, and the context the model was about to be asked about with it.
+   *
+   * One prop rather than a `navigateOnCreate` flag beside it: the two always
+   * moved together, and the combination that made no sense (suppress the
+   * navigation, supply no callback) silently created a real row that nothing
+   * recorded.
+   */
+  onCreated?: (chatThreadId: string) => void
 }
 
 /**
@@ -69,7 +90,13 @@ const maybePrewarmBuiltInAgent = (agent: Agent, model: Model) => {
   }
 }
 
-export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = null }: UseHydrateChatStoreParams) => {
+export const useHydrateChatStore = ({
+  id,
+  isNew,
+  projectId: newChatProjectId = null,
+  miniAppId: newChatMiniAppId = null,
+  onCreated,
+}: UseHydrateChatStoreParams) => {
   const db = useDatabase()
   const httpClient = useHttpClient()
   const getProxyFetch = useProxyFetchGetter()
@@ -85,10 +112,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
       return
     }
 
-    const textContent = firstUserMessage.parts
-      ?.filter((part) => part.type === 'text')
-      .map((part) => (part.type === 'text' ? part.text : ''))
-      .join(' ')
+    const textContent = titleSourceText(firstUserMessage)
 
     if (!textContent) {
       return
@@ -111,15 +135,13 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
     // Pass `selectedAgent.id` so a brand-new thread is created with the user's
     // currently-selected agent — otherwise the row would default to `null`
     // and a reload would silently fall back to the built-in agent.
-    const thread = await getOrCreateChatThread(
-      db,
-      id,
-      session.selectedModel.id,
-      session.selectedAgent.id,
-      // Stamped here rather than at navigation time: the row is created lazily on
-      // this first save, so the project must ride the session to reach it.
-      session.projectId,
-    )
+    const thread = await getOrCreateChatThread(db, id, session.selectedModel.id, {
+      agentId: session.selectedAgent.id,
+      // Stamped here rather than at navigation time: the row is created lazily
+      // on this first save, so both must ride the session to reach it.
+      projectId: session.projectId,
+      miniAppId: session.miniAppId,
+    })
 
     // Save messages and update context size using DAL
     await saveMessagesWithContextUpdate(db, id, messages)
@@ -131,7 +153,12 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
-      navigate(`/chats/${id}`, { relative: 'path' })
+      if (onCreated) {
+        // The host records the id its own way, and stays where it is.
+        onCreated(id)
+      } else {
+        navigate(`/chats/${id}`, { relative: 'path' })
+      }
     }
   }
 
@@ -249,6 +276,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only
     // moment that intent exists — nothing has been written yet.
     const projectId = chatThread?.projectId ?? (isNew ? newChatProjectId : null)
+    const miniAppId = chatThread?.miniAppId ?? (isNew ? newChatMiniAppId : null)
 
     // If chat doesn't exist and this isn't a new chat, redirect to 404
     if (!chatThread && !isNew) {
@@ -269,6 +297,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
       connectionError: null,
       id,
       pendingPermission: null,
+      miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: hydratedTrailingEmptyTurn,
       // Persisted via `chatThreads.agentId`; resolved above (first available
@@ -276,6 +305,7 @@ export const useHydrateChatStore = ({ id, isNew, projectId: newChatProjectId = n
       selectedAgent,
       selectedModel: defaultModel,
       projectId,
+      miniAppId,
       triggerData,
     })
 

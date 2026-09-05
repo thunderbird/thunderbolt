@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { httpUrlField, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
@@ -93,6 +94,37 @@ const settingsSchema = z
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
 
+    /**
+     * The Mini App registry, as JSON, keyed by app id:
+     *
+     * ```
+     * { "order-book": { "name": "Order Book", "description": "…",
+     *   "icon": "table", "url": "https://…", "origin": "https://…", "secret": "…" } }
+     * ```
+     *
+     * One config, not two. An earlier cut kept presentation in a hardcoded
+     * frontend array and only the audience here, which meant two lists of the
+     * same apps that could disagree — and the failure was silent: an app the
+     * backend didn't know about rendered fine and then couldn't authenticate.
+     * The frontend now reads this over `GET /mini-apps`, minus the secret.
+     *
+     * `origin` becomes the `aud` of the identity token we mint, so it has to be
+     * operator-declared — a client that could name its own audience could mint a
+     * token for any app.
+     *
+     * Secrets are per app rather than one shared key: with a single symmetric
+     * secret, any Mini App could forge a token for any other. Asymmetric keys
+     * plus a JWKS endpoint are the upgrade once apps are built by third parties
+     * and secret distribution stops being a deploy-time detail.
+     */
+    miniApps: z.string().default(''),
+    /**
+     * Lifetime of a Mini App identity token. Short by intent — the guest asks
+     * for a new one as it nears expiry, so the blast radius of a leaked token is
+     * minutes rather than the length of a session.
+     */
+    miniAppTokenExpirySeconds: z.coerce.number().int().positive().default(300),
+
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
     // the main backend and the PostHog proxy use `cors({ allowedHeaders: true })`,
@@ -174,6 +206,114 @@ const settingsSchema = z
 
 export type Settings = z.infer<typeof settingsSchema>
 
+/** One registered Mini App, as the backend holds it. */
+export type MiniAppConfig = {
+  name: string
+  description: string
+  /** Icon key the frontend maps to a component; unknown keys fall back. */
+  icon: string
+  /**
+   * Exact origin the frame posts from, and the token's `aud`. Separate from
+   * `url` on purpose: a redirect can move `url`, and the value we validate
+   * against must be the one an operator declared.
+   */
+  origin: string
+  /** Full URL loaded into the frame. Defaults to `origin`. */
+  url: string
+  /** HS256 signing secret, unique to this app. Never leaves the backend. */
+  secret: string
+}
+
+/** What the frontend is allowed to see — everything but the secret. */
+export type { PublicMiniApp }
+
+/**
+ * Normalised to a serialized origin, because that is what the browser reports
+ * in `event.origin` — never with a path, never with a trailing slash. The
+ * bridge compares the two with `===`, so an operator writing
+ * `https://app.example.com/` used to produce an app that loaded and then
+ * silently ignored every message it sent.
+ */
+const originField = httpUrlField.transform((value) => new URL(value).origin)
+
+const miniAppEntrySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().default(''),
+    icon: z.string().default(''),
+    origin: originField,
+    url: httpUrlField.optional(),
+    // Matches the 32-character floor the rest of the codebase holds signing
+    // secrets to; this one signs identity tokens apps trust.
+    secret: z.string().min(32),
+  })
+  // `url` is almost always the origin; making operators repeat it is a
+  // second place for the two to disagree.
+  .transform((app) => ({ ...app, url: app.url ?? app.origin }))
+
+/**
+ * Parse `miniApps`, dropping anything malformed rather than throwing.
+ *
+ * Validated per entry, which is what the promise below actually requires: a
+ * typo in one app shouldn't take down token minting for the others. Parsing the
+ * whole record in one go meant exactly that — a single bad entry produced an
+ * empty registry and every app vanished at once.
+ *
+ * A dropped entry fails closed: that app simply can't get a token, which
+ * surfaces as a clear 404 rather than a token signed with `undefined`. Each one
+ * is logged, because an app quietly missing from the sidebar is otherwise a
+ * long afternoon.
+ *
+ * A `Map`, not a plain object, because the only thing that ever looks an app up
+ * is `POST /mini-apps/:appId/token` with an id straight off the URL. Indexing an
+ * object literal with that made `/mini-apps/toString/token` (or `constructor`,
+ * `valueOf`, `hasOwnProperty`) resolve to an inherited function — truthy, so the
+ * 404 guard never fired and the route fell through to signing a token whose
+ * `aud` and secret were both `undefined`. A `Map` only ever returns what was
+ * `set` on it, so the whole class of bug is gone rather than guarded against.
+ */
+export const getMiniApps = (settings: Pick<Settings, 'miniApps'>): Map<string, MiniAppConfig> => {
+  if (!settings.miniApps) {
+    return new Map()
+  }
+  // `JSON.parse` throws on malformed input, so it can't go straight into
+  // `safeParse` — a stray comma in an env var would take the process down.
+  let container: unknown
+  try {
+    container = JSON.parse(settings.miniApps)
+  } catch {
+    console.error('[mini-apps] MINI_APPS is not valid JSON; no apps registered')
+    return new Map()
+  }
+  if (typeof container !== 'object' || container === null || Array.isArray(container)) {
+    console.error('[mini-apps] MINI_APPS must be an object keyed by app id; no apps registered')
+    return new Map()
+  }
+
+  const entries = Object.entries(container).flatMap(([id, raw]) => {
+    const app = miniAppEntrySchema.safeParse(raw)
+    if (!app.success) {
+      const why = app.error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ')
+      console.error(`[mini-apps] Dropping "${id}" — ${why}`)
+      return []
+    }
+    return [[id, app.data] as const]
+  })
+  return new Map(entries)
+}
+
+/**
+ * The registry as the frontend receives it, with secrets stripped.
+ *
+ * Takes an already-parsed registry rather than `Settings`, so a route can parse
+ * once at construction and answer from that. Deriving it from `Settings` per
+ * call re-ran `JSON.parse` and the per-entry validation on every request — and
+ * re-emitted the "Dropping <id>" log each time, which on an unauthenticated
+ * route means any caller can drive the log volume.
+ */
+export const toPublicMiniApps = (apps: ReadonlyMap<string, MiniAppConfig>): PublicMiniApp[] =>
+  [...apps].map(([id, { secret: _secret, ...app }]) => ({ id, ...app }))
+
 /**
  * Parse and validate environment variables into settings
  */
@@ -216,6 +356,37 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    /*
+     * The dev fallback is the starter template, and only the starter template.
+     *
+     * It used to register two apps that live outside this repo, on ports a fresh
+     * checkout has nothing running on — so `bun dev` gave you a sidebar of apps
+     * that could not load, and it disagreed with the `MINI_APPS` line in
+     * `.env.example`. Two defaults for one setting is the same "two lists that
+     * can disagree" problem this field's own docs are about, and the loser was
+     * whoever hadn't copied the example file.
+     */
+    miniApps:
+      process.env.MINI_APPS ||
+      (isDevelopment
+        ? JSON.stringify({
+            'order-book': {
+              name: 'Order Book',
+              description: 'Template starter app — orders with a changeable status.',
+              icon: 'table',
+              origin: 'http://localhost:5190',
+              secret: 'order-book-template-dev-secret-xx',
+            },
+          })
+        : ''),
+    // Handed to the schema raw, so its `z.coerce.number().int().positive()`
+    // rejects a typo loudly at boot — `Number(...) || 300` turned
+    // `MINI_APP_TOKEN_EXPIRY_SECONDS=5m` into NaN and then silently into the
+    // default. The unset case is covered by the schema's own `.default(300)`,
+    // which is why nothing is substituted here. (Its neighbour
+    // `powersyncTokenExpirySeconds` passes `|| '3600'` instead and so never
+    // reaches its schema default; this is the shape to copy, not that one.)
+    miniAppTokenExpirySeconds: process.env.MINI_APP_TOKEN_EXPIRY_SECONDS,
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
@@ -278,6 +449,19 @@ export const getCorsOriginsList = (settings: Pick<Settings, 'corsOrigins'>): str
 /** Check whether a given origin is allowed by the configured CORS origins (exact match). */
 export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
   return getCorsOriginsList(settings).includes(origin)
+}
+
+/**
+ * Whether a request's `Origin` header is one we serve.
+ *
+ * Absence is allowed: a same-origin or non-browser caller sends no `Origin`, and
+ * every route using this authorises with a session or a token as well — this
+ * only refuses a *browser* on an origin we don't serve. Two routes had their own
+ * copy of exactly this, which is one copy too many for a security predicate.
+ */
+export const isRequestOriginAllowed = (request: Request, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  const origin = request.headers.get('origin')
+  return !origin || isOriginAllowed(origin, settings)
 }
 
 /** Validate that an OAuth redirect_uri points to a trusted origin. */

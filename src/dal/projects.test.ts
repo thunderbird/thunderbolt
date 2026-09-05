@@ -135,7 +135,7 @@ describe('new chat started inside a project', () => {
     // Mirrors the hydration path: the row does not exist until the first message
     // save, at which point the session's projectId must reach it.
     const threadId = uuidv7()
-    const thread = await getOrCreateChatThread(db, threadId, model.id, null, project.id)
+    const thread = await getOrCreateChatThread(db, threadId, model.id, { projectId: project.id })
 
     expect(thread.projectId).toBe(project.id)
     expect(await getProjectChatThreads(db, project.id)).toHaveLength(1)
@@ -154,10 +154,10 @@ describe('new chat started inside a project', () => {
     const b = await createProject(db, { name: 'B' })
     const model = (await db.select().from(modelsTable).limit(1))[0] as Model
     const threadId = uuidv7()
-    await getOrCreateChatThread(db, threadId, model.id, null, a.id)
+    await getOrCreateChatThread(db, threadId, model.id, { projectId: a.id })
 
     // Second call finds the row and returns it untouched.
-    const again = await getOrCreateChatThread(db, threadId, model.id, null, b.id)
+    const again = await getOrCreateChatThread(db, threadId, model.id, { projectId: b.id })
     expect(again.projectId).toBe(a.id)
   })
 })

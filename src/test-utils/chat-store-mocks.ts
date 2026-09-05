@@ -189,12 +189,15 @@ export const hydrateStore = (state: {
       connectionError: null,
       id: state.id,
       pendingPermission: null,
+      miniAppApprovalQueue: [],
       retryCount: 0,
       retriesExhausted: false,
       selectedAgent: builtInAgent,
       selectedModel: state.selectedModel ?? defaultTestModel,
-      // Mirrors production: a chat's project comes from its persisted thread.
+      // Mirrors production: a chat's project and originating app both come from
+      // its persisted thread.
       projectId: state.chatThread?.projectId ?? null,
+      miniAppId: state.chatThread?.miniAppId ?? null,
       triggerData: state.triggerData,
     }
 

@@ -49,7 +49,7 @@ jobs:
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
-              - 'scripts/agent-core-browser.test.ts'
+              - 'scripts/agent-core-browser-check.ts'
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'

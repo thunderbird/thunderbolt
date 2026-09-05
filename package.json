@@ -10,7 +10,7 @@
     "test:5x": "bun test --cwd=src --timeout 3600000 --randomize --rerun-each 5 && bun test shared/*.test.ts shared/defaults/ shared/i18n/ scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/post-eval-results.test.ts ./.github/scripts/review-orchestrator.test.mjs --timeout 3600000 --randomize --rerun-each 5",
     "test:agent-core": "bun test --cwd=shared/agent-core --timeout 5000 --randomize",
     "test:agent-core:5x": "bun test --cwd=shared/agent-core --timeout 5000 --randomize --rerun-each 5",
-    "test:agent-core:browser": "bun scripts/agent-core-browser.test.ts",
+    "test:agent-core:browser": "bun scripts/agent-core-browser-check.ts",
     "test:watch": "bun test --cwd=src --watch",
     "test:backend": "cd backend && bun test --timeout 5000 --randomize",
     "test:backend:5x": "cd backend && bun test --timeout 5000 --randomize --rerun-each 5",

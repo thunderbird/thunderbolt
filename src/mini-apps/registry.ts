@@ -18,7 +18,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import { AppWindow, BarChart3, FileSearch, LineChart, Route, Stethoscope, Table } from 'lucide-react'
-import { z } from 'zod'
+import { miniAppRegistrySchema, publicMiniAppSchema, type PublicMiniApp } from '@shared/mini-app-registry'
 
 export type MiniAppDefinition = {
   /** URL segment and stable key: `/apps/<id>`. */
@@ -40,28 +40,8 @@ export type MiniAppDefinition = {
 }
 
 /**
- * An absolute http(s) URL, mirroring the backend's own field.
- *
- * Re-checked on this side rather than trusted: `url` reaches `<iframe src>` and
- * `origin` is what every inbound message is compared against, and the backend a
- * client talks to is a local setting. A `javascript:` URL in an `src` executes
- * in *our* page rather than in a frame, so this is the last place to catch one.
- * Parsing also guarantees the two are comparable as origins below.
- */
-const httpUrlField = z.string().refine(
-  (value) => {
-    try {
-      const { protocol } = new URL(value)
-      return protocol === 'http:' || protocol === 'https:'
-    } catch {
-      return false
-    }
-  },
-  { message: 'must be an http(s) URL' },
-)
-
-/**
- * The wire shape of one app from `GET /mini-apps`.
+ * The wire shape of one app from `GET /mini-apps`, from `shared/` so the
+ * backend that publishes it and the client that reads it cannot drift.
  *
  * Parsed, not asserted with a generic on `.json()`. A cast here fails in the
  * worst possible way, because `origin` is the value `isFromGuest` compares
@@ -72,16 +52,7 @@ const httpUrlField = z.string().refine(
  * the app never spoke. `url` missing is milder and just as opaque: the frame
  * loads the literal string "undefined".
  */
-export const miniAppResponseSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().default(''),
-  icon: z.string().default(''),
-  url: httpUrlField,
-  origin: httpUrlField,
-})
-
-export type MiniAppResponse = z.infer<typeof miniAppResponseSchema>
+export type MiniAppResponse = PublicMiniApp
 
 /**
  * Icon keys an operator may name in config.
@@ -150,7 +121,7 @@ const isOwnOrigin = (app: MiniAppResponse): boolean => {
  * that app, not the sidebar.
  */
 export const parseMiniAppRegistry = (body: unknown): { apps: MiniAppDefinition[]; dropped: number } | null => {
-  const envelope = z.object({ apps: z.array(z.unknown()) }).safeParse(body)
+  const envelope = miniAppRegistrySchema.safeParse(body)
   if (!envelope.success) {
     return null
   }
@@ -158,7 +129,7 @@ export const parseMiniAppRegistry = (body: unknown): { apps: MiniAppDefinition[]
   const apps: MiniAppDefinition[] = []
   let dropped = 0
   for (const candidate of envelope.data.apps) {
-    const parsed = miniAppResponseSchema.safeParse(candidate)
+    const parsed = publicMiniAppSchema.safeParse(candidate)
     if (!parsed.success) {
       dropped += 1
       continue

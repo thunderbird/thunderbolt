@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { httpUrlField, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
@@ -225,24 +226,7 @@ export type MiniAppConfig = {
 }
 
 /** What the frontend is allowed to see — everything but the secret. */
-export type PublicMiniApp = Omit<MiniAppConfig, 'secret'> & { id: string }
-
-/**
- * http(s) only. An app's `origin` ends up in `<iframe src>`, and `z.string().url()`
- * happily accepts `javascript:` — which would execute in our page rather than a
- * frame. Anything that isn't a real web URL is rejected outright.
- */
-const httpUrlField = z.string().refine(
-  (value) => {
-    try {
-      const { protocol } = new URL(value)
-      return protocol === 'http:' || protocol === 'https:'
-    } catch {
-      return false
-    }
-  },
-  { message: 'must be an http(s) URL' },
-)
+export type { PublicMiniApp }
 
 /**
  * Normalised to a serialized origin, because that is what the browser reports

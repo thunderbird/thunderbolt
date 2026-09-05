@@ -33,6 +33,12 @@ type MiniAppState = {
   tools: MiniAppTool[]
   /** Bridge-installed invoker, or null when no app is connected. */
   invokeTool: MiniAppToolInvoker | null
+  /**
+   * When this app opened, for deciding which surface `get_app_context`
+   * describes when an artifact panel is also open. Compared against the
+   * artifact store's `openedAt`, so the two have to mean the same thing.
+   */
+  openedAt: number | null
 }
 
 type MiniAppActions = {
@@ -54,11 +60,11 @@ type MiniAppActions = {
   resetGuest: () => void
 }
 
-const emptyAppState = { activeApp: null, context: null, tools: [], invokeTool: null }
+const emptyAppState = { activeApp: null, context: null, tools: [], invokeTool: null, openedAt: null }
 
 export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => ({
   ...emptyAppState,
-  openApp: (app) => set({ ...emptyAppState, activeApp: app }),
+  openApp: (app) => set({ ...emptyAppState, activeApp: app, openedAt: Date.now() }),
   closeApp: () => {
     const { activeApp } = get()
     set(emptyAppState)
@@ -92,7 +98,8 @@ export const getMiniAppSnapshot = (): {
   app: MiniAppDefinition | null
   context: MiniAppContext | null
   tools: MiniAppTool[]
+  openedAt: number | null
 } => {
-  const { activeApp, context, tools } = useMiniAppStore.getState()
-  return { app: activeApp, context, tools }
+  const { activeApp, context, tools, openedAt } = useMiniAppStore.getState()
+  return { app: activeApp, context, tools, openedAt }
 }

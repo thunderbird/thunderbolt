@@ -30,12 +30,12 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
   /** Mini App this chat starts from. New chats only; set by the app page. */
   miniAppId?: string | null
   /**
-   * Whether the first send should navigate to `/chats/<id>`. Defaults to true
-   * (the route's behaviour). Embedded hosts pass false so the send doesn't
+   * Called with the thread id once the first send persists it.
+   *
+   * Supplying it also suppresses the route's default navigation to
+   * `/chats/<id>`, which is what an embedded host needs — navigating would
    * unmount the surface the chat is sitting in.
    */
-  navigateOnCreate?: boolean
-  /** Called with the thread id once the first send persists it. */
   onCreated?: (chatThreadId: string) => void
 }>
 
@@ -51,7 +51,6 @@ export const ChatHydrateHandler = ({
   projectId,
   newChatId,
   miniAppId = null,
-  navigateOnCreate = true,
   onCreated,
 }: ChatHydrateHandlerProps) => {
   const isNew = existingId === null
@@ -66,7 +65,6 @@ export const ChatHydrateHandler = ({
     isNew,
     projectId,
     miniAppId,
-    navigateOnCreate,
     onCreated,
   })
 

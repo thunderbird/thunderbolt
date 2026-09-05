@@ -86,7 +86,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       // Staying on this route is the whole point: navigating to /chats/<id> on
       // first send would unmount the app, tear down the bridge, and clear the
       // very context the model was asked about.
-      navigateOnCreate={false}
       // The moment the thread is real it becomes addressable, so it moves out of
       // local state and into the URL. Without this a reload dropped the panel:
       // the id only ever lived in `draftChatId`, which doesn't survive one.

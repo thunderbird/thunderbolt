@@ -51,15 +51,17 @@ type UseHydrateChatStoreParams = {
    * Whether the first save should navigate to `/chats/<id>`.
    *
    * True for the chat route, where the URL must move off `/chats/new` so the
-   * thread is linkable and survives reload. False for a chat embedded in another
-   * surface (the Mini App side panel), where navigating would unmount the host
-   * page mid-send — taking the app, its bridge, and the context the model was
-   * about to be asked about with it.
-   */
-  navigateOnCreate?: boolean
-  /**
-   * Called once, when the first save turns this into a real row. Lets a host
-   * that suppressed navigation record the id its own way.
+   * thread is linkable and survives reload.
+   *
+   * A host that supplies this takes over: nothing navigates, and recording the
+   * new id is entirely its business. That is what the Mini App side panel needs
+   * — navigating there would unmount the host page mid-send, taking the app, its
+   * bridge, and the context the model was about to be asked about with it.
+   *
+   * One prop rather than a `navigateOnCreate` flag beside it: the two always
+   * moved together, and the combination that made no sense (suppress the
+   * navigation, supply no callback) silently created a real row that nothing
+   * recorded.
    */
   onCreated?: (chatThreadId: string) => void
 }
@@ -93,7 +95,6 @@ export const useHydrateChatStore = ({
   isNew,
   projectId: newChatProjectId = null,
   miniAppId: newChatMiniAppId = null,
-  navigateOnCreate = true,
   onCreated,
 }: UseHydrateChatStoreParams) => {
   const db = useDatabase()
@@ -152,9 +153,10 @@ export const useHydrateChatStore = ({
 
     if (!session.chatThread) {
       updateSession(id, { chatThread: thread })
-      onCreated?.(id)
-      // Embedded chats stay put — see `navigateOnCreate`.
-      if (navigateOnCreate) {
+      if (onCreated) {
+        // The host records the id its own way, and stays where it is.
+        onCreated(id)
+      } else {
         navigate(`/chats/${id}`, { relative: 'path' })
       }
     }

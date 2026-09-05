@@ -7,6 +7,7 @@ import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
 import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
+import { chooseEmbeddedSurface } from '@/ai/embedded-surface'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
@@ -650,12 +651,19 @@ export const prepareAiRequestConfig = async ({
   // cacheable stable prompt on every send. Registered only while an app is open.
   const miniAppSnapshot = getMiniAppSnapshot()
   const miniApp = miniAppSnapshot.app
-  if (supportsTools && miniApp) {
-    appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
-  } else if (supportsTools && getArtifactContextSnapshot().title) {
-    // Same tool name on purpose — to the user both are "the thing on my screen",
-    // and only one embedded surface is open at a time, so they never collide.
+  // One tool name for both embedded surfaces — see `chooseEmbeddedSurface` for
+  // which one it describes when both are open, and why that is a rule rather
+  // than a condition.
+  const artifactSnapshot = getArtifactContextSnapshot()
+  const surface = chooseEmbeddedSurface({
+    miniAppOpenedAt: miniApp ? miniAppSnapshot.openedAt : null,
+    artifactOpenedAt: artifactSnapshot.openedAt,
+    hasArtifactTitle: artifactSnapshot.title !== null,
+  })
+  if (supportsTools && surface === 'artifact') {
     appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
+  } else if (supportsTools && surface === 'mini-app') {
+    appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
   }
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we

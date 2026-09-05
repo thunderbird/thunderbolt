@@ -23,6 +23,12 @@ type ArtifactContextState = {
   title: string | null
   /** The last context the page published. Null until it reports one. */
   context: ArtifactContext | null
+  /**
+   * When this panel opened, for deciding which surface `get_app_context`
+   * describes when a Mini App is also mounted. See `openedAt` on the Mini App
+   * store — the two are compared, so they have to mean the same thing.
+   */
+  openedAt: number | null
   openArtifact: (title: string) => void
   setContext: (context: ArtifactContext) => void
   closeArtifact: () => void
@@ -31,15 +37,22 @@ type ArtifactContextState = {
 export const useArtifactContextStore = create<ArtifactContextState>((set) => ({
   title: null,
   context: null,
+  openedAt: null,
   // Clears any previous context: opening a second artifact must not inherit the
   // first one's description while the new page is still loading.
-  openArtifact: (title) => set({ title, context: null }),
+  openArtifact: (title) => set({ title, context: null, openedAt: Date.now() }),
   setContext: (context) => set({ context }),
-  closeArtifact: () => set({ title: null, context: null }),
+  closeArtifact: () => set({ title: null, context: null, openedAt: null }),
 }))
 
+export type ArtifactContextSnapshot = {
+  title: string | null
+  context: ArtifactContext | null
+  openedAt: number | null
+}
+
 /** Read outside React — the tool layer runs beyond the component tree. */
-export const getArtifactContextSnapshot = (): { title: string | null; context: ArtifactContext | null } => {
-  const { title, context } = useArtifactContextStore.getState()
-  return { title, context }
+export const getArtifactContextSnapshot = (): ArtifactContextSnapshot => {
+  const { title, context, openedAt } = useArtifactContextStore.getState()
+  return { title, context, openedAt }
 }

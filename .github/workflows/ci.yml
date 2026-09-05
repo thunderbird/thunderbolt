@@ -49,6 +49,11 @@ jobs:
               - 'crates/**'
             agent-core:
               - 'shared/agent-core/**'
+              - 'scripts/agent-core-browser.test.ts'
+              - 'vite.config.ts'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
             cli:
               - 'cli/**'
               - 'shared/agent-core/**'
@@ -248,9 +253,8 @@ jobs:
           echo "No untransformed Lingui macros in the bundle."
 
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
-  # are NOT part of the default `bun run test` — they only need to run when the
-  # module itself changes, so gate them on the agent-core path filter. Mirrors the
-  # `rust` job's detect-changes pattern and the `typescript` job's Bun setup.
+  # are NOT part of the default `bun run test`. Include dependency/build changes:
+  # a passing Bun import does not establish compatibility with browser runtimes.
   agent-core:
     needs: detect-changes
     if: needs.detect-changes.outputs.agent-core == 'true'
@@ -284,6 +288,12 @@ jobs:
 
       - name: Run agent-core tests (5x)
         run: bun run test:agent-core:5x
+
+      - name: Install browser engines
+        run: bunx playwright install --with-deps chromium webkit
+
+      - name: Check production agent-core in browsers
+        run: bun run test:agent-core:browser
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`

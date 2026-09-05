@@ -6,8 +6,12 @@
 # Run frontend tests (src/ + shared/ non-agent-core tests + selected scripts and .github script tests)
 bun run test
 
-# Run the isolated shared/agent-core module's unit tests (NOT part of `bun run test`; CI runs these only when shared/agent-core/** changes)
+# Run the isolated shared/agent-core module's unit tests (NOT part of `bun run test`)
 bun run test:agent-core
+
+# Build and check the production agent chunk in Chromium and WebKit (no backend/auth required)
+bunx playwright install chromium webkit
+bun run test:agent-core:browser
 
 # Run frontend tests in watch mode (src/ only)
 bun run test:watch
@@ -25,7 +29,9 @@ bun run e2e:headed   # with a visible browser
 
 **Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
 
-**`shared/agent-core` is the app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package**, not that package itself. Its nested unit tests sit outside frontend test discovery, so they are intentionally **not** part of `bun run test`. Run them with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate). In CI, the dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs `bun run test:agent-core:5x` only when `shared/agent-core/**` changes. The CLI imports the npm Pi package directly and imports the OpenAI-compatible and confidential-model builders plus receipt lifecycle from `shared/agent-core`, unit-tested by `bun run test:agent-core`; its integration coverage remains in the CLI suite.
+**`shared/agent-core` is the app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package**, not that package itself. Its nested unit tests sit outside frontend test discovery, so they are intentionally **not** part of `bun run test`. Run them with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate). In CI, the dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs the 5x unit gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes. The CLI imports the npm Pi package directly and imports the OpenAI-compatible and confidential-model builders plus receipt lifecycle from `shared/agent-core`, unit-tested by `bun run test:agent-core`; its integration coverage remains in the CLI suite.
+
+`test:agent-core:browser` builds into a temporary directory and imports the emitted app chunk in both engines, with native iterator helpers and with those helpers removed before import. It exercises two conversation turns through the OpenRouter, Thunderbolt, and confidential-model harness paths using injected SSE responses, then verifies OPFS data survives reload. Each case uses a fresh persistent browser profile because WebKit's ephemeral contexts reject OPFS. This is a dependency/runtime regression check, not authenticated provider or native-device coverage. To check an existing production build, set `BROWSER_TEST_DIST=/absolute/path/to/build`; the script leaves that build untouched and cleans up its own profiles.
 
 ## Testing Guidelines
 

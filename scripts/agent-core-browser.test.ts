@@ -56,6 +56,9 @@ try {
         const page = await browser.newPage()
         const errors: string[] = []
         page.on('pageerror', (error) => errors.push(error.message))
+        page.on('console', (message) => {
+          if (message.text().startsWith('[OPFS diagnostic]')) console.log(`${label}: ${message.text()}`)
+        })
         if (removeIteratorHelpers) {
           await page.addInitScript(() => {
             const iterator = [][Symbol.iterator]()
@@ -93,6 +96,18 @@ try {
           // Import the emitted app chunk, after removing helpers: a source/Bun import misses this regression.
           const core: typeof import('../shared/agent-core/index.ts') = await import(url)
           const backend = await core.mountAgentFs()
+          if (backend !== 'opfs') {
+            console.log(
+              `[OPFS diagnostic] ${JSON.stringify({ userAgent: navigator.userAgent, secureContext: isSecureContext })}`,
+            )
+            // Probe the native API separately: the production mount intentionally swallows storage errors.
+            try {
+              const directory = await navigator.storage.getDirectory()
+              console.log(`[OPFS diagnostic] native getDirectory succeeded: ${directory.kind}`)
+            } catch (error) {
+              console.log(`[OPFS diagnostic] native getDirectory failed: ${String(error)}`)
+            }
+          }
           const conversations = []
           for (const providerId of ['openrouter', 'thunderbolt', 'tinfoil']) {
             const requests: string[] = []

@@ -57,6 +57,16 @@ mise.toml
 !.claude/skills/
 !.claude/skills/thunder-deep-review/
 !.claude/skills/thunder-deep-review/**
+!.claude/security/
+!.claude/security/**
+!.claude/skills/thunder-red-team/
+!.claude/skills/thunder-red-team/**
+!.claude/skills/thunder-vuln-scan/
+!.claude/skills/thunder-vuln-scan/**
+!.claude/skills/thunder-triage/
+!.claude/skills/thunder-triage/**
+!.claude/skills/_lib/
+!.claude/skills/_lib/**
 .zed/**
 .zedscratches/**
 .mcp.json
@@ -80,3 +90,6 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
+
+# Red-team scratch — throwaway attack attempts, never committed.
+e2e/e2ee/attacks/scratch/

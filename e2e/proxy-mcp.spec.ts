@@ -32,9 +32,7 @@ const targetMcpServer = 'https://mcp.example.com/'
  * `createProxyFetch` emit. The proxy is mocked with `page.route()` so the
  * upstream MCP server doesn't need to be reachable from CI.
  */
-test('MCP traffic routes through /v1/proxy with X-Proxy-Target-Url + passthrough headers', async ({
-  page,
-}) => {
+test('MCP traffic routes through /v1/proxy with X-Proxy-Target-Url + passthrough headers', async ({ page }) => {
   const errors = collectPageErrors(page)
 
   let proxyHits = 0

@@ -19,11 +19,13 @@ import {
   seedV1Setting,
   seedV1Task,
   trustDevice,
+  waitForConsumedChallenge,
+  waitForDeviceState,
   waitForOtp,
   type DeviceKeys,
 } from './db'
 
-type DeviceProfile = 'firefox' | 'safari' | 'windows'
+export type DeviceProfile = 'firefox' | 'safari' | 'windows'
 
 export type DeviceSession = {
   context: BrowserContext
@@ -36,6 +38,17 @@ const deviceUserAgents: Record<DeviceProfile, string> = {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15',
   windows:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+}
+
+/**
+ * How each profile's device renders in the devices list — the string
+ * `revokeTrustedDevice` matches on. Derived from the user agents above by
+ * `getDeviceDisplayName` (src/lib/platform.ts), so the two must stay in step.
+ */
+export const deviceLabels: Record<DeviceProfile, string> = {
+  firefox: 'Firefox on macOS',
+  safari: 'Safari on macOS',
+  windows: 'Chrome on Windows',
 }
 const otpRequestTimes = new Map<string, number>()
 
@@ -116,6 +129,47 @@ export const getDeviceId = async (page: Page): Promise<string> => {
   }
   return deviceId
 }
+
+/** Backend origin the frontend bundle points at (VITE_THUNDERBOLT_CLOUD_URL). */
+const backendBaseUrl = 'http://localhost:8004/v1'
+
+export type EncryptionApiResponse = { status: number; body: unknown }
+
+/**
+ * Replay a page's retained bearer token against the backend with an
+ * attacker-chosen `X-Device-ID`. Runs the fetch inside the page so it carries
+ * exactly the credential that context still holds — the A4 primitive for probing
+ * whether a revoked device's cached token is actually refused, and whether the
+ * caller-asserted device id buys anything. Omit `deviceId` to send no header.
+ */
+export const encryptionApiRequest = async (
+  page: Page,
+  path: string,
+  options: { method?: string; deviceId?: string; body?: unknown } = {},
+): Promise<EncryptionApiResponse> =>
+  page.evaluate(
+    async ({ url, method, deviceId, body }) => {
+      const headers: Record<string, string> = {}
+      const token = localStorage.getItem('thunderbolt_auth_token')
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      if (deviceId) {
+        headers['X-Device-ID'] = deviceId
+      }
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json'
+      }
+      const response = await fetch(url, {
+        method: method ?? 'GET',
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      })
+      const parsed = await response.json().catch(() => null)
+      return { status: response.status, body: parsed }
+    },
+    { url: `${backendBaseUrl}${path}`, method: options.method, deviceId: options.deviceId, body: options.body },
+  )
 
 export const completeFirstDeviceSetup = async (page: Page): Promise<string> => {
   await page.goto('/settings/preferences')
@@ -321,6 +375,19 @@ export const createTask = async (page: Page, taskText: string): Promise<void> =>
   await expect(page.getByText(taskText, { exact: true })).toBeVisible()
 }
 
+/**
+ * Edit an existing task's text in place: click its text (which becomes an input),
+ * replace the value, and save with Enter. Gives a cell a second valid ciphertext
+ * so a rollback attack has an older version to replay.
+ */
+export const editTask = async (page: Page, currentText: string, newText: string): Promise<void> => {
+  await page.getByRole('button', { name: currentText, exact: true }).click()
+  const input = page.locator('input:focus')
+  await input.fill(newText)
+  await input.press('Enter')
+  await expect(page.getByText(newText, { exact: true })).toBeVisible()
+}
+
 export const signOutKeepingData = async (page: Page): Promise<void> => {
   await page.getByRole('button', { name: 'Account menu' }).click()
   await page.getByRole('button', { name: 'Log out' }).click()
@@ -515,4 +582,145 @@ export const runSeamlessMigration = async (page: Page): Promise<string> => {
   const recoveryPhrase = await acknowledgeRecoveryPhrase(phraseDialog)
   await expect(syncSwitch).toBeChecked()
   return recoveryPhrase
+}
+
+// =============================================================================
+// Adversary contexts
+// =============================================================================
+
+/**
+ * Approve the pending-device prompt on an already-trusted device. Two dialogs:
+ * the notification, then a confirmation. Extracted from multi-device.spec.ts so
+ * attack specs can reach full trust without restating the sequence.
+ */
+export const approvePendingDevice = async (adminPage: Page): Promise<void> => {
+  const notification = adminPage.getByRole('dialog').filter({ hasText: 'New device waiting' })
+  await expect(notification).toBeVisible({ timeout: 30_000 })
+  await notification.getByRole('button', { name: 'Approve' }).click()
+  const confirmation = adminPage.getByRole('alertdialog')
+  await expect(confirmation.getByText('Approve this device?')).toBeVisible()
+  await confirmation.getByRole('button', { name: 'Approve' }).click()
+}
+
+export type TrustedDevice = DeviceSession & {
+  deviceId: string
+  label: string
+}
+
+export type AdditionalDeviceOptions = {
+  email: string
+  userId: string
+  profile: DeviceProfile
+}
+
+/**
+ * Bring a second device all the way to trust: register, wait for pending,
+ * approve from `adminPage`, then finish setup. Returns the still-open session,
+ * so a caller can keep acting as that device afterwards.
+ */
+export const trustAdditionalDevice = async (
+  browser: Browser,
+  adminPage: Page,
+  { email, userId, profile }: AdditionalDeviceOptions,
+): Promise<TrustedDevice> => {
+  const device = await createIsolatedDevice(browser, profile)
+  await loginViaConsumerOtp(device.page, email)
+  await startAdditionalDeviceSetup(device.page)
+  const deviceId = await getDeviceId(device.page)
+  await waitForDeviceState(userId, deviceId, (state) => state.approvalPending && !state.trusted)
+
+  await approvePendingDevice(adminPage)
+  await waitForConsumedChallenge(userId, 'approve')
+  await waitForDeviceState(userId, deviceId, (state) => state.trusted && state.hasEnvelope)
+  await finishAdditionalDeviceSetup(device.page)
+
+  return { ...device, deviceId, label: deviceLabels[profile] }
+}
+
+/**
+ * A4 — a device that held full trust and was then revoked, with its browser
+ * context left open so it keeps whatever key material it cached.
+ *
+ * That retention is the point: revocation deletes the server envelope and
+ * rotates AK and DEK, but it cannot reach into this context's IndexedDB. What
+ * the device can still *do* with what it kept is claim C5.
+ */
+export const revokedDeviceContext = async (
+  browser: Browser,
+  adminPage: Page,
+  options: AdditionalDeviceOptions,
+): Promise<TrustedDevice> => {
+  const device = await trustAdditionalDevice(browser, adminPage, options)
+  await revokeTrustedDevice(adminPage, device.label)
+  await waitForConsumedChallenge(options.userId, 'revoke')
+  await waitForDeviceState(options.userId, device.deviceId, (state) => state.revokedAt !== null)
+  return device
+}
+
+/**
+ * A5 — a valid authenticated session holding no key material: signed in, never
+ * set up for sync, so no AK, no DEK, no device envelope. Models a stolen token
+ * rather than a stolen device.
+ */
+export const stolenSessionContext = async (
+  browser: Browser,
+  email: string,
+  profile: DeviceProfile = 'safari',
+): Promise<DeviceSession> => {
+  const device = await createIsolatedDevice(browser, profile)
+  await loginViaConsumerOtp(device.page, email)
+  return device
+}
+
+/**
+ * A2/A8 — answer `GET /v1/encryption/org-key` with a key the attacker controls.
+ *
+ * The client fetches the escrow public key from the very server the design
+ * distrusts, so this is the whole of claim C11: if nothing pins or verifies that
+ * key out of band, every AK this context writes is wrapped to the attacker.
+ * Routed on the context so it covers every page in it.
+ */
+export const serveEvilOrgKey = async (
+  context: BrowserContext,
+  key: { publicKey: string; fingerprint: string },
+): Promise<void> => {
+  await context.route('**/v1/encryption/org-key', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ enabled: true, publicKey: key.publicKey, fingerprint: key.fingerprint }),
+    })
+  })
+}
+
+/**
+ * A2/A10 — lie about `scheme_version` in the encryption-metadata response,
+ * preserving every other field. Models a malicious server trying to steer a
+ * client's scheme decision (e.g. flip a set-up v2 device back to `1` to provoke
+ * a re-migration / v1 downgrade). Fetches the real response first so only the
+ * one field changes.
+ */
+export const forceSchemeVersion = async (context: BrowserContext, version: number): Promise<void> =>
+  overrideEncryptionMetadata(context, { scheme_version: version })
+
+/**
+ * A2 — merge arbitrary fields into the encryption-metadata response
+ * (`GET /encryption/canary`), preserving everything else. The general form of
+ * `forceSchemeVersion`: models a server lying about any server-controlled
+ * metadata input (`kdf_salt`, `recovery_*`, `key_version`, …) to probe whether
+ * the client fails cleanly rather than downgrading or leaking.
+ */
+export const overrideEncryptionMetadata = async (
+  context: BrowserContext,
+  overrides: Record<string, unknown>,
+): Promise<void> => {
+  await context.route('**/v1/encryption/canary', async (route) => {
+    const response = await route.fetch()
+    if (!response.ok()) {
+      await route.fulfill({ response })
+      return
+    }
+    const body = (await response.json()) as Record<string, unknown>
+    await route.fulfill({ response, json: { ...body, ...overrides } })
+  })
 }

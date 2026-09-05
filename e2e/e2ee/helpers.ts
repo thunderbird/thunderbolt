@@ -375,6 +375,19 @@ export const createTask = async (page: Page, taskText: string): Promise<void> =>
   await expect(page.getByText(taskText, { exact: true })).toBeVisible()
 }
 
+/**
+ * Edit an existing task's text in place: click its text (which becomes an input),
+ * replace the value, and save with Enter. Gives a cell a second valid ciphertext
+ * so a rollback attack has an older version to replay.
+ */
+export const editTask = async (page: Page, currentText: string, newText: string): Promise<void> => {
+  await page.getByRole('button', { name: currentText, exact: true }).click()
+  const input = page.locator('input:focus')
+  await input.fill(newText)
+  await input.press('Enter')
+  await expect(page.getByText(newText, { exact: true })).toBeVisible()
+}
+
 export const signOutKeepingData = async (page: Page): Promise<void> => {
   await page.getByRole('button', { name: 'Account menu' }).click()
   await page.getByRole('button', { name: 'Log out' }).click()

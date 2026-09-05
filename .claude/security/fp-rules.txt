@@ -1,6 +1,6 @@
-Thunderbolt false-positive rules. Appended to the triage verifier via
-`/thunder-triage <findings.json> --fp-rules .claude/security/fp-rules.txt`, and used as
-the exclusion list for the security dimension of thunder-deep-review.
+Thunderbolt false-positive rules. The exclusion list for the security dimension
+of thunder-deep-review (its precision gate reads this file) and for the
+thunder-red-team skill.
 
 Everything below is a KNOWN property of this codebase. A finding that reduces to
 one of these is not a finding — drop it. A finding that shows NEW exposure

@@ -115,4 +115,3 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
 | Red-team passes | the `thunder-red-team` skill cites the A-ids and C-ids |
 | `thunder-deep-review` | security dimension loads this file for crypto-path diffs |
 | `e2e/e2ee/attacks/*` | each spec names the claim it defends |
-| `/thunder-vuln-scan --extra` | `.claude/security/scan-extras.txt` points here |

@@ -185,9 +185,3 @@ is probably not on this list.
 10. `MIN_APP_VERSION` residual window from long-lived PowerSync tokens. (`C12`)
 11. Concurrent `POST /encryption/keys` vs `/rotate` without an advisory lock strands a DEK under an
     old AK. (`C14`)
-
-## Related
-
-`/thunder-vuln-scan` and `/thunder-triage` (vendored, see `.claude/skills/UPSTREAM.md`) cover generic static
-scanning; this skill covers the protocol-level attacks they structurally cannot find. Tuning files
-for them live in `.claude/security/`.

@@ -453,3 +453,75 @@ export const waitForAccountDeletion = async (userId: string): Promise<void> => {
       : null
   }, 30_000)
 }
+
+// =============================================================================
+// Adversary primitives (A2 — malicious / compelled / breached server)
+// =============================================================================
+
+/**
+ * One cell in a synced table, addressed the way the server sees it. `table` is a
+ * `powersync` schema table and `column` one of its columns — the pairs in
+ * `encryptedColumnsMap` are the interesting ones.
+ */
+export type CellRef = {
+  table: string
+  rowId: string
+  column: string
+}
+
+/** Read a cell exactly as stored, with no decryption. */
+export const readCell = async ({ table, rowId, column }: CellRef): Promise<string | null> => {
+  const rows = await sql<{ value: string | null }[]>`
+    SELECT ${sql(column)} AS value
+    FROM powersync.${sql(table)}
+    WHERE id = ${rowId}
+  `
+  if (rows.length === 0) {
+    throw new Error(`${table}.${column}: row ${rowId} not found`)
+  }
+  return rows[0].value
+}
+
+/**
+ * Takes the connection to run on so a caller inside `sql.begin` can pass the
+ * transaction handle. The pool is `max: 1`: a query issued on the outer `sql`
+ * while a transaction holds that connection waits for one that never frees.
+ */
+const updateCell = async (
+  handle: postgres.Sql | postgres.TransactionSql,
+  { table, rowId, column }: CellRef,
+  value: string | null,
+): Promise<void> => {
+  const result = await handle`
+    UPDATE powersync.${handle(table)}
+    SET ${handle(column)} = ${value}
+    WHERE id = ${rowId}
+  `
+  if (result.count === 0) {
+    throw new Error(`${table}.${column}: row ${rowId} not found`)
+  }
+}
+
+/**
+ * Overwrite a cell behind the client's back — the core A2 capability. Bypasses
+ * the API, PowerSync's upload path, and every client-side guard, which is the
+ * point: it models a server that has decided to lie.
+ */
+export const writeCell = async (ref: CellRef, value: string | null): Promise<void> => {
+  await updateCell(sql, ref, value)
+}
+
+/**
+ * Exchange two cells' stored values — ciphertext substitution (C3). Works across
+ * rows, tables and accounts; whether the client notices is what the AAD binding
+ * is meant to decide.
+ *
+ * Both reads happen before the transaction opens, for the `max: 1` reason above.
+ */
+export const swapCells = async (a: CellRef, b: CellRef): Promise<void> => {
+  const [valueA, valueB] = await Promise.all([readCell(a), readCell(b)])
+  await sql.begin(async (tx) => {
+    await updateCell(tx, a, valueB)
+    await updateCell(tx, b, valueA)
+  })
+}

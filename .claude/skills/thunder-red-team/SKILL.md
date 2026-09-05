@@ -3,10 +3,12 @@ name: thunder-red-team
 description: >-
   Adversarial security review of Thunderbolt's end-to-end encryption. Attacks the
   security claims in docs/architecture/e2ee-threat-model.md rather than reviewing
-  code for correctness, in two modes: a read-only reasoning pass over one scope,
-  or a live hunt against a booted local stack. Use when asked to "red team",
-  "attack the encryption", "try to break E2EE", "run a red-team pass", or to
-  validate a claim like "the server cannot read user data".
+  code for correctness. Modes: a full sweep (`all`, or no argument) that fans every
+  scoped pass out as a subagent then triages and refutes; a single read-only
+  reasoning pass over one scope; or a live hunt against a booted local stack. Use
+  when asked to "red team", "attack the encryption", "try to break E2EE", "run a
+  red-team pass" or "run all red-team passes", or to validate a claim like "the
+  server cannot read user data".
 ---
 
 # Red-teaming Thunderbolt E2EE
@@ -24,7 +26,10 @@ Assume the design is wrong somewhere and go find where. Be adversarial, concrete
    finding.
 2. `docs/architecture/e2e-encryption.md` — as-built description. Treat every sentence as a **claim
    to test**, not as ground truth.
-3. `~/dev/thunderbolt-spec/specs/e2ee-v2.md` — the crypto spec (intended design), if present.
+3. The crypto spec (intended design) — `specs/e2ee-v2.md` in the separate `thunderbird/thunderbolt-spec`
+   repo (it is NOT vendored into this repo). Read it if that repo is checked out alongside this one, or
+   fetch it with `gh api repos/thunderbird/thunderbolt-spec/contents/specs/e2ee-v2.md`. Optional — skip
+   if unavailable.
 4. The source. **Where the docs and the code disagree, the code wins and the disagreement is itself
    a finding.**
 
@@ -33,12 +38,21 @@ findings, attack specs, and Linear issues all cite the same ids.
 
 ## Argument
 
-The scope to attack. One of the pass names below, or a free-form area.
+The scope to attack — one of:
+
+- **`all`** (or no argument) → the **full sweep**: every pass below, orchestrated as fresh-context
+  subagents, then triaged and refuted. See "Full sweep" under Modes. This is the whole reasoning
+  phase in one invocation — reach for it when you want the complete hunt, not a single lens.
+- **a single pass name** (`crypto`, `codec`, `backend`, `migration`, `lifecycle`, `escrow`, `sync`,
+  `sweep`) → just that one pass, in this context.
+- **a free-form area** → an ad-hoc scope you describe.
 
 ## Passes
 
 Run **one pass per invocation** — scoping is what stops parallel effort collapsing onto the same
 shallow finding, and a fresh context is what stops the previous pass's framing anchoring this one.
+The `all` mode preserves this by giving each pass its **own subagent context** — never review
+multiple passes inline in a single context.
 
 | Pass | Scope |
 | --- | --- |
@@ -55,7 +69,28 @@ Stay in scope for depth, but report anything critical you stumble across outside
 
 ## Modes
 
-### Reasoning pass (default)
+### Full sweep (`all`, or no argument)
+
+The complete reasoning phase in one invocation — WITHOUT collapsing the passes into a single context
+(that would defeat the scoping). Orchestrate it as a fan-out; do not run the eight lenses inline:
+
+1. **Passes** — spawn one read-only subagent per pass (`crypto`, `codec`, `backend`, `migration`,
+   `lifecycle`, `escrow`, `sync`, `sweep`), in parallel, each with a FRESH context scoped to that one
+   pass. Give each the same charter it gets as a standalone reasoning pass: read the threat model
+   first, exploit-first, cite `file:line` + the `C#`/`A#`, refute yourself. Each returns a candidate
+   list.
+2. **Triage** — dedupe across all eight and DROP anything without a `file:line`. Candidates are
+   arguments, not confirmations.
+3. **Refutation** — spawn a FRESH subagent per surviving candidate whose only job is to prove it
+   wrong (find the guard that kills it — a caller check, a DB constraint, a type, a middleware). Drop
+   or downgrade whatever it refutes.
+4. **Report** — one ranked list of survivors: claim id, `file:line`, adversary, and the concrete
+   step sequence. A survivor stays unconfirmed until a live hunt or an attack spec executes it.
+
+Reasoning-only by default (no stack). Live hunts stay **targeted and per-pass** (see below) — do not
+fan a live sweep across eight booted stacks.
+
+### Reasoning pass (single pass)
 
 Read-only. No stack, no execution. Produces candidate findings — **arguments, not confirmations**.
 

@@ -70,11 +70,25 @@ bash scripts/run-e2ee-powersync.sh    # Postgres + PowerSync on 5434/8081
 Then drive real browsers with Playwright while holding direct Postgres access — you are playing the
 **compelled server**, not an internet attacker. That position is the only way to test `C1` honestly.
 
-Primitives live in `e2e/e2ee/db.ts` (a live `sql` client, seeds, `trustDevice`,
-`getEncryptionServerSnapshot`) and `e2e/e2ee/helpers.ts` (`createIsolatedDevice`,
-`revokeTrustedDevice`, `signOutKeepingData`, `getEncryptionKeyNames`). Verdict functions live in
-`e2e/e2ee/oracles.ts` — call them rather than eyeballing output; they are the whole reason a live
-run can check itself.
+**Oracles** (`e2e/e2ee/oracles.ts`) are the verdict functions — call them rather than eyeballing
+output; they are the whole reason a live run can check itself:
+
+- `expectNoPlaintextOnServer(markers)` / `scanServerForPlaintext(markers)` — C1, targeted
+- `expectAllColumnsCiphertext(userId)` / `findUnencryptedValues(userId)` — C1, blanket
+- `expectEncryptedColumnsMapMatchesSchema()` — fails if the map drifted from the schema
+- `serverAuthoredPlaintextColumns` — the documented divergences the blanket scan skips
+
+**Adversary primitives** (`e2e/e2ee/db.ts`) impersonate a malicious server directly against
+Postgres: `readCell`, `writeCell`, `swapCells` over a `CellRef` of `{ table, rowId, column }`.
+
+**Adversary contexts** (`e2e/e2ee/helpers.ts`): `trustAdditionalDevice`, `revokedDeviceContext`
+(A4 — keeps its cached keys), `stolenSessionContext` (A5 — session, no keys), `serveEvilOrgKey`
+(A2/A8 — substitutes the escrow public key), plus the existing `createIsolatedDevice`,
+`revokeTrustedDevice`, `signOutKeepingData`, `getEncryptionKeyNames`, `deviceLabels`.
+
+`attacks/primitives.spec.ts` is the toolkit's own self-test — read it first to see each primitive
+used once. `serveEvilOrgKey` is the one primitive not covered there, so treat it as unproven until
+an attack exercises it.
 
 Throwaway attempts go in `e2e/e2ee/attacks/scratch/` (gitignored). **Every confirmed break becomes a
 permanent spec** at `e2e/e2ee/attacks/<name>.spec.ts`, named for the claim it defends, and from then

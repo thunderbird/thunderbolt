@@ -51,12 +51,22 @@ export type MiniAppsState = {
  * because the answer gates a route rather than a keystroke — but finite, because
  * "we don't know yet" is not a state the UI can sit in indefinitely.
  */
-const registryTimeoutMs = 10_000
+export const registryTimeoutMs = 10_000
 
 const emptyState: MiniAppsState = { apps: [], loading: true, failed: false }
 
 let state: MiniAppsState = emptyState
 let inFlight: Promise<void> | null = null
+/**
+ * Which era of the store a load belongs to.
+ *
+ * Only {@link resetMiniAppsForTesting} advances it, and only tests call that —
+ * but without it a load started by one test file could still be in flight when
+ * the next file resets the store, and its `setState` would land afterwards.
+ * That made two tests here fail roughly one randomized run in four, which is
+ * exactly the kind of flake nobody can reproduce on demand.
+ */
+let generation = 0
 const listeners = new Set<() => void>()
 
 const setState = (next: MiniAppsState) => {
@@ -78,6 +88,7 @@ const subscribe = (listener: () => void) => {
  * and no way to recover short of a reload.
  */
 const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
+  const era = generation
   inFlight ??= (async () => {
     try {
       const registry = parseMiniAppRegistry(
@@ -92,12 +103,18 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
       if (registry.dropped > 0) {
         console.error(`[mini-apps] Dropped ${registry.dropped} malformed app(s) from the registry`)
       }
+      if (era !== generation) {
+        return
+      }
       setState({ apps: registry.apps, loading: false, failed: false })
     } catch (error) {
       // Logged rather than swallowed: an empty sidebar is otherwise
       // indistinguishable from a deployment that configures no apps, and the
       // person debugging that has nothing to go on.
       console.error('[mini-apps] Could not load the registry', error)
+      if (era !== generation) {
+        return
+      }
       setState({ apps: [], loading: false, failed: true })
       // Cleared so the next mount retries, rather than the session being stuck.
       inFlight = null
@@ -114,6 +131,7 @@ const loadMiniApps = (httpClient: HttpClient): Promise<void> => {
  * Same shape as `resetAppVersionBlockedForTesting`.
  */
 export const resetMiniAppsForTesting = () => {
+  generation += 1
   state = emptyState
   inFlight = null
   listeners.clear()

@@ -12,9 +12,13 @@
  * app with that conversation already open beside it.
  *
  * Every reason to fall back to `/chats/:id` is a reason the app route wouldn't
- * work: the feature is off, the viewport can't host a split view, the registry
- * hasn't landed, or the app has been deregistered since. In those cases the
- * chat still opens, and `MiniAppChatBanner` says where it came from.
+ * work: the viewport can't host a split view, or the app has been deregistered
+ * since. In those cases the chat still opens, and `MiniAppChatBanner` says where
+ * it came from.
+ *
+ * An unanswered registry looks the same as a deregistered app from in here, so
+ * callers that can afford to wait check `loading` first rather than acting on
+ * that answer — see `ChatWithOrigin`.
  */
 
 import { useIsMobile } from '@/hooks/use-mobile'

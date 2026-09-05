@@ -17,13 +17,13 @@
  */
 
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { ReactNode } from 'react'
 
 import { HttpClientProvider } from '@/contexts/http-client-context'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
 import { getClock } from '@/testing-library'
-import { resetMiniAppsForTesting, useMiniApps } from './use-mini-apps'
+import { registryTimeoutMs, resetMiniAppsForTesting, useMiniApps } from './use-mini-apps'
 
 const app = {
   id: 'finance-model',
@@ -77,6 +77,7 @@ const setup = (httpClient: HttpClient) => {
   return renderHook(() => useMiniApps(), { wrapper })
 }
 
+beforeEach(resetMiniAppsForTesting)
 afterEach(resetMiniAppsForTesting)
 
 describe('useMiniApps', () => {
@@ -134,8 +135,13 @@ describe('useMiniApps', () => {
     expect(result.current.loading).toBe(true)
 
     await act(async () => {
-      await getClock().tickAsync(10_000)
+      await getClock().tickAsync(registryTimeoutMs)
     })
+    // A second flush, deliberately: the tick fires the abort, but the rejection
+    // still has to travel the client's promise chain and commit through React.
+    // Asserting straight after the tick passed most of the time and failed
+    // under load, which is the worst kind of test.
+    await settle()
 
     expect(result.current).toMatchObject({ loading: false, failed: true })
   })

@@ -8,9 +8,11 @@ import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
 /**
  * Renders the pending Mini App tool approval above the prompt input.
  *
- * The sibling of {@link PermissionDialogHost}, mounted in the same slot in
- * `ChatUI` and for the same reason: a decision the turn is blocked on belongs
- * where the user is already reading.
+ * The sibling of `PermissionDialogHost`, in the same slot in `ChatUI` and for
+ * the same reason: a decision the turn is blocked on belongs where the user is
+ * already reading. Unlike that one it is mounted lazily, behind a check on the
+ * queue — see the comment at its call site, which explains why the gate is on
+ * the queue rather than on the chunk.
  *
  * It reads the queue off the *current session*, like `PermissionDialogHost`
  * does — a global queue meant switching chats could show a prompt belonging to

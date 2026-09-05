@@ -117,7 +117,15 @@ const rectSchema = z.object({
  * This surface had no schema at all, which is backwards — an artifact is the
  * *less* trusted of the two embedded surfaces (its HTML is model-written, and
  * often shaped by whatever the model just read), while the Mini App path bounds
- * every field. The numbers mirror that path so the two agree.
+ * every field.
+ *
+ * The *shape* mirrors the Mini App path; the numbers are this surface's own and
+ * deliberately tighter in places. They match the caps in the injected script
+ * below (`MAX_DETAIL`, `MAX_ITEM_TEXT`), so the two halves of this file agree
+ * with each other — an artifact has no backend to fetch more from, and its text
+ * is derived from a document the model just wrote, so it needs less room than an
+ * app reporting real records. Don't "align" them with the protocol's without
+ * changing the script too.
  *
  * The bounds are prompt-and-memory budgets, not correctness constraints, and
  * every field they guard is free text the artifact derives from its own DOM.
@@ -357,6 +365,9 @@ const harnessScript = (nonce: string): string => `<script>
   // say?" doesn't require the model to re-read HTML it may no longer hold.
   // Derived, not authored: the page's author is the model, which has never
   // heard of this API. A page may override by setting window.__artifactContext.
+  // Tighter than the host's bound on the same field: a summary is derived from
+  // the artifact's own DOM every time it changes, so it is the most repeated
+  // thing this surface says to the model and the cheapest to keep short.
   var MAX_SUMMARY = 1500;
 
   function deriveContext() {

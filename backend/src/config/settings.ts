@@ -98,8 +98,8 @@ const settingsSchema = z
      * The Mini App registry, as JSON, keyed by app id:
      *
      * ```
-     * { "patient-journeys": { "name": "Patient Journeys", "description": "…",
-     *   "icon": "route", "url": "https://…", "origin": "https://…", "secret": "…" } }
+     * { "order-book": { "name": "Order Book", "description": "…",
+     *   "icon": "table", "url": "https://…", "origin": "https://…", "secret": "…" } }
      * ```
      *
      * One config, not two. An earlier cut kept presentation in a hardcoded
@@ -374,23 +374,26 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    /*
+     * The dev fallback is the starter template, and only the starter template.
+     *
+     * It used to register two apps that live outside this repo, on ports a fresh
+     * checkout has nothing running on — so `bun dev` gave you a sidebar of apps
+     * that could not load, and it disagreed with the `MINI_APPS` line in
+     * `.env.example`. Two defaults for one setting is the same "two lists that
+     * can disagree" problem this field's own docs are about, and the loser was
+     * whoever hadn't copied the example file.
+     */
     miniApps:
       process.env.MINI_APPS ||
       (isDevelopment
         ? JSON.stringify({
-            'finance-model': {
-              name: 'Finance Model',
-              description: 'Quarterly revenue and headcount model with editable assumptions.',
-              icon: 'line-chart',
-              origin: 'http://localhost:5174',
-              secret: 'finance-model-dev-secret-change-me',
-            },
-            'patient-journeys': {
-              name: 'Patient Journeys',
-              description: 'Disease-by-disease maps of how patients reach diagnosis and treatment.',
-              icon: 'route',
-              origin: 'http://localhost:5180',
-              secret: 'patient-journeys-dev-secret-change',
+            'order-book': {
+              name: 'Order Book',
+              description: 'Template starter app — orders with a changeable status.',
+              icon: 'table',
+              origin: 'http://localhost:5190',
+              secret: 'order-book-template-dev-secret-xx',
             },
           })
         : ''),

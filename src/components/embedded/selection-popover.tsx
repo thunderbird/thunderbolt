@@ -46,11 +46,12 @@ type SelectionPopoverProps = {
 }
 
 /**
- * The "Ask about this" control that floats over highlighted text in a Mini App.
+ * The "Ask about this" control that floats over highlighted text in an embedded
+ * surface — a Mini App or an artifact.
  *
- * Rendered by Thunderbolt rather than the app: the assistant is the host's, so a
- * customer app gets this affordance — correctly styled and consistent with every
- * other Mini App — purely by reporting selections over the bridge.
+ * Rendered by Thunderbolt rather than by the guest: the assistant is the host's,
+ * so a surface gets this affordance — correctly styled, and identical across
+ * both — purely by reporting selections over its bridge.
  */
 export const SelectionPopover = ({ rect, onAsk }: SelectionPopoverProps) => {
   const { left, top, flipped } = placeSelectionPopover(rect)

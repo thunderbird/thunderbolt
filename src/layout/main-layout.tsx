@@ -25,12 +25,8 @@ import { usePanelRef } from 'react-resizable-panels'
 import { Outlet } from 'react-router'
 import { PageFallback } from '@/loading'
 
-/**
- * Routes that render their own chrome and must own the full content area.
- * `FloatingHeader` floats over the page rather than consuming layout height, so
- * on an embedded surface its scrim sits on top of the app's own header instead
- * of fading a scroll region beneath it.
- */
+/** The main app shell: sidebar-inset content area, floating header, and the
+ *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
   const { state, close, previewHidden } = useContentView()

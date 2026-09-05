@@ -69,10 +69,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     clearSelection()
   }, [selection, attachToComposer, clearSelection])
 
-  /*
-   * One placement. There was a mobile overlay here once; THU-830 replaced it
-   * with a size gate above, so the split is the only layout that ships.
-   */
   /** Nothing floats over the app while it is still connecting, or while the
    *  element picker owns the surface. */
   const showFloatingControls = status === 'ready' && mode.kind === 'idle'

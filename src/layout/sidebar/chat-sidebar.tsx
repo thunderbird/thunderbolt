@@ -172,13 +172,13 @@ export const ChatSidebarContent = ({
   }
 
   /**
+   * Shared by the drop handler and the menu.
+   *
    * dnd-kit ignores the promise this returns, so a rejected write would leave the
    * chat where it was with nothing said about it. There is no notification surface
    * in the sidebar, so the failure is logged with its target — the same treatment
    * `chat-instance.ts` gives its own fire-and-forget writes.
    */
-  /** Shared by the drop and the menu: failures are logged because the sidebar has
-   *  no notification surface. */
   const runMove = async (chatThreadId: string, projectId: string | null) => {
     try {
       await moveChatToProject({ chatThreadId, projectId })

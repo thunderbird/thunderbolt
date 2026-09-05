@@ -20,8 +20,7 @@ import { useLingui } from '@lingui/react/macro'
 import { findMiniApp } from './registry'
 import { useMiniApps } from './use-mini-apps'
 
-/** The icon itself, for a device where Mini Apps are on. */
-const MiniAppChatBadgeIcon = ({ appId }: { appId: string }) => {
+export const MiniAppChatBadge = ({ appId }: { appId: string }) => {
   const { t } = useLingui()
   const { apps } = useMiniApps()
   const app = findMiniApp(apps, appId)
@@ -38,5 +37,3 @@ const MiniAppChatBadgeIcon = ({ appId }: { appId: string }) => {
     />
   )
 }
-
-export const MiniAppChatBadge = ({ appId }: { appId: string }) => <MiniAppChatBadgeIcon appId={appId} />

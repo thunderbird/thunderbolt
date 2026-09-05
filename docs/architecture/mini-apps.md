@@ -59,7 +59,7 @@ which no Mini App does.
 | Surface               | Embed  | Open                                                                                |
 | --------------------- | ------ | ----------------------------------------------------------------------------------- |
 | Web (desktop browser) | iframe | —                                                                                   |
-| Tauri desktop         | iframe | `frame-src` is compiled into `tauri.conf.json`, so a new app origin needs a rebuild |
+| Tauri desktop         | iframe | blocked today — there is no `frame-src`, so frames fall back to `default-src` (see below) |
 | Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                 |
 | Mobile web            | —      | not offered — same gate                                                             |
 
@@ -73,11 +73,17 @@ deep link out of a synced chat, or someone narrowing their window mid-session, i
 hitting Not Found. An earlier cut overlaid the chat on the app for phones; that layout is gone, so nothing here
 depends on iOS Safari's COEP support being confirmed.
 
-**The Tauri `frame-src` problem is real and unsolved.** Everything else in the registry moved to runtime config
-(`MINI_APPS`), but Tauri compiles its CSP in at startup — a reload won't pick up a change, and a new customer
-origin means a new desktop build. Options are a build-time config patch (`tauri build --config`) or dropping the
-frame CSP and relying on origin checks alone, which is worse. Until this is solved, desktop is per-customer-build
-even though web is not.
+**The Tauri `frame-src` problem is real and unsolved, and desktop is currently blocked by it.** There is no
+`frame-src` in `src-tauri/tauri.conf.json`, so frames fall back to `default-src` (`'self' tauri: asset:`) and **no
+app origin loads in a desktop build at all**. That is the deliberate state after the directive was removed for
+listing sample-app localhost origins in production builds, not an oversight — but it does mean desktop Mini Apps do
+not work until an origin is allowed there.
+
+Everything else in the registry moved to runtime config (`MINI_APPS`), while Tauri compiles its CSP in at startup: a
+reload won't pick up a change, so a new customer origin means a new desktop build. Options are a build-time config
+patch (`tauri build --config`), a dev-only overlay in a `tauri.dev.conf.json`, an allowlist generated from the same
+operator config as `MINI_APPS`, or dropping the frame CSP and relying on origin checks alone — which is worse. Until
+one of those lands, web is the only surface where an app actually loads.
 
 ## Registry and configuration
 
@@ -113,14 +119,17 @@ supplied.
 
 ### What the app tells Thunderbolt
 
-Four things, all guest-initiated, all optional:
+Everything the guest can say, all guest-initiated and all optional:
 
-| It says                   | When                                          | Reaches the model as                      |
-| ------------------------- | --------------------------------------------- | ----------------------------------------- |
-| `ui/initialize`           | Once per document                             | Nothing. Capability negotiation only      |
-| `ui/update-model-context` | Whenever what's on screen changes             | The `get_app_context` tool's return value |
-| `tools/list` (as a reply) | Once, after handshake, if it declared `tools` | Tool definitions, prefixed `app_`         |
-| `ui/notifications/error`  | On an uncaught error                          | Nothing. Host UI only                     |
+| It says                              | When                                          | Reaches the model as                      |
+| ------------------------------------ | --------------------------------------------- | ----------------------------------------- |
+| `ui/initialize`                      | Once per document                             | Nothing. Capability negotiation only      |
+| `ui/update-model-context`            | Whenever what's on screen changes             | The `get_app_context` tool's return value |
+| `tools/list` (as a reply)            | Once, after handshake, if it declared `tools` | Tool definitions, prefixed `app_`         |
+| `ui/notifications/error`             | On an uncaught error                          | Nothing. Host UI only                     |
+| `ui/notifications/selection-changed` | When the user selects text in the app         | Nothing until the user asks about it      |
+| `ui/open-chat`                       | When the app wants the panel open             | Nothing. Seeds the composer for the user  |
+| `ui/request-auth-token`              | When its identity token is near expiry        | Nothing. Host mints and replies           |
 
 Note what's **absent**: there is no way for an app to send text directly to the model, or to make the model say
 something. `ui/open-chat` can seed the _composer_ with a prompt, which the user then reads and chooses to send —
@@ -198,9 +207,9 @@ Cookie-based silent SSO inside the frame is a dead end, and worth stating so nob
 cookie blocking kills it on Safari today, and our own COEP posture — required because PowerSync's wa-sqlite worker
 needs `SharedArrayBuffer` — removes the credentials it depends on.
 
-## The two headers
+## The embedding headers
 
-Every Mini App must send both, and **they fail identically: a blank panel with nothing in the embedding page's
+Every Mini App must send all three, and **they fail identically: a blank panel with nothing in the embedding page's
 console.** Rule them out before debugging anything else.
 
 ```
@@ -238,8 +247,8 @@ capped at 300 characters (`maxToolDescriptionChars`), and an app may advertise a
 
 The cap is enforced by truncation, not rejection, and one bad descriptor never costs an app its other tools —
 `parseToolsList` validates each entry on its own. That is a correction, not a design: parsing the array strictly
-meant a single over-long description discarded the _entire_ toolset, silently, and the finance sample shipped for a
-while with a 386-character description and no working tools at all. If a descriptor is dropped for any other reason
+meant a single over-long description discarded the _entire_ toolset, silently, and a sample app shipped for a while
+with a 386-character description and no working tools at all. If a descriptor is dropped for any other reason
 the host logs it, because a tool going missing is otherwise indistinguishable from the model choosing not to call it.
 
 ### Limits, generally: nothing an app sends is rejected for being long
@@ -265,16 +274,41 @@ required to honour; otherwise use `clampedString` (`shared/lib/clamped-string.ts
 ## Layout
 
 ```
-shared/mini-app-protocol.ts     wire format, schemas, method names (v2)
-src/mini-apps/registry.ts       types + icon allowlist; the data comes from the backend
-src/mini-apps/use-mini-apps.ts  fetches GET /mini-apps once per session
-src/mini-apps/use-mini-app-bridge.ts  host side of the bridge
-src/mini-apps/mini-app-auth.ts  token fetch
-backend/src/api/mini-apps.ts    GET /mini-apps, POST /mini-apps/:appId/token
-backend/src/config/settings.ts  MINI_APPS parsing
+shared/mini-app-protocol.ts             wire format, schemas, method names (v2)
+shared/lib/clamped-string.ts            the clamp both surfaces bound their strings with
+
+src/mini-apps/registry.ts               types + icon allowlist, and what an app is refused for
+src/mini-apps/use-mini-apps.ts          fetches GET /mini-apps once per session
+src/mini-apps/use-mini-app-bridge.ts    host side of the bridge
+src/mini-apps/mini-app-auth.ts          token fetch
+src/mini-apps/mini-app-tools.ts         app tools as model tools, plus their prompt section
+src/mini-apps/mini-app-approval.ts      the write-approval gate and its deadline
+src/mini-apps/approval-outcome.ts       how an approval ended, which the model is told
+src/mini-apps/mini-app-store.ts         which app is open, for callers outside React
+src/mini-apps/mini-app-context-tool.ts  get_app_context for an app
+src/mini-apps/mini-app-prompt.ts        the app's section of the system prompt
+src/mini-apps/use-mini-app-chat-panel-state.ts  which conversation the panel shows
+src/mini-apps/use-chat-destination.ts   where selecting an app-linked chat lands
+
+src/components/embedded/                gestures shared with artifacts — picking, popover, status
+src/dal/mini-app-chats.ts               chats started from one app
+
+backend/src/api/mini-apps.ts            GET /mini-apps, POST /mini-apps/:appId/token
+backend/src/config/settings.ts          MINI_APPS parsing
 ```
 
-A starter template for a new app — the two headers above, the guest half of the bridge, and a worked
-`ui/update-model-context` — is tracked as THU-834. It has no home yet; until it is published, copy the guest
-bridge out of one of the sample apps. (This line used to point at a path in one engineer's home directory,
-which resolved for exactly one person.)
+Chat provenance is part of this feature too, and lives outside `src/mini-apps/`: `chat_threads.mini_app_id`
+(migration 0029) records which app a chat came from, `MiniAppChatBadge` shows it on a sidebar row,
+`MiniAppChatBanner` says so at the top of the chat, and `useChatDestination` is what reopens such a chat inside its
+app rather than at `/chats/:id`.
+
+A starter template for a new app — the embedding headers above, the guest half of the bridge, and a worked
+`ui/update-model-context` — is published, and is the canonical guest implementation:
+
+```
+git clone git@github.com:thunderbird/thunderbolt-miniapp-template.git
+```
+
+It is also what `MINI_APPS` defaults to in development, so a fresh checkout with the template running on :5190 has
+a working app with no configuration. Treat the template's `lib/` as the reference for the guest side: the hit-test,
+the handshake and the token refresh all live there, and this repo holds no copy of them.

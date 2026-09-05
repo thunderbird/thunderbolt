@@ -18,8 +18,8 @@
  * entry", not "extend the API". Methods can be added forever without breaking
  * deployed apps; a bad envelope cannot be fixed without breaking all of them. So
  * the method set here is deliberately tiny and the negotiation is the part built
- * to last. When app-exposed tools land (v1), they arrive as a new capability
- * flag — an app that doesn't declare it keeps working untouched.
+ * to last. App-exposed tools arrived that way — a `tools` capability flag, which
+ * an app that doesn't declare keeps working untouched, on the same wire version.
  *
  * Trust model: the host never trusts the frame. Every inbound message is checked
  * for source window and origin by the host bridge, then parsed with the schemas
@@ -509,11 +509,6 @@ export type MiniAppHighlightedElement = NonNullable<MiniAppElementAtResult['elem
  */
 
 /**
- * A tool the app exposes. Mirrors WebMCP's tool descriptor minus `execute`,
- * which stays inside the guest — the host only ever names a tool, never holds a
- * reference to its implementation.
- */
-/**
  * Prompt budget for one tool's description. See {@link miniAppToolSchema}, and
  * {@link parseToolsList} for what happens when an app exceeds it.
  */
@@ -522,6 +517,11 @@ export const maxToolDescriptionChars = 300
 /** Most tools one app can advertise. */
 export const maxToolsPerApp = 64
 
+/**
+ * A tool the app exposes. Mirrors WebMCP's tool descriptor minus `execute`,
+ * which stays inside the guest — the host only ever names a tool, never holds a
+ * reference to its implementation.
+ */
 export const miniAppToolSchema = z.object({
   /** WebMCP's constraint, adopted verbatim so descriptors port unchanged. */
   name: z
@@ -727,9 +727,9 @@ export type MiniAppPlatform = 'web' | 'desktop' | 'ios' | 'android'
  *
  * Grouped into one object rather than a notification per property because the
  * v1 shape — a theme-only message — was already the wrong shape the first time
- * a second property came along. `locale` is the immediate case: Patient
- * Journeys ships an EN/DE toggle it currently has to render itself, when the
- * host already knows the answer.
+ * a second property came along. `locale` is the immediate case: an app that
+ * offers its own language toggle is re-asking a question the host already knows
+ * the answer to.
  */
 export type MiniAppHostContext = {
   theme: MiniAppTheme

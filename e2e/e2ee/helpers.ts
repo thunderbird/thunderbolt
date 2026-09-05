@@ -130,6 +130,47 @@ export const getDeviceId = async (page: Page): Promise<string> => {
   return deviceId
 }
 
+/** Backend origin the frontend bundle points at (VITE_THUNDERBOLT_CLOUD_URL). */
+const backendBaseUrl = 'http://localhost:8004/v1'
+
+export type EncryptionApiResponse = { status: number; body: unknown }
+
+/**
+ * Replay a page's retained bearer token against the backend with an
+ * attacker-chosen `X-Device-ID`. Runs the fetch inside the page so it carries
+ * exactly the credential that context still holds — the A4 primitive for probing
+ * whether a revoked device's cached token is actually refused, and whether the
+ * caller-asserted device id buys anything. Omit `deviceId` to send no header.
+ */
+export const encryptionApiRequest = async (
+  page: Page,
+  path: string,
+  options: { method?: string; deviceId?: string; body?: unknown } = {},
+): Promise<EncryptionApiResponse> =>
+  page.evaluate(
+    async ({ url, method, deviceId, body }) => {
+      const headers: Record<string, string> = {}
+      const token = localStorage.getItem('thunderbolt_auth_token')
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      if (deviceId) {
+        headers['X-Device-ID'] = deviceId
+      }
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json'
+      }
+      const response = await fetch(url, {
+        method: method ?? 'GET',
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      })
+      const parsed = await response.json().catch(() => null)
+      return { status: response.status, body: parsed }
+    },
+    { url: `${backendBaseUrl}${path}`, method: options.method, deviceId: options.deviceId, body: options.body },
+  )
+
 export const completeFirstDeviceSetup = async (page: Page): Promise<string> => {
   await page.goto('/settings/preferences')
   const syncSwitch = page.getByRole('switch', { name: 'Sync This Device With Cloud' })

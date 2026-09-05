@@ -700,7 +700,20 @@ export const serveEvilOrgKey = async (
  * a re-migration / v1 downgrade). Fetches the real response first so only the
  * one field changes.
  */
-export const forceSchemeVersion = async (context: BrowserContext, version: number): Promise<void> => {
+export const forceSchemeVersion = async (context: BrowserContext, version: number): Promise<void> =>
+  overrideEncryptionMetadata(context, { scheme_version: version })
+
+/**
+ * A2 — merge arbitrary fields into the encryption-metadata response
+ * (`GET /encryption/canary`), preserving everything else. The general form of
+ * `forceSchemeVersion`: models a server lying about any server-controlled
+ * metadata input (`kdf_salt`, `recovery_*`, `key_version`, …) to probe whether
+ * the client fails cleanly rather than downgrading or leaking.
+ */
+export const overrideEncryptionMetadata = async (
+  context: BrowserContext,
+  overrides: Record<string, unknown>,
+): Promise<void> => {
   await context.route('**/v1/encryption/canary', async (route) => {
     const response = await route.fetch()
     if (!response.ok()) {
@@ -708,6 +721,6 @@ export const forceSchemeVersion = async (context: BrowserContext, version: numbe
       return
     }
     const body = (await response.json()) as Record<string, unknown>
-    await route.fulfill({ response, json: { ...body, scheme_version: version } })
+    await route.fulfill({ response, json: { ...body, ...overrides } })
   })
 }

@@ -16,6 +16,8 @@ const inferenceQuotaErrorSchema = z.object({
 })
 const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
 const serializedErrorSchema = z.object({ error: z.string() })
+const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
+const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
 
 const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)
 
@@ -208,7 +210,7 @@ export const getErrorRetryable = (error?: Error | null): boolean | undefined => 
     return parsed.isRetryable
   }
 
-  const status = getPiErrorStatusCode(error.message)
+  const status = getErrorStatusCode(error)
   return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429
     ? false
     : undefined
@@ -243,21 +245,32 @@ export const isContextOverflowError = (error?: Error | null): boolean => {
   return contextOverflowMarkers.some((marker) => message.includes(marker))
 }
 
+/** Read the rejected parameter from a structured provider body, including transport envelopes and Pi prefixes. */
+const isToolParameterError = (message: string): boolean => {
+  const parsed = parseJson(message)
+  const serializedError = serializedErrorSchema.safeParse(parsed)
+  const body = serializedError.success
+    ? parseJson(serializedError.data.error)
+    : (parsed ?? parseJson(message.replace(/^(?:\d{3}:?\s+|[^(]*\(\d{3}\):\s*)/, '')))
+  return toolParameterResponseSchema.safeParse(body).success
+}
+
 /**
  * A content rejection: the endpoint rejected the *form* of the request body —
  * a file part it can't carry — surfaced as a 400 (e.g. the OpenAI-compat
  * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
  * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
- * (401/403), not-found (404), timeouts (408), rate limits (429), and context
- * overflow — none of which attachment remediation can fix by re-delivering as
- * text/images. This is the ONLY signal that should trigger remediation.
+ * (401/403), not-found (404), timeouts (408), rate limits (429), context overflow,
+ * and structured tool-parameter errors — none of which attachment remediation
+ * can fix by re-delivering as text/images. This is the ONLY signal that should
+ * trigger remediation.
  */
 export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (isRateLimitError(error) || isContextOverflowError(error)) {
+  if (!error?.message || isRateLimitError(error) || isContextOverflowError(error)) {
     return false
   }
   const status = getErrorStatusCode(error)
-  return status === 400 || status === 422
+  return (status === 400 || status === 422) && !isToolParameterError(error.message)
 }
 
 /**

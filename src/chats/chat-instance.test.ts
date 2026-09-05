@@ -17,7 +17,7 @@ import type { EventType } from '@/lib/posthog'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import type { Agent, AgentAdapter } from '@/types/acp'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Chat } from '@ai-sdk/react'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
@@ -1008,5 +1008,108 @@ describe('createChatInstance — retry policy', () => {
     await secondFinish
     expect(summaryCalls()).toHaveLength(2)
     expect(summaryCalls()[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: secondTrace }))
+  })
+})
+
+/** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
+const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable') => {
+  const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
+  const adapter: AgentAdapter = {
+    ...makeAdapter(builtInAgent),
+    fetch: async (_init, context) => {
+      const budget = context.webToolBudget!
+      attempts.push(budget)
+      if (attempts.length === 1) {
+        for (let call = 0; call < webCalls; call++) {
+          await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))
+        }
+      }
+      const chunks = [
+        { type: 'start', messageId: `attempt-${attempts.length}` },
+        { type: 'text-start', id: 'text' },
+        { type: 'text-delta', id: 'text', delta: attempts.length === 1 ? 'Research already gathered' : 'Completed' },
+        { type: 'text-end', id: 'text' },
+        ...(attempts.length === 1 ? [{ type: 'error', errorText }] : []),
+        { type: 'finish' },
+      ]
+      return new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    },
+  }
+  const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getOrConnectAdapter: async () => adapter,
+    trackEvent: () => {},
+  })
+  hydrateStore({
+    chatInstance: instance,
+    chatThread: null,
+    id: sessionId,
+    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    triggerData: null,
+  })
+  return { instance, attempts }
+}
+
+describe('logical-turn web retry state through the SDK', () => {
+  beforeEach(() => resetStore())
+  afterEach(() => resetStore())
+
+  it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(2)
+      await instance.sendMessage({ text: 'Research a topic' })
+      const partial = [...instance.messages]
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+      expect(instance.messages).toEqual(partial)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({
+        type: 'text',
+        text: 'Research already gathered',
+        state: 'done',
+      })
+      expect(useChatStore.getState().sessions.get(sessionId)?.retriesExhausted).toBe(true)
+      await instance.regenerate()
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).not.toBe(attempts[0])
+      expect(attempts[1]!.probe.isExhausted).toBe(false)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({ type: 'text', text: 'Completed', state: 'done' })
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('retains the web budget on a below-cap transient retry after tool execution', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      await attempts[1]!.execute('search', { query: 'remaining' }, async () => 'source')
+      expect(attempts[1]!.probe.isExhausted).toBe(true)
+      await instance.sendMessage({ text: 'A new question' })
+      expect(attempts[2]).not.toBe(attempts[0])
+      expect(attempts[2]!.probe.isExhausted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('does not automatically replay the exact tools-schema 400 after research', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(
+        1,
+        '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      )
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })

@@ -161,9 +161,8 @@ export const useAttachmentRemediation = ({
     [setMessages, regenerate],
   )
 
-  // Auto-remediation: when a non-retryable 4xx settles on a turn carrying
-  // attachments, advance each one a rung and retry — a client error on a request
-  // with a file is the file being rejected. The signature (message id + each
+  // Auto-remediation: when a content rejection settles on a turn carrying
+  // attachments, advance each one a rung and retry. The signature (message id + each
   // attachment's current delivery mode) is recorded so a given state is
   // auto-attempted at most once; since each retry advances toward the terminal
   // `images` state, the chain is finite. Reacts to an external (chat SDK) error
@@ -173,8 +172,9 @@ export const useAttachmentRemediation = ({
 
   // Only a genuine content rejection (the endpoint couldn't carry the file's
   // form — a 400/422) is worth remediating. Auth (401/403), not-found, timeouts,
-  // rate limits, and context overflow are all excluded by isContentRejectionError
-  // — converting native→text/images can't fix those, and churning the ladder
+  // rate limits, context overflow, and structured tool-parameter errors are
+  // excluded by isContentRejectionError — converting native→text/images can't
+  // fix those, and churning the ladder
   // would end in a misleading "couldn't read the file" message.
   const isRemediableError = isContentRejectionError(error)
 

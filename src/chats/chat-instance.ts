@@ -199,6 +199,7 @@ export type CreateChatInstanceDeps = {
 export type AgentRoutingState = {
   regenerationRevision?: number
   webToolBudgetRevision?: number
+  webToolBudgetState?: { key: string; budget: WebToolBudget }
   getTurnBudget?: () => TurnBudget
   getTurnTelemetry?: () => TurnTelemetry | undefined
   getAttempt?: () => number
@@ -245,7 +246,6 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
-  let webToolBudgetState: { key: string; budget: WebToolBudget } | undefined
 
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
@@ -253,11 +253,11 @@ export const createAgentRoutingFetch = (
       return undefined
     }
     const key = `${lastUserMessage.id}#${routingState.webToolBudgetRevision ?? 0}`
-    if (webToolBudgetState?.key === key) {
-      return webToolBudgetState.budget
+    if (routingState.webToolBudgetState?.key === key) {
+      return routingState.webToolBudgetState.budget
     }
     const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
-    webToolBudgetState = { key, budget }
+    routingState.webToolBudgetState = { key, budget }
     return budget
   }
 
@@ -674,6 +674,7 @@ export const createChatInstance = (
     }
     turnBudget = createTurnBudget()
     routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
+    routingState.webToolBudgetState = undefined
     retryCount = 0
     lastError = null
     currentTurn = createTurnState()
@@ -794,6 +795,13 @@ export const createChatInstance = (
         getErrorRetryable(lastError) === false
       ) {
         markRetriesExhausted(finishedTurn)
+        return
+      }
+
+      // Regeneration discards this attempt's research history. Once its web
+      // budget is spent, keep the partial response and let the user choose Retry.
+      if (routingState.webToolBudgetState?.budget.probe.isExhausted) {
+        markRetriesExhausted(finishedTurn, 'web_budget_exhausted')
         return
       }
 

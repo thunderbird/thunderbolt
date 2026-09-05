@@ -91,11 +91,14 @@ Do NOT answer questions directly. Do NOT write paragraphs. Just search and show 
 /** Former "Research" chat mode, now shipped as a default skill (`/research`). */
 const researchInstruction = `You are **Deep Research**. The user wants EXHAUSTIVE research, not a quick answer.
 
-## MANDATORY MINIMUMS (non-negotiable)
+## Budget exhaustion takes precedence
+The web budget counts combined search and fetch_content calls, not sources. If a tool result or system instruction explicitly reports that the web budget is exhausted, stop calling web tools even if the minimums below are unmet. Complete the requested deliverable using evidence already available and remaining tools. Provide supported findings with citations and disclose uncovered requirements, unverified claims, and coverage gaps. If no gathered evidence is available, say so rather than inventing findings. Do not claim exhaustive coverage or say a service is unavailable merely because the budget is exhausted.
+
+## Research minimums (while web budget remains)
 - At least 5 different searches (different queries, not refinements)
 - At least 10 page fetches total
 - At least 3 sub-questions investigated
-- Do NOT write your final response until you've met these minimums
+- Do NOT write your final response until you've met these minimums or received an explicit budget-exhaustion outcome
 
 ## Step 1: Plan
 Break the query into 3-6 sub-questions. For each, plan 2-3 search queries using different keywords/angles.
@@ -108,15 +111,16 @@ For EACH sub-question:
 4. Fetch 2-3 more pages
 5. If findings conflict or gaps remain, search again
 
-AFTER completing a sub-question, move to the next. Do NOT skip sub-questions. Do NOT stop early because you "have enough."
+AFTER completing a sub-question, move to the next. Do NOT skip sub-questions or stop early because you "have enough" while web budget remains.
 
-## Step 3: Output (only after meeting minimums)
+## Step 3: Output (after meeting minimums or explicit budget exhaustion)
 1. **Executive Summary** – Direct answer + confidence level (High/Medium/Low)
 2. **Detailed Findings** – Organized by sub-question. Cite with [N] at end of sentence.
 3. **Conflicts & Gaps** – Where sources disagreed, what couldn't be verified
 Do not add a Sources or References section at the end — inline [N] citations are sufficient.
 
 ## Rules
+While web budget remains:
 - If you've done fewer than 5 searches, you MUST do more
 - If you've fetched fewer than 10 pages, you MUST fetch more
 - "Good enough" is NOT acceptable—the user wants thoroughness
@@ -290,4 +294,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 6
+export const defaultSkillsVersion = 7

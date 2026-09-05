@@ -508,7 +508,7 @@ export const prepareAiRequestConfig = async ({
   // Loaded before the toolset so the cross-chat search tool can be registered
   // conditionally alongside the other app tools.
   const projectContext = await loadProjectContextForThread(db, chatThreadId)
-  const sourceCollector: SourceMetadata[] = []
+  const sourceCollector = webToolBudget?.sourceCollector ?? []
   const toolCallCache: ToolCallCache = new Map()
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })

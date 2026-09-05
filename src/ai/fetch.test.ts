@@ -2,6 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { createModel as insertModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { createClient } from '@/lib/http'
+
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
@@ -18,6 +25,7 @@ import {
   buildVolatileSystemNotes,
   createModel,
   mergeMcpTools,
+  prepareAiRequestConfig,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
@@ -527,5 +535,69 @@ describe('withAppVersionHeader', () => {
 
     expect(events).toHaveLength(0)
     window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('logical-turn citation registry', () => {
+  it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
+    await setupTestDatabase()
+    try {
+      await insertModel(getDb(), {
+        id: 'source-model',
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'Test',
+        toolUsage: 1,
+      })
+      await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+      const requests: string[] = []
+      const httpClient = createClient({
+        prefixUrl: 'https://backend.test',
+        fetch: async (input) => {
+          const query = new URL(input instanceof Request ? input.url : String(input)).searchParams.get('q')!
+          requests.push(query)
+          return Response.json({
+            results: [
+              { pageUrl: `https://source.test/${query}`, title: query, faviconUrl: null, previewImageUrl: null },
+            ],
+          })
+        },
+      })
+      const budget = createWebToolBudget('search')
+      const prepare = (webToolBudget = budget) =>
+        prepareAiRequestConfig({ modelId: 'source-model', httpClient, webToolBudget })
+      const first = await prepare()
+      const firstResult = await first.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'first', messages: [] },
+      )
+      const retry = await prepare()
+      const cached = await retry.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'retry', messages: [] },
+      )
+      expect(requests).toEqual(['one'])
+      expect(cached).toEqual(firstResult)
+      expect(retry.sourceCollector).toEqual(first.sourceCollector)
+      const next = await retry.toolset.search!.execute!(
+        { query: 'two', max_results: 10 },
+        { toolCallId: 'next', messages: [] },
+      )
+      expect(next).toMatchObject([{ sourceIndex: 2, pageUrl: 'https://source.test/two' }])
+      expect(retry.sourceCollector).toMatchObject([
+        { index: 1, url: 'https://source.test/one', title: 'one', toolName: 'search' },
+        { index: 2, url: 'https://source.test/two', title: 'two', toolName: 'search' },
+      ])
+      const fresh = await prepare(createWebToolBudget('search'))
+      expect(fresh.sourceCollector).toEqual([])
+      const freshResult = await fresh.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'fresh', messages: [] },
+      )
+      expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
+      expect(requests).toEqual(['one', 'two', 'one'])
+    } finally {
+      await teardownTestDatabase()
+    }
   })
 })

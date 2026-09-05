@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { SourceMetadata } from '@/types/source'
 import { toolCallKey } from '@/lib/stable-stringify'
 import { skillTokenRegex } from '@/skills/parse-skill-tokens'
 
@@ -22,6 +23,8 @@ export type WebToolBudget = {
   execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
   probe: WebToolBudgetProbe
   intent: WebToolIntent
+  /** Citation labels and cached web results must share the logical turn's lifetime. */
+  readonly sourceCollector: SourceMetadata[]
 }
 
 export type BudgetExhaustedResult = {
@@ -56,6 +59,7 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
 
   return {
     intent,
+    sourceCollector: [],
     execute: (toolName, input, run) => {
       const key = normalizeWebToolKey(toolName, input)
       const cached = dedupe.get(key)

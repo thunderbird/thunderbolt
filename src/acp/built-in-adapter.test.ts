@@ -14,7 +14,17 @@ import '@/testing-library'
 
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { describe, expect, it, mock, spyOn } from 'bun:test'
-import type { PreparedAiRequestConfig } from '@/ai/fetch'
+import { prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
+import { createModel as insertModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import * as realAgentCore from '@shared/agent-core'
+import { tool } from 'ai'
+import { z } from 'zod'
+import { createClient } from '@/lib/http'
+import { createToolset } from '@/lib/tools'
+import { createConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
@@ -845,6 +855,7 @@ describe('createBuiltInAdapter persistent harness', () => {
     const setToolsCalls: Array<Array<{ tools: AgentTool[]; activeToolNames: string[] | undefined }>> = []
     const promptCalls: Array<{ text: string; images: unknown[] }> = []
     const activeToolCalls: string[][] = []
+    const steer = mock(async () => {})
     const toPiCalls: PreparedAiRequestConfig['toolset'][] = []
     const harnesses: AgentHarness[] = []
     const buildHarness = async (options: BuildAppHarnessOptions): Promise<AgentHarness> => {
@@ -858,6 +869,8 @@ describe('createBuiltInAdapter persistent harness', () => {
       setToolsCalls.push(setToolsForHarness)
       const harness = {
         getTools: () => [{ name: 'read' } as AgentTool],
+        getActiveTools: () => [{ name: 'read' } as AgentTool],
+        steer,
         setTools: async (tools: AgentTool[], activeToolNames?: string[]) =>
           void setToolsForHarness.push({ tools, activeToolNames }),
         setActiveTools: async (toolNames: string[]) => void activeToolCalls.push(toolNames),
@@ -963,7 +976,314 @@ describe('createBuiltInAdapter persistent harness', () => {
     expect(firstSystemPrompt()).toBe(expectedPrompt('timestamp 2'))
     expect(secondSystemPrompt()).toBe(expectedPrompt('timestamp 3'))
     expect(harnesses).toHaveLength(2)
-    expect(activeToolCalls).toEqual([[]])
+    expect(activeToolCalls).toEqual([['read']])
+    expect(steer).toHaveBeenCalledTimes(1)
     expect(telemetry.getEngine()).toBe('pi')
   })
+})
+
+type ProviderToolCall = { name: string; args: Record<string, unknown> }
+type ProviderRequest = {
+  tools?: Array<{ function: { name: string } }>
+  messages: Array<{
+    role: string
+    content: unknown
+    tool_call_id?: string
+    tool_calls?: Array<{ id: string }>
+  }>
+}
+
+/** Simulate provider SSE at the HTTP boundary, keeping Pi serialization and execution real. */
+const providerResponse = (reply: ProviderToolCall[] | string, requestId: number): Response => {
+  const delta =
+    typeof reply === 'string'
+      ? { role: 'assistant', content: reply }
+      : {
+          role: 'assistant',
+          tool_calls: reply.map((call, index) => ({
+            index,
+            id: `call_${requestId}_${index}`,
+            type: 'function',
+            function: { name: call.name, arguments: JSON.stringify(call.args) },
+          })),
+        }
+  const chunk = (delta: unknown, finishReason: string | null) =>
+    `data: ${JSON.stringify({
+      id: `completion_${requestId}`,
+      object: 'chat.completion.chunk',
+      created: 1,
+      model: 'gpt-test',
+      choices: [{ index: 0, delta, finish_reason: finishReason }],
+    })}\n\n`
+  return new Response(
+    chunk(delta, null) + chunk({}, typeof reply === 'string' ? 'stop' : 'tool_calls') + 'data: [DONE]\n\n',
+    {
+      headers: { 'Content-Type': 'text/event-stream' },
+    },
+  )
+}
+
+/** Run real web tools and the production adapter against scripted provider responses. */
+const createBudgetAdapter = (
+  replies: Array<ProviderToolCall[] | string | ((init?: RequestInit) => Promise<Response>)>,
+  prepareConfig?: BuiltInAdapterOptions['prepareConfig'],
+) => {
+  const budget = createWebToolBudget('auto')
+  const requests: ProviderRequest[] = []
+  const searches: string[] = []
+  const writes: string[] = []
+  const httpClient = createClient({
+    prefixUrl: 'https://backend.test',
+    fetch: async (input) => {
+      const query = new URL(input instanceof Request ? input.url : String(input)).searchParams.get('q')!
+      searches.push(query)
+      return Response.json({
+        results: [{ pageUrl: `https://source.test/${query}`, title: query, faviconUrl: null, previewImageUrl: null }],
+      })
+    },
+  })
+  const model = {
+    id: 'budget-model',
+    name: 'Budget model',
+    provider: 'openai',
+    model: 'gpt-test',
+    apiKey: 'test',
+    toolUsage: 1,
+  } as Model
+  const prepareFixtureConfig: typeof prepareAiRequestConfig = async ({ webToolBudget = budget }) => ({
+    model,
+    profile: null,
+    supportsTools: true,
+    sourceCollector: webToolBudget.sourceCollector,
+    toolset: {
+      ...createToolset(createConfigs(httpClient, webToolBudget.sourceCollector), new Map(), webToolBudget),
+      save_report: tool({
+        description: 'Save report',
+        inputSchema: z.object({ text: z.string() }),
+        execute: async ({ text }) => {
+          writes.push(text)
+          return 'saved'
+        },
+      }),
+    },
+    skills: [],
+    mcpToolsMetadata: undefined,
+    stableSystemPrompt: 'Complete the report.',
+    volatileSystemPrompt: 'Now.',
+  })
+  const registrations = new Set<unknown>()
+  const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+    prepareConfig: prepareConfig ?? prepareFixtureConfig,
+    loadAgentCore: async () => ({
+      ...realAgentCore,
+      buildAppHarness: async (options) => {
+        const harness = await realAgentCore.buildAppHarness(options)
+        const on = harness.on.bind(harness)
+        harness.on = (type, handler) => {
+          const remove = on(type, handler)
+          if (type === 'tool_result') {
+            registrations.add(handler)
+          }
+          return () => {
+            registrations.delete(handler)
+            remove()
+          }
+        }
+        return harness
+      },
+    }),
+  })
+  const context = {
+    threadId: 'budget-regression',
+    selectedModel: model,
+    mcpClients: [],
+    reconnectClient: async () => null,
+    httpClient,
+    onAcpSessionId: async () => {},
+    webToolBudget: budget,
+    getProxyFetch: () => async (_input: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(init?.body as string) as ProviderRequest)
+      const reply = replies.shift()
+      if (reply === undefined) {
+        throw new Error('Unexpected extra provider request')
+      }
+      return typeof reply === 'function' ? reply(init) : providerResponse(reply, requests.length)
+    },
+  } as unknown as AgentAdapterContext
+  const response = () =>
+    adapter.fetch(
+      {
+        body: JSON.stringify({
+          messages: [
+            { id: 'budget-user', role: 'user', parts: [{ type: 'text', text: 'Research and save a report.' }] },
+          ],
+        }),
+      },
+      context,
+    )
+  const send = async () => (await response()).text()
+  return { adapter, budget, context, response, send, requests, searches, writes, registrations }
+}
+
+describe('real Pi web-budget payload', () => {
+  it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {
+    const run = createBudgetAdapter([
+      [
+        { name: 'search', args: { query: 'one', max_results: 10 } },
+        { name: 'search', args: { query: 'two', max_results: 10 } },
+        { name: 'search', args: { query: 'three', max_results: 10 } },
+        { name: 'fetch_content', args: { url: 'https://denied.test' } },
+        { name: 'save_report', args: { text: 'batched report' } },
+      ],
+      [{ name: 'save_report', args: { text: 'complete report' } }],
+      'Finished [1] and [2].',
+    ])
+    try {
+      const output = await run.send()
+      expect(run.searches).toEqual(['one', 'two'])
+      expect(run.writes).toEqual(['batched report', 'complete report'])
+      expect(output).toContain('Finished [1] and [2].')
+      expect(output).not.toContain('"type":"error"')
+      expect(output).toContain('https://source.test/one')
+      expect(output).toContain('https://source.test/two')
+      for (const request of run.requests.slice(1)) {
+        const names = request.tools?.map(({ function: fn }) => fn.name)
+        expect(names).toContain('save_report')
+        expect(names).toContain('read')
+        expect(names).not.toContain('search')
+        expect(names).not.toContain('fetch_content')
+        expect(request.messages.filter(({ role }) => role === 'user')).toHaveLength(2)
+        const callIds = request.messages.flatMap(({ tool_calls }) => tool_calls?.map(({ id }) => id) ?? [])
+        expect(request.messages.filter(({ role }) => role === 'tool').map(({ tool_call_id }) => tool_call_id)).toEqual(
+          callIds,
+        )
+      }
+      const messages = run.requests[1]!.messages
+      expect(messages.filter(({ role }) => role === 'tool')).toHaveLength(5)
+      expect(messages.at(-1)?.role).toBe('user')
+      expect(JSON.stringify(messages.at(-1)?.content)).toContain('coverage gaps')
+      expect(run.registrations.size).toBe(0)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('allows cached web calls at the cap until the first denial', async () => {
+    const run = createBudgetAdapter([
+      [
+        { name: 'search', args: { query: 'one', max_results: 10 } },
+        { name: 'search', args: { query: 'two', max_results: 10 } },
+      ],
+      [{ name: 'search', args: { query: 'one', max_results: 10 } }],
+      'Done [1].',
+    ])
+    try {
+      await run.send()
+      expect(run.searches).toEqual(['one', 'two'])
+      expect(run.budget.probe.exhaustedAttempts).toBe(0)
+      expect(run.requests[2]!.tools?.map(({ function: fn }) => fn.name)).toContain('search')
+      expect(run.requests[2]!.messages.filter(({ role }) => role === 'user')).toHaveLength(1)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('reports an exhausted replay through the error stream without asking for evidence-free synthesis', async () => {
+    const run = createBudgetAdapter(['Should not be requested'])
+    await run.budget.execute('search', { query: 'one' }, async () => 'old evidence')
+    await run.budget.execute('search', { query: 'two' }, async () => 'old evidence')
+    run.context.regenerationRevision = 1
+    try {
+      const output = await run.send()
+      expect(output).toContain('"type":"error"')
+      expect(run.requests).toHaveLength(0)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+})
+
+it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {
+  await setupTestDatabase()
+  const run = createBudgetAdapter(
+    [
+      [{ name: 'search', args: { query: 'one', max_results: 10 } }],
+      'First [1].',
+      [
+        { name: 'search', args: { query: 'one', max_results: 10 } },
+        { name: 'search', args: { query: 'two', max_results: 10 } },
+      ],
+      'Both [1] and [2].',
+    ],
+    prepareAiRequestConfig,
+  )
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    const first = await run.send()
+    run.context.regenerationRevision = 1
+    const retry = await run.send()
+    expect(run.searches).toEqual(['one', 'two'])
+    expect(first).toContain('https://source.test/one')
+    expect(retry).toContain('https://source.test/one')
+    expect(retry).toContain('https://source.test/two')
+    expect(run.budget.sourceCollector).toMatchObject([
+      { index: 1, url: 'https://source.test/one' },
+      { index: 2, url: 'https://source.test/two' },
+    ])
+    const results = run.requests.at(-1)!.messages.filter(({ role }) => role === 'tool')
+    expect(JSON.stringify(results[0]!.content)).toContain('[Source 1]')
+    expect(JSON.stringify(results[1]!.content)).toContain('[Source 2]')
+    expect(run.registrations.size).toBe(0)
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
+})
+
+it('removes the budget listener after provider failure and restores web tools for the next user turn', async () => {
+  const run = createBudgetAdapter([
+    [
+      { name: 'search', args: { query: 'one', max_results: 10 } },
+      { name: 'search', args: { query: 'two', max_results: 10 } },
+      { name: 'search', args: { query: 'denied', max_results: 10 } },
+    ],
+    async () =>
+      Response.json({ error: { message: 'Invalid request', type: 'BadRequestError', code: 400 } }, { status: 400 }),
+    [{ name: 'search', args: { query: 'fresh', max_results: 10 } }],
+    'New turn.',
+  ])
+  try {
+    expect(await run.send()).toContain('"type":"error"')
+    expect(run.registrations.size).toBe(0)
+    run.context.webToolBudget = createWebToolBudget('auto')
+    await run.send()
+    expect(run.searches).toEqual(['one', 'two', 'fresh'])
+    expect(run.requests.at(-1)!.tools?.map(({ function: fn }) => fn.name)).toContain('search')
+    expect(run.registrations.size).toBe(0)
+  } finally {
+    run.adapter.disconnect()
+  }
+})
+
+it('removes the budget listener when the response consumer stops the live harness', async () => {
+  const requested = Promise.withResolvers<void>()
+  const run = createBudgetAdapter([
+    async (init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true })
+        requested.resolve()
+      }),
+  ])
+  try {
+    const response = await run.response()
+    await requested.promise
+    expect(run.registrations.size).toBe(1)
+    await response.body!.cancel()
+    // Cancellation aborts Pi; the prompt's finally removes the turn-local hook.
+    await Promise.resolve()
+    expect(run.registrations.size).toBe(0)
+  } finally {
+    run.adapter.disconnect()
+  }
 })

@@ -50,6 +50,7 @@ import {
 } from '@/ai/fetch'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { webToolNames } from '@/lib/tools'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
@@ -554,19 +555,29 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
-/** Install the Pi harness floor that disables tools after a denied web-tool call. */
-const installWebToolBudgetFloor = async (harness: AgentHarness, webToolBudget?: WebToolBudget): Promise<() => void> => {
+/** Remove web capabilities and request completion once the live turn first denies a call. */
+const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
     return () => undefined
   }
-  const applyBudgetFloor = async () => {
-    if (webToolBudget.probe.exhaustedAttempts) {
-      await harness.setActiveTools([])
+  let notified = false
+  return harness.on('tool_result', async () => {
+    if (notified || !webToolBudget.probe.exhaustedAttempts) {
+      return undefined
     }
+    // Result hooks can overlap for parallel calls; claim notification before yielding.
+    notified = true
+    await harness.setActiveTools(
+      harness
+        .getActiveTools()
+        .map(({ name }) => name)
+        .filter((name) => !webToolNames.has(name)),
+    )
+    await harness.steer(
+      'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
+    )
     return undefined
-  }
-  await applyBudgetFloor()
-  return harness.on('tool_result', applyBudgetFloor)
+  })
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
@@ -690,7 +701,12 @@ const fetchViaHarness = async (
     agentCore.piHarnessToUiMessageStream(
       harness,
       async () => {
-        const removeBudgetFloor = await installWebToolBudgetFloor(harness, context.webToolBudget)
+        // A replay has no current-attempt tool history to synthesize from. The live
+        // harness instead reaches the floor through tool_result and keeps its evidence.
+        if (context.webToolBudget?.probe.isExhausted) {
+          throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
+        }
+        const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
         try {
           await harness.prompt(prompt.text, { images: prompt.images })
           await harness.waitForIdle()

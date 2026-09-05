@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 import { clampedString } from '@shared/lib/clamped-string'
 
-import type { SurfaceSelectionItem, SurfaceTextSelection } from '@/components/embedded/types'
+import type { SurfaceTextSelection } from '@/components/embedded/types'
 
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }
@@ -55,8 +55,6 @@ export type ArtifactContext = { title: string; summary: string }
  * artifact code reads better with them.
  */
 export type ArtifactTextSelection = SurfaceTextSelection
-
-export type ArtifactSelectionItem = SurfaceSelectionItem
 
 /** Method name the host uses to resolve a point to the element under it. */
 export const artifactElementAtMethod = 'element/at'
@@ -198,12 +196,10 @@ export const parseHarnessMessage = (
  * an otherwise-working page. Inline-JS syntax errors are caught earlier by the
  * static check, and external scripts (which the offline CSP blocks) are rejected
  * there too — so ignoring subresource errors here loses no real coverage.
- */
-/*
- * The comments inside this template literal ship to users verbatim.
  *
- * A minifier cannot see into a string, so the ~4 KB of rationale below travels
- * in the bundle (about 1.2 KB gzipped, against a ~670 KB gzipped entry chunk).
+ * **The comments inside the template literal ship to users verbatim.** A
+ * minifier cannot see into a string, so the ~4 KB of rationale below travels in
+ * the bundle (about 1.2 KB gzipped, against a ~670 KB gzipped entry chunk).
  * That is a deliberate trade, measured rather than assumed: the alternative is
  * moving the reasoning away from the ES5 it explains, in the one file here that
  * no unit test can reach and that a future reader has to modify blind. If this

@@ -71,9 +71,9 @@ export type MiniAppBridgeStatus = 'connecting' | 'ready' | 'unreachable'
  * The frame's connection lifecycle, in one place.
  *
  * These three moved together and were set separately: a fresh handshake clears
- * the error, bumps the epoch and flips the status, and doing that in three
- * ordered setters is three chances to add a fourth caller that forgets one. A
- * reducer makes each transition the atomic thing it always was.
+ * the error, bumps the handshake epoch and flips the status, and doing that in
+ * three ordered setters is three chances to add a fourth caller that forgets
+ * one. A reducer makes each transition the atomic thing it always was.
  *
  * `selection` stays out — it's host UI state driven by the guest's cursor, not
  * part of the connection at all.
@@ -89,46 +89,46 @@ type ConnectionState = {
    * *previous* document's tool list and would post `tools/call` to a page that no
    * longer implements them.
    */
-  epoch: number
+  handshakeEpoch: number
   /** Last error the app reported about itself; shown as a strip over the frame. */
-  error: string | null
+  runtimeError: string | null
 }
 
 type ConnectionAction =
   /** The guest introduced itself — a new document is live and speaking. */
-  | { type: 'handshaked' }
+  | { type: 'HANDSHAKED' }
   /** A document committed in the frame without handshaking. */
-  | { type: 'documentChanged' }
+  | { type: 'DOCUMENT_CHANGED' }
   /** No `initialize` arrived before the deadline. */
-  | { type: 'timedOut' }
+  | { type: 'TIMED_OUT' }
   /** The user asked for the app to be loaded again. */
-  | { type: 'reloading' }
+  | { type: 'RELOAD_REQUESTED' }
   /** The guest reported a failure in itself. */
-  | { type: 'runtimeError'; message: string }
+  | { type: 'RUNTIME_ERROR_REPORTED'; message: string }
 
-const initialConnection: ConnectionState = { status: 'connecting', epoch: 0, error: null }
+const initialConnection: ConnectionState = { status: 'connecting', handshakeEpoch: 0, runtimeError: null }
 
 const connectionReducer = (state: ConnectionState, action: ConnectionAction): ConnectionState => {
   switch (action.type) {
-    case 'handshaked':
+    case 'HANDSHAKED':
       // A fresh handshake means a fresh document — the app navigated, reloaded
       // or was redeployed. Anything it told us about the last one is stale, and
       // an error strip pinned over a working app is worse than none. Artifacts
       // clear theirs on document change; this is the same moment.
-      return { status: 'ready', epoch: state.epoch + 1, error: null }
-    case 'documentChanged':
-      // Same reasoning as `handshaked`: the error belonged to the document that
+      return { status: 'ready', handshakeEpoch: state.handshakeEpoch + 1, runtimeError: null }
+    case 'DOCUMENT_CHANGED':
+      // Same reasoning as `HANDSHAKED`: the error belonged to the document that
       // just went away, and leaving it pinned over the one now loading blames
       // the new page for the old page's failure.
-      return { ...state, status: 'connecting', error: null }
-    case 'timedOut':
+      return { ...state, status: 'connecting', runtimeError: null }
+    case 'TIMED_OUT':
       return { ...state, status: 'unreachable' }
-    case 'reloading':
-      return { ...state, status: 'connecting', error: null }
-    case 'runtimeError':
+    case 'RELOAD_REQUESTED':
+      return { ...state, status: 'connecting', runtimeError: null }
+    case 'RUNTIME_ERROR_REPORTED':
       // Latest wins rather than accumulating: a page throwing in a render loop
       // would otherwise turn one broken component into an unbounded list.
-      return { ...state, error: action.message }
+      return { ...state, runtimeError: action.message }
   }
 }
 
@@ -193,10 +193,7 @@ export type UseMiniAppBridgeOptions = {
 export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const httpClient = useHttpClient()
-  const [{ status, epoch: handshakeEpoch, error: runtimeError }, dispatch] = useReducer(
-    connectionReducer,
-    initialConnection,
-  )
+  const [{ status, handshakeEpoch, runtimeError }, dispatch] = useReducer(connectionReducer, initialConnection)
   // Selection is host UI state, not model context — it drives the floating
   // control and is only promoted into the conversation when the user acts on it.
   // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
@@ -204,9 +201,9 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
   const theme = useResolvedTheme()
   const locale = useActiveLocale()
-  const setContext = useMiniAppStore((s) => s.setContext)
-  const setTools = useMiniAppStore((s) => s.setTools)
-  const resetGuest = useMiniAppStore((s) => s.resetGuest)
+  const setContext = useMiniAppStore((state) => state.setContext)
+  const setTools = useMiniAppStore((state) => state.setTools)
+  const resetGuest = useMiniAppStore((state) => state.resetGuest)
 
   // Held in a ref so a new callback identity from the parent doesn't tear down
   // and re-add the message listener mid-session (which would drop in-flight
@@ -360,7 +357,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           ...(auth ? { auth } : {}),
         }
         post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
-        dispatch({ type: 'handshaked' })
+        dispatch({ type: 'HANDSHAKED' })
         return
       }
 
@@ -407,7 +404,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       }
 
       if (message.method === miniAppGuestMethods.runtimeError) {
-        dispatch({ type: 'runtimeError', message: message.params.message })
+        dispatch({ type: 'RUNTIME_ERROR_REPORTED', message: message.params.message })
         return
       }
 
@@ -463,7 +460,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     if (status !== 'connecting') {
       return
     }
-    const timer = setTimeout(() => dispatch({ type: 'timedOut' }), handshakeTimeoutMs)
+    const timer = setTimeout(() => dispatch({ type: 'TIMED_OUT' }), handshakeTimeoutMs)
     return () => clearTimeout(timer)
   }, [status])
 
@@ -584,7 +581,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       return
     }
     resetGuest()
-    dispatch({ type: 'documentChanged' })
+    dispatch({ type: 'DOCUMENT_CHANGED' })
   }, [resetGuest])
 
   /**
@@ -598,7 +595,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const reloadFrame = useCallback(() => {
     hasHandshakedRef.current = false
     resetGuest()
-    dispatch({ type: 'reloading' })
+    dispatch({ type: 'RELOAD_REQUESTED' })
     if (frameRef.current) {
       frameRef.current.src = app.url
     }

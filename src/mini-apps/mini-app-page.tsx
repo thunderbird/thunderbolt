@@ -13,7 +13,7 @@ import { useCallback, useEffect } from 'react'
 import { Navigate, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
-import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
+import { useElementPicking } from '@/components/embedded/use-element-picking'
 import { MiniAppFrame } from './mini-app-frame'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
 import { useMiniAppStore } from './mini-app-store'
@@ -33,8 +33,8 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const { openChatId, draftChatId, openChat, openExistingChat, closeChat, attachToComposer, handleChatCreated } =
     useMiniAppChatPanelState()
   const chats = useMiniAppChats(app.id)
-  const openApp = useMiniAppStore((s) => s.openApp)
-  const closeApp = useMiniAppStore((s) => s.closeApp)
+  const openApp = useMiniAppStore((state) => state.openApp)
+  const closeApp = useMiniAppStore((state) => state.closeApp)
 
   /**
    * Publish which app is open so `src/ai/fetch.ts` can register `get_app_context`
@@ -56,7 +56,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       onChatOpen: openChat,
     })
 
-  const { mode, startPicking, dismiss, pointAt, pickAt } = useSurfaceSelection({
+  const { mode, startPicking, dismiss, pointAt, pickAt } = useElementPicking({
     query: queryElementAt,
     onAsk: attachToComposer,
   })

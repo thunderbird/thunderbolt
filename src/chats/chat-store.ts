@@ -337,12 +337,12 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   cancelMiniAppApprovals: (appId) => {
     // Snapshotted before deciding: each `decide` writes back through the store,
     // so iterating the live map would walk a collection being replaced.
-    const doomed = [...get().sessions.values()].flatMap((session) =>
+    const queuedForApp = [...get().sessions.values()].flatMap((session) =>
       session.miniAppApprovalQueue.filter((pending) => pending.appId === appId),
     )
     // `unavailable`, not `denied`: the user never saw these, so telling the model
     // they were declined would put a decision in their mouth.
-    doomed.forEach((pending) => pending.decide('unavailable'))
+    queuedForApp.forEach((pending) => pending.decide('unavailable'))
   },
 
   setSelectedAgent: async (id, agent) => {

@@ -6,7 +6,7 @@ import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it } from 'bun:test'
 
 import type { SurfaceHighlightedElement } from './types'
-import { useSurfaceSelection } from './use-surface-selection'
+import { useElementPicking } from './use-element-picking'
 
 const element = (id: string): SurfaceHighlightedElement => ({
   id,
@@ -24,13 +24,13 @@ const deferredQueries = () => {
 
 const setup = (query: (point: { x: number; y: number }) => Promise<SurfaceHighlightedElement | null>) => {
   const asked: string[][] = []
-  const hook = renderHook(() => useSurfaceSelection({ query, onAsk: (passages) => asked.push(passages) }))
+  const hook = renderHook(() => useElementPicking({ query, onAsk: (passages) => asked.push(passages) }))
   return { hook, asked }
 }
 
 const point = { x: 10, y: 20 }
 
-describe('useSurfaceSelection', () => {
+describe('useElementPicking', () => {
   it('starts idle', () => {
     const { hook } = setup(async () => null)
     expect(hook.result.current.mode.kind).toBe('idle')

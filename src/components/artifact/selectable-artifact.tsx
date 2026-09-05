@@ -7,7 +7,7 @@ import type { ArtifactContext, ArtifactTextSelection } from '@/artifacts/harness
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { cn } from '@/lib/utils'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
-import { useSurfaceSelection } from '@/components/embedded/use-surface-selection'
+import { useElementPicking } from '@/components/embedded/use-element-picking'
 import { SelectionPopover } from '@/components/embedded/selection-popover'
 import type { SurfaceHighlightedElement } from '@/components/embedded/types'
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,7 @@ export const SelectableArtifact = ({
 
   const query = useCallback(async (point: { x: number; y: number }) => (await queryRef.current?.(point)) ?? null, [])
 
-  const { mode, startPicking, dismiss, pointAt, pickAt } = useSurfaceSelection({ query, onAsk })
+  const { mode, startPicking, dismiss, pointAt, pickAt } = useElementPicking({ query, onAsk })
 
   const askAboutSelection = () => {
     if (selection) {

@@ -19,7 +19,7 @@ export type SurfaceRect = { x: number; y: number; width: number; height: number 
 export type SurfaceTextSelection = { text: string; rect?: SurfaceRect }
 
 /** One element the guest resolved, ready to become a composer chip. */
-export type SurfaceSelectionItem = {
+export type SurfacePickedElement = {
   id: string
   label: string
   text: string
@@ -34,4 +34,4 @@ export type SurfaceSelectionItem = {
  * against the frame's position rather than trying to compute it — only the
  * guest can measure its own layout and scroll.
  */
-export type SurfaceHighlightedElement = SurfaceSelectionItem & { rect: SurfaceRect }
+export type SurfaceHighlightedElement = SurfacePickedElement & { rect: SurfaceRect }

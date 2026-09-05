@@ -21,19 +21,19 @@
  * the gesture.
  */
 
-import type { SurfaceSelectionItem } from './types'
+import type { SurfacePickedElement } from './types'
 
 /** Cap on serialised `data`, so one fat payload can't eat the context. */
 const maxDataChars = 2_000
 
 /** Render one picked item as the passage text attached to the composer. */
-export const toSelectionPassage = (item: SurfaceSelectionItem): string => {
+export const toPickedPassage = (item: SurfacePickedElement): string => {
   const body = `${item.label}\n${item.text}`
   if (item.data === undefined) {
     return body
   }
   // structuredClone (which postMessage uses) can carry cycles, so this really
-  // can throw — and the app controls the value. Losing the whole selection over
+  // can throw — and the app controls the value. Losing the whole passage over
   // one bad payload would be a poor trade; drop the payload, keep the text.
   const serialised = ((): string | null => {
     try {

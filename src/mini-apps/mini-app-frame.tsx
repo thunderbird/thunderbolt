@@ -48,7 +48,7 @@ export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: Mi
     {status !== 'ready' && (
       <EmbeddedSurfaceStatus
         name={app.name}
-        failed={status !== 'connecting'}
+        state={status === 'unreachable' ? 'failed' : 'waiting'}
         onRetry={onRetry}
         detail={
           <Trans>

@@ -56,7 +56,7 @@ export type MiniAppChatPanelState = {
  * With no session — a cold load where the panel was never opened this run —
  * fall back to the URL, which is only ever set for a thread that exists.
  */
-const isPersisted = (chatThreadId: string, hasDraft: boolean): boolean => {
+const hasChatRow = (chatThreadId: string, hasDraft: boolean): boolean => {
   const session = useChatStore.getState().sessions.get(chatThreadId)
   return session ? session.chatThread !== null : !hasDraft
 }
@@ -92,7 +92,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    * perfectly well which of the two it was holding, where anything asked
    * afterwards is either loading or already stale.
    */
-  const lastChatRef = useRef<{ id: string; persisted: boolean } | null>(null)
+  const lastChatRef = useRef<{ id: string; hasRow: boolean } | null>(null)
 
   /** Edit only `chat`, leaving any other query the route grows later alone. */
   const setOpenChatParam = useCallback(
@@ -150,8 +150,8 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    * hydrates an empty conversation over a thread that has messages.
    */
   const showChat = useCallback(
-    (chatThreadId: string, persisted: boolean) => {
-      if (persisted) {
+    (chatThreadId: string, hasRow: boolean) => {
+      if (hasRow) {
         showPersistedChat(chatThreadId)
         return
       }
@@ -196,7 +196,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
         // hydration can't find and bounces the user to Not Found — the reason
         // drafts stay out of the URL in the first place.
         if (!openChatIdRef.current) {
-          showChat(existing, closed?.persisted === true)
+          showChat(existing, closed?.hasRow === true)
         }
         return
       }
@@ -219,9 +219,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    */
   const closeChat = useCallback(() => {
     const closing = openChatIdRef.current
-    lastChatRef.current = closing
-      ? { id: closing, persisted: isPersisted(closing, draftChatIdRef.current !== null) }
-      : null
+    lastChatRef.current = closing ? { id: closing, hasRow: hasChatRow(closing, draftChatIdRef.current !== null) } : null
     setDraftChatId(null)
     setOpenChatParam(null)
   }, [setOpenChatParam])
@@ -249,7 +247,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
       const closed = lastChatRef.current
       const threadId = openChatIdRef.current ?? closed?.id ?? uuidv7()
       if (!openChatIdRef.current) {
-        showChat(threadId, closed?.persisted === true)
+        showChat(threadId, closed?.hasRow === true)
       }
       const { addQuote } = usePendingQuotesStore.getState()
       for (const text of passages) {

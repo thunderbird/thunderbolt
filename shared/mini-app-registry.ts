@@ -12,10 +12,11 @@
  *
  * It lives in `shared/` because it was previously written twice — a
  * `PublicMiniApp` type on the backend and a `miniAppResponseSchema` on the
- * frontend, structurally coupled and free to drift. They already had: the
+ * frontend, structurally coupled and free to drift. They did drift, once: the
  * backend refused a non-http(s) `origin` while the client accepted any string,
  * so the one value that reaches `<iframe src>` was scheme-checked on one side
- * of the boundary only.
+ * of the boundary only. That gap was closed by teaching the client the same
+ * rule; declaring the rule once is what stops the next one.
  *
  * The registry's own docs make the same argument about presentation data, which
  * used to be a hardcoded frontend array: two lists of the same apps that can

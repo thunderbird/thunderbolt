@@ -79,7 +79,10 @@ type MiniAppApprovalPromptProps = {
  */
 export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApprovalPromptProps) => {
   const { tool, args } = pending
-  const action = tool.annotations?.title ?? tool.name
+  const heading = tool.annotations?.title ?? tool.name
+  /* Only worth showing when the app gave the tool a friendlier title than its
+   * identifier — otherwise it would read as the same thing twice. */
+  const showToolName = heading !== tool.name
   const entries = toArgEntries(args)
   const headingId = useId()
 
@@ -89,7 +92,7 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
         <ShieldAlert className="size-[var(--icon-size-sm)] text-amber-500 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0 space-y-1.5">
           <p id={headingId} className="text-[length:var(--font-size-body)] font-medium">
-            {action}
+            {heading}
           </p>
 
           {entries && (
@@ -112,8 +115,8 @@ export const MiniAppApprovalPrompt = ({ pending, appName, onDecide }: MiniAppApp
               <p>
                 {/* Skipped when the heading already *is* the name — repeating an
                     identifier twice in one prompt reads as a rendering bug. */}
-                {action !== tool.name && <span className="font-mono">{tool.name}</span>}
-                {action !== tool.name && tool.description && ' — '}
+                {showToolName && <span className="font-mono">{tool.name}</span>}
+                {showToolName && ' — '}
                 {tool.description}
               </p>
               {args !== undefined && args !== null && (

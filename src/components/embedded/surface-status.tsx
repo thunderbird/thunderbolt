@@ -26,9 +26,16 @@ import { cn } from '@/lib/utils'
 type EmbeddedSurfaceStatusProps = {
   /** What the user is waiting for, or what failed. Named, never "the content". */
   name: string
-  /** Present the failed state; otherwise this is the waiting state. */
-  failed?: boolean
-  /** Surface-specific detail, shown only when failed — what to actually check. */
+  /**
+   * Which of the two states to present.
+   *
+   * A `state` rather than a `failed` boolean: `false` did not mean "fine", it
+   * meant "still waiting", and the only caller reached it by double negation
+   * from a three-member union (`failed={status !== 'connecting'}`). Naming the
+   * two states puts that mapping in one place and makes the call site legible.
+   */
+  state: 'waiting' | 'failed'
+  /** Surface-specific detail, shown only in the failed state — what to actually check. */
   detail?: ReactNode
   /** Offer another attempt. Omitted when the surface can't be retried. */
   onRetry?: () => void
@@ -44,10 +51,10 @@ type EmbeddedSurfaceStatusProps = {
  * takeover hides the one thing the user needs to click. So the card floats, the
  * container passes pointer events through, and only the card itself takes them.
  */
-export const EmbeddedSurfaceStatus = ({ name, failed = false, detail, onRetry }: EmbeddedSurfaceStatusProps) => (
+export const EmbeddedSurfaceStatus = ({ name, state, detail, onRetry }: EmbeddedSurfaceStatusProps) => (
   <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
     <div className="pointer-events-auto max-w-sm space-y-2 rounded-xl border border-border bg-background/95 px-4 py-3 text-center shadow-lg backdrop-blur">
-      {failed ? (
+      {state === 'failed' ? (
         <>
           <p className="text-[length:var(--font-size-body)] font-medium">
             <Trans>Couldn&apos;t load {name}</Trans>

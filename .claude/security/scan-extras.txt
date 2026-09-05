@@ -1,0 +1,51 @@
+Thunderbolt-specific scan brief. Appended to the generic vulnerability-scan
+categories via `/thunder-vuln-scan <path> --extra .claude/security/scan-extras.txt`.
+
+THREAT MODEL
+The authoritative adversary list (A1-A10), security claims (C1-C14), and v1
+regression table live in docs/architecture/e2ee-threat-model.md. Read it before
+scanning anything under src/crypto, src/db/encryption, backend/src/api/encryption.ts,
+backend/src/lib/{canary,org-escrow}.ts, or shared/e2ee-types.ts, and cite C-ids
+and A-ids in findings so they line up with the attack specs in e2e/e2ee/.
+
+ARCHITECTURE-SPECIFIC CATEGORIES
+These are the classes that matter here and that a generic ruleset will miss.
+
+- Plaintext reaching the server. Any path where a value in `encryptedColumnsMap`
+  (shared/e2ee-types.ts) can be written to the sync pipeline without passing
+  through codec.encode. Encode must fail CLOSED, never write through in
+  plaintext. This is the shape THU-429 had.
+- Key-identifier and AAD handling. v2 wire is
+  `__enc:v2:<key_id>:<iv>:<ct>` with AAD = table‖column‖row_id‖key_id. Flag any
+  construction of that AAD that is not the shared `encodeAAD` helper, and any
+  decrypt path that omits it (other than the deliberately AAD-free "v1" slot).
+- Server-controlled input treated as trusted. The client must not act on
+  `scheme_version`, `kdf_salt`, `key_version`, `primary_key_id`, or the
+  org-escrow public key as if the server were honest. Flag any of these that
+  steers key generation, wrapping, or derivation without verification.
+- Challenge-response gaps. Every trust operation (approve/deny/revoke/rotate/
+  recover/node-id) must consume a single-use nonce bound to user, device, and
+  operation. Flag endpoints missing the gate, nonces reused across operations,
+  and TOCTOU between issue and consume.
+- PowerSync sync boundary. Encrypted columns cross a middleware boundary and a
+  SharedWorker boundary. Flag unknown-key_id branches that fail open, and any
+  BroadcastChannel message handled without validating its shape or origin.
+- Multi-device state machines. Device state is pending/trusted/denied/revoked.
+  Flag any query that serves key material without filtering on it, and any
+  handler that mutates account-wide key state without an advisory lock.
+- Migration interleavings. The v1->v2 upgrade is a CAS flip with a possession
+  proof. Flag any local persistence that happens before the server confirms,
+  and any path where a 409 loser diverges from the follower path.
+
+REPO CONVENTIONS THAT AFFECT SEVERITY
+- Soft deletes are the rule (`deletedAt`); hard delete is correct only for
+  account deletion, PowerSync delete operations, and device removal.
+- `getHttpClient()` / the typed API client carry `X-App-Version`; a new fetch
+  client that bypasses them will 426 once the version gate is enabled.
+- Backend CORS deliberately echoes requested headers (`allowedHeaders: true`)
+  because of the universal proxy. Do not report it as a misconfiguration.
+
+OUT OF SCOPE
+See the "Known and accepted" section of the threat model. Do not report local
+SQLite plaintext at rest, the AAD-free "v1" slot, the classical-P-256 escrow
+envelope, or the documented escrow POC non-goals as new findings.

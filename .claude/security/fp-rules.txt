@@ -1,0 +1,70 @@
+Thunderbolt false-positive rules. Appended to the triage verifier via
+`/thunder-triage <findings.json> --fp-rules .claude/security/fp-rules.txt`, and used as
+the exclusion list for the security dimension of thunder-deep-review.
+
+Everything below is a KNOWN property of this codebase. A finding that reduces to
+one of these is not a finding — drop it. A finding that shows NEW exposure
+through one of them still counts; the exclusion covers the documented behaviour,
+not everything adjacent to it.
+
+ENCRYPTION DESIGN
+- The "v1" DEK slot decrypts legacy rows with NO AAD, permanently. This is the
+  documented dual-read design, not a missing-AAD bug. Only a path that routes v2
+  data or a NEW row through that slot is reportable.
+- The v1 wire format `__enc:<iv>:<ct>` carries no key id and no version. Legacy
+  rows are read in place forever; there is no bulk re-upload. Not a finding.
+- The stored column is named `wrapped_ck` but carries the AK. Wire-compat
+  naming, documented in e2e-encryption.md. Not a finding.
+- The org-escrow envelope is classical P-256 with no ML-KEM half, so escrow
+  forfeits post-quantum protection for that account. Accepted POC trade-off,
+  documented. Reportable only if the forfeiture extends beyond the escrow
+  envelope itself.
+- Escrow POC non-goals are deliberate: no end-user disclosure UI, no backfill for
+  pre-escrow accounts, no revocation on disable, no recovery audit trail, no
+  in-app admin decrypt.
+- Local SQLite is plaintext at rest. Known deferred gap with its own follow-up.
+  Not reportable as a new finding.
+- Decrypt-failure handling writes through rather than failing closed, because
+  PowerSync retries would poison the sync loop. Deferred by design.
+- DEK "0" is retained forever and the canary is anchored to it. Deliberate: the
+  keys endpoint has no canary fields, so anchoring to "current primary" would
+  break verification after a rotation.
+- E2EE is disabled by default (`E2EE_ENABLED=false`). "Encryption is off" in a
+  default config is not a vulnerability.
+
+POWERSYNC AND STORAGE
+- `ps_data__*` / `ps_data_local__*` are PowerSync internal backing tables. Code
+  that reads them (src/search/fts-setup.ts) is intentionally coupled to an
+  undocumented internal shape and is documented as such.
+- The `powersync-web-internal` Vite alias points at a non-public `@powersync/web`
+  path on purpose, for the custom SharedWorker.
+- The FTS index is deliberately locale-independent and holds user content in
+  plaintext in local SQLite — same known gap as above.
+
+BACKEND
+- `cors({ allowedHeaders: true })` echoes requested headers by design; the
+  universal proxy at /v1/proxy forwards arbitrary upstream headers, and a static
+  allowlist would break preflight. Not a misconfiguration.
+- `appVersionExemptPrefixes` intentionally exempts OAuth/SSO callbacks, health,
+  /config, and WebSocket upgrades from the version gate. Adding a route there is
+  a deliberate act, not an oversight.
+- The app-version gate is a no-op until `MIN_APP_VERSION` is set. "The gate does
+  nothing" in a default config is expected.
+- Drizzle migrations are generated, never hand-written. Do not report generated
+  SQL style.
+
+TESTING AND TOOLING
+- `e2e/e2ee/db.ts` connects to Postgres with hardcoded local credentials
+  (postgres/postgres on a dedicated port). Test harness only, never production.
+- `scripts/org-escrow-keygen.ts` generates operator keypairs; the private half is
+  explicitly out-of-band and never on the app server. Test keys in e2e fixtures
+  are not leaked secrets.
+- Test files may use `any`-adjacent patterns and mock.module in ways production
+  code may not.
+
+SEVERITY CALIBRATION
+Derive severity from preconditions and adversary class, not from category. A
+weakness reachable only by an adversary who already holds the AK is not
+Critical. Anchor to the scale in docs/architecture/e2ee-threat-model.md and be
+skeptical of inflation: if the attack needs three preconditions, say so and
+downgrade accordingly.

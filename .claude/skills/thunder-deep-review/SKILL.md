@@ -55,8 +55,10 @@ This review rewards high reasoning effort — if your runtime exposes an effort/
 **Spawn budget by mode:**
 - **CI, deep-mode flag false** → the 10 lane sub-reviewers + the domain subagents (`powersync-sync-reviewer` / `react-effect-reviewer`) when the diff touches their areas.
 - **CI, deep-mode flag true** → all of the above + the six micro-specialists. Never decide spend yourself in CI — the flags file decides.
+- **CI, `securityMode` flag true** (independent of deep mode) → ALSO spawn the Security dimension (below), scoped to `sensitiveFiles`. A tiny crypto-path diff runs it without deep mode.
 - **Local, default** → the 10 lanes + domain subagents when triggered.
 - **Local, escalate to deep mode** (add micro-specialists) only when the developer explicitly asks, or the diff exceeds ~600 changed lines / ~40 files (the same threshold CI uses).
+- **Local, any crypto/E2EE path in the diff** → ALSO run the Security dimension (below), the local analogue of the `securityMode` flag.
 
 **When you spawn ANY sub-reviewer** (a lane pass, a micro-specialist, or a domain subagent below), include the diff/patch file path you were given in its `Task` prompt and tell it to `Read` that file. A spawned subagent **cannot** reconstruct the diff itself — in CI `main` is not checked out, so `git diff main...HEAD` fails. The patch file you were handed is the single source of truth every worker reviews.
 
@@ -93,6 +95,15 @@ For narrow, high-stakes domains the repo ships dedicated read-only reviewer suba
 - **`powersync-sync-reviewer`** — invoke whenever the diff touches `shared/powersync-tables.ts`, `config.yaml` sync rules, backend/frontend Drizzle schema, `backend/drizzle/**` migrations, `src/db/powersync/**`, or a synced-table DAL/defaults/reconciliation. It verifies the two-PR deploy flow, `_journal.json` integrity, sync-rule/column parity, **sync-classification consistency** (synced vs local-only across sibling tables; half-synced/misclassified tables — a silent cross-device-failure class general lanes miss), encryption config, and hard-delete correctness.
 - **`react-effect-reviewer`** — invoke on `.tsx`/`.ts` React diffs for the full `useEffect`-discipline catalogue.
 Treat their `blocker` findings as blocking. These are the "narrow + durable + reusable" checks that correctly live as their own agent files, not as prose lanes.
+
+### Security dimension (path-conditional — E2EE / crypto paths only)
+A dedicated, threat-model-grounded security pass that goes far deeper than lane H. **It is PATH-CONDITIONAL: spawn it iff the flags file sets `securityMode: true`** (the orchestrator sets it deterministically when the diff touches a crypto/E2EE path — `src/crypto/**`, `src/db/encryption/**`, `backend/src/api/encryption.ts`, `backend/src/lib/{canary,org-escrow}.ts`, `shared/e2ee-types.ts`, `backend/drizzle/**`; the matching files are listed in the flags file's `sensitiveFiles`). Do NOT decide this yourself — honor the flag, exactly as with deep/bounded mode. When `securityMode` is false, skip this dimension entirely; lane H still runs.
+
+Run it as its own read-only sub-reviewer scoped to the `sensitiveFiles`. Its **required reading BEFORE reviewing** (beyond the usual heuristics/house-rules):
+- `docs/architecture/e2ee-threat-model.md` — the single source of truth. Its adversaries (A1–A10), claims (C1–C14), v1 regressions, and "Known and accepted" list are the review frame. Findings MUST name the C-id/A-id they bear on (e.g. "C2 under A2").
+- `.claude/security/fp-rules.txt` — the exclusion list. A candidate that reduces to a documented, accepted property there is **not a finding** — drop it. (New exposure *through* an accepted property still counts; the exclusion covers the documented behaviour, not everything adjacent.)
+
+Charter: for each crypto-path hunk, ask which claim it could falsify and under which adversary — plaintext or a key-yielding value reaching the server (C1); a server-supplied public key / metadata (`kdf_salt`, `key_version`, `scheme_version`, org-escrow key, recovery-slot key) steering a wrap or derivation the server can open (C2/C9/C11); AAD/placement gaps (C3); v1 downgrade (C4); revocation/identity coupling (C5); nonce/challenge reuse (C6); at-rest extractability (C10); authorization/IDOR on an encryption route (C14). **Severity derives from preconditions × adversary class, never from category** (see `references/severity-rubric.md`): reserve output `critical` for an A1/A2/A3 confidentiality/takeover break under cheap preconditions; a weakness reachable only by an adversary already holding the AK is not critical. Anchor to the threat model and be skeptical of inflation.
 
 ### 1. PASS A — SCAN (recall pass, over-generate)
 Walk **every changed hunk** (per the execution model). List **every** candidate concern — aim to surface the real issues a meticulous senior reviewer would raise, which is typically **one finding per ~60–120 changed lines** (measured on a prior model — treat as directional), not 3–5 for the whole PR. That density figure is strictly a red-flag heuristic for detecting a skimmed review (too FEW findings) — never a target count to anchor toward. **Over-generate — do not self-censor; a missed issue costs far more than a candidate dropped in Pass B.** For each candidate record: `file:line`, one-line concern, suspected category, suspected severity. Run these category lenses over the diff (use `references/review-heuristics.md` trigger table + IF–THEN rules + the deep correctness checklist):
@@ -143,19 +154,23 @@ Severity ⊥ confidence (two independent axes). Down-weight low confidence, **ne
 
 | Tier | Examples | Block? |
 |---|---|---|
+| **Critical** *(security dimension only)* | a headline adversary (A1/A2/A3 — NOT one already holding the AK) breaks a confidentiality/takeover C-claim under cheap preconditions: plaintext or a key-yielding value reaches the server; a server-substituted public key steers a wrap the server can open; full-account takeover via a routine flow (cf. THU-865) | Advisory |
 | **Blocker** | real correctness bug; error-swallowing on trusted path; frontend hard-delete; `useEffect` anti-pattern; PII in logs; unscoped query; non-nullable synced column; migration w/o journal entry; **"this will haunt us" maintainability/architecture cost** | Yes |
 | **Convention** | `any`; `interface` over `type`; `function` kw; `let` where const+early-return works; ALL_CAPS const; 3+ `useState`; non-lazy route; `.spec`/vitest | Soft |
 | **Nit / note** | cosmetic, no-value comment, numeric separators | No |
 | **Pre-existing** | issue already in base — context only, not a new blocker | No |
 
-**Severity mapping (mandatory when merging sub-reviewer output).** Every producer tier maps onto the output enum — never emit a severity outside {`blocking`, `convention`, `nit`}; out-of-enum severities are silently dropped downstream:
+**Severity mapping (mandatory when merging sub-reviewer output).** Every producer tier maps onto the output enum — never emit a severity outside {`critical`, `blocking`, `convention`, `nit`}; out-of-enum severities are silently dropped downstream:
 
 | Producer tier | Output severity |
 |---|---|
+| security finding at the threat-model **Critical** bar (headline adversary A1/A2/A3 — NOT one who already holds the AK — breaks a confidentiality/takeover C-claim under cheap preconditions) | `critical` |
 | real bug / future-pain (architectural) / hard block (rubric) · `blocker` (domain subagents) | `blocking` |
 | convention (rubric) · `warning` (domain subagents) | `convention` |
 | nit / non-blocking idea (rubric) · `note` (domain subagents) | `nit` |
 | praise (rubric) | omit as a finding (may appear as one line of report prose in local mode) |
+
+`critical` is the **only** tier reserved for the security dimension — apply it strictly (derive severity from preconditions and adversary class, never from category; anchor to `docs/architecture/e2ee-threat-model.md` and be skeptical of inflation). Everything else maps to `blocking` or below.
 
 **Voice.** Whoever writes the final human-facing `title`/`body` — a lane sub-reviewer or the merging parent — MUST have read `references/style-exemplars.md` first and match that register (warm, collaborative, question-led). If merged sub-reviewer prose is terse or robotic, the parent rewrites it to register before emitting.
 

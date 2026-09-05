@@ -86,7 +86,13 @@ const SELF_COMMENT_MARKER = '<!-- thunder-deep-review-finding -->';
 const NO_ISSUES_MARKER = '<!-- thunder-deep-review-no-issues -->';
 
 // Severity enum the model output is validated against. Anything else is dropped.
-const SEVERITY_ENUM = ['blocking', 'convention', 'nit'];
+// `critical` is the security dimension's top tier (above `blocking`): reserved for
+// a finding the threat model rates Critical — a headline adversary (A1/A2/A3, NOT
+// one who already holds the AK) breaks a confidentiality/takeover C-claim under
+// cheap preconditions. Advisory still: it changes the label + ranking, never the
+// merge gate. The ladder stays LINEAR so the precision gate can only ever demote
+// down it (critical → blocking → convention → nit).
+const SEVERITY_ENUM = ['critical', 'blocking', 'convention', 'nit'];
 
 // Confidence enum for the model's INTERNAL precision-gate grounding field. An
 // out-of-enum value normalizes to null — it never drops the finding (unlike an
@@ -96,6 +102,23 @@ const CONFIDENCE_ENUM = ['high', 'medium', 'low'];
 // Deterministic deep-mode gate. Diff bigger than this => deep mode.
 const DEEP_MODE_CHANGED_LINES = 600; // tunable for the team's PR sizes.
 const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
+
+// Crypto / E2EE paths that trigger the SECURITY dimension. Deterministic, like
+// the deep-mode gate: code decides when the security lane spends, never the
+// model. Matched against the PR's changed-file paths (repo-relative, exactly as
+// the Files API returns them in `filename`). Keep in sync with the security-review
+// surface list in docs/architecture/e2ee-threat-model.md (the "Consumers" table).
+const SECURITY_PATH_MATCHERS = [
+  (p) => p.startsWith('src/crypto/'),
+  (p) => p.startsWith('src/db/encryption/'),
+  (p) => p.startsWith('backend/drizzle/'),
+  (p) => p === 'backend/src/api/encryption.ts',
+  (p) => p === 'backend/src/lib/canary.ts',
+  (p) => p === 'backend/src/lib/org-escrow.ts',
+  (p) => p === 'shared/e2ee-types.ts',
+];
+const matchesSecurityPath = (filename) =>
+  typeof filename === 'string' && SECURITY_PATH_MATCHERS.some((m) => m(filename));
 // Hard GitHub cliffs: /commits/{sha}/check-runs caps at 1000 check-suites,
 // PR files list caps at 3000 files. Past the file cap we switch to bounded mode.
 const PR_FILES_TRUNCATION_CAP = 3000;
@@ -520,9 +543,15 @@ const computeDeepMode = (files, truncated) => {
   const fileCount = files.length;
   const changedLines = files.reduce((n, f) => n + (f.additions ?? 0) + (f.deletions ?? 0), 0);
   const sizeTriggered = changedLines >= DEEP_MODE_CHANGED_LINES || fileCount >= DEEP_MODE_FILE_COUNT;
+  // Path-conditional security dimension: on iff the diff touches a crypto/E2EE
+  // path. Independent of deep mode — a one-line change to canary.ts is small (no
+  // deep mode) but still crypto-sensitive (security lane on).
+  const sensitiveFiles = files.map((f) => f.filename).filter(matchesSecurityPath);
   return {
     deepMode: env.hasDeepLabel || sizeTriggered,
     boundedMode: truncated, // past the file cap, review a bounded subset only.
+    securityMode: sensitiveFiles.length > 0,
+    sensitiveFiles,
     fileCount,
     changedLines,
     truncated,
@@ -539,7 +568,7 @@ const computeDeepMode = (files, truncated) => {
 // malformed, then render each finding into an inline comment body here.
 //
 // Expected JSON shape (the action step's prompt must enforce this):
-//   { "findings": [ { "severity": "blocking"|"convention"|"nit",
+//   { "findings": [ { "severity": "critical"|"blocking"|"convention"|"nit",
 //                     "file": "src/x.ts", "line": 42, "side": "RIGHT"|"LEFT",
 //                     "title": "…", "body": "…", "rule": "optional-invariant-id",
 //                     "confidence": "high"|"medium"|"low",
@@ -570,8 +599,8 @@ const computeDeepMode = (files, truncated) => {
  * so an inline finding can never collide with a file-level one.
  *
  * SEVERITY-INVARIANT: severity is deliberately NOT hashed. The precision gate
- * is allowed to DEMOTE a finding's severity (blocking→convention,
- * convention→nit) between runs, and the recall model can re-classify the same
+ * is allowed to DEMOTE a finding's severity (critical→blocking,
+ * blocking→convention, convention→nit) between runs, and the recall model can re-classify the same
  * issue across runs — either would re-key the thread and post a duplicate
  * comment for an issue that already has one. Confidence/evidence are likewise
  * excluded (internal grounding, drift-prone across runs). The residual-collision
@@ -1192,7 +1221,7 @@ const resolveThread = async (threadId) => {
 // even the file isn't in the diff, summarized in the review body.
 // =============================================================================
 
-const SEVERITY_LABEL = { blocking: '🚫 Blocking', convention: '📐 Convention', nit: '🔧 Nit' };
+const SEVERITY_LABEL = { critical: '🔴 Critical', blocking: '🚫 Blocking', convention: '📐 Convention', nit: '🔧 Nit' };
 
 // Heading for body-summarized findings (summary placements + inline overflow +
 // the 422 fallback). Single source so the skip-post check and the fallback's
@@ -1447,7 +1476,7 @@ const runPre = async () => {
     writeFile(SKIPLIST_FILE, JSON.stringify({ headSha: env.headSha, skipList }, null, 2)),
     writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
   ]);
-  log(`pre: wrote ${diffFiles.length}-file diff, ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}).`);
+  log(`pre: wrote ${diffFiles.length}-file diff, ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
 };
 
 /**
@@ -1592,6 +1621,7 @@ export {
   parseUnifiedDiff,
   buildUnifiedDiff,
   computeDeepMode,
+  matchesSecurityPath,
   normalizeDiffText,
   normalizeFindings,
   findingHash,

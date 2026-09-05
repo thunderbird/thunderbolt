@@ -26,6 +26,9 @@ import { useCallback } from 'react'
 import { findMiniApp } from './registry'
 import { useMiniApps } from './use-mini-apps'
 
+/** `/apps/:appId` — the app on its own. */
+export const miniAppPath = (appId: string): string => `/apps/${encodeURIComponent(appId)}`
+
 /** `/apps/:appId?chat=:chatThreadId` — the app, with one conversation open. */
 export const miniAppChatPath = (appId: string, chatThreadId: string): string =>
   `/apps/${encodeURIComponent(appId)}?chat=${encodeURIComponent(chatThreadId)}`

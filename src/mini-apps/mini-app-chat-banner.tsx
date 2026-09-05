@@ -19,6 +19,7 @@ import { Link } from 'react-router'
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { findMiniApp, type MiniAppDefinition } from './registry'
+import { miniAppChatPath } from './use-chat-destination'
 import { useMiniApps } from './use-mini-apps'
 
 type MiniAppOriginNoticeProps = {
@@ -42,7 +43,7 @@ export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOrigi
         </span>
         {canOpen && (
           <Link
-            to={`/apps/${app.id}?chat=${chatThreadId}`}
+            to={miniAppChatPath(app.id, chatThreadId)}
             className="ml-auto shrink-0 underline underline-offset-2 hover:text-foreground"
           >
             <Trans>Open app</Trans>

@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  artifactElementAtMethod,
   artifactElementAtSchema,
   artifactCsp,
   artifactRequest,
@@ -182,12 +183,12 @@ describe('parseHarnessMessage', () => {
  */
 describe('artifactRequest', () => {
   it('stamps the render nonce so another render cannot answer', () => {
-    expect(artifactRequest('nonce-1', 7, 'selection/query', { rect: 1 })).toEqual({
+    expect(artifactRequest('nonce-1', 7, artifactElementAtMethod, { x: 1, y: 2 })).toEqual({
       artifactNonce: 'nonce-1',
       type: 'artifact-request',
       id: 7,
-      method: 'selection/query',
-      params: { rect: 1 },
+      method: artifactElementAtMethod,
+      params: { x: 1, y: 2 },
     })
   })
 })

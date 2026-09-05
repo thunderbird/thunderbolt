@@ -120,7 +120,9 @@ describe('ChatListItem', () => {
     const onChatClick = mock()
     renderWithProviders(createProps({ onChatClick }))
     fireEvent.click(screen.getByText('My Chat'))
-    expect(onChatClick).toHaveBeenCalledWith('thread-1')
+    // The row passes its own `miniAppId` up, so the sidebar doesn't have to
+    // find the thread again to learn where the click should land.
+    expect(onChatClick).toHaveBeenCalledWith('thread-1', null)
   })
 
   it('renders icon-only view when collapsed', () => {

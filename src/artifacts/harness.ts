@@ -289,7 +289,7 @@ const harnessScript = (nonce: string): string => `<script>
   // listeners must win the race against agent code, this need not.
   // Elements worth naming in preference to whatever the pointer literally hit:
   // pointing at a cell means the row, pointing inside a heading means the
-  // heading. NOT a whitelist of what can be picked — it used to be, and a page
+  // heading. NOT an allowlist of what can be picked — it used to be, and a page
   // built from divs and spans (a to-do list, a dashboard of cards) had almost
   // nothing selectable in it. Anything at all can be picked now; this only
   // decides where the walk *stops preferring* an ancestor.
@@ -299,21 +299,24 @@ const harnessScript = (nonce: string): string => `<script>
   // no smaller thing to fall back to.
   var UNPICKABLE = { HTML: 1, BODY: 1 };
 
-  function labelFor(el, i) {
+  function labelFor(el) {
     var explicit = el.getAttribute('data-tb-label');
     if (explicit) { return explicit; }
     var cell = el.querySelector('td, th');
     var cellText = cell && cell.textContent ? cell.textContent.trim() : '';
     if (cellText) { return cellText; }
     var t = (el.textContent || '').trim();
-    if (t) { return t.slice(0, 40) + (t.length > 40 ? '…' : ''); }
+    // A chip label, not a description: the full string travels in the text
+    // field, and the host truncates the chip visually anyway.
+    if (t) { return t.slice(0, MAX_LABEL) + (t.length > MAX_LABEL ? '…' : ''); }
     // Textless but real: an image, a chart canvas, an icon button. Named from
     // whatever the author gave it, and by tag as a last resort, so it can still
     // be picked instead of being skipped for having nothing to read.
     var described = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') ||
       el.getAttribute('placeholder') || el.getAttribute('name');
     if (described) { return described; }
-    return el.tagName ? el.tagName.toLowerCase() : 'Item ' + (i + 1);
+    // elementFromPoint only ever hands back an Element, so this is the tag.
+    return el.tagName.toLowerCase();
   }
 
   // Read a table row as "Header: value" pairs so a bare number reaches the model
@@ -347,15 +350,24 @@ const harnessScript = (nonce: string): string => `<script>
     var r = el.getBoundingClientRect();
     // Zero-area elements can't be outlined and aren't what the user meant.
     if (!r.width || !r.height) { return { element: null }; }
+    // Once per hit-test, not three times: each call walks the DOM
+    // (getAttribute, querySelector, textContent) and this runs on every
+    // throttled pointer move.
+    var label = labelFor(el);
     return {
       element: {
         // Stable for as long as the element is: the host uses it to tell "the
         // pointer moved within one element" from "it moved to another".
-        id: labelFor(el, 0) + '@' + Math.round(r.x) + ',' + Math.round(r.y),
-        label: labelFor(el, 0),
+        //
+        // Coordinates FIRST, because the host clamps this field to 200
+        // characters. With the label in front, two different elements sharing a
+        // long label prefix truncated to the same id — and the host would read
+        // that as the pointer never having left the first one.
+        id: Math.round(r.x) + ',' + Math.round(r.y) + '@' + label,
+        label: label,
         // Falls back to the label so a textless element (an image, a canvas)
         // still arrives as something the model can talk about.
-        text: (text || labelFor(el, 0)).slice(0, MAX_ITEM_TEXT),
+        text: (text || label).slice(0, MAX_ITEM_TEXT),
         rect: { x: r.x, y: r.y, width: r.width, height: r.height },
       },
     };
@@ -384,6 +396,8 @@ const harnessScript = (nonce: string): string => `<script>
   }
   function onSelectionChange() {
     clearTimeout(selTimer);
+    // 180ms: selectionchange fires per character while dragging, and this is
+    // about the pause between deliberate drags rather than within one.
     selTimer = setTimeout(reportSelection, 180);
   }
   document.addEventListener('selectionchange', onSelectionChange);
@@ -397,6 +411,7 @@ const harnessScript = (nonce: string): string => `<script>
   // Tighter than the host's bound on the same field: a summary is derived from
   // the artifact's own DOM every time it changes, so it is the most repeated
   // thing this surface says to the model and the cheapest to keep short.
+  var MAX_LABEL = 40;
   var MAX_SUMMARY = 1500;
 
   function deriveContext() {

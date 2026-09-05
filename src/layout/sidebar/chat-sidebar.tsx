@@ -35,6 +35,7 @@ import {
 import { MessageCircle } from 'lucide-react'
 import { useState } from 'react'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
 import { useMoveChatToProject } from '@/projects/use-move-chat-to-project'
@@ -63,7 +64,7 @@ type ChatSidebarContentProps = {
   onTasksClick: () => void
   onMiniAppClick: (appId: string) => void
   onProjectsClick: () => void
-  onChatClick: (threadId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onSearchClick: () => void
 }
@@ -117,7 +118,7 @@ const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (a
             onClick={() => onClick(app.id)}
             tooltip={app.description}
             className="cursor-pointer"
-            isActive={pathname === `/apps/${app.id}`}
+            isActive={pathname === miniAppPath(app.id)}
           >
             <app.icon className="size-[var(--icon-size-default)]" />
             <span>{app.name}</span>

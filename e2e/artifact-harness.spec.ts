@@ -139,11 +139,11 @@ test.describe('artifact harness (real browser)', () => {
 
   /**
    * The reported bug: element picking worked on a table and a list and almost
-   * nowhere else, because the hit-test only accepted a whitelist of semantic
+   * nowhere else, because the hit-test only accepted an allowlist of semantic
    * tags. A to-do list built from divs had two selectable things in it. Anything
    * under the pointer is pickable now.
    */
-  test('picks a plain div a semantic-tag whitelist would have missed', async ({ page }) => {
+  test('picks a plain div a semantic-tag allowlist would have missed', async ({ page }) => {
     const nonce = 'nonce-div'
     const result = await askElementAt(
       page,

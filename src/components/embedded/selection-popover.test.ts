@@ -32,11 +32,18 @@ describe('placeSelectionPopover', () => {
     expect(left).toBe(50)
   })
 
-  // Selections in a scrolled frame can report negative coordinates; the control
-  // should still be placed deterministically rather than clamped somewhere odd.
-  it('accepts negative coordinates from a scrolled frame', () => {
-    const { left, flipped } = placeSelectionPopover({ x: -20, y: -5, width: 40, height: 16 })
-    expect(left).toBe(0)
+  /*
+   * Selections in a scrolled frame can report negative coordinates; the control
+   * should still be centred on them rather than clamped to the edge.
+   *
+   * The rect is chosen so the two behaviours differ: centring gives -30, while
+   * a `Math.max(0, …)` clamp would give 0. The previous rect centred to exactly
+   * 0, so the assertion held either way and could not fail for its own reason.
+   */
+  it('centres on negative coordinates from a scrolled frame', () => {
+    const { left, flipped } = placeSelectionPopover({ x: -50, y: -5, width: 40, height: 16 })
+
+    expect(left).toBe(-30)
     expect(flipped).toBe(true)
   })
 })

@@ -13,7 +13,7 @@ import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
-import { useChatDestination } from '@/mini-apps/use-chat-destination'
+import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -120,14 +120,17 @@ export default function Sidebar() {
   const chatDestination = useChatDestination()
 
   const handleChatClick = useCallback(
-    (threadId: string) => {
+    // `miniAppId` comes from the row rather than being looked up here: the row
+    // already has it, and depending on `chatThreads` churned this callback's
+    // identity on every live-query result — which re-rendered every memoized
+    // row in the list.
+    (threadId: string, miniAppId: string | null) => {
       trackEvent('chat_select', { chat_id: threadId })
       // A chat that came from an app opens inside it, not at `/chats/:id` —
       // see `useChatDestination` for when that isn't possible.
-      const thread = chatThreads.find((candidate) => candidate.id === threadId)
-      void navigateAndCloseSidebar(chatDestination(threadId, thread?.miniAppId))
+      void navigateAndCloseSidebar(chatDestination(threadId, miniAppId))
     },
-    [chatDestination, chatThreads, navigateAndCloseSidebar],
+    [chatDestination, navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {
@@ -162,7 +165,7 @@ export default function Sidebar() {
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
-            onMiniAppClick={(appId) => handleNavigate(`/apps/${appId}`)}
+            onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
             onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}

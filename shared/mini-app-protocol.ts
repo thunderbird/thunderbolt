@@ -321,8 +321,6 @@ export const miniAppRectSchema = z.object({
   height: z.number().finite(),
 })
 
-export type MiniAppRect = z.infer<typeof miniAppRectSchema>
-
 /**
  * A live text selection inside the app.
  *
@@ -347,8 +345,6 @@ export const selectionChangedNotificationSchema = envelopeSchema.extend({
   method: z.literal(miniAppGuestMethods.selectionChanged),
   params: z.object({ selection: miniAppSelectionSchema.nullable() }),
 })
-
-export type MiniAppSelectionChanged = z.infer<typeof selectionChangedNotificationSchema>
 
 /**
  * `ui/request-auth-token` — guest → host request. No params.
@@ -380,11 +376,6 @@ export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
 ])
 
 export type MiniAppGuestMessage = z.infer<typeof miniAppGuestMessageSchema>
-export type MiniAppInitializeRequest = z.infer<typeof initializeRequestSchema>
-export type MiniAppContextUpdate = z.infer<typeof contextUpdateNotificationSchema>
-export type MiniAppChatOpenRequest = z.infer<typeof chatOpenRequestSchema>
-export type MiniAppRequestAuthToken = z.infer<typeof requestAuthTokenSchema>
-export type MiniAppRuntimeError = z.infer<typeof runtimeErrorNotificationSchema>
 
 /** Successful reply to a guest request. */
 export type MiniAppHostResult = {
@@ -449,8 +440,6 @@ export const miniAppSelectionItemSchema = z.object({
   /** Optional structured payload for this item, forwarded uninterpreted. */
   data: z.unknown().optional(),
 })
-
-export type MiniAppSelectionItem = z.infer<typeof miniAppSelectionItemSchema>
 
 /**
  * The guest's answer to `ui/element-at`.

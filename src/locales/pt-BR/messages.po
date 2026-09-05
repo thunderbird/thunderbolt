@@ -2493,8 +2493,13 @@ msgstr "Não testado"
 
 #. placeholder {0}: app.url
 #: src/mini-apps/mini-app-frame.tsx
-msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
 msgstr ""
+
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgstr ""
 
 #: src/components/embedded/surface-selection-bar.tsx
 #~ msgid "Nothing to ask about there. Try covering some content."

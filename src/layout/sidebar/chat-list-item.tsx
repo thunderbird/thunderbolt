@@ -169,7 +169,7 @@ export const ChatListItem = memo(
     if (isCollapsed) {
       return (
         <SidebarMenuButton
-          onClick={() => onChatClick(thread.id)}
+          onClick={() => onChatClick(thread.id, thread.miniAppId)}
           isActive={isActive}
           className="cursor-pointer"
           tooltip={chatTitleLabel(i18n, thread.title)}
@@ -248,7 +248,7 @@ export const ChatListItem = memo(
               longPressFiredRef.current = false
               return
             }
-            onChatClick(thread.id)
+            onChatClick(thread.id, thread.miniAppId)
           }}
           isActive={isActive}
           className={cn(
@@ -318,7 +318,7 @@ export const ChatListItem = memo(
             >
               <ContextMenuTrigger asChild>
                 <SidebarMenuButton
-                  onClick={() => onChatClick(thread.id)}
+                  onClick={() => onChatClick(thread.id, thread.miniAppId)}
                   isActive={isActive}
                   className={cn(
                     'cursor-pointer flex items-center gap-2',

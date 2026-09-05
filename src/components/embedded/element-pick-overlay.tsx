@@ -16,6 +16,20 @@ import type { SurfaceHighlightedElement } from './types'
  */
 const pointerThrottleMs = 60
 
+/**
+ * How close to the top of the surface the outline has to be before the label
+ * moves below it, in px.
+ *
+ * Roughly the label's own height: any less and it would be clipped by the
+ * surface edge rather than sitting above the outline. Named because the
+ * comparison reads as arbitrary otherwise — `selection-popover.tsx` does the
+ * same thing with its own threshold.
+ */
+const labelFlipThreshold = 28
+
+/** Space between the label and the outline it names, in px. */
+const labelGap = 4
+
 type ElementPickOverlayProps = {
   /** The element the guest last reported under the pointer, if any. */
   element: SurfaceHighlightedElement | null
@@ -146,7 +160,11 @@ export const ElementPickOverlay = ({ element, onPoint, onPick, onCancel }: Eleme
           */}
           <span
             className="absolute left-0 max-w-full truncate rounded-md bg-primary px-1.5 py-0.5 text-[length:var(--font-size-xs)] text-primary-foreground"
-            style={element.rect.y < 28 ? { top: '100%', marginTop: 4 } : { bottom: '100%', marginBottom: 4 }}
+            style={
+              element.rect.y < labelFlipThreshold
+                ? { top: '100%', marginTop: labelGap }
+                : { bottom: '100%', marginBottom: labelGap }
+            }
           >
             {element.label}
           </span>

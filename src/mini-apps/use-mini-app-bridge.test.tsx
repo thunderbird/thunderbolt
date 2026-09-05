@@ -108,7 +108,7 @@ describe('acceptGuestMessage', () => {
  * The message handler itself, driven through a real mount.
  *
  * Everything above tests the door; this tests the room. It goes through
- * `render` rather than calling a extracted function because the bugs this is
+ * `render` rather than calling an extracted function because the bugs this is
  * here to catch have all been wiring bugs — a reply shape the guest can't
  * match, a capability gate that reads a stale ref, an effect that doesn't
  * re-run on reconnect. A handler tested in isolation would have passed while

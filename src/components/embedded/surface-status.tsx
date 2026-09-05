@@ -5,7 +5,7 @@
 /**
  * Shared status vocabulary for embedded surfaces (THU-852).
  *
- * Mini apps and artifacts sit in different sandboxes and always will — one is a
+ * Mini Apps and artifacts sit in different sandboxes and always will — one is a
  * real origin over the network, the other is `srcdoc` with no origin at all —
  * but the situations a user meets are the same three: it's coming, it didn't
  * come, and it broke while running. Saying those three differently on each

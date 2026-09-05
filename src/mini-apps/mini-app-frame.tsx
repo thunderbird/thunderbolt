@@ -52,8 +52,8 @@ export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: Mi
         onRetry={onRetry}
         detail={
           <Trans>
-            Nothing completed the handshake at {app.url}. Check the app is running and that it allows this origin in its{' '}
-            <code>frame-ancestors</code>.
+            Nothing completed the handshake at {app.url}. Check that the app is running, and that it allows this origin
+            in its <code>frame-ancestors</code>.
           </Trans>
         }
       />

@@ -29,8 +29,8 @@ import { z } from 'zod'
  * @param min Minimum length, enforced *before* clamping — for fields where
  *   empty is genuinely meaningless (an id, a chip label).
  */
-export const clampedString = (max: number, { min = 0 }: { min?: number } = {}) =>
-  z
-    .string()
-    .min(min)
-    .transform((value) => (value.length > max ? value.slice(0, max) : value))
+export const clampedString = (max: number, { min }: { min?: number } = {}) =>
+  // `.min` only when a floor was asked for: `.min(0)` is a validator that
+  // cannot fail, applied to most fields in the protocol. And `slice` is already
+  // a no-op on a shorter string, so the length test only added a branch.
+  (min === undefined ? z.string() : z.string().min(min)).transform((value) => value.slice(0, max))

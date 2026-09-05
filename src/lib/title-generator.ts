@@ -23,10 +23,9 @@ import { defaultChatTitle } from './constants'
  * model read quoted context are noise in a title.
  */
 export const titleSourceText = (message: ThunderboltUIMessage): string => {
-  const typed = message.parts
-    .filter((part) => part.type === 'text')
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .join(' ')
+  // `flatMap` rather than filter-then-map: the map had to re-test `type` purely
+  // to narrow, leaving an `''` arm that could never be reached.
+  const typed = message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
   const quoted = getQuotes(message)
     .map((quote) => quote.text)
     .join(' ')

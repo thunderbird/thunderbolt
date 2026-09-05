@@ -20,17 +20,14 @@ const globalSetup = async () => {
     token.email_verified = true
   })
 
-  oidcServer.service.on(
-    'beforeUserinfo',
-    (userInfoResponse: { body: Record<string, unknown>; statusCode: number }) => {
-      userInfoResponse.body = {
-        sub: 'e2e-test-user',
-        email: 'e2e@thunderbolt.test',
-        name: 'E2E Test User',
-        email_verified: true,
-      }
-    },
-  )
+  oidcServer.service.on('beforeUserinfo', (userInfoResponse: { body: Record<string, unknown>; statusCode: number }) => {
+    userInfoResponse.body = {
+      sub: 'e2e-test-user',
+      email: 'e2e@thunderbolt.test',
+      name: 'E2E Test User',
+      email_verified: true,
+    }
+  })
 
   await oidcServer.start(mockOidcPort, 'localhost')
   console.log(`Mock OIDC server started on port ${mockOidcPort}`)

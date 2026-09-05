@@ -1,0 +1,10 @@
+{
+  // Playwright specs are not part of the app build, so tsconfig.json does not
+  // include them and `bun run type-check` never saw them. This config does.
+  // `src/**/*.d.ts` is included because the ambient declarations there (CSS
+  // modules, css-tree, Tauri globals) are only in the program when `src` is,
+  // and specs import app code that relies on them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["e2e", "src/**/*.d.ts", "playwright.config.ts", "playwright.e2ee.config.ts"]
+}

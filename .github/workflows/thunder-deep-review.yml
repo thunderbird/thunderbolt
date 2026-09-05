@@ -240,7 +240,8 @@ jobs:
           # that output into ${THUNDER_CANDIDATES_FILE} (the gate then filters it
           # into ${THUNDER_FINDINGS_FILE}). The schema MUST stay aligned with the
           # orchestrator's readModelFindings parser (the gate reuses it verbatim):
-          #   findings[].severity ∈ {blocking,convention,nit}; confidence ∈
+          #   findings[].severity ∈ {critical,blocking,convention,nit} (critical =
+          #   the security dimension's top tier, above blocking); confidence ∈
           #   {high,medium,low} (internal — gate ranking, never rendered); file
           #   (string|null); line (integer|null, parser keeps only >= 1); side ∈
           #   {RIGHT,LEFT} (optional, defaults RIGHT); title; body; rule
@@ -251,7 +252,7 @@ jobs:
             --effort xhigh
             --allowedTools Read,Grep,Glob,Skill,Task,Agent
             --max-turns 40
-            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
+            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             Use the thunder-deep-review skill to review this pull request. This is
             the RECALL pass: favor recall and OVER-generate candidates — a separate
@@ -272,8 +273,11 @@ jobs:
             categories they do not cover (architecture, conventions, testability,
             docs-intent, readability). No category is out of scope — the skip-list
             excludes specific already-reported findings, never whole categories.
-            Deep-mode / bounded-mode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
-            honor them; do NOT decide spend yourself.
+            Deep-mode / bounded-mode / securityMode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
+            honor them; do NOT decide spend yourself. When `securityMode` is true,
+            ALSO run the skill's path-conditional Security dimension over the
+            listed `sensitiveFiles` (it loads docs/architecture/e2ee-threat-model.md
+            and .claude/security/fp-rules.txt); when false, skip it.
 
             OUTPUT CONTRACT: you are READ-ONLY — do NOT attempt to write any file.
             Return your candidate findings as STRUCTURED OUTPUT matching the provided
@@ -363,7 +367,7 @@ jobs:
       # senior engineer would actually leave in a real PR review. It DEFAULTS TO
       # DROP and is EXPLICITLY allowed to emit {"findings":[]} — an empty result
       # is a successful review, not a failure. Besides keep/drop it may DEMOTE a
-      # real-but-minor candidate's severity (blocking→convention→nit, never up);
+      # real-but-minor candidate's severity (critical→blocking→convention→nit, never up);
       # finding identity is severity-invariant in the orchestrator's hash, so a
       # demotion can never re-key a thread into a duplicate. This is the proven
       # precision lever (BitsAI-CR RuleChecker→ReviewFilter, G-Research split
@@ -374,7 +378,9 @@ jobs:
       # No Skill/Task/Agent here — this is ONE focused judgment, not a fan-out, so
       # the allow-list is just Read,Grep,Glob (no permission-required tools). It
       # reuses the SAME --json-schema as STEP 1 so the kept subset round-trips
-      # verbatim into the orchestrator's readModelFindings parser unchanged.
+      # verbatim into the orchestrator's readModelFindings parser unchanged. Read
+      # is what lets it consult .claude/security/fp-rules.txt (the E2EE accepted-
+      # property exclusion list + security severity calibration) — see the prompt.
       # github_token is passed to skip the OIDC path (same reason as STEP 1).
       #
       # SKIPPED when the recall pass produced ZERO candidates (count == 0): empty
@@ -425,7 +431,7 @@ jobs:
             --effort high
             --allowedTools Read,Grep,Glob
             --max-turns 12
-            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
+            --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             You are the PRECISION GATE for a code review. The file
             ${{ env.THUNDER_CANDIDATES_FILE }} holds CANDIDATE findings from a
@@ -444,6 +450,16 @@ jobs:
             candidate's `confidence` to rank borderline calls: low confidence AND
             low impact → DROP.
 
+            SECURITY FALSE-POSITIVE EXCLUSIONS: the file .claude/security/fp-rules.txt
+            lists KNOWN, accepted properties of this codebase's E2EE design (read
+            it with Read). A candidate that reduces to one of those documented
+            properties is NOT a finding → DROP it. (A candidate showing NEW exposure
+            *through* an accepted property still counts — the exclusion covers the
+            documented behaviour, not everything adjacent.) Also apply that file's
+            severity calibration: derive security severity from preconditions and
+            adversary class, not category — a weakness reachable only by an adversary
+            who already holds the AK is not `critical`; demote inflated severities.
+
             For each candidate, DROP it if ANY of: speculative or theoretical
             (needs unlikely preconditions); defense-in-depth where the primary
             defense is already adequate; not grounded in a real changed line you
@@ -458,9 +474,13 @@ jobs:
             bar: "Would a senior actually block or slow this PR for this comment?"
 
             DEMOTE instead of dropping when a candidate is genuinely TRUE and
-            worth the author's eyes but below the blocking bar: you may LOWER its
-            `severity` one or more steps (blocking → convention → nit). Never
-            RAISE a severity. When demoting, change ONLY the `severity` field —
+            worth the author's eyes but below its claimed bar: you may LOWER its
+            `severity` one or more steps (critical → blocking → convention → nit).
+            Never RAISE a severity. Reserve `critical` for a security finding the
+            threat model rates Critical — a headline adversary (A1/A2/A3, NOT one
+            who already holds the AK) breaking a confidentiality/takeover claim
+            under cheap preconditions; demote an inflated `critical` to `blocking`.
+            When demoting, change ONLY the `severity` field —
             `title`, `body`, `file`, `line`, `side`, `rule`, `evidence`, and
             `confidence` must stay byte-for-byte verbatim. A candidate that is
             merely stylistic noise, already covered, or unverifiable is still a

@@ -5,6 +5,8 @@
 import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-message'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
+import { act, render } from '@testing-library/react'
+import { getClock } from '@/testing-library'
 import { mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
@@ -251,4 +253,16 @@ describe('mountMessageParts', () => {
       expect(result).toHaveLength(1)
     })
   })
+})
+
+it('passes message streaming lifecycle to the real text renderer', () => {
+  const text = 'Full response. '.repeat(100)
+  const parts: GroupedUIPart[] = [{ type: 'text', text, state: 'streaming' }]
+  const { container, rerender } = render(<>{mountMessageParts(parts, true, 'stream', {})}</>)
+  expect(container.textContent).toBe('')
+  act(() => getClock().tick(48))
+  expect(container.textContent!.length).toBeGreaterThan(0)
+  expect(container.textContent!.length).toBeLessThan(text.length)
+  rerender(<>{mountMessageParts(parts, false, 'stream', {})}</>)
+  expect(container.textContent).toBe(text.trim())
 })

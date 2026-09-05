@@ -97,6 +97,7 @@ export const mountMessageParts = (
         partElements.push(
           <TextPart
             part={part as TextUIPart}
+            isStreaming={isStreaming}
             messageId={messageId}
             sources={sources}
             haystackReferences={haystackReferences}

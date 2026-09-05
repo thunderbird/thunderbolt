@@ -90,3 +90,6 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
+
+# Red-team scratch — throwaway attack attempts, never committed.
+e2e/e2ee/attacks/scratch/

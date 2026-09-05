@@ -692,3 +692,22 @@ export const serveEvilOrgKey = async (
     })
   })
 }
+
+/**
+ * A2/A10 — lie about `scheme_version` in the encryption-metadata response,
+ * preserving every other field. Models a malicious server trying to steer a
+ * client's scheme decision (e.g. flip a set-up v2 device back to `1` to provoke
+ * a re-migration / v1 downgrade). Fetches the real response first so only the
+ * one field changes.
+ */
+export const forceSchemeVersion = async (context: BrowserContext, version: number): Promise<void> => {
+  await context.route('**/v1/encryption/canary', async (route) => {
+    const response = await route.fetch()
+    if (!response.ok()) {
+      await route.fulfill({ response })
+      return
+    }
+    const body = (await response.json()) as Record<string, unknown>
+    await route.fulfill({ response, json: { ...body, scheme_version: version } })
+  })
+}

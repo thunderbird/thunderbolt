@@ -258,7 +258,8 @@ jobs:
   agent-core:
     needs: detect-changes
     if: needs.detect-changes.outputs.agent-core == 'true'
-    runs-on: ubuntu-latest
+    # WebKit's Linux build lacks the storage API required by the OPFS persistence check.
+    runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -279,9 +280,9 @@ jobs:
           path: |
             ~/.bun/install/cache
             node_modules
-          key: bun-${{ hashFiles('bun.lock') }}
+          key: agent-core-bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            bun-
+            agent-core-bun-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

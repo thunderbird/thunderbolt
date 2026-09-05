@@ -65,8 +65,8 @@
         "@tauri-apps/plugin-process": "^2.3.1",
         "@tauri-apps/plugin-store": "^2.4.2",
         "@tauri-apps/plugin-updater": "^2.10.1",
-        "@zenfs/core": "^2.5.7",
-        "@zenfs/dom": "^1.2.9",
+        "@zenfs/core": "^2.6.5",
+        "@zenfs/dom": "^1.2.12",
         "acorn": "^8.17.0",
         "ai": "^6.0.37",
         "better-auth": "^1.6.9",
@@ -1211,9 +1211,9 @@
 
     "@xterm/xterm": ["@xterm/xterm@5.5.0", "", {}, "sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A=="],
 
-    "@zenfs/core": ["@zenfs/core@2.5.7", "", { "dependencies": { "@types/node": "^25.2.0", "buffer": "^6.0.3", "eventemitter3": "^5.0.1", "kerium": "^1.3.4", "memium": "^0.4.0", "readable-stream": "^4.5.2", "utilium": "^3.0.0" }, "bin": { "make-index": "scripts/make-index.js", "zenfs-test": "scripts/test.js", "zci": "scripts/ci-cli.js" } }, "sha512-g3C86mvi91Q2JuzGOwjG83tqEvZ0sl94wtw6AdUvEuRYocovFU3BwGrMobhg3ecvMQlVbqMJHaoA+jZgJ4duig=="],
+    "@zenfs/core": ["@zenfs/core@2.6.5", "", { "dependencies": { "@types/node": "^26.0.0", "buffer": "^6.0.3", "eventemitter3": "^5.0.1", "kerium": "^1.4.2", "memium": "^1.0.0", "readable-stream": "^4.5.2", "utilium": "^3.0.0" }, "bin": { "zci": "scripts/ci-cli.js", "make-index": "scripts/make-index.js", "zenfs-test": "scripts/test.js" } }, "sha512-vvUuSbHKlvvA8bDqI5/FyXRM0k5+RUdqOGhfX0yTFrpDtRFNk1RsuaGA2C5s++Frm9nWSgKpSlLYbezSqDbgIg=="],
 
-    "@zenfs/dom": ["@zenfs/dom@1.2.9", "", { "peerDependencies": { "@zenfs/core": "^2.3.11", "kerium": "^1.3.4", "utilium": "^3.0.0" } }, "sha512-+fVY9XDDml/aYCe9BC2LByM4vHZNXOIfTvuR19r78rV4BxWBy8fgc8GLmO2tHsdKe+nTiyaNt5F7qid55So42Q=="],
+    "@zenfs/dom": ["@zenfs/dom@1.2.12", "", { "peerDependencies": { "@zenfs/core": "^2.6.0", "kerium": "^1.4.2", "utilium": "^3.0.0" } }, "sha512-3JRRIyi36l0QNcf7mei2gJcdYVo2HsnOvj9goFg5D6N6XmTVc33hkYiCcEvYJlsctH1kS9ssb5Zs6cP117tJbg=="],
 
     "abort-controller": ["abort-controller@3.0.0", "", { "dependencies": { "event-target-shim": "^5.0.0" } }, "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg=="],
 
@@ -1933,7 +1933,7 @@
 
     "kdbush": ["kdbush@4.1.0", "", {}, "sha512-e9vurzrXJQrFX6ckpHP3bvj5l+9CnYzkxDNnNQ1h2QTqdWsUAJgXiKdGNcOa1EY85dU8KbQ+z/FdQdB7P+9yfQ=="],
 
-    "kerium": ["kerium@1.3.9", "", { "dependencies": { "utilium": "^3.0.0" } }, "sha512-uoiTcutvUOjOpck8mmUUq7EsuNPhdfFoYMVehLmJGfdLmWC3nABU8KB63MQM0ydkAM4q+2zZmRIKovbx2LF8iA=="],
+    "kerium": ["kerium@1.4.2", "", { "dependencies": { "utilium": "^3.0.0" } }, "sha512-K2gshjNgxuG4tE+hAnCS7HEWhu/JEobNh52rSLDR4Vu8Vxi5f+K9U8h3+9P4JWvaw/IL4Orfd+9mufhVtrl3lQ=="],
 
     "keyv": ["keyv@4.5.4", "", { "dependencies": { "json-buffer": "3.0.1" } }, "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw=="],
 
@@ -2055,7 +2055,7 @@
 
     "media-typer": ["media-typer@1.1.0", "", {}, "sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw=="],
 
-    "memium": ["memium@0.4.5", "", { "dependencies": { "kerium": "^1.3.2", "utilium": "^3.0.0" } }, "sha512-mnmHWWlcyKnkKSSU0qL1Jsg+CsoikVZ2xsOatAN89R+j4V3m3WlQr0nUoqcjKDyUVF5ZGdNinRiZGVd+7A+TJQ=="],
+    "memium": ["memium@1.0.1", "", { "dependencies": { "kerium": "^1.3.2", "utilium": "^3.0.0" } }, "sha512-Ae+Fv7oPRdl7Dr5o32HBspvzAEvJS21ZWcPQv1cIA/aCkvlhYuJR+JF79bWYKQ/d5iBl2ItvjikFA1tUI5QpVQ=="],
 
     "merge-descriptors": ["merge-descriptors@2.0.0", "", {}, "sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g=="],
 
@@ -2895,6 +2895,8 @@
 
     "@vitest/mocker/estree-walker": ["estree-walker@3.0.3", "", { "dependencies": { "@types/estree": "^1.0.0" } }, "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g=="],
 
+    "@zenfs/core/@types/node": ["@types/node@26.4.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-faiGnoIrLH/V8cibOMEAZ8pMw6oXqSukl29ra4mN8GdaB2ZewzeaLj+INpV5N+Z1eKWzY+IzaIZH2EIR6YZRNQ=="],
+
     "ajv-formats/ajv": ["ajv@8.20.0", "", { "dependencies": { "fast-deep-equal": "^3.1.3", "fast-uri": "^3.0.1", "json-schema-traverse": "^1.0.0", "require-from-string": "^2.0.2" } }, "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA=="],
 
     "argparse/sprintf-js": ["sprintf-js@1.0.3", "", {}, "sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g=="],
@@ -3090,6 +3092,8 @@
     "@modelcontextprotocol/sdk/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
     "@vitest/expect/@vitest/utils/@vitest/pretty-format": ["@vitest/pretty-format@3.2.4", "", { "dependencies": { "tinyrainbow": "^2.0.0" } }, "sha512-IVNZik8IVRJRTr9fxlitMKeJeXFFFN0JaB9PHPGQ8NKQbGpfjlTx9zO4RefN8gp7eqjNy8nyK3NZmBzOPeIxtA=="],
+
+    "@zenfs/core/@types/node/undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
 
     "ajv-formats/ajv/json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 

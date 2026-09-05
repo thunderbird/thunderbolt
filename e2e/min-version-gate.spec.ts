@@ -246,7 +246,9 @@ test.describe('minimum app-version gate', () => {
     // The blocker is the runtime flag, not a config gate: the persisted config
     // carries no `minAppVersion`, so a reload would clear it.
     const configEntry = await page.evaluate(() => localStorage.getItem('thunderbolt-config'))
-    const persisted = configEntry ? (JSON.parse(configEntry) as { state?: { config?: { minAppVersion?: string } } }) : null
+    const persisted = configEntry
+      ? (JSON.parse(configEntry) as { state?: { config?: { minAppVersion?: string } } })
+      : null
     expect(persisted?.state?.config?.minAppVersion).toBeUndefined()
 
     expect(errors).toHaveLength(0)

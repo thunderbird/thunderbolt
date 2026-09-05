@@ -525,3 +525,25 @@ export const swapCells = async (a: CellRef, b: CellRef): Promise<void> => {
     await updateCell(tx, b, valueA)
   })
 }
+
+/**
+ * The account-wide ECDSA public key the server checks every challenge proof
+ * against. Deliberately not folded into `EncryptionServerSnapshot`: specs assert
+ * on that shape, and this is the one field a C5 attack cares about.
+ */
+export const getSigningPublicKey = async (userId: string): Promise<string | null> => {
+  const rows = await sql<{ signing_public_key: string | null }[]>`
+    SELECT signing_public_key FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  return rows[0]?.signing_public_key ?? null
+}
+
+/** Live sessions for one device — revocation is expected to leave none. */
+export const countDeviceSessions = async (userId: string, deviceId: string): Promise<number> => {
+  const rows = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM session
+    WHERE user_id = ${userId} AND device_id = ${deviceId}
+  `
+  return rows[0]?.count ?? 0
+}

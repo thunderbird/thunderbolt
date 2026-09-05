@@ -111,7 +111,6 @@ export const ReasoningGroup = ({
           key={reasoningInstanceKey}
           text={currentReasoningPart?.content.text}
           isStreaming={isStreaming && currentReasoningPart?.content.state === 'streaming'}
-          instanceKey={reasoningInstanceKey}
         />
       )}
     </div>

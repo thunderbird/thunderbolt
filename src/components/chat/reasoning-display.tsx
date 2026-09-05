@@ -10,7 +10,6 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 type ReasoningDisplayProps = {
   text?: string
   isStreaming: boolean
-  instanceKey: string // Unique key to identify different reasoning instances
 }
 
 /**
@@ -20,7 +19,7 @@ type ReasoningDisplayProps = {
  * - Instantly replaced by the next reasoning step if it appears before fade-out
  * - Cleans up timers properly
  */
-export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
+export const ReasoningDisplay = ({ text, isStreaming }: ReasoningDisplayProps) => {
   const displayedText = useSmoothText(text ?? '', isStreaming)
   const [shouldShow, setShouldShow] = useState(isStreaming)
   const displayStartTimeRef = useRef(Date.now())
@@ -85,7 +84,6 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
       <AnimatePresence mode="wait">
         {shouldShow && hasText && (
           <m.div
-            key={instanceKey}
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}

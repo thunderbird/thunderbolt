@@ -616,8 +616,11 @@ it('flushes a completed reasoning part and resets a new part with an identical p
   })
   act(() => getClock().tick(48))
   rerender(<ReasoningGroup {...props} parts={part('first', 'done')} />)
-  expect(container.querySelector('.hide-scrollbar')!.textContent).toBe('Same beginning. '.repeat(100))
+  const firstDisplay = container.querySelector('.hide-scrollbar')!
+  expect(firstDisplay.textContent).toBe('Same beginning. '.repeat(100))
   rerender(<ReasoningGroup {...props} parts={part('second', 'streaming')} />)
+  expect(firstDisplay.isConnected).toBe(false)
+  expect(container.querySelectorAll('.hide-scrollbar')).toHaveLength(1)
   expect(container.querySelector('.hide-scrollbar')!.textContent).toBe('')
   act(() => getClock().tick(48))
   const length = container.querySelector('.hide-scrollbar')!.textContent!.length

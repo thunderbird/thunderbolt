@@ -12,7 +12,11 @@
 import postgres from 'postgres'
 
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
-const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
+/**
+ * Shared connection. Exported so `oracles.ts` can query the server's view of the
+ * data without opening a second pool (`max: 1`, so a second one would contend).
+ */
+export const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
   max: 1,
   onnotice: () => {},
 })

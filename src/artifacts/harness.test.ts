@@ -7,6 +7,7 @@ import {
   artifactElementAtSchema,
   artifactCsp,
   artifactRequest,
+  formatHarnessError,
   parseHarnessMessage,
   wrapArtifactHtml,
   wrapArtifactPreviewHtml,
@@ -58,6 +59,23 @@ describe('wrapArtifactHtml', () => {
     const wrapped = wrapArtifactPreviewHtml('<!doctype html><html><head></head><body>x</body></html>')
     expect(wrapped).toContain('http-equiv="Content-Security-Policy"')
     expect(wrapped).not.toContain('postMessage')
+  })
+})
+
+describe('formatHarnessError', () => {
+  it.each([
+    ['exception', 'Uncaught error'],
+    ['unhandled-rejection', 'Unhandled promise rejection'],
+    ['handler', 'Error answering a host request'],
+  ] as const)('labels %s', (reason, label) => {
+    const line = formatHarnessError({
+      artifactNonce: 'n',
+      type: 'artifact-error',
+      reason,
+      detail: 'boom',
+    })
+
+    expect(line).toBe(`${label}: boom`)
   })
 })
 

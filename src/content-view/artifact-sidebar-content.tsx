@@ -46,6 +46,11 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
   }, [data.title, openArtifact, closeArtifact])
   const askAbout = (passages: string[]) => {
     if (!chatThreadId) {
+      // The panel can be open away from a `/chats/:id` route, and there is no
+      // thread to attach a quote to. Logged because from the user's side this is
+      // indistinguishable from the gesture being broken: they picked something
+      // and nothing happened.
+      console.warn('[artifacts] Nothing to attach the passage to — no chat thread on this route')
       return
     }
     const { addQuote } = usePendingQuotesStore.getState()

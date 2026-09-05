@@ -127,7 +127,10 @@ export const verifyArtifactHtml = async (html: string, options: VerifyOptions = 
    * — and putting it on one of them is how this stayed invisible.
    */
   if (!result.ok) {
-    console.error('[artifacts] verification failed:', result.errors.join(' · '))
+    // `warn`, not `error`: a rejected page is the feedback loop working — the tool
+    // hands the errors back and the model fixes them. `error` is reserved for our
+    // own failures, like the verifier itself throwing.
+    console.warn('[artifacts] verification failed:', result.errors.join(' · '))
   }
   return result
 }

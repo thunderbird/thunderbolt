@@ -16,6 +16,20 @@ const clientWith = (handler: (request: Request) => Response | Promise<Response>)
 const valid = { token: 'header.payload.signature', expiresAt: new Date(Date.now() + 300_000).toISOString() }
 
 describe('fetchMiniAppToken', () => {
+  /** A cast asserted this shape without checking it, so a wrong-typed body
+   *  reached the guest as if it were a JWS. */
+  it('refuses a body that is not a token', async () => {
+    const client = clientWith(() => Response.json({ token: 7, expiresAt: 7 }))
+
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
+  })
+
+  it('refuses a token with an empty string', async () => {
+    const client = clientWith(() => Response.json({ token: '', expiresAt: '' }))
+
+    expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
+  })
+
   it('posts to the app-scoped endpoint and returns the token', async () => {
     let seen: Request | null = null
     const client = clientWith((request) => {

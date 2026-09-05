@@ -19,7 +19,7 @@ export type HarnessMessage =
   | {
       artifactNonce: string
       type: 'artifact-error'
-      reason: 'exception' | 'unhandled-rejection'
+      reason: 'exception' | 'unhandled-rejection' | 'handler'
       detail: string
     }
   /** Reply to a {@link HarnessRequest}, correlated by `id`. */
@@ -88,8 +88,22 @@ const cspMetaTag = (): string => `<meta http-equiv="Content-Security-Policy" con
 
 /** Turn a harness error message into a single human-readable line. */
 export const formatHarnessError = (message: Extract<HarnessMessage, { type: 'artifact-error' }>): string => {
-  const label = message.reason === 'unhandled-rejection' ? 'Unhandled promise rejection' : 'Uncaught error'
+  const label = harnessErrorLabels[message.reason]
   return `${label}: ${message.detail}`
+}
+
+/**
+ * What each failure reads as to the user.
+ *
+ * A lookup rather than a ternary chain, so adding a `reason` to the union is a
+ * compile error here rather than a silent fall-through to "Uncaught error".
+ */
+const harnessErrorLabels: Record<Extract<HarnessMessage, { type: 'artifact-error' }>['reason'], string> = {
+  exception: 'Uncaught error',
+  'unhandled-rejection': 'Unhandled promise rejection',
+  // A host request the page answered by throwing. The host still gets its
+  // `null`, so the gesture fails quietly; this is what makes the *cause* visible.
+  handler: 'Error answering a host request',
 }
 
 /**
@@ -136,7 +150,7 @@ const harnessMessageSchema = z.discriminatedUnion('type', [
   z.object({
     artifactNonce: z.string(),
     type: z.literal('artifact-error'),
-    reason: z.enum(['exception', 'unhandled-rejection']),
+    reason: z.enum(['exception', 'unhandled-rejection', 'handler']),
     detail: clampedString(2_000),
   }),
   z.object({
@@ -255,10 +269,18 @@ const harnessScript = (nonce: string): string => `<script>
     var handlers = window.__artifactHandlers || {};
     var handler = handlers[d.method];
     var reply = function (result) { send({ type: 'artifact-reply', id: d.id, result: result }); };
+    // A thrown handler and "nothing here" both answer null — the host cannot act
+    // on the difference, and inventing an error channel for it would widen the
+    // protocol for one case. But it reports the throw to the host as a runtime
+    // error, so a broken artifact is visible rather than looking empty.
+    var replyFailed = function (err) {
+      send({ type: 'artifact-error', reason: 'handler', detail: String((err && err.message) || err).slice(0, MAX_DETAIL) });
+      reply(null);
+    };
     if (!handler) { reply(null); return; }
     try {
-      Promise.resolve(handler(d.params)).then(reply, function () { reply(null); });
-    } catch (err) { reply(null); }
+      Promise.resolve(handler(d.params)).then(reply, replyFailed);
+    } catch (err) { replyFailed(err); }
   });
 
   // ---- selection --------------------------------------------------------

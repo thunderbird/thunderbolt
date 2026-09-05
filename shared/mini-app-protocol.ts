@@ -692,12 +692,14 @@ export const parseGuestResult = (
  * different secret and should fail verification anyway, but checking the claim
  * is what makes that a deliberate property rather than a lucky one.
  */
-export type MiniAppAuthToken = {
+export const miniAppAuthTokenSchema = z.object({
   /** Compact JWS. */
-  token: string
+  token: z.string().min(1),
   /** ISO 8601. Absolute rather than a duration, so no clock drift on the wire. */
-  expiresAt: string
-}
+  expiresAt: z.string().min(1),
+})
+
+export type MiniAppAuthToken = z.infer<typeof miniAppAuthTokenSchema>
 
 /** Result of a successful `initialize`. */
 export type MiniAppInitializeResult = {

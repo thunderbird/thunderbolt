@@ -80,7 +80,10 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
   // instead of saying the app is gone. An empty registry is an answer; only an
   // unknown app id is a 404.
   if (apps.size === 0) {
-    console.warn('No Mini Apps configured; GET /mini-apps will answer with an empty registry')
+    // `info`, not `warn`: no apps configured is the default state of every
+    // deployment that hasn't opted in, and every backend test. A warning for
+    // the normal case is how warnings stop being read.
+    console.info('No Mini Apps configured; GET /mini-apps will answer with an empty registry')
   }
 
   return (

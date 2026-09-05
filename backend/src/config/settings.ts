@@ -381,7 +381,11 @@ const parseSettings = (): Settings => {
             },
           })
         : ''),
-    miniAppTokenExpirySeconds: Number(process.env.MINI_APP_TOKEN_EXPIRY_SECONDS) || 300,
+    // Handed to the schema raw, like `powersyncTokenExpirySeconds`: its
+    // `z.coerce.number().int().positive()` rejects a typo loudly at boot, where
+    // `Number(...) || 300` turned `MINI_APP_TOKEN_EXPIRY_SECONDS=5m` into NaN
+    // and then silently into the default.
+    miniAppTokenExpirySeconds: process.env.MINI_APP_TOKEN_EXPIRY_SECONDS,
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),

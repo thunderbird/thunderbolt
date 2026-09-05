@@ -11,7 +11,7 @@
  */
 
 import type { HttpClient } from '@/lib/http'
-import type { MiniAppAuthToken } from '@shared/mini-app-protocol'
+import { miniAppAuthTokenSchema, type MiniAppAuthToken } from '@shared/mini-app-protocol'
 
 /**
  * Ask the backend for a token scoped to one app.
@@ -30,10 +30,34 @@ export const fetchMiniAppToken = async (
   // device identity headers, and refreshes on a 401. Building the request by
   // hand skipped all of that, so a token minted just after the session rolled
   // over failed with no way to recover.
-  const body = await httpClient
-    .post(`mini-apps/${encodeURIComponent(appId)}/token`, { signal })
-    .json<MiniAppAuthToken>()
-    .catch(() => null)
-
-  return body?.token && body?.expiresAt ? body : null
+  try {
+    const body = await httpClient.post(`mini-apps/${encodeURIComponent(appId)}/token`, { signal }).json<unknown>()
+    const parsed = miniAppAuthTokenSchema.safeParse(body)
+    if (!parsed.success) {
+      // Parsed rather than cast: `.json<MiniAppAuthToken>()` asserts a shape it
+      // never checks, so `{ token: 7 }` sailed through and the guest received a
+      // number where it expected a JWS.
+      console.error(`[mini-apps] ${appId}: token response was not a token`, parsed.error.issues)
+      return null
+    }
+    return parsed.data
+  } catch (error) {
+    /*
+     * Logged, not swallowed.
+     *
+     * Two of the failures here are configuration rather than weather — a 403
+     * for a disallowed origin or an anonymous session, and a 426 from the
+     * app-version gate. Returning null for all of them told the guest
+     * `auth: false`, which is the right *answer* but left nothing anywhere
+     * saying why a correctly-built app never got an identity.
+     *
+     * An abort is the exception: unmounting mid-mint is routine, and the frame
+     * is already gone.
+     */
+    if (signal?.aborted) {
+      return null
+    }
+    console.error(`[mini-apps] ${appId}: could not mint an identity token`, error)
+    return null
+  }
 }

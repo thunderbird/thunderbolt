@@ -85,7 +85,13 @@ export const requestMiniAppApproval = ({
       resolve(outcome)
     }
 
-    const timer = setTimeout(() => settle('expired'), approvalTimeoutMs)
+    const timer = setTimeout(() => {
+      // Logged because it is invisible otherwise: the turn ends, the model says
+      // something vague, and nothing anywhere records that a write was offered
+      // and never answered.
+      console.warn(`[mini-apps] ${app.id}: nobody answered the prompt for ${tool.name} in time; denying`)
+      settle('expired')
+    }, approvalTimeoutMs)
 
     const pending: PendingMiniAppApproval = { appId: app.id, appName: app.name, tool, args, decide: settle }
 

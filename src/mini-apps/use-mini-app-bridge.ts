@@ -273,7 +273,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // Async because two branches mint tokens over the network. `addEventListener`
     // ignores the returned promise, which is fine — nothing awaits the handler,
     // and each branch posts its own reply when it resolves.
-    const handleMessage = async (event: MessageEvent) => {
+    const dispatchGuestMessage = async (event: MessageEvent) => {
       const trust = { expectedWindow: frameRef.current?.contentWindow ?? null, expectedOrigin: app.origin }
 
       /*
@@ -282,8 +282,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
        *
        * A reported failure settles as a tool-shaped error result, which is what
        * both waiters already expect: `callTool` hands the message straight to
-       * the model, and `querySelection` fails its own parse and falls back to an
-       * empty selection. The alternative — dropping the reply — left the request
+       * the model, and `queryElementAt` fails its own parse and falls back to no
+       * element. The alternative — dropping the reply — left the request
        * hanging until its timeout, so an app that said "that threw" looked
        * exactly like an app that said nothing.
        *
@@ -433,6 +433,30 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         protocol: miniAppProtocolMarker,
         id: (unhandled as { id?: string | number }).id ?? 0,
         error: { code: miniAppRpcErrors.methodNotFound, message: 'unhandled method' },
+      })
+    }
+
+    /*
+     * The rejection boundary the listener needs.
+     *
+     * `addEventListener` ignores the promise an async listener returns, so a
+     * throw inside became an unhandled rejection *and* left the guest's request
+     * unanswered — the only symptom being its own timeout, with nothing logged.
+     * Anything that throws here is our bug, so it is logged loudly and the guest
+     * is told the request failed rather than left waiting.
+     */
+    const handleMessage = (event: MessageEvent) => {
+      void dispatchGuestMessage(event).catch((error: unknown) => {
+        console.error('[mini-apps] Failed to handle a guest message', error)
+        const id = (event.data as { id?: unknown } | null)?.id
+        if (typeof id === 'number' || typeof id === 'string') {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id,
+            error: { code: miniAppRpcErrors.invalidRequest, message: 'the host failed to handle this request' },
+          })
+        }
       })
     }
 

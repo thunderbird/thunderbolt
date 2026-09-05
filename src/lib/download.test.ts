@@ -112,7 +112,7 @@ describe('downloadFile on the desktop', () => {
       },
     }
 
-    expect(downloadFile(request, fs)).rejects.toThrow('forbidden path: $DOWNLOAD/q3.html')
+    await expect(downloadFile(request, fs)).rejects.toThrow('forbidden path: $DOWNLOAD/q3.html')
   })
 
   /** Bounded: an unbounded loop over a filesystem call is a hang waiting for an
@@ -121,7 +121,7 @@ describe('downloadFile on the desktop', () => {
     const taken = Array.from({ length: 20 }, (_, attempt) => withSuffix('q3.html', attempt))
     const { fs } = fakeFs(taken)
 
-    expect(downloadFile(request, fs)).rejects.toThrow('File exists')
+    await expect(downloadFile(request, fs)).rejects.toThrow('File exists')
   })
 })
 

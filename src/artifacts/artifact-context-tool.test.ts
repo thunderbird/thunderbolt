@@ -2,11 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { useArtifactContextStore } from './artifact-context-store'
 import { createArtifactContextTool, formatArtifactContext } from './artifact-context-tool'
 
 const context = { title: 'Q3 Revenue', summary: 'EMEA 4.2M · APAC 1.98M' }
+
+/*
+ * The store is a module-level singleton shared by every test file in the
+ * process. Left open, the last test here would hand a stale `title` to
+ * `src/ai/fetch.ts`, which registers `get_app_context` on the strength of it —
+ * so an ordinary chat in a later file would carry a tool describing an artifact
+ * nobody has open. Reset on both edges, because this file cannot control what
+ * ran before it either.
+ */
+beforeEach(() => useArtifactContextStore.getState().closeArtifact())
+afterEach(() => useArtifactContextStore.getState().closeArtifact())
 
 const run = async () => {
   const tool = createArtifactContextTool({

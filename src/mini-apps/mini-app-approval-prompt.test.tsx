@@ -4,7 +4,7 @@
 
 import type { PendingMiniAppApproval } from '@/chats/chat-store'
 import { MiniAppApprovalPrompt } from './mini-app-approval-prompt'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
 
 afterEach(cleanup)
@@ -23,22 +23,60 @@ const pending = (overrides: Partial<PendingMiniAppApproval['tool']> = {}, args: 
     args,
   }) as PendingMiniAppApproval
 
-const renderBar = (approval: PendingMiniAppApproval) =>
-  render(<MiniAppApprovalPrompt pending={approval} appName="Order Book" onDecide={() => {}} />)
+const renderPrompt = (approval: PendingMiniAppApproval, onDecide: (approved: boolean) => void = () => {}) =>
+  render(<MiniAppApprovalPrompt pending={approval} appName="Order Book" onDecide={onDecide} />)
+
+describe('MiniAppApprovalPrompt decisions', () => {
+  /*
+   * The component exists to call `onDecide`, and nothing here pressed a button
+   * until now: eleven tests asserted structure, ordering, ARIA and focus, all of
+   * which would have passed with both buttons wired to the same handler, or with
+   * the booleans swapped, or with `onClick` dropped entirely.
+   */
+  it('approves when Approve is pressed', () => {
+    const decisions: boolean[] = []
+    renderPrompt(pending(), (approved) => decisions.push(approved))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(decisions).toEqual([true])
+  })
+
+  it('denies when Deny is pressed', () => {
+    const decisions: boolean[] = []
+    renderPrompt(pending(), (approved) => decisions.push(approved))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+
+    expect(decisions).toEqual([false])
+  })
+
+  /** Pressing one must not report the other — the two labels sit side by side
+   *  and a swapped handler is invisible to a structural assertion. */
+  it('reports exactly one decision per press', () => {
+    const decisions: boolean[] = []
+    renderPrompt(pending(), (approved) => decisions.push(approved))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(decisions).toEqual([false, true])
+  })
+})
 
 describe('MiniAppApprovalPrompt', () => {
   it('leads with the author-written title, not the tool identifier', () => {
-    renderBar(pending())
+    renderPrompt(pending())
     expect(screen.getByText('Change an order status')).toBeTruthy()
   })
 
   it('falls back to the tool name when no title was declared', () => {
-    const { container } = renderBar(pending({ annotations: { readOnlyHint: false } }))
+    const { container } = renderPrompt(pending({ annotations: { readOnlyHint: false } }))
     expect(container.querySelector('p')?.textContent).toBe('set_order_status')
   })
 
   it('does not repeat the identifier in the details when it is already the heading', () => {
-    const { container } = renderBar(pending({ annotations: { readOnlyHint: false } }))
+    const { container } = renderPrompt(pending({ annotations: { readOnlyHint: false } }))
     expect(container.querySelectorAll('.font-mono')).toHaveLength(0)
   })
 
@@ -48,7 +86,7 @@ describe('MiniAppApprovalPrompt', () => {
    * have to read past that, so it lives behind the disclosure.
    */
   it('keeps the model-facing description out of the summary', () => {
-    const { container } = renderBar(pending())
+    const { container } = renderPrompt(pending())
     const summary = container.querySelector('summary')
 
     expect(summary?.textContent).not.toContain(modelFacingDescription)
@@ -56,7 +94,7 @@ describe('MiniAppApprovalPrompt', () => {
   })
 
   it('renders arguments as readable pairs rather than JSON', () => {
-    renderBar(pending({}, { id: 'A-1041', status: 'shipped' }))
+    renderPrompt(pending({}, { id: 'A-1041', status: 'shipped' }))
 
     expect(screen.getByText('id')).toBeTruthy()
     expect(screen.getByText('A-1041')).toBeTruthy()
@@ -65,17 +103,17 @@ describe('MiniAppApprovalPrompt', () => {
   })
 
   it('still exposes the raw arguments underneath, for when the pairs are not enough', () => {
-    const { container } = renderBar(pending({}, { id: 'A-1041' }))
+    const { container } = renderPrompt(pending({}, { id: 'A-1041' }))
     expect(container.querySelector('pre')?.textContent).toContain('"id": "A-1041"')
   })
 
   it('shows no argument list for a tool that takes none', () => {
-    const { container } = renderBar(pending({}, {}))
+    const { container } = renderPrompt(pending({}, {}))
     expect(container.querySelector('ul')).toBeNull()
   })
 
   it('renders a nested value as JSON rather than [object Object]', () => {
-    renderBar(pending({}, { filter: { status: 'open' } }))
+    renderPrompt(pending({}, { filter: { status: 'open' } }))
     expect(screen.getByText('{"status":"open"}')).toBeTruthy()
   })
 
@@ -87,7 +125,7 @@ describe('MiniAppApprovalPrompt', () => {
    * and pulling focus out from under someone mid-sentence would be a new bug.
    */
   it('leaves focus where the user put it', () => {
-    renderBar(pending())
+    renderPrompt(pending())
 
     expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Deny' }))
     expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Approve' }))
@@ -96,7 +134,7 @@ describe('MiniAppApprovalPrompt', () => {
   /** Deny first in DOM order: a stray Enter or a rushed Tab should land on the
    *  harmless one. The model can ask again; an unwanted write cannot be undone. */
   it('puts Deny before Approve', () => {
-    renderBar(pending())
+    renderPrompt(pending())
     const buttons = screen.getAllByRole('button').map((button) => button.textContent)
 
     expect(buttons.indexOf('Deny')).toBeLessThan(buttons.indexOf('Approve'))
@@ -108,7 +146,7 @@ describe('MiniAppApprovalPrompt', () => {
    * freely scroll past would misreport the page to a screen reader.
    */
   it('names itself for a screen reader instead of announcing a bare dialog', () => {
-    renderBar(pending({ annotations: { readOnlyHint: false, title: 'Change an order status' } }))
+    renderPrompt(pending({ annotations: { readOnlyHint: false, title: 'Change an order status' } }))
     const dialog = screen.getByRole('dialog')
 
     expect(dialog.getAttribute('aria-modal')).toBeNull()

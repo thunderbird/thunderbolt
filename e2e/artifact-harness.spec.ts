@@ -188,6 +188,10 @@ test.describe('artifact harness (real browser)', () => {
       { x: 300, y: 300 },
     )
 
-    expect(result?.element ?? null).toBeNull()
+    // `result` first: `askElementAt` resolves null on its own timeout, so
+    // `result?.element` alone passed identically when the iframe never loaded,
+    // never handshaked, or never registered the handler.
+    expect(result).not.toBeNull()
+    expect(result?.element).toBeNull()
   })
 })

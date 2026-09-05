@@ -44,14 +44,20 @@ import { fetchMiniAppToken } from './mini-app-auth'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
+/*
+ * The three deadlines below are exported so their tests advance the clock by the
+ * real value rather than a copy of it — a test that hardcodes 8_000 keeps
+ * passing after someone changes the timeout to 20_000 and stops testing it.
+ */
+
 /** How long to wait for the guest's `initialize` before calling the app unreachable. */
-const handshakeTimeoutMs = 8_000
+export const handshakeTimeoutMs = 8_000
 
 /** Tool discovery happens once at connect; a slow app shouldn't stall the UI. */
-const toolsRequestTimeoutMs = 3_000
+export const toolsRequestTimeoutMs = 3_000
 
 /** A tool call blocks a model turn, so it gets more room than discovery. */
-const toolCallTimeoutMs = 15_000
+export const toolCallTimeoutMs = 15_000
 
 /**
  * How long the handshake will wait on the token endpoint.

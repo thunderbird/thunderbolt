@@ -381,10 +381,13 @@ const parseSettings = (): Settings => {
             },
           })
         : ''),
-    // Handed to the schema raw, like `powersyncTokenExpirySeconds`: its
-    // `z.coerce.number().int().positive()` rejects a typo loudly at boot, where
-    // `Number(...) || 300` turned `MINI_APP_TOKEN_EXPIRY_SECONDS=5m` into NaN
-    // and then silently into the default.
+    // Handed to the schema raw, so its `z.coerce.number().int().positive()`
+    // rejects a typo loudly at boot — `Number(...) || 300` turned
+    // `MINI_APP_TOKEN_EXPIRY_SECONDS=5m` into NaN and then silently into the
+    // default. The unset case is covered by the schema's own `.default(300)`,
+    // which is why nothing is substituted here. (Its neighbour
+    // `powersyncTokenExpirySeconds` passes `|| '3600'` instead and so never
+    // reaches its schema default; this is the shape to copy, not that one.)
     miniAppTokenExpirySeconds: process.env.MINI_APP_TOKEN_EXPIRY_SECONDS,
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:

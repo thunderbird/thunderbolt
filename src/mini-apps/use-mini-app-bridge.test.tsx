@@ -15,8 +15,15 @@ import {
 } from '@shared/mini-app-protocol'
 import { act, render } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { Wallet } from 'lucide-react'
-import { acceptGuestMessage, useMiniAppBridge } from './use-mini-app-bridge'
+import {
+  acceptGuestMessage,
+  handshakeTimeoutMs,
+  toolCallTimeoutMs,
+  toolsRequestTimeoutMs,
+  useMiniAppBridge,
+} from './use-mini-app-bridge'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
@@ -166,13 +173,33 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
   const posted: MiniAppHostMessage[] = []
   guest.postMessage = ((message: MiniAppHostMessage) => posted.push(message)) as Window['postMessage']
 
-  /** Deliver a guest message the way the browser would, and let the handler finish. */
+  /**
+   * Deliver a guest message the way the browser would, and let the handler
+   * finish.
+   *
+   * Advancing the shared clock rather than awaiting a fixed number of
+   * microtasks: the handler may mint a token through a real client, so the
+   * number of ticks it needs is an implementation detail of `ky` and of this
+   * hook. A count that happens to be right today silently stops waiting long
+   * enough the moment either gains an `await`.
+   */
+  const settle = async () => {
+    await act(async () => {
+      await getClock().tickAsync(1)
+    })
+  }
+
   const send = async (data: unknown) => {
     await act(async () => {
       window.dispatchEvent(new MessageEvent('message', { data, origin, source: guest }))
-      // The handler is async (it may mint a token); yield until it settles.
-      await Promise.resolve()
-      await Promise.resolve()
+    })
+    await settle()
+  }
+
+  /** Advance past one of the bridge's deadlines. */
+  const elapse = async (ms: number) => {
+    await act(async () => {
+      await getClock().tickAsync(ms)
     })
   }
 
@@ -184,13 +211,159 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
   const handshake = (capabilities: Record<string, boolean> = {}, version = miniAppProtocolVersion) =>
     send(envelope({ id: 1, method: 'ui/initialize', params: { protocolVersion: version, capabilities } }))
 
-  return { bridge, posted, replyTo, send, envelope, handshake, unmount }
+  return { bridge, posted, replyTo, send, settle, elapse, envelope, handshake, unmount }
 }
 
 beforeEach(() => {
   // `activeApp` included: it is module-level state another file may have left
   // set, and these tests assume nothing is open until they open it.
   useMiniAppStore.setState({ activeApp: null, context: null, tools: [], invokeTool: null })
+})
+
+describe('useMiniAppBridge deadlines', () => {
+  /**
+   * The failure the code calls "the single most confusing failure mode when
+   * demoing": the app isn't running, or its `frame-ancestors` refuses us, and
+   * nothing ever arrives. Without the deadline the panel sits at "connecting"
+   * forever with nothing to click.
+   */
+  it('calls the app unreachable when no handshake arrives', async () => {
+    const { bridge, elapse } = mountBridge()
+
+    expect(bridge.current?.status).toBe('connecting')
+
+    await elapse(handshakeTimeoutMs)
+
+    expect(bridge.current?.status).toBe('unreachable')
+  })
+
+  it('does not call it unreachable once it has handshaked', async () => {
+    const { bridge, handshake, elapse } = mountBridge()
+    await handshake()
+
+    await elapse(handshakeTimeoutMs)
+
+    expect(bridge.current?.status).toBe('ready')
+  })
+})
+
+describe('useMiniAppBridge tool discovery', () => {
+  /** Asked once, after the handshake, and only of an app that said it has tools. */
+  it('asks for the tool list when the app declares the capability', async () => {
+    const { posted, handshake } = mountBridge()
+
+    await handshake({ tools: true })
+
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/list')).toBe(true)
+  })
+
+  it('does not ask an app that never declared tools', async () => {
+    const { posted, handshake } = mountBridge()
+
+    await handshake()
+
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/list')).toBe(false)
+  })
+
+  it('publishes the tools it is given, with a way to call them', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake({ tools: true })
+    const request = posted.find((message) => 'method' in message && message.method === 'tools/list')
+
+    await send(
+      envelope({
+        id: (request as { id: number }).id,
+        result: { tools: [{ name: 'set_assumption', description: 'Change one assumption.' }] },
+      }),
+    )
+
+    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['set_assumption'])
+    expect(useMiniAppStore.getState().invokeTool).not.toBeNull()
+  })
+
+  /** An app that declares `tools` and then never answers must not leave the
+   *  model holding a toolset that will never arrive. */
+  it('survives an app that never answers the tool list', async () => {
+    const { handshake, elapse } = mountBridge()
+    await handshake({ tools: true })
+
+    await elapse(toolsRequestTimeoutMs)
+
+    expect(useMiniAppStore.getState().tools).toEqual([])
+  })
+})
+
+describe('useMiniAppBridge tool calls', () => {
+  /** Read the invoker the bridge published, which is what the model's toolset holds. */
+  const invokerFrom = async (bridge: ReturnType<typeof mountBridge>) => {
+    await bridge.handshake({ tools: true })
+    const request = bridge.posted.find((message) => 'method' in message && message.method === 'tools/list')
+    await bridge.send(
+      bridge.envelope({
+        id: (request as { id: number }).id,
+        result: { tools: [{ name: 'set_assumption', description: 'Change one assumption.' }] },
+      }),
+    )
+    const invoke = useMiniAppStore.getState().invokeTool
+    if (!invoke) {
+      throw new Error('the bridge published no invoker')
+    }
+    return invoke
+  }
+
+  it('returns what the app answered', async () => {
+    const harness = mountBridge()
+    const invoke = await invokerFrom(harness)
+
+    let result: unknown
+    const call = invoke('set_assumption', { growth: 0.2 }).then((value) => {
+      result = value
+    })
+    const request = harness.posted.find((message) => 'method' in message && message.method === 'tools/call')
+    await harness.send(harness.envelope({ id: (request as { id: number }).id, result: { content: 'done' } }))
+    await call
+
+    expect(result).toEqual({ content: 'done' })
+  })
+
+  /**
+   * A tool call blocks a model turn, so "no answer" has to become an answer.
+   * Left hanging, the turn spins behind a spinner with no explanation.
+   */
+  it('gives the model something to say when the app never answers', async () => {
+    const harness = mountBridge()
+    const invoke = await invokerFrom(harness)
+
+    let result: { content: string; isError?: boolean } | undefined
+    const call = invoke('set_assumption', {}).then((value) => {
+      result = value
+    })
+    await harness.elapse(toolCallTimeoutMs)
+    await call
+
+    expect(result?.isError).toBe(true)
+    expect(result?.content).toContain('did not return a usable result')
+  })
+
+  it('reports an error the app returns as a tool error, not a crash', async () => {
+    const harness = mountBridge()
+    const invoke = await invokerFrom(harness)
+
+    let result: { content: string; isError?: boolean } | undefined
+    const call = invoke('set_assumption', {}).then((value) => {
+      result = value
+    })
+    const request = harness.posted.find((message) => 'method' in message && message.method === 'tools/call')
+    await harness.send(
+      harness.envelope({
+        id: (request as { id: number }).id,
+        error: { code: -32000, message: 'the assumption is locked' },
+      }),
+    )
+    await call
+
+    expect(result).toEqual({ content: 'the assumption is locked', isError: true })
+  })
 })
 
 describe('useMiniAppBridge message handling', () => {

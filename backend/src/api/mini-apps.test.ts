@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { APIError } from 'better-auth'
 import { jwtVerify } from 'jose'
 import type { Auth } from '@/auth/elysia-plugin'
 import { getMiniApps, toPublicMiniApps } from '@/config/settings'
@@ -35,6 +36,17 @@ const authWithUser = (user: unknown): Auth =>
   ({ api: { getSession: async () => (user ? { user } : null) } }) as unknown as Auth
 
 const realUser = { id: 'user-1', email: 'demo@example.com', name: 'Demo User', isAnonymous: false }
+
+/** Better Auth throws for a rejected credential rather than returning null —
+ *  a stray `x-api-key` trips its before-hook. */
+const authThatRejectsCredentials = (): Auth =>
+  ({
+    api: {
+      getSession: async () => {
+        throw new APIError('UNAUTHORIZED', { message: 'Invalid API key' })
+      },
+    },
+  }) as unknown as Auth
 
 const get = (auth: Auth) => createMiniAppRoutes(auth, settings).handle(new Request('http://localhost/mini-apps'))
 
@@ -146,6 +158,18 @@ describe('POST /mini-apps/:appId/token', () => {
 
   it('rejects an unauthenticated caller', async () => {
     expect((await post(authWithUser(null), 'finance-model')).status).toBe(401)
+  })
+
+  /**
+   * A credential Better Auth rejects must read as unauthenticated, not as a
+   * server fault. Calling `getSession` directly let the thrown `APIError` reach
+   * the error handler, which reports a 500 — so a client with a stale key was
+   * told the backend was broken.
+   */
+  it('answers 401 when the credential is rejected, not 500', async () => {
+    const response = await post(authThatRejectsCredentials(), 'finance-model')
+
+    expect(response.status).toBe(401)
   })
 
   it('refuses anonymous users, whose identity would not mean anything', async () => {

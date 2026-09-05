@@ -462,6 +462,19 @@ export const isOriginAllowed = (origin: string, settings: Pick<Settings, 'corsOr
   return getCorsOriginsList(settings).includes(origin)
 }
 
+/**
+ * Whether a request's `Origin` header is one we serve.
+ *
+ * Absence is allowed: a same-origin or non-browser caller sends no `Origin`, and
+ * every route using this authorises with a session or a token as well — this
+ * only refuses a *browser* on an origin we don't serve. Two routes had their own
+ * copy of exactly this, which is one copy too many for a security predicate.
+ */
+export const isRequestOriginAllowed = (request: Request, settings: Pick<Settings, 'corsOrigins'>): boolean => {
+  const origin = request.headers.get('origin')
+  return !origin || isOriginAllowed(origin, settings)
+}
+
 /** Validate that an OAuth redirect_uri points to a trusted origin. */
 export const isOAuthRedirectUriAllowed = (uri: string, settings: Pick<Settings, 'corsOrigins'>): boolean => {
   try {

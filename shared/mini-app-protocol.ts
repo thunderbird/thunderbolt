@@ -782,5 +782,20 @@ export const parseGuestMessage = (data: unknown): MiniAppGuestMessage | null => 
   return parsed.success ? parsed.data : null
 }
 
+/**
+ * Every wire version this host can still speak.
+ *
+ * A set rather than a comparison against {@link miniAppProtocolVersion}, because
+ * the day a v3 lands, `=== 3` hard-rejects every deployed v2 guest at the
+ * handshake with no overlap window — and a guest is a customer's deployment, not
+ * something we can roll. Adding the new version here and keeping the old one for
+ * a release is what makes the envelope change survivable; dropping a version is
+ * then a deliberate line to delete rather than a side effect of a bump.
+ *
+ * One entry today, which is the point: the mechanism is in place before it is
+ * needed, and costs nothing until then.
+ */
+export const supportedProtocolVersions: ReadonlySet<number> = new Set([miniAppProtocolVersion])
+
 /** Whether a guest's declared wire version is one this host can speak. */
-export const isSupportedProtocolVersion = (version: number): boolean => version === miniAppProtocolVersion
+export const isSupportedProtocolVersion = (version: number): boolean => supportedProtocolVersions.has(version)

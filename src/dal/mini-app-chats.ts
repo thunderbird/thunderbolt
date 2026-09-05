@@ -2,61 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Chats that were started from a Mini App.
- *
- * Deliberately separate from `projects.ts` despite the near-identical query.
- * A project is a row this app owns and can clean up after; a Mini App is
- * deployment config that can vanish between releases, so the two disagree
- * about what happens when the parent goes away — projects orphan their chats
- * on delete, apps leave theirs pointing at an id that no longer resolves.
- * Sharing the query would invite sharing that lifecycle too.
- */
+/** Chats that were started from a Mini App. */
 
-import { and, eq, isNull, sql } from 'drizzle-orm'
-import { toCompilableQuery } from '@powersync/drizzle-driver'
-import { useQuery } from '@powersync/tanstack-react-query'
-import { useDatabase } from '@/contexts'
-import { chatMessagesTable, chatThreadsTable } from '../db/tables'
-import { uuidv7ToDate } from '../lib/utils'
+import { eq } from 'drizzle-orm'
 
-export type MiniAppChat = {
-  id: string
-  title: string | null
-  lastActivityAt: Date
-}
+import { chatThreadsTable } from '@/db/tables'
+import { useChatsWithLastActivity, type ChatWithLastActivity } from './chats-with-last-activity'
+
+/** A chat started from a Mini App, with when it was last active. */
+export type MiniAppChat = ChatWithLastActivity
 
 /**
  * Live chats started from one Mini App, newest activity first.
  *
- * `MAX(id)` over UUIDv7 message ids doubles as the last-activity time —
- * `chat_messages` has no timestamp column. Same trick as `useProjectChats`.
+ * The query itself is shared with `useProjectChats` — see
+ * {@link useChatsWithLastActivity}. What stays here is the column, and the
+ * lifecycle note that made this a separate module in the first place: a project
+ * is a row this app owns and cleans up after, while a Mini App is deployment
+ * config that can vanish between releases, so a project orphans its chats on
+ * delete and an app leaves theirs pointing at an id that no longer resolves.
+ * That divergence lives in the mutations, not in this read.
  */
-export const useMiniAppChats = (appId: string): MiniAppChat[] => {
-  const db = useDatabase()
-  const { data = [] } = useQuery({
-    queryKey: ['miniAppChats', appId],
-    query: toCompilableQuery(
-      db
-        .select({
-          id: chatThreadsTable.id,
-          title: chatThreadsTable.title,
-          lastMessageId: sql<string | null>`max(${chatMessagesTable.id})`.as('last_message_id'),
-        })
-        .from(chatThreadsTable)
-        .leftJoin(
-          chatMessagesTable,
-          and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
-        )
-        .where(and(eq(chatThreadsTable.miniAppId, appId), isNull(chatThreadsTable.deletedAt)))
-        .groupBy(chatThreadsTable.id, chatThreadsTable.title),
-    ),
-  })
-  return (data as { id: string; title: string | null; lastMessageId: string | null }[])
-    .map((row) => ({
-      id: row.id,
-      title: row.title,
-      lastActivityAt: uuidv7ToDate(row.lastMessageId ?? row.id),
-    }))
-    .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
-}
+export const useMiniAppChats = (appId: string): MiniAppChat[] =>
+  useChatsWithLastActivity(['miniAppChats', appId], eq(chatThreadsTable.miniAppId, appId))

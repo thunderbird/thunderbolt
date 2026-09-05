@@ -199,6 +199,17 @@ export const parseHarnessMessage = (
  * static check, and external scripts (which the offline CSP blocks) are rejected
  * there too — so ignoring subresource errors here loses no real coverage.
  */
+/*
+ * The comments inside this template literal ship to users verbatim.
+ *
+ * A minifier cannot see into a string, so the ~4 KB of rationale below travels
+ * in the bundle (about 1.2 KB gzipped, against a ~670 KB gzipped entry chunk).
+ * That is a deliberate trade, measured rather than assumed: the alternative is
+ * moving the reasoning away from the ES5 it explains, in the one file here that
+ * no unit test can reach and that a future reader has to modify blind. If this
+ * script grows several times over, revisit it by stripping comments in a build
+ * transform rather than by deleting them.
+ */
 const harnessScript = (nonce: string): string => `<script>
 (function () {
   var NONCE = ${JSON.stringify(nonce)};

@@ -27,9 +27,9 @@
  *    well-built app should reject it anyway.
  */
 
-import type { Auth } from '@/auth/elysia-plugin'
+import { resolveAuthSession, type Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { getMiniApps, isOriginAllowed, toPublicMiniApps } from '@/config/settings'
+import { getMiniApps, isRequestOriginAllowed, toPublicMiniApps } from '@/config/settings'
 import type { User } from '@shared/types/auth'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { SignJWT } from 'jose'
@@ -51,13 +51,6 @@ export type MiniAppTokenClaims = {
   /** The app this token is for — the app MUST check it matches its own origin. */
   aud: string
   iss: string
-}
-
-const validateOrigin = (request: Request, settings: Settings): boolean => {
-  const origin = request.headers.get('origin')
-  // A same-origin or non-browser caller sends no Origin header; the session
-  // check below is what actually authorises, so absence isn't a rejection.
-  return !origin || isOriginAllowed(origin, settings)
 }
 
 /**
@@ -114,13 +107,19 @@ export const createMiniAppRoutes = (auth: Auth, settings: Settings) => {
       .post(
         '/:appId/token',
         async ({ params, request, set }) => {
-          // Resolved here rather than in a `.derive` on the instance: the
-          // registry route above needs no session, and deriving one made every
-          // sidebar render pay for an auth lookup it never read.
-          const session = await auth.api.getSession({ headers: request.headers })
+          /*
+           * Resolved here rather than in a `.derive` on the instance: the
+           * registry route above needs no session, and deriving one made every
+           * sidebar render pay for an auth lookup it never read.
+           *
+           * Through `resolveAuthSession`, not `auth.api.getSession` directly —
+           * that throws an `APIError` for a rejected credential, which reaches
+           * `safeErrorHandler` as a 500 instead of the 401 it should be.
+           */
+          const session = await resolveAuthSession(auth, request.headers)
           const user = (session?.user as User | undefined) ?? null
 
-          if (!validateOrigin(request, settings)) {
+          if (!isRequestOriginAllowed(request, settings)) {
             set.status = 403
             return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
           }

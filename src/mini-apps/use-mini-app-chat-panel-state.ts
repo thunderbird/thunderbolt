@@ -113,7 +113,15 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     [setSearchParams],
   )
 
-  const openExistingChat = useCallback(
+  /**
+   * Show a thread that has a row: it lives in the URL, and any draft goes.
+   *
+   * Two callers with two different reasons — the history menu picking an older
+   * thread, and a brand-new chat becoming real on its first message — but one
+   * behaviour, so one implementation. They were separate copies of these two
+   * lines under separate doc blocks, which reads as though they might differ.
+   */
+  const showPersistedChat = useCallback(
     (chatThreadId: string) => {
       setDraftChatId(null)
       setOpenChatParam(chatThreadId)
@@ -130,13 +138,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    * but the chat still counted as a draft, and closing and reopening it
    * hydrated a fresh empty conversation on top of a thread with messages in it.
    */
-  const handleChatCreated = useCallback(
-    (chatThreadId: string) => {
-      setDraftChatId(null)
-      setOpenChatParam(chatThreadId)
-    },
-    [setOpenChatParam],
-  )
+  const handleChatCreated = showPersistedChat
 
   /**
    * Put `chatThreadId` on screen, in the URL when it has a row and in local
@@ -150,13 +152,13 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   const showChat = useCallback(
     (chatThreadId: string, persisted: boolean) => {
       if (persisted) {
-        openExistingChat(chatThreadId)
+        showPersistedChat(chatThreadId)
         return
       }
       setDraftChatId(chatThreadId)
       setOpenChatParam(null)
     },
-    [openExistingChat, setOpenChatParam],
+    [showPersistedChat, setOpenChatParam],
   )
 
   /**
@@ -261,7 +263,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     openChatId,
     draftChatId,
     openChat,
-    openExistingChat,
+    openExistingChat: showPersistedChat,
     closeChat,
     attachToComposer,
     handleChatCreated,

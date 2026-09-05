@@ -3,7 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Save a generated file to the user's Downloads folder. The one place that does.
+ * Save generated *text* to the user's Downloads folder.
+ *
+ * The one place that does, for text — and text is the whole current API:
+ * `contents` is a string and the desktop branch is `writeTextFile`, so anything
+ * blob-backed cannot come through here. `pdf-sidebar-viewer.tsx` is the live
+ * example: it still clicks its own anchor at a blob URL, which means it still
+ * carries the desktop bug described below. Widening this to bytes needs a
+ * `writeFile` grant in the Tauri capabilities, so it is a change of its own
+ * rather than something to bolt on here — but until then, "everything goes
+ * through here" would be false, and a false claim is worse than no claim.
  *
  * The browser trick — an `<a download>` pointed at a blob URL, clicked
  * programmatically — is the only mechanism available on the web, and it does
@@ -19,10 +28,9 @@
  * binary, so a desktop build older than that grant denies the write no matter
  * what this file does.
  *
- * Everything that saves a file goes through here — `downloadJson` in
- * `export-download.ts` included. Anything that reimplements the anchor trick
- * for itself is silently web-only, which is the bug above wearing a different
- * filename.
+ * Every *text* save goes through here — `downloadJson` in `export-download.ts`
+ * included. Anything that reimplements the anchor trick for itself is silently
+ * web-only, which is the bug above wearing a different filename.
  */
 
 import { isTauri } from './platform'

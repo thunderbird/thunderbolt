@@ -61,12 +61,6 @@ mise.toml
 !.claude/security/**
 !.claude/skills/thunder-red-team/
 !.claude/skills/thunder-red-team/**
-!.claude/skills/thunder-vuln-scan/
-!.claude/skills/thunder-vuln-scan/**
-!.claude/skills/thunder-triage/
-!.claude/skills/thunder-triage/**
-!.claude/skills/_lib/
-!.claude/skills/_lib/**
 .zed/**
 .zedscratches/**
 .mcp.json

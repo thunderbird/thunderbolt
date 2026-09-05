@@ -40,6 +40,27 @@ export type MiniAppDefinition = {
 }
 
 /**
+ * An absolute http(s) URL, mirroring the backend's own field.
+ *
+ * Re-checked on this side rather than trusted: `url` reaches `<iframe src>` and
+ * `origin` is what every inbound message is compared against, and the backend a
+ * client talks to is a local setting. A `javascript:` URL in an `src` executes
+ * in *our* page rather than in a frame, so this is the last place to catch one.
+ * Parsing also guarantees the two are comparable as origins below.
+ */
+const httpUrlField = z.string().refine(
+  (value) => {
+    try {
+      const { protocol } = new URL(value)
+      return protocol === 'http:' || protocol === 'https:'
+    } catch {
+      return false
+    }
+  },
+  { message: 'must be an http(s) URL' },
+)
+
+/**
  * The wire shape of one app from `GET /mini-apps`.
  *
  * Parsed, not asserted with a generic on `.json()`. A cast here fails in the
@@ -56,8 +77,8 @@ export const miniAppResponseSchema = z.object({
   name: z.string().min(1),
   description: z.string().default(''),
   icon: z.string().default(''),
-  url: z.string().min(1),
-  origin: z.string().min(1),
+  url: httpUrlField,
+  origin: httpUrlField,
 })
 
 export type MiniAppResponse = z.infer<typeof miniAppResponseSchema>
@@ -99,6 +120,27 @@ export const toMiniAppDefinition = (app: MiniAppResponse): MiniAppDefinition => 
 })
 
 /**
+ * Whether this app would be framed on Thunderbolt's own origin.
+ *
+ * The frame runs with `allow-scripts allow-same-origin`, which is safe *only*
+ * because an app is a different origin: same-origin grants it nothing but its
+ * own storage and cookies. An app served from our origin turns that pairing
+ * into full access to Thunderbolt's storage, cookies and DOM — so it is refused
+ * rather than framed.
+ *
+ * Checked here, in the browser, because this is the only place that knows the
+ * origin the client actually runs on. The backend's own notion of its app URL
+ * can legitimately differ in a split deployment.
+ */
+const isOwnOrigin = (app: MiniAppResponse): boolean => {
+  try {
+    return new URL(app.url).origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
+/**
  * Turn a `GET /mini-apps` body into definitions, dropping only bad entries.
  *
  * `null` means the body itself was unusable — a real failure, distinct from a
@@ -117,11 +159,20 @@ export const parseMiniAppRegistry = (body: unknown): { apps: MiniAppDefinition[]
   let dropped = 0
   for (const candidate of envelope.data.apps) {
     const parsed = miniAppResponseSchema.safeParse(candidate)
-    if (parsed.success) {
-      apps.push(toMiniAppDefinition(parsed.data))
+    if (!parsed.success) {
+      dropped += 1
       continue
     }
-    dropped += 1
+    if (isOwnOrigin(parsed.data)) {
+      // Named, because "my app vanished from the sidebar" is otherwise a long
+      // afternoon — and this is a deployment mistake, not a malformed entry.
+      console.error(
+        `[mini-apps] Refusing "${parsed.data.id}": it is served from this origin, which the frame sandbox cannot isolate`,
+      )
+      dropped += 1
+      continue
+    }
+    apps.push(toMiniAppDefinition(parsed.data))
   }
   return { apps, dropped }
 }

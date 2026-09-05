@@ -66,6 +66,50 @@ describe('parseMiniAppRegistry', () => {
   })
 })
 
+describe('parseMiniAppRegistry safety', () => {
+  /**
+   * `url` reaches `<iframe src>`, where a `javascript:` URL executes in our page
+   * rather than in a frame. The backend refuses one too; this is the last check
+   * before the value is used, and the backend a client talks to is a setting.
+   */
+  it.each(['javascript:alert(1)', 'data:text/html,<script>1</script>', 'not-a-url', '/relative'])(
+    'drops an app whose url is %s',
+    (url) => {
+      const registry = parseMiniAppRegistry({ apps: [{ ...app, url }] })
+
+      expect(registry).toEqual({ apps: [], dropped: 1 })
+    },
+  )
+
+  it('drops an app whose origin is not an http(s) URL', () => {
+    const registry = parseMiniAppRegistry({ apps: [{ ...app, origin: 'javascript:alert(1)' }] })
+
+    expect(registry).toEqual({ apps: [], dropped: 1 })
+  })
+
+  /**
+   * The frame runs with `allow-scripts allow-same-origin`, which is only safe
+   * because an app is a different origin. Served from ours, that pairing hands
+   * the guest Thunderbolt's own storage, cookies and DOM.
+   */
+  it('refuses an app served from our own origin', () => {
+    const own = window.location.origin
+    const registry = parseMiniAppRegistry({ apps: [{ ...app, url: own, origin: own }] })
+
+    expect(registry).toEqual({ apps: [], dropped: 1 })
+  })
+
+  it('keeps a cross-origin app alongside a refused one', () => {
+    const own = window.location.origin
+    const registry = parseMiniAppRegistry({
+      apps: [{ ...app, id: 'ours', url: own, origin: own }, app],
+    })
+
+    expect(registry?.apps.map((entry) => entry.id)).toEqual(['finance-model'])
+    expect(registry?.dropped).toBe(1)
+  })
+})
+
 describe('resolveMiniAppIcon', () => {
   it('resolves a configured key', () => {
     expect(resolveMiniAppIcon('line-chart')).toBe(LineChart)

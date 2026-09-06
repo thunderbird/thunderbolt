@@ -87,3 +87,6 @@ Pulumi.*.yaml
 
 # Red-team scratch — throwaway attack attempts, never committed.
 e2e/e2ee/attacks/scratch/
+
+# Red-team findings ledger — local run state, never committed (Linear is the shared record).
+.red-team/

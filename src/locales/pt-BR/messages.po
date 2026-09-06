@@ -2314,6 +2314,7 @@ msgstr "A solicitação de rede falhou (o navegador bloqueou a solicitação ou 
 msgid "New Agent"
 msgstr "Novo agente"
 
+#: src/mini-apps/mini-app-page.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "Nova conversa"

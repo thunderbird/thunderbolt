@@ -165,6 +165,49 @@ describe('reopening after a close', () => {
   })
 })
 
+describe('starting another chat', () => {
+  /**
+   * The reported gap: the floating "Chat" button only shows when the panel is
+   * shut, and the history menu can only reopen something that already exists —
+   * so the first conversation you opened was the last one you could start.
+   */
+  it('replaces the open conversation with a blank one', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    act(() => result.current.startNewChat())
+
+    expect(result.current.openChatId).not.toBe('thread-1')
+    expect(result.current.draftChatId).toBe(result.current.openChatId)
+    // A brand-new chat has no row, so it stays out of the URL until its first
+    // message persists.
+    expect(result.current.chatParam).toBeNull()
+  })
+
+  /** Unlike `openChat`, which must never discard what an app asked to open
+   *  the panel over — a person pressing the button means it. */
+  it('starts a different chat each time', () => {
+    const { result } = setup()
+
+    act(() => result.current.startNewChat())
+    const first = result.current.openChatId
+    act(() => result.current.startNewChat())
+
+    expect(result.current.openChatId).not.toBe(first)
+  })
+
+  /** The conversation it replaced is still reachable: closing the new one
+   *  resumes it, and history lists it once it has a row. */
+  it('leaves the previous conversation intact', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    act(() => result.current.startNewChat())
+    act(() => result.current.openExistingChat('thread-1'))
+
+    expect(result.current.openChatId).toBe('thread-1')
+    expect(result.current.draftChatId).toBeNull()
+  })
+})
+
 describe('promotion and history', () => {
   it('moves a chat into the URL once its first message persists', () => {
     const { result } = setup()

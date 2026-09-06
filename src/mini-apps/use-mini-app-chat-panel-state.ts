@@ -35,6 +35,8 @@ export type MiniAppChatPanelState = {
   openChat: (prompt?: string) => void
   /** Show a specific persisted thread — the history menu. */
   openExistingChat: (chatThreadId: string) => void
+  /** Put a blank conversation in the panel, leaving the current one alone. */
+  startNewChat: () => void
   /** Put the panel away without ending the conversation. */
   closeChat: () => void
   /** Attach highlighted passages to whichever chat ends up on screen. */
@@ -209,6 +211,22 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     [showChat],
   )
 
+  /**
+   * Start a fresh conversation, leaving the one before it where it was.
+   *
+   * Deliberately unconditional, which is the opposite of `openChat`: an app
+   * asking to *open* the panel must never discard what is in it, but a person
+   * pressing "New chat" is asking for precisely that. Without it the panel
+   * could only ever show the conversation you already had or one from history,
+   * so the first chat you opened was the last one you could start.
+   *
+   * The chat it replaces is not lost: it has a row if it was ever sent to, and
+   * the history menu lists it.
+   */
+  const startNewChat = useCallback(() => {
+    showChat(uuidv7(), false)
+  }, [showChat])
+
   /*
    * Closing the panel hides the conversation; it doesn't end it.
    *
@@ -262,6 +280,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     draftChatId,
     openChat,
     openExistingChat: showPersistedChat,
+    startNewChat,
     closeChat,
     attachToComposer,
     handleChatCreated,

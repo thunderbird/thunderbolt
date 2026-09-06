@@ -2314,6 +2314,7 @@ msgstr "Échec de la requête réseau (le navigateur a bloqué la requête ou le
 msgid "New Agent"
 msgstr "Nouvel agent"
 
+#: src/mini-apps/mini-app-page.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "Nouvelle conversation"

@@ -2302,6 +2302,7 @@ msgstr ""
 msgid "New Agent"
 msgstr ""
 
+#: src/mini-apps/mini-app-page.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr ""

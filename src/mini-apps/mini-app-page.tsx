@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { MessageSquare, MousePointerClick } from 'lucide-react'
+import { MessageSquare, MessageSquarePlus, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
 import { Navigate, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
@@ -30,8 +30,17 @@ const appPanelSize = '66%'
 const chatPanelSize = '34%'
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
-  const { openChatId, draftChatId, openChat, openExistingChat, closeChat, attachToComposer, handleChatCreated } =
-    useMiniAppChatPanelState()
+  const {
+    openChatId,
+    draftChatId,
+    openChat,
+    openExistingChat,
+    startNewChat,
+    closeChat,
+    attachToComposer,
+    handleChatCreated,
+  } = useMiniAppChatPanelState()
+  const { t } = useLingui()
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)
   const closeApp = useMiniAppStore((state) => state.closeApp)
@@ -177,7 +186,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 <ContentViewHeader
                   title={app.name}
                   onClose={closeChat}
-                  actions={<MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} />}
+                  actions={
+                    <>
+                      {/* The way back to a blank composer. The floating "Chat"
+                          button only appears when the panel is shut, so without
+                          this the first conversation you opened was the last one
+                          you could start. */}
+                      <Button variant="ghost" size="icon" onClick={startNewChat} title={t`New chat`}>
+                        <MessageSquarePlus className="size-[var(--icon-size-default)]" />
+                        <span className="sr-only">
+                          <Trans>New chat</Trans>
+                        </span>
+                      </Button>
+                      <MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} />
+                    </>
+                  }
                 />
                 <div className="min-h-0 flex-1">{chatPane}</div>
               </div>

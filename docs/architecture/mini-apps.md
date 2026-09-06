@@ -56,12 +56,12 @@ Mini Apps are _cooperative_ — they send `frame-ancestors` naming us — so a p
 and gives us `postMessage` for free. The native webview exists for arbitrary sites that send `X-Frame-Options`,
 which no Mini App does.
 
-| Surface               | Embed  | Open                                                                                |
-| --------------------- | ------ | ----------------------------------------------------------------------------------- |
-| Web (desktop browser) | iframe | —                                                                                   |
+| Surface               | Embed  | Open                                                                                      |
+| --------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| Web (desktop browser) | iframe | —                                                                                         |
 | Tauri desktop         | iframe | blocked today — there is no `frame-src`, so frames fall back to `default-src` (see below) |
-| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                 |
-| Mobile web            | —      | not offered — same gate                                                             |
+| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                       |
+| Mobile web            | —      | not offered — same gate                                                                   |
 
 **Mini Apps are web and desktop only** (THU-830). The gate is on _viewport_, not platform: the split view,
 highlight-to-ask and element picking all need pointer input and room, and a 700px browser window is as unworkable as a
@@ -84,6 +84,33 @@ reload won't pick up a change, so a new customer origin means a new desktop buil
 patch (`tauri build --config`), a dev-only overlay in a `tauri.dev.conf.json`, an allowlist generated from the same
 operator config as `MINI_APPS`, or dropping the frame CSP and relying on origin checks alone — which is worse. Until
 one of those lands, web is the only surface where an app actually loads.
+
+## Running one locally
+
+There is nothing to switch on. An app appears in the sidebar as soon as the backend registers it, on a viewport
+wide enough for the split view.
+
+```sh
+# 1. an app to embed — the starter template, which is what MINI_APPS defaults to in development
+git clone git@github.com:thunderbird/thunderbolt-miniapp-template.git
+cd thunderbolt-miniapp-template && bun install && bun dev     # serves on :5190
+
+# 2. Thunderbolt, in another terminal
+bun run dev                                                   # web, on :1420
+bun run tauri:dev:desktop                                     # or the desktop app
+```
+
+"Order Book" appears under Apps in the sidebar. If it doesn't, in order: is the template actually up on :5190; did
+you restart the **backend** after touching `MINI_APPS` (`getSettings()` memoizes per process); and is the window
+wide enough (below the breakpoint the entry is hidden and the route shows a size notice).
+
+Registering something else means editing `MINI_APPS` — see the block in `backend/.env.example`. Two things bite:
+
+- **The desktop app needs the origin in its CSP**, and Tauri compiles that in at startup. `src-tauri/tauri.dev.conf.json`
+  allows `http://localhost:5190` for the dev scripts; another port means adding it there and restarting. Production
+  builds have no `frame-src` at all, so **no app loads in a packaged desktop build** — see the CSP section above.
+- **The app must send the three embedding headers** or the panel stays blank with nothing in the console. The
+  template already does; see "The embedding headers".
 
 ## Registry and configuration
 

@@ -10,7 +10,7 @@ import {
   defaultModels,
   defaultModelsVersion,
   hashModel,
-  vendorSupportsImages,
+  modelSupportsImages,
 } from './models'
 
 /**
@@ -94,15 +94,14 @@ describe('defaultModels version snapshot', () => {
 
 describe('vendorSupportsImages', () => {
   test('true for known vision vendors', () => {
-    expect(vendorSupportsImages('anthropic')).toBe(true)
-    expect(vendorSupportsImages('openai')).toBe(true)
-    expect(vendorSupportsImages('google')).toBe(true)
+    expect(modelSupportsImages({ vendor: 'anthropic', model: 'custom' })).toBe(true)
+    expect(modelSupportsImages({ vendor: 'openai', model: 'custom' })).toBe(true)
+    expect(modelSupportsImages({ vendor: 'google', model: 'custom' })).toBe(true)
   })
 
   test('false for unknown or absent vendors (no guessing for custom/local)', () => {
-    expect(vendorSupportsImages(null)).toBe(false)
-    expect(vendorSupportsImages(undefined)).toBe(false)
-    expect(vendorSupportsImages('ollama')).toBe(false)
-    expect(vendorSupportsImages('')).toBe(false)
+    expect(modelSupportsImages({ vendor: null, model: 'custom' })).toBe(false)
+    expect(modelSupportsImages({ vendor: 'ollama', model: 'custom' })).toBe(false)
+    expect(modelSupportsImages({ vendor: '', model: 'custom' })).toBe(false)
   })
 })

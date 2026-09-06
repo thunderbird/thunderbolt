@@ -45,10 +45,11 @@ export type SharedModel = {
  */
 export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
 
-/** Whether a model's vendor is known to accept image input. Unknown/absent
- *  vendors (custom or local endpoints) return false — we don't guess. */
-export const vendorSupportsImages = (vendor: string | null | undefined): boolean =>
-  vendor != null && imageCapableVendors.has(vendor)
+const imageCapableModels = new Set(['glm-5-3-flash'])
+
+/** Whether a model accepts images based on its vendor or known model slug. */
+export const modelSupportsImages = ({ vendor, model }: Pick<SharedModel, 'vendor' | 'model'>): boolean =>
+  (vendor != null && imageCapableVendors.has(vendor)) || imageCapableModels.has(model)
 
 /**
  * Compute hash of user-editable fields for a model.

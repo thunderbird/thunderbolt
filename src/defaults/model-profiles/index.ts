@@ -4,12 +4,12 @@
 
 import { hashValues } from '@/lib/utils'
 import type { ModelProfile } from '@/types'
-import { defaultModelProfileDeepseekV4Flash } from './deepseek'
-import { defaultModelProfileGlm52 } from './glm'
+import { defaultModelProfileGlm53Flash } from './glm-flash'
+import { defaultModelProfileGlm53 } from './glm'
 import { defaultModelProfileOpus5 } from './opus'
 
-export { defaultModelProfileDeepseekV4Flash } from './deepseek'
-export { defaultModelProfileGlm52 } from './glm'
+export { defaultModelProfileGlm53Flash } from './glm-flash'
+export { defaultModelProfileGlm53 } from './glm'
 export { defaultModelProfileOpus5 } from './opus'
 
 /**
@@ -44,6 +44,6 @@ export const hashModelProfile = (profile: ModelProfile): string =>
 /** All default model profiles for iteration */
 export const defaultModelProfiles: ReadonlyArray<ModelProfile> = [
   defaultModelProfileOpus5,
-  defaultModelProfileDeepseekV4Flash,
-  defaultModelProfileGlm52,
+  defaultModelProfileGlm53Flash,
+  defaultModelProfileGlm53,
 ] as const

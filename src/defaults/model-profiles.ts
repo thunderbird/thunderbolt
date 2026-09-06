@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export {
-  defaultModelProfileDeepseekV4Flash,
-  defaultModelProfileGlm52,
+  defaultModelProfileGlm53Flash,
+  defaultModelProfileGlm53,
   defaultModelProfileOpus5,
   defaultModelProfiles,
   hashModelProfile,

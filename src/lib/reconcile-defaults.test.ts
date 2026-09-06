@@ -13,7 +13,8 @@ import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTab
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
-  defaultModelGlm52,
+  defaultModelGlm53,
+  defaultModelGlm53Flash,
   defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
@@ -1015,7 +1016,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     await db
       .update(modelsTable)
       .set({ description: 'Confidential chat via Tinfoil' })
-      .where(eq(modelsTable.id, defaultModelGlm52.id))
+      .where(eq(modelsTable.id, defaultModelGlm53.id))
     await db
       .update(settingsTable)
       .set({ value: String(defaultModelsVersion - 1) })
@@ -1023,7 +1024,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 
     await reconcileDefaults(db)
 
-    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm52.id)).get()
+    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm53.id)).get()
     expect(upgraded?.description).toBe('Confidential chat via Thunderbolt')
     expect(upgraded?.provider).toBe('tinfoil')
     expect(upgraded?.isConfidential).toBe(1)

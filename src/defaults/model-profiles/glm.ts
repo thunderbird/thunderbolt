@@ -3,16 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelGlm52 } from '@shared/defaults/models'
+import { defaultModelGlm53 } from '@shared/defaults/models'
 
-export const defaultModelProfileGlm52: ModelProfile = {
-  modelId: defaultModelGlm52.id,
+export const defaultModelProfileGlm53: ModelProfile = {
+  modelId: defaultModelGlm53.id,
   temperature: 0.2,
   maxSteps: 20,
   maxAttempts: 2,
   nudgeThreshold: 6,
   useSystemMessageModeDeveloper: 0,
-  providerOptions: null,
+  providerOptions: { reasoningEffort: 'max' },
   toolsOverride: null,
   linkPreviewsOverride: null,
   chatModeAddendum: null,

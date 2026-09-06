@@ -84,7 +84,7 @@ describe('fetchManagedCatalog', () => {
     ['null', null],
     ['blank', ''],
   ] as const)('accepts %s vendor and description values', async (_label, value) => {
-    const catalog = { ...bundledManagedCatalog, data: [{ ...firstModel, vendor: value, description: value }] }
+    const catalog = { ...bundledManagedCatalog, defaultModelId: firstModel.id, data: [{ ...firstModel, vendor: value, description: value }] }
     const { fetchFn } = createJsonFetch(JSON.stringify({ defaults: { models: catalog } }))
 
     await expect(fetchManagedCatalog('https://api.test/v1', fetchFn)).resolves.toEqual(catalog)

@@ -808,6 +808,26 @@ describe('reconcileDefaultsForTable', () => {
   })
 })
 
+for (const [target, model, name] of [
+  [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
+  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+] as const) {
+  test(`reconciliation upgrades an edited ${model} row outside the hash gate`, async () => {
+    const db = getDb()
+    const legacy = { ...target, model, name }
+    const edited = { ...legacy, name: 'My model', contextWindow: 123_456, defaultHash: hashModel(legacy) }
+    await db.insert(modelsTable).values(edited)
+    await db.insert(settingsTable).values({ key: versionMarkerKeys.models, value: String(defaultModelsVersion) })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
+      ...edited,
+      model: target.model,
+    })
+  })
+}
+
 describe('Opus 5 data migration', () => {
   const legacyDefault = (): SharedModel => ({
     ...defaultModelOpus5,

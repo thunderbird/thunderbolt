@@ -350,7 +350,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         },
         {
           provider: 'tinfoil',
-          model: 'glm-5-2',
+          model: 'glm-5-3',
           ...glmCounts,
           costNanoUsd: 41_250_000n,
         },

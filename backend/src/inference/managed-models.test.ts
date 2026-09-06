@@ -48,10 +48,19 @@ describe('managed model backend coverage', () => {
     expect(resolveConfidentialManagedModel(slug)).toBeUndefined()
   })
 
+  it.each(['glm-5-2', 'deepseek-v4-flash'])(
+    'preserves the legacy confidential identity and price for %s',
+    async (model) => {
+      const identity = resolveConfidentialManagedModel(model)
+      expect(identity).toEqual({ provider: 'tinfoil', model })
+      expect(await loadInferencePrice(database, identity!)).not.toBeNull()
+    },
+  )
+
   it('gives every confidential catalog model its canonical price and excludes direct models', async () => {
     const confidentialModels = defaultModels.filter(({ isConfidential }) => isConfidential === 1)
 
-    expect(confidentialModels.map(({ model }) => model)).toEqual(['deepseek-v4-flash', 'glm-5-2'])
+    expect(confidentialModels.map(({ model }) => model)).toEqual(['glm-5-3-flash', 'glm-5-3'])
     for (const { model } of confidentialModels) {
       const identity = resolveConfidentialManagedModel(model)
       expect(identity).toEqual({ provider: 'tinfoil', model })

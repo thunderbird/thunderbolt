@@ -163,7 +163,7 @@ export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>)
   piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
 
 /** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
-const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level

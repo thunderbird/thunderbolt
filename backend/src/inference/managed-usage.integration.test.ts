@@ -385,6 +385,8 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
         },
         { provider: 'tinfoil', model: 'glm-5-2', ...officialPriceOracle['tinfoil/glm-5-2'] },
+        { provider: 'tinfoil', model: 'glm-5-3', ...officialPriceOracle['tinfoil/glm-5-2'] },
+        { provider: 'tinfoil', model: 'glm-5-3-flash', ...officialPriceOracle['tinfoil/deepseek-v4-flash'] },
       ])
 
       const [{ totalCost }] = (

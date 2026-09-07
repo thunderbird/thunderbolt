@@ -435,6 +435,18 @@ export const injectPlaintextModel = async (
   `
 }
 
+export type AgentRow = { id: string; name: string; url: string; description: string | null }
+
+/** Poll for a synced `agents` row to reach Postgres, returned exactly as stored. */
+export const waitForAgentRow = async (userId: string): Promise<AgentRow> =>
+  poll(async () => {
+    const rows = await sql<AgentRow[]>`
+      SELECT id, name, url, description FROM powersync.agents
+      WHERE user_id = ${userId} AND deleted_at IS NULL
+    `
+    return rows[0] ?? null
+  }, 30_000)
+
 export const getTaskCiphertext = async (taskId: string): Promise<string> => {
   const rows = await sql<{ item: string }[]>`
     SELECT item FROM powersync.tasks WHERE id = ${taskId}

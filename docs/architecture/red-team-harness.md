@@ -22,9 +22,9 @@ all cite. Do not conflate rungs.
 | --- | --- | --- | --- |
 | **L0 — Hypothesis** | an *argument* a vuln exists | a reasoning pass | no |
 | **L1 — Survives refutation** | no guard found that kills it | a refuter subagent | no |
-| **L2 — Reproduced by attack spec** | *executed* proof against real client + backend | the reproduce stage | **yes — gates every PR** |
+| **L2 — Reproduced by attack spec** | *executed* proof; an expected-failure (`test.fail()`) spec, green while the vuln is open | the reproduce stage | **yes — gates every PR** |
 | **L3 — Live-reproduced** | interactive, human-in-loop, booted stack | the live-hunt track | no |
-| **L∞ — Fixed & inverted** | the spec flips red→green on the fix | remediation | **yes, forever** |
+| **L∞ — Fixed & gated** | the fix drops the `test.fail()` tag; the spec becomes a permanent green regression gate | remediation | **yes, forever** |
 
 Two rules that fall out of the ladder and are easy to get wrong:
 
@@ -75,13 +75,13 @@ STAGE 5 · Report + draft tickets
 ```
 
 **Separate track — [Live hunt](#live-hunt-track):** discovery + confirming the un-speccable set.
-**Later — L∞ remediation:** on the fix branch, invert each spec red→green so the finding becomes a
-permanent guard.
+**Later — L∞ remediation:** on the fix branch, the fix makes each `test.fail()` spec start passing — drop
+the tag and it becomes a permanent green regression gate.
 
 ## What a run produces
 
 1. A **report** — ranked verdict table, each finding tagged **L1** or **L2**, un-speccable ones flagged.
-2. **Green-now attack specs** for L2 findings (committed only after Checkpoint 2).
+2. **Attack specs** (expected-failure `test.fail()`) for L2 findings, committed only after Checkpoint 2.
 3. **Draft Linear tickets** — one per finding, stating its rung and linking its spec.
 4. An updated **findings ledger** so the next run does not re-report settled ground.
 
@@ -108,6 +108,43 @@ Note the mirror-image trap the harness already guards: our backend is **honest**
 backstops a modeled `A2` would skip (e.g. `PLAINTEXT_UPLOAD_REJECTED`). For A2 *client*-fail-open
 findings, assert on the client's **output** (intercept the outbound request), not on server-at-rest
 state — the harness is sometimes *stricter* than the adversary, just as it must never be *weaker*.
+
+## Spec convention & CI polarity
+
+Every attack spec asserts the **secure** behavior — the exploit must *not* succeed. What differs is
+whether the finding is open, fixed, or an accepted trade-off, and that maps to exactly three states:
+
+| State | How the spec is written | Suite colour | On the bug closing |
+| --- | --- | --- | --- |
+| **Open (must-fix)** | assert secure behavior, tag `test.fail()` | **green** (expected failure) | assertion passes → unexpected pass → **red** → drop the tag |
+| **Fixed** | assert secure behavior, no tag | **green**, must stay green | reintroducing the vuln → **red** → PR blocked |
+| **Accepted residual** | assert the *observed* (insecure-but-accepted) behavior, no tag, header says "documented residual" | **green** | n/a — it is not a forcing function |
+
+Why expected-failure (`test.fail()`) and not "assert the exploit succeeds, invert on fix":
+
+- **The assertion is written once, in its final form.** No polarity to remember, no flip step that can be
+  forgotten — the single most common way a green-now spec rots.
+- **A fix cannot land silently.** The instant the bug closes, `test.fail()` sees an unexpected pass and
+  turns the suite red, which forces whoever fixed it to remove the tag — converting the witness into a
+  permanent regression gate in the same motion.
+- **The baseline stays green.** A known-open finding does not block unrelated work, and — critically — a
+  green baseline is what lets a *new* regression show up as red against a clean background. A red baseline
+  (one failing test per open finding) would blind you: "red" would stop meaning "this PR broke something."
+
+**Two CI lanes, deliberately.** These are different jobs and must not be conflated:
+
+1. **PR gate — the spec suite (green-must-stay-green).** Runs on every PR. Fixed-finding specs are normal
+   green regression gates: a PR that reintroduces a vuln turns one red and is blocked. This is the
+   "don't merge vulnerable code" guarantee, and it is strongest against a green baseline. Open-finding
+   `test.fail()` specs sit here too, green, not blocking.
+2. **Release gate — open-findings check (may be red).** A separate required check for *shipping*, not for
+   every feature PR: it counts open `test.fail()`-tagged specs (and their severities) and blocks a
+   **release** while criticals are open. This is where a hard "must fix before it goes out" belongs —
+   a policy on releases, never a red unit suite that freezes day-to-day merges.
+
+The rule of thumb: **block a PR that *introduces* a vuln (green regression gate); track a vuln that
+already *exists* (expected-failure spec + release gate).** Making the already-open backlog red on the PR
+suite is the anti-pattern — it freezes the repo and destroys the regression signal it was meant to give.
 
 ## Live-hunt track
 

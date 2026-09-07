@@ -26,9 +26,11 @@ Every finding has a **rung** — the single most important thing to state about 
 
 - **L0 Hypothesis** — an *argument* a vuln exists (a reasoning pass produces these).
 - **L1 Survives refutation** — no guard found that kills it (a refuter subagent).
-- **L2 Reproduced by attack spec** — *executed* proof against real client + backend; **gates every PR**.
+- **L2 Reproduced by attack spec** — *executed* proof against real client + backend, written as an
+  expected-failure (`test.fail()`) so it stays green while the vuln is open and auto-trips when it is fixed.
 - **L3 Live-reproduced** — interactive, human-in-loop (the live-hunt track).
-- **L∞ Fixed & inverted** — the spec flips red→green on the fix; a permanent guard.
+- **L∞ Fixed & gated** — the fix removes the `test.fail()` tag; the spec becomes a permanent green
+  regression gate that reds-out if the vuln ever returns.
 
 Two rules that fall out of it: a **passing spec (L2) *is* the confirmation** — deterministic and durable,
 not weaker than a live attack; and a **failed live hunt does not refute a finding** — it may only mean
@@ -153,9 +155,16 @@ a time.
 1. **Speccability call.** Can this be a deterministic spec? If not (timing, multi-tab, manual
    interaction), flag it **"L1 only — not reproducible in harness"** with the reason and stop; it is
    reported at L1 and its ticket says so. Do not force an un-speccable finding into a flaky spec.
-2. **Write a green-now spec** at `e2e/e2ee/attacks/<name>.spec.ts`, named for the claim it defends —
-   exploit-succeeds now, assertion inverts on the fix (same shape as the existing attack specs). Iterate
-   in `attacks/scratch/` (gitignored) first if it needs exploration.
+2. **Write the spec** at `e2e/e2ee/attacks/<name>.spec.ts`, named for the claim it defends. Assert the
+   **secure** behavior (the exploit must NOT succeed — e.g. "no plaintext on the wire") and tag it
+   `test.fail()` while the vuln is open: the assertion fails today (the break is real), but the expected-
+   failure marker keeps the suite **green** so it never blocks unrelated work — and the moment someone
+   fixes the bug the assertion starts passing, Playwright flags the unexpected pass → **red**, forcing
+   whoever fixed it to drop the tag and leave a permanent green regression gate. **Never** write the
+   inverted "assert the exploit succeeds" form — it goes stale and relies on remembering to flip it.
+   Iterate in `attacks/scratch/` (gitignored) first if it needs exploration. Exception: an **accepted
+   residual** (a documented trade-off we've decided not to fix) is a plain green witness with **no**
+   `test.fail()` tag, so it never becomes a forcing function — see the spec convention in the harness doc.
 3. **Capability audit (mandatory — this is what makes L2 trustworthy).** The target (client + backend +
    crypto) stays **real and unmodified**; the harness only **simulates the adversary's environment**.
    List every privilege the spec uses (DB access, response rewrite, header forge, key read) and check
@@ -167,8 +176,9 @@ a time.
 4. **Run** in isolation, then the full e2ee suite (load-dependent flakes). Passing = **L2**.
 5. **Checkpoint 2 — present the spec for review before any commit. Never auto-commit.**
 6. **Record** the confirmed finding in the ledger (`.red-team/`) and draft its Linear ticket
-   (draft-before-create) tagged **L2** with the spec path. Remediation and the red→green inversion (L∞)
-   happen later on the fix branch, never on this test branch.
+   (draft-before-create) tagged **L2** with the spec path. Remediation happens later on the fix branch,
+   never on this test branch — the fix makes the `test.fail()` spec pass, and dropping the tag (L∞) turns
+   it into a permanent regression gate.
 
 ### Live hunt
 

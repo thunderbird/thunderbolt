@@ -694,6 +694,26 @@ export const serveEvilOrgKey = async (
 }
 
 /**
+ * Drive the "Change Recovery Phrase" settings flow on a trusted device and
+ * return the freshly minted 24-word phrase it reveals once. This is the
+ * legitimate, proof-gated change-phrase path — no server lie — so an attacker in
+ * a trusted position (A6 in-origin script, or A4 before it is revoked) can use it
+ * to re-anchor the recovery slot to a phrase it controls.
+ */
+export const changeRecoveryPhraseViaUi = async (page: Page): Promise<string> => {
+  await page.goto('/settings/preferences')
+  await page.getByRole('button', { name: 'Change Recovery Phrase' }).click()
+  const confirm = page.getByRole('alertdialog')
+  await confirm.getByRole('button', { name: 'Generate new phrase' }).click()
+  const phraseRegion = page.getByRole('region', { name: 'Recovery phrase' })
+  await expect(phraseRegion).toBeVisible({ timeout: 30_000 })
+  const phrase = (await phraseRegion.textContent())?.trim() ?? ''
+  await page.getByRole('checkbox', { name: 'I have saved my recovery phrase' }).check()
+  await page.getByRole('button', { name: 'Done' }).click()
+  return phrase
+}
+
+/**
  * A2 — serve a chosen AK envelope for `GET /devices/me/envelope`. The hybrid
  * envelope is anonymous (wrapped from the device's PUBLIC keys the server
  * stores), so a malicious server can mint one carrying any AK it likes. Paired

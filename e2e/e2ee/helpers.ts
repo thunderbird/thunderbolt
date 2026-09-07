@@ -694,6 +694,41 @@ export const serveEvilOrgKey = async (
 }
 
 /**
+ * A2 — serve a chosen AK envelope for `GET /devices/me/envelope`. The hybrid
+ * envelope is anonymous (wrapped from the device's PUBLIC keys the server
+ * stores), so a malicious server can mint one carrying any AK it likes. Paired
+ * with `serveWrappedKeys` to make the client adopt a server-chosen key.
+ */
+export const serveEnvelope = async (context: BrowserContext, wrappedCK: string): Promise<void> => {
+  await context.route('**/v1/devices/me/envelope', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ trusted: true, wrappedCK }),
+    })
+  })
+}
+
+/**
+ * A2 — serve a chosen wrapped-DEK keyring for `GET /encryption/keys`. Each entry
+ * is `{ key_id, wrapped_key }`. Used to hand the client DEKs wrapped under an
+ * attacker AK so that, once the attacker envelope is adopted, new writes encrypt
+ * under a server-known key.
+ */
+export const serveWrappedKeys = async (
+  context: BrowserContext,
+  keys: Array<{ key_id: string; wrapped_key: string }>,
+): Promise<void> => {
+  await context.route('**/v1/encryption/keys', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ keys }),
+    })
+  })
+}
+
+/**
  * A2/A10 — lie about `scheme_version` in the encryption-metadata response,
  * preserving every other field. Models a malicious server trying to steer a
  * client's scheme decision (e.g. flip a set-up v2 device back to `1` to provoke

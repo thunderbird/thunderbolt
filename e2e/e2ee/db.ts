@@ -402,6 +402,23 @@ export type EncryptedTaskRow = {
   item: string
 }
 
+/**
+ * The device's stored hybrid public keys (base64), read straight from Postgres.
+ * A malicious server (A2) holds exactly this — the public halves it was handed at
+ * registration — so an attack that mints an AK envelope for the device uses only
+ * server-side state, nothing the device kept private.
+ */
+export const getDevicePublicKeys = async (deviceId: string): Promise<{ ecdh: string; mlkem: string }> => {
+  const rows = await sql<{ public_key: string | null; mlkem_public_key: string | null }[]>`
+    SELECT public_key, mlkem_public_key FROM powersync.devices WHERE id = ${deviceId}
+  `
+  const row = rows[0]
+  if (!row?.public_key || !row?.mlkem_public_key) {
+    throw new Error(`Device ${deviceId} has no stored public keys`)
+  }
+  return { ecdh: row.public_key, mlkem: row.mlkem_public_key }
+}
+
 export const getTaskCiphertext = async (taskId: string): Promise<string> => {
   const rows = await sql<{ item: string }[]>`
     SELECT item FROM powersync.tasks WHERE id = ${taskId}

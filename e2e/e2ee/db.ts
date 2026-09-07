@@ -435,6 +435,16 @@ export const injectPlaintextModel = async (
   `
 }
 
+/**
+ * A2 — plant a junk `wrapped_keys` row (a `key_id` whose `wrapped_key` will not
+ * unwrap under any AK). Models a malicious server with DB access, or the state a
+ * trusted device leaves via `POST /encryption/keys`. Every future AK rotation
+ * must re-wrap this row and throws when it cannot.
+ */
+export const plantWrappedKey = async (userId: string, keyId: string, wrappedKey: string): Promise<void> => {
+  await sql`INSERT INTO wrapped_keys (user_id, key_id, wrapped_key) VALUES (${userId}, ${keyId}, ${wrappedKey})`
+}
+
 export type AgentRow = { id: string; name: string; url: string; description: string | null }
 
 /** Poll for a synced `agents` row to reach Postgres, returned exactly as stored. */

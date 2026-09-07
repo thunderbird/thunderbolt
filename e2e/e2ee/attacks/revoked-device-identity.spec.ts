@@ -21,13 +21,14 @@
  * This spec is therefore a regression test, not an exploit: it fails if that
  * re-mint is ever refactored away.
  *
- * Residual worth its own pass: DEK "0" is retained forever and the revoked
- * device still holds it, so every FUTURE canary is encrypted under a key that
- * device can unwrap. The re-mint protects only because a revoked device cannot
- * fetch the new canary ciphertext — a route-level device-state check
- * (`getCallerDevice`) whose device id comes from the client-supplied
- * `X-Device-ID` header. Whether that is spoofable by an A4 holding a live
- * session is untested here.
+ * Residual (now a FINDING — THU-872): DEK "0" is retained forever and the
+ * revoked device still holds it, so every FUTURE canary is encrypted under a key
+ * that device can unwrap. This re-mint would protect only if a revoked device
+ * could not fetch the new canary ciphertext — but it can: `GET /encryption/canary`
+ * is `{ auth: true }` only, with NO device-state gate (contrary to an earlier
+ * claim here that it was `getCallerDevice`-gated). So a revoked A4 that reaches
+ * the route (via a surviving unlinked session, THU-873) re-derives the current
+ * signing key from its retained DEK-0. See `canary-route-ungated.spec.ts`.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/revoked-device-identity.spec.ts

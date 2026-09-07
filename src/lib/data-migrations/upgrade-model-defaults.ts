@@ -44,6 +44,13 @@ export const normalizeModelDefault = (model: SharedModel): SharedModel => {
     ...model,
     model: lineage.target.model,
     name: lineage.legacyNames.includes(model.name) ? lineage.target.name : model.name,
+    // vendor/description are server-owned metadata (outside the edit hash). A
+    // lineage that changes vendor (deepseek → zhipu for Flash) must carry it, or
+    // the reused row resolves Pi compatibility against the stale vendor and every
+    // send throws compatibility-missing. Reconcile already does this for intact
+    // rows; edited rows only pass through here.
+    vendor: lineage.target.vendor,
+    description: lineage.target.description,
   }
 }
 
@@ -64,6 +71,8 @@ export const upgradeModelDefaults = async (db: AnyDrizzleDatabase): Promise<void
       .set({
         model: migratedModel.model,
         name: migratedModel.name,
+        vendor: migratedModel.vendor,
+        description: migratedModel.description,
         defaultHash: isIntact ? hashModel(migratedModel) : existing.defaultHash,
       })
       .where(eq(modelsTable.id, target.id))

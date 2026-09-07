@@ -155,21 +155,26 @@ describe('normalizeModelDefault', () => {
   })
 })
 
-for (const [target, model, name] of [
-  [defaultModelGlm53, 'glm-5-1', 'GLM 5.1'],
-  [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
-  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+// `legacyVendor` is the vendor the row shipped with before the rename. Flash
+// moved deepseek → zhipu, so an edited Flash row that keeps `deepseek` resolves
+// Pi compatibility against the wrong vendor and breaks; seeding the old vendor
+// here proves the migration carries it (and the description) to the target.
+for (const [target, model, name, legacyVendor] of [
+  [defaultModelGlm53, 'glm-5-1', 'GLM 5.1', 'zhipu'],
+  [defaultModelGlm53, 'glm-5-2', 'GLM 5.2', 'zhipu'],
+  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek'],
 ] as const) {
+  const legacyMetadata = { vendor: legacyVendor, description: 'legacy description' }
   describe(`${model} lineage`, () => {
-    it('upgrades the legacy slug and default name while keeping an intact hash', async () => {
-      await seedRow({ ...target, model, name })
+    it('upgrades the legacy slug, name and server metadata while keeping an intact hash', async () => {
+      await seedRow({ ...target, ...legacyMetadata, model, name })
       await upgradeModelDefaults(getDb())
       const row = await getDb().select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
       expect(row).toEqual({ ...target, defaultHash: hashModel(target) })
     })
 
-    it('preserves a user name and stale hash while upgrading the slug', async () => {
-      await seedRow({ ...target, model, name: 'My model', defaultHash: 'user-edited-since' })
+    it('preserves a user name and stale hash while upgrading the slug and vendor', async () => {
+      await seedRow({ ...target, ...legacyMetadata, model, name: 'My model', defaultHash: 'user-edited-since' })
       await upgradeModelDefaults(getDb())
       const row = await getDb().select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()
       expect(row).toEqual({ ...target, name: 'My model', defaultHash: 'user-edited-since' })
@@ -189,9 +194,12 @@ for (const [target, model, name] of [
       })
     })
 
-    it('normalizes legacy payloads while preserving user names', () => {
-      expect(normalizeModelDefault({ ...target, model, name })).toEqual(target)
-      expect(normalizeModelDefault({ ...target, model, name: 'My model' })).toEqual({ ...target, name: 'My model' })
+    it('normalizes legacy payloads, including vendor, while preserving user names', () => {
+      expect(normalizeModelDefault({ ...target, ...legacyMetadata, model, name })).toEqual(target)
+      expect(normalizeModelDefault({ ...target, ...legacyMetadata, model, name: 'My model' })).toEqual({
+        ...target,
+        name: 'My model',
+      })
     })
   })
 }

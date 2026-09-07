@@ -102,11 +102,6 @@ export const defaultModelOpus5: SharedModel = {
   userId: null,
 }
 
-/**
- * Confidential Flash ships under a fresh id because reconciliation freezes
- * `provider` and `isConfidential`. Reusing its direct row would strand existing
- * unencrypted threads, whose send guard enforces `isEncrypted === isConfidential`.
- */
 export const defaultModelGlm53Flash: SharedModel = {
   id: '01a06dd7-67ee-75be-b957-2b746271c49d',
   name: 'GLM 5.3 Flash',

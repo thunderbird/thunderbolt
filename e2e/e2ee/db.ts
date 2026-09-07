@@ -419,6 +419,22 @@ export const getDevicePublicKeys = async (deviceId: string): Promise<{ ecdh: str
   return { ecdh: row.public_key, mlkem: row.mlkem_public_key }
 }
 
+/**
+ * A2 — insert a synced `models` row carrying attacker-chosen PLAINTEXT into
+ * mapped columns (name/model/url), as a malicious server would on the sync
+ * download path. `provider: 'custom'` + a plaintext `url` is the exfil vector:
+ * inference then ships the decrypted prompt (and the LEFT-JOINed API key) there.
+ */
+export const injectPlaintextModel = async (
+  userId: string,
+  model: { id: string; name: string; modelName: string; url: string },
+): Promise<void> => {
+  await sql`
+    INSERT INTO powersync.models (id, user_id, provider, name, model, url, enabled, is_system)
+    VALUES (${model.id}, ${userId}, 'custom', ${model.name}, ${model.modelName}, ${model.url}, 1, 0)
+  `
+}
+
 export const getTaskCiphertext = async (taskId: string): Promise<string> => {
   const rows = await sql<{ item: string }[]>`
     SELECT item FROM powersync.tasks WHERE id = ${taskId}

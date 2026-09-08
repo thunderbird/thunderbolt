@@ -29,8 +29,15 @@ ENCRYPTION DESIGN
 - DEK "0" is retained forever and the canary is anchored to it. Deliberate: the
   keys endpoint has no canary fields, so anchoring to "current primary" would
   break verification after a rotation.
-- E2EE is disabled by default (`E2EE_ENABLED=false`). "Encryption is off" in a
-  default config is not a vulnerability.
+- E2EE is UNCONDITIONAL since THU-868. `E2EE_ENABLED` and `settings.e2eeEnabled`
+  are gone, and device trust is always enforced — `markDeviceTrusted` has one call
+  site, inside the envelope-storing transaction, so a device that can sync is
+  always one on an enrolled account. "Encryption can be switched off" is therefore
+  a REAL finding now, not a false positive; do not suppress it.
+  What IS by design: `GET /v1/config` still returns a hardcoded
+  `e2eeEnabled: true` as a stale-client compatibility shim (a pre-cutover bundle
+  reads `undefined` as "off" and would upload plaintext). Nothing reads it — do not
+  report it as a live control point, and do not report its removal as a fix.
 
 POWERSYNC AND STORAGE
 - `ps_data__*` / `ps_data_local__*` are PowerSync internal backing tables. Code

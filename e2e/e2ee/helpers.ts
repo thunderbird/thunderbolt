@@ -759,6 +759,27 @@ export const forceSchemeVersion = async (context: BrowserContext, version: numbe
   overrideEncryptionMetadata(context, { scheme_version: version })
 
 /**
+ * A2 — merge arbitrary fields into the app-config response (`GET /v1/config`),
+ * preserving everything else. That route is public and exempt from the
+ * app-version gate, so this is the cheapest lie a malicious server can tell.
+ *
+ * Exists for the THU-868 guard: `e2eeEnabled: false` once disabled the client's
+ * whole upload-encode path on a provisioned device. Encryption is unconditional
+ * now, so nothing served here may change what reaches the wire.
+ */
+export const overrideAppConfig = async (context: BrowserContext, overrides: Record<string, unknown>): Promise<void> => {
+  await context.route('**/v1/config', async (route) => {
+    const response = await route.fetch()
+    if (!response.ok()) {
+      await route.fulfill({ response })
+      return
+    }
+    const body = (await response.json()) as Record<string, unknown>
+    await route.fulfill({ response, json: { ...body, ...overrides } })
+  })
+}
+
+/**
  * A2 — merge arbitrary fields into the encryption-metadata response
  * (`GET /encryption/canary`), preserving everything else. The general form of
  * `forceSchemeVersion`: models a server lying about any server-controlled

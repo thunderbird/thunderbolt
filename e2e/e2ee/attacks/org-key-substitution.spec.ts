@@ -3,8 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * A2 — org escrow key substitution (C11, C2). **Claim C11 is NOT upheld: the
- * documented residual is fully exploitable.**
+ * THU-866 / A2 — org escrow key substitution (C11, C2). **Claim: the AK must only
+ * ever be escrowed to the operator's real key, so an org key the server chose
+ * cannot recover account plaintext.**
  *
  * C11 says the client fetches the escrow public key "from the server it is
  * defending against — pinning, TOFU, or out-of-band verification must carry
@@ -14,8 +15,9 @@
  * defining power — "lies about ... org-escrow public key" — is enough to escrow
  * every account's AK to a key the attacker holds.
  *
- * This spec substitutes an attacker P-256 keypair on the wire, completes
- * first-device setup, and shows:
+ * This spec substitutes an attacker P-256 keypair on the wire and completes
+ * first-device setup. What the failure looks like today, executed end to end at
+ * commit `eba7a3fb` (the pre-migration version of this spec):
  *   1. the offline operator tool with the ATTACKER private key recovers row
  *      plaintext (the AK was escrowed to the attacker), and
  *   2. the LEGITIMATE operator key can no longer recover it — escrow was
@@ -24,8 +26,23 @@
  *      via `persistOrgEnvelope`, ignoring the client), so an operator auditing
  *      the fingerprint gets no warning — false assurance.
  *
- * If Phase 5 adds pinning/TOFU, invert assertion 1 (attacker key must fail) and
- * this becomes the regression test proving the pin holds.
+ * Only (1) is asserted here. (2) and (3) describe behavior a fix is free to
+ * change — a client that refuses to escrow against an unpinned key may persist no
+ * envelope at all — so asserting them would pin this spec to one fix shape. For
+ * the same reason there is no `waitForOrgEnvelope` barrier: it throws on timeout,
+ * and under a refuse-to-escrow fix that throw would hold this spec at
+ * expected-failure forever instead of letting it flip.
+ *
+ * Capability audit: A2 only — a lie on the wire for `GET /encryption/org-key`
+ * (`serveEvilOrgKey`). No key material, no session theft, no device access; the
+ * attacker keypair is generated fresh per run.
+ *
+ * Expected-failure (Option C): this test asserts the SECURE behavior — the
+ * attacker's private key cannot recover the plaintext — and is tagged
+ * `test.fail()` because the vuln is open today, so that assertion fails now (the
+ * attacker key decrypts fine). When THU-866 is fixed (pin or TOFU the org key),
+ * the decrypt fails, the assertion passes, and Playwright flags the unexpected
+ * pass → drop the `test.fail()` tag for a permanent regression gate.
  *
  * Requires the PowerSync + Postgres harness with ORG_ESCROW_ENABLED. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/org-key-substitution.spec.ts
@@ -34,7 +51,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect, test } from '../fixtures'
-import { getTaskIds, waitForNewEncryptedTasks, waitForOrgEnvelope, waitForUserId } from '../db'
+import { getTaskIds, waitForNewEncryptedTasks, waitForUserId } from '../db'
 import {
   completeFirstDeviceSetup,
   createE2eeEmail,
@@ -43,7 +60,6 @@ import {
   loginViaConsumerOtp,
   serveEvilOrgKey,
 } from '../helpers'
-import { testOrgEscrowFingerprint, testOrgEscrowPrivateKey } from '../org-escrow-key'
 
 const execFileAsync = promisify(execFile)
 
@@ -100,6 +116,9 @@ const runEscrowDecrypt = async (params: {
 
 test.describe.serial('A2 — org escrow key substitution', () => {
   test('a substituted org key escrows the AK to the attacker, not the operator', async ({ page }) => {
+    // Expected-failure while the vuln is open — see the file header (Option C).
+    test.fail()
+
     const email = createE2eeEmail()
     const taskText = `Escrow-hijacked task ${crypto.randomUUID()}`
 
@@ -112,14 +131,6 @@ test.describe.serial('A2 — org escrow key substitution', () => {
     const userId = await waitForUserId(email)
     await completeFirstDeviceSetup(page)
 
-    // The envelope persisted — and carries the LEGIT fingerprint, because the
-    // backend stamps its own (`persistOrgEnvelope`) over whatever the client
-    // sent. The attacker-wrapped blob is mislabeled as the operator's: an
-    // operator auditing this fingerprint sees nothing wrong.
-    const orgEnvelope = await waitForOrgEnvelope(userId)
-    expect(orgEnvelope.keyFingerprint).toBe(testOrgEscrowFingerprint)
-    expect(orgEnvelope.keyFingerprint).not.toBe(attacker.fingerprint)
-
     await enableTasks(page)
     const taskIdsBefore = await getTaskIds(userId)
     await createTask(page, taskText)
@@ -129,26 +140,16 @@ test.describe.serial('A2 — org escrow key substitution', () => {
     expect(encryptedRow.item).toMatch(/^__enc:v2:0:/)
     expect(encryptedRow.item).not.toContain(taskText)
 
-    // THE EXPLOIT: the attacker's private key recovers the AK and the plaintext.
-    const recovered = await runEscrowDecrypt({
-      userId,
-      table: 'tasks',
-      column: 'item',
-      rowId: encryptedRow.id,
-      privateKey: attacker.privateKey,
-    })
-    expect(recovered).toContain(taskText)
-
-    // ...and escrow was REDIRECTED, not duplicated: the legitimate operator key
-    // can no longer unwrap this account's AK. The intended recovery holder is
-    // locked out while the attacker is in.
+    // SECURE assertion: escrow must never hand the AK to a key the server chose,
+    // so the attacker's private key must not recover the row. Fails today (it
+    // recovers the plaintext); passes once THU-866 pins or TOFUs the org key.
     await expect(
       runEscrowDecrypt({
         userId,
         table: 'tasks',
         column: 'item',
         rowId: encryptedRow.id,
-        privateKey: testOrgEscrowPrivateKey,
+        privateKey: attacker.privateKey,
       }),
     ).rejects.toThrow()
   })

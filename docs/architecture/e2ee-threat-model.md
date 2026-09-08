@@ -53,8 +53,12 @@ falsify, not a fact.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
   hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
-- **C8 — Possession proof is meaningful.** `hash(canarySecret) == canary_secret_hash` proves CK
-  possession and cannot be satisfied by A2 or A5. Same bar for the follower-side continuity check.
+- **C8 — Possession proof is meaningful against A4/A5.** `hash(canarySecret) == canary_secret_hash`
+  proves CK possession to an adversary that cannot rewrite the DB — a stolen session (A5) or a
+  key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2/A9,
+  who author `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple; the
+  migrator absorbs the CK from that forged canary without checking it against real legacy data
+  (THU-877). Same scope for the follower-side continuity check.
 - **C9 — Recovery-phrase path is sound.** 256-bit CSPRNG entropy; PBKDF2-SHA512 600k with a
   per-account salt; the derived public half is checked against the stored one before use; a wrong
   server-supplied `kdf_salt` or public key fails cleanly rather than downgrading or leaking. Recovery-

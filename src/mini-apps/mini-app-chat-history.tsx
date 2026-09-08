@@ -14,7 +14,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { History } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,8 +39,8 @@ export const MiniAppChatHistory = ({ chats, onOpenChat }: MiniAppChatHistoryProp
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t`Chats from this app`}>
-          <History className="size-[var(--icon-size-default)]" />
+        <Button variant="ghost" size="icon" className={mutedIconButtonClass} aria-label={t`Chats from this app`}>
+          <History />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">

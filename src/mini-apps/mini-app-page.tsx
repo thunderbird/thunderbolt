@@ -5,7 +5,7 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
-import { Button } from '@/components/ui/button'
+import { Button, mutedIconButtonClass } from '@/components/ui/button'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { MessageSquare, MessageSquarePlus, MousePointerClick } from 'lucide-react'
@@ -192,8 +192,14 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                           button only appears when the panel is shut, so without
                           this the first conversation you opened was the last one
                           you could start. */}
-                      <Button variant="ghost" size="icon" onClick={startNewChat} title={t`New chat`}>
-                        <MessageSquarePlus className="size-[var(--icon-size-default)]" />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={mutedIconButtonClass}
+                        onClick={startNewChat}
+                        title={t`New chat`}
+                      >
+                        <MessageSquarePlus />
                         <span className="sr-only">
                           <Trans>New chat</Trans>
                         </span>

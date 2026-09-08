@@ -10,7 +10,7 @@ import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { MessageSquare, MessageSquarePlus, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
-import { Navigate, useParams } from 'react-router'
+import { Navigate, useLocation, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
 import { useElementPicking } from '@/components/embedded/use-element-picking'
@@ -20,6 +20,9 @@ import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+import { isTauriDesktop } from '@/lib/platform'
+import { sharedHeaderHasControls } from '@/layout/shared-header'
 import { useMiniAppBridge } from './use-mini-app-bridge'
 import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
@@ -41,6 +44,16 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     handleChatCreated,
   } = useMiniAppChatPanelState()
   const { t } = useLingui()
+  const { isMobile } = useIsMobile()
+  const { pathname } = useLocation()
+  /*
+   * Inset only when the header is actually drawn.
+   *
+   * Same answer as `main-layout`'s, from the same function on purpose: it draws
+   * the header, this reserves the room. Disagree and the app either slides under
+   * the scrim or floats below a bar that isn't there.
+   */
+  const insetForHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)
   const closeApp = useMiniAppStore((state) => state.closeApp)
@@ -120,7 +133,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
      * would sit on top of the app's own controls rather than over a scrim it
      * can fade against.
      */
-    <div className="flex h-full w-full flex-col pt-[var(--header-inset)]">
+    <div className={cn('flex h-full w-full flex-col', insetForHeader && 'pt-[var(--header-inset)]')}>
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">

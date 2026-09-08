@@ -85,6 +85,22 @@ patch (`tauri build --config`), a dev-only overlay in a `tauri.dev.conf.json`, a
 operator config as `MINI_APPS`, or dropping the frame CSP and relying on origin checks alone — which is worse. Until
 one of those lands, web is the only surface where an app actually loads.
 
+## Chrome around an app
+
+The shared header appears on an app route only where it has something in it. Everything the header normally carries
+— the agent selector, the project badge — is gated on being a `/chats` route, so on the web it renders an empty bar
+plus its scrim above an app that then cannot reach the top of the window. What survives on an app route is platform
+chrome: back/forward and the frameless drag region in the desktop app, and the sidebar toggle on a collapsed macOS
+window.
+
+So: **no header over the app on the web, header in the desktop app.** One predicate decides it,
+`sharedHeaderHasControls` — `main-layout` uses it to draw the header and the app route uses it to reserve the room,
+and they must not disagree or the app slides under the scrim. Removing the header outright was tried first and cost
+exactly those controls, which is why it came back.
+
+The chat panel keeps its own header, inside its pane: it holds that conversation's controls (new chat, history,
+close) and the window-control clearances a right-hand pane needs.
+
 ## Running one locally
 
 There is nothing to switch on. An app appears in the sidebar as soon as the backend registers it, on a viewport

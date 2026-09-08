@@ -37,7 +37,6 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
   CORS_ORIGINS: `http://localhost:${frontendPort}`,
   DATABASE_DRIVER: 'postgres',
   DATABASE_URL: databaseUrl,
-  E2EE_ENABLED: 'true',
   // Pinned empty so a developer's `backend/.env` can't gate the "ungated"
   // backend — `getSettings()` reads the process env, and a local MIN_APP_VERSION
   // would 426 every app request and fail the hard-cutover guard spec.

@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { useConfigStore } from '@/api/config-store'
+import { describe, expect, it, mock } from 'bun:test'
 import {
   clearAllKeys,
   encrypt,
@@ -104,7 +103,7 @@ const encryptUnder = async (dek: CryptoKey, keyId: KeyId, plaintext: string): Pr
 
 type Hub = ReturnType<typeof createHub>
 
-const setup = async (options: { e2eeEnabled: boolean }): Promise<Hub> => {
+const setup = async (): Promise<Hub> => {
   await deleteDatabase()
   // clearAllKeys empties whichever key-storage backend is bound — the real
   // fake-indexeddb one, or the Map-backed mock leaked from services tests
@@ -114,13 +113,8 @@ const setup = async (options: { e2eeEnabled: boolean }): Promise<Hub> => {
   setKeysSyncChannelForTesting(hub.createPort())
   resetCodecState()
   hub.posted.length = 0
-  useConfigStore.setState({ config: options.e2eeEnabled ? { e2eeEnabled: true } : {} })
   return hub
 }
-
-afterEach(() => {
-  useConfigStore.setState({ config: {} })
-})
 
 const failIfCalled = (name: string) => async () => {
   throw new Error(`${name} must not be called`)
@@ -128,7 +122,7 @@ const failIfCalled = (name: string) => async () => {
 
 describe('prime — startup staging + key_version polling', () => {
   it('stages the keyring once on start for an already-set-up device and records key_version', async () => {
-    const hub = await setup({ e2eeEnabled: true })
+    const hub = await setup()
     await setupKeyring(['0'], '0')
 
     const stage = mock(async () => {})
@@ -147,7 +141,7 @@ describe('prime — startup staging + key_version polling', () => {
   })
 
   it('refreshes the AK on start when the polled key_version is above the persisted baseline', async () => {
-    const hub = await setup({ e2eeEnabled: true })
+    const hub = await setup()
     await setupKeyring(['0'], '0')
     await storeKeyVersion(1)
 
@@ -167,7 +161,7 @@ describe('prime — startup staging + key_version polling', () => {
   })
 
   it('an AK rotation with unchanged DEKs does not interrupt sync — decode works with no key-request', async () => {
-    const hub = await setup({ e2eeEnabled: true })
+    const hub = await setup()
     // Old state: DEK '0' wrapped under the old AK, baseline key_version 1.
     const { ak, deks } = await setupKeyring(['0'], '0')
     await storeKeyVersion(1)
@@ -196,22 +190,7 @@ describe('prime — startup staging + key_version polling', () => {
   })
 
   it('skips priming when device setup is incomplete (no AK/DEKs)', async () => {
-    const hub = await setup({ e2eeEnabled: true })
-    const fetchMetadata = mock(async () => ({ key_version: 1 }))
-    const responder = createKeyRequestResponder({
-      stageKeyring: failIfCalled('stageKeyring'),
-      refreshAK: failIfCalled('refreshAK'),
-      fetchMetadata,
-      channel: hub.createPort(),
-    })
-    await responder.ready
-    expect(fetchMetadata).not.toHaveBeenCalled()
-    responder.stop()
-  })
-
-  it('skips priming when E2EE is disabled', async () => {
-    const hub = await setup({ e2eeEnabled: false })
-    await setupKeyring(['0'], '0')
+    const hub = await setup()
     const fetchMetadata = mock(async () => ({ key_version: 1 }))
     const responder = createKeyRequestResponder({
       stageKeyring: failIfCalled('stageKeyring'),
@@ -226,22 +205,22 @@ describe('prime — startup staging + key_version polling', () => {
 })
 
 describe('key-request handling (integration with the real codec)', () => {
-  // E2EE is left disabled in most of these so prime no-ops (staging on prime
-  // would pre-empt the request path) — the responder answers key-requests
-  // regardless of the flag by design.
+  // Most of these leave the keyring incomplete (no AK staged) at responder
+  // creation so `prime()` no-ops (staging on prime would pre-empt the request
+  // path) — the responder answers key-requests regardless of prime by design.
+  // Keyring material needed for the decode itself is staged AFTER
+  // `responder.ready` resolves, once priming has already settled.
 
   it('unknown-key: responder stages the missing DEK, posts key-staged, and the stalled decode self-heals', async () => {
-    const hub = await setup({ e2eeEnabled: false })
+    const hub = await setup()
     // Two DEKs exist account-wide, but only '0' is staged locally — '1' "lives
     // on the server" until the responder stages it.
     const { ak, deks } = await setupKeyring(['0', '1'], '0')
     const serverSideWrapped1 = deks.get('1')!.wrappedKey
-    // Drop DEK '1' locally so it is "unknown" until the responder stages it —
-    // clearAllKeys (not deleteDatabase) so the Map-backed leaked mock is cleared too.
+    // Drop everything again so the keyring is incomplete at responder-creation
+    // time (prime no-ops) — clearAllKeys (not deleteDatabase) so the Map-backed
+    // leaked mock is cleared too.
     await clearAllKeys()
-    await storeAK(ak)
-    await storeDEK('0', deks.get('0')!.wrappedKey)
-    await storePrimaryKeyId('0')
 
     const stage = mock(async () => {
       await storeDEK('1', serverSideWrapped1)
@@ -254,6 +233,13 @@ describe('key-request handling (integration with the real codec)', () => {
     })
     await responder.ready
 
+    // Stage AK + DEK '0' now that priming has already settled (a no-op, since
+    // the keyring was empty above) — '1' stays "unknown" until the responder
+    // handles the request below.
+    await storeAK(ak)
+    await storeDEK('0', deks.get('0')!.wrappedKey)
+    await storePrimaryKeyId('0')
+
     const wireValue = await encryptUnder(deks.get('1')!.dek, '1', 'future value')
     const decoded = await codec.decode(wireValue, ctx)
 
@@ -265,13 +251,13 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 
   it('unwrap-failed (revocation): responder refreshes the AK first, posts ak-refreshed, and the decode succeeds', async () => {
-    const hub = await setup({ e2eeEnabled: false })
-    // Post-revocation shape: this device holds the OLD AK while DEK '1' arrives
-    // (already staged) wrapped under the NEW AK.
-    await setupKeyring(['0'], '0')
+    const hub = await setup()
+    // Post-revocation shape: this device will hold the OLD AK while DEK '1'
+    // arrives (already staged) wrapped under the NEW AK. Mint the new DEK
+    // before the responder is created (the keyring itself stays empty at
+    // creation time, so `prime()` no-ops), then stage everything afterward.
     const newAK = await generateAK()
     const minted1 = await mintDEK(newAK)
-    await storeDEK('1', minted1.wrappedKey)
 
     const refresh = mock(async () => {
       await storeAK(newAK)
@@ -284,6 +270,9 @@ describe('key-request handling (integration with the real codec)', () => {
     })
     await responder.ready
 
+    await setupKeyring(['0'], '0')
+    await storeDEK('1', minted1.wrappedKey)
+
     const wireValue = await encryptUnder(minted1.dek, '1', 'post-revocation data')
     const decoded = await codec.decode(wireValue, ctx)
 
@@ -295,7 +284,7 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 
   it('escalates an unknown-key request to refreshAK when the polled key_version bumped', async () => {
-    const hub = await setup({ e2eeEnabled: true })
+    const hub = await setup()
     await setupKeyring(['0'], '0')
 
     const stage = mock(async () => {})
@@ -321,7 +310,7 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 
   it('coalesces concurrent requests for the same key_id into one staging fetch', async () => {
-    const hub = await setup({ e2eeEnabled: false })
+    const hub = await setup()
 
     let releaseStage!: () => void
     const gate = new Promise<void>((resolve) => {
@@ -352,7 +341,7 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 
   it('loop guard: does not re-run the same key_id within the cooldown when staging never produces it', async () => {
-    const hub = await setup({ e2eeEnabled: false })
+    const hub = await setup()
 
     let clock = 0
     const stage = mock(async () => {}) // never actually produces key '9'
@@ -384,7 +373,7 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 
   it('loop guard: an unwrap-failed escalation bypasses a recent stage-only attempt', async () => {
-    const hub = await setup({ e2eeEnabled: false })
+    const hub = await setup()
 
     let clock = 0
     const stage = mock(async () => {})
@@ -426,7 +415,7 @@ describe('key-request handling (integration with the real codec)', () => {
 
 describe('startKeyRequestResponder', () => {
   it('replaces a previous instance — only the newest responder answers', async () => {
-    const hub = await setup({ e2eeEnabled: false })
+    const hub = await setup()
 
     const firstStage = mock(async () => {})
     startKeyRequestResponder({

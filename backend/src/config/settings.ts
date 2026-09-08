@@ -107,9 +107,6 @@ const settingsSchema = z
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
     corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
-    // E2E encryption — when true, devices must complete the trust flow before syncing
-    e2eeEnabled: z.boolean().default(false),
-
     // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every
     // AK create/change (setup / rotate / upgrade) must include an org envelope wrapped
     // to `orgEscrowPublicKey` (base64 raw uncompressed P-256 point, 65 bytes). The
@@ -241,7 +238,6 @@ const parseSettings = (): Settings => {
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
-    e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
     orgEscrowPublicKey: process.env.ORG_ESCROW_PUBLIC_KEY || '',
     minAppVersion: process.env.MIN_APP_VERSION || '',

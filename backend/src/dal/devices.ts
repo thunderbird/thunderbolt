@@ -32,7 +32,8 @@ export const getDeviceById = async (database: QueryableDatabase, deviceId: strin
     .then((rows) => rows[0] ?? null)
 
 /** Upsert a device: insert new or update lastSeen/name for existing. Only updates if userId matches.
- * When `trusted` is passed (E2EE disabled), new devices are inserted as trusted and existing devices are upgraded.
+ * Devices are never inserted trusted — trust is granted only by `markDeviceTrusted` once an
+ * envelope exists for them.
  * `appVersion`, when provided, is persisted on insert and refreshed on update so operators can see
  * which client version each device is running. */
 export const upsertDevice = async (
@@ -43,19 +44,17 @@ export const upsertDevice = async (
     name: string
     lastSeen: Date
     createdAt: Date
-    trusted?: boolean
     appVersion?: string
   },
 ) =>
   database
     .insert(devicesTable)
-    .values({ ...device, trusted: device.trusted ?? false })
+    .values({ ...device, trusted: false })
     .onConflictDoUpdate({
       target: devicesTable.id,
       set: {
         lastSeen: device.lastSeen,
         name: device.name,
-        ...(device.trusted ? { trusted: true, approvalPending: false } : {}),
         ...(device.appVersion ? { appVersion: device.appVersion } : {}),
       },
       setWhere: eq(devicesTable.userId, device.userId),

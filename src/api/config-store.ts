@@ -7,7 +7,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type AppConfig = {
-  e2eeEnabled?: boolean
   /**
    * Whether the deployment escrows every AK to an operator-held key (THU-804).
    * Surfaced for the deferred end-user disclosure UI; nothing reads it yet — the

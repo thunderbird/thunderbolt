@@ -32,13 +32,12 @@ const mockGetCK = mock(() => Promise.resolve(null))
 // Spread into a fresh object: mocking the '@/db/encryption' barrel mutates the
 // re-exported '@/db/encryption/config' live bindings in place, so we capture a
 // value-copy of both up front and restore them in afterAll — otherwise the
-// isEncryptionEnabled/needsSyncSetupWizard overrides leak into config-dependent
-// files (config/upload-encoder/key-request-responder tests). See testing.md §65.
+// needsSyncSetupWizard override leaks into config-dependent files
+// (config/upload-encoder/key-request-responder tests). See testing.md §65.
 const realEncryption = { ...(await import('@/db/encryption')) }
 const realEncryptionConfig = { ...(await import('@/db/encryption/config')) }
 mock.module('@/db/encryption', () => ({
   ...realEncryption,
-  isEncryptionEnabled: () => true,
   needsSyncSetupWizard: async () => !(await mockGetCK()),
 }))
 afterAll(() => {

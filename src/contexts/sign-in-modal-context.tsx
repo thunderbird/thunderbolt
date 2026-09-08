@@ -6,7 +6,6 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 
 import { SignInModal } from '@/components/sign-in-modal'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
-import { useConfigStore } from '@/api/config-store'
 import { useAuth } from '@/contexts/auth-context'
 import { isSyncEnabled, setSyncEnabled } from '@/db/powersync/sync-state'
 import { needsSyncSetupWizard } from '@/db/encryption'
@@ -21,8 +20,6 @@ type SignInModalContextValue = {
 }
 
 export type ReEnrollmentCheckDeps = {
-  /** Deployment-level E2EE flag, from the persisted `/config` store. */
-  e2eeEnabled: boolean
   /** Session has resolved AND a user is present. */
   isSignedIn: boolean
   syncEnabled: () => boolean
@@ -39,12 +36,11 @@ export type ReEnrollmentCheckDeps = {
  * fire unauthenticated against a stale local sync preference.
  */
 export const shouldPromptReEnrollment = async ({
-  e2eeEnabled,
   isSignedIn,
   syncEnabled,
   needsWizard,
 }: ReEnrollmentCheckDeps): Promise<boolean> => {
-  if (!e2eeEnabled || !isSignedIn || !syncEnabled()) {
+  if (!isSignedIn || !syncEnabled()) {
     return false
   }
   return needsWizard()
@@ -73,7 +69,6 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
 
   const openSignInModal = () => setSignInOpen(true)
 
-  const e2eeEnabled = useConfigStore((state) => state.config.e2eeEnabled)
   const { data: session, isPending: sessionPending } = useAuth().useSession()
   const isSignedIn = !sessionPending && !!session
 
@@ -102,13 +97,11 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
    * from a trusted device, or the recovery phrase — and the wizard's `detecting`
    * step already routes exactly there for an existing account.
    *
-   * Legitimate useEffect: async IndexedDB read once the session and deployment
-   * config have settled (`e2eeEnabled` re-runs it when `/config` hydrates late).
+   * Legitimate useEffect: async IndexedDB read once the session has settled.
    */
   useEffect(() => {
     let cancelled = false
     shouldPromptReEnrollment({
-      e2eeEnabled: e2eeEnabled === true,
       isSignedIn,
       syncEnabled: isSyncEnabled,
       needsWizard: needsSyncSetupWizard,
@@ -124,7 +117,7 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
     return () => {
       cancelled = true
     }
-  }, [e2eeEnabled, isSignedIn])
+  }, [isSignedIn])
 
   const handleOpenChange = (open: boolean) => {
     setSignInOpen(open)

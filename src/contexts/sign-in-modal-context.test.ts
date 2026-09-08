@@ -5,9 +5,8 @@
 import { describe, expect, it } from 'bun:test'
 import { shouldPromptReEnrollment, type ReEnrollmentCheckDeps } from './sign-in-modal-context'
 
-/** Fully-eligible baseline: signed in, syncing, E2EE on, keyring missing. */
+/** Fully-eligible baseline: signed in, syncing, keyring missing. */
 const eligible = (overrides: Partial<ReEnrollmentCheckDeps> = {}): ReEnrollmentCheckDeps => ({
-  e2eeEnabled: true,
   isSignedIn: true,
   syncEnabled: () => true,
   needsWizard: () => Promise.resolve(true),
@@ -29,10 +28,6 @@ describe('shouldPromptReEnrollment', () => {
 
   it('stays quiet when signed out, so the wizard never calls unauthenticated', async () => {
     expect(await shouldPromptReEnrollment(eligible({ isSignedIn: false }))).toBe(false)
-  })
-
-  it('stays quiet on a deployment with E2EE disabled', async () => {
-    expect(await shouldPromptReEnrollment(eligible({ e2eeEnabled: false }))).toBe(false)
   })
 
   it('does not touch IndexedDB when an earlier condition already disqualifies', async () => {

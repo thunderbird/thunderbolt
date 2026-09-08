@@ -2,7 +2,7 @@
 
 > ⚠️ End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
 
-Thunderbolt supports optional zero-knowledge end-to-end encryption: all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
+Thunderbolt provides zero-knowledge end-to-end encryption: all user data is encrypted client-side before sync and decrypted client-side after download. The server stores only ciphertext and wrapped keys — it cannot read user data even if compelled or breached.
 
 This document describes **E2EE v2** — the AK/DEK key hierarchy with hybrid post-quantum device envelopes, AAD-bound versioned ciphertext, ECDSA challenge-response device management, and the **data-preserving v1 → v2 migration** (absorb + permanent dual-read). For the sync pipeline integration, see [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
@@ -10,24 +10,14 @@ This document describes **E2EE v2** — the AK/DEK key hierarchy with hybrid pos
 
 ## Configuration
 
-E2EE is **disabled by default**. The backend is the single source of truth:
+E2EE is **always on** — there is no toggle and no disabled state. The `E2EE_ENABLED` flag was removed because a value served by `GET /v1/config` let a malicious or compelled server disable client-side encryption (the red team's `config-downgrade` finding). Whether an account is encrypted is derived **per account**, never from server config:
 
-| Variable       | Where          | Default | Effect when enabled                                                                                                  |
-| -------------- | -------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
-| `E2EE_ENABLED` | Backend `.env` | `false` | Requires device trust flow before allowing sync; frontend encrypts/decrypts data, shows setup wizard, generates keys |
+- **Client:** local key material is the authority. `needsSyncSetupWizard()` in `src/db/encryption/config.ts` returns `true` until an AK plus at least one wrapped DEK exist locally, and `codec.encode` fails closed whenever setup has completed or an AK is present. The connector's canary probe (`GET /encryption/canary`) distinguishes a genuinely pre-E2EE account (404 → plaintext passthrough by design) from an unprovable state (offline/5xx → uploads deferred, download credentials withheld).
+- **Backend:** the presence of an `encryption_metadata` row (`schemeVersion === 2`) marks the account encrypted; the upload backstop rejects plaintext in mapped columns for such accounts. Devices are never auto-trusted — every device must be registered via `POST /devices` and complete the envelope/trust flow before `GET /powersync/token` or `PUT /powersync/upload` succeed.
 
-```env
-# Backend (backend/.env)
-E2EE_ENABLED=true
-```
+**Compatibility shim:** `GET /v1/config` still returns a hard-coded `e2eeEnabled: true`. Pre-cutover bundles gate `encodeForUpload` on that key, and `updateConfig` replaces the whole config object — omitting it would make a stale client read `undefined`, skip encryption, and upload plaintext into an account current clients treat as encrypted (permanently, since there is no re-encryption pass). The shim is safe to delete only once `MIN_APP_VERSION` is at or above the first always-on release, which 426s every client that still reads it.
 
-The frontend reads this flag from the backend's `GET /v1/config` endpoint at app initialization and caches it in `localStorage` for offline use. No frontend environment variable is needed.
-
-When disabled (default), sync works without encryption — no setup wizard, no key generation, no recovery key. The backend auto-trusts devices and skips the envelope flow.
-
-**Frontend control point:** `isEncryptionEnabled()` in `src/db/encryption/config.ts` reads the cached flag from `localStorage`. The companion `needsSyncSetupWizard()` helper combines the encryption-enabled check with an **AK-plus-a-wrapped-DEK-exists** check (v1 checked only for a single CK) — it returns `true` only when E2EE is on and the v2 key hierarchy is not yet set up locally. Its boolean contract is unchanged, so sign-in and the sync toggle use it exactly as before.
-
-**Backend control point:** `e2eeEnabled` in `backend/src/config/settings.ts`.
+Rolling out always-on E2EE to a deployment where encryption was previously optional is itself a **hard cutover**: raise `MIN_APP_VERSION` past the first always-on release so stranded pre-cutover clients get a 426 instead of silently uploading plaintext. Rows written as plaintext before the cutover stay plaintext — dual-read passes them through indefinitely.
 
 ### Migration gate (`MIN_APP_VERSION`)
 

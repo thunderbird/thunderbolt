@@ -16,12 +16,9 @@ const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) =
 
 describe('Config Routes', () => {
   describe('GET /config', () => {
-    it('reflects e2eeEnabled', async () => {
-      const disabled = await fetchConfig(createTestSettings({ e2eeEnabled: false }))
-      expect(disabled.body.e2eeEnabled).toBe(false)
-
-      const enabled = await fetchConfig(createTestSettings({ e2eeEnabled: true }))
-      expect(enabled.body.e2eeEnabled).toBe(true)
+    it('always reports e2eeEnabled: true (stale-client compatibility shim)', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+      expect(body.e2eeEnabled).toBe(true)
     })
 
     it('reflects orgEscrowEnabled', async () => {

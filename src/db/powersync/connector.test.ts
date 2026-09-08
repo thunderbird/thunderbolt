@@ -5,7 +5,6 @@
 import 'fake-indexeddb/auto'
 import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
-import { useConfigStore } from '@/api/config-store'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import { resetCodecState } from '@/db/encryption'
 import type { AbstractPowerSyncDatabase } from '@powersync/web'
@@ -128,7 +127,7 @@ describe('ThunderboltConnector', () => {
   let fetchMock: ReturnType<typeof mock>
   let dispatchSpy: ReturnType<typeof spyOn>
 
-  beforeEach(() => {
+  beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     // Default to consumer mode so tests don't depend on local .env
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
@@ -136,15 +135,21 @@ describe('ThunderboltConnector', () => {
     dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     clearAuthToken()
     clearDeviceId()
+    // These tests exercise the token endpoint's HTTP handling; stage an AK so
+    // the download encryption gate short-circuits instead of probing the canary
+    // (the gate itself is covered by the dedicated suites below).
+    await clearAllKeys()
+    await storeAK(await generateAK())
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
     dispatchSpy.mockRestore()
     // Clear the auth token/device id so the last test's value can't leak into
     // the next test file and trigger AuthProvider's mount get-session call.
     clearAuthToken()
     clearDeviceId()
+    await clearAllKeys()
   })
 
   it('fetchCredentials returns null when no auth token', async () => {
@@ -326,19 +331,16 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
     setAuthToken(authToken)
     fetchMock = mock(() => Promise.resolve(okResponse({})))
     await clearAllKeys()
-    useConfigStore.getState().updateConfig({})
   })
 
   afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
-    useConfigStore.getState().updateConfig({})
     await clearAllKeys()
     clearAuthToken()
     clearDeviceId()
   })
 
-  it('fetches metadata and stores the primary key_id when E2EE is on, an AK exists, and none is loaded', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+  it('fetches metadata and stores the primary key_id when an AK exists and none is loaded', async () => {
     await storeAK(await generateAK())
     fetchMock.mockImplementation((url: string) =>
       Promise.resolve(url.includes('/encryption/canary') ? okResponse({ primary_key_id: '0' }) : okResponse({})),
@@ -352,17 +354,7 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
     expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
   })
 
-  it('does not fetch metadata when E2EE is disabled', async () => {
-    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
-
-    await connector.uploadData(makeDatabase())
-
-    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
-    expect(requestedUrls().some((url) => url.includes('/powersync/upload'))).toBe(true)
-  })
-
   it('does not fetch metadata when a primary key_id is already loaded', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
     await storeAK(await generateAK())
     await storePrimaryKeyId('3')
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
@@ -411,12 +403,10 @@ describe('ThunderboltConnector upload encryption gate', () => {
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
   })
 
   afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
-    useConfigStore.getState().updateConfig({})
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()
@@ -474,18 +464,6 @@ describe('ThunderboltConnector upload encryption gate', () => {
     expect(uploadAttempted()).toBe(false)
     expect(wasCompleted()).toBe(false)
   })
-
-  it('does not probe at all when E2EE is disabled for the deployment', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
-    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
-    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
-    const { database, wasCompleted } = makeDatabase()
-
-    await connector.uploadData(database)
-
-    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
-    expect(wasCompleted()).toBe(true)
-  })
 })
 
 describe('ThunderboltConnector download encryption gate', () => {
@@ -513,12 +491,10 @@ describe('ThunderboltConnector download encryption gate', () => {
     setAuthToken(authToken)
     await clearAllKeys()
     resetCodecState()
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
   })
 
   afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
-    useConfigStore.getState().updateConfig({})
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()
@@ -562,16 +538,5 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     expect(await connector.fetchCredentials()).toBeNull()
     expect(tokenRequested()).toBe(false)
-  })
-
-  it('does not gate when E2EE is disabled for the deployment', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: false })
-    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: '0' }))
-    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
-
-    const credentials = await connector.fetchCredentials()
-
-    expect(credentials?.token).toBe('ps-token')
-    expect(requestedUrls().some((url) => url.includes('/encryption/canary'))).toBe(false)
   })
 })

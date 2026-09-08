@@ -69,8 +69,8 @@ const decryptEntry = async (entry: SyncEntry, codec: EncryptionCodec) => {
  * which `ThunderboltConnector.canDecryptAccountData` enforces by withholding sync
  * credentials until the keyring lands.
  *
- * No isEncryptionEnabled() gate: this middleware runs in the SharedWorker where
- * localStorage is unavailable. The codec safely handles both encrypted and plaintext data.
+ * The codec safely handles both encrypted and plaintext data, so no enablement
+ * gate is needed here.
  *
  * The codec is injected (defaulting to the shared AES-GCM codec) so tests can supply a
  * fake without `mock.module('@/db/encryption/codec')`, which leaks across test files in a

@@ -6,7 +6,7 @@ import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
-import { encodeForUpload, isEncryptionEnabled } from '@/db/encryption'
+import { encodeForUpload } from '@/db/encryption'
 import { getAK, getPrimaryKeyId, storePrimaryKeyId } from '@/crypto'
 import type { EncryptionMetadataResponse, KeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
@@ -181,7 +181,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * key-request/self-heal case, not a reason to withhold the stream.
    */
   private async canDecryptAccountData(): Promise<boolean> {
-    if (!isEncryptionEnabled() || (await getAK())) {
+    if (await getAK()) {
       return true
     }
     const account = await this.probeAccountEncryption()
@@ -240,7 +240,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * its own fail-closed rule, so no probe is needed.
    */
   private async ensureUploadEncryptionReady(): Promise<void> {
-    if (!isEncryptionEnabled() || (await getPrimaryKeyId()) !== null) {
+    if ((await getPrimaryKeyId()) !== null) {
       return
     }
     const account = await this.probeAccountEncryption()

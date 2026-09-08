@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { httpUrlField, type PublicMiniApp } from '@shared/mini-app-registry'
+import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
@@ -227,6 +227,9 @@ export type MiniAppConfig = {
 
 /** What the frontend is allowed to see — everything but the secret. */
 export type { PublicMiniApp }
+
+/** The shared http(s) rule, as this end's zod field. */
+const httpUrlField = z.string().refine(isHttpUrl, { message: httpUrlMessage })
 
 /**
  * Normalised to a serialized origin, because that is what the browser reports

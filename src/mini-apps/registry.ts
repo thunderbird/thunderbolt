@@ -18,7 +18,8 @@
 
 import type { LucideIcon } from 'lucide-react'
 import { AppWindow, BarChart3, FileSearch, LineChart, Route, Stethoscope, Table } from 'lucide-react'
-import { miniAppRegistrySchema, publicMiniAppSchema, type PublicMiniApp } from '@shared/mini-app-registry'
+import { z } from 'zod'
+import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
 
 export type MiniAppDefinition = {
   /** URL segment and stable key: `/apps/<id>`. */
@@ -110,6 +111,29 @@ const isOwnOrigin = (app: MiniAppResponse): boolean => {
     return false
   }
 }
+
+/** The shared http(s) rule, as this end's zod field. */
+const httpUrlField = z.string().refine(isHttpUrl, { message: httpUrlMessage })
+
+/**
+ * The wire contract as this end's parser.
+ *
+ * Built here rather than in `shared/` because `shared/mini-app-registry.ts` is
+ * also on the backend's import path, where zod cannot be resolved (see the
+ * module header there). The `satisfies` is what keeps the two honest: change
+ * `PublicMiniApp` and this stops compiling.
+ */
+const publicMiniAppSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().default(''),
+  icon: z.string().default(''),
+  url: httpUrlField,
+  origin: httpUrlField,
+}) satisfies z.ZodType<PublicMiniApp, unknown>
+
+/** The registry envelope. */
+const miniAppRegistrySchema = z.object({ apps: z.array(z.unknown()) })
 
 /**
  * Turn a `GET /mini-apps` body into definitions, dropping only bad entries.

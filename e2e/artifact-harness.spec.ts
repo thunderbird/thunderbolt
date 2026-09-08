@@ -65,6 +65,12 @@ const askElementAt = (
             return
           }
           if (data.type === 'artifact-ready') {
+            // `'*'` for the same reason the host uses it (see
+            // `sandboxed-html-frame.tsx`): `sandbox="allow-scripts"` without
+            // `allow-same-origin` gives the document an opaque origin, which
+            // never matches a URL-derived targetOrigin. Reproducing the host's
+            // call exactly is the point of this harness.
+            // nosemgrep: javascript.browser.security.wildcard-postmessage-configuration.wildcard-postmessage-configuration -- opaque sandbox origin; see above
             iframe.contentWindow?.postMessage(
               { artifactNonce: nonce, type: 'artifact-request', id: 1, method: 'element/at', params: point },
               '*',
@@ -147,10 +153,7 @@ test.describe('artifact harness (real browser)', () => {
     const nonce = 'nonce-div'
     const result = await askElementAt(
       page,
-      wrapArtifactHtml(
-        '<div style="position:absolute;top:0;left:0;width:200px;height:60px">Buy milk</div>',
-        nonce,
-      ),
+      wrapArtifactHtml('<div style="position:absolute;top:0;left:0;width:200px;height:60px">Buy milk</div>', nonce),
       nonce,
       { x: 40, y: 20 },
     )

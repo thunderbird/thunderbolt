@@ -21,9 +21,19 @@
  */
 
 import { encPrefix, encryptedColumnsMap } from '../../shared/e2ee-types'
+import { powersyncTableNames } from '../../shared/powersync-tables'
 import { sql } from './db'
 
 const powersyncSchema = 'powersync'
+
+/**
+ * Synced tables that legitimately carry no encryptable user content, so their
+ * absence from `encryptedColumnsMap` is intentional rather than drift. Empty
+ * today — every live synced table has user-authored columns — but the seam
+ * exists so a future pure-structural table can be documented here explicitly
+ * rather than by silent omission.
+ */
+const syncedTablesWithoutUserContent: ReadonlySet<string> = new Set()
 const valuePreviewLength = 120
 
 /** One configured table+column pair that exists in the database. */
@@ -76,6 +86,33 @@ export const expectEncryptedColumnsMapMatchesSchema = async (): Promise<void> =>
   throw new Error(
     `encryptedColumnsMap names ${missing.length} column(s) absent from the ${powersyncSchema} schema.\n` +
       `Either the map is stale or the table is not synced; until it is fixed these columns are unscanned.\n${list}`,
+  )
+}
+
+/**
+ * Synced tables that have NO entry in `encryptedColumnsMap` and are not on the
+ * documented no-user-content allowlist. The reverse of
+ * `expectEncryptedColumnsMapMatchesSchema`: it catches a whole synced table being
+ * forgotten (the THU-870 `agents` drift), which the map→schema check and the
+ * plaintext scans — both of which only look at MAPPED columns — are blind to.
+ */
+export const findUnmappedSyncedTables = (): string[] =>
+  powersyncTableNames.filter((table) => !(table in encryptedColumnsMap) && !syncedTablesWithoutUserContent.has(table))
+
+/**
+ * Fail loudly if any synced table is neither mapped for encryption nor
+ * explicitly allowlisted as having no user content — so future table-level drift
+ * cannot ship silently.
+ */
+export const expectAllSyncedTablesMapped = (): void => {
+  const unmapped = findUnmappedSyncedTables()
+  if (unmapped.length === 0) {
+    return
+  }
+  throw new Error(
+    `${unmapped.length} synced table(s) are absent from encryptedColumnsMap, so their user content ` +
+      `syncs in plaintext and no oracle scans them:\n${unmapped.map((table) => `  ${table}`).join('\n')}\n` +
+      `Add each to encryptedColumnsMap, or to syncedTablesWithoutUserContent if it truly has none.`,
   )
 }
 

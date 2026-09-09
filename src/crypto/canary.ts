@@ -6,13 +6,16 @@ import { p256 } from '@noble/curves/nist.js'
 import {
   canaryAAD,
   ecdsaKeyAlgorithm,
+  ecdsaSignAlgorithm,
   encodeChallengePayload,
+  encodeRecoveryAttestationPayload,
+  signingPublicKeyFormat,
   type ChallengeOperation,
   type KeyId,
 } from '@shared/e2ee-types'
 
 import { DecryptionError, KeyDerivationError } from './errors'
-import { decrypt, encrypt, uint8ArrayToBase64 } from './primitives'
+import { base64ToUint8Array, decrypt, encrypt, uint8ArrayToBase64 } from './primitives'
 
 /** v2 canary plaintext prefix — encrypted under the primary DEK with `canaryAAD`. */
 const canaryPrefix = 'thunderbolt-canary-v2'
@@ -167,4 +170,71 @@ export const signChallenge = async (
   const payload = encodeChallengePayload(nonce, operation, deviceId)
   const signature = p256.sign(payload, privateKey)
   return uint8ArrayToBase64(signature)
+}
+
+/** The recovery anchor a rotation must authenticate before wrapping the AK to it. */
+export type RecoveryAnchor = {
+  userId: string
+  kdfSalt: string
+  recoveryEcdhPublicKey: string
+  recoveryMlkemPublicKey: string
+}
+
+const encodeAnchor = (anchor: RecoveryAnchor): Uint8Array =>
+  encodeRecoveryAttestationPayload(
+    anchor.userId,
+    anchor.kdfSalt,
+    anchor.recoveryEcdhPublicKey,
+    anchor.recoveryMlkemPublicKey,
+  )
+
+/**
+ * Sign the recovery anchor with the signing key derived from THIS write's
+ * canary secret (THU-865). Called by every path that writes the recovery slot —
+ * first-device setup, v1→v2 upgrade, and each AK rotation — so the anchor the
+ * server serves is always accompanied by a signature only a keyring holder
+ * could have produced.
+ */
+export const signRecoveryAttestation = async (canarySecret: string, anchor: RecoveryAnchor): Promise<string> => {
+  const { privateKey } = await deriveSigningKeyPair(canarySecret)
+  return uint8ArrayToBase64(p256.sign(encodeAnchor(anchor), privateKey))
+}
+
+/**
+ * Verify a served recovery anchor against the caller's OWN key material: derive
+ * the signing public key from `canarySecret` (itself recovered locally via
+ * `verifyCanary`) and check the signature. A malicious server cannot forge this
+ * — it does not hold DEK "0" and so cannot learn the canary secret.
+ *
+ * The payload is RECONSTRUCTED from `anchor`, never parsed out of the
+ * signature's input, which is what keeps the domain separation in
+ * `encodeRecoveryAttestationPayload` meaningful.
+ *
+ * Returns false on malformed key or signature bytes rather than throwing,
+ * mirroring the backend's `verifyChallengeSignature`.
+ */
+export const verifyRecoveryAttestation = async (
+  canarySecret: string,
+  attestation: string,
+  anchor: RecoveryAnchor,
+): Promise<boolean> => {
+  const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
+  try {
+    const publicKey = await crypto.subtle.importKey(
+      signingPublicKeyFormat,
+      base64ToUint8Array(publicKeySpki),
+      ecdsaKeyAlgorithm,
+      false,
+      ['verify'],
+    )
+    return await crypto.subtle.verify(
+      ecdsaSignAlgorithm,
+      publicKey,
+      base64ToUint8Array(attestation),
+      // Copy so TS narrows the backing buffer to ArrayBuffer (BufferSource).
+      new Uint8Array(encodeAnchor(anchor)),
+    )
+  } catch {
+    return false
+  }
 }

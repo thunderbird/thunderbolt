@@ -54,6 +54,15 @@ export const envelopesTable = pgTable(
  * user's phrase. All three are nullable: a pre-flip (scheme 1) account has none
  * of them until it upgrades.
  *
+ * `recovery_attestation` (THU-865) is what makes that re-anchor safe. A silent
+ * rotation reads the recovery PUBLIC keys back from this table, so a malicious
+ * server could substitute its own and receive the new AK. Every write of the
+ * recovery slot therefore signs `userId ‖ kdf_salt ‖ recovery public keys` with
+ * the epoch's canary-derived signing key, and a rotating device verifies that
+ * signature against a key it derives from its OWN key material before wrapping.
+ * Nullable for the same pre-flip reason (and for v2 rows written before this
+ * column existed, which fail closed on their next rotation).
+ *
  * `canary_secret_hash` is RETAINED (Decision B): it is the v1 CK-possession
  * anchor consumed by `/upgrade` — the migrator CK-decrypts `canary_ctext` to
  * recover `canarySecret` and the server verifies `hash(canarySecret)` against
@@ -72,6 +81,7 @@ export const encryptionMetadataTable = pgTable('encryption_metadata', {
   recoveryEcdhPublicKey: text('recovery_ecdh_public_key'),
   recoveryMlkemPublicKey: text('recovery_mlkem_public_key'),
   recoveryWrappedAk: text('recovery_wrapped_ak'),
+  recoveryAttestation: text('recovery_attestation'),
   keyVersion: integer('key_version').default(1).notNull(),
   primaryKeyId: text('primary_key_id').default('0').notNull(),
   schemeVersion: smallint('scheme_version').default(1).notNull(),

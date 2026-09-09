@@ -14,6 +14,7 @@ const metadata = (schemeVersion: 1 | 2): EncryptionMetadataResponse => ({
   recovery_ecdh_public_key: schemeVersion === 2 ? 'recovery-ecdh' : null,
   recovery_mlkem_public_key: schemeVersion === 2 ? 'recovery-mlkem' : null,
   recovery_wrapped_ak: schemeVersion === 2 ? 'recovery-envelope' : null,
+  recovery_attestation: schemeVersion === 2 ? 'recovery-attestation' : null,
   key_version: 1,
   primary_key_id: '0',
   scheme_version: schemeVersion,

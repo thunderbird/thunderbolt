@@ -144,6 +144,7 @@ describe('DAL: encryption', () => {
       expect(metadata?.recoveryEcdhPublicKey).toBeNull()
       expect(metadata?.recoveryMlkemPublicKey).toBeNull()
       expect(metadata?.recoveryWrappedAk).toBeNull()
+      expect(metadata?.recoveryAttestation).toBeNull()
     })
 
     it('flipSchemeToV2 CAS succeeds once and returns null on a second flip', async () => {
@@ -159,6 +160,7 @@ describe('DAL: encryption', () => {
           recoveryEcdhPublicKey: 'r-ecdh',
           recoveryMlkemPublicKey: 'r-mlkem',
           recoveryWrappedAk: 'r-wrapped',
+          recoveryAttestation: 'r-attestation',
         })
 
       const first = await flip()

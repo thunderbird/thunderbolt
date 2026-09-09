@@ -36,6 +36,7 @@ The v1 → v2 rollout is a **hard cutover** guarded by the app-version gate (`cr
 | **Device envelope**      | The **AK** wrapped for one device via a hybrid ECDH + ML-KEM envelope. (The stored column is still named `wrapped_ck` for wire compatibility — it carries the AK.)             |
 | **Recovery key**         | The 256-bit recovery **seed** encoded as a **24-word BIP-39 mnemonic**. Shown once at setup/migration/phrase change. `mnemonic → seed → KDF → recovery keypair`.               |
 | **Recovery slot**        | The recovery phrase as a **virtual device**: the seed-derived hybrid PUBLIC keys plus the AK wrapped to them, stored on `encryption_metadata`. Because wrapping needs only the public half, any trusted device can re-anchor the slot to a new AK — which is why revocation no longer invalidates the phrase. |
+| **Recovery attestation** | A signature over `userId ‖ kdf_salt ‖ recovery public keys`, made with the epoch's canary-derived signing key and stored in `recovery_attestation` (THU-865). Written by every path that establishes a recovery slot; verified by any device about to re-anchor, against a signing key it derives from its own keyring. It is what stops a lying server from substituting recovery keys and capturing the next AK — see [Verifying the recovery anchor](#verifying-the-recovery-anchor). |
 | **Canary**               | A known prefix + secret encrypted under the **primary DEK** with `canaryAAD(userId, keyId)`. Verifies key material at unlock and seeds the challenge-response signing keypair.  |
 | **Challenge-response**   | An ECDSA P-256 keypair **deterministically derived from the canary secret**. Every post-flip trust op (approve/deny/revoke/rotate/recover) is signature-gated by a single-use server nonce. |
 
@@ -87,9 +88,55 @@ __enc:<iv-base64>:<ciphertext-base64>                  decrypted via the "v1" DE
 | **Returning device**  | Key pair present, AK missing → fetch own envelope → unwrap AK → stage keyring → sync resumes.                                                                    |
 | **Recovery key**      | Enter 24-word phrase → seed → fetch `kdf_salt` → derive the recovery keypair → reject immediately if its public half doesn't match the stored one → unwrap the AK from `recovery_wrapped_ak` → verify canary → unwrap keyring (incl. `"v1"`) → new envelope for this device. |
 | **Change phrase**     | `changeRecoveryPhrase`: new random AK **and** a new seed; re-wrap the **entire** keyring under the new AK; re-issue every device envelope; re-anchor the recovery slot to the new phrase; new canary + signing key; `key_version++`. 0 rows re-encrypted. The new phrase is shown once. |
-| **Revoke device**     | Delete envelope + revoke sessions, then **rotate both AK and DEK** so the removed device is locked out of future keyring and data. The AK rotation re-anchors the recovery slot to the **existing** recovery public keys, so the rotation is silent and the user's phrase keeps working. |
+| **Revoke device**     | Delete envelope + revoke sessions, then **rotate both AK and DEK** so the removed device is locked out of future keyring and data. The AK rotation re-anchors the recovery slot to the **existing** recovery public keys — after verifying their attestation — so the rotation is silent and the user's phrase keeps working. |
 | **Migrate (v1 → v2)** | See below — seamless, data-preserving, never a reset.                                                                                                            |
 | **Sign out**          | All local keys cleared (dynamic DEK ids enumerated, not a static list) → next sign-in is a new device.                                                            |
+
+## Verifying the recovery anchor
+
+A phrase-preserving rotation has to learn the recovery public keys from somewhere, and the only
+source is the server. Wrapping the new AK to them needs no private key — that is exactly what makes a
+silent re-anchor possible, and it also means a **malicious or compelled server could substitute its
+own recovery keypair** and receive the next AK, then recover the account with a phrase it chose. On
+any routine device revoke, silently (THU-865).
+
+The fix is not to remember the keys locally. A local pin wedges every other device after a
+legitimate phrase change, and a device that holds no pin yet simply adopts whatever is served. The
+keys are instead **authenticated against key material the server does not have**:
+
+1. **Every write signs.** `completeFirstDeviceSetup`, `migrateToV2` and each AK rotation call
+   `buildRecoverySlot`, which signs `userId ‖ kdf_salt ‖ recovery public keys` with the signing key
+   derived from **that write's** canary secret, and stores it as `recovery_attestation`.
+2. **Every phrase-preserving read verifies.** `readStoredRecoveryPlan` derives the signing *public*
+   key locally — from `getCanarySecret`, i.e. unwrap DEK `"0"` under the local AK, then `verifyCanary`
+   — and checks the signature before wrapping anything. It deliberately ignores the server's
+   `signing_public_key` column; deriving the key locally is the whole point. A missing or failing
+   attestation throws `RecoveryAnchorError` and wraps nothing.
+3. **`changeRecoveryPhrase` verifies nothing**, because it mints the keys itself. That is also the
+   un-wedge for a v2 account whose row predates the column: one phrase change writes a signed slot.
+
+Two properties make this free of staleness handling. DEK `"0"`'s key material is immutable across AK
+rotations and `getWrappedDek0` prefers the local copy, so a device holding *any* epoch's
+`{AK, wrapped DEK 0}` recovers the **current** canary secret and derives the **current** signing key
+— a device that legitimately missed a rotation still verifies. And the signing key is re-minted on
+every AK rotation, so an attestation from an earlier epoch cannot verify at the current one; no
+version field is needed for replay protection.
+
+The payload encoder (`encodeRecoveryAttestationPayload`, `shared/e2ee-types.ts`) leads with a domain
+tag. That is load-bearing: the challenge payload is `nonce ␟ operation ␟ deviceId` and the **nonce is
+server-chosen**, so without separation a server could try to steer a harvested challenge signature
+into the anchor check. Verification always **reconstructs** the payload from known values and never
+parses a received one.
+
+The backend only stores and serves the attestation. It requires its *presence*
+(`assertRecoveryCoverage`), which is what lets the client fail closed with no legacy-tolerant branch,
+but it does **not** verify the signature — it would be checking a value against a key from the same
+request, so it could not detect the adversary it matters against.
+
+**Residuals.** A server can *withhold* the attestation and thereby block AK rotation — degradation,
+not takeover (THU-871). And because the signing key derives from the canary secret, a **revoked**
+device retains DEK `"0"` and can still fetch the current canary (THU-872), so a server colluding
+with a revoked device can forge an attestation; closing THU-872 closes this too.
 
 ## Migration (v1 → v2): absorb + permanent dual-read
 

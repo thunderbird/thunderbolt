@@ -186,6 +186,46 @@ export type ChallengeOperation = (typeof challengeOperations)[number]
 export const encodeChallengePayload = (nonce: string, operation: ChallengeOperation, deviceId: string): Uint8Array =>
   utf8.encode([nonce, operation, deviceId].join(payloadSeparator))
 
+// =============================================================================
+// Recovery-slot attestation (THU-865) — ECDSA P-256 over the recovery anchor
+// =============================================================================
+
+/**
+ * Domain-separation tag, and the FIRST field of every attestation payload.
+ *
+ * Load-bearing, not decorative: the challenge payload below is
+ * `nonce ␟ operation ␟ deviceId` and the nonce is SERVER-chosen, so without a
+ * distinct leading field a malicious server could try to steer one protocol's
+ * signature into validating in the other. The tag plus the differing field
+ * count closes that — provided verification always RECONSTRUCTS these bytes
+ * from known values and never parses a received payload. Do not add a parser.
+ */
+const recoveryAttestationDomain = 'thunderbolt-recovery-attestation-v1'
+
+/**
+ * Canonical recovery-attestation byte layout (THU-865):
+ * UTF-8(`domain ␟ userId ␟ kdfSalt ␟ recoveryEcdhPublicKey ␟ recoveryMlkemPublicKey`).
+ *
+ * Signed with the epoch's canary-derived signing key on every write of the
+ * recovery slot, and verified before a phrase-preserving rotation wraps the new
+ * AK to those public keys. `kdfSalt` is bound in because the salt is half of
+ * what re-derives the keypair from a phrase — substituting it alone would be
+ * enough to hijack the slot.
+ *
+ * No epoch/version field is needed: the signing key is re-derived from a fresh
+ * canary secret on every AK rotation, so an attestation from an earlier epoch
+ * cannot verify against the current key.
+ */
+export const encodeRecoveryAttestationPayload = (
+  userId: string,
+  kdfSalt: string,
+  recoveryEcdhPublicKey: string,
+  recoveryMlkemPublicKey: string,
+): Uint8Array =>
+  utf8.encode(
+    [recoveryAttestationDomain, userId, kdfSalt, recoveryEcdhPublicKey, recoveryMlkemPublicKey].join(payloadSeparator),
+  )
+
 /** ECDSA key algorithm — used by importKey/generateKey on both sides. */
 export const ecdsaKeyAlgorithm = { name: 'ECDSA', namedCurve: 'P-256' } as const
 
@@ -301,6 +341,13 @@ export type EncryptionMetadataResponse = {
    * phrase-derived private keys, so serving it to any authenticated caller is safe.
    */
   recovery_wrapped_ak: string | null
+  /**
+   * Signature over the recovery anchor, made with the epoch's canary-derived
+   * signing key (THU-865). A rotating device MUST verify this before wrapping a
+   * new AK to the public keys above. Null pre-flip, and on v2 rows written
+   * before the column existed — those fail closed on their next rotation.
+   */
+  recovery_attestation: string | null
   /** Bumped on every AK rotation — a bump tells devices to refresh their AK envelope. */
   key_version: number
   /** The key_id all new writes must encrypt under. */
@@ -347,6 +394,14 @@ export type RecoverySlotRequest = {
   recoveryMlkemPublicKey: string
   /** The AK hybrid-wrapped to the recovery public keys. */
   recoveryWrappedAK: string
+  /**
+   * Base64 ECDSA signature over `encodeRecoveryAttestationPayload(...)`, made
+   * with the signing key derived from THIS write's canary secret (THU-865).
+   * Required on every v2 recovery-slot write — it is what lets a later rotating
+   * device authenticate the served public keys against its own key material
+   * instead of trusting the server.
+   */
+  recoveryAttestation: string
 }
 
 /**

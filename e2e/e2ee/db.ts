@@ -141,6 +141,13 @@ export type EncryptionServerSnapshot = {
   recoveryEcdhPublicKey: string | null
   recoveryMlkemPublicKey: string | null
   recoveryWrappedAk: string | null
+  /**
+   * Signature over the recovery anchor under the epoch's canary-derived signing
+   * key (THU-865). Re-signed on every AK rotation, so it changes whenever
+   * `recoveryWrappedAk` does — a NULL here on a scheme-2 account means the row
+   * predates the attestation and can no longer re-anchor.
+   */
+  recoveryAttestation: string | null
 }
 
 type EncryptionMetadataRow = {
@@ -150,6 +157,7 @@ type EncryptionMetadataRow = {
   recovery_ecdh_public_key: string | null
   recovery_mlkem_public_key: string | null
   recovery_wrapped_ak: string | null
+  recovery_attestation: string | null
 }
 
 export const getEncryptionServerSnapshot = async (userId: string): Promise<EncryptionServerSnapshot> => {
@@ -160,7 +168,8 @@ export const getEncryptionServerSnapshot = async (userId: string): Promise<Encry
       scheme_version,
       recovery_ecdh_public_key,
       recovery_mlkem_public_key,
-      recovery_wrapped_ak
+      recovery_wrapped_ak,
+      recovery_attestation
     FROM encryption_metadata WHERE user_id = ${userId}
   `
   const wrappedKeys = await sql<{ key_id: string; wrapped_key: string }[]>`
@@ -182,6 +191,7 @@ export const getEncryptionServerSnapshot = async (userId: string): Promise<Encry
     recoveryEcdhPublicKey: metadataRow.recovery_ecdh_public_key,
     recoveryMlkemPublicKey: metadataRow.recovery_mlkem_public_key,
     recoveryWrappedAk: metadataRow.recovery_wrapped_ak,
+    recoveryAttestation: metadataRow.recovery_attestation,
   }
 }
 

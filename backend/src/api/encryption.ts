@@ -184,17 +184,28 @@ const assertUpgradeKeyCoverage = (wrappedKeys: WrappedKeyEntry[], primaryKeyId: 
 
 /**
  * Recovery-slot coverage (AK rotation + upgrade): the phrase-derived hybrid
- * public keys and the AK wrapped to them must arrive as a complete triple. A
- * partial write would leave the account with a recovery slot no phrase can
- * open — the AK becomes unrecoverable the moment the last device is lost.
- * Submitting public keys that DIFFER from the stored ones is legal: that is an
- * explicit phrase change, gated by the 'rotate' challenge proof.
- * Throws BadRequestError unless all three are present.
+ * public keys, the AK wrapped to them, and the attestation over them must arrive
+ * together. A partial write would leave the account with a recovery slot no
+ * phrase can open — the AK becomes unrecoverable the moment the last device is
+ * lost. Submitting public keys that DIFFER from the stored ones is legal: that is
+ * an explicit phrase change, gated by the 'rotate' challenge proof.
+ *
+ * Requiring the attestation here is what lets the client fail closed with no
+ * legacy-tolerant branch (THU-865): no v2 recovery slot can be written without
+ * one, so a missing attestation means either a pre-column row or tampering —
+ * never a legitimate current write.
+ *
+ * Throws BadRequestError unless all four are present.
  */
 const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
-  if (!recovery.recoveryEcdhPublicKey || !recovery.recoveryMlkemPublicKey || !recovery.recoveryWrappedAK) {
+  if (
+    !recovery.recoveryEcdhPublicKey ||
+    !recovery.recoveryMlkemPublicKey ||
+    !recovery.recoveryWrappedAK ||
+    !recovery.recoveryAttestation
+  ) {
     throw new BadRequestError(
-      'recoveryEcdhPublicKey, recoveryMlkemPublicKey and recoveryWrappedAK must be supplied together',
+      'recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK and recoveryAttestation must be supplied together',
     )
   }
 }
@@ -374,6 +385,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           recoveryEcdhPublicKey,
           recoveryMlkemPublicKey,
           recoveryWrappedAK,
+          recoveryAttestation,
           orgEnvelope,
         } = body
 
@@ -425,10 +437,11 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
                 !wrappedKeys?.length ||
                 !recoveryEcdhPublicKey ||
                 !recoveryMlkemPublicKey ||
-                !recoveryWrappedAK
+                !recoveryWrappedAK ||
+                !recoveryAttestation
               ) {
                 throw new BadRequestError(
-                  'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys, recoveryEcdhPublicKey, recoveryMlkemPublicKey, and recoveryWrappedAK',
+                  'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys, recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK, and recoveryAttestation',
                 )
               }
               if (!wrappedKeys.some((entry) => entry.keyId === initialKeyId)) {
@@ -443,6 +456,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
                 recoveryEcdhPublicKey,
                 recoveryMlkemPublicKey,
                 recoveryWrappedAk: recoveryWrappedAK,
+                recoveryAttestation,
               })
               for (const entry of wrappedKeys) {
                 await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
@@ -516,6 +530,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           recoveryEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
           recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
+          recoveryAttestation: t.Optional(t.String({ maxLength: 200 })),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -582,6 +597,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           canary_ctext: metadata.canaryCtext,
           kdf_salt: metadata.kdfSalt,
           signing_public_key: metadata.signingPublicKey,
+          recovery_attestation: metadata.recoveryAttestation,
           recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
           recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
           recovery_wrapped_ak: metadata.recoveryWrappedAk,
@@ -823,6 +839,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
               recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
+              recoveryAttestation: body.recoveryAttestation,
             })
             const newVersion = await bumpKeyVersion(txDb, userId)
             if (newVersion == null) {
@@ -849,6 +866,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          recoveryAttestation: t.String({ maxLength: 200 }),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
@@ -925,6 +943,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
               recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
               recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
               recoveryWrappedAk: body.recoveryWrappedAK,
+              recoveryAttestation: body.recoveryAttestation,
             })
             if (!flipped) {
               throw new SchemeConflictError('Account already migrated to scheme v2')
@@ -954,6 +973,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
           recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
           recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          recoveryAttestation: t.String({ maxLength: 200 }),
           orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },

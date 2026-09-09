@@ -95,6 +95,13 @@ export type RecoverySlot = {
   recoveryEcdhPublicKey: string
   recoveryMlkemPublicKey: string
   recoveryWrappedAk: string
+  /**
+   * Signature over the recovery anchor under the epoch's canary-derived signing
+   * key (THU-865). Written by every path that establishes a recovery slot, so a
+   * later rotating device can authenticate the served public keys against its
+   * own key material rather than trusting them.
+   */
+  recoveryAttestation: string
 }
 
 /**
@@ -114,6 +121,7 @@ export const getEncryptionMetadata = async (database: typeof DbType, userId: str
       recoveryEcdhPublicKey: encryptionMetadataTable.recoveryEcdhPublicKey,
       recoveryMlkemPublicKey: encryptionMetadataTable.recoveryMlkemPublicKey,
       recoveryWrappedAk: encryptionMetadataTable.recoveryWrappedAk,
+      recoveryAttestation: encryptionMetadataTable.recoveryAttestation,
       keyVersion: encryptionMetadataTable.keyVersion,
       primaryKeyId: encryptionMetadataTable.primaryKeyId,
       schemeVersion: encryptionMetadataTable.schemeVersion,
@@ -152,6 +160,7 @@ export const insertEncryptionMetadataIfNotExists = async (
       recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
+      recoveryAttestation: metadata.recoveryAttestation,
       primaryKeyId: metadata.primaryKeyId ?? undefined,
       schemeVersion: 2,
     })
@@ -184,6 +193,7 @@ export const replaceEncryptionMetadata = async (
       recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
+      recoveryAttestation: metadata.recoveryAttestation,
     })
     .where(eq(encryptionMetadataTable.userId, metadata.userId))
     .returning()
@@ -218,6 +228,7 @@ export const flipSchemeToV2 = async (
       recoveryEcdhPublicKey: metadata.recoveryEcdhPublicKey,
       recoveryMlkemPublicKey: metadata.recoveryMlkemPublicKey,
       recoveryWrappedAk: metadata.recoveryWrappedAk,
+      recoveryAttestation: metadata.recoveryAttestation,
       primaryKeyId: metadata.primaryKeyId,
       schemeVersion: 2,
       keyVersion: sql`${encryptionMetadataTable.keyVersion} + 1`,

@@ -67,6 +67,7 @@ const sampleRecoverySlot = {
   recoveryEcdhPublicKey: 'recovery-ecdh-base64',
   recoveryMlkemPublicKey: 'recovery-mlkem-base64',
   recoveryWrappedAK: 'recovery-wrapped-ak-base64',
+  recoveryAttestation: 'recovery-attestation-base64',
 }
 
 describe('encryption API client', () => {
@@ -176,6 +177,7 @@ describe('encryption API client', () => {
         recovery_ecdh_public_key: 'recovery-ecdh',
         recovery_mlkem_public_key: 'recovery-mlkem',
         recovery_wrapped_ak: 'recovery-wrapped-ak',
+        recovery_attestation: 'recovery-attestation',
         key_version: 3,
         primary_key_id: '1',
         scheme_version: 2 as const,

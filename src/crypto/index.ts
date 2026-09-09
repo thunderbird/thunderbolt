@@ -41,6 +41,9 @@ export {
   recoverCanarySecretV1,
   deriveSigningKeyPair,
   signChallenge,
+  signRecoveryAttestation,
+  verifyRecoveryAttestation,
+  type RecoveryAnchor,
   type SigningKeyPair,
 } from './canary'
 

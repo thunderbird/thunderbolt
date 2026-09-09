@@ -17,6 +17,7 @@ import {
   unwrapDEK,
   deriveRecoveryKeyPairFromSeed,
   deriveSigningKeyPair,
+  signRecoveryAttestation,
   unwrapAK,
   generateRecoverySeed,
   encodeRecoverySeed,
@@ -108,6 +109,7 @@ const {
   rotateAccountKey,
   changeRecoveryPhrase,
   revokeDeviceAndRotate,
+  RecoveryAnchorError,
   RotationStaleError,
   migrateToV2,
   followToV2,
@@ -127,18 +129,23 @@ type MetaState = {
   recoveryEcdhPublicKey: string | null
   recoveryMlkemPublicKey: string | null
   recoveryWrappedAk: string | null
+  recoveryAttestation: string | null
   keyVersion: number
   primaryKeyId: KeyId
   schemeVersion: 1 | 2
 }
 
-/** Pull the recovery slot triple off a request body into its stored shape. */
+/** Pull the recovery slot off a request body into its stored shape. */
 const recoverySlotFrom = (
   body: Record<string, unknown>,
-): Pick<MetaState, 'recoveryEcdhPublicKey' | 'recoveryMlkemPublicKey' | 'recoveryWrappedAk'> => ({
+): Pick<
+  MetaState,
+  'recoveryEcdhPublicKey' | 'recoveryMlkemPublicKey' | 'recoveryWrappedAk' | 'recoveryAttestation'
+> => ({
   recoveryEcdhPublicKey: (body.recoveryEcdhPublicKey as string | undefined) ?? null,
   recoveryMlkemPublicKey: (body.recoveryMlkemPublicKey as string | undefined) ?? null,
   recoveryWrappedAk: (body.recoveryWrappedAK as string | undefined) ?? null,
+  recoveryAttestation: (body.recoveryAttestation as string | undefined) ?? null,
 })
 
 type FakeServer = {
@@ -207,6 +214,7 @@ const createFakeServer = (): FakeServer => {
             recovery_ecdh_public_key: server.metadata.recoveryEcdhPublicKey,
             recovery_mlkem_public_key: server.metadata.recoveryMlkemPublicKey,
             recovery_wrapped_ak: server.metadata.recoveryWrappedAk,
+            recovery_attestation: server.metadata.recoveryAttestation,
             key_version: server.metadata.keyVersion,
             primary_key_id: server.metadata.primaryKeyId,
             scheme_version: server.metadata.schemeVersion,
@@ -415,14 +423,25 @@ const seedV2Account = async (
     publicKey: await exportPublicKey(kp.ecdhPublicKey),
     mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
   })
+  // Signed for real with this epoch's canary secret, exactly as a live setup
+  // would (THU-865) — a stubbed value here would make every rotation test fail
+  // the anchor check instead of exercising it.
+  const recoveryEcdhPublicKey = await exportPublicKey(fixtureRecoveryKeyPair.ecdhPublicKey)
+  const recoveryMlkemPublicKey = exportMlKemPublicKey(fixtureRecoveryKeyPair.mlkemPublicKey)
   server.metadata = {
     canaryIv,
     canaryCtext,
     kdfSalt: fixtureRecoverySalt,
     signingPublicKey: publicKeySpki,
-    recoveryEcdhPublicKey: await exportPublicKey(fixtureRecoveryKeyPair.ecdhPublicKey),
-    recoveryMlkemPublicKey: exportMlKemPublicKey(fixtureRecoveryKeyPair.mlkemPublicKey),
+    recoveryEcdhPublicKey,
+    recoveryMlkemPublicKey,
     recoveryWrappedAk: await wrapAK(ak, fixtureRecoveryKeyPair.ecdhPublicKey, fixtureRecoveryKeyPair.mlkemPublicKey),
+    recoveryAttestation: await signRecoveryAttestation(canarySecret, {
+      userId: testUserId,
+      kdfSalt: fixtureRecoverySalt,
+      recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey,
+    }),
     keyVersion: 1,
     primaryKeyId: '0',
     schemeVersion: 2,
@@ -445,6 +464,7 @@ const seedV1Account = async (
     recoveryEcdhPublicKey: null,
     recoveryMlkemPublicKey: null,
     recoveryWrappedAk: null,
+    recoveryAttestation: null,
     keyVersion: 1,
     primaryKeyId: '0',
     schemeVersion: 1,
@@ -797,6 +817,52 @@ describe('encryption service (v2)', () => {
       )
       const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK)
       expect(dek0.algorithm.name).toBe('AES-GCM')
+    })
+
+    // THU-865. A malicious server needs only to lie on GET /encryption/canary:
+    // wrapping the new AK takes public keys alone, so a substituted recovery
+    // keypair silently escrows the account to a phrase the attacker chose. The
+    // attestation is verified against a signing key derived from LOCAL key
+    // material, so the lie cannot be signed. Reproduced end to end by
+    // e2e/e2ee/attacks/recovery-slot-substitution.spec.ts.
+    it('aborts the re-anchor when the server substitutes the recovery public keys', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const legit = { ...server.metadata! }
+
+      const attackerKeyPair = await deriveRecoveryKeyPairFromSeed(generateRecoverySeed(), fixtureRecoverySalt)
+      server.metadata!.recoveryEcdhPublicKey = await exportPublicKey(attackerKeyPair.ecdhPublicKey)
+      server.metadata!.recoveryMlkemPublicKey = exportMlKemPublicKey(attackerKeyPair.mlkemPublicKey)
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow(RecoveryAnchorError)
+
+      // Nothing was wrapped to the attacker: the rotation never reached the server.
+      expect(server.metadata!.recoveryWrappedAk).toBe(legit.recoveryWrappedAk)
+      expect(server.metadata!.keyVersion).toBe(legit.keyVersion)
+    })
+
+    it('aborts the re-anchor when the served anchor carries no attestation', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      // Fail closed rather than adopting an unverifiable anchor — an account row
+      // predating the attestation column re-anchors via changeRecoveryPhrase.
+      server.metadata!.recoveryAttestation = null
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow(RecoveryAnchorError)
     })
 
     it('does not mark a recovery phrase pending — the user has nothing new to write down', async () => {

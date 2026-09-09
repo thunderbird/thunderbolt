@@ -5,7 +5,15 @@
 import { describe, expect, it } from 'bun:test'
 import { canaryAAD, ecdsaKeyAlgorithm, ecdsaSignAlgorithm, encodeChallengePayload } from '@shared/e2ee-types'
 
-import { createCanary, verifyCanary, recoverCanarySecretV1, deriveSigningKeyPair, signChallenge } from './canary'
+import {
+  createCanary,
+  verifyCanary,
+  recoverCanarySecretV1,
+  deriveSigningKeyPair,
+  signChallenge,
+  signRecoveryAttestation,
+  verifyRecoveryAttestation,
+} from './canary'
 import { base64ToUint8Array, decrypt, encrypt, generateDEK } from './primitives'
 
 const userId = 'user-123'
@@ -145,5 +153,75 @@ describe('signChallenge', () => {
     ]) {
       expect(await crypto.subtle.verify(ecdsaSignAlgorithm, publicKey, signature, payload as BufferSource)).toBe(false)
     }
+  })
+})
+
+describe('signRecoveryAttestation / verifyRecoveryAttestation (THU-865)', () => {
+  const anchor = {
+    userId,
+    kdfSalt: 'salt-base64',
+    recoveryEcdhPublicKey: 'recovery-ecdh-base64',
+    recoveryMlkemPublicKey: 'recovery-mlkem-base64',
+  }
+
+  it('round-trips: an anchor signed with a canary secret verifies under that secret', async () => {
+    const canarySecret = 'a'.repeat(64)
+    const attestation = await signRecoveryAttestation(canarySecret, anchor)
+    expect(await verifyRecoveryAttestation(canarySecret, attestation, anchor)).toBe(true)
+  })
+
+  it('rejects a tampered anchor field — this is the substitution attack', async () => {
+    const canarySecret = 'b'.repeat(64)
+    const attestation = await signRecoveryAttestation(canarySecret, anchor)
+
+    // Every field is load-bearing: swapping the ECDH or ML-KEM public key is the
+    // recovery-slot hijack itself, and swapping the salt re-derives a different
+    // keypair from the same phrase.
+    for (const tampered of [
+      { ...anchor, recoveryEcdhPublicKey: 'attacker-ecdh' },
+      { ...anchor, recoveryMlkemPublicKey: 'attacker-mlkem' },
+      { ...anchor, kdfSalt: 'attacker-salt' },
+      { ...anchor, userId: 'other-user' },
+    ]) {
+      expect(await verifyRecoveryAttestation(canarySecret, attestation, tampered)).toBe(false)
+    }
+  })
+
+  it('rejects an attestation from a different epoch — the signing key rotates with the AK', async () => {
+    const attestation = await signRecoveryAttestation('c'.repeat(64), anchor)
+    expect(await verifyRecoveryAttestation('d'.repeat(64), attestation, anchor)).toBe(false)
+  })
+
+  it('rejects malformed signature bytes rather than throwing', async () => {
+    expect(await verifyRecoveryAttestation('e'.repeat(64), 'not-base64-!!', anchor)).toBe(false)
+    expect(await verifyRecoveryAttestation('e'.repeat(64), '', anchor)).toBe(false)
+  })
+
+  it('does not accept a challenge signature as an attestation (domain separation)', async () => {
+    // The nonce is SERVER-chosen, so without the domain tag a malicious server
+    // could try to steer a harvested challenge signature into the anchor check.
+    const canarySecret = 'f'.repeat(64)
+    const challengeSignature = await signChallenge(canarySecret, 'nonce-123', 'rotate', 'device-abc')
+    expect(await verifyRecoveryAttestation(canarySecret, challengeSignature, anchor)).toBe(false)
+  })
+
+  it('does not accept an attestation as a challenge proof (domain separation, reverse)', async () => {
+    const canarySecret = 'f'.repeat(64)
+    const attestation = await signRecoveryAttestation(canarySecret, anchor)
+    const { publicKeySpki } = await deriveSigningKeyPair(canarySecret)
+    const publicKey = await crypto.subtle.importKey(
+      'spki',
+      base64ToUint8Array(publicKeySpki),
+      ecdsaKeyAlgorithm,
+      false,
+      ['verify'],
+    )
+    const valid = await crypto.subtle.verify(
+      ecdsaSignAlgorithm,
+      publicKey,
+      base64ToUint8Array(attestation),
+      encodeChallengePayload('nonce-123', 'rotate', 'device-abc') as BufferSource,
+    )
+    expect(valid).toBe(false)
   })
 })

@@ -225,6 +225,13 @@
       "when": 1787862596042,
       "tag": "0031_fat_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788958385215,
+      "tag": "0032_thick_microbe",
+      "breakpoints": true
     }
   ]
 }

@@ -31,11 +31,18 @@ const signToken = (token: string): string =>
 const counterKey = Symbol.for('encryption-v2-test-runId')
 ;(globalThis as Record<symbol, number>)[counterKey] ??= 0
 
-/** The recovery slot: the phrase-derived hybrid public keys plus the AK wrapped to them. */
+/**
+ * The recovery slot: the phrase-derived hybrid public keys, the AK wrapped to
+ * them, and the attestation over them (THU-865). The attestation is opaque to
+ * the backend — it only stores and serves it, so a placeholder is faithful here.
+ * Its signature is verified CLIENT-side, against a key derived from local key
+ * material; see `src/crypto/canary.test.ts`.
+ */
 const recoverySlot = {
   recoveryEcdhPublicKey: 'recovery-ecdh-pk',
   recoveryMlkemPublicKey: 'recovery-mlkem-pk',
   recoveryWrappedAK: 'recovery-wrapped-ak',
+  recoveryAttestation: 'recovery-attestation',
 }
 
 /** SHA-256 hex — matches the backend's hashCanarySecret (D1 possession anchor). */
@@ -124,6 +131,7 @@ describe('Encryption API (v2)', () => {
       recoveryEcdhPublicKey: signingKeyNull ? null : recoverySlot.recoveryEcdhPublicKey,
       recoveryMlkemPublicKey: signingKeyNull ? null : recoverySlot.recoveryMlkemPublicKey,
       recoveryWrappedAk: signingKeyNull ? null : recoverySlot.recoveryWrappedAK,
+      recoveryAttestation: signingKeyNull ? null : recoverySlot.recoveryAttestation,
       keyVersion: 1,
       primaryKeyId: initialKeyId,
       schemeVersion,
@@ -248,10 +256,11 @@ describe('Encryption API (v2)', () => {
     })
 
     it.each([
-      ['the whole recovery triple', {}],
-      ['recoveryEcdhPublicKey', { recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w' }],
-      ['recoveryMlkemPublicKey', { recoveryEcdhPublicKey: 'e', recoveryWrappedAK: 'w' }],
-      ['recoveryWrappedAK', { recoveryEcdhPublicKey: 'e', recoveryMlkemPublicKey: 'm' }],
+      ['the whole recovery slot', {}],
+      ['recoveryEcdhPublicKey', { recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w', recoveryAttestation: 'a' }],
+      ['recoveryMlkemPublicKey', { recoveryEcdhPublicKey: 'e', recoveryWrappedAK: 'w', recoveryAttestation: 'a' }],
+      ['recoveryWrappedAK', { recoveryEcdhPublicKey: 'e', recoveryMlkemPublicKey: 'm', recoveryAttestation: 'a' }],
+      ['recoveryAttestation', { recoveryEcdhPublicKey: 'e', recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w' }],
     ])('rejects bootstrap missing %s — no account may exist without a usable recovery slot', async (_label, slot) => {
       const keypair = await generateSigningKeypair()
       await createUserAndSession(p('u'), p('tok'))
@@ -849,8 +858,8 @@ describe('Encryption API (v2)', () => {
       expect(metadata.recoveryWrappedAk).toBe('fresh-phrase-wrapped-ak')
     })
 
-    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK'] as const)(
-      'rejects a rotation with a blank %s (partial recovery triple)',
+    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK', 'recoveryAttestation'] as const)(
+      'rejects a rotation with a blank %s (partial recovery slot)',
       async (field) => {
         const keypair = await setupRotatable([initialKeyId])
         const body = await rotateBody(keypair, [initialKeyId])
@@ -866,7 +875,7 @@ describe('Encryption API (v2)', () => {
       },
     )
 
-    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK'] as const)(
+    it.each(['recoveryEcdhPublicKey', 'recoveryMlkemPublicKey', 'recoveryWrappedAK', 'recoveryAttestation'] as const)(
       'rejects a rotation omitting %s entirely',
       async (field) => {
         const keypair = await setupRotatable([initialKeyId])
@@ -1052,7 +1061,7 @@ describe('Encryption API (v2)', () => {
       expect((await res.json()).error).toBe('Invalid or expired upgrade nonce')
     })
 
-    it('rejects an upgrade with a partial recovery triple', async () => {
+    it('rejects an upgrade with a partial recovery slot', async () => {
       await setupV1()
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/upgrade`, {

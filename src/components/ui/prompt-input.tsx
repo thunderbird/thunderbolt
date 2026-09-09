@@ -42,7 +42,8 @@ type PromptInputProps = {
   inert?: boolean
   isStreaming?: boolean
   /** Stop was pressed and the turn is still unwinding. Swaps the stop icon for a
-   *  spinner and blocks a second press from firing another abort. */
+   *  spinner. The button stays pressable — stop is idempotent, and disabling it
+   *  would remove the only escape hatch if the teardown stalls. */
   isStopping?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
@@ -168,7 +169,6 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
           variant="default"
           aria-label={isStopping ? t`Stopping` : t`Stop generating`}
           className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
-          disabled={isStopping}
           onClick={onStop}
         >
           {isStopping ? (

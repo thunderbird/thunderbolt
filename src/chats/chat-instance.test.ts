@@ -543,6 +543,27 @@ describe('createChatInstance — retry policy', () => {
     expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
   })
 
+  it('keeps the session stopping after the aborted turn settles, until the next explicit send', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Dropping the shell leaves the user message trailing — the exact shape
+    // useChatAutomation auto-runs. The flag must survive the turn settling
+    // (THU-791: without it, Stop restarts the turn it cancelled).
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+
+    await instance.sendMessage({ text: 'again' })
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(false)
+  })
+
   it('resolves an open tool-permission dialog when the turn is stopped', async () => {
     const { instance } = createRetryHarness()
     ;(instance as unknown as { status: string }).status = 'streaming'

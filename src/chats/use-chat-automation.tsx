@@ -12,7 +12,7 @@ type UseChatAutomationProps = {
 }
 
 export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomationProps = {}) => {
-  const { chatInstance } = useCurrentChatSession()
+  const { chatInstance, stopping } = useCurrentChatSession()
 
   const { messages } = useChat({ chat: chatInstance, experimental_throttle: messageBookkeepingThrottleMs })
 
@@ -20,10 +20,14 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
 
   const hasTriggeredRef = useRef(false)
 
-  // Auto-run assistant if thread ends with user message (e.g., automation) and no assistant response yet
+  // Auto-run assistant if thread ends with user message (e.g., automation) and no
+  // assistant response yet. Gated on `stopping`: a stopped turn also ends with a
+  // trailing user message (the aborted shell is dropped), so without the gate this
+  // effect would restart the very turn the user just cancelled (THU-791).
   useEffect(() => {
     if (
       !hasTriggeredRef.current &&
+      !stopping &&
       chatInstance?.status === 'ready' &&
       hasMessages &&
       chatInstance?.messages[chatInstance?.messages.length - 1].role === 'user'
@@ -34,5 +38,5 @@ export const useChatAutomation = ({ useChat = useChat_default }: UseChatAutomati
         console.error('Auto regenerate error', err)
       })
     }
-  }, [chatInstance, hasMessages])
+  }, [chatInstance, hasMessages, stopping])
 }

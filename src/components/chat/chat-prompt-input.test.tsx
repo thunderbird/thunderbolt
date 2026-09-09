@@ -183,7 +183,7 @@ describe('ChatPromptInput', () => {
       expect(screen.queryByLabelText('Stop generating')).toBeNull()
     })
 
-    it('calls stop on click and stays tappable (no stopping spinner)', () => {
+    it('calls stop on click', () => {
       const { mockUseChat, mockChatInstance } = setupStore('streaming')
 
       render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
@@ -196,9 +196,30 @@ describe('ChatPromptInput', () => {
       })
 
       expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
-      // Stop is stop — the button never disables or shows an activity indicator.
-      expect(stopButton.disabled).toBe(false)
+      // The mock `stop` doesn't flip the session's `stopping` flag, so the button
+      // still shows its pre-stop state here; the stopping state is covered below.
       expect(stopButton.querySelector('.animate-spin')).toBeNull()
+    })
+
+    it('shows the stopping spinner and stays pressable while the turn unwinds', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { stopping: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stopping') as HTMLButtonElement
+      expect(stopButton.querySelector('.animate-spin')).not.toBeNull()
+      // Stays pressable: stop is idempotent, and disabling it would leave no
+      // escape hatch if the teardown stalls.
+      expect(stopButton.disabled).toBe(false)
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
     })
   })
 

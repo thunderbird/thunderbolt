@@ -697,15 +697,17 @@ export const createChatInstance = (
     retryCount = 0
     lastError = null
     currentTurn = createTurnState()
-    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false, stopping: false })
+    useChatStore.getState().updateSession(id, { retryCount: 0, retriesExhausted: false })
   }
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
     // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
     // runs `resetRetryStateForNewTurn` on the aborted turn itself, and clearing
-    // the flag there would re-open the auto-send it exists to block.
+    // the flags there would re-open the auto-sends they exist to block (the
+    // SDK's `sendAutomaticallyWhen` and `useChatAutomation`'s auto-run).
     stopRequested = false
+    useChatStore.getState().updateSession(id, { stopping: false })
     initializeTurnForCurrentSession(currentTurn)
   }
 
@@ -1010,9 +1012,16 @@ export const createChatInstance = (
    *
    * `stopRequested` outlives this call: the SDK re-checks `sendAutomaticallyWhen`
    * once the aborted request unwinds, and only an explicit send lifts it again.
+   * The session's `stopping` flag mirrors it with the same lifetime, so
+   * `useChatAutomation` sees the suppression too — dropping the aborted shell
+   * leaves the user message trailing, exactly the shape that hook auto-runs.
    */
   instance.stop = async function () {
     stopRequested = true
+    // Mirrored into the store for the two reactive consumers: the composer's
+    // stopping spinner (masked with a live request in `getTurnActivity`, so
+    // lingering past settle is harmless) and `useChatAutomation`'s auto-run gate.
+    useChatStore.getState().updateSession(id, { stopping: true })
     if (retryTimeout) {
       clearTimeout(retryTimeout)
       retryTimeout = null
@@ -1023,9 +1032,9 @@ export const createChatInstance = (
     useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
     if (instance.status === 'streaming' || instance.status === 'submitted') {
       // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
-      // round-trip, and the in-browser harness has to unwind its loop — so flag
-      // the wait for the composer instead of leaving the button looking inert.
-      useChatStore.getState().updateSession(id, { stopping: true })
+      // round-trip, and the in-browser harness has to unwind its loop — so the
+      // `stopping` flag also tells the composer about the wait instead of
+      // leaving the button looking inert.
       void originalStop()
       return
     }

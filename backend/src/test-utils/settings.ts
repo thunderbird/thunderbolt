@@ -12,6 +12,7 @@ import type { Settings } from '@/config/settings'
 export const createTestSettings = (overrides: Partial<Settings> = {}): Settings => ({
   fireworksApiKey: '',
   anthropicApiKey: '',
+  resendApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',

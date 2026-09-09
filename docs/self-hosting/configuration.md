@@ -149,7 +149,26 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                               |
 | `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                               |
 | `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
-| `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                      |
+| `MONITORING_TOKEN` | —                       | Bearer token for deep health routes under `/v1/health/`                |
+
+### Deep health
+
+Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
+
+| Route | Dependency exercised |
+| --- | --- |
+| `/v1/health/database` | A trivial database query (5-second deadline) |
+| `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds) |
+| `/v1/health/email` | Resend's authenticated domains read (10 seconds; sends no email) |
+| `/v1/health/models` | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
+
+Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, or `missing-price`; reasons never contain upstream bodies or credentials.
+
+An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
+
+The email probe requires a Resend `full_access` key in `RESEND_API_KEY`: a `sending_access` key is rejected on read endpoints ("Can only send emails"). Missing email or PowerSync configuration returns `503` with reason `not-configured`.
+
+Each models call costs one tiny completion per catalog model with a price row, without retries. BetterStack polls this route every 15 minutes in production.
 
 ## Frontend Build Args
 

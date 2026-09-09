@@ -76,7 +76,12 @@ export const SavePartialAssistantMessagesHandler = ({
       return
     }
 
-    if (isAssistantLatest) {
+    // A turn that has opened but produced no part yet has nothing to recover, and
+    // persisting the empty shell outlives the in-memory drop an aborted turn does
+    // (chat-instance.ts) — on reload it resurfaces as a failed turn the user had
+    // deliberately stopped. The `error` branch above deliberately still saves it:
+    // there the empty trailing turn is what hydration reads to show the failure.
+    if (isAssistantLatest && latestMessage.parts.length > 0) {
       throttledSave(latestMessage, parentId)
     }
   }, [messages, isStreaming, status, throttledSave, saveStreamingMessage, chatThreadId])

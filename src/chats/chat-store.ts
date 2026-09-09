@@ -49,6 +49,12 @@ export type ChatSession = {
   pendingPermission: PendingPermission | null
   retryCount: number
   retriesExhausted: boolean
+  /** The user pressed Stop. Stays set until the next explicit send/regenerate so
+   *  every auto-send path (the SDK's `sendAutomaticallyWhen`, `useChatAutomation`)
+   *  stays suppressed — the stopped turn's trailing user message must not re-send
+   *  itself. The composer derives its transient "stopping" spinner by masking this
+   *  with a live request (see `getTurnActivity`), so lingering is harmless there. */
+  stopping: boolean
   selectedAgent: Agent
   selectedModel: Model
   /**

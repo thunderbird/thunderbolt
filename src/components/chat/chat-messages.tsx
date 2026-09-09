@@ -10,6 +10,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef } from 'r
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { useChat as useChat_default } from '@ai-sdk/react'
 import { messageRenderThrottleMs } from '@/chats/chat-throttle'
+import { getTurnActivity } from '@/chats/turn-activity'
 import { shouldUseViewportPositioning } from '@/chats/use-chat-scroll-handler'
 import { isAttachmentPart } from '@/lib/attachments'
 import { filterMessageParts } from '@/lib/assistant-message'
@@ -44,7 +45,7 @@ type ChatMessagesProps = {
 // intended throttle cadence. It takes no props that change (`useChat` defaults
 // to the real hook), so the shallow prop compare holds across parent renders.
 export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, retryCount, retriesExhausted } = useCurrentChatSession()
+  const { chatInstance, chatThread, retryCount, retriesExhausted, stopping } = useCurrentChatSession()
   const debugTranscriptsEnabled = useConfigStore((state) => selectDebugTranscriptsEnabled(state.config))
 
   const {
@@ -58,16 +59,6 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     experimental_throttle: messageRenderThrottleMs,
   })
   const { triggerNotification } = useHaptics()
-
-  const isStreaming = status === 'streaming'
-  const wasStreaming = useRef(false)
-
-  useEffect(() => {
-    if (wasStreaming.current && !isStreaming) {
-      triggerNotification(chatError ? 'error' : 'success')
-    }
-    wasStreaming.current = isStreaming
-  }, [isStreaming, chatError, triggerNotification])
 
   const visibleMessages = useMemo(() => messages.filter((message) => message.metadata?.oauthRetry !== true), [messages])
   const lastMessage = useMemo(() => visibleMessages.at(-1), [visibleMessages])
@@ -90,20 +81,25 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     [chatInstance, chatThread, debugTranscriptsEnabled, status, visibleMessages.length],
   )
 
-  // After the user sends a message, AI SDK reports status `submitted` until the
-  // first assistant delta arrives. During that window there is no assistant
-  // message to host the synthetic loading indicator, so render it inline here.
-  const showSubmittedLoading = status === 'submitted' && lastMessage?.role !== 'assistant'
+  // `showSubmittedLoading`: `submitted` with no assistant message yet to host the
+  // loading indicator, so render it inline here. Shared with the composer's Stop
+  // button via getTurnActivity so the two never disagree (THU-791).
+  const { isStreaming, showSubmittedLoading, pendingEmptyTurnRecovery, hasError } = getTurnActivity({
+    status,
+    lastMessage,
+    hasChatError: chatError != null,
+    retriesExhausted,
+    retryCount,
+    stopRequested: stopping,
+  })
 
-  const emptyAssistantTurn = lastMessage?.role === 'assistant' && !lastMessage.parts?.length && !isStreaming
-  const pendingEmptyTurnRecovery = emptyAssistantTurn && !chatError && !retriesExhausted
-
-  const hasError = useMemo(() => {
-    if (chatError) {
-      return true
+  const wasStreaming = useRef(false)
+  useEffect(() => {
+    if (wasStreaming.current && !isStreaming) {
+      triggerNotification(chatError ? 'error' : 'success')
     }
-    return emptyAssistantTurn && retriesExhausted
-  }, [chatError, emptyAssistantTurn, retriesExhausted])
+    wasStreaming.current = isStreaming
+  }, [isStreaming, chatError, triggerNotification])
 
   // Re-deliver a failed turn's attachments as text/images (auto on a detected
   // content-rejection, or via the buttons below). Gate auto-fire on a settled error.

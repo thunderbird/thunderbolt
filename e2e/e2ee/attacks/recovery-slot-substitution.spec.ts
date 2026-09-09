@@ -8,17 +8,23 @@
  * real recovery keypair, never to one the server supplied.**
  *
  * C9 asserts "recovery-slot re-anchoring (which needs only the public half)
- * cannot be abused for takeover." It can. On every AK rotation that keeps the
+ * cannot be abused for takeover." It could. On every AK rotation that keeps the
  * phrase (e.g. a device revoke), the rotating device calls `readStoredRecoveryPlan`
- * (src/services/encryption.ts), which reads `recovery_ecdh_public_key` /
- * `recovery_mlkem_public_key` straight from server metadata and wraps the NEW AK
- * to them — with no out-of-band check, and none is possible (the re-anchoring
- * device does not hold the phrase). The backend `/encryption/rotate` accepts
- * whatever recovery keys the client submits (`assertRecoveryCoverage` only checks
- * presence; the handler comment even calls different keys "the explicit
- * phrase-change path"). So a malicious server that swaps the recovery public keys
- * it serves during a silent re-anchor redirects the recovery slot to a keypair
- * IT chose.
+ * (src/services/encryption.ts), which read `recovery_ecdh_public_key` /
+ * `recovery_mlkem_public_key` straight from server metadata and wrapped the NEW AK
+ * to them, with no verification. The backend `/encryption/rotate` accepted
+ * whatever recovery keys the client submitted (`assertRecoveryCoverage` checked
+ * presence only). So a malicious server that swapped the recovery public keys it
+ * served during a silent re-anchor redirected the recovery slot to a keypair IT
+ * chose — then recovered the account on a fresh device with a phrase it minted.
+ *
+ * The fix (THU-865) authenticates the anchor instead of trusting it. Every write
+ * of the recovery slot now signs `userId ‖ kdf_salt ‖ recovery public keys` with
+ * the epoch's canary-derived signing key, stored as `recovery_attestation`; a
+ * phrase-preserving rotation verifies that signature against a signing key it
+ * derives from its OWN keyring (unwrap DEK "0" → `verifyCanary`) before wrapping
+ * anything. A2 cannot forge it — it does not hold DEK "0", so it cannot learn the
+ * canary secret — and a missing or bad attestation fails closed.
  *
  * The attacker mints a phrase, derives its keypair under the account's real
  * `kdf_salt`, and injects the public halves during a revoke re-anchor. Two secure
@@ -39,12 +45,18 @@
  * stores in cleartext. The attacker's phrase is minted fresh; the victim's real
  * phrase is never used and never needed.
  *
- * Expected-failure (Option C): this test asserts the SECURE behavior and is
- * tagged `test.fail()` because the vuln is open today. When THU-865 pins the
- * recovery key (compare against a locally-cached copy, or have the backend reject
- * a recovery-key change on a non-phrase-change rotate), both assertions pass and
- * Playwright flags the unexpected pass → drop the `test.fail()` tag for a
- * permanent regression gate.
+ * Polarity: asserts the SECURE behavior. Authored as an Option C expected-failure
+ * while the vuln was open; once the fix landed both assertions passed, Playwright
+ * flagged the unexpected pass, and the `test.fail()` tag was retired — this is now
+ * a permanent green regression gate. Verified to be a real gate, not a vacuous
+ * one: with the attestation verification disabled in `readStoredRecoveryPlan` it
+ * fails again on assertion 1.
+ *
+ * Residual it does NOT cover: `revokeDeviceAndRotate` still revokes and rotates
+ * the DEK before the anchor is verified, so under this attack the revoke commits
+ * while the AK never rotates (degradation, not takeover — same shape as THU-871).
+ * Pre-flighting the verification is follow-up work, and it will change this spec:
+ * the revoke will abort before its challenge is consumed.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/recovery-slot-substitution.spec.ts
@@ -81,11 +93,11 @@ import {
 } from '../../../src/crypto/recovery-key'
 import { exportMlKemPublicKey, exportPublicKey } from '../../../src/crypto/primitives'
 
-test.describe.serial('A2b — recovery-slot substitution', () => {
-  test('a server lying about recovery keys during a re-anchor takes over the account', async ({ browser, page }) => {
-    // Expected-failure while the vuln is open — see the file header (Option C).
-    test.fail()
-
+test.describe.serial('THU-865 — recovery-slot substitution', () => {
+  test('a server lying about recovery keys during a re-anchor cannot take over the account', async ({
+    browser,
+    page,
+  }) => {
     const email = createE2eeEmail()
     const secret = `recovery-takeover-${crypto.randomUUID()}`
 
@@ -122,14 +134,14 @@ test.describe.serial('A2b — recovery-slot substitution', () => {
 
     await revokeTrustedDevice(page, victim.label)
     await waitForConsumedChallenge(userId, 'revoke')
-    // Closed before the assertions below, which are expected to fail while the
-    // vuln is open — leaving it open would leak the context on every run.
+    // Closed before the assertions below — leaving it open leaks the context on
+    // every run.
     await victim.context.close()
 
     // SECURE assertion 1 (root cause): the re-anchor must wrap the new AK to the
-    // account's OWN recovery keypair, so the stored public key is unchanged.
-    // Fails today — the rotation adopts whatever the server served, a "silent
-    // re-anchor" that actually swaps the recovery identity, undetected.
+    // account's OWN recovery keypair, so the stored public key is unchanged. The
+    // attestation over the served anchor does not verify under this device's key
+    // material, so the rotation aborts rather than adopting the attacker's keys.
     await expect
       .poll(async () => (await getEncryptionServerSnapshot(userId)).recoveryEcdhPublicKey, { timeout: 30_000 })
       .toBe(legit.recoveryEcdhPublicKey)
@@ -149,8 +161,8 @@ test.describe.serial('A2b — recovery-slot substitution', () => {
 
       // SECURE assertion 2: a phrase the account never minted must not unlock a
       // device, so the recovery is refused and the device stays untrusted with no
-      // envelope. Fails today — it becomes trusted and reads the victim's task
-      // (executed in full at commit `17e79451`).
+      // envelope. Before the fix it became trusted and read the victim's task —
+      // that takeover was executed in full at commit `17e79451`.
       await expect(
         waitForDeviceState(userId, attackerDeviceId, (state) => state.trusted && state.hasEnvelope),
       ).rejects.toThrow()

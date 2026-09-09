@@ -62,7 +62,18 @@ falsify, not a fact.
 - **C9 — Recovery-phrase path is sound.** 256-bit CSPRNG entropy; PBKDF2-SHA512 600k with a
   per-account salt; the derived public half is checked against the stored one before use; a wrong
   server-supplied `kdf_salt` or public key fails cleanly rather than downgrading or leaking. Recovery-
-  slot re-anchoring (which needs only the public half) cannot be abused for takeover.
+  slot re-anchoring (which needs only the public half) cannot be abused for takeover: the anchor
+  carries a **recovery attestation** (THU-865) signed with the epoch's canary-derived signing key, and
+  a rotating device verifies it against a key it derives from its OWN keyring before wrapping. A2
+  cannot forge that signature — it does not hold DEK `"0"`, so it cannot learn the canary secret — and
+  a missing or bad attestation fails closed, so a substituted anchor aborts the rotation instead of
+  escrowing the next AK. Gated by `attacks/recovery-slot-substitution.spec.ts` (green, untagged).
+  **Three residuals.** (1) A2 can *withhold* the attestation and thereby block AK rotation —
+  degradation, not takeover, same shape as THU-871. (2) The signing key derives from the canary
+  secret, and a **revoked** device retains DEK `"0"` and can still fetch the current canary (THU-872),
+  so A2 colluding with a revoked device can forge an attestation; closing THU-872 closes this too.
+  (3) `revokeDeviceAndRotate` verifies the anchor only at its third step, so under this attack the
+  revoke and DEK rotation commit while the AK never rotates — pre-flighting the check is follow-up.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.

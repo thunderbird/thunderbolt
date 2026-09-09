@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { ResponsiveModal, ResponsiveModalContent, ResponsiveModalTitle } from '@/components/ui/responsive-modal'
 import { Button } from '@/components/ui/button'
 import { useSyncSetup } from '@/hooks/use-sync-setup'
@@ -139,7 +140,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
         }
       }}
     >
-      <ResponsiveModalTitle className="sr-only">Set up encrypted sync</ResponsiveModalTitle>
+      <ResponsiveModalTitle className="sr-only">
+        <Trans>Set up encrypted sync</Trans>
+      </ResponsiveModalTitle>
       {setup.step === 'recovery-key-entry' && (
         <button
           type="button"
@@ -147,7 +150,9 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
           className="absolute left-4 top-4 flex h-[var(--touch-height-sm)] w-[var(--touch-height-sm)] cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="size-[var(--icon-size-default)]" />
-          <span className="sr-only">Go back</span>
+          <span className="sr-only">
+            <Trans>Go back</Trans>
+          </span>
         </button>
       )}
 
@@ -208,10 +213,14 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
       <IconCircle>
         <ShieldCheck className="w-8 h-8 text-primary" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">Set up sync</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>Set up sync</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
-        your data.
+        <Trans>
+          Keep your data in sync across all your devices. Everything is encrypted end-to-end. Only your devices can read
+          your data.
+        </Trans>
       </p>
     </div>
 
@@ -220,10 +229,10 @@ const IntroStep = ({ onContinue, isLoading }: { onContinue: () => void; isLoadin
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Setting up…
+            <Trans>Setting up…</Trans>
           </>
         ) : (
-          'Continue'
+          <Trans>Continue</Trans>
         )}
       </Button>
     </div>
@@ -246,16 +255,24 @@ const DetectingStep = ({ isLoading, error, onRetry }: DetectingStepProps) => (
       {isLoading && (
         <>
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-          <h2 className="text-2xl font-bold">Setting up encryption…</h2>
-          <p className="text-muted-foreground">Registering this device and detecting your account status.</p>
+          <h2 className="text-2xl font-bold">
+            <Trans>Setting up encryption…</Trans>
+          </h2>
+          <p className="text-muted-foreground">
+            <Trans>Registering this device and detecting your account status.</Trans>
+          </p>
         </>
       )}
       {error && (
         <>
-          <h2 className="text-2xl font-bold">Something went wrong</h2>
+          <h2 className="text-2xl font-bold">
+            <Trans>Something went wrong</Trans>
+          </h2>
           <p className="text-sm text-destructive">{error}</p>
           <div className="pt-2">
-            <Button onClick={onRetry}>Try again</Button>
+            <Button onClick={onRetry}>
+              <Trans>Try again</Trans>
+            </Button>
           </div>
         </>
       )}
@@ -279,14 +296,20 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
       <IconCircle>
         <Lock className="w-8 h-8 text-primary" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">First device setup</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>First device setup</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        This is the first device on your account. We&apos;ll create an encryption key to protect your data and give you
-        a recovery key to keep safe.
+        <Trans>
+          This is the first device on your account. We&apos;ll create an encryption key to protect your data and give
+          you a recovery key to keep safe.
+        </Trans>
       </p>
       <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-        Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all your
-        devices.
+        <Trans>
+          Please store your recovery key somewhere safe. You&apos;ll need it to access your data if you ever lose all
+          your devices.
+        </Trans>
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
@@ -296,10 +319,10 @@ const FirstDeviceSetupStep = ({ onContinue, isLoading, error }: FirstDeviceSetup
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Generating keys…
+            <Trans>Generating keys…</Trans>
           </>
         ) : (
-          'Continue'
+          <Trans>Continue</Trans>
         )}
       </Button>
     </div>
@@ -316,15 +339,19 @@ const DeniedStep = ({ onRetry }: { onRetry: () => void }) => (
       <IconCircle>
         <ShieldAlert className="w-8 h-8 text-destructive" />
       </IconCircle>
-      <h2 className="text-2xl font-bold">Request denied</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>Request denied</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        Your request to sync this device was denied by another device. You can try again or close this dialog.
+        <Trans>
+          Your request to sync this device was denied by another device. You can try again or close this dialog.
+        </Trans>
       </p>
     </div>
 
     <div className="pt-5">
       <Button className="w-full" onClick={onRetry}>
-        Try again
+        <Trans>Try again</Trans>
       </Button>
     </div>
   </div>
@@ -338,15 +365,17 @@ const SetupCompleteStep = ({ onDone }: { onDone: () => void }) => (
   <div className="w-full flex flex-col">
     <div className="text-center space-y-4">
       <GradientCircleCheck className="mx-auto h-12 w-12" />
-      <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
+      <h2 className="text-2xl font-bold">
+        <Trans>You&apos;re all set!</Trans>
+      </h2>
       <p className="text-muted-foreground">
-        This device has been approved and sync is now enabled across your devices.
+        <Trans>This device has been approved and sync is now enabled across your devices.</Trans>
       </p>
     </div>
 
     <div className="pt-5">
       <Button className="w-full" onClick={onDone}>
-        Done
+        <Trans>Done</Trans>
       </Button>
     </div>
   </div>

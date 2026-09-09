@@ -4,6 +4,7 @@
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useLingui } from '@lingui/react/macro'
 import { AnimatePresence, m } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 
@@ -13,26 +14,30 @@ type ScrollToBottomButtonProps = {
   className?: string
 }
 
-export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollToBottomButtonProps) => (
-  <AnimatePresence>
-    {isVisible && (
-      <m.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        transition={{ duration: 0.2 }}
-        className={cn('absolute bottom-0 left-1/2 -translate-x-1/2 z-10', className)}
-      >
-        <Button
-          variant="outline"
-          size="icon"
-          className="rounded-full bg-background/80 backdrop-blur-sm shadow-md size-[var(--touch-height-sm)]"
-          onClick={onClick}
-          aria-label="Scroll to bottom"
+export const ScrollToBottomButton = ({ isVisible, onClick, className }: ScrollToBottomButtonProps) => {
+  const { t } = useLingui()
+
+  return (
+    <AnimatePresence>
+      {isVisible && (
+        <m.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          transition={{ duration: 0.2 }}
+          className={cn('absolute bottom-0 left-1/2 -translate-x-1/2 z-10', className)}
         >
-          <ChevronDown className="size-[var(--icon-size-default)]" />
-        </Button>
-      </m.div>
-    )}
-  </AnimatePresence>
-)
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-full bg-background/80 backdrop-blur-sm shadow-md size-[var(--touch-height-sm)]"
+            onClick={onClick}
+            aria-label={t`Scroll to bottom`}
+          >
+            <ChevronDown className="size-[var(--icon-size-default)]" />
+          </Button>
+        </m.div>
+      )}
+    </AnimatePresence>
+  )
+}

@@ -6,10 +6,16 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import type { AbstractPowerSyncDatabase } from '@powersync/web'
 import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
 
 const authToken = 'test-auth-token'
-const backendUrl = 'https://api.test'
+const backendUrl = 'https://api.test/v1'
+
+const createFetchStub = (fetchMock: ReturnType<typeof mock>): typeof fetch =>
+  Object.assign((input: RequestInfo | URL, init?: RequestInit) => fetchMock(input, init), {
+    preconnect: globalThis.fetch.preconnect,
+  })
 
 describe('handleCredentialsInvalidIfNeeded', () => {
   let dispatchSpy: ReturnType<typeof spyOn>
@@ -184,6 +190,41 @@ describe('ThunderboltConnector', () => {
     expect(headers['X-Device-ID']).toBeTruthy()
     expect(headers['X-Device-Name']).toBeTruthy()
   })
+
+  for (const connectorUrl of [backendUrl, `${backendUrl}/`]) {
+    it(`fetchCredentials uses the exact token endpoint for ${connectorUrl}`, async () => {
+      setAuthToken(authToken)
+      fetchMock.mockResolvedValue(
+        Response.json({
+          token: 'ps-token',
+          expiresAt: '2025-12-31T00:00:00Z',
+          powerSyncUrl: 'wss://ps.test/sync',
+        }),
+      )
+      const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
+
+      await connector.fetchCredentials()
+
+      const url = fetchMock.mock.calls[0]?.[0]
+      expect(url).toBe('https://api.test/v1/powersync/token')
+      expect(url).not.toContain('/v1//')
+    })
+
+    it(`uploadData uses the exact upload endpoint for ${connectorUrl}`, async () => {
+      const complete = mock(() => Promise.resolve())
+      const database = Object.create(null) as AbstractPowerSyncDatabase
+      database.getNextCrudTransaction = async () => ({ crud: [], haveMore: false, complete })
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+      const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
+
+      await connector.uploadData(database)
+
+      const url = fetchMock.mock.calls[0]?.[0]
+      expect(url).toBe('https://api.test/v1/powersync/upload')
+      expect(url).not.toContain('/v1//')
+      expect(complete).toHaveBeenCalledTimes(1)
+    })
+  }
 
   it('fetchCredentials returns null and dispatches event when backend returns 410', async () => {
     setAuthToken(authToken)

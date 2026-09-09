@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
 import type { AnimationEvent, ReactNode } from 'react'
 
@@ -55,6 +56,7 @@ type DetailPanelProps = {
  * flat on the surface with hairline dividers instead of nested cards.
  */
 export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children }: DetailPanelProps) => {
+  const { t } = useLingui()
   const { isMobile } = useResponsiveModalContext()
 
   return (
@@ -91,7 +93,7 @@ export const DetailPanel = ({ icon, title, subtitle, actions, onClose, children 
               variant="ghost"
               size="icon"
               onClick={onClose}
-              aria-label="Close details"
+              aria-label={t`Close details`}
               className={mutedIconButtonClass}
             >
               <X />

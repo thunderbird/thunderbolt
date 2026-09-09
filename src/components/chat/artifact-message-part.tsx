@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useContentView } from '@/content-view/context'
 import { useThrottle } from '@/hooks/use-throttle'
 import type { ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { PanelRight } from 'lucide-react'
 import { InlineArtifactCard } from './inline-artifact-card'
 
@@ -26,9 +27,10 @@ type ArtifactMessagePartProps = {
  * call renders nothing here (it stays an ordinary tool call in the group).
  */
 export const ArtifactMessagePart = ({ part }: ArtifactMessagePartProps) => {
+  const { t } = useLingui()
   const artifactId = part.toolCallId
   const input = renderHtmlInput(part as RenderHtmlPart)
-  const title = input.title?.trim() || 'Artifact'
+  const title = input.title?.trim() || t`Artifact`
 
   const streaming = part.state === 'input-streaming' || part.state === 'input-available'
   const verified = part.state === 'output-available' && renderHtmlOutput(part as RenderHtmlPart)?.ok === true
@@ -66,9 +68,11 @@ type ArtifactPanelBarProps = {
 const ArtifactPanelBar = ({ title, onShowInline }: ArtifactPanelBarProps) => (
   <div className="my-2 flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-3 py-2">
     <PanelRight className="size-4 shrink-0 text-muted-foreground" />
-    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{title} — shown in side panel</span>
+    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+      <Trans>{title} — shown in side panel</Trans>
+    </span>
     <Button variant="ghost" size="sm" className="h-7 shrink-0" onClick={onShowInline}>
-      Show inline
+      <Trans>Show inline</Trans>
     </Button>
   </div>
 )

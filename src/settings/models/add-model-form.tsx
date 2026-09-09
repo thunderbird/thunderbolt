@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Loader2, X } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
 
@@ -17,7 +18,7 @@ import { useAutofocusOnMount } from '@/hooks/use-autofocus-on-mount'
 import type { Model } from '@/types'
 import { ConnectionTestSection } from './connection-test-section'
 import { providerAutoFetchesCatalog, shouldDisableAddModel } from './model-policy'
-import { providerLabels } from './model-presentation'
+import { customProviderLabel, providerLabels } from './model-presentation'
 import type { AddModelFormValues } from './use-add-model-form'
 
 /** Provider picker options, derived from the exhaustive labels Record so a new
@@ -64,6 +65,7 @@ export const AddModelForm = ({
   onSelectModel,
   onTestConnection,
 }: AddModelFormProps) => {
+  const { i18n, t } = useLingui()
   const provider = form.watch('provider')
   const apiKey = form.watch('apiKey')
   const url = form.watch('url')
@@ -85,7 +87,9 @@ export const AddModelForm = ({
           name="provider"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Provider</FormLabel>
+              <FormLabel>
+                <Trans>Provider</Trans>
+              </FormLabel>
               <FormControl>
                 <Select
                   onValueChange={(value: Model['provider']) => {
@@ -94,12 +98,12 @@ export const AddModelForm = ({
                   value={field.value}
                 >
                   <SelectTrigger ref={providerTriggerRef} className="w-full rounded-lg">
-                    <SelectValue placeholder="Select provider" />
+                    <SelectValue placeholder={t`Select provider`} />
                   </SelectTrigger>
                   <SelectContent>
                     {providerOptions.map((provider) => (
                       <SelectItem key={provider} value={provider}>
-                        {providerLabels[provider]}
+                        {provider === 'custom' ? i18n._(customProviderLabel) : providerLabels[provider]}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -115,7 +119,9 @@ export const AddModelForm = ({
             name="url"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>URL</FormLabel>
+                <FormLabel>
+                  <Trans>URL</Trans>
+                </FormLabel>
                 <FormControl>
                   <div className="relative">
                     <Input
@@ -144,7 +150,9 @@ export const AddModelForm = ({
             name="apiKey"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>API Key{provider === 'custom' ? ' (Optional)' : ''}</FormLabel>
+                <FormLabel>
+                  {provider === 'custom' ? <Trans>API Key (Optional)</Trans> : <Trans>API Key</Trans>}
+                </FormLabel>
                 <FormControl>
                   <Input
                     type="password"
@@ -171,15 +179,17 @@ export const AddModelForm = ({
             name="model"
             render={() => (
               <FormItem className="flex flex-col">
-                <FormLabel>Model</FormLabel>
+                <FormLabel>
+                  <Trans>Model</Trans>
+                </FormLabel>
                 <FormControl>
                   <Combobox
                     items={modelItems}
                     value={selectedModelId || undefined}
                     onValueChange={onSelectModel}
-                    placeholder="Select model…"
-                    searchPlaceholder="Search models…"
-                    emptyMessage="No models found."
+                    placeholder={t`Select model…`}
+                    searchPlaceholder={t`Search models…`}
+                    emptyMessage={t`No models found.`}
                     loading={isLoadingCatalog}
                   />
                 </FormControl>
@@ -194,11 +204,13 @@ export const AddModelForm = ({
             name="customModel"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Model</FormLabel>
+                <FormLabel>
+                  <Trans>Model</Trans>
+                </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
-                    placeholder="e.g., gpt-4-turbo-preview"
+                    placeholder={t`e.g., gpt-4-turbo-preview`}
                     className="rounded-lg"
                     onChange={(event) => {
                       field.onChange(event)
@@ -217,9 +229,11 @@ export const AddModelForm = ({
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Display Name</FormLabel>
+                <FormLabel>
+                  <Trans>Display Name</Trans>
+                </FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="e.g., GPT-4 Turbo" className="rounded-lg" />
+                  <Input {...field} placeholder={t`e.g., GPT-4 Turbo`} className="rounded-lg" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -229,8 +243,8 @@ export const AddModelForm = ({
         {!supportsTools && (model || selectedModelId === 'custom') && (
           <StatusCard
             icon={<X className="h-4 w-4 text-warning" />}
-            title="Model may not be compatible"
-            description="This model does not seem to support tool usage."
+            title={t`Model may not be compatible`}
+            description={t`This model does not seem to support tool usage.`}
           />
         )}
         <ConnectionTestSection
@@ -245,7 +259,7 @@ export const AddModelForm = ({
         {submitError && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}
-            title="Something went wrong"
+            title={t`Something went wrong`}
             description={submitError}
           />
         )}
@@ -254,7 +268,7 @@ export const AddModelForm = ({
           <Button
             type="submit"
             isLoading={isPending}
-            loadingLabel="Adding…"
+            loadingLabel={t`Adding…`}
             disabled={shouldDisableAddModel({
               isPending,
               isFormValid: form.formState.isValid,
@@ -262,7 +276,7 @@ export const AddModelForm = ({
               connectionStatus,
             })}
           >
-            Add Model
+            <Trans>Add Model</Trans>
           </Button>
         </FormFooter>
       </form>

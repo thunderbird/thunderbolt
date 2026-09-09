@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 
@@ -14,12 +15,16 @@ export const AccountDeleted = () => (
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">Account Deleted</h1>
-        <p className="text-muted-foreground">Your account has been deleted and local data has been cleared.</p>
+        <h1 className="text-4xl font-semibold tracking-tight">
+          <Trans>Account Deleted</Trans>
+        </h1>
+        <p className="text-muted-foreground">
+          <Trans>Your account has been deleted and local data has been cleared.</Trans>
+        </p>
       </div>
 
       <Button variant="secondary" onClick={() => window.location.replace('/')}>
-        Back to App
+        <Trans>Back to App</Trans>
       </Button>
     </div>
   </div>

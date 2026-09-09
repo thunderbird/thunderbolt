@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 import { Check, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -107,6 +108,7 @@ export const AddCustomAgentForm = ({
   testAcpConnection = defaultTestAcpConnection,
   loadAppNodeId = irohClientNodeId,
 }: AddCustomAgentFormProps) => {
+  const { i18n, t } = useLingui()
   const [state, dispatch] = useReducer(agentFormReducer, emptyState)
 
   // The user just chose "Add Agent" — land ready to type a name (same idiom
@@ -165,7 +167,7 @@ export const AddCustomAgentForm = ({
     } catch (error) {
       // Keep the form intact so the user can retry — and say why nothing happened.
       console.error('Failed to add custom agent', error)
-      dispatch({ type: 'SUBMIT_FAILED', message: "Couldn't add the agent. Please try again." })
+      dispatch({ type: 'SUBMIT_FAILED', message: t`Couldn't add the agent. Please try again.` })
       return
     }
     // The parent unmounts the form on close, so state resets by remount.
@@ -177,14 +179,18 @@ export const AddCustomAgentForm = ({
   // which owns the "Add custom agent" header and close affordance.
   return (
     <div className="flex flex-1 flex-col">
-      <p className="text-sm text-muted-foreground">Connect a remote agent that speaks the Agent Client Protocol.</p>
+      <p className="text-sm text-muted-foreground">
+        <Trans>Connect a remote agent that speaks the Agent Client Protocol.</Trans>
+      </p>
       <div className="grid grid-cols-1 gap-4 pt-4 pb-2">
         <div className="grid grid-cols-1 gap-2">
-          <Label htmlFor="agent-name">Name</Label>
+          <Label htmlFor="agent-name">
+            <Trans>Name</Trans>
+          </Label>
           <Input
             id="agent-name"
             ref={nameInputRef}
-            placeholder="My Agent"
+            placeholder={t`My Agent`}
             value={state.name}
             onChange={(e) => dispatch({ type: 'NAME_CHANGED', value: e.target.value })}
             autoComplete="off"
@@ -194,7 +200,7 @@ export const AddCustomAgentForm = ({
           <Label htmlFor="agent-url">URL</Label>
           <Input
             id="agent-url"
-            placeholder="wss://example.com/ws or paste an iroh ticket"
+            placeholder={t`wss://example.com/ws or paste an iroh ticket`}
             value={state.url}
             onChange={(e) => dispatch({ type: 'URL_CHANGED', value: e.target.value })}
             autoComplete="off"
@@ -203,16 +209,20 @@ export const AddCustomAgentForm = ({
             spellCheck={false}
           />
           <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-            A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare NodeId
-            works only if the peer is discoverable).
+            <Trans>
+              A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer-to-peer connection (a bare
+              NodeId works only if the peer is discoverable).
+            </Trans>
           </p>
         </div>
         {isIroh && <IrohPairingPanel appNodeId={appNodeId} />}
         <div className="grid grid-cols-1 gap-2">
-          <Label htmlFor="agent-description">Description</Label>
+          <Label htmlFor="agent-description">
+            <Trans>Description</Trans>
+          </Label>
           <Input
             id="agent-description"
-            placeholder="Optional"
+            placeholder={t`Optional`}
             value={state.description}
             onChange={(e) => dispatch({ type: 'DESCRIPTION_CHANGED', value: e.target.value })}
             autoComplete="off"
@@ -229,30 +239,30 @@ export const AddCustomAgentForm = ({
             {state.isTestingConnection ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Testing agent…
+                <Trans>Testing agent…</Trans>
               </>
             ) : (
-              'Test connection'
+              <Trans>Test connection</Trans>
             )}
           </Button>
         )}
         {state.connectionStatus === 'success' && (
           <StatusCard
             icon={<Check className="h-4 w-4 text-success" />}
-            title="Connection successful!"
-            description="Successfully connected to the agent."
+            title={t`Connection successful!`}
+            description={t`Successfully connected to the agent.`}
           />
         )}
         {state.connectionStatus === 'error' && (
           <StatusCard
             icon={<X className="h-4 w-4 text-destructive" />}
-            title="Connection failed"
-            description={state.connectionError || 'Could not connect to the agent.'}
+            title={t`Connection failed`}
+            description={state.connectionError || t`Could not connect to the agent.`}
           />
         )}
         {urlError && (
           <p role="alert" className="text-[length:var(--font-size-sm)] text-destructive">
-            {urlError}
+            {i18n._(urlError)}
           </p>
         )}
       </div>
@@ -263,8 +273,8 @@ export const AddCustomAgentForm = ({
           </p>
         )}
         <ResponsiveModalCancel onClick={onClose} />
-        <Button onClick={handleSubmit} isLoading={state.submitting} loadingLabel="Adding…" disabled={!canSubmit}>
-          Add Agent
+        <Button onClick={handleSubmit} isLoading={state.submitting} loadingLabel={t`Adding…`} disabled={!canSubmit}>
+          <Trans>Add Agent</Trans>
         </Button>
       </FormFooter>
     </div>

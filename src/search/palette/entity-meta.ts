@@ -2,20 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { searchEntities } from '../registry'
 import type { SearchEntityType } from '../types'
 
 /** Human-facing group headings, one per entity type (plural, sentence case). */
-export const entityLabels: Record<SearchEntityType, string> = {
-  chat: 'Chats',
-  message: 'Messages',
-  model: 'Models',
-  skill: 'Skills',
-  agent: 'Agents',
-  mcp: 'Connections',
-  device: 'Devices',
-  task: 'Tasks',
-  project: 'Projects',
+export const entityLabels: Record<SearchEntityType, MessageDescriptor> = {
+  chat: msg`Chats`,
+  message: msg`Messages`,
+  model: msg`Models`,
+  skill: msg`Skills`,
+  agent: msg`Agents`,
+  mcp: msg`Connections`,
+  device: msg`Devices`,
+  task: msg`Tasks`,
+  project: msg`Projects`,
 }
 
 /** Lucide icon for each entity type, sourced from the shared registry. */

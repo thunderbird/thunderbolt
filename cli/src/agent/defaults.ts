@@ -4,10 +4,7 @@
 
 /** Provider defaults and credential environment metadata shared by CLI setup. */
 
-import type { BuiltinProvider, ModelProvider } from './types.ts'
-
-/** Default model backend when provider is omitted. */
-export const defaultProvider: BuiltinProvider = 'anthropic'
+import type { BuiltinProvider } from './types.ts'
 
 /** Default Anthropic model. */
 export const defaultModel = 'claude-opus-4-8'
@@ -46,18 +43,4 @@ export const builtinProviderEnvVars: Readonly<Record<BuiltinProvider, readonly s
   cerebras: ['CEREBRAS_API_KEY'],
   together: ['TOGETHER_API_KEY'],
   fireworks: ['FIREWORKS_API_KEY'],
-}
-
-/**
- * Reports whether the environment carries a usable credential for `provider`.
- * Built-in providers accept any of their supported environment variables;
- * `openai-compat` accepts only its dedicated `THUNDERBOLT_OPENAI_COMPAT_KEY`
- * (generic provider keys are never forwarded to arbitrary custom endpoints).
- */
-export const hasProviderEnvKey = (
-  provider: ModelProvider,
-  env: Readonly<Record<string, string | undefined>>,
-): boolean => {
-  if (provider === 'openai-compat') return Boolean(env.THUNDERBOLT_OPENAI_COMPAT_KEY)
-  return builtinProviderEnvVars[provider].some((name) => Boolean(env[name]))
 }

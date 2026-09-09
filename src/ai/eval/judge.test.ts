@@ -4,11 +4,14 @@
 
 import { describe, expect, test } from 'bun:test'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { resolveOpenAiCompatConnection } from '@/ai/fetch'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import {
   applyJudgeVerdict,
   buildJudgePrompt,
   evaluateWithJudge,
   getJudgeModelName,
+  judgeModels,
   parseJudgeVerdict,
   requestJudgeVerdict,
   requiresJudge,
@@ -47,22 +50,34 @@ const acceptedVerdict = {
   searchOffer: null,
   premiseRebuttal: null,
   verificationDisclaimer: null,
+  replyLanguageMatches: null,
   explanation: 'The year is correct.',
 }
 
 describe('judge model assignment', () => {
-  test('uses Flash for Opus and Opus for Flash and GLM', () => {
-    expect(getJudgeModelName('opus')).toBe('flash')
-    expect(getJudgeModelName('flash')).toBe('opus')
-    expect(getJudgeModelName('glm')).toBe('opus')
+  test('assigns every eval model to Opus, including Opus itself', () => {
+    for (const testedModel of evalModels) {
+      expect(getJudgeModelName(testedModel.name)).toBe('opus')
+    }
   })
 
-  test('assigns every eval model to a resolvable external judge', () => {
-    for (const testedModel of evalModels) {
-      const judge = getJudgeModelName(testedModel.name)
-      expect(['opus', 'flash']).toContain(judge)
-      expect(judge).not.toBe(testedModel.name)
-      expect(judge).not.toBe('glm')
+  test('only uses non-confidential judge models', () => {
+    for (const judgeModel of Object.values(judgeModels)) {
+      expect(judgeModel.provider).not.toBe('tinfoil')
+      expect(judgeModel.isConfidential).toBe(0)
+    }
+  })
+
+  test('resolves an OpenAI-compatible connection for every judge model', () => {
+    const proxyFetch: FetchFn = Object.assign(
+      async () => {
+        throw new Error('Connection resolution must not make network requests')
+      },
+      { preconnect: () => Promise.resolve(false) },
+    )
+
+    for (const judgeModel of Object.values(judgeModels)) {
+      expect(resolveOpenAiCompatConnection(judgeModel, () => proxyFetch)).not.toBeNull()
     }
   })
 
@@ -104,6 +119,7 @@ This is the final result.`
           searchOffer: null,
           premiseRebuttal: null,
           verificationDisclaimer: null,
+          replyLanguageMatches: null,
           explanation: 'ok',
           pass: true,
         }),
@@ -165,6 +181,7 @@ describe('judge-backed criteria', () => {
       searchOffer: null,
       premiseRebuttal: null,
       verificationDisclaimer: null,
+      replyLanguageMatches: null,
       explanation: 'The response gave the wrong year.',
     })
 
@@ -179,6 +196,7 @@ describe('judge-backed criteria', () => {
         searchOffer: null,
         premiseRebuttal: null,
         verificationDisclaimer: null,
+        replyLanguageMatches: null,
         explanation: 'No verdict.',
       }),
     ).toThrow('Judge omitted declared assertion: correct')
@@ -321,6 +339,45 @@ describe('judge-backed criteria', () => {
       'verificationDisclaimer: Judge only whether the response explicitly admitted it could not verify the answer',
     )
     expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('names the expected language and excludes quoted content from the reply-language check', () => {
+    const prompt = buildJudgePrompt(
+      { ...scenario, criteria: { mustProduceOutput: true, expectReplyLanguage: 'pt-BR' } },
+      'Esse erro acontece porque a chave "amount" nao existe no dicionario.',
+    )
+
+    expect(prompt).toContain('replyLanguageMatches: Answer true or false')
+    // The name comes from CLDR, so match the language rather than the phrasing.
+    expect(prompt).toMatch(/prose is written in [^.]*Portuguese/)
+    expect(prompt).toContain('Quoted source text, error messages, log output, code')
+    expect(prompt).not.toContain('Unsupported claims')
+  })
+
+  test('asks for the reply-language field and grades it independently', () => {
+    const languageScenario: EvalScenario = {
+      ...scenario,
+      criteria: { mustProduceOutput: true, expectReplyLanguage: 'pt-BR' },
+    }
+    const languageResult: EvalResult = { ...result, scenario: languageScenario }
+
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Return only JSON with exactly:')
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('replyLanguageMatches, explanation.')
+    // The field name used to read as a value slot, so judges returned "English"
+    // instead of a boolean and broke every scenario that does not declare it.
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('boolean or null — never a string')
+    expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Answer true or false — never a language name')
+    expect(requiresJudge(languageScenario.criteria)).toBe(true)
+    expect(
+      applyJudgeVerdict(languageResult, {
+        correct: null,
+        searchOffer: null,
+        premiseRebuttal: null,
+        verificationDisclaimer: null,
+        replyLanguageMatches: false,
+        explanation: 'The reply is in English.',
+      }).failures,
+    ).toContain('Judge rejected reply language: The reply is in English.')
   })
 
   test('uses the final follow-up as the prompt for a judged response', () => {

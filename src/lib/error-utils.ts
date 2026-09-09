@@ -4,9 +4,20 @@
 
 import type { HandleError, HandleErrorCode } from '@/types/handle-errors'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { z } from 'zod'
 
 const chatErrorKinds = ['attestation', 'timeout', 'rate-limit', 'provider', 'network', 'connection-lost'] as const
 export type ChatErrorKind = (typeof chatErrorKinds)[number]
+const inferenceQuotaWindowSchema = z.enum(['5h', '7d'])
+export type InferenceQuotaWindow = z.infer<typeof inferenceQuotaWindowSchema>
+const inferenceQuotaErrorSchema = z.object({
+  code: z.literal('INFERENCE_QUOTA_EXCEEDED'),
+  window: inferenceQuotaWindowSchema,
+})
+const inferenceQuotaResponseSchema = z.object({ error: inferenceQuotaErrorSchema })
+const serializedErrorSchema = z.object({ error: z.string() })
+const toolParameterErrorSchema = z.object({ param: z.literal('tools') })
+const toolParameterResponseSchema = z.union([toolParameterErrorSchema, z.object({ error: toolParameterErrorSchema })])
 
 const isChatErrorKind = (value: unknown): value is ChatErrorKind => chatErrorKinds.includes(value as ChatErrorKind)
 
@@ -34,7 +45,11 @@ const firstString = (...values: unknown[]): string | undefined =>
   values.find((value): value is string => typeof value === 'string')
 
 const getPiErrorStatusCode = (message: string): number | undefined => {
-  const match = message.match(/^(\d{3}):\s/) ?? message.match(/^[^(]*\((\d{3})\):/)
+  const jsonBodyMatch = message.match(/^(\d{3})\s+((?:\{|\[)[\s\S]*)$/)
+  const match =
+    message.match(/^(\d{3}):\s/) ??
+    message.match(/^[^(]*\((\d{3})\):/) ??
+    (jsonBodyMatch && parseJson(jsonBodyMatch[2]) !== undefined ? jsonBodyMatch : null)
   const status = match ? Number(match[1]) : undefined
   return status !== undefined && status >= 400 && status <= 599 ? status : undefined
 }
@@ -145,7 +160,8 @@ export const isRateLimitError = (error?: Error | null): boolean => {
  * is present. The frontend serializes API errors as `{"error":...,"status":N}`
  * (see `aiFetchStreamingResponse`). The Pi path instead flattens errors to text
  * through pi-ai's `formatProviderError`, using either `"<status>: <body>"` or
- * `"<prefix> (<status>): <message>"`.
+ * `"<prefix> (<status>): <message>"`. Direct managed inference errors may use
+ * `"<status> <JSON body>"` instead.
  */
 export const getErrorStatusCode = (error?: Error | null): number | undefined => {
   if (!error?.message) {
@@ -153,6 +169,27 @@ export const getErrorStatusCode = (error?: Error | null): number | undefined => 
   }
   const parsed = parseJson(error.message)
   return firstNumber(parsed?.status, parsed?.statusCode) ?? getPiErrorStatusCode(error.message)
+}
+
+/** Extract the window from a known managed-inference quota rejection. */
+export const getInferenceQuotaWindow = (error?: Error | null): InferenceQuotaWindow | undefined => {
+  if (!error?.message || getErrorStatusCode(error) !== 429) {
+    return undefined
+  }
+
+  const serializedError = parseJson(error.message)
+  const directBodyMatch = error.message.match(/^429\s+(\{[\s\S]*)$/)
+  const directBody = directBodyMatch ? parseJson(directBodyMatch[1]) : undefined
+  const directQuotaError = inferenceQuotaErrorSchema.safeParse(directBody)
+
+  if (directQuotaError.success) {
+    return directQuotaError.data.window
+  }
+
+  const serializedQuotaError = serializedErrorSchema.safeParse(serializedError)
+  const responseBody = serializedQuotaError.success ? parseJson(serializedQuotaError.data.error) : undefined
+  const nestedQuotaError = inferenceQuotaResponseSchema.safeParse(responseBody)
+  return nestedQuotaError.success ? nestedQuotaError.data.error.window : undefined
 }
 
 /**
@@ -173,7 +210,7 @@ export const getErrorRetryable = (error?: Error | null): boolean | undefined => 
     return parsed.isRetryable
   }
 
-  const status = getPiErrorStatusCode(error.message)
+  const status = getErrorStatusCode(error)
   return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429
     ? false
     : undefined
@@ -208,21 +245,32 @@ export const isContextOverflowError = (error?: Error | null): boolean => {
   return contextOverflowMarkers.some((marker) => message.includes(marker))
 }
 
+/** Read the rejected parameter from a structured provider body, including transport envelopes and Pi prefixes. */
+const isToolParameterError = (message: string): boolean => {
+  const parsed = parseJson(message)
+  const serializedError = serializedErrorSchema.safeParse(parsed)
+  const body = serializedError.success
+    ? parseJson(serializedError.data.error)
+    : (parsed ?? parseJson(message.replace(/^(?:\d{3}:?\s+|[^(]*\(\d{3}\):\s*)/, '')))
+  return toolParameterResponseSchema.safeParse(body).success
+}
+
 /**
  * A content rejection: the endpoint rejected the *form* of the request body —
  * a file part it can't carry — surfaced as a 400 (e.g. the OpenAI-compat
  * `content.str` error) or the 422 `serializeStreamError` mints for a file-part
  * `UnsupportedFunctionalityError`. Deliberately narrow: it excludes auth
- * (401/403), not-found (404), timeouts (408), rate limits (429), and context
- * overflow — none of which attachment remediation can fix by re-delivering as
- * text/images. This is the ONLY signal that should trigger remediation.
+ * (401/403), not-found (404), timeouts (408), rate limits (429), context overflow,
+ * and structured tool-parameter errors — none of which attachment remediation
+ * can fix by re-delivering as text/images. This is the ONLY signal that should
+ * trigger remediation.
  */
 export const isContentRejectionError = (error?: Error | null): boolean => {
-  if (isRateLimitError(error) || isContextOverflowError(error)) {
+  if (!error?.message || isRateLimitError(error) || isContextOverflowError(error)) {
     return false
   }
   const status = getErrorStatusCode(error)
-  return status === 400 || status === 422
+  return (status === 400 || status === 422) && !isToolParameterError(error.message)
 }
 
 /**

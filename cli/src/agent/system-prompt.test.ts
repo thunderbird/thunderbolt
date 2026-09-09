@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import packageJson from '../../package.json' with { type: 'json' }
 import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 
@@ -23,6 +24,12 @@ describe('buildSystemPrompt', () => {
 
   test('always interpolates the working directory', () => {
     expect(buildSystemPrompt({ cwd: '/home/me/project' })).toContain('Working directory: /home/me/project')
+  })
+
+  test('identifies the CLI client and its app version', () => {
+    expect(buildSystemPrompt({ cwd: '/work' })).toContain(
+      `Client environment: cli\nApp version: ${packageJson.version}`,
+    )
   })
 
   test('describes bash only when shell execution is enabled', () => {

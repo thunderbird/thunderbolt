@@ -1,0 +1,5 @@
+# Lingui-generated email catalogs (`bun run i18n:extract` at the repo root owns
+# these). `bun run format` runs from this directory and Prettier only reads a
+# .prettierignore in its cwd, so without this entry formatting rewrites the
+# generated files and the CI i18n check fails on every run.
+src/emails/locales

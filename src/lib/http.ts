@@ -8,6 +8,12 @@
  * error throwing on non-2xx, prefixUrl, and beforeRequest hooks.
  */
 
+// Imported from the leaf module rather than `@/i18n` so this client keeps out of
+// Lingui's dependency graph (the barrel pulls in @lingui/core and the catalog
+// loader map).
+import { getActiveLocale } from '@/i18n/active-locale'
+import { appVersionHeader } from '@/lib/app-version'
+import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getDeviceId } from '@/lib/auth-token'
 import { getDeviceDisplayName } from '@/lib/platform'
 
@@ -83,6 +89,17 @@ const resolveUrl = (url: string, prefixUrl?: string): string => {
   }
   const base = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
   return `${base}${url}`
+}
+
+/** Match a request against the configured backend origin and path prefix. */
+const isBackendRequest = (requestUrl: string, backendUrl: URL): boolean => {
+  const request = new URL(requestUrl)
+  const backendPath = backendUrl.pathname.replace(/\/+$/, '')
+
+  return (
+    request.origin === backendUrl.origin &&
+    (backendPath === '' || request.pathname === backendPath || request.pathname.startsWith(`${backendPath}/`))
+  )
 }
 
 const makeResponsePromise = (promise: Promise<Response>): ResponsePromise => {
@@ -170,9 +187,12 @@ export const createAuthenticatedClient = (
   getToken: () => string | null,
   config: Pick<HttpClientConfig, 'fetch' | 'credentials'> = {},
 ): HttpClient => {
-  const normalizedPrefix = prefixUrl.endsWith('/') ? prefixUrl : `${prefixUrl}/`
+  const backendUrl =
+    prefixUrl.startsWith('http://') || prefixUrl.startsWith('https://')
+      ? new URL(prefixUrl)
+      : new URL(prefixUrl, window.location.href)
   return createClient({
-    prefixUrl,
+    prefixUrl: backendUrl.href,
     fetch: config.fetch,
     credentials: config.credentials,
     hooks: {
@@ -186,15 +206,18 @@ export const createAuthenticatedClient = (
           }
           // Inject device identity headers only for app backend requests (not external APIs).
           // Uses the same prefix guard as the afterResponse 401 handler below.
-          if (request.url === prefixUrl || request.url.startsWith(normalizedPrefix)) {
+          if (isBackendRequest(request.url, backendUrl)) {
             const deviceId = getDeviceId()
             if (deviceId) {
               request.headers.set('X-Device-ID', deviceId)
               request.headers.set('X-Device-Name', getDeviceDisplayName())
             }
-            if (import.meta.env.VITE_APP_VERSION) {
-              request.headers.set('X-App-Version', import.meta.env.VITE_APP_VERSION)
+            for (const [key, value] of Object.entries(appVersionHeader())) {
+              request.headers.set(key, value)
             }
+            // A single resolved tag, not a preference list — the client has already
+            // negotiated, so the backend forwards rather than re-negotiates.
+            request.headers.set('X-App-Language', getActiveLocale())
           }
         },
       ],
@@ -202,15 +225,23 @@ export const createAuthenticatedClient = (
         // Event name + reason kept in sync with src/db/powersync/connector.ts. Importing from there
         // would create a cycle (connector → sync-tracker → posthog → http).
         (request, response) => {
-          if (response.status !== 401 || !request.headers.has('Authorization')) {
+          // Only app-backend responses are actionable — external APIs use this same
+          // client with caller-provided tokens, so their 401/426 are not signals about
+          // our app session or app version. Same prefix guard as the beforeRequest hook.
+          if (!isBackendRequest(request.url, backendUrl)) {
             return
           }
-          if (request.url !== prefixUrl && !request.url.startsWith(normalizedPrefix)) {
+          // A 426 from our backend means this build is below the enforced minimum —
+          // status-only (the body stream belongs to the caller).
+          if (response.status === 426) {
+            handleAppVersionUnsupported(response.status)
             return
           }
-          window.dispatchEvent(
-            new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
-          )
+          if (response.status === 401 && request.headers.has('Authorization')) {
+            window.dispatchEvent(
+              new CustomEvent('powersync_credentials_invalid', { detail: { reason: 'session_expired' } }),
+            )
+          }
         },
       ],
     },

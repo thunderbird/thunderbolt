@@ -1,0 +1,87 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-09-02 10:54-0300\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: fr\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. js-lingui-explicit-id
+#: src/emails/email-layout.tsx
+msgid "Questions?"
+msgstr "Des questions ?"
+
+#. js-lingui-explicit-id
+#: src/emails/email-layout.tsx
+msgid "You can reply to this email"
+msgstr "Vous pouvez répondre à cet e-mail"
+
+#. js-lingui-explicit-id
+#: src/emails/magic-link.tsx
+msgid "Your Thunderbolt verification code"
+msgstr "Votre code de vérification Thunderbolt"
+
+#. js-lingui-explicit-id
+#: src/emails/magic-link.tsx
+msgid "Sign in to Thunderbolt"
+msgstr "Se connecter à Thunderbolt"
+
+#. js-lingui-explicit-id
+#: src/emails/magic-link.tsx
+msgid "Use the code below to sign in, or click the button."
+msgstr "Utilisez le code ci-dessous pour vous connecter, ou cliquez sur le bouton."
+
+#. js-lingui-explicit-id
+#: src/emails/magic-link.tsx
+msgid "Sign In"
+msgstr "Se connecter"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-joined.tsx
+#: src/emails/waitlist-not-ready.tsx
+msgid "You're on the Thunderbolt waitlist!"
+msgstr "Vous êtes sur la liste d'attente Thunderbolt !"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-joined.tsx
+msgid "Thanks for signing up!"
+msgstr "Merci de votre inscription !"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-joined.tsx
+msgid "You've been added to the Thunderbolt waitlist. We're working hard to get you access as soon as possible. We'll send you another email when it's your turn to join."
+msgstr "Vous avez été ajouté à la liste d'attente Thunderbolt. Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un autre e-mail lorsque ce sera votre tour."
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-joined.tsx
+#: src/emails/waitlist-not-ready.tsx
+#: src/emails/waitlist-reminder.tsx
+msgid "The Thunderbolt Team"
+msgstr "L'équipe Thunderbolt"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-not-ready.tsx
+msgid "Not quite ready yet!"
+msgstr "Pas encore tout à fait prêt !"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-not-ready.tsx
+msgid "We noticed you tried to sign in to Thunderbolt. You're on our waitlist, but we're not quite ready for you yet. Don't worry — we're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+msgstr "Nous avons remarqué que vous avez essayé de vous connecter à Thunderbolt. Vous êtes sur notre liste d'attente, mais nous ne sommes pas encore tout à fait prêts à vous accueillir. Pas d'inquiétude — nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-reminder.tsx
+msgid "You're already on the waitlist!"
+msgstr "Vous êtes déjà sur la liste d'attente !"
+
+#. js-lingui-explicit-id
+#: src/emails/waitlist-reminder.tsx
+msgid "Good news — you're already on the Thunderbolt waitlist. No need to sign up again! We're working hard to get you access as soon as possible. We'll send you an email when it's your turn to join."
+msgstr "Bonne nouvelle — vous êtes déjà sur la liste d'attente Thunderbolt. Pas besoin de vous inscrire à nouveau ! Nous faisons tout notre possible pour vous donner accès dès que possible. Nous vous enverrons un e-mail lorsque ce sera votre tour."

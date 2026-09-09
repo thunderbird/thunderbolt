@@ -84,10 +84,12 @@ describe('getPowerSyncOptions', () => {
       expect(factory.waOptions.flags?.enableMultiTabs).toBe(false)
     })
 
-    it('includes flags and sync with explicit worker paths', () => {
+    it('enables multi-tab sync selection and provides a dedicated sync worker factory', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
-      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: false })
-      expect(options.sync).toEqual({ worker: '/@powersync/worker/SharedSyncImplementation.umd.js' })
+      // PowerSyncDatabase-level enableMultiTabs: true selects the off-thread
+      // SharedWebStreamingSyncImplementation; the DB factory keeps its own false.
+      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
+      expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
     })
 
     it('always includes transformers', () => {
@@ -119,8 +121,8 @@ describe('getPowerSyncOptions', () => {
       const factory = options.database as WASQLiteOpenFactory
       expect(factory.waOptions.worker).toBe('/@powersync/worker/WASQLiteDB.umd.js')
       expect(factory.waOptions.flags?.enableMultiTabs).toBe(false)
-      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: false })
-      expect(options.sync).toEqual({ worker: '/@powersync/worker/SharedSyncImplementation.umd.js' })
+      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
+      expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
     })
   })
 })

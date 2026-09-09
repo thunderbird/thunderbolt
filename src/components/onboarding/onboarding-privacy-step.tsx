@@ -6,6 +6,7 @@ import { AppLogo } from '@/components/app-logo'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { Trans } from '@lingui/react/macro'
 import { Database, EyeOff, ServerOff } from 'lucide-react'
 import { OnboardingFeatureCard } from './onboarding-feature-card'
 import { OnboardingStepHeader } from './onboarding-step-header'
@@ -30,27 +31,27 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
       <div className="flex flex-col">
         <OnboardingStepHeader
           icon={<AppLogo size={72} />}
-          title="Welcome to Thunderbolt!"
-          description="Your private AI assistant"
+          title={<Trans>Welcome to Thunderbolt!</Trans>}
+          description={<Trans>Your private AI assistant</Trans>}
         />
 
         <div className="mt-10 rounded-xl bg-muted">
           <OnboardingFeatureCard
             icon={ServerOff}
-            title="Zero Logs"
-            description="We don't keep logs of your conversations."
+            title={<Trans>Zero Logs</Trans>}
+            description={<Trans>We don't keep logs of your conversations.</Trans>}
           />
 
           <OnboardingFeatureCard
             icon={EyeOff}
-            title="Zero Training"
-            description="We don't train models on your data."
+            title={<Trans>Zero Training</Trans>}
+            description={<Trans>We don't train models on your data.</Trans>}
           />
 
           <OnboardingFeatureCard
             icon={Database}
-            title="Local Storage"
-            description="Data is stored securely on your device."
+            title={<Trans>Local Storage</Trans>}
+            description={<Trans>Data is stored securely on your device.</Trans>}
           />
         </div>
       </div>
@@ -64,25 +65,29 @@ export const OnboardingPrivacyStep = ({ state, actions }: OnboardingPrivacyStepP
             className="scale-130 cursor-pointer"
           />
           <label htmlFor="terms-agreement" className="text-base text-muted-foreground leading-relaxed cursor-pointer">
-            I agree to the{' '}
-            <a
-              href={privacyPolicyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline hover:no-underline font-medium"
-            >
-              Privacy Policy
-            </a>{' '}
-            and{' '}
-            <a
-              href={termsOfServiceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline hover:no-underline font-medium"
-            >
-              Terms of Service
-            </a>
-            .
+            {/* One message, links inline: a language that reorders the clause has
+                to be able to move the link text with it. */}
+            <Trans>
+              I agree to the{' '}
+              <a
+                href={privacyPolicyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline hover:no-underline font-medium"
+              >
+                Privacy Policy
+              </a>{' '}
+              and{' '}
+              <a
+                href={termsOfServiceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline hover:no-underline font-medium"
+              >
+                Terms of Service
+              </a>
+              .
+            </Trans>
           </label>
         </div>
       </div>

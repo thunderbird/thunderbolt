@@ -6,7 +6,10 @@ import { describe, expect, test } from 'bun:test'
 import { getNecessityScenarios } from './necessity-scenarios'
 import type { EvalCriteria, NecessityCategory } from './types'
 
-const expectedCounts: Record<NecessityCategory, number> = {
+/** The search-necessity taxonomy proper — `language` shares the machinery but not the taxonomy. */
+type SearchCategory = Exclude<NecessityCategory, 'language'>
+
+const expectedCounts: Record<SearchCategory, number> = {
   never_search: 12,
   answer_then_offer: 12,
   single_search: 12,
@@ -30,7 +33,7 @@ const judgeAssertions: JudgeAssertion[] = [
   'expectVerificationDisclaimer',
 ]
 
-const expectedJudgeAssertions: Record<NecessityCategory, JudgeAssertion[]> = {
+const expectedJudgeAssertions: Record<SearchCategory, JudgeAssertion[]> = {
   never_search: ['expectCorrectAnswer'],
   answer_then_offer: ['expectSearchOffer'],
   single_search: [],
@@ -111,7 +114,7 @@ describe('necessity scenarios', () => {
     for (const scenario of scenarios) {
       const declared = judgeAssertions.filter((assertion) => scenario.criteria[assertion])
 
-      expect(declared).toEqual(expectedJudgeAssertions[scenario.category!])
+      expect(declared).toEqual(expectedJudgeAssertions[scenario.category as SearchCategory])
     }
   })
 

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { useDatabase, useHttpClient } from '@/contexts'
 import { saveIntegrationCredentials, updateSettings } from '@/dal'
 import { buildAuthUrl, exchangeCodeForTokens, getUserInfo, redirectOAuthFlow, type OAuthProvider } from '@/lib/auth'
@@ -92,6 +93,7 @@ const getInitialConnectingState = (key: string | undefined): boolean => {
  * For web: Redirects to OAuth provider and processes callback on return.
  */
 export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthConnectResult => {
+  const { t } = useLingui()
   const db = useDatabase()
   const httpClient = useHttpClient()
   const queryClient = useQueryClient()
@@ -251,7 +253,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
         return
       }
       clearConnecting(key)
-      const message = e instanceof Error ? e.message : 'Failed to complete authentication'
+      const message = e instanceof Error ? e.message : t`Failed to complete authentication`
       setError(message)
       onError?.(e instanceof Error ? e : new Error(message))
     }
@@ -295,7 +297,7 @@ export const useOAuthConnect = (options: UseOAuthConnectOptions = {}): UseOAuthC
 
     if (!provider || !codeVerifier || storedState !== returnedState) {
       cleanup()
-      const message = 'OAuth validation failed'
+      const message = t`OAuth validation failed`
       setError(message)
       onError?.(new Error(message))
       return false

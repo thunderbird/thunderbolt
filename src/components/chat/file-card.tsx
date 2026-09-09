@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { FileText, X } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { DocxThumbnail } from './docx-thumbnail'
@@ -29,15 +32,17 @@ type FileCardProps = {
 }
 
 /** Human label for a non-native delivery mode. */
-const deliverAsLabel: Record<'text' | 'images', string> = {
-  text: 'Sent as text',
-  images: 'Sent as images',
+const deliverAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+  text: msg`Sent as text`,
+  images: msg`Sent as images`,
 }
 
-/** Verb label for a resend control option. */
-const resendLabel: Record<'text' | 'images', string> = {
-  text: 'text',
-  images: 'images',
+/** Label for a resend control option. A whole message per mode rather than the
+ *  mode name interpolated into "Resend as …" — a bare noun dropped into a
+ *  translated frame gets the grammar wrong in most languages. */
+const resendAsLabel: Record<'text' | 'images', MessageDescriptor> = {
+  text: msg`Resend as text`,
+  images: msg`Resend as images`,
 }
 
 /** Short type badge from the file extension, falling back to the mime type. */
@@ -65,6 +70,7 @@ export const FileCard = ({
   resendTargets,
   onResend,
 }: FileCardProps) => {
+  const { i18n } = useLingui()
   const ext = filename.split('.').pop()?.toLowerCase()
   const isPdf = mimeType === 'application/pdf'
   const isImage = mimeType.startsWith('image/')
@@ -88,7 +94,7 @@ export const FileCard = ({
       {isPlainText && <TextSnippet localFileId={localFileId} mimeType={mimeType} />}
       {deliverAs && (
         <span className="absolute left-1.5 top-1.5 rounded bg-black/65 px-1.5 py-px text-[length:var(--font-size-xs)] font-medium text-white">
-          {deliverAsLabel[deliverAs]}
+          {i18n._(deliverAsLabel[deliverAs])}
         </span>
       )}
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-5">
@@ -133,7 +139,7 @@ export const FileCard = ({
               onClick={() => onResend(target)}
               className="cursor-pointer rounded-md px-1.5 py-0.5 text-[length:var(--font-size-xs)] text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              Resend as {resendLabel[target]}
+              {i18n._(resendAsLabel[target])}
             </button>
           ))}
         </div>

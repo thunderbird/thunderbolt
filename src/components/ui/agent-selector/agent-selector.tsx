@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
@@ -84,7 +85,9 @@ export const AgentSelector = ({
   side,
   align,
 }: AgentSelectorProps) => {
+  const { t } = useLingui()
   const items = useMemo(() => buildAgentItems(agents), [agents])
+
   const [open, setOpen] = useState(false)
   const { triggerSelection } = useHaptics()
 
@@ -166,13 +169,17 @@ export const AgentSelector = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{triggerInner}</TooltipTrigger>
-          {disabled && <TooltipContent side="bottom">Cannot change agent during reply</TooltipContent>}
+          {disabled && (
+            <TooltipContent side="bottom">
+              <Trans>Cannot change agent during reply</Trans>
+            </TooltipContent>
+          )}
         </Tooltip>
       </TooltipProvider>
     )
   }
 
-  const footerAction = onAddAgent ? { label: 'Add Agent', onAction: onAddAgent } : undefined
+  const footerAction = onAddAgent ? { label: t`Add Agent`, onAction: onAddAgent } : undefined
 
   return (
     <SearchableMenu
@@ -180,9 +187,9 @@ export const AgentSelector = ({
       value={selectedAgent.id}
       onValueChange={handleAgentChange}
       searchable={agents.length > 10}
-      searchPlaceholder="Search agents"
-      emptyMessage="No agents found"
-      mobileTitle="Choose agent"
+      searchPlaceholder={t`Search agents`}
+      emptyMessage={t`No agents found`}
+      mobileTitle={t`Choose agent`}
       mobileSide="top"
       trigger={renderTrigger}
       renderItem={renderAgentItem}

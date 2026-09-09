@@ -8,6 +8,7 @@ import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
+import { getActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient } from '@/lib/http'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -118,7 +119,6 @@ const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
     location_lng: '',
     distance_unit: 'imperial',
     temperature_unit: 'f',
-    date_format: 'MM/DD/YYYY',
     time_format: '12h',
     currency: 'USD',
     integrations_do_not_ask_again: false,
@@ -136,12 +136,13 @@ const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
     localization: {
       distanceUnit: settings.distanceUnit,
       temperatureUnit: settings.temperatureUnit,
-      dateFormat: settings.dateFormat,
       timeFormat: settings.timeFormat,
       currency: settings.currency,
     },
     integrationStatus: 'READY',
     hasWebTools: true,
+    // Mirror the send path, or this log misreports the fallback reply language.
+    appLanguage: getActiveLocale(),
   })
 
   console.log(`\n${cyan}--- SYSTEM PROMPT (${scenario.id}) ---${reset}`)

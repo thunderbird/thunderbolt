@@ -9,16 +9,19 @@
  * detached floating widget. The conversation still streams into normal chat
  * bubbles above, Claude-Desktop style.
  */
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import type { SessionState } from '@/voice/session'
 import { VoiceWaveform } from '@/voice/ui/voice-waveform'
 import { m } from 'framer-motion'
 import { MicOff, X } from 'lucide-react'
 
-const statusLabel: Record<SessionState, string> = {
-  idle: 'Starting…',
-  listening: 'Listening',
-  thinking: 'Thinking',
-  speaking: 'Speaking',
+const statusLabel: Record<SessionState, MessageDescriptor> = {
+  idle: msg`Starting…`,
+  listening: msg`Listening`,
+  thinking: msg`Thinking`,
+  speaking: msg`Speaking`,
 }
 
 type VoiceModeComposerProps = {
@@ -29,42 +32,48 @@ type VoiceModeComposerProps = {
   onClose: () => void
 }
 
-export const VoiceModeComposer = ({ state, error, levelRef, outputLevelRef, onClose }: VoiceModeComposerProps) => (
-  <m.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    transition={{ duration: 0.18, ease: 'easeOut' }}
-    // Mirror the PromptInput box (rounded-3xl border bg-sidebar) so it reads as the
-    // same composer, just in voice mode — same radius/fill means no corners peek
-    // out underneath. z-20 sits above the PromptInput (z-10).
-    className="absolute inset-0 z-20 flex items-center gap-3 rounded-3xl border bg-sidebar py-2 pl-4 pr-2 dark:border-input"
-    role="status"
-    aria-label={`Voice mode: ${statusLabel[state]}`}
-  >
-    {error ? (
-      <div className="flex min-w-0 flex-1 items-center gap-2 text-destructive">
-        <MicOff className="size-[var(--icon-size-sm)] shrink-0" />
-        <span className="line-clamp-2 min-w-0 select-text text-[length:var(--font-size-sm)] font-medium" title={error}>
-          {error}
-        </span>
-      </div>
-    ) : (
-      <>
-        <VoiceWaveform state={state} levelRef={levelRef} outputLevelRef={outputLevelRef} className="min-w-0 flex-1" />
-        <span className="shrink-0 text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
-          {statusLabel[state]}
-        </span>
-      </>
-    )}
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Exit voice mode"
-      title="Exit voice mode"
-      className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform hover:scale-105"
+export const VoiceModeComposer = ({ state, error, levelRef, outputLevelRef, onClose }: VoiceModeComposerProps) => {
+  const { i18n, t } = useLingui()
+  const status = i18n._(statusLabel[state])
+
+  return (
+    <m.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      // Mirror the PromptInput box (rounded-3xl border bg-sidebar) so it reads as the
+      // same composer, just in voice mode — same radius/fill means no corners peek
+      // out underneath. z-20 sits above the PromptInput (z-10).
+      className="absolute inset-0 z-20 flex items-center gap-3 rounded-3xl border bg-sidebar py-2 pl-4 pr-2 dark:border-input"
+      role="status"
+      aria-label={t`Voice mode: ${status}`}
     >
-      <X className="size-[var(--icon-size-sm)]" />
-    </button>
-  </m.div>
-)
+      {error ? (
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-destructive">
+          <MicOff className="size-[var(--icon-size-sm)] shrink-0" />
+          <span
+            className="line-clamp-2 min-w-0 select-text text-[length:var(--font-size-sm)] font-medium"
+            title={error}
+          >
+            {error}
+          </span>
+        </div>
+      ) : (
+        <>
+          <VoiceWaveform state={state} levelRef={levelRef} outputLevelRef={outputLevelRef} className="min-w-0 flex-1" />
+          <span className="shrink-0 text-[length:var(--font-size-xs)] font-medium text-muted-foreground">{status}</span>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={t`Exit voice mode`}
+        title={t`Exit voice mode`}
+        className="flex size-[var(--touch-height-sm)] shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform hover:scale-105"
+      >
+        <X className="size-[var(--icon-size-sm)]" />
+      </button>
+    </m.div>
+  )
+}

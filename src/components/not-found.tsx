@@ -4,6 +4,7 @@
 
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
+import { Trans } from '@lingui/react/macro'
 import { useNavigate } from 'react-router'
 
 export const NotFound = () => {
@@ -17,10 +18,12 @@ export const NotFound = () => {
           <span>Thunderbolt</span>
         </div>
 
-        <h1 className="text-4xl font-semibold tracking-tight">Not Found</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">
+          <Trans>Not Found</Trans>
+        </h1>
 
         <Button variant="secondary" onClick={() => navigate('/chats/new', { replace: true })}>
-          Back to App
+          <Trans>Back to App</Trans>
         </Button>
       </div>
     </div>

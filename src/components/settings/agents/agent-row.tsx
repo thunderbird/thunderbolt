@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { iconForAgent } from '@/components/agent-icon'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
@@ -26,6 +27,7 @@ type AgentRowProps = {
  * state stays visible without a switch on the row.
  */
 export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
+  const { t } = useLingui()
   const Icon = iconForAgent(agent)
   const disabled = agent.enabled !== 1
 
@@ -49,7 +51,7 @@ export const AgentRow = ({ agent, isSelected, onOpen }: AgentRowProps) => {
       subtitle={
         <>
           {agentProvenanceLine(agent)}
-          {disabled && ' · Disabled'}
+          {disabled && <> · {t`Disabled`}</>}
         </>
       }
       chevronTestId={`agent-chevron-${agent.id}`}

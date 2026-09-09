@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import { createModel, getModel } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
@@ -277,7 +278,7 @@ describe('model card action menu', () => {
 
     expect(await screen.findByText('Edit')).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
-    expect(screen.queryByText(systemModelMenuMessage)).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n._(systemModelMenuMessage))).not.toBeInTheDocument()
   })
 
   it('explains instead of offering Edit/Delete for built-in models', async () => {
@@ -296,7 +297,7 @@ describe('model card action menu', () => {
 
     await openMenuForModel('Built-in Model')
 
-    expect(await screen.findByText(systemModelMenuMessage)).toBeInTheDocument()
+    expect(await screen.findByText(i18n._(systemModelMenuMessage))).toBeInTheDocument()
     expect(screen.queryByText('Edit')).not.toBeInTheDocument()
     expect(screen.queryByText('Delete')).not.toBeInTheDocument()
   })

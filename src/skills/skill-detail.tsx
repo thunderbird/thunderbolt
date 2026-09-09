@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Info } from 'lucide-react'
 
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
@@ -32,6 +33,7 @@ export const SkillDetail = ({
   /** Close (X) — dismisses the desktop slide-in panel or the mobile overlay. */
   onClose: () => void
 }) => {
+  const { t } = useLingui()
   const actionsMenu = !readOnly && (
     <DetailActionsMenu>
       <DetailEditDeleteMenuItems onEdit={onEdit} onDelete={onDelete} />
@@ -41,25 +43,25 @@ export const SkillDetail = ({
   return (
     <DetailPanel
       title={name}
-      subtitle={readOnly ? 'Built-in skill · Read-only' : undefined}
+      subtitle={readOnly ? t`Built-in skill · Read-only` : undefined}
       actions={actionsMenu}
       onClose={onClose}
     >
       <div className="flex shrink-0 flex-col gap-2">
         <DetailSectionTitle>
-          Description
+          <Trans>Description</Trans>
           <Tooltip>
             <TooltipTrigger asChild>
               <span
                 role="img"
-                aria-label="What is this for?"
+                aria-label={t`What is this for?`}
                 className="inline-flex items-center text-muted-foreground hover:text-foreground"
               >
                 <Info size={13} strokeWidth={1.75} />
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Helps the agent decide when to use this skill. Be specific about when it applies.
+              <Trans>Helps the agent decide when to use this skill. Be specific about when it applies.</Trans>
             </TooltipContent>
           </Tooltip>
         </DetailSectionTitle>
@@ -69,7 +71,9 @@ export const SkillDetail = ({
       <DetailDivider />
 
       <div className="flex flex-col gap-2">
-        <DetailSectionTitle>Instructions</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Instructions</Trans>
+        </DetailSectionTitle>
         <div className="whitespace-pre-wrap pb-1 text-base leading-snug text-foreground">{instruction}</div>
       </div>
     </DetailPanel>

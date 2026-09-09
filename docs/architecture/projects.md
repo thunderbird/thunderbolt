@@ -63,9 +63,11 @@ deliberate on two counts:
 ## Cross-chat search is keyword-only
 
 `search_project_chats` runs against the app's FTS5 index (`search_index`,
-porter/unicode61, BM25 with titles weighted 10×), scoped to
+`unicode61 remove_diacritics 2`, BM25 with titles weighted 10×), scoped to
 `entity_type = 'message'` and the project's sibling threads. The current chat is
-excluded — its history is already in context.
+excluded — its history is already in context. Terms in scripts unicode61 cannot
+tokenize (Japanese, Thai) are matched as substrings instead — see
+`src/search/query-plan.ts`.
 
 **There are no embeddings anywhere in the app.** A question phrased differently
 from the original conversation will miss. Two mitigations, both in wording rather

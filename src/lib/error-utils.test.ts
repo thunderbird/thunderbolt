@@ -11,6 +11,7 @@ import {
   getErrorName,
   getErrorRetryable,
   getErrorStatusCode,
+  getInferenceQuotaWindow,
   isContentRejectionError,
   isContextOverflowError,
   isRateLimitError,
@@ -171,6 +172,48 @@ describe('getErrorName', () => {
   })
 })
 
+describe('getInferenceQuotaWindow', () => {
+  it('extracts the 5-hour window from a direct pi-ai flattened quota error', () => {
+    const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+
+    expect(getInferenceQuotaWindow(error)).toBe('5h')
+  })
+
+  it('extracts the 7-day window from a serialized SecureClient quota error', () => {
+    const error = new Error(
+      JSON.stringify({
+        error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } }),
+        status: 429,
+        isRetryable: true,
+        kind: 'rate-limit',
+      }),
+    )
+
+    expect(getInferenceQuotaWindow(error)).toBe('7d')
+  })
+
+  it('rejects values that are not known quota errors with valid windows', () => {
+    const errors = [
+      new Error('429 {"code":"RATE_LIMITED","window":"5h"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"30d"}'),
+      new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED"}'),
+      new Error('429 {invalid json}'),
+      new Error(JSON.stringify({ error: 'Rate limited', status: 429 })),
+      new Error(
+        JSON.stringify({
+          error: JSON.stringify({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '5h' } }),
+          status: 500,
+        }),
+      ),
+      new Error('Error 429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'),
+    ]
+
+    for (const error of errors) {
+      expect(getInferenceQuotaWindow(error)).toBeUndefined()
+    }
+  })
+})
+
 describe('isRateLimitError', () => {
   it('detects 429 from JSON response body (DefaultChatTransport path)', () => {
     const error = new Error(JSON.stringify({ error: 'API call failed', statusCode: 429 }))
@@ -226,6 +269,13 @@ describe('isRateLimitError', () => {
   it('detects pi-ai flattened 429 statuses', () => {
     expect(isRateLimitError(new Error('429: Rate limit exceeded'))).toBe(true)
     expect(isRateLimitError(new Error('anthropic (429): Please retry later'))).toBe(true)
+  })
+
+  it('detects a pi-ai flattened 429 followed by a JSON body', () => {
+    const error = new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}')
+
+    expect(isRateLimitError(error)).toBe(true)
+    expect(classifyErrorKind(error)).toBe('rate-limit')
   })
 
   it('does not match a pi-ai flattened 500 status', () => {
@@ -398,6 +448,28 @@ describe('getErrorStatusCode', () => {
     expect(getErrorStatusCode(new Error('openai (408): Request Timeout'))).toBe(408)
   })
 
+  it('reads a pi-ai status followed by a JSON body', () => {
+    expect(getErrorStatusCode(new Error('429 {"code":"INFERENCE_QUOTA_EXCEEDED","window":"5h"}'))).toBe(429)
+    expect(getErrorStatusCode(new Error('503 [{"code":"INFERENCE_PRICE_UNAVAILABLE"}]'))).toBe(503)
+  })
+
+  it('only reads anchored HTTP error statuses followed by valid JSON containers', () => {
+    const messages = [
+      'Error 429 {"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '429 quota exceeded',
+      '429 {invalid json}',
+      '429 "quota exceeded"',
+      '429{"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '4290 {"code":"INFERENCE_QUOTA_EXCEEDED"}',
+      '399 {"code":"REDIRECT"}',
+      '600 [{"code":"INVALID_STATUS"}]',
+    ]
+
+    for (const message of messages) {
+      expect(getErrorStatusCode(new Error(message))).toBeUndefined()
+    }
+  })
+
   it('ignores unanchored three-digit numbers', () => {
     expect(getErrorStatusCode(new Error('Error 500 happened'))).toBeUndefined()
     expect(getErrorStatusCode(new Error('retried 404 times'))).toBeUndefined()
@@ -418,6 +490,35 @@ describe('getErrorStatusCode', () => {
 })
 
 describe('isContentRejectionError', () => {
+  const toolErrorBody =
+    '{"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}'
+
+  it.each([
+    `400: ${toolErrorBody}`,
+    `400 ${toolErrorBody}`,
+    `openai (400): ${toolErrorBody}`,
+    `400: {"error":${toolErrorBody}}`,
+    JSON.stringify({ error: toolErrorBody, status: 400 }),
+    JSON.stringify({ error: JSON.stringify({ error: JSON.parse(toolErrorBody) }), statusCode: 400 }),
+  ])('keeps structured tool validation out of remediation and retries: %s', (message) => {
+    const error = new Error(message)
+
+    expect(isContentRejectionError(error)).toBe(false)
+    expect(getErrorRetryable(error)).toBe(false)
+    expect(getChatErrorKind(error)).toBe('provider')
+  })
+
+  it.each([
+    '400: {"message":"invalid file content","param":"messages"}',
+    '400: {"message":"file called tools is invalid"}',
+    '400: {"message":"file rejected; \\"param\\":\\"tools\\" appeared in its text"}',
+    '400: {"param":"tools",invalid json}',
+    '400: {"param":["tools"]}',
+    '400: null',
+  ])('does not infer a tool validation failure from file text or malformed fields: %s', (message) => {
+    expect(isContentRejectionError(new Error(message))).toBe(true)
+  })
+
   it('detects the file-part rejection 400 (e.g. content.str)', () => {
     expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(true)
   })

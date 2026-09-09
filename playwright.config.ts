@@ -17,6 +17,17 @@ const oidcBackendPort = 8002
 const samlVitePort = 1422
 const samlBackendPort = 8003
 
+// Min-version gate: frontend 1423, backend 8004. A dedicated OIDC-mode backend
+// with MIN_APP_VERSION pinned ABOVE the build-fixed VITE_APP_VERSION so every
+// gated request from this build is genuinely below the server minimum. Backend
+// env is per-webServer and fixed for its life, so simulating an out-of-date
+// client requires its own server — the real-gate scenarios (hard-block +
+// exempt-route coverage) run against it; the runtime-flip/header-coverage
+// scenarios reuse the ungated OIDC frontend via `loginViaOidc`.
+const gateVitePort = 1423
+const gateBackendPort = 8004
+const gateMinAppVersion = '99.0.0'
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -66,6 +77,19 @@ export default defineConfig({
       },
     },
     {
+      // Min-version gate specs. baseURL points at the UNGATED OIDC frontend
+      // (:1421) so `loginViaOidc` (relative `/`) drives the run-normally,
+      // runtime-flip, and header-coverage scenarios; the hard-block scenario
+      // navigates to the GATED frontend (:1423) by absolute URL and the
+      // exempt-route scenario probes the gated backend (:8004) directly.
+      name: 'min-version-gate',
+      testMatch: /min-version-gate\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${oidcVitePort}`,
+      },
+    },
+    {
       // Self-contained real-browser tests for the artifact harness (drive the wrapped
       // HTML in a sandboxed iframe on about:blank) — no auth server, backend, or baseURL.
       // Anchor to a leading `/` and forbid `/` in the name so the match is the FILENAME,
@@ -95,9 +119,10 @@ export default defineConfig({
       // Bypass `bun run dev` (which goes through scripts/dev.sh — lives in stacked PR #862)
       command: 'cd backend && bun run --watch src/index.ts',
       url: `http://localhost:${oidcBackendPort}/v1/health`,
-      // Backend env is test-specific (mock IdP, e2e secrets, rate limit off) — never reuse a
-      // dev backend that happened to bind :8000. Playwright will fail fast if the port is taken.
-      reuseExistingServer: false,
+      // Locally reuse a warm e2e backend across runs for fast iteration; it binds a
+      // dedicated port (8002), distinct from the dev backend on :8000, so a stray dev
+      // server is never reused. In CI always boot fresh.
+      reuseExistingServer: !isCI,
       timeout: 120_000,
       env: {
         PORT: String(oidcBackendPort),
@@ -131,8 +156,8 @@ export default defineConfig({
       // Bypass `bun run dev` (which goes through scripts/dev.sh — lives in stacked PR #862)
       command: 'cd backend && bun run --watch src/index.ts',
       url: `http://localhost:${samlBackendPort}/v1/health`,
-      // Backend env is test-specific — see OIDC backend comment above.
-      reuseExistingServer: false,
+      // Locally reuse a warm e2e backend across runs — see OIDC backend comment above.
+      reuseExistingServer: !isCI,
       timeout: 120_000,
       env: {
         PORT: String(samlBackendPort),
@@ -148,6 +173,46 @@ export default defineConfig({
         TRUSTED_ORIGINS: `http://localhost:${samlVitePort},http://localhost:${mockSamlPort}`,
         RATE_LIMIT_ENABLED: 'false',
         DATABASE_DRIVER: 'pglite',
+      },
+    },
+    // --- Min-version-gate frontend ---
+    {
+      command: `bun run dev -- --port ${gateVitePort}`,
+      url: `http://localhost:${gateVitePort}`,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        VITE_AUTH_MODE: 'sso',
+        VITE_SKIP_ONBOARDING: 'true',
+        // Point this frontend at the gated backend so its `/config` fetch returns
+        // `minAppVersion` and the client renders <UpgradeRequired> from a real
+        // server response (the hard-block scenario).
+        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${gateBackendPort}/v1`,
+      },
+    },
+    // --- Min-version-gate backend ---
+    {
+      command: 'cd backend && bun run --watch src/index.ts',
+      url: `http://localhost:${gateBackendPort}/v1/health`,
+      // Locally reuse a warm e2e backend across runs — see OIDC backend comment above.
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        PORT: String(gateBackendPort),
+        AUTH_MODE: 'oidc',
+        OIDC_CLIENT_ID: 'thunderbolt-app',
+        OIDC_CLIENT_SECRET: 'thunderbolt-dev-secret',
+        OIDC_ISSUER: `http://localhost:${mockOidcPort}`,
+        BETTER_AUTH_URL: `http://localhost:${gateBackendPort}`,
+        BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
+        APP_URL: `http://localhost:${gateVitePort}`,
+        CORS_ORIGINS: `http://localhost:${gateVitePort}`,
+        TRUSTED_ORIGINS: `http://localhost:${gateVitePort},http://localhost:${mockOidcPort}`,
+        RATE_LIMIT_ENABLED: 'false',
+        DATABASE_DRIVER: 'pglite',
+        // The lever under test: pin the server minimum above the build-fixed
+        // VITE_APP_VERSION so this build is always below-min against this backend.
+        MIN_APP_VERSION: gateMinAppVersion,
       },
     },
   ],

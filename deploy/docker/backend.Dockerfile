@@ -1,5 +1,5 @@
 # Single stage: Bun runtime with source
-FROM oven/bun:latest
+FROM oven/bun:1.3.14
 
 WORKDIR /app/backend
 

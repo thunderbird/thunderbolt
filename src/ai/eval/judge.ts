@@ -6,7 +6,8 @@ import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { defaultModelDeepseekV4Flash, defaultModelOpus5 } from '@shared/defaults/models'
+import { defaultModelOpus5 } from '@shared/defaults/models'
+import { englishLanguageName } from '@shared/i18n/locales'
 import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
 import type { EvalCriteria, EvalResult, EvalScenario } from './types'
@@ -17,12 +18,13 @@ const judgeVerdictSchema = z
     searchOffer: z.boolean().nullable(),
     premiseRebuttal: z.boolean().nullable(),
     verificationDisclaimer: z.boolean().nullable(),
+    replyLanguageMatches: z.boolean().nullable(),
     explanation: z.string(),
   })
   .strict()
 
 export type JudgeVerdict = z.infer<typeof judgeVerdictSchema>
-export type JudgeModelName = 'opus' | 'flash'
+export type JudgeModelName = 'opus'
 
 class RetryableJudgeError extends Error {}
 
@@ -40,22 +42,27 @@ const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
   return () => clearTimeout(timer)
 }
 
-const judgeModels: Record<JudgeModelName, Model> = {
+export const judgeModels = {
   opus: { ...defaultModelOpus5, apiKey: null },
-  flash: { ...defaultModelDeepseekV4Flash, apiKey: null },
-}
+} satisfies Record<JudgeModelName, Model>
 
 const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> = {
-  opus: 'flash',
+  opus: 'opus',
   flash: 'opus',
   glm: 'opus',
 }
 
 type SemanticAssertion = {
-  criteriaKey: 'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
+  criteriaKey:
+    | 'expectCorrectAnswer'
+    | 'expectSearchOffer'
+    | 'expectPremiseRebuttal'
+    | 'expectVerificationDisclaimer'
+    | 'expectReplyLanguage'
   verdictKey: Exclude<keyof JudgeVerdict, 'explanation'>
   label: string
-  guidance: string
+  /** A function when the guidance has to name the criteria's value, as reply language does. */
+  guidance: string | ((criteria: EvalCriteria) => string)
 }
 
 const semanticAssertions: SemanticAssertion[] = [
@@ -85,12 +92,24 @@ const semanticAssertions: SemanticAssertion[] = [
     guidance:
       'verificationDisclaimer: Judge only whether the response explicitly admitted it could not verify the answer.',
   },
+  {
+    criteriaKey: 'expectReplyLanguage',
+    verdictKey: 'replyLanguageMatches',
+    label: 'reply language',
+    guidance: ({ expectReplyLanguage }) =>
+      `replyLanguageMatches: Answer true or false — never a language name. Judge only whether the assistant's own prose is written in ${expectReplyLanguage ? englishLanguageName(expectReplyLanguage) : 'the expected language'}. Judge the sentences the assistant wrote. Quoted source text, error messages, log output, code, identifiers, URLs, proper nouns, and widget tags carry their own language and are irrelevant — a reply whose prose is in the expected language passes even when it quotes another language. Content quality is irrelevant.`,
+  },
 ]
+
+/** The exact verdict fields the judge must return, derived so adding an assertion cannot
+ *  leave the instruction listing a stale set of keys. */
+const verdictFieldList = [...semanticAssertions.map(({ verdictKey }) => verdictKey), 'explanation'].join(', ')
 
 const declaredAssertions = (criteria: EvalCriteria): SemanticAssertion[] =>
   semanticAssertions.filter(({ criteriaKey }) => criteria[criteriaKey])
 
-/** Select a capable judge that is neither GLM nor the model under evaluation. */
+/** Select a direct, non-confidential managed judge for the OpenAI-compatible connection.
+ *  Opus is currently the only such model, so it also judges itself. */
 export const getJudgeModelName = (testedModelName: string): JudgeModelName => {
   const judgeModelName = judgeModelAssignments[testedModelName]
   if (!judgeModelName) {
@@ -208,9 +227,9 @@ export const buildJudgePrompt = (scenario: EvalScenario, responseText: string): 
   const assertions = declaredAssertions(scenario.criteria)
   const userPrompt = scenario.followUps?.at(-1) ?? scenario.prompt
   return `Grade only these assertions: ${assertions.map(({ verdictKey }) => verdictKey).join(', ')}.
-${assertions.map(({ guidance }) => guidance).join('\n')}
-Every DECLARED assertion MUST be true or false; never return null for a declared assertion. ONLY UNDECLARED assertion fields may be null, and every undeclared assertion field MUST be null.
-Return only JSON with exactly: correct, searchOffer, premiseRebuttal, verificationDisclaimer, explanation.
+${assertions.map(({ guidance }) => (typeof guidance === 'string' ? guidance : guidance(scenario.criteria))).join('\n')}
+Every assertion field is a boolean or null — never a string. Every DECLARED assertion MUST be true or false; never return null for a declared assertion. ONLY UNDECLARED assertion fields may be null, and every undeclared assertion field MUST be null.
+Return only JSON with exactly: ${verdictFieldList}.
 User prompt: ${JSON.stringify(userPrompt)}
 Assistant response: ${JSON.stringify(responseText)}`
 }

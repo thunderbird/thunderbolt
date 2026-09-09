@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ReasoningUIPart } from 'ai'
+import { Trans } from '@lingui/react/macro'
 import { Check, Loader2 } from 'lucide-react'
 import { Expandable } from '../ui/expandable'
 
@@ -15,7 +16,11 @@ export const ReasoningPart = ({ part }: ReasoningPartProps) => {
 
   return (
     <Expandable
-      title={<span className="text-muted-foreground">Thinking</span>}
+      title={
+        <span className="text-muted-foreground">
+          <Trans>Thinking</Trans>
+        </span>
+      }
       className="shadow-none"
       icon={
         state === 'streaming' ? (

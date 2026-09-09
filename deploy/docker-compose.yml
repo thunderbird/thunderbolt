@@ -52,6 +52,8 @@ services:
       POWERSYNC_JWT_SECRET: enterprise-thunderbolt-powersync-jwt-default-secret
       POWERSYNC_JWT_KID: enterprise-powersync
       RATE_LIMIT_ENABLED: "false"
+      MIN_APP_VERSION: ${MIN_APP_VERSION:-}
+      CLI_DEVICE_REGISTRATION_ENABLED: ${CLI_DEVICE_REGISTRATION_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

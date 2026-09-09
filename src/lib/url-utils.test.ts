@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { deriveFaviconUrl, isSafeUrl } from './url-utils'
+import { deriveFaviconUrl, isSafeUrl, normalizeBackendUrl } from './url-utils'
 
 describe('isSafeUrl', () => {
   it('accepts http URLs', () => {
@@ -38,5 +38,16 @@ describe('deriveFaviconUrl', () => {
 
   it('returns null for invalid URLs', () => {
     expect(deriveFaviconUrl('not a url')).toBeNull()
+  })
+})
+
+describe('normalizeBackendUrl', () => {
+  it('removes only trailing slashes from relative and absolute backend URLs', () => {
+    expect(normalizeBackendUrl('/v1')).toBe('/v1')
+    expect(normalizeBackendUrl('/v1/')).toBe('/v1')
+    expect(normalizeBackendUrl('/v1///')).toBe('/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1')).toBe('https://api.example.test/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1///')).toBe('https://api.example.test/v1')
+    expect(normalizeBackendUrl('https://api.example.test/v1//agents')).toBe('https://api.example.test/v1//agents')
   })
 })

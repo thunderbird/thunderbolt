@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -20,20 +23,25 @@ import {
 } from './model-policy'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
-const editModelFormSchema = z.object({
-  name: z.string().min(1, { message: 'Name is required.' }),
-  model: z.string().min(1, { message: 'Model name is required.' }),
-  url: z.string().optional(),
-  apiKey: z.string().optional(),
-})
+const nameRequired = msg`Name is required.`
+const modelNameRequired = msg`Model name is required.`
+const urlRequiredForCustom = msg`URL is required for Custom providers`
 
-const buildEditModelFormSchema = (provider: Model['provider']) =>
-  editModelFormSchema.refine((data) => provider !== 'custom' || Boolean(data.url), {
-    message: 'URL is required for Custom providers',
+const editModelFormSchema = (i18n: I18n) =>
+  z.object({
+    name: z.string().min(1, { message: i18n._(nameRequired) }),
+    model: z.string().min(1, { message: i18n._(modelNameRequired) }),
+    url: z.string().optional(),
+    apiKey: z.string().optional(),
+  })
+
+const buildEditModelFormSchema = (i18n: I18n, provider: Model['provider']) =>
+  editModelFormSchema(i18n).refine((data) => provider !== 'custom' || Boolean(data.url), {
+    message: i18n._(urlRequiredForCustom),
     path: ['url'],
   })
 
-type EditModelFormValues = z.infer<typeof editModelFormSchema>
+type EditModelFormValues = z.infer<ReturnType<typeof editModelFormSchema>>
 
 export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey'> & {
   id: string
@@ -42,8 +50,9 @@ export type EditModelSubmission = Omit<EditModelFormValues, 'apiKey'> & {
 
 /** Owns edit-model form, catalog, API-key policy, and connection-test orchestration. */
 export const useEditModelFormState = (model: Model) => {
+  const { i18n } = useLingui()
   const form = useForm<EditModelFormValues>({
-    resolver: zodResolver(buildEditModelFormSchema(model.provider)),
+    resolver: zodResolver(buildEditModelFormSchema(i18n, model.provider)),
     defaultValues: { name: model.name || '', model: model.model, url: model.url || '', apiKey: '' },
   })
   const watchedModel = form.watch('model')
@@ -70,13 +79,17 @@ export const useEditModelFormState = (model: Model) => {
   const isAutoFetchArmed = apiKeyEdit.kind === 'replace' || (!model.apiKey && watchedUrl !== (model.url ?? ''))
 
   useAutoCatalogFetch({ armed: isAutoFetchArmed, request: catalogRequest, catalog })
-  const modelItems = useMemo((): ComboboxItem[] => {
+  // Not memoized: `i18n` is a stable singleton, so a memo keyed on it would
+  // never invalidate and the localized "Custom" entry would keep the outgoing
+  // locale after a language switch. See the Localization section in AGENTS.md.
+  const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
     if (!catalog.models.some((available) => available.id === model.model)) {
       items.unshift({ id: model.model, label: model.model })
     }
-    return [...items, customModelItem]
-  }, [model.model, catalog.models])
+    return [...items, customModelItem(i18n)]
+  }
+  const modelItems = buildModelItems()
   const connection = useModelConnectionTest({
     provider: model.provider,
     model: watchedModel,

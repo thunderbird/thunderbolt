@@ -29,6 +29,7 @@ import {
   type ThinkingLevel,
 } from '@earendil-works/pi-agent-core'
 import { buildAnthropicModel, type AgentFetch } from './anthropic-model.ts'
+import { buildConfidentialModel, type ReceiptLifecycle } from './confidential-model.ts'
 import { buildOpenAiCompatModel } from './openai-compat-model.ts'
 import { BrowserExecutionEnv } from './browser-env/browser-execution-env.ts'
 import { mountAgentFs } from './browser-env/mount.ts'
@@ -59,7 +60,7 @@ export const workspaceDirFor = (threadId: string): string => {
 }
 
 /**
- * The model the harness runs, tagged by Pi engine family. Both variants route
+ * The model the harness runs, tagged by Pi engine family. All variants route
  * their LLM HTTP through an injected `fetch` (the app's proxy / SSO fetch):
  *
  *   - `anthropic` resolves a model from Pi's built-in catalog and wires the
@@ -67,6 +68,9 @@ export const workspaceDirFor = (threadId: string): string => {
  *   - `openai-compat` synthesizes an `openai-completions` model for the app's
  *     OpenAI-wire providers (`openai`/`custom`/`openrouter`/`thunderbolt`) and
  *     injects `fetch` around client construction ({@link buildOpenAiCompatModel}).
+ *   - `confidential` adds catalog compatibility, attestation normalization, and
+ *     usage-receipt capture around an OpenAI-compatible model
+ *     ({@link buildConfidentialModel}).
  */
 export type PiModelDescriptor =
   | {
@@ -98,6 +102,19 @@ export type PiModelDescriptor =
        *  input modalities (text-only strips images before the wire). */
       readonly supportsImages: boolean
     }
+  | {
+      readonly kind: 'confidential'
+      readonly providerId: string
+      readonly modelId: string
+      readonly vendor: string | null
+      readonly baseURL: string
+      readonly apiKey: string
+      readonly fetch: AgentFetch
+      readonly receipts: ReceiptLifecycle
+      readonly reasoning: boolean
+      readonly contextWindow?: number
+      readonly supportsImages: boolean
+    }
 
 /** Inputs for {@link buildAppHarness}. */
 export type BuildAppHarnessOptions = {
@@ -120,10 +137,10 @@ export type BuildAppHarnessOptions = {
 /**
  * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
  * (once), carves the thread's isolated workspace under {@link workspaceRoot},
- * binds the coding tools to it, resolves the proxied model (anthropic or
- * openai-compatible), and returns the constructed harness. The workspace persists
- * with the harness; tear it down by removing {@link workspaceDirFor}`(threadId)`
- * when the thread is disposed.
+ * binds the coding tools to it, resolves the proxied model (anthropic,
+ * OpenAI-compatible, or confidential), and returns the constructed harness. The
+ * workspace persists with the harness; tear it down by removing
+ * {@link workspaceDirFor}`(threadId)` when the thread is disposed.
  *
  * @param options - model descriptor, prompt, thinking level, thread id, extra tools, history
  * @returns the constructed {@link AgentHarness}
@@ -145,16 +162,18 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
           fetch: options.model.fetch,
           modelId: options.model.modelId,
         })
-      : buildOpenAiCompatModel({
-          providerId: options.model.providerId,
-          modelId: options.model.modelId,
-          baseURL: options.model.baseURL,
-          apiKey: options.model.apiKey,
-          fetch: options.model.fetch,
-          reasoning: options.model.reasoning,
-          contextWindow: options.model.contextWindow,
-          supportsImages: options.model.supportsImages,
-        })
+      : options.model.kind === 'confidential'
+        ? buildConfidentialModel(options.model)
+        : buildOpenAiCompatModel({
+            providerId: options.model.providerId,
+            modelId: options.model.modelId,
+            baseURL: options.model.baseURL,
+            apiKey: options.model.apiKey,
+            fetch: options.model.fetch,
+            reasoning: options.model.reasoning,
+            contextWindow: options.model.contextWindow,
+            supportsImages: options.model.supportsImages,
+          })
 
   const tools: AgentTool[] = [...createBrowserCodingTools(env, { cwd: workspaceDir }), ...(options.tools ?? [])]
 
@@ -168,6 +187,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     thinkingLevel: options.thinkingLevel,
     systemPrompt: options.systemPrompt,
   })
+  if (options.model.kind === 'confidential') {
+    options.model.receipts.attach(harness)
+  }
 
   // Seed prior turns into the (idle) session so the first prompt runs with full
   // conversational context. `appendMessage` writes straight to the session while

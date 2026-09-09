@@ -11,7 +11,7 @@
  */
 
 import { user as userTable } from '@/db/auth-schema'
-import { waitlist } from '@/db/schema'
+import { devicesTable, waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
@@ -19,9 +19,15 @@ import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
+import { createHmac } from 'node:crypto'
 import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 const mockSendSignInEmail = mock(() => Promise.resolve())
+const betterAuthSecret = 'better-auth-secret-12345678901234567890'
+
+/** Sign a raw anonymous session token exactly as the bearer plugin expects. */
+const signBearerToken = (token: string): string =>
+  `${token}.${createHmac('sha256', betterAuthSecret).update(token).digest('base64')}`
 
 /**
  * Build the email-dep overrides for `createAuth` so tests don't actually hit
@@ -38,9 +44,12 @@ const buildEmailDeps = (): AuthEmailDeps => ({
 // All suites here exercise the anonymous() plugin, which is operator-gated by
 // AUTH_ALLOW_ANONYMOUS. Enable it for the file and restore on teardown.
 let savedAllowAnonymous: string | undefined
+let savedCliDeviceRegistrationEnabled: string | undefined
 beforeAll(() => {
   savedAllowAnonymous = process.env.AUTH_ALLOW_ANONYMOUS
+  savedCliDeviceRegistrationEnabled = process.env.CLI_DEVICE_REGISTRATION_ENABLED
   process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+  process.env.CLI_DEVICE_REGISTRATION_ENABLED = 'true'
   clearSettingsCache()
 })
 afterAll(() => {
@@ -48,6 +57,11 @@ afterAll(() => {
     delete process.env.AUTH_ALLOW_ANONYMOUS
   } else {
     process.env.AUTH_ALLOW_ANONYMOUS = savedAllowAnonymous
+  }
+  if (savedCliDeviceRegistrationEnabled === undefined) {
+    delete process.env.CLI_DEVICE_REGISTRATION_ENABLED
+  } else {
+    process.env.CLI_DEVICE_REGISTRATION_ENABLED = savedCliDeviceRegistrationEnabled
   }
   clearSettingsCache()
 })
@@ -155,6 +169,36 @@ describe('anonymous plugin — session-fixation guard', () => {
     )
 
     expect(response.status).toBe(200)
+  })
+
+  it('rejects anonymous CLI registration without creating a trusted CLI row', async () => {
+    const app = await createApp({ database: db, auth })
+    const signInResponse = (await auth.api.signInAnonymous({ asResponse: true })) as Response
+    const body = (await signInResponse.json()) as { token: string }
+    const deviceId = `cli-${crypto.randomUUID()}`
+    const bearer = signBearerToken(body.token)
+
+    const protectedResponse = await app.handle(
+      new Request('http://localhost/v1/devices/allowlist', {
+        headers: { Authorization: `Bearer ${bearer}` },
+      }),
+    )
+    expect(protectedResponse.status).toBe(200)
+
+    const response = await app.handle(
+      new Request('http://localhost/v1/account/devices/cli', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          'X-Device-ID': deviceId,
+          'X-Device-Name': 'Anonymous CLI',
+          'X-App-Version': '1.0.0-test',
+        },
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
   })
 
   it('rejects /sign-in/anonymous with 400 when caller is already authenticated (non-anonymous)', async () => {

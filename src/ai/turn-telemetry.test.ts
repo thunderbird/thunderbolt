@@ -14,6 +14,48 @@ describe('createTurnTelemetry', () => {
     expect(createTurnTelemetry({ generateId }).traceId).toBe('trace-2')
   })
 
+  it('omits tool call validation properties when there are no failures', () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+
+    const payload = telemetry.buildPayload('success')
+
+    expect(payload).not.toHaveProperty('tool_call_validation_failure_count')
+    expect(payload).not.toHaveProperty('tool_call_validation_failure_kinds')
+  })
+
+  it('counts every tool call validation failure occurrence', () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+
+    telemetry.recordToolCallValidationFailure('invalid_tool_input')
+    telemetry.recordToolCallValidationFailure('invalid_tool_input')
+    telemetry.recordToolCallValidationFailure('no_such_tool')
+
+    expect(telemetry.buildPayload('success').tool_call_validation_failure_count).toBe(3)
+  })
+
+  it('deduplicates repeated tool call validation failure kinds', () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+
+    telemetry.recordToolCallValidationFailure('invalid_tool_input')
+    telemetry.recordToolCallValidationFailure('invalid_tool_input')
+
+    expect(telemetry.buildPayload('success').tool_call_validation_failure_kinds).toEqual(['invalid_tool_input'])
+  })
+
+  it('emits tool call validation failure kinds in canonical order', () => {
+    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
+
+    telemetry.recordToolCallValidationFailure('other')
+    telemetry.recordToolCallValidationFailure('invalid_tool_input')
+    telemetry.recordToolCallValidationFailure('no_such_tool')
+
+    expect(telemetry.buildPayload('success').tool_call_validation_failure_kinds).toEqual([
+      'no_such_tool',
+      'invalid_tool_input',
+      'other',
+    ])
+  })
+
   it('records whole-millisecond phase, TTFT, retry, step, and tool timings', () => {
     let currentTime = 10
     const telemetry = createTurnTelemetry({ now: () => currentTime, generateId: () => 'trace-1' })

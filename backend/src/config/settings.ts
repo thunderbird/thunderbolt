@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { z } from 'zod'
+import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
-const defaultCorsExposeHeaders =
-  'set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing'
+const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
  * Settings schema for environment variables validation
@@ -17,7 +17,6 @@ const settingsSchema = z
   .object({
     // API Keys
     fireworksApiKey: z.string().default(''),
-    mistralApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
@@ -111,6 +110,9 @@ const settingsSchema = z
 
     // Opt-in because uploads are plaintext and retained until account deletion.
     debugTranscriptsEnabled: z.boolean().default(false),
+    // Rollout order: docs/self-hosting/configuration.md#cli-device-rollout.
+    // Kill switch for the server-owned CLI device row.
+    cliDeviceRegistrationEnabled: z.boolean().default(false),
 
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
@@ -128,6 +130,12 @@ const settingsSchema = z
 
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
+
+    // Managed inference rolling quotas (integer cents)
+    inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
+    inferenceQuotaAnonymousSevenDayCents: z.coerce.number().int().positive().default(60),
+    inferenceQuotaRegisteredFiveHourCents: z.coerce.number().int().positive().default(1500),
+    inferenceQuotaRegisteredSevenDayCents: z.coerce.number().int().positive().default(7500),
 
     // Trusted proxy (controls which proxy headers are trusted for IP extraction)
     // Set to 'cloudflare' to trust CF-Connecting-IP, 'akamai' for True-Client-IP,
@@ -175,7 +183,6 @@ const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
-    mistralApiKey: process.env.MISTRAL_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
@@ -222,9 +229,14 @@ const parseSettings = (): Settings => {
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     debugTranscriptsEnabled: process.env.DEBUG_TRANSCRIPTS_ENABLED === 'true',
+    cliDeviceRegistrationEnabled: process.env.CLI_DEVICE_REGISTRATION_ENABLED === 'true',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
+    inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
+    inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,
+    inferenceQuotaRegisteredSevenDayCents: process.env.INFERENCE_QUOTA_REGISTERED_7D_CENTS,
     trustedProxy: (process.env.TRUSTED_PROXY || '').toLowerCase(),
     enabledAgents: process.env.ENABLED_AGENTS || '',
     allowCustomAgents: process.env.ALLOW_CUSTOM_AGENTS !== 'false',

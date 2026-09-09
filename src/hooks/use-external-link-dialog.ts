@@ -2,25 +2,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { useCallback, useReducer, useRef } from 'react'
-import { isTauri } from '@/lib/platform'
+import { openExternalUrl } from '@/lib/open-external-url'
 import { isSafeUrl } from '@/lib/url-utils'
 
-const openFailedMessage = 'Could not open link. Please try again or copy the URL.'
+// `msg` (not `t`) because these live at module scope, and descriptors (not strings)
+// because the dialog holds the error in state — a string would freeze whichever
+// locale was active when the open failed. The dialog resolves with `i18n._`.
+export const openFailedMessage = msg`Could not open link. Please try again or copy the URL.`
+/** Retrying can never succeed for a non-http(s) URL, so don't tell the user to. */
+export const unsafeUrlMessage = msg`This link uses an address the app cannot open.`
 
 type DialogState = {
   dialogOpen: boolean
   pendingUrl: string
-  openError: string | null
+  openError: MessageDescriptor | null
   isOpening: boolean
 }
 
 type DialogAction =
-  | { type: 'open'; url: string }
+  | { type: 'open'; url: string; error?: MessageDescriptor }
   | { type: 'close' }
   | { type: 'set_open'; open: boolean }
   | { type: 'start_opening' }
-  | { type: 'set_error'; error: string }
+  | { type: 'set_error'; error: MessageDescriptor }
 
 const initialState: DialogState = {
   dialogOpen: false,
@@ -32,7 +39,7 @@ const initialState: DialogState = {
 const dialogReducer = (state: DialogState, action: DialogAction): DialogState => {
   switch (action.type) {
     case 'open':
-      return { dialogOpen: true, pendingUrl: action.url, openError: null, isOpening: false }
+      return { dialogOpen: true, pendingUrl: action.url, openError: action.error ?? null, isOpening: false }
     case 'close':
       return { ...state, dialogOpen: false, isOpening: false }
     case 'set_open':
@@ -47,11 +54,12 @@ const dialogReducer = (state: DialogState, action: DialogAction): DialogState =>
 type UseExternalLinkDialogReturn = {
   dialogOpen: boolean
   pendingUrl: string
-  openDialog: (url: string) => void
+  openDialog: (url: string, error?: MessageDescriptor) => void
+  openExternally: (url: string) => Promise<void>
   handleConfirm: () => Promise<void>
   dismissWithAction: (action: (url: string) => void) => void
   setDialogOpen: (open: boolean) => void
-  openError: string | null
+  openError: MessageDescriptor | null
   isOpening: boolean
 }
 
@@ -59,8 +67,10 @@ type UseExternalLinkDialogReturn = {
  * Hook for managing external link warning dialog state.
  * Encapsulates the common pattern of showing a confirmation dialog
  * before opening external links in a new window.
- * Dialog closes only after a successful open; on failure (e.g. Tauri/openUrl
- * or window.open fails) the dialog stays open and openError is set.
+ * Once the dialog is open it closes only after a successful open; on failure
+ * (e.g. Tauri/openUrl or window.open fails) it stays open and openError is set.
+ * `openExternally` skips the dialog entirely, and raises it only to report a
+ * failure — so a failed open there moves it from closed to open.
  * Callbacks are stable (useCallback) so context consumers (e.g. SafeLink)
  * do not re-render when the provider re-renders during streaming.
  */
@@ -68,10 +78,32 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
   const [state, dispatch] = useReducer(dialogReducer, initialState)
   const pendingUrlRef = useRef<string>('')
 
-  const openDialog = useCallback((url: string) => {
+  const openDialog = useCallback((url: string, error?: MessageDescriptor) => {
     pendingUrlRef.current = url
-    dispatch({ type: 'open', url })
+    dispatch({ type: 'open', url, error })
   }, [])
+
+  /**
+   * Opens the URL without confirmation (the `browser` link preference).
+   * On failure it raises the dialog carrying the reason: a retryable message when
+   * the opener failed, or the non-retryable one when the URL isn't http(s).
+   */
+  const openExternally = useCallback(
+    async (url: string) => {
+      if (!isSafeUrl(url)) {
+        console.error('Attempted to open unsafe URL:', url)
+        openDialog(url, unsafeUrlMessage)
+        return
+      }
+      try {
+        await openExternalUrl(url)
+      } catch (error) {
+        console.error('Failed to open URL:', error)
+        openDialog(url, openFailedMessage)
+      }
+    },
+    [openDialog],
+  )
 
   const setDialogOpen = useCallback((open: boolean) => {
     dispatch({ type: 'set_open', open })
@@ -87,21 +119,14 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
 
     if (!isSafeUrl(urlToOpen)) {
       console.error('Attempted to open unsafe URL:', urlToOpen)
-      dispatch({ type: 'set_error', error: openFailedMessage })
+      dispatch({ type: 'set_error', error: unsafeUrlMessage })
       return
     }
 
     dispatch({ type: 'start_opening' })
 
     try {
-      if (isTauri()) {
-        const { openUrl } = await import('@tauri-apps/plugin-opener')
-        await openUrl(urlToOpen)
-      } else {
-        // noopener causes window.open to return null even on success,
-        // so we can't use the return value to detect popup-blocked
-        window.open(urlToOpen, '_blank', 'noopener,noreferrer')
-      }
+      await openExternalUrl(urlToOpen)
       if (pendingUrlRef.current === urlToOpen) {
         dispatch({ type: 'close' })
       }
@@ -121,7 +146,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     }
     if (!isSafeUrl(url)) {
       console.error('Attempted to open unsafe URL in app:', url)
-      dispatch({ type: 'set_error', error: openFailedMessage })
+      dispatch({ type: 'set_error', error: unsafeUrlMessage })
       return
     }
     pendingUrlRef.current = ''
@@ -133,6 +158,7 @@ export const useExternalLinkDialog = (): UseExternalLinkDialogReturn => {
     dialogOpen: state.dialogOpen,
     pendingUrl: state.pendingUrl,
     openDialog,
+    openExternally,
     handleConfirm,
     dismissWithAction,
     setDialogOpen,

@@ -13,6 +13,8 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
+import { createAppVersionMiddleware } from '@/middleware/app-version'
+import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import { createAuthIpRateLimit, createUserTierRateLimit } from '@/middleware/rate-limit'
@@ -101,6 +103,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createCorsMiddleware(settings))
       .use(createLoggerMiddleware(settings))
       .use(createHttpLoggingMiddleware(settings.trustedProxy))
+      .use(createAppVersionMiddleware(settings))
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(betterAuthPlugin)
@@ -120,7 +123,25 @@ export const createApp = async (deps?: AppDeps) => {
           dnsLookup: deps?.dnsLookup,
         }),
       )
-      .use(createTinfoilRoutes({ auth, fetchFn, logger: appLogger, rateLimit: proRateLimit }))
+      .use(
+        createTinfoilRoutes({
+          auth,
+          database,
+          fetchFn,
+          logger: appLogger,
+          usageLogger: appLogger,
+          rateLimit: proRateLimit,
+        }),
+      )
+      .use(
+        createInferenceUsageReceiptRoutes({
+          auth,
+          database,
+          secret: settings.betterAuthSecret,
+          logger: appLogger,
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'receipt'),
+        }),
+      )
       .use(
         createUniversalProxyWsRoutes({
           auth,
@@ -134,6 +155,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(
         createInferenceRoutes({
           auth,
+          database,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
           rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
@@ -160,7 +182,7 @@ export const createApp = async (deps?: AppDeps) => {
       )
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database))
-      .use(createAccountRoutes(auth, database))
+      .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )

@@ -22,6 +22,9 @@ export const categoryGateThresholds: Record<NecessityCategory, number> = {
   adversarial_no_search: 0.9,
   multi_turn_reuse: 0.9,
   search_wont_help: 0.6,
+  // Following an explicit instruction about output language is close to
+  // deterministic for a capable model, so this gates as tightly as never_search.
+  language: 0.95,
 }
 
 const z95 = 1.959963984540054

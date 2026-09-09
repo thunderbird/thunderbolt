@@ -6,6 +6,7 @@ import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
   bridgeDeviceId,
+  cliDeviceIdPrefix,
   countActiveDevices,
   getDeviceById,
   linkSessionToDevice,
@@ -21,22 +22,28 @@ import {
   upsertEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
+  isTrustedAppDevice,
   revokeDeviceSessions,
+  maxActiveDevicesPerUser,
+  withUserDeviceRegistrationLock,
 } from '@/dal'
-import type { db as DbType } from '@/db/client'
+import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
-import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-const maxDevicesPerUser = 10
+class DeviceRegistrationConflictError extends Error {}
+
+type EncryptionRouteDependencies = {
+  readonly linkSessionToDevice?: typeof linkSessionToDevice
+}
 
 /**
  * Check if the caller is performing a self-recovery.
  * Requires callerDeviceId === deviceId (self-operation) AND valid canary secret.
  */
 const checkSelfRecovery = async (
-  txDb: typeof DbType,
+  txDb: QueryableDatabase,
   userId: string,
   callerDeviceId: string,
   deviceId: string,
@@ -52,7 +59,11 @@ const checkSelfRecovery = async (
  * Encryption API routes for device registration, envelope management, and canary.
  * All routes require authentication via session.
  */
-export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
+export const createEncryptionRoutes = (
+  auth: Auth,
+  database: typeof DbType,
+  { linkSessionToDevice: bindSessionToDevice = linkSessionToDevice }: EncryptionRouteDependencies = {},
+) =>
   new Elysia()
     .use(createAuthMacro(auth))
     .post(
@@ -61,81 +72,97 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
-        // Check if device already exists (fast-path before transaction)
-        const existingDevice = await getDeviceById(database, deviceId)
+        if (deviceId.startsWith(cliDeviceIdPrefix)) {
+          set.status = 400
+          return { error: 'CLI device IDs must use account registration' }
+        }
 
-        if (existingDevice) {
-          // Device belongs to a different user
-          if (existingDevice.userId !== userId) {
+        const deviceName = name || 'Unknown device'
+        try {
+          const result = await database.transaction((tx) =>
+            withUserDeviceRegistrationLock(tx, userId, async () => {
+              const existingDevice = await getDeviceById(tx, deviceId)
+              if (existingDevice) {
+                if (existingDevice.userId !== userId) {
+                  return { kind: 'device-taken' as const }
+                }
+                if (existingDevice.revokedAt !== null) {
+                  return { kind: 'device-revoked' as const }
+                }
+              } else {
+                const activeCount = await countActiveDevices(tx, userId)
+                if (activeCount >= maxActiveDevicesPerUser) {
+                  return { kind: 'limit-reached' as const }
+                }
+              }
+
+              const binding = await bindSessionToDevice(tx, session.id, deviceId, userId)
+              if (binding.status === 'conflict') {
+                return { kind: 'binding-conflict' as const }
+              }
+              if (binding.status === 'invalid-session') {
+                return { kind: 'invalid-session' as const }
+              }
+
+              if (existingDevice?.publicKey && existingDevice.trusted) {
+                const envelope = await getEnvelopeByDeviceId(tx, deviceId, userId)
+                return {
+                  kind: 'registered' as const,
+                  trusted: true as const,
+                  envelope: envelope?.wrappedCk ?? null,
+                }
+              }
+
+              const registered = await registerDevice(tx, {
+                id: deviceId,
+                userId,
+                name: deviceName,
+                publicKey,
+                mlkemPublicKey,
+              })
+
+              // Roll back the successful bind if another transaction changed the row after our read.
+              if (registered.length === 0 || registered[0].userId !== userId) {
+                throw new DeviceRegistrationConflictError()
+              }
+
+              return { kind: 'registered' as const, trusted: false as const }
+            }),
+          )
+
+          if (result.kind === 'device-taken') {
             set.status = 409
             return { error: 'Device ID already taken' }
           }
-
-          // Revoked — device cannot re-register
-          if (existingDevice.revokedAt != null) {
+          if (result.kind === 'device-revoked') {
             set.status = 403
             return { error: 'Device has been revoked' }
           }
-
-          // Encryption-registered device (has publicKey): return current state
-          if (existingDevice.publicKey) {
-            if (existingDevice.trusted) {
-              await linkSessionToDevice(database, session.id, deviceId, userId)
-              const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
-              return {
-                trusted: true as const,
-                envelope: envelope?.wrappedCk ?? null,
-              }
+          if (result.kind === 'limit-reached') {
+            set.status = 422
+            return { error: 'Device limit reached' }
+          }
+          if (result.kind === 'binding-conflict') {
+            set.status = 409
+            return { code: 'SESSION_DEVICE_MISMATCH' }
+          }
+          if (result.kind === 'invalid-session') {
+            set.status = 401
+            return { error: 'Unauthorized' }
+          }
+          return result.trusted ? { trusted: true as const, envelope: result.envelope } : { trusted: false as const }
+        } catch (error) {
+          if (error instanceof DeviceRegistrationConflictError) {
+            const currentDevice = await getDeviceById(database, deviceId)
+            if (currentDevice?.userId === userId && currentDevice.revokedAt !== null) {
+              set.status = 403
+              return { error: 'Device has been revoked' }
             }
-            // Non-trusted device re-registering (reopen modal after deny/cancel):
-            // fall through to registerDevice which upserts with approvalPending=true
+            set.status = 409
+            return { error: 'Device ID already taken' }
           }
-
-          // Pre-encryption device (no publicKey): fall through to register with publicKey
+          throw error
         }
-
-        // Wrap limit check + registration in a transaction to prevent TOCTOU race
-        const deviceName = name || 'Unknown device'
-        const result = await database.transaction(async (tx) => {
-          const txDb = tx as unknown as typeof database
-
-          // Re-check device inside transaction to close race window
-          const freshDevice = await getDeviceById(txDb, deviceId)
-          if (!freshDevice) {
-            const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= maxDevicesPerUser) {
-              return { limitReached: true as const }
-            }
-          }
-
-          const registered = await registerDevice(txDb, {
-            id: deviceId,
-            userId,
-            name: deviceName,
-            publicKey,
-            mlkemPublicKey,
-          })
-
-          // If upsert returned no rows, another user claimed this device ID
-          if (registered.length === 0 || registered[0].userId !== userId) {
-            return { taken: true as const }
-          }
-
-          return { ok: true as const }
-        })
-
-        if ('limitReached' in result) {
-          set.status = 422
-          return { error: 'Device limit reached' }
-        }
-
-        if ('taken' in result) {
-          set.status = 409
-          return { error: 'Device ID already taken' }
-        }
-
-        await linkSessionToDevice(database, session.id, deviceId, userId)
-        return { trusted: false as const }
       },
       {
         auth: true,
@@ -157,7 +184,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         // Pre-transaction check: fast-path rejection for missing/wrong-user/revoked devices
         // without starting a transaction. Re-checked inside tx to close race window.
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId) {
+        if (!device || device.userId !== userId || device.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -182,111 +209,107 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
         // Use a transaction for atomicity (prevents race conditions on first-device bootstrap)
         try {
-          await database.transaction(async (tx) => {
-            const txDb = tx as unknown as typeof database
+          await database.transaction((tx) =>
+            withUserDeviceRegistrationLock(tx, userId, async () => {
+              const txDb = tx
 
-            // Serialize concurrent device approvals for this user to prevent cap bypass
-            // (Finding F): without this, two concurrent envelope txs both see count<MAX
-            // and both promote pending devices, exceeding the cap. The advisory lock
-            // auto-releases on commit/rollback.
-            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+              const envelopesExist = await hasEnvelopesForUser(txDb, userId)
+              const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
 
-            const envelopesExist = await hasEnvelopesForUser(txDb, userId)
-            const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
+              // First device bootstrap requires canary data for recovery to work
+              if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
+                throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+              }
 
-            // First device bootstrap requires canary data for recovery to work
-            if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
-              throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
-            }
+              // Defense-in-depth: if encryption metadata already exists, verify canary proof
+              // to prevent E2EE state reset even if device revocation protections are bypassed.
+              // Checks `existingMetadata` (not `existingMetadata?.canarySecretHash`) for fail-closed
+              // behavior: if metadata exists with a null hash, we block rather than silently skip.
+              if (isFirstDeviceBootstrap) {
+                const existingMetadata = await getEncryptionMetadata(txDb, userId)
+                if (existingMetadata) {
+                  if (!(await verifyCanaryProofWithMetadata(canarySecret!, existingMetadata.canarySecretHash))) {
+                    throw new ForbiddenError(
+                      'Invalid canary secret — cannot re-bootstrap with existing encryption metadata',
+                    )
+                  }
+                }
+              }
 
-            // Defense-in-depth: if encryption metadata already exists, verify canary proof
-            // to prevent E2EE state reset even if device revocation protections are bypassed.
-            // Checks `existingMetadata` (not `existingMetadata?.canarySecretHash`) for fail-closed
-            // behavior: if metadata exists with a null hash, we block rather than silently skip.
-            if (isFirstDeviceBootstrap) {
-              const existingMetadata = await getEncryptionMetadata(txDb, userId)
-              if (existingMetadata) {
-                if (!(await verifyCanaryProofWithMetadata(canarySecret!, existingMetadata.canarySecretHash))) {
+              // Recovery: device is self-storing and provided canary that matches stored metadata.
+              // This means the client fetched the canary, verified the recovery key against it,
+              // and is now re-bootstrapping with the recovered CK.
+              const isSelfRecovery = isFirstDeviceBootstrap
+                ? false
+                : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canarySecret)
+
+              // Re-check target device inside transaction to close race window
+              const targetDevice = await getDeviceById(txDb, deviceId)
+              if (!targetDevice || targetDevice.deviceType === 'cli' || targetDevice.revokedAt != null) {
+                throw new ForbiddenError('Device has been revoked')
+              }
+
+              if (!isFirstDeviceBootstrap && !isSelfRecovery) {
+                // Proof-of-CK-possession prevents X-Device-ID spoofing: a pending device
+                // cannot provide the canary secret because it doesn't have the Content Key.
+                if (!canarySecret) {
+                  throw new ForbiddenError('Canary secret required for device approval')
+                }
+                if (!(await verifyCanaryProof(txDb, userId, canarySecret))) {
+                  throw new ForbiddenError('Invalid canary secret')
+                }
+
+                // Caller-trust check (defense-in-depth)
+                const callerDevice = await getDeviceById(txDb, callerDeviceId)
+                if (!isTrustedAppDevice(callerDevice, userId)) {
+                  const callerBelongsToApp =
+                    callerDevice !== null && callerDevice.userId === userId && callerDevice.deviceType !== 'cli'
                   throw new ForbiddenError(
-                    'Invalid canary secret — cannot re-bootstrap with existing encryption metadata',
+                    callerBelongsToApp ? 'Only trusted devices can store envelopes' : 'Caller device not found',
                   )
                 }
               }
-            }
 
-            // Recovery: device is self-storing and provided canary that matches stored metadata.
-            // This means the client fetched the canary, verified the recovery key against it,
-            // and is now re-bootstrapping with the recovered CK.
-            const isSelfRecovery = isFirstDeviceBootstrap
-              ? false
-              : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canarySecret)
-
-            // Re-check target device inside transaction to close race window
-            const targetDevice = await getDeviceById(txDb, deviceId)
-            if (!targetDevice || targetDevice.revokedAt != null) {
-              throw new ForbiddenError('Device has been revoked')
-            }
-
-            if (!isFirstDeviceBootstrap && !isSelfRecovery) {
-              // Proof-of-CK-possession prevents X-Device-ID spoofing: a pending device
-              // cannot provide the canary secret because it doesn't have the Content Key.
-              if (!canarySecret) {
-                throw new ForbiddenError('Canary secret required for device approval')
-              }
-              if (!(await verifyCanaryProof(txDb, userId, canarySecret))) {
-                throw new ForbiddenError('Invalid canary secret')
-              }
-
-              // Caller-trust check (defense-in-depth)
-              const callerDevice = await getDeviceById(txDb, callerDeviceId)
-              if (!callerDevice || callerDevice.userId !== userId) {
-                throw new ForbiddenError('Caller device not found')
-              }
-              if (!callerDevice.trusted) {
-                throw new ForbiddenError('Only trusted devices can store envelopes')
-              }
-            }
-
-            // Store envelope
-            await upsertEnvelope(txDb, {
-              deviceId,
-              userId,
-              wrappedCk: wrappedCK,
-            })
-
-            // Store canary if provided (first device setup — idempotent)
-            if (canaryIv && canaryCtext) {
-              const canarySecretHash = canarySecret ? await hashCanarySecret(canarySecret) : undefined
-              await insertEncryptionMetadataIfNotExists(txDb, {
+              await upsertEnvelope(txDb, {
+                deviceId,
                 userId,
-                canaryIv,
-                canaryCtext,
-                canarySecretHash,
+                wrappedCk: wrappedCK,
               })
-            }
 
-            // Approval-only state transition: cap check + markDeviceTrusted only run when
-            // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
-            // envelopes), the upsertEnvelope above is the only state change needed. Running
-            // markDeviceTrusted on an already-trusted device matches 0 rows (its WHERE requires
-            // approvalPending=true) and would falsely throw 'Device has been revoked'.
-            if (!targetDevice.trusted) {
-              // registerDevice checks the cap, but pending devices don't count toward it. Without
-              // this guard, a user could register N+1 pending devices and approve them all,
-              // exceeding maxDevicesPerUser.
-              const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= maxDevicesPerUser) {
-                throw new ForbiddenError('Device limit reached — revoke an existing device first')
+              // Store canary if provided (first device setup — idempotent)
+              if (canaryIv && canaryCtext) {
+                const canarySecretHash = canarySecret ? await hashCanarySecret(canarySecret) : undefined
+                await insertEncryptionMetadataIfNotExists(txDb, {
+                  userId,
+                  canaryIv,
+                  canaryCtext,
+                  canarySecretHash,
+                })
               }
 
-              // Mark device as trusted. Check rows returned to detect a concurrent revoke
-              // that committed between the in-tx target read above and this UPDATE.
-              const updated = await markDeviceTrusted(txDb, deviceId, userId)
-              if (updated.length === 0) {
-                throw new ForbiddenError('Device has been revoked')
+              // Approval-only state transition: cap check + markDeviceTrusted only run when
+              // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
+              // envelopes), the upsertEnvelope above is the only state change needed. Running
+              // markDeviceTrusted on an already-trusted device matches 0 rows (its WHERE requires
+              // approvalPending=true) and would falsely throw 'Device has been revoked'.
+              if (!targetDevice.trusted) {
+                // registerDevice checks the cap, but pending devices don't count toward it. Without
+                // this guard, a user could register N+1 pending devices and approve them all,
+                // exceeding maxActiveDevicesPerUser.
+                const activeCount = await countActiveDevices(txDb, userId)
+                if (activeCount >= maxActiveDevicesPerUser) {
+                  throw new ForbiddenError('Device limit reached — revoke an existing device first')
+                }
+
+                // Mark device as trusted. Check rows returned to detect a concurrent revoke
+                // that committed between the in-tx target read above and this UPDATE.
+                const updated = await markDeviceTrusted(txDb, deviceId, userId)
+                if (updated.length === 0) {
+                  throw new ForbiddenError('Device has been revoked')
+                }
               }
-            }
-          })
+            }),
+          )
         } catch (err) {
           if (err instanceof BadRequestError) {
             set.status = 400
@@ -324,7 +347,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
         // Verify device belongs to this user
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId) {
+        if (!device || device.userId !== userId || device.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -391,14 +414,14 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
 
         // Caller must be a trusted device (defense-in-depth)
         const callerDevice = await getDeviceById(database, callerDeviceId)
-        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+        if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
           return { error: 'Only trusted devices can deny pending devices' }
         }
 
         // Target must be a pending device belonging to the same user
         const targetDevice = await getDeviceById(database, params.deviceId)
-        if (!targetDevice || targetDevice.userId !== userId) {
+        if (!targetDevice || targetDevice.userId !== userId || targetDevice.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -445,7 +468,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         // Caller must be a trusted device (defense-in-depth: only a trusted app
         // device may attest another device's P2P identity).
         const callerDevice = await getDeviceById(database, callerDeviceId)
-        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+        if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
           return { error: 'Only trusted devices can set a device node ID' }
         }
@@ -535,25 +558,27 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
       async ({ body, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
-        const result = await database.transaction(async (tx) => {
-          const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-          if (!existingBridge) {
-            const activeCount = await countActiveDevices(tx, userId)
-            if (activeCount >= maxDevicesPerUser) {
-              return { limitReached: true as const }
+        const result = await database.transaction((tx) =>
+          withUserDeviceRegistrationLock(tx, userId, async () => {
+            const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+            if (!existingBridge) {
+              const activeCount = await countActiveDevices(tx, userId)
+              if (activeCount >= maxActiveDevicesPerUser) {
+                return { limitReached: true as const }
+              }
             }
-          }
 
-          const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
-          if (!device) {
-            const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-            if (tombstone?.userId === userId && tombstone.revokedAt != null) {
-              return { revoked: true as const }
+            const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
+            if (!device) {
+              const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+              if (tombstone?.userId === userId && tombstone.revokedAt != null) {
+                return { revoked: true as const }
+              }
+              throw new Error('Bridge device registration returned no device')
             }
-            throw new Error('Bridge device registration returned no device')
-          }
-          return { device }
-        })
+            return { device }
+          }),
+        )
 
         if ('limitReached' in result) {
           set.status = 422
@@ -616,7 +641,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType) =>
         }
 
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId) {
+        if (!device || device.userId !== userId || device.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }

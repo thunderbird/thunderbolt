@@ -108,6 +108,8 @@ Assistant responses can embed rich interactive components (weather, link preview
 | `/v1/posthog/*`     | Analytics event relay                                           |
 | `/v1/swagger`       | OpenAPI spec (gated by `SWAGGER_ENABLED`)                       |
 
+A global middleware (`createAppVersionMiddleware`) enforces a minimum client version across all `/v1` routes: when `MIN_APP_VERSION` is set, below-minimum clients get a `426 Upgrade Required` (except exempt bootstrap/callback routes). New browser-redirect or header-less routes must be added to its exempt list.
+
 ### Dev-Time Database
 
 Backend tests and local dev can run against [PGLite](https://pglite.dev) — a browser/Node-embedded Postgres — via `bun run db:dev`, which serves data out of `.pglite/data`. Production uses real PostgreSQL.

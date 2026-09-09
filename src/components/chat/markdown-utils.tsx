@@ -20,8 +20,10 @@ import { CitationBadge } from '@/components/chat/citation-badge'
 import { ExternalLinkDialog } from '@/components/chat/external-link-dialog'
 import { useSetPreviewHidden, useShowPreview } from '@/content-view/context'
 import { useExternalLinkDialog } from '@/hooks/use-external-link-dialog'
+import { resolveLinkAction } from '@/lib/external-link-behavior'
 import { isDesktop } from '@/lib/platform'
 import { isSafeUrl } from '@/lib/url-utils'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { CitationMap } from '@/types/citation'
 
 // Re-export for consumers that import CitationMap from here
@@ -173,50 +175,82 @@ const processChildren = (children: ReactNode, citations?: CitationMap): ReactNod
 /**
  * Provider that renders a single ExternalLinkDialog for all SafeLinks in the tree.
  * Wrap markdown content with this to avoid N dialog instances for N links.
+ *
+ * `isDesktopPlatform` is injectable (as `ContentViewProvider` does with `trackEvent`)
+ * so the sidebar route can be exercised without a real Tauri desktop environment.
  */
-export const ExternalLinkDialogProvider = memo(({ children }: { children: ReactNode }) => {
-  const { dialogOpen, pendingUrl, openDialog, handleConfirm, dismissWithAction, setDialogOpen, openError, isOpening } =
-    useExternalLinkDialog()
-  const contextValue = useMemo(() => ({ openExternalLink: openDialog }), [openDialog])
+export const ExternalLinkDialogProvider = memo(
+  ({ children, isDesktopPlatform = isDesktop }: { children: ReactNode; isDesktopPlatform?: () => boolean }) => {
+    const {
+      dialogOpen,
+      pendingUrl,
+      openDialog,
+      openExternally,
+      handleConfirm,
+      dismissWithAction,
+      setDialogOpen,
+      openError,
+      isOpening,
+    } = useExternalLinkDialog()
 
-  const showPreview = useShowPreview()
-  const setPreviewHidden = useSetPreviewHidden()
-  const desktop = isDesktop() && !!showPreview
+    const showPreview = useShowPreview()
+    const setPreviewHidden = useSetPreviewHidden()
+    const desktop = isDesktopPlatform() && !!showPreview
+    const linkBehavior = useLocalSettingsStore((s) => s.externalLinkBehavior)
 
-  const handleDialogOpenChange = useCallback(
-    (open: boolean) => {
-      setDialogOpen(open)
-      setPreviewHidden?.(open)
-    },
-    [setDialogOpen, setPreviewHidden],
-  )
+    const openExternalLink = useCallback(
+      (url: string) => {
+        const action = resolveLinkAction(linkBehavior, { canUseSidebar: desktop, isSafe: isSafeUrl(url) })
+        if (action === 'browser') {
+          void openExternally(url)
+          return
+        }
+        if (action === 'sidebar' && showPreview) {
+          showPreview(url)
+          return
+        }
+        openDialog(url)
+      },
+      [desktop, linkBehavior, openDialog, openExternally, showPreview],
+    )
 
-  // Reset preview visibility when the component unmounts while dialog is open
-  useEffect(() => {
-    return () => setPreviewHidden?.(false)
-  }, [setPreviewHidden])
+    const contextValue = useMemo(() => ({ openExternalLink }), [openExternalLink])
 
-  const handleOpenInApp = useCallback(() => {
-    if (showPreview) {
-      dismissWithAction(showPreview)
-    }
-  }, [dismissWithAction, showPreview])
+    const handleDialogOpenChange = useCallback(
+      (open: boolean) => {
+        setDialogOpen(open)
+        setPreviewHidden?.(open)
+      },
+      [setDialogOpen, setPreviewHidden],
+    )
 
-  return (
-    <ExternalLinkDialogContext.Provider value={contextValue}>
-      {children}
-      <ExternalLinkDialog
-        open={dialogOpen}
-        onOpenChange={handleDialogOpenChange}
-        url={pendingUrl}
-        onConfirm={handleConfirm}
-        onOpenInApp={desktop ? handleOpenInApp : undefined}
-        openError={openError}
-        isOpening={isOpening}
-      />
-    </ExternalLinkDialogContext.Provider>
-  )
-})
+    // Reset preview visibility when the component unmounts while dialog is open
+    useEffect(() => {
+      return () => setPreviewHidden?.(false)
+    }, [setPreviewHidden])
+
+    const handleOpenInApp = useCallback(() => {
+      if (showPreview) {
+        dismissWithAction(showPreview)
+      }
+    }, [dismissWithAction, showPreview])
+
+    return (
+      <ExternalLinkDialogContext.Provider value={contextValue}>
+        {children}
+        <ExternalLinkDialog
+          open={dialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          url={pendingUrl}
+          onConfirm={handleConfirm}
+          onOpenInApp={desktop ? handleOpenInApp : undefined}
+          openError={openError}
+          isOpening={isOpening}
+        />
+      </ExternalLinkDialogContext.Provider>
+    )
+  },
+)
 ExternalLinkDialogProvider.displayName = 'ExternalLinkDialogProvider'
 
 /**

@@ -112,7 +112,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
     })
   })
 
@@ -183,7 +183,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const focusSpy = mock(() => {})
       const setSelectionRangeSpy = mock(() => {})
       textarea.focus = focusSpy
@@ -209,7 +209,7 @@ describe('ChatPromptInput', () => {
         ref.current?.setInput('Test input')
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       expect(textarea.value).toBe('Test input')
     })
   })
@@ -246,7 +246,7 @@ describe('ChatPromptInput', () => {
         />,
         { wrapper: TestWrapper },
       )
-      const textarea = screen.getByPlaceholderText('Ask me anything...')
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
 
       fireEvent.change(textarea, { target: { value: 'too long' } })
       await act(async () => {
@@ -312,7 +312,7 @@ describe('ChatPromptInput', () => {
       act(() => {
         ref.current?.setInput(tokenText)
       })
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       textarea.setSelectionRange(caret, caret)
       return textarea
     }
@@ -373,7 +373,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByPlaceholderText('Ask me anything...')).toBeNull()
+      expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
     })
   })
@@ -461,7 +461,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], 'shot.png', { type: 'image/png' })
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -476,7 +476,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], '', { type: 'image/png' })
       pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -490,7 +490,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
 
       expect(preventDefaultSpy).not.toHaveBeenCalled()
@@ -502,7 +502,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['<html>'], 'page.html', { type: 'text/html' })
       pasteItems(textarea, [{ kind: 'file', type: 'text/html', getAsFile: () => file }])
       await flushAttachments()

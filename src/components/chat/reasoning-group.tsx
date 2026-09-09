@@ -43,10 +43,7 @@ export const ReasoningGroup = ({
 
   const isGroupReasoning = isLastPartInMessage && (isStreaming || currentReasoningPart?.content.state === 'streaming')
 
-  // Create unique instance key for reasoning display
-  const reasoningInstanceKey = currentReasoningPart
-    ? `reasoning-${currentReasoningPart.content.text.substring(0, 50)}-${parts.indexOf(currentReasoningPart)}`
-    : ''
+  const reasoningInstanceKey = currentReasoningPart?.id ?? ''
 
   const totalDuration = (() => {
     if (!reasoningStartTimes) {
@@ -111,9 +108,9 @@ export const ReasoningGroup = ({
       </Expandable>
       {!hasTextPart && (
         <ReasoningDisplay
+          key={reasoningInstanceKey}
           text={currentReasoningPart?.content.text}
-          isStreaming={currentReasoningPart?.content.state === 'streaming'}
-          instanceKey={reasoningInstanceKey}
+          isStreaming={isStreaming && currentReasoningPart?.content.state === 'streaming'}
         />
       )}
     </div>

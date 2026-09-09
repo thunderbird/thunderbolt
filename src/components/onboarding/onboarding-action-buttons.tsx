@@ -3,7 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Button } from '@/components/ui/button'
+import { Trans } from '@lingui/react/macro'
 import { ArrowLeft } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type OnboardingActionButtonsProps = {
   onBack?: () => void
@@ -12,7 +14,7 @@ type OnboardingActionButtonsProps = {
   showBack?: boolean
   showSkip?: boolean
   showContinue?: boolean
-  continueText?: string
+  continueText?: ReactNode
   continueDisabled?: boolean
   skipDisabled?: boolean
 }
@@ -24,7 +26,7 @@ export const OnboardingActionButtons = ({
   showBack = true,
   showSkip = true,
   showContinue = true,
-  continueText = 'Continue',
+  continueText = <Trans>Continue</Trans>,
   continueDisabled = false,
   skipDisabled = false,
 }: OnboardingActionButtonsProps) => {
@@ -41,7 +43,7 @@ export const OnboardingActionButtons = ({
       <div className={`flex space-x-2 ${!showBack && !showSkip && 'w-full'}`}>
         {showSkip && onSkip && (
           <Button onClick={onSkip} variant="ghost" disabled={skipDisabled}>
-            Skip
+            <Trans>Skip</Trans>
           </Button>
         )}
         {showContinue && onContinue && (

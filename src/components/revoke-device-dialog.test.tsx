@@ -52,6 +52,19 @@ describe('RevokeDeviceDialog', () => {
     expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
   })
 
+  it('renders CLI-specific revoke wording without sync claims', () => {
+    render(
+      <RevokeDeviceDialog open={true} onOpenChange={() => {}} onConfirm={() => {}} isPending={false} variant="cli" />,
+    )
+
+    expect(screen.getByText('Revoke this CLI?')).toBeInTheDocument()
+    expect(
+      screen.getByText('The CLI will be signed out and must sign in again before it can use your Thunderbolt account.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/local data|next sync/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument()
+  })
+
   it('does not render content when closed', () => {
     render(
       <RevokeDeviceDialog

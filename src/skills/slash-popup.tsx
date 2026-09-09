@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { useEffect, useRef } from 'react'
 
 import type { SlashItem } from './use-slash-command'
@@ -34,6 +35,7 @@ export const SlashPopup = ({
   onSelect: (item: SlashItem) => void
   onHover: (idx: number) => void
 }) => {
+  const { t } = useLingui()
   const listRef = useRef<HTMLUListElement>(null)
 
   // Scroll the highlighted row into view when the user arrow-keys past the
@@ -47,7 +49,7 @@ export const SlashPopup = ({
   return (
     <div
       role="listbox"
-      aria-label="Slash commands"
+      aria-label={t`Slash commands`}
       // `rounded-xl` (container tier) to match the ModeSelector + chip dropdown
       // across the chat screen. The row highlight below uses `rounded-lg` (one
       // notch tighter) so the bg-accent fill sits concentrically inside the

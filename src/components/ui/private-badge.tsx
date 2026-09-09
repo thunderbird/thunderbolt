@@ -4,6 +4,7 @@
 
 import { GradientLock } from '@/components/ui/gradient-lock'
 import { cn } from '@/lib/utils'
+import { Trans } from '@lingui/react/macro'
 
 /**
  * Confidential-model indicator: gradient lock + "Private" in one continuous
@@ -16,6 +17,8 @@ import { cn } from '@/lib/utils'
 export const PrivateBadge = ({ className }: { className?: string }) => (
   <span className={cn('flex items-center gap-1 bg-clip-text [background-image:var(--gradient-brand)]', className)}>
     <GradientLock className="size-3.5" gradientEndX={89} />
-    <span className="text-transparent text-[length:var(--font-size-xs)] font-medium">Private</span>
+    <span className="text-transparent text-[length:var(--font-size-xs)] font-medium">
+      <Trans>Private</Trans>
+    </span>
   </span>
 )

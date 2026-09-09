@@ -4,12 +4,50 @@
 
 /**
  * Streaming terminal renderer for the thunderbolt CLI. Subscribes to a Pi
- * `AgentHarness` and pretty-prints the run as it happens: assistant prose,
+ * `HarnessRuntime` and pretty-prints the run as it happens: assistant prose,
  * subdued thinking, and colored tool-call activity.
  */
 
-import type { AgentHarness, AgentMessage } from '@earendil-works/pi-agent-core'
-import { cyan, dim, gray, green, red, symbols } from './theme.ts'
+import type { AgentMessage } from '@earendil-works/pi-agent-core'
+import type { AssistantMessageEvent } from '@earendil-works/pi-ai'
+import type { HarnessRuntime } from '../provider-runtime/types.ts'
+import { amber, dim, gray, green, red, spark, symbols } from './theme.ts'
+
+export const workingStatusText = 'Working…'
+const plainStreamingStatusText = `${workingStatusText} (Ctrl+C to interrupt)`
+const errorRecoveryHints = {
+  network: 'check your connection — your message is kept in history (↑)',
+  auth: 'run /login to sign in again',
+  byokAuth: "set the provider's environment variable, pass --api-key, or repair the profile with thunderbolt config",
+  generic: 'retry the message — it is kept in history (↑)',
+} as const
+
+/** Selects the provider-error headline and recovery hint in priority order. */
+const turnErrorPresentation = (detail: string, providerId: string | null): readonly [string, string] => {
+  const normalized = detail.toLowerCase()
+  if (/network|fetch|connect|unreachable|econn/.test(normalized)) return [detail, errorRecoveryHints.network]
+  if (!/auth|session|unauthorized|401/.test(normalized)) return [detail, errorRecoveryHints.generic]
+  if (providerId === 'thunderbolt') return ['Session expired', errorRecoveryHints.auth]
+  return ['Provider rejected the credential', errorRecoveryHints.byokAuth]
+}
+
+/** Whether an assistant stream event carries content rather than protocol framing. */
+export const isAssistantDelta = (event: AssistantMessageEvent): boolean =>
+  event.type === 'text_delta' || event.type === 'thinking_delta' || event.type === 'toolcall_delta'
+
+type RendererStream = {
+  readonly isTTY?: boolean
+  readonly write: (text: string) => void
+}
+
+type RendererStreams = {
+  readonly stdout: RendererStream
+  readonly stderr: RendererStream
+}
+
+type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue }
+type ToolArguments = Readonly<{ command?: string; path?: string; [key: string]: JsonValue | undefined }> | null
+export type ToolResultPreview = { readonly content?: readonly { readonly type?: string; readonly text?: string }[] }
 
 /** Max length of a tool-call argument summary before it's ellipsized. */
 const argsMax = 100
@@ -17,6 +55,17 @@ const argsMax = 100
 const previewMax = 160
 /** Lines of a tool result shown as a preview. */
 const previewLines = 2
+
+export type StatusPhase = 'working' | 'reasoning'
+
+/** Derives the waiting-state copy from an injected wall clock. */
+export const statusLadderMessage = (startedAt: number, now: number, phase: StatusPhase): string => {
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1_000))
+  if (phase === 'reasoning') return `Reasoning… ${elapsedSeconds}s`
+  if (elapsedSeconds >= 15)
+    return `Still working… ${elapsedSeconds}s — this model can take ~30s for the first token`
+  return elapsedSeconds >= 4 ? `${workingStatusText} ${elapsedSeconds}s` : workingStatusText
+}
 
 /**
  * Matches whole ANSI escape sequences: CSI (`ESC[…`), OSC (`ESC]…` up to a BEL
@@ -75,17 +124,12 @@ const truncate = (text: string, max: number): string => (text.length > max ? `${
  * @param args - the tool's arguments (Pi types these loosely, so narrow here)
  * @returns a single-line, untruncated summary
  */
-const summarizeArgs = (args: unknown): string => {
-  if (typeof args !== 'object' || args === null) return ''
-  const record = args as Record<string, unknown>
-  if (typeof record.command === 'string') return sanitizeTerminalText(record.command)
-  if (typeof record.path === 'string') return sanitizeTerminalText(record.path)
-  return sanitizeTerminalText(JSON.stringify(record))
+const summarizeArgs = (args: ToolArguments): string => {
+  if (args === null) return ''
+  if (args.command !== undefined) return sanitizePermissionText(args.command)
+  if (args.path !== undefined) return sanitizePermissionText(args.path)
+  return sanitizePermissionText(JSON.stringify(args))
 }
-
-/** Narrows an unknown tool-result content block to one carrying text. */
-const isTextBlock = (block: unknown): block is { text: string } =>
-  typeof block === 'object' && block !== null && typeof (block as { text?: unknown }).text === 'string'
 
 /**
  * Extracts a short preview from a Pi tool result by concatenating its text
@@ -94,17 +138,15 @@ const isTextBlock = (block: unknown): block is { text: string } =>
  * @param result - the tool result (`{ content: [{ type, text }] }`)
  * @returns a trimmed, line- and length-bounded preview (empty when none)
  */
-const previewResult = (result: unknown): string => {
-  if (typeof result !== 'object' || result === null) return ''
-  const content = (result as { content?: unknown }).content
-  if (!Array.isArray(content)) return ''
+const previewResult = (result: ToolResultPreview | null, max: number): string => {
+  const content = result?.content
+  if (content === undefined) return ''
   const text = sanitizeTerminalText(
     content
-      .filter(isTextBlock)
-      .map((block) => block.text)
+      .map((block) => block.text ?? '')
       .join(''),
   ).trim()
-  return truncate(text.split('\n').slice(0, previewLines).join('\n'), previewMax)
+  return truncate(text.split('\n').slice(0, previewLines).join('\n'), max)
 }
 
 /**
@@ -116,9 +158,13 @@ const previewResult = (result: unknown): string => {
  * @param args - the tool's arguments, summarized to one line
  * @returns the styled, single-line header
  */
-export const formatToolStart = (toolName: string, args: unknown): string => {
-  const header = `${symbols.tool} ${cyan(toolName)}`
-  const summary = truncate(summarizeArgs(args), argsMax)
+export const formatToolStart = (
+  toolName: string,
+  args: ToolArguments,
+  width: number = process.stdout.columns ?? Infinity,
+): string => {
+  const header = `${gray(symbols.tool)} ${amber(toolName)}`
+  const summary = truncate(summarizeArgs(args), Math.max(1, Math.min(argsMax, width - toolName.length - 3)))
   return summary ? `${header} ${gray(summary)}` : header
 }
 
@@ -130,10 +176,14 @@ export const formatToolStart = (toolName: string, args: unknown): string => {
  * @param result - the tool result to preview
  * @returns the styled, single-line marker
  */
-export const formatToolEnd = (isError: boolean, result: unknown): string => {
+export const formatToolEnd = (
+  isError: boolean,
+  result: ToolResultPreview | null,
+  width: number = process.stdout.columns ?? Infinity,
+): string => {
   const mark = isError ? red(symbols.fail) : green(symbols.ok)
-  const preview = previewResult(result)
-  return preview ? `${mark} ${gray(preview)}` : mark
+  const preview = previewResult(result, Math.max(1, Math.min(previewMax, width - 4)))
+  return preview ? `  ${mark} ${gray(preview.replaceAll('\n', '\n    '))}` : `  ${mark}`
 }
 
 /**
@@ -143,12 +193,14 @@ export const formatToolEnd = (isError: boolean, result: unknown): string => {
  * the CLI would print nothing and look like a silent no-op.
  *
  * @param message - the assistant message attached to a `turn_end` event
+ * @param providerId - the provider that produced the turn
  * @returns the styled error line, or `undefined` when the turn did not error
  */
-export const formatTurnError = (message: AgentMessage): string | undefined => {
+export const formatTurnError = (message: AgentMessage, providerId: string | null): string | undefined => {
   if (!('stopReason' in message) || message.stopReason !== 'error') return undefined
   const detail = sanitizeTerminalText(message.errorMessage ?? 'the request failed')
-  return red(`${symbols.fail} ${detail}`)
+  const [headline, recovery] = turnErrorPresentation(detail, providerId)
+  return `${red(`${symbols.fail} ${headline}`)}\n${dim(`  ${recovery}`)}`
 }
 
 /**
@@ -156,32 +208,72 @@ export const formatTurnError = (message: AgentMessage): string | undefined => {
  * lifetime and writes assistant text, thinking, and tool activity to stdout as
  * events arrive.
  *
- * @param harness - the Pi harness whose run should be rendered
+ * @param runtime - the harness runtime whose run should be rendered
  */
-export const attachRenderer = (harness: AgentHarness): void => {
-  harness.subscribe((event) => {
+export const attachRenderer = (
+  runtime: Pick<HarnessRuntime, 'currentProviderId' | 'subscribe'>,
+  streams: RendererStreams = { stdout: process.stdout, stderr: process.stderr },
+): void => {
+  let status: string | undefined
+  let thinking = false
+  const showStatus = (message: string): void => {
+    if (!streams.stderr.isTTY || status === message) return
+    status = message
+    streams.stderr.write(`\r\x1b[2K${spark()} ${message}`)
+  }
+  const clearStatus = (): void => {
+    if (!status) return
+    status = undefined
+    streams.stderr.write('\r\x1b[2K')
+  }
+
+  runtime.subscribe((event) => {
     switch (event.type) {
+      case 'agent_start':
+      case 'turn_start':
+        showStatus(workingStatusText)
+        break
+      case 'message_start':
+        if (event.message.role === 'assistant') {
+          thinking = false
+          showStatus(plainStreamingStatusText)
+        }
+        break
       case 'message_update': {
         const inner = event.assistantMessageEvent
+        if (isAssistantDelta(inner)) clearStatus()
         switch (inner.type) {
           case 'text_delta':
-            process.stdout.write(sanitizeTerminalText(inner.delta))
+            streams.stdout.write(sanitizeTerminalText(inner.delta))
             break
           case 'thinking_delta':
-            process.stdout.write(dim(sanitizeTerminalText(inner.delta)))
+            if (!thinking) {
+              thinking = true
+              streams.stdout.write(`${dim(`${symbols.thinking} thinking`)}\n`)
+            }
+            streams.stdout.write(dim(sanitizeTerminalText(inner.delta)))
             break
         }
         break
       }
+      case 'message_end':
+        if (event.message.role === 'assistant') clearStatus()
+        break
+      case 'agent_end':
+      case 'abort':
+        clearStatus()
+        break
       case 'tool_execution_start':
-        process.stdout.write(`\n${formatToolStart(event.toolName, event.args)}\n`)
+        clearStatus()
+        streams.stdout.write(`\n${formatToolStart(event.toolName, event.args)}\n`)
         break
       case 'tool_execution_end':
-        process.stdout.write(`${formatToolEnd(event.isError, event.result)}\n`)
+        streams.stdout.write(`${formatToolEnd(event.isError, event.result)}\n`)
         break
       case 'turn_end': {
-        const error = formatTurnError(event.message)
-        if (error) process.stderr.write(`\n${error}\n`)
+        clearStatus()
+        const error = formatTurnError(event.message, runtime.currentProviderId())
+        if (error) streams.stderr.write(`\n${error}\n`)
         break
       }
     }

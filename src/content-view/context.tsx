@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { i18n } from '@lingui/core'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
 import { trackEvent as defaultTrackEvent } from '@/lib/posthog'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
@@ -63,6 +65,8 @@ const ContentViewContext = createContext<ContentViewContextType | undefined>(und
  * - Webview previews (link previews)
  * - Sideviews (document viewer, etc.)
  */
+const reasoningViewTitle = msg`Reasoning`
+
 export const ContentViewProvider = ({
   children,
   trackEvent = defaultTrackEvent,
@@ -77,7 +81,9 @@ export const ContentViewProvider = ({
     (content: ObjectViewContent, mcpTools?: UIMessageMetadata['mcpTools']) => {
       if (content.type === 'reasoning') {
         trackEvent('content_view_open', { view_type: 'object-view', reasoning: true })
-        setState({ type: 'object-view', data: { title: 'Reasoning', output: content.text } })
+        // Resolved eagerly in the click handler: the title is a snapshot stored
+        // in state, so it uses the `i18n` singleton rather than `useLingui`.
+        setState({ type: 'object-view', data: { title: i18n._(reasoningViewTitle), output: content.text } })
         return
       }
 

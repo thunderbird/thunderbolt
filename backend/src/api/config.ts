@@ -4,7 +4,7 @@
 
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { Elysia } from 'elysia'
 
 /**
@@ -30,6 +30,7 @@ export const createConfigRoutes = (settings: Settings) =>
     defaults: {
       models: {
         version: defaultModelsVersion,
+        defaultModelId,
         data: defaultModels,
       },
     },

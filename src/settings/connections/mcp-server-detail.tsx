@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Check, Copy, LockKeyhole, RefreshCw } from 'lucide-react'
 
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
@@ -15,13 +18,17 @@ import type { OAuthCardState } from '@/hooks/use-mcp-server-oauth'
 import type { McpServer } from '@/types'
 import { cleanServerUrl, serverDisplayName } from './display'
 
-const statusLabels: Record<string, string> = {
-  connected: 'Connected',
-  connecting: 'Connecting…',
-  disconnected: 'Disconnected',
-  error: 'Connection error',
+const statusLabels: Record<string, MessageDescriptor> = {
+  connected: msg`Connected`,
+  connecting: msg`Connecting…`,
+  disconnected: msg`Disconnected`,
+  error: msg`Connection error`,
 }
 
+const disabledStatusLabel = msg`Disabled`
+
+// Protocol names, not copy — `iroh (peer-to-peer)` carries one translatable
+// word, but splitting a protocol identifier for it isn't worth the churn.
 const transportLabels: Record<string, string> = {
   http: 'HTTP',
   sse: 'SSE',
@@ -63,7 +70,9 @@ export const McpServerDetail = ({
   onDelete: () => void
   onClose: () => void
 }) => {
+  const { i18n, t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
+  const transportLabel = transportLabels[server.type ?? 'http'] ?? server.type
 
   const handleCopyUrl = async () => {
     try {
@@ -93,23 +102,25 @@ export const McpServerDetail = ({
       onClose={onClose}
     >
       <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>Status</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Status</Trans>
+        </DetailSectionTitle>
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-base text-foreground">
             <StatusIndicator status={effectiveStatus} size="sm" />
-            {effectiveStatus === 'neutral' ? 'Disabled' : statusLabels[effectiveStatus]}
+            {i18n._(effectiveStatus === 'neutral' ? disabledStatusLabel : statusLabels[effectiveStatus])}
           </span>
           <span className="flex items-center gap-2">
             {connectionError && (
               <Button variant="outline" size="sm" disabled={isRetrying} onClick={onRetry}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
-                {isRetrying ? 'Retrying…' : 'Retry connection'}
+                {isRetrying ? <Trans>Retrying…</Trans> : <Trans>Retry connection</Trans>}
               </Button>
             )}
             {(showAuthorize || isAuthorizing) && (
               <Button variant="outline" size="sm" disabled={isAuthorizing} onClick={onAuthorize}>
                 <LockKeyhole className="h-3.5 w-3.5 mr-1.5" />
-                {isAuthorizing ? 'Authorizing…' : 'Authorize'}
+                {isAuthorizing ? <Trans>Authorizing…</Trans> : <Trans>Authorize</Trans>}
               </Button>
             )}
             {isAuthorized && (
@@ -117,11 +128,13 @@ export const McpServerDetail = ({
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" onClick={onAuthorize}>
                     <Check className="h-3.5 w-3.5 mr-1.5 text-success" />
-                    Re-authorize
+                    <Trans>Re-authorize</Trans>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  <p>Authorized. Re-run the OAuth flow if access was revoked.</p>
+                  <p>
+                    <Trans>Authorized. Re-run the OAuth flow if access was revoked.</Trans>
+                  </p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -131,7 +144,7 @@ export const McpServerDetail = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <p className="text-sm text-destructive cursor-default">
-                Could not connect to this server. Check the URL and that the server is reachable.
+                <Trans>Could not connect to this server. Check the URL and that the server is reachable.</Trans>
               </p>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -142,7 +155,7 @@ export const McpServerDetail = ({
         {actionError && <p className="text-sm text-destructive">{actionError}</p>}
         {oauthState?.phase === 'needs-auth' && (
           <p className="text-sm text-muted-foreground">
-            {oauthState.message ?? 'This server requires authorization. Click Authorize to connect.'}
+            {oauthState.message ?? t`This server requires authorization. Click Authorize to connect.`}
           </p>
         )}
         {oauthState?.phase === 'error' && <p className="text-sm text-destructive">{oauthState.message}</p>}
@@ -151,13 +164,15 @@ export const McpServerDetail = ({
       <DetailDivider />
 
       <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>{server.type === 'iroh' ? 'Bridge target' : 'Server URL'}</DetailSectionTitle>
+        <DetailSectionTitle>
+          {server.type === 'iroh' ? <Trans>Bridge target</Trans> : <Trans>Server URL</Trans>}
+        </DetailSectionTitle>
         <div className="flex items-center gap-2">
           <p className="min-w-0 flex-1 break-all font-mono text-sm text-foreground">{server.url}</p>
           <Button
             variant="ghost"
             size="icon"
-            aria-label={server.type === 'iroh' ? 'Copy bridge target' : 'Copy URL'}
+            aria-label={server.type === 'iroh' ? t`Copy bridge target` : t`Copy URL`}
             className={mutedIconButtonClass}
             onClick={handleCopyUrl}
             disabled={isCopied}
@@ -166,7 +181,7 @@ export const McpServerDetail = ({
           </Button>
         </div>
         <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-          Transport: {transportLabels[server.type ?? 'http'] ?? server.type}
+          <Trans>Transport: {transportLabel}</Trans>
         </p>
       </div>
 

@@ -6,7 +6,8 @@ import type { GroupedUIPart, ReasoningGroupUIPart } from '@/lib/assistant-messag
 import type { ThunderboltUIMessage } from '@/types'
 import type { ReasoningUIPart, TextUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { getClock } from '@/testing-library'
 import { AssistantMessage, mountMessageParts } from './assistant-message'
 
 const createReasoningPart = (text: string): ReasoningUIPart =>
@@ -278,4 +279,16 @@ describe('AssistantMessage actions', () => {
 
     cleanup()
   })
+})
+
+it('passes message streaming lifecycle to the real text renderer', () => {
+  const text = 'Full response. '.repeat(100)
+  const parts: GroupedUIPart[] = [{ type: 'text', text, state: 'streaming' }]
+  const { container, rerender } = render(<>{mountMessageParts(parts, true, 'stream', {})}</>)
+  expect(container.textContent).toBe('')
+  act(() => getClock().tick(48))
+  expect(container.textContent!.length).toBeGreaterThan(0)
+  expect(container.textContent!.length).toBeLessThan(text.length)
+  rerender(<>{mountMessageParts(parts, false, 'stream', {})}</>)
+  expect(container.textContent).toBe(text.trim())
 })

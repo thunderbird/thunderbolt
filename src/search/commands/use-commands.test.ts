@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, mock } from 'bun:test'
+import { i18n } from '@/i18n'
 import type { Theme } from '@/lib/theme-provider'
 import { buildCommands, type BuildCommandsDeps } from './use-commands'
 import type { PaletteCommand } from './types'
 
 const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps => ({
+  i18n,
   flags: { voice: false, tasks: false, dev: false },
   showDownloadApp: false,
   isMac: true,

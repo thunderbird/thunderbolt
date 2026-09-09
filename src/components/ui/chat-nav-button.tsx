@@ -16,6 +16,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { Trans } from '@lingui/react/macro'
 import { Slot } from '@radix-ui/react-slot'
 import { Ellipsis, Trash2 } from 'lucide-react'
 import { type HTMLAttributes } from 'react'
@@ -69,20 +70,26 @@ export const ChatNavButton = ({ chatTitle, threadId, className, asChild = false,
                           className="w-full justify-start text-destructive hover:text-destructive"
                         >
                           <Trash2 className="size-4 mr-2" />
-                          Delete
+                          <Trans>Delete</Trans>
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete the thread?</AlertDialogTitle>
+                          <AlertDialogTitle>
+                            <Trans>Delete the thread?</Trans>
+                          </AlertDialogTitle>
                           <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete this chat and all its messages.
+                            <Trans>
+                              This action cannot be undone. This will permanently delete this chat and all its messages.
+                            </Trans>
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogCancel>
+                            <Trans>Cancel</Trans>
+                          </AlertDialogCancel>
                           <AlertDialogAction className={cn(buttonVariants({ variant: 'destructive' }))}>
-                            Delete
+                            <Trans>Delete</Trans>
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { MoreVertical, SquarePen, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -11,34 +12,38 @@ import { mobileHeaderControlFillClass } from '@/components/ui/modal-styles'
 import { cn } from '@/lib/utils'
 
 /** The detail panels' shared ⋯ header menu; children are its menu items. */
-export const DetailActionsMenu = ({ children }: { children: ReactNode }) => (
-  <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="More"
-        className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
-      >
-        <MoreVertical />
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" className="min-w-56">
-      {children}
-    </DropdownMenuContent>
-  </DropdownMenu>
-)
+export const DetailActionsMenu = ({ children }: { children: ReactNode }) => {
+  const { t } = useLingui()
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t`More`}
+          className={cn(mutedIconButtonClass, mobileHeaderControlFillClass)}
+        >
+          <MoreVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 /** The standard Edit + Delete item pair for `DetailActionsMenu`. */
 export const DetailEditDeleteMenuItems = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
   <>
     <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
       <SquarePen />
-      Edit
+      <Trans>Edit</Trans>
     </DropdownMenuItem>
     <DropdownMenuItem onClick={onDelete} className="cursor-pointer">
       <Trash2 />
-      Delete
+      <Trans>Delete</Trans>
     </DropdownMenuItem>
   </>
 )

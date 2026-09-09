@@ -12,6 +12,12 @@ interface ImportMetaEnv {
   readonly VITE_APP_VERSION?: string
 }
 
+// .po catalogs are compiled to JS message objects by @lingui/vite-plugin.
+declare module '*.po' {
+  import type { Messages } from '@lingui/core'
+  export const messages: Messages
+}
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 interface ImportMeta {
   readonly env: ImportMetaEnv

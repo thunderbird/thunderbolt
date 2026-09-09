@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Skeleton } from '@/components/ui/skeleton'
-import dayjs from 'dayjs'
+import { useFormatters } from '@/i18n/use-formatters'
 import { useState } from 'react'
 import { convertTemperature, getWeatherMetadata, type WeatherForecastData } from './lib'
 
@@ -14,6 +15,8 @@ const temperatureUnitItemClass =
   'h-full aspect-square flex-none rounded-xl px-0 text-[length:var(--font-size-sm)] text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 data-[state=on]:bg-accent data-[state=on]:text-foreground'
 
 export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecastProps) => {
+  const { t, i18n } = useLingui()
+  const formatters = useFormatters()
   const [temperatureUnit, setTemperatureUnit] = useState<'c' | 'f'>(temperature_unit)
   const today = days[0]
   const forecastDays = days.slice(1)
@@ -31,7 +34,7 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
         <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 md:w-auto md:min-w-[280px] md:gap-4">
           <div className="flex flex-col py-3 md:gap-1">
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-              {dayjs(today.date).format('dddd, MMM D')}
+              {formatters.weekdayDate(today.date)}
             </p>
             <div className="hidden items-start md:flex">
               <span className="text-[40px] font-medium leading-none tracking-tight">
@@ -39,9 +42,11 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
               </span>
               <span className="text-[20px] leading-none tracking-tight text-muted-foreground">{unit}</span>
             </div>
-            <p className="hidden text-[length:var(--font-size-xs)] text-foreground md:block">{todayMeta.description}</p>
+            <p className="hidden text-[length:var(--font-size-xs)] text-foreground md:block">
+              {i18n._(todayMeta.description)}
+            </p>
           </div>
-          <img className="size-[72px] md:size-[92px]" src={todayMeta.icon} alt={todayMeta.description} />
+          <img className="size-[72px] md:size-[92px]" src={todayMeta.icon} alt={i18n._(todayMeta.description)} />
           <div className="flex flex-col items-end gap-1 md:hidden">
             <div className="flex items-start">
               <span className="text-[32px] font-medium leading-none tracking-tight">
@@ -49,7 +54,9 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
               </span>
               <span className="text-[16px] leading-none tracking-tight text-muted-foreground">{unit}</span>
             </div>
-            <p className="text-[length:var(--font-size-xs)] text-right text-foreground">{todayMeta.description}</p>
+            <p className="text-[length:var(--font-size-xs)] text-right text-foreground">
+              {i18n._(todayMeta.description)}
+            </p>
           </div>
         </div>
 
@@ -59,9 +66,9 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
             return (
               <div key={day.date} className="flex flex-1 flex-col items-center gap-0.5 rounded-lg bg-card px-1.5 py-2">
                 <p className="text-[length:var(--font-size-xs)] font-medium text-muted-foreground">
-                  {dayjs(day.date).format('ddd')}
+                  {formatters.weekday(day.date)}
                 </p>
-                <img className="size-10" src={meta.icon} alt={meta.description} />
+                <img className="size-10" src={meta.icon} alt={i18n._(meta.description)} />
                 <p className="text-[length:var(--font-size-body)] font-medium leading-none tracking-tight">
                   {convertTemperature(day.temperature_max, temperature_unit, temperatureUnit)}°
                 </p>
@@ -78,19 +85,19 @@ export const WeatherForecast = ({ days = [], temperature_unit }: WeatherForecast
           rel="noopener noreferrer"
           className="text-[10px] leading-none text-muted-foreground/60 hover:text-muted-foreground"
         >
-          Weather data provided by Open-Meteo.com
+          <Trans>Weather data provided by Open-Meteo.com</Trans>
         </a>
         <ToggleGroup
           type="single"
           value={temperatureUnit}
           onValueChange={(value) => value && setTemperatureUnit(value as 'c' | 'f')}
-          aria-label="Temperature Unit"
+          aria-label={t`Temperature Unit`}
           className="h-[var(--touch-height-lg)] gap-0.5 rounded-none md:h-[var(--touch-height-default)] md:p-0.5"
         >
-          <ToggleGroupItem value="c" aria-label="Celsius" className={temperatureUnitItemClass}>
+          <ToggleGroupItem value="c" aria-label={t`Celsius`} className={temperatureUnitItemClass}>
             °C
           </ToggleGroupItem>
-          <ToggleGroupItem value="f" aria-label="Fahrenheit" className={temperatureUnitItemClass}>
+          <ToggleGroupItem value="f" aria-label={t`Fahrenheit`} className={temperatureUnitItemClass}>
             °F
           </ToggleGroupItem>
         </ToggleGroup>

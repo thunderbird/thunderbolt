@@ -2,15 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { I18nProvider } from '@lingui/react'
 import type { Preview } from '@storybook/react-vite'
 import { withThemeByClassName } from '@storybook/addon-themes'
 import { domMax, LazyMotion } from 'framer-motion'
+import { i18n } from '../src/i18n'
 import { ThemedDocsContainer } from './themed-docs-container'
 import '../src/index.css'
 import './preview.css'
 
 const preview: Preview = {
   decorators: [
+    // Mirrors the app's I18nProvider (src/app.tsx) so stories using <Trans>
+    // render. Importing src/i18n activates the source locale synchronously,
+    // so stories show the English source text without loading a catalog.
+    (Story) => (
+      <I18nProvider i18n={i18n}>
+        <Story />
+      </I18nProvider>
+    ),
     // The app wraps everything in LazyMotion (src/app.tsx), and `m.*`
     // components silently never animate without it — stories using
     // `initial={{ scale: 0 }}` etc. would render invisible at their initial

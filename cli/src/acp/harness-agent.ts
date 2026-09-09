@@ -6,7 +6,7 @@
  * The built-in Pi coding agent, exposed as an ACP {@link Agent}.
  *
  * This is the server half of `thunderbolt acp serve`: it implements the ACP
- * `Agent` interface on top of {@link buildHarness}, so the iroh/wss bridge can
+ * `Agent` interface on top of one {@link HarnessRuntime} per session, so the iroh/wss bridge can
  * expose OUR coding agent to a remote ACP client (the bridge otherwise only
  * proxies external stdio ACP agents). Each `session/new` builds its own harness
  * bound to server's trusted launch directory; harness run events stream back as
@@ -42,75 +42,57 @@ import type {
   ResumeSessionResponse,
   SessionId,
 } from '@agentclientprotocol/sdk'
-import type {
-  AgentHarnessEvent,
-  Session as PiSession,
-  ToolCallEvent,
-  ToolCallResult,
-} from '@earendil-works/pi-agent-core'
-import type { AssistantMessage } from '@earendil-works/pi-ai'
+import { toError } from '@earendil-works/pi-agent-core'
+import type { Session as PiSession, ToolCallResult } from '@earendil-works/pi-agent-core'
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
 import { readWireSkills, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { cliVersion } from '../cli.ts'
-import { buildHarness } from '../agent/harness.ts'
-import type { HarnessConfig, ServeConfig } from '../agent/types.ts'
+import { cleanupFailure, collectCleanupErrors } from '../agent/cleanup-errors.ts'
+import { createHarnessRuntime } from '../agent/harness.ts'
+import type { CommandSyntaxServeConfig, HarnessConfig } from '../agent/types.ts'
 import { isExistingPathInWorkspace } from '../agent/workspace-jail.ts'
+import type { HarnessRuntime, PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
+import { prepareProviderBinding } from '../provider-runtime/provider-stage.ts'
 import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
 import type { SessionStore } from './session-store.ts'
 
 /**
- * The slice of the Pi {@link AgentHarness} the ACP agent drives. A hand-written
- * surface (rather than the full harness) keeps it tiny and lets a test supply a
- * fake without reconstructing the harness's generic `on`/`subscribe` shapes — so
- * the round-trip can be exercised with no API key.
+ * The frozen {@link HarnessRuntime} operations the ACP agent drives. Keeping the
+ * surface narrow lets tests exercise the round-trip with no API key.
  */
-export type ServeHarness = {
-  /** Subscribe to run events; returns an unsubscribe function. */
-  subscribe: (listener: (event: AgentHarnessEvent) => void) => () => void
-  /** Register the pre-execution permission gate for tool calls. */
-  registerToolCallGate: (handler: (event: ToolCallEvent) => Promise<ToolCallResult | undefined>) => void
-  /** Run one prompt turn, resolving with the final assistant message. */
-  prompt: (text: string) => Promise<AssistantMessage>
-  /** Resolve once the harness has settled after a prompt. */
-  waitForIdle: () => Promise<void>
-  /** Abort the in-flight turn (drives the ACP `cancelled` stop reason). */
-  abort: () => Promise<void>
-}
+export type ServeHarness = Pick<
+  HarnessRuntime,
+  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'
+>
 
-/** Builds a {@link ServeHarness} for one session, paired with its teardown.
- *  `session` is the disk-backed Pi session to run on (new or resumed).
- *  Injectable so tests can swap in a fake. */
+/** Builds a {@link ServeHarness} for one disk-backed Pi session. */
 export type BuildServeHarness = (
   config: HarnessConfig,
+  binding: PreparedPiBinding,
   session: PiSession,
-) => Promise<{ harness: ServeHarness; dispose: () => Promise<void> }>
-
-/** Production builder: adapts the real {@link buildHarness} to the narrow
- *  {@link ServeHarness} surface the agent needs. */
-const defaultBuildServeHarness: BuildServeHarness = async (config, session) => {
-  const { harness, dispose } = await buildHarness(config, session)
-  return {
-    harness: {
-      subscribe: (listener) => harness.subscribe(listener),
-      registerToolCallGate: (handler) => {
-        harness.on('tool_call', handler)
-      },
-      prompt: (text) => harness.prompt(text),
-      waitForIdle: () => harness.waitForIdle(),
-      abort: async () => {
-        await harness.abort()
-      },
-    },
-    dispose,
-  }
-}
+) => Promise<ServeHarness>
 
 /** A live ACP session: its harness, the run-event subscription feeding the ACP
  *  client, and a teardown that releases the harness's execution environment. */
 type Session = {
   readonly harness: ServeHarness
-  readonly unsubscribe: () => void
-  readonly dispose: () => Promise<void>
+  unsubscribe: () => void
+}
+
+/** Runs both ACP session teardown actions even when the synchronous unsubscribe fails. */
+const cleanupSession = async (session: Session): Promise<void> => {
+  const errors = await collectCleanupErrors([session.unsubscribe, session.harness.dispose])
+  if (errors.length > 0) throw cleanupFailure('ACP session cleanup failed.', errors)
+}
+
+/** Preserves a wiring failure while attaching every candidate-cleanup failure to it. */
+const rejectWiring = async (session: Session, failure: Error): Promise<never> => {
+  try {
+    await cleanupSession(session)
+  } catch (cleanupError) {
+    throw cleanupFailure(failure.message, [failure, toError(cleanupError)])
+  }
+  throw failure
 }
 
 /** Canonical UUID shape that `crypto.randomUUID()` mints for every `session/new`.
@@ -199,20 +181,22 @@ const attachAcpPermissionGate = (
 
 /**
  * Build the ACP {@link Agent} that fronts the built-in Pi harness for one
- * connection. All sessions for the connection share `config` (model, thinking,
- * yolo) and connection lifetime; each session gets its own harness bound to
+ * connection. All sessions for the connection share the invocation selection,
+ * thinking/yolo options, and connection lifetime; each session gets its own harness bound to
  * server-owned workspace root. Sessions dispose when connection closes.
  *
  * @param conn - the agent-side ACP connection (used to push updates + ask permission)
  * @param config - the resolved serve configuration
  * @param store - disk-backed session store keyed by ACP `sessionId` (new + resume)
+ * @param runtime - provider runtime that independently prepares each ACP session
  * @param buildServeHarness - harness builder; injected by tests, defaults to the real one
  */
 export const createHarnessAgent = (
   conn: AgentSideConnection,
-  config: ServeConfig,
+  config: CommandSyntaxServeConfig,
   store: SessionStore,
-  buildServeHarness: BuildServeHarness = defaultBuildServeHarness,
+  runtime: ProviderRuntime,
+  buildServeHarness: BuildServeHarness = createHarnessRuntime,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
   const trustedWorkspace = realpath(config.cwd)
@@ -227,12 +211,7 @@ export const createHarnessAgent = (
       .then(async () => {
         const open = [...sessions.values()]
         sessions.clear()
-        const outcomes = await Promise.allSettled(
-          open.map(async (session) => {
-            session.unsubscribe()
-            await session.dispose()
-          }),
-        )
+        const outcomes = await Promise.allSettled(open.map(cleanupSession))
         for (const outcome of outcomes) {
           if (outcome.status === 'rejected') {
             process.stderr.write(`⚡ acp serve: session dispose failed: ${String(outcome.reason)}\n`)
@@ -240,9 +219,7 @@ export const createHarnessAgent = (
         }
       })
       .catch((err) => {
-        process.stderr.write(
-          `⚡ acp serve: connection cleanup error: ${err instanceof Error ? err.message : String(err)}\n`,
-        )
+        process.stderr.write(`⚡ acp serve: connection cleanup error: ${toError(err).message}\n`)
       })
   })
 
@@ -271,14 +248,9 @@ export const createHarnessAgent = (
 
   /** Per-session harness config rooted at server-owned launch directory. */
   const harnessConfigFor = (workspaceRoot: string, skills: readonly SkillDefinition[]): HarnessConfig => ({
-    model: config.model,
     cwd: workspaceRoot,
     workspaceRoot,
-    yolo: config.yolo,
     thinking: config.thinking,
-    provider: config.provider,
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
     announceModel: true,
     skills,
   })
@@ -293,13 +265,14 @@ export const createHarnessAgent = (
     skills: readonly SkillDefinition[],
     phase: string,
   ): Promise<void> => {
-    const { harness, dispose } = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), session)
+    const binding = await prepareProviderBinding(runtime, config.selection, { signal: conn.signal })
+    const harness = await buildServeHarness(harnessConfigFor(workspaceRoot, skills), binding, session)
 
     // If the client vanished while the harness was being built, the cleanup
     // microtask already ran against a map without this session — dispose now so
     // the freshly-built harness can't leak its temp dirs / shell.
     if (conn.signal.aborted) {
-      await dispose()
+      await harness.dispose()
       throw RequestError.internalError(undefined, `connection closed during ${phase}`)
     }
 
@@ -311,18 +284,30 @@ export const createHarnessAgent = (
       // real signal that ends the run.
       void conn.sessionUpdate({ sessionId, update }).catch(() => {})
     })
-    const unsubscribe = harness.subscribe((event) => translator.handle(event))
-    attachAcpPermissionGate(harness, conn, sessionId, config.yolo, workspaceRoot)
+    const candidate: Session = { harness, unsubscribe: () => {} }
+    try {
+      candidate.unsubscribe = harness.subscribe((event) => translator.handle(event))
+      attachAcpPermissionGate(harness, conn, sessionId, config.yolo, workspaceRoot)
+    } catch (error) {
+      return rejectWiring(candidate, toError(error))
+    }
 
     // Re-activating a live id (e.g. a repeated session/resume on one connection)
     // replaces the entry — tear down the prior harness + subscription first so it
     // can't leak its execution env or double-append the shared disk log.
     const previous = sessions.get(sessionId)
-    sessions.set(sessionId, { harness, unsubscribe, dispose })
     if (previous) {
-      previous.unsubscribe()
-      await previous.dispose()
+      sessions.delete(sessionId)
+      try {
+        await cleanupSession(previous)
+      } catch (error) {
+        return rejectWiring(candidate, toError(error))
+      }
     }
+    if (conn.signal.aborted) {
+      return rejectWiring(candidate, RequestError.internalError(undefined, `connection closed during ${phase}`))
+    }
+    sessions.set(sessionId, candidate)
   }
 
   const newSession = async (params: NewSessionRequest): Promise<NewSessionResponse> => {
@@ -354,7 +339,6 @@ export const createHarnessAgent = (
   const prompt = async (params: PromptRequest): Promise<PromptResponse> => {
     const { harness } = requireSession(params.sessionId)
     const result = await harness.prompt(promptText(params.prompt))
-    await harness.waitForIdle()
     // A failed turn resolves (it doesn't throw) with `stopReason: 'error'`, which
     // has no ACP equivalent — surface it loudly as a JSON-RPC error instead.
     if (result.stopReason === 'error') throw new Error(result.errorMessage ?? 'the model request failed')

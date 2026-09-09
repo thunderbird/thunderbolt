@@ -5,18 +5,21 @@
 import { useHaptics } from '@/hooks/use-haptics'
 import { cn } from '@/lib/utils'
 import { m, useReducedMotion } from 'framer-motion'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { MessageCircle, Settings, type LucideIcon } from 'lucide-react'
 import type { SidebarSection } from './types'
 
 type SectionDefinition = {
   id: SidebarSection
-  label: string
+  label: MessageDescriptor
   icon: LucideIcon
 }
 
 const sections: SectionDefinition[] = [
-  { id: 'chats', label: 'Chats', icon: MessageCircle },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'chats', label: msg`Chats`, icon: MessageCircle },
+  { id: 'settings', label: msg`Settings`, icon: Settings },
 ]
 
 /** Near-critically-damped spring so the thumb glides to its slot without overshoot. */
@@ -41,6 +44,7 @@ type SidebarNavToggleProps = {
  * keeps its `layoutId` and animates across the collapse/expand transition.
  */
 export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: SidebarNavToggleProps) => {
+  const { i18n, t } = useLingui()
   const { triggerSelection } = useHaptics()
   const reducedMotion = useReducedMotion()
 
@@ -58,7 +62,7 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
       <button
         key={id}
         type="button"
-        aria-label={label}
+        aria-label={i18n._(label)}
         aria-current={isActive ? 'page' : undefined}
         onClick={() => handleSelect(id)}
         className={cn(
@@ -95,14 +99,14 @@ export const SidebarNavToggle = ({ activeSection, onSectionChange, vertical }: S
     // the group's top padding; mb-2 pads the space below to match the 16px
     // above the pill (header row + gap).
     return (
-      <nav aria-label="Sidebar sections" className="-mt-2 mb-2 flex justify-center">
+      <nav aria-label={t`Sidebar sections`} className="-mt-2 mb-2 flex justify-center">
         <div className="flex w-fit flex-col items-center">{sections.map(renderSegment)}</div>
       </nav>
     )
   }
 
   return (
-    <nav aria-label="Sidebar sections">
+    <nav aria-label={t`Sidebar sections`}>
       {/* Same height as the footer's New Chat and account controls so
           the row reads as one line. Mobile is full-bleed so the thumb's
           diameter matches those controls exactly; desktop keeps a 2px

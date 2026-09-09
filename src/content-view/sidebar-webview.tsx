@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { isTauri } from '@/lib/platform'
@@ -26,6 +27,7 @@ type SidebarWebviewProps = {
  * updating when the sidebar is resized or moved.
  */
 export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps) => {
+  const { t } = useLingui()
   const panelRef = useRef<HTMLDivElement>(null)
   const { isInitialized, closeWebview } = useSidebarWebview(config, panelRef, hidden)
   const { copy, isCopied } = useCopyToClipboard()
@@ -60,9 +62,11 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
   if (!isTauri()) {
     return (
       <div className="flex flex-col h-full">
-        <ContentViewHeader title="Preview" onClose={() => onClose?.()} />
+        <ContentViewHeader title={t`Preview`} onClose={() => onClose?.()} />
         <div className="flex-1 flex items-center justify-center p-4 text-center">
-          <p className="text-muted-foreground text-sm">Preview webview is only available in the desktop app</p>
+          <p className="text-muted-foreground text-sm">
+            <Trans>Preview webview is only available in the desktop app</Trans>
+          </p>
         </div>
       </div>
     )
@@ -85,7 +89,7 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
               variant="ghost"
               size="icon"
               className="h-8 w-8 rounded-full"
-              title="Copy URL"
+              title={t`Copy URL`}
             >
               {isCopied ? <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" /> : <Copy className="size-4" />}
             </Button>
@@ -94,7 +98,7 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
               variant="ghost"
               size="icon"
               className="h-8 w-8 rounded-full"
-              title="Open in browser"
+              title={t`Open in browser`}
             >
               <ExternalLink className="size-4" />
             </Button>
@@ -106,7 +110,9 @@ export const SidebarWebview = ({ config, onClose, hidden }: SidebarWebviewProps)
       <div className="flex-1 w-full bg-background relative">
         {!isInitialized && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-muted-foreground text-sm">Loading preview...</p>
+            <p className="text-muted-foreground text-sm">
+              <Trans>Loading preview…</Trans>
+            </p>
           </div>
         )}
       </div>

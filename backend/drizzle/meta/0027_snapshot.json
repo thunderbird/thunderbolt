@@ -1,5 +1,5 @@
 {
-  "id": "ae9bce0c-c663-4d56-bd01-91dbba5a1eb5",
+  "id": "75e4c0f5-5b40-44a3-98b2-e96b53455a47",
   "prevId": "92f308f7-19c9-4435-80c6-d4c129cbb9a7",
   "version": "7",
   "dialect": "postgresql",
@@ -2589,104 +2589,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.debug_transcripts": {
-      "name": "debug_transcripts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "thread_id": {
-          "name": "thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "schema_version": {
-          "name": "schema_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_note": {
-          "name": "user_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "client_version": {
-          "name": "client_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_debug_transcripts_user_id_created_at": {
-          "name": "idx_debug_transcripts_user_id_created_at",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "debug_transcripts_user_id_user_id_fk": {
-          "name": "debug_transcripts_user_id_user_id_fk",
-          "tableFrom": "debug_transcripts",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.otp_challenge": {
       "name": "otp_challenge",
       "schema": "",
@@ -2737,6 +2639,188 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.inference_prices": {
+      "name": "inference_prices",
+      "schema": "",
+      "columns": {
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_nano_usd_per_token": {
+          "name": "input_nano_usd_per_token",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "output_nano_usd_per_token": {
+          "name": "output_nano_usd_per_token",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "inference_prices_provider_model_pk": {
+          "name": "inference_prices_provider_model_pk",
+          "columns": [
+            "provider",
+            "model"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "inference_prices_input_nonnegative": {
+          "name": "inference_prices_input_nonnegative",
+          "value": "\"inference_prices\".\"input_nano_usd_per_token\" >= 0"
+        },
+        "inference_prices_output_nonnegative": {
+          "name": "inference_prices_output_nonnegative",
+          "value": "\"inference_prices\".\"output_nano_usd_per_token\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.inference_usage": {
+      "name": "inference_usage",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt_tokens": {
+          "name": "prompt_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completion_tokens": {
+          "name": "completion_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_tokens": {
+          "name": "total_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_nano_usd": {
+          "name": "cost_nano_usd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "inference_usage_user_id_created_at_idx": {
+          "name": "inference_usage_user_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "inference_usage_user_id_user_id_fk": {
+          "name": "inference_usage_user_id_user_id_fk",
+          "tableFrom": "inference_usage",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "inference_usage_prompt_nonnegative": {
+          "name": "inference_usage_prompt_nonnegative",
+          "value": "\"inference_usage\".\"prompt_tokens\" >= 0"
+        },
+        "inference_usage_completion_nonnegative": {
+          "name": "inference_usage_completion_nonnegative",
+          "value": "\"inference_usage\".\"completion_tokens\" >= 0"
+        },
+        "inference_usage_total_nonnegative": {
+          "name": "inference_usage_total_nonnegative",
+          "value": "\"inference_usage\".\"total_tokens\" >= 0"
+        },
+        "inference_usage_cost_nonnegative": {
+          "name": "inference_usage_cost_nonnegative",
+          "value": "\"inference_usage\".\"cost_nano_usd\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     }
   },

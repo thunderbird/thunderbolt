@@ -4,6 +4,7 @@
 
 import type { ThunderboltUIMessage } from '@/types'
 import type { WidgetName } from '@/widgets'
+import type { AppLocale } from '@shared/i18n/locales'
 
 export type { WidgetName }
 
@@ -19,6 +20,13 @@ export type NecessityCategory =
   | 'adversarial_no_search'
   | 'multi_turn_reuse'
   | 'search_wont_help'
+  /**
+   * Reply-language adherence. Not a search-necessity category — it shares the
+   * scored-category machinery (samples, gate, Wilson interval) because the
+   * behaviour is equally stochastic, but it is excluded from the search headline
+   * rates in `stats.ts`.
+   */
+  | 'language'
 
 /** A single evaluation scenario: one prompt tested against one model in one mode */
 export type EvalScenario = {
@@ -60,6 +68,12 @@ export type EvalCriteria = {
   expectSearchOffer?: boolean
   expectPremiseRebuttal?: boolean
   expectVerificationDisclaimer?: boolean
+  /**
+   * The language the reply must be written in. Judged semantically, so the
+   * assertion is about the assistant's own prose — quoted English sources, code,
+   * and proper nouns inside an otherwise Portuguese answer still pass.
+   */
+  expectReplyLanguage?: AppLocale
 }
 
 /** Parsed stream output from a single AI response */

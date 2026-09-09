@@ -4,13 +4,21 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { setActiveLocale } from '@/i18n/active-locale'
+import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
+import { getPlatform } from '@/lib/platform'
 import { cleanup, render } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { buildFetchOptions, hydrateSessionFromCache, subscribeSessionCachePersist } from './auth-context'
+import {
+  authRequestHeaders,
+  buildFetchOptions,
+  hydrateSessionFromCache,
+  subscribeSessionCachePersist,
+} from './auth-context'
 import type { createAuthClient } from 'better-auth/react'
 
 const authTokenKey = 'thunderbolt_auth_token'
@@ -29,10 +37,101 @@ const fireStorageEvent = (newValue: string | null, oldValue: string | null) => {
 
 const originalDispatch = window.dispatchEvent
 
+describe('authRequestHeaders', () => {
+  const env = import.meta.env as Record<string, unknown>
+  let savedVersion: unknown
+
+  beforeEach(() => {
+    savedVersion = env.VITE_APP_VERSION
+  })
+
+  afterEach(() => {
+    env.VITE_APP_VERSION = savedVersion
+  })
+
+  it('carries the app version alongside a per-call header', () => {
+    // better-fetch REPLACES a per-call `headers` object rather than merging it,
+    // so a call site that only sets its own header loses X-App-Version and the
+    // fail-closed gate answers 426 on a perfectly current build.
+    env.VITE_APP_VERSION = '1.2.3'
+
+    const headers = authRequestHeaders({ 'X-Challenge-Token': 'tok' })
+
+    expect(headers['X-App-Version']).toBe('1.2.3')
+    expect(headers['X-Challenge-Token']).toBe('tok')
+    expect(headers['X-Client-Platform']).toBeTruthy()
+  })
+
+  it('matches the headers the client applies when no extras are passed', () => {
+    env.VITE_APP_VERSION = '1.2.3'
+
+    const applied = new Headers()
+    buildFetchOptions(getPlatform()).onRequest({ headers: applied })
+
+    const expected = authRequestHeaders()
+    expect([...applied.keys()]).toHaveLength(Object.keys(expected).length)
+    for (const [key, value] of Object.entries(expected)) {
+      expect(applied.get(key)).toBe(value)
+    }
+  })
+})
+
+describe('buildFetchOptions onRequest', () => {
+  afterEach(() => {
+    setActiveLocale('en')
+    localStorage.removeItem('thunderbolt_locale')
+  })
+
+  const runOnRequest = (existing?: HeadersInit) => {
+    const headers = new Headers(existing)
+    buildFetchOptions('web').onRequest({ headers })
+    return headers
+  }
+
+  it('sets the platform and app language on every request', () => {
+    setActiveLocale('ja')
+
+    const headers = runOnRequest()
+
+    expect(headers.get('X-Client-Platform')).toBe('web')
+    expect(headers.get('X-App-Language')).toBe('ja')
+  })
+
+  // better-fetch merges client and per-call options with a shallow spread, so a
+  // call that passes its own `fetchOptions.headers` (OTP verify, magic-link
+  // verify) would lose anything set via client-level `headers`. Setting them in
+  // `onRequest` is what keeps them alongside the caller's own headers.
+  it('survives alongside per-call headers', () => {
+    setActiveLocale('pt-BR')
+
+    const headers = runOnRequest({ 'X-Challenge-Token': 'challenge' })
+
+    expect(headers.get('X-Challenge-Token')).toBe('challenge')
+    expect(headers.get('X-Client-Platform')).toBe('web')
+    expect(headers.get('X-App-Language')).toBe('pt-BR')
+  })
+
+  it('reads the locale per request rather than at client construction', () => {
+    const options = buildFetchOptions('web')
+
+    setActiveLocale('de')
+    const first = new Headers()
+    options.onRequest({ headers: first })
+
+    setActiveLocale('fr')
+    const second = new Headers()
+    options.onRequest({ headers: second })
+
+    expect(first.get('X-App-Language')).toBe('de')
+    expect(second.get('X-App-Language')).toBe('fr')
+  })
+})
+
 describe('buildFetchOptions onError', () => {
   let dispatchSpy: ReturnType<typeof mock>
 
   beforeEach(() => {
+    resetAppVersionBlockedForTesting()
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
     clearAuthToken()
@@ -43,6 +142,9 @@ describe('buildFetchOptions onError', () => {
     window.dispatchEvent = originalDispatch
     clearAuthToken()
     clearCachedSession()
+    // The 426 test latches the module-level `versionBlocked` singleton; leaving
+    // it set breaks later files that assert the app is not version-blocked.
+    resetAppVersionBlockedForTesting()
   })
 
   const trigger401 = () => {
@@ -78,6 +180,19 @@ describe('buildFetchOptions onError', () => {
 
     expect(getAuthToken()).toBe('valid-token')
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+
+  it('dispatches app_version_unsupported on a 426 without clearing the token', () => {
+    setAuthToken('valid-token')
+    const options = buildFetchOptions('web')
+
+    options.onError({ response: new Response(null, { status: 426 }) })
+
+    // A version block is not a session-expiry — the token stays put.
+    expect(getAuthToken()).toBe('valid-token')
+    expect(dispatchSpy).toHaveBeenCalledTimes(1)
+    const event = dispatchSpy.mock.calls[0][0] as CustomEvent
+    expect(event.type).toBe('app_version_unsupported')
   })
 
   it('clears the cached session on 401 so a future offline boot does not show stale data', () => {

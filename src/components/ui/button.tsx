@@ -20,8 +20,17 @@ const buttonVariants = cva(
         // dims via brightness since the background is an image, not a color.
         // The transparent border preserves the same box geometry as outlined
         // secondary actions without drawing a grey edge over the gradient.
+        //
+        // `bg-origin-border` is load-bearing next to that transparent border, and
+        // matches checkbox/switch, which pair the same two. Backgrounds are
+        // *clipped* to the border box but *originate* at the padding box, so the
+        // gradient is laid out 2px narrower than it is painted and the default
+        // `repeat` fills the leftover 1px strips with the neighbouring tile's
+        // edge: the gradient's end colour down the left, its start colour down
+        // the right. On this amber→raspberry sweep that reads as a bright pink
+        // hairline on one side and a drab one on the other (THU-857).
         default:
-          'border border-transparent bg-brand text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
+          'border border-transparent bg-brand bg-origin-border text-brand-foreground shadow-xs [background-image:var(--gradient-brand)] hover:brightness-[1.06] active:brightness-95 disabled:bg-secondary disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100 disabled:brightness-100 disabled:[background-image:none]',
         destructive:
           'bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         // Dark fill uses card (#282a2b) rather than input — input is the dark

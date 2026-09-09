@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { arch } from '@tauri-apps/plugin-os'
 import { AlertTriangle, Check, Download, ExternalLink, Loader2, Terminal } from 'lucide-react'
 import { useState, useTransition } from 'react'
@@ -26,7 +28,7 @@ const cliInstallGuideUrl = 'https://github.com/thunderbird/thunderbolt/blob/main
 
 /** Secondary line shared by the list row and the detail-header subtitle, the
  *  same pairing rule the agent rows follow via `agentProvenanceLine`. */
-const cliProvenanceLine = 'Your agent · runs in your terminal'
+const cliProvenanceLine = msg`Your agent · runs in your terminal`
 
 type InstallState =
   | { status: 'idle' }
@@ -60,6 +62,7 @@ export const ThunderboltCliRow = ({
   architecture,
   isTauriEnv: isTauriEnvProp,
 }: ThunderboltCliRowProps) => {
+  const { i18n, t } = useLingui()
   const isTauriEnv = isTauriEnvProp ?? isTauri()
   const runtimeArchitecture = architecture ?? (isTauriEnv ? arch() : 'unknown')
 
@@ -74,10 +77,10 @@ export const ThunderboltCliRow = ({
       testId="agent-row-thunderbolt-cli"
       isSelected={isSelected}
       onOpen={onOpen}
-      ariaLabel="Open Thunderbolt CLI"
+      ariaLabel={t`Open Thunderbolt CLI`}
       icon={<Terminal className="size-5 text-muted-foreground" aria-hidden="true" />}
-      title="Thunderbolt CLI"
-      subtitle={cliProvenanceLine}
+      title={t`Thunderbolt CLI`}
+      subtitle={i18n._(cliProvenanceLine)}
     />
   )
 }
@@ -103,8 +106,10 @@ export const ThunderboltCliDetail = ({
   install = installThunderboltCli,
   isTauriEnv: isTauriEnvProp,
 }: ThunderboltCliDetailProps) => {
+  const { i18n, t } = useLingui()
   const [state, setState] = useState<InstallState>({ status: 'idle' })
   const [isPending, startTransition] = useTransition()
+  const installedPath = state.status === 'success' ? state.result.path : ''
 
   const isTauriEnv = isTauriEnvProp ?? isTauri()
 
@@ -127,38 +132,48 @@ export const ThunderboltCliDetail = ({
           <Terminal className="size-5 text-muted-foreground" aria-hidden="true" />
         </IconTile>
       }
-      title="Thunderbolt CLI"
-      subtitle={cliProvenanceLine}
+      title={t`Thunderbolt CLI`}
+      subtitle={i18n._(cliProvenanceLine)}
       onClose={onClose}
     >
       <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>About</DetailSectionTitle>
-        <p className="text-base leading-snug text-foreground">Use Thunderbolt from the command line.</p>
+        <DetailSectionTitle>
+          <Trans>About</Trans>
+        </DetailSectionTitle>
+        <p className="text-base leading-snug text-foreground">
+          <Trans>Use Thunderbolt from the command line.</Trans>
+        </p>
       </div>
 
       <DetailDivider />
 
       <div className="flex flex-col gap-4">
-        <DetailSectionTitle>Install</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Install</Trans>
+        </DetailSectionTitle>
         {isTauriEnv ? (
           <>
             <Button variant="secondary" className="self-start" disabled={isPending} onClick={handleInstall}>
               {isPending ? <Loader2 className="animate-spin" /> : <Download />}
-              {isPending ? 'Installing…' : 'Install CLI'}
+              {isPending ? <Trans>Installing…</Trans> : <Trans>Install CLI</Trans>}
             </Button>
 
             {state.status === 'success' && (
               <div className="flex flex-col gap-3">
                 <p className="flex items-center gap-2 text-[length:var(--font-size-sm)]">
                   <Check className="size-4 shrink-0 text-green-600" aria-hidden="true" />
-                  Installed to <code className="font-mono">{state.result.path}</code>
+                  <Trans>
+                    Installed to <code className="font-mono">{installedPath}</code>
+                  </Trans>
                 </p>
                 {!state.result.onPath && state.result.pathHint && (
                   <div className="flex flex-col gap-2">
                     <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                      Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
+                      <Trans>
+                        Add <code className="font-mono">~/.local/bin</code> to your PATH, then restart your shell:
+                      </Trans>
                     </p>
-                    <CopyCommandRow command={state.result.pathHint} label="Copy PATH command" />
+                    <CopyCommandRow command={state.result.pathHint} label={t`Copy PATH command`} />
                   </div>
                 )}
               </div>
@@ -173,9 +188,9 @@ export const ThunderboltCliDetail = ({
                 {state.showManualBuild && (
                   <div className="flex flex-col gap-2">
                     <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-                      Build it from source instead (requires Bun):
+                      <Trans>Build it from source instead (requires Bun):</Trans>
                     </p>
-                    <CopyCommandRow command={manualBuildCommand} label="Copy build command" />
+                    <CopyCommandRow command={manualBuildCommand} label={t`Copy build command`} />
                   </div>
                 )}
               </div>
@@ -185,7 +200,7 @@ export const ThunderboltCliDetail = ({
           <Button asChild variant="secondary" className="self-start">
             <a href={cliInstallGuideUrl} target="_blank" rel="noopener noreferrer">
               <ExternalLink />
-              View install guide
+              <Trans>View install guide</Trans>
             </a>
           </Button>
         )}

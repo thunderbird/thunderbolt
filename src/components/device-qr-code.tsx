@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 
@@ -19,6 +20,7 @@ type DeviceQrCodeProps = {
  * lazily loaded — the `qrcode` dependency is only pulled in when pairing UI is shown.
  */
 const DeviceQrCode = ({ value, size = 160, encode = QRCode.toDataURL }: DeviceQrCodeProps) => {
+  const { t } = useLingui()
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -44,13 +46,17 @@ const DeviceQrCode = ({ value, size = 160, encode = QRCode.toDataURL }: DeviceQr
   }, [value, size, encode])
 
   if (failed) {
-    return <p className="text-[length:var(--font-size-xs)] text-muted-foreground">Could not render pairing code.</p>
+    return (
+      <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+        <Trans>Could not render pairing code.</Trans>
+      </p>
+    )
   }
 
   return (
     <img
       src={dataUrl ?? undefined}
-      alt="Device pairing QR code"
+      alt={t`Device pairing QR code`}
       width={size}
       height={size}
       className="rounded-md bg-white p-2"

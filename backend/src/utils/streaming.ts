@@ -5,8 +5,47 @@
 import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
 
 type CompletionStream = AsyncIterable<ChatCompletionChunk> & { controller: AbortController }
+export type CompletionUsageSnapshot = {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
 type CreateSSEStreamOptions = {
   onError?: (error: unknown) => void
+  onUsage?: (snapshot: CompletionUsageSnapshot) => Promise<void>
+  onUsageError?: CreateSSEStreamOptions['onError']
+  onUsageMissing?: () => void
+}
+
+/** Copies a complete, valid token usage snapshot from a provider chunk. */
+const parseCompletionUsage = (usage: ChatCompletionChunk['usage']): CompletionUsageSnapshot | undefined => {
+  if (
+    usage === null ||
+    usage === undefined ||
+    !Number.isSafeInteger(usage.prompt_tokens) ||
+    usage.prompt_tokens < 0 ||
+    !Number.isSafeInteger(usage.completion_tokens) ||
+    usage.completion_tokens < 0 ||
+    !Number.isSafeInteger(usage.total_tokens) ||
+    usage.total_tokens < 0
+  ) {
+    return undefined
+  }
+
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+  }
+}
+
+/** Invokes an observer without allowing observability failures to alter the response stream. */
+const invokeObserverSafely = (observer: (() => void) | undefined): void => {
+  try {
+    observer?.()
+  } catch {
+    // Observer failures must not change inference delivery.
+  }
 }
 
 /**
@@ -21,28 +60,48 @@ export const createSSEStreamFromCompletion = (
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   let isCancelled = false
+  let naturalExhaustionObserved = false
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      let latestUsage: CompletionUsageSnapshot | undefined
+
       try {
         for await (const chunk of completion) {
-          // Stop processing if client disconnected
           if (isCancelled) {
-            break
+            return
           }
 
-          // Convert chunk back to SSE format for client compatibility
+          const usage = parseCompletionUsage(chunk.usage)
           const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
 
           try {
             controller.enqueue(encoder.encode(sseChunk))
           } catch {
-            // Controller already closed (client disconnected)
-            break
+            return
+          }
+
+          if (usage !== undefined) {
+            latestUsage = usage
           }
         }
 
-        // Send [DONE] message if not cancelled
+        if (isCancelled) {
+          return
+        }
+
+        naturalExhaustionObserved = true
+
+        if (latestUsage === undefined) {
+          invokeObserverSafely(options.onUsageMissing)
+        } else {
+          try {
+            await options.onUsage?.(latestUsage)
+          } catch (error) {
+            invokeObserverSafely(() => options.onUsageError?.(error))
+          }
+        }
+
         if (!isCancelled) {
           try {
             controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -56,17 +115,16 @@ export const createSSEStreamFromCompletion = (
         }
       } catch (error) {
         if (!isCancelled) {
-          console.error('OpenAI streaming error:', error)
-          options.onError?.(error)
+          invokeObserverSafely(() => options.onError?.(error))
           controller.error(error)
         }
       }
     },
     cancel() {
-      // Mark as cancelled to stop processing chunks
       isCancelled = true
-      // Abort the OpenAI stream
-      completion.controller.abort()
+      if (!naturalExhaustionObserved) {
+        completion.controller.abort()
+      }
     },
   })
 }

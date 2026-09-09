@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { useMessageCache } from '@/hooks/use-message-cache'
 import { useSettings } from '@/hooks/use-settings'
+import { useActiveLocale } from '@/i18n/use-active-locale'
 import { WeatherForecast, WeatherForecastSkeleton } from './display'
 import { fetchWeatherForecast } from './fetch-forecast'
 import type { WeatherForecastData } from './lib'
@@ -20,10 +22,16 @@ type WeatherForecastWidgetProps = {
  * Fetches 6 days of weather data (today + 5 forecast days)
  */
 export const WeatherForecastWidget = ({ location, region, country, messageId }: WeatherForecastWidgetProps) => {
-  const { temperatureUnit } = useSettings({ temperature_unit: 'f' })
+  // Celsius, not Fahrenheit, for the window before `useUnitDefaults` seeds the
+  // setting: CLDR puts six regions on Fahrenheit and the other 249 on Celsius.
+  const { temperatureUnit } = useSettings({ temperature_unit: 'c' })
+  const locale = useActiveLocale()
   const { data, error } = useMessageCache<WeatherForecastData>({
     messageId,
-    cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value],
+    // The locale is part of the key because the cached payload holds a resolved
+    // place name — without it the widget would keep rendering the language it
+    // was first fetched in.
+    cacheKey: ['weatherForecast', location, region, country, temperatureUnit.value, locale],
     enabled: !temperatureUnit.isLoading,
     fetchFn: async () =>
       fetchWeatherForecast({
@@ -32,14 +40,23 @@ export const WeatherForecastWidget = ({ location, region, country, messageId }: 
         country,
         days: 6,
         temperatureUnit: temperatureUnit.value === 'f' ? 'f' : 'c',
+        locale,
       }),
   })
 
   if (error) {
+    // Two whole messages rather than one with a maybe-translated tail: the
+    // placeholder used to hold `t`Unknown error`` on the else branch, so the
+    // translator could not tell the value was itself copy.
+    const errorMessage = error instanceof Error ? error.message : null
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 my-4 dark:border-red-800 dark:bg-red-950">
         <p className="text-sm text-red-800 dark:text-red-200">
-          Unable to load weather forecast: {error instanceof Error ? error.message : 'Unknown error'}
+          {errorMessage ? (
+            <Trans>Unable to load weather forecast: {errorMessage}</Trans>
+          ) : (
+            <Trans>Unable to load weather forecast.</Trans>
+          )}
         </p>
       </div>
     )

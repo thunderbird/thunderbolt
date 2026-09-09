@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { cn } from '@/lib/utils'
+import { useLingui } from '@lingui/react/macro'
 import { ArrowLeft } from 'lucide-react'
 import type { ButtonHTMLAttributes } from 'react'
 
@@ -21,12 +22,13 @@ const sizeClasses = {
  * Used for navigation in modals, cards, and overlays.
  */
 export const BackButton = ({ size = 'md', className, ...props }: BackButtonProps) => {
+  const { t } = useLingui()
   const sizes = sizeClasses[size]
 
   return (
     <button
       type="button"
-      aria-label="Go back"
+      aria-label={t`Go back`}
       className={cn(
         'flex cursor-pointer items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted',
         sizes.button,

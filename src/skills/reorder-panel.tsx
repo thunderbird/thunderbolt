@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
+import { useLingui } from '@lingui/react/macro'
 import {
   closestCenter,
   DndContext,
@@ -79,6 +81,7 @@ export const ReorderPanel = ({
   embedded?: boolean
   lockedIds?: ReadonlySet<string>
 }) => {
+  const { t } = useLingui()
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 5 } }),
@@ -118,11 +121,13 @@ export const ReorderPanel = ({
     >
       {!embedded && (
         <div className="flex h-8 items-center gap-2 px-2">
-          <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">Reorder skills</span>
+          <span className="flex-1 text-[length:var(--font-size-sm)] text-muted-foreground">
+            <Trans>Reorder skills</Trans>
+          </span>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close reorder"
+            aria-label={t`Close reorder`}
             className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
           >
             <X size={16} />

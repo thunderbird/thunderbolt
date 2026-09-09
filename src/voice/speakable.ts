@@ -13,6 +13,9 @@
  *
  * Runs per aggregated sentence chunk, after the aggregator's sentence splitting.
  */
+import { i18n } from '@/i18n'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type { ContentPart } from '@/ai/widget-parser'
 
 // Emoji, pictographs, regional indicators, plus the variation selector (FE0F),
@@ -27,16 +30,19 @@ const emoji = /\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|\u{FE0F}|\u{200D}
  * the on-screen UI; inline-reference widgets (citation, link-preview) and their
  * bracket markers are dropped — they're visual footnotes, not speech.
  */
-const widgetAnnouncement: Record<string, string> = {
-  'weather-forecast': 'Take a look at the weather forecast on screen.',
-  map: 'Take a look at the map on screen.',
-  'connect-integration': 'Use the connection prompt on screen to continue.',
-  'document-result': 'See the document on screen.',
-  ask: 'Please choose one of the options on screen.',
+const widgetAnnouncement: Record<string, MessageDescriptor> = {
+  'weather-forecast': msg`Take a look at the weather forecast on screen.`,
+  map: msg`Take a look at the map on screen.`,
+  'connect-integration': msg`Use the connection prompt on screen to continue.`,
+  'document-result': msg`See the document on screen.`,
+  ask: msg`Please choose one of the options on screen.`,
 }
 
 /** Spoken pointer for a widget, or '' for reference-only widgets (citation, link-preview). */
-export const announceWidget = (name: string): string => widgetAnnouncement[name.toLowerCase()] ?? ''
+export const announceWidget = (name: string): string => {
+  const announcement = widgetAnnouncement[name.toLowerCase()]
+  return announcement ? i18n._(announcement) : ''
+}
 
 /**
  * Flatten parsed content parts into clean speech source: text verbatim, widgets
@@ -76,8 +82,9 @@ export const toSpeakable = (input: string): string => {
   // math becomes a spoken pointer (it renders in the bubble); inline math and
   // stray commands (\frac{a}{b}, \alpha) are removed. Verbalizing equations
   // properly (LaTeX→speech) is a follow-up.
-  text = text.replace(/\$\$[\s\S]*?\$\$/g, ' See the equation on screen. ')
-  text = text.replace(/\\\[[\s\S]*?\\\]/g, ' See the equation on screen. ')
+  const equationOnScreen = ` ${i18n._(msg`See the equation on screen.`)} `
+  text = text.replace(/\$\$[\s\S]*?\$\$/g, equationOnScreen)
+  text = text.replace(/\\\[[\s\S]*?\\\]/g, equationOnScreen)
   text = text.replace(/\\\([\s\S]*?\\\)/g, ' ')
   // Inline math `$…$` → dropped. The negative lookahead skips a `$` that opens a
   // currency amount ("it costs $5 and $10 apiece"), which would otherwise be

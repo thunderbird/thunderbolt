@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { Download } from 'lucide-react'
 import { useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
@@ -51,16 +52,20 @@ export const DownloadAppBannerDesktop = () => {
               <Download className="size-5 text-foreground" />
 
               <div>
-                <p className="text-sm font-semibold text-foreground">Get Thunderbolt free app</p>
-                <p className="text-xs text-muted-foreground mt-0.5">One app, every AI model</p>
+                <p className="text-sm font-semibold text-foreground">
+                  <Trans>Get Thunderbolt free app</Trans>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <Trans>One app, every AI model</Trans>
+                </p>
               </div>
 
               <div className="flex gap-2">
                 <Button size="sm" onClick={handleDownload}>
-                  Download App
+                  <Trans>Download App</Trans>
                 </Button>
                 <Button size="sm" variant="outline" onClick={handleDismiss}>
-                  Later
+                  <Trans>Later</Trans>
                 </Button>
               </div>
             </div>

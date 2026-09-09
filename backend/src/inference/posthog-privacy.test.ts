@@ -3,14 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { clearSettingsCache } from '@/config/settings'
-import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { user } from '@/db/auth-schema'
+import { inferenceUsage } from '@/db/inference-usage-schema'
+import { clearPostHogClient, getPostHogClient, isPostHogConfigured } from '@/posthog/client'
+import { createTestDb } from '@/test-utils/db'
+import { mockAuth } from '@/test-utils/mock-auth'
 import { isPosthogRequest } from '@/test-utils/posthog'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { eq } from 'drizzle-orm'
+import { Elysia } from 'elysia'
+import type { PostHog } from 'posthog-node'
 import { clearInferenceClientCache, getInferenceClient } from './client'
+import { createInferenceRoutes } from './routes'
 
 type PostHogEvent = {
+  distinct_id?: string
   event?: string
   properties?: Record<string, unknown>
 }
@@ -27,34 +36,53 @@ type FetchCall = {
   body: PostHogRequestBody | null
 }
 
+type DirectUpstreamRequestBody = {
+  model: string
+  stream_options: { include_usage: boolean }
+}
+
+/** Parse a captured PostHog request body, ignoring endpoints that do not send JSON. */
+const parsePostHogRequestBody = (body: string): PostHogRequestBody | null => {
+  if (!body) {
+    return null
+  }
+  try {
+    return JSON.parse(body) as PostHogRequestBody
+  } catch {
+    return null
+  }
+}
+
 /**
  * Integration tests to verify PostHog privacy mode works correctly
- * in the actual inference routes with real client creation
+ * with real inference client creation
  */
 describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: typeof fetch
   let originalEnv: Record<string, string | undefined>
+  const posthogClients = new Set<PostHog>()
+
+  /** Own each analytics client together with its injected transport until test cleanup. */
+  const createTestPostHogClient = (fetchFn: typeof fetch): PostHog => {
+    const client = getPostHogClient(fetchFn)
+    posthogClients.add(client)
+    return client
+  }
 
   beforeEach(() => {
     // Save original env vars
     originalEnv = {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTHOG_HOST: process.env.POSTHOG_HOST,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
     }
 
     capturedFetches = []
     mockFetch = jest.fn(async (url: string, options: RequestInit) => {
       // Capture all fetch calls
-      let parsedBody: PostHogRequestBody | null = null
-      if (options.body) {
-        try {
-          parsedBody = JSON.parse(options.body as string) as PostHogRequestBody
-        } catch {
-          // Not JSON, skip parsing
-        }
-      }
+      const parsedBody = parsePostHogRequestBody(options.body?.toString() ?? '')
 
       capturedFetches.push({
         url,
@@ -70,7 +98,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         })
       }
 
-      // Mock OpenAI/Fireworks completion response
       return new Response(
         JSON.stringify({
           id: 'chatcmpl-test',
@@ -102,27 +129,22 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   afterEach(async () => {
-    // Clear inference client cache for test isolation
-    clearInferenceClientCache()
-
-    // Clear settings and PostHog caches
-    clearSettingsCache()
-
-    // Shutdown PostHog with a short timeout (100ms) since we're using mocked fetch
-    await shutdownPostHog(100)
-
-    // Clear the PostHog client cache
-    clearPostHogClient()
-
-    // Restore original env vars
-    for (const [key, value] of Object.entries(originalEnv)) {
-      if (value === undefined) {
-        delete process.env[key]
-      } else {
-        process.env[key] = value
+    try {
+      await Promise.all([...posthogClients].map((client) => client.shutdown(100)))
+    } finally {
+      posthogClients.clear()
+      clearInferenceClientCache()
+      clearPostHogClient()
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
       }
+      clearSettingsCache()
+      capturedFetches = []
     }
-    capturedFetches = []
   })
 
   describe('PostHog client privacy_mode property', () => {
@@ -138,9 +160,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       const configured = isPostHogConfigured()
       expect(configured).toBe(true)
 
-      // Import and check the client
-      const { getPostHogClient } = require('@/posthog/client')
-      const client = getPostHogClient(mockFetch)
+      const client = createTestPostHogClient(mockFetch)
 
       // Verify our workaround is in place
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,16 +170,37 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   describe('Inference client with PostHog wrapper', () => {
+    it.each([
+      ['anthropic', 'ANTHROPIC_API_KEY'],
+      ['fireworks', 'FIREWORKS_API_KEY'],
+    ] as const)('keeps an owned PostHog client out of the %s provider cache', (provider, apiKeyName) => {
+      process.env[apiKeyName] = 'test-provider-key'
+      delete process.env.POSTHOG_API_KEY
+      clearSettingsCache()
+      clearInferenceClientCache()
+      const cachedClient = getInferenceClient(provider).client
+
+      process.env.POSTHOG_API_KEY = 'test-key'
+      clearSettingsCache()
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const injectedClient = getInferenceClient(provider, { posthogClient }).client
+
+      expect(injectedClient.constructor.name).toBe('PostHogOpenAI')
+      expect(injectedClient).not.toBe(cachedClient)
+      expect(getInferenceClient(provider).client).toBe(cachedClient)
+    })
+
     it('should create PostHogOpenAI client when PostHog is configured', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Verify it's a PostHog-wrapped client
       expect(client.constructor.name).toBe('PostHogOpenAI')
@@ -169,14 +210,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Note: In this test environment, PostHog might be cached from previous tests
       // The important thing is that the client is created successfully
       delete process.env.POSTHOG_API_KEY
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch })
 
       // Verify client exists and is functional
       expect(client).toBeDefined()
@@ -186,10 +227,142 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   describe('End-to-end privacy verification', () => {
+    it('preserves direct-route usage accounting and privacy with the real PostHog OpenAI wrapper', async () => {
+      const testDb = await createTestDb()
+      await testDb.db.insert(user).values({
+        id: 'test-user',
+        name: 'Test User',
+        email: 'test-user@example.com',
+        emailVerified: true,
+        isAnonymous: false,
+      })
+      process.env.POSTHOG_API_KEY = 'test-key'
+      process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+      clearSettingsCache()
+      clearInferenceClientCache()
+      clearPostHogClient()
+
+      const secretPrompt = 'ROUTE_POSTHOG_SECRET_PROMPT'
+      const usageChunk = Object.freeze({
+        id: 'chatcmpl-usage',
+        object: 'chat.completion.chunk',
+        created: 0,
+        model: 'claude-opus-5',
+        choices: Object.freeze([]),
+        usage: Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 }),
+      })
+      const rawStream =
+        'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+        `data: ${JSON.stringify(usageChunk)}\n\n` +
+        'data: [DONE]\n\n'
+      let upstreamRequestBody: DirectUpstreamRequestBody | undefined
+      const routeFetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : input.toString()
+          const requestBody = new Response(
+            init?.body ?? (input instanceof Request ? await input.clone().arrayBuffer() : undefined),
+          )
+          const bodyText =
+            new Headers(init?.headers).get('content-encoding') === 'gzip' && requestBody.body
+              ? await new Response(requestBody.body.pipeThrough(new DecompressionStream('gzip'))).text()
+              : await requestBody.text()
+          if (isPosthogRequest(url)) {
+            capturedFetches.push({
+              url,
+              options: init ?? {},
+              body: parsePostHogRequestBody(bodyText),
+            })
+            return new Response(JSON.stringify({ status: 1 }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+
+          upstreamRequestBody = JSON.parse(bodyText) as DirectUpstreamRequestBody
+          return new Response(rawStream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          })
+        },
+        { preconnect: () => undefined },
+      )
+      const posthogClient = createTestPostHogClient(routeFetch)
+      const inferenceClient = getInferenceClient('anthropic', { fetchFn: routeFetch, posthogClient })
+
+      try {
+        const app = new Elysia().use(
+          createInferenceRoutes({ auth: mockAuth, database: testDb.db, getClient: () => inferenceClient }),
+        )
+        const response = await app.handle(
+          new Request('http://localhost/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'opus-5',
+              messages: [{ role: 'user', content: secretPrompt }],
+              stream: true,
+              stream_options: { include_usage: false, client_value: 'ignored' },
+            }),
+          }),
+        )
+        const responseText = await response.text()
+        await posthogClient.flush()
+
+        expect(response.status).toBe(200)
+        expect(upstreamRequestBody).toMatchObject({
+          model: 'claude-opus-5',
+          stream_options: { include_usage: true },
+        })
+        expect(upstreamRequestBody?.stream_options).toEqual({ include_usage: true })
+        expect(responseText).toContain(`data: ${JSON.stringify(usageChunk)}\n\n`)
+        expect(usageChunk).toEqual({
+          id: 'chatcmpl-usage',
+          object: 'chat.completion.chunk',
+          created: 0,
+          model: 'claude-opus-5',
+          choices: [],
+          usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+        })
+
+        const rows = await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+        expect(rows).toHaveLength(1)
+        expect(rows[0]).toMatchObject({
+          userId: 'test-user',
+          provider: 'anthropic',
+          model: 'claude-opus-5',
+          promptTokens: 2,
+          completionTokens: 3,
+          totalTokens: 5,
+        })
+
+        const postHogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
+        const generationEvents = postHogRequests.flatMap((request) => {
+          if (!request.body) {
+            return []
+          }
+          return 'batch' in request.body ? request.body.batch : [request.body]
+        })
+        const generation = generationEvents.find((event) => event.event === '$ai_generation')
+        expect(generation).toMatchObject({
+          distinct_id: 'test-user',
+          properties: {
+            model_provider: 'anthropic',
+            model: 'claude-opus-5',
+          },
+        })
+        expect(generation?.properties?.$ai_input).toBeNullOrUndefined()
+        expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
+        expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
+      } finally {
+        await testDb.cleanup()
+      }
+    })
+
     it('should not send conversation content to PostHog when making completions', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
@@ -197,7 +370,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearPostHogClient()
 
       // Get the wrapped client with injected mock fetch
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Make a completion with sensitive data
       const completion = await (client as PostHogOpenAI).chat.completions.create({
@@ -210,13 +384,15 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         ],
         posthogDistinctId: 'test-user',
         posthogProperties: {
-          model_provider: 'fireworks',
+          model_provider: 'anthropic',
           endpoint: '/chat/completions',
         },
       })
 
       // Verify the completion works
       expect(completion).toBeDefined()
+
+      await posthogClient.flush()
 
       // Find PostHog requests
       const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
@@ -251,14 +427,15 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
     it('should verify privacy mode prevents content leakage in batch operations', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.FIREWORKS_API_KEY = 'test-fireworks-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('fireworks', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Make multiple completions
       const conversations = [
@@ -274,6 +451,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           posthogDistinctId: 'test-user',
         })
       }
+
+      await posthogClient.flush()
 
       // Check ALL captured PostHog requests
       const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))

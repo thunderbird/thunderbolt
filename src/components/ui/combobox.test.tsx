@@ -39,7 +39,7 @@ describe('Combobox', () => {
     it('supports controlled open state', () => {
       const handleOpenChange = mock()
       render(<Combobox items={mockItems} onValueChange={() => {}} open={true} onOpenChange={handleOpenChange} />)
-      const searchInput = screen.getByPlaceholderText('Search...')
+      const searchInput = screen.getByPlaceholderText('Search…')
       const command = searchInput.closest('[data-slot="command"]')
       const popoverContent = command?.parentElement
 
@@ -108,7 +108,7 @@ describe('Combobox', () => {
           onSearchChange={handleSearchChange}
         />,
       )
-      const input = screen.getByPlaceholderText('Search...')
+      const input = screen.getByPlaceholderText('Search…')
       fireEvent.change(input, { target: { value: 'test' } })
       expect(handleSearchChange).toHaveBeenCalledWith('test')
     })
@@ -124,7 +124,7 @@ describe('Combobox', () => {
           onSearchChange={() => {}}
         />,
       )
-      const input = screen.getByPlaceholderText('Search...')
+      const input = screen.getByPlaceholderText('Search…')
       expect(input).toHaveValue('hello')
     })
   })

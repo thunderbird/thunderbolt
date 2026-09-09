@@ -8,6 +8,7 @@
  * mirrors the send button's footprint. The session + active-mode UI live in the
  * composer (which morphs into the voice surface), so this is just the trigger.
  */
+import { useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { AudioLines } from 'lucide-react'
 
@@ -15,15 +16,19 @@ type VoiceModeButtonProps = {
   onStart: () => void
 }
 
-export const VoiceModeButton = ({ onStart }: VoiceModeButtonProps) => (
-  <Button
-    type="button"
-    variant="default"
-    onClick={onStart}
-    aria-label="Start voice mode"
-    title="Start voice mode"
-    className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
-  >
-    <AudioLines className="size-[var(--icon-size-default)]" />
-  </Button>
-)
+export const VoiceModeButton = ({ onStart }: VoiceModeButtonProps) => {
+  const { t } = useLingui()
+
+  return (
+    <Button
+      type="button"
+      variant="default"
+      onClick={onStart}
+      aria-label={t`Start voice mode`}
+      title={t`Start voice mode`}
+      className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
+    >
+      <AudioLines className="size-[var(--icon-size-default)]" />
+    </Button>
+  )
+}

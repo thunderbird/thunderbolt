@@ -5,17 +5,18 @@
 /** Live provider model discovery with Pi catalog fallback. */
 
 import { builtinModels, builtinProviders } from '@earendil-works/pi-ai/providers/all'
-import type { ModelProvider } from '../agent/types.ts'
+import type { BuiltinProvider, ModelProvider } from '../agent/types.ts'
+import { isSecureCloudUrl } from '../auth/config.ts'
 import { isRecord } from '../lib/json.ts'
 
 const defaultTimeoutMs = 3_000
-const maxLiveModels = 8
 const nonChatModelPattern =
   /embed(?:ding)?|whisper|tts|speech|transcri|dall-?e|gpt-image|imagen|(?:^|[-_/])sora(?:[-_/]|$)|moderation|rerank/i
 
 export type ModelListingResult = {
   readonly source: 'live' | 'catalog'
   readonly ids: readonly string[]
+  readonly authenticated: boolean
   readonly wasAuthRejected?: true
   readonly status?: 401 | 403
 }
@@ -46,6 +47,24 @@ type ListingRequest = {
  *  (https://docs.fireworks.ai/api-reference/list-models). */
 const fallbackOnlyProviders: ReadonlySet<ModelProvider> = new Set(['zai', 'fireworks'])
 
+/** Pins built-in model-list credentials to the provider origins shipped by the CLI. */
+const builtinListingOrigins = {
+  anthropic: 'https://api.anthropic.com',
+  openai: 'https://api.openai.com',
+  google: 'https://generativelanguage.googleapis.com',
+  xai: 'https://api.x.ai',
+  deepseek: 'https://api.deepseek.com',
+  zai: 'https://api.z.ai',
+  moonshotai: 'https://api.moonshot.ai',
+  mistral: 'https://api.mistral.ai',
+  groq: 'https://api.groq.com',
+  cerebras: 'https://api.cerebras.ai',
+  openrouter: 'https://openrouter.ai',
+  together: 'https://api.together.ai',
+  fireworks: 'https://api.fireworks.ai',
+  minimax: 'https://api.minimax.io',
+} as const satisfies Readonly<Record<BuiltinProvider, string>>
+
 /** Reads numeric OpenAI or ISO Anthropic creation metadata. */
 const createdTimestamp = (candidate: Readonly<Record<string, unknown>>): number | undefined => {
   if (typeof candidate.created === 'number') return candidate.created
@@ -55,8 +74,8 @@ const createdTimestamp = (candidate: Readonly<Record<string, unknown>>): number 
 }
 
 /** Reads OpenAI-compatible `{ data: [{ id, created? }] }` responses. */
-const parseOpenAiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.data)) return []
+const parseOpenAiModels = (value: unknown): readonly ListedModel[] | null => {
+  if (!isRecord(value) || !Array.isArray(value.data)) return null
   return value.data.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
     return [{ id: candidate.id, created: createdTimestamp(candidate) }]
@@ -64,8 +83,8 @@ const parseOpenAiModels = (value: unknown): readonly ListedModel[] => {
 }
 
 /** Gemini listing schema: https://ai.google.dev/api/models#method:-models.list */
-const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.models)) return []
+const parseGeminiModels = (value: unknown): readonly ListedModel[] | null => {
+  if (!isRecord(value) || !Array.isArray(value.models)) return null
   return value.models.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.name !== 'string') return []
     if (!Array.isArray(candidate.supportedGenerationMethods)) return []
@@ -75,8 +94,8 @@ const parseGeminiModels = (value: unknown): readonly ListedModel[] => {
 }
 
 /** xAI language-model schema: https://docs.x.ai/developers/rest-api-reference/inference/models#list-language-models */
-const parseXaiModels = (value: unknown): readonly ListedModel[] => {
-  if (!isRecord(value) || !Array.isArray(value.models)) return []
+const parseXaiModels = (value: unknown): readonly ListedModel[] | null => {
+  if (!isRecord(value) || !Array.isArray(value.models)) return null
   return value.models.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string') return []
     return [{ id: candidate.id, created: createdTimestamp(candidate) }]
@@ -84,8 +103,8 @@ const parseXaiModels = (value: unknown): readonly ListedModel[] => {
 }
 
 /** Together listing schema: https://docs.together.ai/reference/models */
-const parseTogetherModels = (value: unknown): readonly ListedModel[] => {
-  if (!Array.isArray(value)) return []
+const parseTogetherModels = (value: unknown): readonly ListedModel[] | null => {
+  if (!Array.isArray(value)) return null
   return value.flatMap((candidate) => {
     if (!isRecord(candidate) || typeof candidate.id !== 'string' || typeof candidate.type !== 'string') return []
     if (!['chat', 'language', 'code'].includes(candidate.type)) return []
@@ -94,7 +113,7 @@ const parseTogetherModels = (value: unknown): readonly ListedModel[] => {
 }
 
 /** Selects the documented response schema for the requested provider. */
-const parseListedModels = (provider: ModelProvider, value: unknown): readonly ListedModel[] => {
+const parseListedModels = (provider: ModelProvider, value: unknown): readonly ListedModel[] | null => {
   if (provider === 'google') return parseGeminiModels(value)
   if (provider === 'xai') return parseXaiModels(value)
   if (provider === 'together') return parseTogetherModels(value)
@@ -120,8 +139,8 @@ const newestModelsFirst = (models: readonly ListedModel[]): readonly ListedModel
   return [...models].sort((left, right) => (rank(left) === rank(right) ? 0 : rank(right) - rank(left)))
 }
 
-/** Returns current Pi catalog ids using setup wizard's existing three-item
- *  limit. Reading the static Pi catalog for a built-in provider is trusted —
+/** Returns the first three current Pi catalog ids for fallback listings.
+ *  Reading the static Pi catalog for a built-in provider is trusted —
  *  a failure here is a real catalog regression and should surface loudly. */
 const catalogIds = (provider: ModelProvider): readonly string[] => {
   if (provider === 'openai-compat') return []
@@ -132,14 +151,26 @@ const catalogIds = (provider: ModelProvider): readonly string[] => {
 }
 
 /** Resolves provider base URL from Pi descriptors, except caller-owned custom targets. */
+export const validateModelListingBaseUrl = (provider: ModelProvider, baseUrl: string): string => {
+  if (!isSecureCloudUrl(baseUrl)) {
+    throw new Error(`${provider} model listing URLs must use https (or loopback http).`)
+  }
+  const url = new URL(baseUrl)
+  if (provider === 'openai-compat') return baseUrl
+  if (url.origin !== builtinListingOrigins[provider]) {
+    throw new Error(`${provider} model listing URL does not match its pinned origin.`)
+  }
+  return baseUrl
+}
+
 const providerBaseUrl = (provider: ModelProvider, customBaseUrl?: string): string => {
   if (provider === 'openai-compat') {
     if (!customBaseUrl) throw new Error('Missing OpenAI-compatible base URL.')
-    return customBaseUrl
+    return validateModelListingBaseUrl(provider, customBaseUrl)
   }
   const descriptor = builtinProviders().find(({ id }) => id === provider)
   if (!descriptor?.baseUrl) throw new Error(`Missing Pi base URL for ${provider}.`)
-  return descriptor.baseUrl
+  return validateModelListingBaseUrl(provider, descriptor.baseUrl)
 }
 
 /** Joins one endpoint path without duplicating a trailing slash. */
@@ -195,48 +226,25 @@ const listingRequest = (provider: ModelProvider, apiKey: string, baseUrl?: strin
   }
 }
 
-/** One abort signal and deadline shared by the listing fetch and its body read. */
-type RequestTimeout = {
-  readonly signal: AbortSignal
-  readonly expired: Promise<never>
-  readonly clear: () => void
-}
-
-/** Starts the request deadline: past `timeoutMs` the signal aborts and `expired`
- *  rejects, covering fetches (or injected fetches) that ignore the signal. */
-const createRequestTimeout = (timeoutMs: number): RequestTimeout => {
-  const controller = new AbortController()
-  const timeout = Promise.withResolvers<never>()
-  const timer = setTimeout(() => {
-    controller.abort()
-    timeout.reject(new DOMException('Model listing timed out.', 'TimeoutError'))
-  }, timeoutMs)
-  return { signal: controller.signal, expired: timeout.promise, clear: () => clearTimeout(timer) }
-}
-
 /** Runs the listing fetch under the shared deadline, mapping expected network
  *  failures (abort, timeout, connection errors) to `undefined`. */
 const fetchWithTimeout = async (
   fetchFn: ModelListingFetch,
   request: ListingRequest,
-  timeout: RequestTimeout,
+  signal: AbortSignal,
 ): Promise<Response | undefined> => {
   try {
-    return await Promise.race([
-      fetchFn(request.url, { headers: request.headers, signal: timeout.signal }),
-      timeout.expired,
-    ])
+    return await fetchFn(request.url, { headers: request.headers, signal, redirect: 'error' })
   } catch (error) {
-    if (isExpectedFetchError(error)) return undefined
+    if (isExpectedFetchError(error) || (isRecord(error) && error.code === 'UnexpectedRedirect')) return undefined
     throw error
   }
 }
 
-/** Reads the JSON body under the same deadline as the fetch, mapping malformed
- *  JSON and a stalled/aborted body read to `undefined`. */
-const parseJsonBody = async (response: Response, timeout: RequestTimeout): Promise<unknown> => {
+/** Reads the JSON body, mapping malformed or aborted responses to `undefined`. */
+const parseJsonBody = async (response: Response): Promise<unknown> => {
   try {
-    return await Promise.race([response.json() as Promise<unknown>, timeout.expired])
+    return (await response.json()) as unknown
   } catch (error) {
     if (error instanceof SyntaxError || isExpectedFetchError(error)) return undefined
     throw error
@@ -244,31 +252,34 @@ const parseJsonBody = async (response: Response, timeout: RequestTimeout): Promi
 }
 
 /** Lists live provider models, returning Pi catalog ids for expected provider failures. */
-export const listModels = async (options: ListModelsOptions): Promise<ModelListingResult> => {
-  const fallback = (): ModelListingResult => ({ source: 'catalog', ids: catalogIds(options.provider) })
+export const listModels = async (
+  options: ListModelsOptions,
+  callerSignal?: AbortSignal,
+): Promise<ModelListingResult> => {
+  const fallback = (): ModelListingResult => ({
+    source: 'catalog',
+    ids: catalogIds(options.provider),
+    authenticated: false,
+  })
   if (fallbackOnlyProviders.has(options.provider)) return fallback()
 
   const request = listingRequest(options.provider, options.apiKey, options.baseUrl)
-  const timeout = createRequestTimeout(options.timeoutMs ?? defaultTimeoutMs)
-  try {
-    const response = await fetchWithTimeout(options.fetchFn ?? globalThis.fetch, request, timeout)
-    if (!response) return fallback()
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        return { ...fallback(), wasAuthRejected: true, status: response.status }
-      }
-      return fallback()
+  const timeoutSignal = AbortSignal.timeout(options.timeoutMs ?? defaultTimeoutMs)
+  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal
+  const response = await fetchWithTimeout(options.fetchFn ?? globalThis.fetch, request, signal)
+  if (!response) return fallback()
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      return { ...fallback(), wasAuthRejected: true, status: response.status }
     }
-
-    const parsed = await parseJsonBody(response, timeout)
-    if (parsed === undefined) return fallback()
-
-    const listedModels = parseListedModels(options.provider, parsed)
-    const models = newestModelsFirst(chatModels(listedModels))
-    if (models.length === 0) return fallback()
-    return { source: 'live', ids: models.slice(0, maxLiveModels).map(({ id }) => id) }
-  } finally {
-    // Cleared only after the body settles, so the deadline covers fetch + read.
-    timeout.clear()
+    return fallback()
   }
+
+  const parsed = await parseJsonBody(response)
+  if (parsed === undefined) return fallback()
+  const listedModels = parseListedModels(options.provider, parsed)
+  if (listedModels === null) return fallback()
+  const models = newestModelsFirst(chatModels(listedModels))
+  if (models.length === 0) return { ...fallback(), authenticated: true }
+  return { source: 'live', ids: models.map(({ id }) => id), authenticated: true }
 }

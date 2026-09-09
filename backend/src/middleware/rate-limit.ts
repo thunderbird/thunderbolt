@@ -13,7 +13,7 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'pro' | 'auth' | 'debug-transcript'
+type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth' | 'debug-transcript'
 export type UserRateLimitTier = Exclude<RateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
@@ -32,6 +32,7 @@ export type IpRateLimitSettings = RateLimitSettings & {
 /** Hardcoded per-tier limits. */
 const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
+  receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },

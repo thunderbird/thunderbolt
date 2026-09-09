@@ -16,3 +16,6 @@ export const isSafeUrl = (url: string): boolean => {
     return false
   }
 }
+
+/** Remove only trailing slashes from a backend URL. */
+export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, '')

@@ -5,6 +5,7 @@
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { Trans } from '@lingui/react/macro'
 import { Reply } from 'lucide-react'
 import { type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
@@ -60,7 +61,7 @@ export const QuoteReplyButton = () => {
       className="z-50 flex items-center gap-1.5 rounded-full border bg-popover px-3.5 py-2 text-[length:var(--font-size-sm)] font-medium text-popover-foreground shadow-md transition hover:bg-muted"
     >
       <Reply className="size-4" aria-hidden="true" />
-      Reply
+      <Trans>Reply</Trans>
     </button>,
     document.body,
   )

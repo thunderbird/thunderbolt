@@ -22,9 +22,9 @@ import {
 
 describe('resolveCloudUrl', () => {
   test('prefers THUNDERBOLT_CLOUD_URL over the baked release default', () => {
-    expect(resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: 'https://runtime.example.com/v1' }, 'https://baked.example.com/v1')).toBe(
-      'https://runtime.example.com/v1',
-    )
+    expect(
+      resolveCloudUrl({ THUNDERBOLT_CLOUD_URL: 'https://runtime.example.com/v1' }, 'https://baked.example.com/v1'),
+    ).toBe('https://runtime.example.com/v1')
   })
 
   test('uses the baked release default when the runtime override is unset', () => {
@@ -102,10 +102,37 @@ describe('isSecureCloudUrl', () => {
   test('accepts plain http only for loopback hosts', () => {
     expect(isSecureCloudUrl('http://localhost:8000/v1')).toBe(true)
     expect(isSecureCloudUrl('http://127.0.0.1:8000/v1')).toBe(true)
+    expect(isSecureCloudUrl('http://127.0.0.2:8000/v1')).toBe(true)
     expect(isSecureCloudUrl('http://api.localhost/v1')).toBe(true)
   })
 
   test('rejects plain http to a remote host (would leak the bearer)', () => {
     expect(isSecureCloudUrl('http://selfhost.example/v1')).toBe(false)
+    expect(isSecureCloudUrl('http://127.0.0.1.example.com/v1')).toBe(false)
+  })
+
+  test.each([
+    ['username', 'https://username@api.example.com/v1'],
+    ['password', 'https://:password@api.example.com/v1'],
+    ['query', 'https://api.example.com/v1?source=cli'],
+    ['fragment', 'https://api.example.com/v1#device-login'],
+    ['username and password', 'https://username:password@api.example.com/v1'],
+    ['username and query', 'https://username@api.example.com/v1?source=cli'],
+    ['username and fragment', 'https://username@api.example.com/v1#device-login'],
+    ['password and query', 'https://:password@api.example.com/v1?source=cli'],
+    ['password and fragment', 'https://:password@api.example.com/v1#device-login'],
+    ['query and fragment', 'https://api.example.com/v1?source=cli#device-login'],
+    ['credentials and query', 'https://username:password@api.example.com/v1?source=cli'],
+    ['credentials and fragment', 'https://username:password@api.example.com/v1#device-login'],
+    ['username, query, and fragment', 'https://username@api.example.com/v1?source=cli#device-login'],
+    ['password, query, and fragment', 'https://:password@api.example.com/v1?source=cli#device-login'],
+    ['credentials, query, and fragment', 'https://username:password@api.example.com/v1?source=cli#device-login'],
+  ])('rejects an https URL with a %s component', (_component, cloudUrl) => {
+    expect(isSecureCloudUrl(cloudUrl)).toBe(false)
+  })
+
+  test('rejects malformed URLs and non-HTTP schemes', () => {
+    expect(isSecureCloudUrl('not a URL')).toBe(false)
+    expect(isSecureCloudUrl('file:///tmp/thunderbolt')).toBe(false)
   })
 })

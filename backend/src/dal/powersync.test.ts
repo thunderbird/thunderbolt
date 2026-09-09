@@ -182,6 +182,33 @@ describe('powersync upload gate (applyOperation)', () => {
       expect(rows).toHaveLength(0)
     })
 
+    it('REFUSES to create or overwrite rows in the reserved cli- device namespace', async () => {
+      const id = 'cli-019f0000-0000-7000-8000-000000000001'
+      expect(await applyOperation(db, { op: 'PUT', type: 'devices', id, data: { name: 'Squat' } }, userId)).toBe(false)
+      expect(await db.select().from(devicesTable).where(eq(devicesTable.id, id))).toHaveLength(0)
+
+      const now = new Date()
+      await db.insert(devicesTable).values({
+        id,
+        userId,
+        name: 'Server CLI',
+        deviceType: 'cli',
+        trusted: true,
+        lastSeen: now,
+        createdAt: now,
+      })
+
+      expect(
+        await applyOperation(db, { op: 'PUT', type: 'devices', id, data: { name: 'Overwritten CLI' } }, userId),
+      ).toBe(false)
+      expect(
+        await applyOperation(db, { op: 'PATCH', type: 'devices', id, data: { name: 'Patched CLI' } }, userId),
+      ).toBe(false)
+      const [persisted] = await db.select().from(devicesTable).where(eq(devicesTable.id, id))
+      expect(persisted.name).toBe('Server CLI')
+      expect(persisted.deviceType).toBe('cli')
+    })
+
     it('updates an existing row on conflict (upsert)', async () => {
       await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'First' } }, userId)
       await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-up', data: { title: 'Second' } }, userId)

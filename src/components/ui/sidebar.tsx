@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Slot } from '@radix-ui/react-slot'
 import { type VariantProps, cva } from 'class-variance-authority'
 import { PanelLeft } from 'lucide-react'
@@ -375,7 +376,9 @@ const SidebarTrigger = forwardRef<ElementRef<typeof Button>, ComponentProps<type
         {...props}
       >
         <PanelLeft />
-        <span className="sr-only">Toggle Sidebar</span>
+        <span className="sr-only">
+          <Trans>Toggle Sidebar</Trans>
+        </span>
       </Button>
     )
   },
@@ -391,6 +394,7 @@ const SidebarRail = forwardRef<
     maxResizeWidth?: string
   }
 >(({ className, enableDrag = true, direction = 'right', maxResizeWidth = maxSidebarWidth, ...props }, ref) => {
+  const { t } = useLingui()
   const { toggleSidebar, setWidth, state, width, setIsDraggingRail } = useSidebar()
 
   const { dragRef, handleMouseDown } = useSidebarResize({
@@ -415,13 +419,13 @@ const SidebarRail = forwardRef<
       //* updated ref to use combinedRef
       ref={combinedRef}
       data-sidebar="rail"
-      aria-label="Toggle Sidebar"
+      aria-label={t`Toggle Sidebar`}
       tabIndex={-1}
       // onClick={toggleSidebar}
       //* replace onClick with onMouseDown
       // @ts-ignore
       onMouseDown={handleMouseDown}
-      title="Toggle Sidebar"
+      title={t`Toggle Sidebar`}
       className={cn(
         'absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex',
         'in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize',

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,7 @@ type RenameChatDialogProps = {
 }
 
 export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: RenameChatDialogProps) => {
+  const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const initialTitle = title ?? defaultChatTitle
   const [value, setValue] = useState(initialTitle)
@@ -63,8 +65,8 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
           handleSave()
         }
       }}
-      aria-label="Chat name"
-      placeholder="Chat name"
+      aria-label={t`Chat name`}
+      placeholder={t`Chat name`}
     />
   )
 
@@ -80,9 +82,11 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
         }}
         onClick={handleCancel}
       >
-        Cancel
+        <Trans>Cancel</Trans>
       </Button>
-      <Button onClick={handleSave}>Save</Button>
+      <Button onClick={handleSave}>
+        <Trans>Save</Trans>
+      </Button>
     </>
   )
 
@@ -91,7 +95,7 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
       <MobileActionSheet
         open={open}
         onOpenChange={onOpenChange}
-        title="Rename chat"
+        title={t`Rename chat`}
         initialFocus={() => {
           const input = inputRef.current
           requestAnimationFrame(() => input?.select())
@@ -116,7 +120,9 @@ export const RenameChatDialog = ({ open, title, onOpenChange, onRename }: Rename
         }}
       >
         <DialogHeader>
-          <DialogTitle>Rename chat</DialogTitle>
+          <DialogTitle>
+            <Trans>Rename chat</Trans>
+          </DialogTitle>
         </DialogHeader>
         {input}
         <DialogFooter>{actions}</DialogFooter>

@@ -4,6 +4,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { ExternalLinkBehavior } from '@/lib/external-link-behavior'
 
 /**
  * Voice engine selection (THU-718). `thunderbolt` uses the hosted enclave STT/TTS
@@ -32,6 +33,7 @@ export const defaultVoiceProvider: VoiceProviderConfig = {
 
 type LocalSettingsState = {
   cloudUrl: string
+  externalLinkBehavior: ExternalLinkBehavior
   debugPosthog: boolean
   isNativeFetchEnabled: boolean
   hapticsEnabled: boolean
@@ -48,6 +50,7 @@ type LocalSettingsStore = LocalSettingsState & LocalSettingsActions
 
 export const initialLocalSettings: LocalSettingsState = {
   cloudUrl: import.meta.env.VITE_THUNDERBOLT_CLOUD_URL || 'http://localhost:8000/v1',
+  externalLinkBehavior: 'ask',
   debugPosthog: false,
   isNativeFetchEnabled: false,
   hapticsEnabled: true,
@@ -69,6 +72,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
       // future store action can silently leak into localStorage.
       partialize: (s): LocalSettingsState => ({
         cloudUrl: s.cloudUrl,
+        externalLinkBehavior: s.externalLinkBehavior,
         debugPosthog: s.debugPosthog,
         isNativeFetchEnabled: s.isNativeFetchEnabled,
         hapticsEnabled: s.hapticsEnabled,

@@ -2,19 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Coverage for the link-only fallback decision. The QR render itself is a
- * best-effort side effect and intentionally not unit-tested; only the gate that
- * chooses link-only vs QR is.
- */
-
 import { describe, expect, test } from 'bun:test'
-import { shouldRenderQr } from './qr.ts'
+import { renderTerminalQr, shouldRenderQr } from './qr.ts'
 
 describe('shouldRenderQr', () => {
   test('renders on a wide interactive TTY', () => {
     expect(shouldRenderQr({ isTty: true, columns: 80 })).toBe(true)
     expect(shouldRenderQr({ isTty: true, columns: 200 })).toBe(true)
+  })
+
+  test('renders a real QR block without losing the CommonJS receiver', () => {
+    const output = renderTerminalQr('https://example.com/device?user_code=ABCD-EFGH')
+
+    expect(output).toContain('\n')
+    expect(output.length).toBeGreaterThan(100)
   })
 
   test('falls back to link-only when not a TTY (piped/redirected)', () => {

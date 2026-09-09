@@ -7,6 +7,7 @@ import { getMobileBottomInset, getMobileSidebarWidth, mobileSidebarWidthCss } fr
 import { isMobile as isPlatformMobile } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { animate, m, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from 'framer-motion'
 import {
   useCallback,
@@ -357,6 +358,7 @@ export const MobileSidebar = ({
   sidebar,
   children,
 }: MobileSidebarProps) => {
+  const { t } = useLingui()
   const isNativeMobile = isPlatformMobile()
   const {
     x,
@@ -416,7 +418,9 @@ export const MobileSidebar = ({
                 style={mobileSidebarCssVars}
                 onPointerDown={handlePointerDown}
               >
-                <DrawerPrimitive.Title className="sr-only">Navigation</DrawerPrimitive.Title>
+                <DrawerPrimitive.Title className="sr-only">
+                  <Trans>Navigation</Trans>
+                </DrawerPrimitive.Title>
                 <DrawerPrimitive.Content className="relative h-full select-text">
                   <div className="flex h-full w-full flex-col">{sidebar}</div>
                 </DrawerPrimitive.Content>
@@ -464,7 +468,7 @@ export const MobileSidebar = ({
         <m.button
           type="button"
           tabIndex={-1}
-          aria-label="Close navigation"
+          aria-label={t`Close navigation`}
           aria-hidden={!isDrawerOpen}
           data-sidebar-drag-surface
           className={cn(

@@ -6,12 +6,24 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
+import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
+import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
+import { rejectPersonalAccessToken } from '@/inference/web-session'
+import {
+  checkManagedInferenceAdmission,
+  getInferenceQuotaLimits,
+  type InferenceDatabase,
+} from '@/inference/usage-ledger'
+import { resolveConfidentialManagedModel } from '@/inference/managed-models'
+import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
+import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
@@ -25,6 +37,19 @@ const upstreamIdleTimeoutError = new DOMException(tinfoilUpstreamIdleTimeoutMess
 const tinfoilEnclaveUrlHeader = 'x-tinfoil-enclave-url'
 const tinfoilProxyTimingHeader = 'X-Proxy-Timing'
 const serverTimingHeader = 'Server-Timing'
+const upstreamRequestHeaderBlocklist = new Set([
+  'authorization',
+  'x-api-key',
+  'host',
+  'cookie',
+  'connection',
+  tinfoilEnclaveUrlHeader,
+  'x-app-version',
+  'x-app-language',
+  'x-device-id',
+  'x-device-name',
+  inferenceModelHeader.toLowerCase(),
+])
 
 export type TinfoilProxyLatencyLog = {
   event: 'tinfoil_proxy_latency'
@@ -66,6 +91,15 @@ const isClientAbortError = (error: unknown, requestSignal: AbortSignal): boolean
   requestSignal.aborted ||
   (error instanceof Error && error.name === 'AbortError' && errorCauseIncludes(error, requestSignal))
 
+/** Decode percent escapes only for managed-policy path comparison. */
+const decodePolicyPathname = (pathname: string): string => {
+  try {
+    return decodeURIComponent(pathname)
+  } catch {
+    return pathname
+  }
+}
+
 /** Resolve an optional ATC-assigned enclave origin, applying the configured API path prefix. */
 const resolveEnclaveUrl = (
   assignedEnclaveUrl: string | null,
@@ -93,8 +127,10 @@ const resolveEnclaveUrl = (
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
+  database: InferenceDatabase
   fetchFn?: typeof fetch
   logger?: TinfoilProxyLogger
+  usageLogger?: InferenceLogger
   /** Monotonic clock used for latency instrumentation. */
   nowFn?: () => number
   rateLimit?: AnyElysia
@@ -111,9 +147,10 @@ export type CreateTinfoilRoutesOptions = {
 }
 
 export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
-  const { auth, rateLimit } = options
+  const { auth, database, rateLimit } = options
   const fetchFn = options.fetchFn ?? globalThis.fetch
   const logger = options.logger
+  const usageLogger = options.usageLogger
   const nowFn = options.nowFn ?? (() => performance.now())
   const settings = getSettings()
   const apiKey = options.apiKey ?? settings.tinfoilApiKey
@@ -131,6 +168,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     server: Bun.Server<unknown> | null,
     setHeaders: Record<string, string | string[] | number>,
     distinctId: string,
+    isAnonymous: boolean,
   ): Promise<Response> => {
     const handlerStartedAt = nowFn()
     const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
@@ -201,16 +239,47 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const upstreamUrl = `${upstreamBaseUrl}${subpath}${search}`
     upstreamOriginStore.record(upstreamUrl)
 
+    let receipt: { eventId: string; token: string } | null = null
+    const isManagedChat =
+      method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
+    // Preserve the default for clients predating the header.
+    const identity = resolveConfidentialManagedModel(request.headers.get(inferenceModelHeader) ?? 'glm-5-2')
+    if (isManagedChat && !identity) {
+      recordLatency({ status: 400, completedAt: nowFn() })
+      return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)
+    }
+    if (isManagedChat && identity) {
+      const admission = await checkManagedInferenceAdmission(
+        database,
+        identity,
+        distinctId,
+        getInferenceQuotaLimits(settings, isAnonymous),
+      )
+      if (admission.outcome === 'price-unavailable') {
+        recordLatency({ status: 503, completedAt: nowFn() })
+        return createPriceUnavailableResponse()
+      }
+      if (admission.outcome === 'quota-exceeded') {
+        recordLatency({ status: 429, completedAt: nowFn() })
+        return createQuotaExceededResponse(admission.decision)
+      }
+      const { price } = admission
+      const eventId = crypto.randomUUID()
+      receipt = {
+        eventId,
+        token: issueInferenceUsageReceipt({
+          eventId,
+          userId: distinctId,
+          price,
+          secret: settings.betterAuthSecret,
+          nowSeconds: Math.floor(Date.now() / 1_000),
+        }),
+      }
+    }
+
     const headers = new Headers()
     request.headers.forEach((value, key) => {
-      const lower = key.toLowerCase()
-      if (
-        lower === 'authorization' ||
-        lower === 'host' ||
-        lower === 'cookie' ||
-        lower === 'connection' ||
-        lower === tinfoilEnclaveUrlHeader
-      ) {
+      if (upstreamRequestHeaderBlocklist.has(key.toLowerCase())) {
         return
       }
       headers.set(key, value)
@@ -246,7 +315,25 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       // `Access-Control-Allow-Credentials: true, true`, which browsers reject
       // outright. Our own cors() middleware sets the correct CORS headers for
       // our origin (including Ehbp-Response-Nonce in expose-headers).
-      const responseHeaders = filterHeaders(upstream.headers, ['transfer-encoding', 'connection', /^access-control-/i])
+      const responseHeaders = filterHeaders(upstream.headers, [
+        'transfer-encoding',
+        'connection',
+        inferenceUsageReceiptHeader,
+        /^access-control-/i,
+      ])
+      if (upstream.ok && receipt && identity) {
+        responseHeaders.set(inferenceUsageReceiptHeader, receipt.token)
+        logInferenceSafely(
+          usageLogger,
+          {
+            event: 'inference_usage_receipt_issued',
+            ...identity,
+            eventId: receipt.eventId,
+            route,
+          },
+          'Inference usage receipt issued',
+        )
+      }
 
       const responseBody = upstream.body
         ? capStream(upstream.body, {
@@ -286,7 +373,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         upstreamHeadersReceivedAt,
       })
 
-      // The enclave body is HPKE-opaque (and the model lives inside it), so only
+      // The enclave body is HPKE-opaque, so only
       // status + subpath are readable here. Record non-2xx upstreams so a Tinfoil
       // failure stays diagnosable from telemetry without touching the stream.
       if (!upstream.ok) {
@@ -349,8 +436,11 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     })
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
+      const webSessionApp = g
+        .onBeforeHandle(rejectPersonalAccessToken)
+        .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, ctx))
       if (rateLimit) {
-        return g
+        return webSessionApp
           .use(rateLimit)
           .all(
             '/*',
@@ -362,11 +452,12 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 ctx.server,
                 ctx.set.headers,
                 ctx.user.id,
+                ctx.user.isAnonymous === true,
               ),
             { parse: 'none' },
           )
       }
-      return g.all(
+      return webSessionApp.all(
         '/*',
         (ctx) =>
           proxyToEnclave(
@@ -376,6 +467,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
             ctx.server,
             ctx.set.headers,
             ctx.user.id,
+            ctx.user.isAnonymous === true,
           ),
         { parse: 'none' },
       )

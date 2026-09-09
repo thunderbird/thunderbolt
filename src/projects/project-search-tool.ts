@@ -9,7 +9,7 @@
  * not even a line of tool schema — in an ordinary chat.
  *
  * **This is keyword search, not semantic search.** It runs against the app's
- * FTS5 index (`search_index`, porter/unicode61, BM25 with titles weighted 10×);
+ * FTS5 index (`search_index`, unicode61, BM25 with titles weighted 10×);
  * there is no embedding model or vector store anywhere in the app. A question
  * phrased differently from the original conversation will simply miss. The tool
  * description therefore instructs the model to expand its own query into
@@ -28,7 +28,8 @@ import { tool, type Tool } from 'ai'
 import { z } from 'zod'
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
-import { toFtsMatchQuery } from '@/search/use-search'
+import { planSearchQuery, toLikePattern } from '@/search/query-plan'
+import { bm25Sql, bodyColumnIndex } from '@/search/search-sql'
 
 /** One hit: which chat it came from, and the matching excerpt. */
 export type ProjectChatHit = {
@@ -50,6 +51,10 @@ type SearchRow = readonly [parentId: string | null, snippet: string | null]
 
 const maxHits = 8
 
+/** Body characters kept before, and in total around, a substring hit. */
+const excerptLead = 24
+const excerptLength = 160
+
 /**
  * Search messages belonging to a set of threads. Kept separate from the tool so
  * it can be tested without constructing an AI SDK tool call.
@@ -60,24 +65,43 @@ export const searchProjectChats = async (
   query: string,
   titleByThreadId: ReadonlyMap<string, string>,
 ): Promise<ProjectChatHit[]> => {
-  const match = toFtsMatchQuery(query)
-  if (match.length === 0 || threadIds.length === 0) {
+  const plan = planSearchQuery(query)
+  if ((plan.match === null && plan.substrings.length === 0) || threadIds.length === 0) {
     return []
   }
   // `parent_id` is UNINDEXED in the FTS table, so it can't participate in MATCH;
   // it's filtered in the WHERE clause alongside it. Values are bound (never
-  // interpolated) — `match` is user/model-supplied text.
+  // interpolated) — the query is user/model-supplied text.
   const threadList = sql.join(
     threadIds.map((id) => sql`${id}`),
     sql`, `,
   )
+  // Scripts unicode61 can't tokenize are matched as substrings instead of via
+  // MATCH — see `src/search/query-plan.ts`.
+  const substringFilters = plan.substrings.map((term) => {
+    const pattern = toLikePattern(term)
+    return sql`(title LIKE ${pattern} ESCAPE '\\' OR body LIKE ${pattern} ESCAPE '\\')`
+  })
+  const filter = sql.join(
+    plan.match !== null ? [sql`search_index MATCH ${plan.match}`, ...substringFilters] : substringFilters,
+    sql` AND `,
+  )
+  // `snippet()` needs a MATCH, so a substring-only query centres a window on the
+  // first hit instead. Unlike the palette's variant in `use-search.ts` this skips
+  // the truncation ellipses — the model has no use for them. Ranking falls back
+  // to `id DESC`: bm25 has nothing to score, and ids are UUIDv7, so that is
+  // newest-first (see `uuidv7ToDate` in `src/lib/utils.ts`).
+  const excerpt =
+    plan.match !== null
+      ? sql.raw(`snippet(search_index, ${bodyColumnIndex}, '', '', '…', 30)`)
+      : sql`substr(body, max(1, instr(body, ${plan.substrings[0]}) - ${excerptLead}), ${excerptLength})`
   const rows = (await db.all(sql`
-    SELECT parent_id, snippet(search_index, 4, '', '', '…', 30) AS snippet
+    SELECT parent_id, ${excerpt} AS snippet
     FROM search_index
-    WHERE search_index MATCH ${match}
+    WHERE ${filter}
       AND entity_type = 'message'
       AND parent_id IN (${threadList})
-    ORDER BY bm25(search_index, 1.0, 1.0, 1.0, 10.0, 1.0)
+    ORDER BY ${plan.match !== null ? sql.raw(bm25Sql) : sql`id DESC`}
     LIMIT ${maxHits}
   `)) as SearchRow[]
   return rows.flatMap(([parentId, snippet]) =>

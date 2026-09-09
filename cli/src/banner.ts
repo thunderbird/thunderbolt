@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Standalone REPL banner. Uses raw ANSI so it stays decoupled from the UI
- * theme, and skips color when NO_COLOR is set or stdout isn't a TTY.
+ * Standalone REPL banner shared by plain and TUI modes.
  */
 
 import { cliVersion } from './cli.ts'
+import { bold, brandGradient, dim, spark } from './ui/theme.ts'
 
-/** Whether to emit ANSI color: only on an interactive TTY without NO_COLOR. */
-const useColor = (): boolean => !process.env.NO_COLOR && process.stdout.isTTY === true
+export const bannerHint = 'type a task, or / for commands'
 
 /**
  * Builds the two-line REPL header (title + version, then a one-line hint) as a
@@ -18,17 +17,11 @@ const useColor = (): boolean => !process.env.NO_COLOR && process.stdout.isTTY ==
  * written so the TUI can wrap it in a component instead of touching stdout,
  * which would corrupt the differential renderer.
  */
-export const bannerText = (): string => {
-  const color = useColor()
-  const bold = color ? '\x1b[1m' : ''
-  const yellow = color ? '\x1b[33m' : ''
-  const dim = color ? '\x1b[2m' : ''
-  const reset = color ? '\x1b[0m' : ''
-
-  return (
-    `${bold}${yellow}⚡ thunderbolt${reset} ${dim}v${cliVersion}${reset}\n` +
-    `${dim}type a task, or 'exit' to quit${reset}`
-  )
+export const bannerText = (width: number = process.stdout.columns ?? 80): string => {
+  const hairlineLength = Math.min(28, Math.max(8, Math.floor(width / 5)))
+  return `${bold(spark())} ${bold(brandGradient('thunderbolt'))} ${dim(`v${cliVersion}`)}\n${brandGradient(
+    '─'.repeat(hairlineLength),
+  )}\n${dim(bannerHint)}`
 }
 
 /**

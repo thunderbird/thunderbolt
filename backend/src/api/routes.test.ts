@@ -19,7 +19,16 @@ describe('Main Routes', () => {
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            results: [{ name: 'London', admin1: 'England', country: 'UK', latitude: 51.5, longitude: -0.12 }],
+            results: [
+              {
+                name: 'London',
+                admin1: 'England',
+                country: 'UK',
+                country_code: 'GB',
+                latitude: 51.5,
+                longitude: -0.12,
+              },
+            ],
           }),
           {
             status: 200,
@@ -52,16 +61,6 @@ describe('Main Routes', () => {
       expect(response.status).toBe(200)
     })
 
-    it('should reject unauthenticated requests to /units', async () => {
-      const response = await unauthApp.handle(new Request('http://localhost/units?country=US'))
-      expect(response.status).toBe(401)
-    })
-
-    it('should reject unauthenticated requests to /units-options', async () => {
-      const response = await unauthApp.handle(new Request('http://localhost/units-options'))
-      expect(response.status).toBe(401)
-    })
-
     it('should reject unauthenticated requests to /locations', async () => {
       const response = await unauthApp.handle(new Request('http://localhost/locations?query=London'))
       expect(response.status).toBe(401)
@@ -86,7 +85,154 @@ describe('Main Routes', () => {
     expect(response.status).toBe(200)
 
     const data = await response.json()
-    expect(Array.isArray(data)).toBe(true)
+    expect(data).toEqual([
+      { id: 0, name: 'London', region: 'England', country: 'UK', countryCode: 'GB', lat: 51.5, lon: -0.12 },
+    ])
+  })
+
+  /**
+   * Open-Meteo's `language` narrows what it *matches*, not just what it renders:
+   * `Munique` finds Munich under `pt` and only Muñique, Spain under `en`. And it
+   * keys on the base subtag — `pt-BR` falls off the lookup path and silently
+   * answers in English — so the route has to hand it `pt`, not the caller's tag.
+   */
+  it('should search in the requested language, narrowed to its base subtag', async () => {
+    const requested: string[] = []
+    const recordingFetch = mock((input: RequestInfo | URL) => {
+      requested.push(input instanceof Request ? input.url : input.toString())
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+
+    const testApp = createMainRoutes(mockAuth, recordingFetch as unknown as typeof fetch)
+    await testApp.handle(new Request('http://localhost/locations?query=Munique&language=pt-BR'))
+
+    expect(new URL(requested[0]).searchParams.get('language')).toBe('pt')
+  })
+
+  it('should default to English when no language is given', async () => {
+    const requested: string[] = []
+    const recordingFetch = mock((input: RequestInfo | URL) => {
+      requested.push(input instanceof Request ? input.url : input.toString())
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+
+    const testApp = createMainRoutes(mockAuth, recordingFetch as unknown as typeof fetch)
+    await testApp.handle(new Request('http://localhost/locations?query=London'))
+
+    expect(new URL(requested[0]).searchParams.get('language')).toBe('en')
+  })
+
+  /**
+   * `baseLanguage` builds an `Intl.Locale`, which throws a `RangeError` on a
+   * malformed tag, and `?language=` arrives as `''` rather than as a missing
+   * value — so it slips past the `'en'` default. Both have to be turned away at
+   * the boundary; reaching the handler makes them an opaque 500.
+   */
+  it.each(['', 'en_US', 'foo!', 'e', 'en-'])('should reject the malformed language tag %p', async (language) => {
+    const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+    const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+    const response = await testApp.handle(
+      new Request(`http://localhost/locations?query=London&language=${encodeURIComponent(language)}`),
+    )
+
+    expect(response.status).toBe(422)
+    expect(unreachedFetch).not.toHaveBeenCalled()
+  })
+
+  describe('GET /locations/:id', () => {
+    const byIdFetch = mock((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 2867714,
+            name: (input instanceof Request ? input.url : input.toString()).includes('language=pt')
+              ? 'Munique'
+              : 'Munich',
+            admin1: 'Baviera',
+            country: 'Alemanha',
+            country_code: 'DE',
+            latitude: 48.13,
+            longitude: 11.57,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+
+    it('should resolve a place by id in the requested language', async () => {
+      const testApp = createMainRoutes(mockAuth, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714?language=pt-BR'))
+      expect(response.status).toBe(200)
+
+      expect(await response.json()).toEqual({
+        id: 2867714,
+        name: 'Munique',
+        region: 'Baviera',
+        country: 'Alemanha',
+        countryCode: 'DE',
+        lat: 48.13,
+        lon: 11.57,
+      })
+    })
+
+    it('should reject a non-numeric id', async () => {
+      const testApp = createMainRoutes(mockAuth, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/not-an-id'))
+      expect(response.status).toBe(422)
+    })
+
+    it('should 404 when the provider does not know the id', async () => {
+      const missingFetch = mock(() => Promise.resolve(new Response('{}', { status: 400 })))
+      const testApp = createMainRoutes(mockAuth, missingFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/1?language=de'))
+      expect(response.status).toBe(404)
+    })
+
+    it('should reject unauthenticated requests', async () => {
+      const testApp = createMainRoutes(mockAuthUnauthenticated, byIdFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714'))
+      expect(response.status).toBe(401)
+    })
+
+    it('should reject a malformed language tag', async () => {
+      const unreachedFetch = mock(() => Promise.resolve(new Response('{}', { status: 200 })))
+      const testApp = createMainRoutes(mockAuth, unreachedFetch as unknown as typeof fetch)
+      const response = await testApp.handle(new Request('http://localhost/locations/2867714?language='))
+
+      expect(response.status).toBe(422)
+      expect(unreachedFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  it('should return an empty country code when the provider omits one', async () => {
+    const mockFetchWithoutCode = mock((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      if (new URL(url).hostname === 'geocoding-api.open-meteo.com') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ results: [{ name: 'Atlantis', admin1: 'Unknown', latitude: 0, longitude: 0 }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        )
+      }
+      return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+
+    const testApp = createMainRoutes(mockAuth, mockFetchWithoutCode as unknown as typeof fetch)
+    const response = await testApp.handle(new Request('http://localhost/locations?query=Atlantis'))
+
+    const data = await response.json()
+    expect(data[0].countryCode).toBe('')
   })
 
   it('should filter out country-level results without admin1', async () => {
@@ -98,9 +244,32 @@ describe('Main Routes', () => {
           new Response(
             JSON.stringify({
               results: [
-                { name: 'Canada', country: 'Canada', latitude: 60.1, longitude: -113.6 },
-                { name: 'Canada', admin1: 'Kentucky', country: 'United States', latitude: 37.6, longitude: -82.3 },
-                { name: 'Cañada', admin1: 'Valencia', country: 'Spain', latitude: 38.7, longitude: -0.8 },
+                {
+                  id: 6251999,
+                  name: 'Canada',
+                  country: 'Canada',
+                  country_code: 'CA',
+                  latitude: 60.1,
+                  longitude: -113.6,
+                },
+                {
+                  id: 4298960,
+                  name: 'Canada',
+                  admin1: 'Kentucky',
+                  country: 'United States',
+                  country_code: 'US',
+                  latitude: 37.6,
+                  longitude: -82.3,
+                },
+                {
+                  id: 2521850,
+                  name: 'Cañada',
+                  admin1: 'Valencia',
+                  country: 'Spain',
+                  country_code: 'ES',
+                  latitude: 38.7,
+                  longitude: -0.8,
+                },
               ],
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -120,156 +289,16 @@ describe('Main Routes', () => {
     expect(data).toHaveLength(2)
     expect(data.every((loc: { region: string }) => loc.region !== '')).toBe(true)
     expect(data).toEqual([
-      { name: 'Canada', region: 'Kentucky', country: 'United States', lat: 37.6, lon: -82.3 },
-      { name: 'Cañada', region: 'Valencia', country: 'Spain', lat: 38.7, lon: -0.8 },
+      {
+        id: 4298960,
+        name: 'Canada',
+        region: 'Kentucky',
+        country: 'United States',
+        countryCode: 'US',
+        lat: 37.6,
+        lon: -82.3,
+      },
+      { id: 2521850, name: 'Cañada', region: 'Valencia', country: 'Spain', countryCode: 'ES', lat: 38.7, lon: -0.8 },
     ])
-  })
-
-  describe('Units routes', () => {
-    it('should require country parameter for units endpoint', async () => {
-      const response = await app.handle(new Request('http://localhost/units'))
-      expect(response.status).toBe(422) // Elysia validation error
-    })
-
-    it('should return units data for valid country code (Brazil)', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country=BR'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        unit: 'metric',
-        temperature: 'c',
-        timeFormat: '24h',
-        dateFormatExample: 'DD/MM/YYYY',
-        currency: {
-          code: 'BRL',
-          symbol: 'R$',
-          name: 'Brazilian Real',
-        },
-      })
-    })
-
-    it('should return units data for valid country name (Brazil)', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country=Brazil'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        unit: 'metric',
-        temperature: 'c',
-        timeFormat: '24h',
-        dateFormatExample: 'DD/MM/YYYY',
-        currency: {
-          code: 'BRL',
-          symbol: 'R$',
-          name: 'Brazilian Real',
-        },
-      })
-    })
-
-    it('should return units data for valid country code (United States)', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country=US'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        unit: 'imperial',
-        temperature: 'f',
-        timeFormat: '12h',
-        dateFormatExample: 'MM/DD/YYYY',
-        currency: {
-          code: 'USD',
-          symbol: '$',
-          name: 'US Dollar',
-        },
-      })
-    })
-
-    it('should return units data for valid country name (United States)', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country=United States'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        unit: 'imperial',
-        temperature: 'f',
-        timeFormat: '12h',
-        dateFormatExample: 'MM/DD/YYYY',
-        currency: {
-          code: 'USD',
-          symbol: '$',
-          name: 'US Dollar',
-        },
-      })
-    })
-
-    it('should return US data as fallback for invalid country', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country=INVALID'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        unit: 'imperial',
-        temperature: 'f',
-        timeFormat: '12h',
-        dateFormatExample: 'MM/DD/YYYY',
-        currency: {
-          code: 'USD',
-          symbol: '$',
-          name: 'US Dollar',
-        },
-      })
-    })
-
-    it('should return 400 for empty country parameter', async () => {
-      const response = await app.handle(new Request('http://localhost/units?country='))
-      expect(response.status).toBe(400)
-
-      const data = await response.json()
-      expect(data).toEqual({
-        success: false,
-        data: null,
-        error: 'Bad Request',
-      })
-    })
-
-    it('should return units-options data', async () => {
-      const response = await app.handle(new Request('http://localhost/units-options'))
-      expect(response.status).toBe(200)
-
-      const data = await response.json()
-      expect(data).toHaveProperty('units')
-      expect(data).toHaveProperty('temperature')
-      expect(data).toHaveProperty('timeFormat')
-      expect(data).toHaveProperty('dateFormats')
-      expect(data).toHaveProperty('currencies')
-
-      expect(Array.isArray(data.units)).toBe(true)
-      expect(data.units).toContain('metric')
-      expect(data.units).toContain('imperial')
-
-      expect(Array.isArray(data.temperature)).toBe(true)
-      expect(data.temperature).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ symbol: 'c', name: 'Celsius' }),
-          expect.objectContaining({ symbol: 'f', name: 'Fahrenheit' }),
-        ]),
-      )
-
-      expect(Array.isArray(data.timeFormat)).toBe(true)
-      expect(data.timeFormat).toContain('12h')
-      expect(data.timeFormat).toContain('24h')
-
-      expect(Array.isArray(data.dateFormats)).toBe(true)
-      expect(data.dateFormats.length).toBeGreaterThan(0)
-      expect(data.dateFormats[0]).toHaveProperty('format')
-      expect(data.dateFormats[0]).toHaveProperty('example')
-
-      expect(Array.isArray(data.currencies)).toBe(true)
-      expect(data.currencies.length).toBeGreaterThan(0)
-      expect(data.currencies[0]).toHaveProperty('code')
-      expect(data.currencies[0]).toHaveProperty('symbol')
-      expect(data.currencies[0]).toHaveProperty('name')
-    })
   })
 })

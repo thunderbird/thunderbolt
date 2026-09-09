@@ -41,6 +41,10 @@ export type PerPrStackArgs = {
   thunderboltInferenceUrl?: pulumi.Input<string>
   /** Optional Tinfoil enclave URL — same value across all stacks today. */
   tinfoilEnclaveUrl?: pulumi.Input<string>
+  /** Minimum compatible app semver enforced before CLI device registration is enabled. */
+  minAppVersion: string
+  /** Enables server-owned CLI device registration after compatible app clients ship. */
+  cliDeviceRegistrationEnabled: boolean
 }
 
 export type PerPrStackOutputs = {
@@ -306,7 +310,6 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             shared.powersyncJwtSecretArn,
             shared.anthropicApiKeySecretArn,
             shared.fireworksApiKeySecretArn,
-            shared.mistralApiKeySecretArn,
             shared.thunderboltInferenceApiKeySecretArn,
             shared.exaApiKeySecretArn,
             shared.tinfoilApiKeySecretArn,
@@ -360,6 +363,11 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POWERSYNC_URL', value: shared.powersyncPublicUrl },
           { name: 'POWERSYNC_JWT_KID', value: 'enterprise-powersync' },
           { name: 'RATE_LIMIT_ENABLED', value: 'true' },
+          { name: 'MIN_APP_VERSION', value: args.minAppVersion },
+          {
+            name: 'CLI_DEVICE_REGISTRATION_ENABLED',
+            value: args.cliDeviceRegistrationEnabled ? 'true' : 'false',
+          },
           { name: 'DEBUG_TRANSCRIPTS_ENABLED', value: 'true' },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
@@ -373,7 +381,6 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: shared.powersyncJwtSecretArn },
           { name: 'ANTHROPIC_API_KEY', valueFrom: shared.anthropicApiKeySecretArn },
           { name: 'FIREWORKS_API_KEY', valueFrom: shared.fireworksApiKeySecretArn },
-          { name: 'MISTRAL_API_KEY', valueFrom: shared.mistralApiKeySecretArn },
           { name: 'THUNDERBOLT_INFERENCE_API_KEY', valueFrom: shared.thunderboltInferenceApiKeySecretArn },
           { name: 'EXA_API_KEY', valueFrom: shared.exaApiKeySecretArn },
           { name: 'TINFOIL_API_KEY', valueFrom: shared.tinfoilApiKeySecretArn },

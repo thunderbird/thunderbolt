@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { SquarePen, Trash2 } from 'lucide-react'
 
 import { ContextMenuContent, ContextMenuItem } from '@/components/ui/context-menu'
@@ -11,11 +12,11 @@ export const EditDeleteContextMenuContent = ({ onEdit, onDelete }: { onEdit: () 
   <ContextMenuContent className="min-w-56">
     <ContextMenuItem onClick={onEdit} className="cursor-pointer">
       <SquarePen className="size-4 mr-2" />
-      Edit
+      <Trans>Edit</Trans>
     </ContextMenuItem>
     <ContextMenuItem onClick={onDelete} className="cursor-pointer">
       <Trash2 className="size-4 mr-2" />
-      Delete
+      <Trans>Delete</Trans>
     </ContextMenuItem>
   </ContextMenuContent>
 )

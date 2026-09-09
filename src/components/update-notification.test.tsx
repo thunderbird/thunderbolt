@@ -12,6 +12,7 @@ import { UpdateNotificationContent } from './update-notification'
 const downloadAndInstall = mock(async () => {})
 const restartApp = mock(async () => {})
 const checkForUpdates = mock(async () => {})
+const primaryAction = mock(async () => {})
 const createUpdateState = (status: UpdateStatus, error: string | null = null): DesktopUpdateState => ({
   status,
   update: null,
@@ -21,6 +22,7 @@ const createUpdateState = (status: UpdateStatus, error: string | null = null): D
   downloadAndInstall,
   restartApp,
   checkForUpdates,
+  primaryAction,
 })
 
 afterEach(cleanup)

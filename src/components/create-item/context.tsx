@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 type SkillPanelRequestInput =
@@ -17,17 +19,17 @@ export type CreateItemRequest = CreateItemRequestInput & { id: number }
 
 /** Panel titles by kind — one source for both the loaded panels and the
  *  host's Suspense fallback header, so they can never disagree. */
-export const createItemTitles: Record<CreateItemRequest['kind'], string> = {
-  skill: 'Create Skill',
-  agent: 'Add Agent',
-  model: 'Add Model',
+export const createItemTitles: Record<CreateItemRequest['kind'], MessageDescriptor> = {
+  skill: msg`Create Skill`,
+  agent: msg`Add Agent`,
+  model: msg`Add Model`,
 }
 
 /** Title for the skill panel's edit mode, which the kind map can't express. */
-export const editSkillTitle = 'Edit Skill'
+export const editSkillTitle = msg`Edit Skill`
 
 /** Returns the route-preserving panel title for create and edit requests. */
-export const createItemTitle = (request: CreateItemRequest): string =>
+export const createItemTitle = (request: CreateItemRequest): MessageDescriptor =>
   request.kind === 'skill' && request.skillId ? editSkillTitle : createItemTitles[request.kind]
 
 type CreateItemContextValue = {

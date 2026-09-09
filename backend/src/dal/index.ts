@@ -5,8 +5,14 @@
 // Devices
 export {
   bridgeDeviceId,
+  cliDeviceIdPrefix,
+  maxActiveDevicesPerUser,
+  withUserDeviceRegistrationLock,
+  isCliDeviceId,
+  isTrustedAppDevice,
   getDeviceById,
   upsertDevice,
+  upsertCliDevice,
   revokeDevice,
   denyDevice,
   markDeviceTrusted,
@@ -22,7 +28,7 @@ export {
 export { getUserById, getUserByEmail, deleteUser, markUserNotNew } from './users'
 
 // Sessions
-export { getActiveSessionByToken, linkSessionToDevice, revokeDeviceSessions } from './sessions'
+export { getActivePersistedSession, linkSessionToDevice, revokeDeviceSessions } from './sessions'
 
 // Waitlist
 export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from './waitlist'

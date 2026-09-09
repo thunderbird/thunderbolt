@@ -11,7 +11,6 @@ import type { Settings } from '@/config/settings'
  */
 export const createTestSettings = (overrides: Partial<Settings> = {}): Settings => ({
   fireworksApiKey: '',
-  mistralApiKey: '',
   anthropicApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',
@@ -54,8 +53,13 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   corsExposeHeaders: '',
   e2eeEnabled: false,
   debugTranscriptsEnabled: false,
+  cliDeviceRegistrationEnabled: false,
   swaggerEnabled: false,
   rateLimitEnabled: false,
+  inferenceQuotaAnonymousFiveHourCents: 10,
+  inferenceQuotaAnonymousSevenDayCents: 60,
+  inferenceQuotaRegisteredFiveHourCents: 1500,
+  inferenceQuotaRegisteredSevenDayCents: 7500,
   trustedProxy: '' as const,
   enabledAgents: '',
   allowCustomAgents: true,

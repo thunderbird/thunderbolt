@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chatTitleLabel } from '@/lib/title-generator'
+
+import { Trans, useLingui } from '@lingui/react/macro'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ResponsiveActionMenu } from '@/components/ui/responsive-action-menu'
@@ -101,11 +104,11 @@ const ChatItemActions = ({
   <>
     <Item onClick={onRename} className="cursor-pointer">
       <Pencil className="size-4 mr-2" />
-      Rename
+      <Trans>Rename</Trans>
     </Item>
     <Item onClick={onMove} className="cursor-pointer">
       <FolderInput className="size-4 mr-2" />
-      Move to project
+      <Trans>Move to project</Trans>
     </Item>
     <Item onClick={onDelete} disabled={isDeletePending} className="cursor-pointer">
       {deleteLabel}
@@ -127,6 +130,7 @@ export const ChatListItem = memo(
     onMoveToProject,
     useChat = useChat_default,
   }: ChatListItemComponentProps) => {
+    const { i18n, t } = useLingui()
     const chatInstance = useChatStore((state) => state.sessions.get(thread.id)?.chatInstance)
 
     const { status } = useChat(
@@ -152,7 +156,7 @@ export const ChatListItem = memo(
       data: { title: thread.title, projectId: thread.projectId ?? null } satisfies ChatDragData,
     })
 
-    const displayTitle = optimisticTitle ?? thread.title
+    const displayTitle = optimisticTitle ?? chatTitleLabel(i18n, thread.title)
 
     const handleRename = (title: string) => {
       dispatch({ type: 'RENAMED', title })
@@ -167,7 +171,7 @@ export const ChatListItem = memo(
           onClick={() => onChatClick(thread.id)}
           isActive={isActive}
           className="cursor-pointer"
-          tooltip={thread.title ?? undefined}
+          tooltip={chatTitleLabel(i18n, thread.title)}
         >
           {showSpinner ? (
             <Loader2 className="size-[var(--icon-size-default)] animate-spin text-muted-foreground" />
@@ -204,7 +208,7 @@ export const ChatListItem = memo(
     ) : (
       <>
         <Trash2 className="size-4 mr-2" />
-        Delete
+        <Trans>Delete</Trans>
       </>
     )
 
@@ -266,21 +270,21 @@ export const ChatListItem = memo(
             open={openMenu === 'mobile'}
             onOpenChange={handleMenuOpenChange('mobile')}
             trigger={trigger}
-            title={displayTitle ?? 'Chat actions'}
+            title={displayTitle ?? t`Chat actions`}
             openOnTriggerClickMobile={false}
             actions={[
               {
-                label: 'Rename',
+                label: t`Rename`,
                 icon: <Pencil className="size-4" />,
                 onSelect: startRename,
               },
               {
-                label: 'Move to project',
+                label: t`Move to project`,
                 icon: <FolderInput className="size-4" />,
                 onSelect: startMove,
               },
               {
-                label: 'Delete',
+                label: t`Delete`,
                 icon: deleteIcon,
                 onSelect: startDelete,
                 disabled: deleteChatMutation.isPending,

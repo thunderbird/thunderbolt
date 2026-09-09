@@ -452,7 +452,7 @@ const glossarySection = (): string[] => [
   '- **Search policy**: behavior categories testing whether the model should search the web or answer from memory — never search timeless facts; always search prices and news; verify false claims before rebutting; reuse earlier results instead of re-searching; and so on.',
   '- **Gates vs baseline**: gates grade each model against fixed policy thresholds; the baseline measures whether this PR changed behavior relative to a nightly run from `main`. A failed gate can describe known model behavior without implicating your PR.',
   '- **Smoke vs nightly**: PR smoke uses n=1 and k=1, so one miss shows as 0% and is only a quick signal. Nightly uses n=12×k=3 for the real measurement; significance requires non-overlapping 95% Wilson intervals.',
-  '- **Engines**: `pi` is the in-app coding harness used in production for Opus and Flash; `legacy` is the direct pipeline used in production for GLM via Tinfoil.',
+  '- **Engines**: `pi` is the in-app coding harness used in production for all shipped models, including confidential models; `legacy` identifies historical direct-pipeline results.',
   '',
   '</details>',
   '',

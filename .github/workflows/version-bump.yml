@@ -129,7 +129,7 @@ jobs:
           NIGHTLY_TAG="v${NIGHTLY_VERSION}"
 
           # Update version files locally
-          node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json'));p.version='$NIGHTLY_VERSION';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          node -e "const fs=require('fs');for(const path of ['package.json','cli/package.json']){const p=JSON.parse(fs.readFileSync(path));p.version='$NIGHTLY_VERSION';fs.writeFileSync(path,JSON.stringify(p,null,2)+'\n')}"
           sed -i "s/^version = \".*\"/version = \"$NIGHTLY_VERSION\"/" src-tauri/Cargo.toml
           node -e "const fs=require('fs'),c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json'));c.version='$BASE_VERSION';fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
 
@@ -143,7 +143,7 @@ jobs:
           fi
 
           # Create commit and tag (not pushed to main branch, only the tag)
-          git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git add package.json cli/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
           git commit -m "chore: nightly build $NIGHTLY_VERSION"
           git tag -a "$NIGHTLY_TAG" -m "Nightly build $NIGHTLY_VERSION"
           git push origin "$NIGHTLY_TAG"

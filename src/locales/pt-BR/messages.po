@@ -344,6 +344,10 @@ msgstr "Dados de uso anônimos"
 msgid "Answer"
 msgstr "Resposta"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Anything else you'd like to share?"
+msgstr ""
+
 #: src/settings/voice.tsx
 msgid "API key"
 msgstr "Chave de API"
@@ -1159,6 +1163,10 @@ msgstr "Dados"
 msgid "Data is stored securely on your device."
 msgstr "Os dados são armazenados com segurança no seu dispositivo."
 
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "Debug transcript sharing is turned off on this server."
+msgstr ""
+
 #: src/components/modification-indicator.tsx
 msgid "Default setting"
 msgstr "Configuração padrão"
@@ -1394,6 +1402,10 @@ msgstr "Desconectado"
 #: src/components/update-notification.tsx
 msgid "Dismiss"
 msgstr "Dispensar"
+
+#: src/components/ui/notification-card.tsx
+msgid "Dismiss notification"
+msgstr ""
 
 #: src/settings/models/add-model-form.tsx
 msgid "Display Name"
@@ -1797,6 +1809,10 @@ msgstr "Entendi, vou cuidar disso em seguida."
 msgid "Haptic Feedback"
 msgstr "Retorno tátil"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Having a problem with this chat?"
+msgstr ""
+
 #: src/widgets/weather-forecast/lib.ts
 msgid "Heavy freezing rain"
 msgstr "Chuva congelante forte"
@@ -1837,6 +1853,10 @@ msgstr "Ocultar o código QR de {deviceName}"
 #: src/settings/preferences.tsx
 msgid "How Thunderbolt salutes you"
 msgstr "Como o Thunderbolt se dirige a você"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "I agree to share this chat session with the Thunderbolt team."
+msgstr ""
 
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "I agree to the <0>Privacy Policy</0> and <1>Terms of Service</1>."
@@ -1898,6 +1918,10 @@ msgstr "Importando…"
 #: src/components/telemetry-required-modal.tsx
 msgid "In order to use preview features, we ask that you help us improve the product by sharing telemetry data."
 msgstr "Para usar os recursos em prévia, pedimos que você nos ajude a melhorar o produto compartilhando dados de telemetria."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "In your own words: what were you trying to do, and what did the agent do instead?"
+msgstr ""
 
 #: src/settings/voice.tsx
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
@@ -2407,6 +2431,7 @@ msgstr "Não configurado"
 msgid "Not Found"
 msgstr "Não encontrado"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/widgets/connect-integration/widget.tsx
 msgid "Not now"
 msgstr "Agora não"
@@ -2843,6 +2868,7 @@ msgid "Retrieving data…"
 msgstr "Obtendo dados…"
 
 #: src/components/chat/error-message.tsx
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/sidebar-footer.tsx
 #: src/components/update-notification.tsx
 #: src/components/upgrade-required.tsx
@@ -3063,6 +3089,12 @@ msgstr "Enviar link mágico"
 msgid "Send message"
 msgstr "Enviar mensagem"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Send to the Thunderbolt team"
+msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #: src/components/sign-in/sign-in-email-step.tsx
 #: src/components/ui/action-feedback-button.tsx
 #: src/lib/tool-metadata.ts
@@ -3141,6 +3173,10 @@ msgstr "Configurando…"
 msgid "Settings"
 msgstr "Configurações"
 
+#: src/components/share-debug-transcript/share-debug-transcript-button.tsx
+msgid "Share debug transcript"
+msgstr ""
+
 #: src/lib/tray.tsx
 msgid "Show"
 msgstr "Mostrar"
@@ -3182,6 +3218,10 @@ msgstr "Entrar"
 #: src/settings/preferences.tsx
 msgid "Sign In"
 msgstr "Entrar"
+
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "Sign in to a full account to share a debug transcript."
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in to a Thunderbolt account to approve this CLI request."
@@ -3473,6 +3513,10 @@ msgstr "O provedor de IA está com problemas neste momento. Tente novamente em i
 msgid "The AI provider took too long to respond. Try again."
 msgstr "O provedor de IA demorou demais para responder. Tente novamente."
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 msgstr ""
@@ -3497,6 +3541,14 @@ msgstr "O servidor rejeitou a credencial. Verifique seu token Bearer ou sua chav
 msgid "The sign-in service is unavailable right now. Check your connection and try again."
 msgstr "O serviço de login está indisponível neste momento. Verifique sua conexão e tente novamente."
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
+msgstr ""
+
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "The transcript was rejected by the server."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Theme"
 msgstr "Tema"
@@ -3514,6 +3566,10 @@ msgstr "Esta ação não pode ser desfeita. Isso excluirá permanentemente esta 
 #: src/components/storage-unavailable-screen.tsx
 msgid "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 msgstr "Isso pode acontecer em janelas privadas ou quando os dados do site estão bloqueados. Ative o armazenamento para este site e recarregue."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "This chat uses {agentName}, which is not available on this platform."
@@ -3607,6 +3663,10 @@ msgstr "Este servidor usa OAuth. Adicione-o e autorize para conectar."
 msgid "This sign-in request has expired. Start a new one from your terminal."
 msgstr "Esta solicitação de login expirou. Inicie uma nova no seu terminal."
 
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "This transcript is too large to upload."
+msgstr ""
+
 #: src/components/upgrade-required.tsx
 msgid "This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing."
 msgstr "Esta versão do Thunderbolt não tem mais suporte. Atualize o app para continuar conversando e sincronizando."
@@ -3634,6 +3694,10 @@ msgstr "Isso excluirá permanentemente esta conversa."
 #: src/settings/preferences.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "Isso excluirá permanentemente sua conta e todos os seus dados nos nossos servidores e neste dispositivo, incluindo configurações, histórico de conversas e informações em cache. Esta ação não pode ser desfeita."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+msgstr ""
 
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."
@@ -3740,6 +3804,10 @@ msgstr "Muitas solicitações. Tente novamente em instantes."
 #: src/components/chat/permission-dialog.tsx
 msgid "Tool input"
 msgstr "Entrada da ferramenta"
+
+#: src/components/share-debug-transcript/share-debug-transcript-toast.tsx
+msgid "Transcript sent — thank you."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Transport"
@@ -3976,6 +4044,10 @@ msgstr "Aguardando aprovação"
 msgid "Want early access?"
 msgstr "Quer acesso antecipado?"
 
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "We could not send the transcript. Please check your connection and try again."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "We don't keep logs of your conversations."
 msgstr "Não guardamos logs das suas conversas."
@@ -4042,6 +4114,10 @@ msgstr "O que o assistente deve fazer…"
 msgid "What would you like to do with your local data?"
 msgstr "O que você quer fazer com seus dados locais?"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "What's in it?"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
 msgstr "Quando ativado, as solicitações passam pelo proxy na nuvem do Thunderbolt."
@@ -4054,6 +4130,10 @@ msgstr "Quando usar esta habilidade…"
 msgid "Where are you located?"
 msgstr "Onde você está?"
 
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Where is it kept?"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Where links in chats open"
 msgstr "Onde os links das conversas abrem"
@@ -4061,6 +4141,10 @@ msgstr "Onde os links das conversas abrem"
 #: src/components/onboarding/onboarding-language-step.tsx
 msgid "Which language do you prefer?"
 msgstr "Qual idioma você prefere?"
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "Who can read it?"
+msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Window controls"
@@ -4109,6 +4193,10 @@ msgstr "Você saiu da sua conta."
 #: src/hooks/use-sync-setup.ts
 msgid "You have reached the maximum number of devices. Revoke an existing device to add a new one."
 msgstr "Você atingiu o número máximo de dispositivos. Revogue um dispositivo existente para adicionar um novo."
+
+#: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
+msgid "You have reached the sharing limit. Please try again later."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "You must be signed in to import data."

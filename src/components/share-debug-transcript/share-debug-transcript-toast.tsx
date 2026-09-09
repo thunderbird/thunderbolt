@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { NotificationCard } from '@/components/ui/notification-card'
+import { useLingui } from '@lingui/react/macro'
 import { CheckCircle2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -13,9 +14,11 @@ type ShareDebugTranscriptToastProps = {
 }
 
 const successToastDurationMs = 4_000
-const successMessage = 'Transcript sent — thank you.'
 
 export const ShareDebugTranscriptToast = ({ open, onDismiss }: ShareDebugTranscriptToastProps) => {
+  const { t } = useLingui()
+  const successMessage = t`Transcript sent — thank you.`
+
   useEffect(() => {
     if (!open) {
       return

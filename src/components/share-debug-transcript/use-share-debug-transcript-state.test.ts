@@ -9,6 +9,7 @@ import { createElement, type ReactNode } from 'react'
 
 import { AuthContext } from '@/contexts/auth-context'
 import { HttpClientProvider } from '@/contexts/http-client-context'
+import { i18n } from '@/i18n'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
@@ -73,34 +74,33 @@ describe('shareDebugTranscriptReducer', () => {
 })
 
 describe('getDebugTranscriptErrorMessage', () => {
+  const resolve = (status?: number, code?: Parameters<typeof getDebugTranscriptErrorMessage>[1]) =>
+    i18n._(getDebugTranscriptErrorMessage(status, code))
+
   it('maps a disabled feature response to a server-specific message', () => {
-    expect(getDebugTranscriptErrorMessage(403, 'DEBUG_TRANSCRIPTS_DISABLED')).toBe(
-      'Debug transcript sharing is turned off on this server.',
-    )
+    expect(resolve(403, 'DEBUG_TRANSCRIPTS_DISABLED')).toBe('Debug transcript sharing is turned off on this server.')
   })
 
   it('maps rate limiting before considering the response code', () => {
-    expect(getDebugTranscriptErrorMessage(429)).toBe('You have reached the sharing limit. Please try again later.')
+    expect(resolve(429)).toBe('You have reached the sharing limit. Please try again later.')
   })
 
   it('maps an oversized transcript response', () => {
-    expect(getDebugTranscriptErrorMessage(413, 'DEBUG_TRANSCRIPT_TOO_LARGE')).toBe(
-      'This transcript is too large to upload.',
-    )
+    expect(resolve(413, 'DEBUG_TRANSCRIPT_TOO_LARGE')).toBe('This transcript is too large to upload.')
   })
 
   it('maps anonymous and unrecognized client errors without inviting retry', () => {
-    expect(getDebugTranscriptErrorMessage(403, 'ANONYMOUS_TRANSCRIPT_FORBIDDEN')).toBe(
+    expect(resolve(403, 'ANONYMOUS_TRANSCRIPT_FORBIDDEN')).toBe(
       'Sign in to a full account to share a debug transcript.',
     )
-    expect(getDebugTranscriptErrorMessage(422)).toBe('The transcript was rejected by the server.')
+    expect(resolve(422)).toBe('The transcript was rejected by the server.')
   })
 
   it('reserves the retryable connection message for network and server failures', () => {
     const message = 'We could not send the transcript. Please check your connection and try again.'
 
-    expect(getDebugTranscriptErrorMessage()).toBe(message)
-    expect(getDebugTranscriptErrorMessage(500)).toBe(message)
+    expect(resolve()).toBe(message)
+    expect(resolve(500)).toBe(message)
   })
 })
 

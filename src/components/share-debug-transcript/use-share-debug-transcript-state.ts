@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { useCallback, useReducer, useRef, useTransition } from 'react'
 import { z } from 'zod'
 
@@ -18,7 +21,7 @@ import {
   debugTranscriptTooLargeCode,
 } from '@shared/debug-transcript-contract'
 
-const genericErrorMessage = 'We could not send the transcript. Please check your connection and try again.'
+const genericErrorMessage = msg`We could not send the transcript. Please check your connection and try again.`
 const debugTranscriptErrorBodySchema = z.object({
   code: z
     .enum([debugTranscriptsDisabledCode, debugTranscriptTooLargeCode, anonymousTranscriptForbiddenCode])
@@ -90,21 +93,21 @@ export const shareDebugTranscriptReducer = (
 }
 
 /** Convert the debug-transcript API error contract into actionable user copy. */
-export const getDebugTranscriptErrorMessage = (status?: number, code?: DebugTranscriptErrorCode): string => {
+export const getDebugTranscriptErrorMessage = (status?: number, code?: DebugTranscriptErrorCode): MessageDescriptor => {
   if (status === 429) {
-    return 'You have reached the sharing limit. Please try again later.'
+    return msg`You have reached the sharing limit. Please try again later.`
   }
   if (code === debugTranscriptsDisabledCode) {
-    return 'Debug transcript sharing is turned off on this server.'
+    return msg`Debug transcript sharing is turned off on this server.`
   }
   if (code === debugTranscriptTooLargeCode) {
-    return 'This transcript is too large to upload.'
+    return msg`This transcript is too large to upload.`
   }
   if (code === anonymousTranscriptForbiddenCode) {
-    return 'Sign in to a full account to share a debug transcript.'
+    return msg`Sign in to a full account to share a debug transcript.`
   }
   if (status !== undefined && status >= 400 && status < 500) {
-    return 'The transcript was rejected by the server.'
+    return msg`The transcript was rejected by the server.`
   }
   return genericErrorMessage
 }
@@ -124,6 +127,7 @@ const readDebugTranscriptErrorCode = async (error: HttpError): Promise<DebugTran
  * dialog, and notification components presentational.
  */
 export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShareDebugTranscriptStateOptions) => {
+  const { i18n, t } = useLingui()
   const httpClient = useHttpClient()
   const authClient = useAuth()
   const { data: authSession } = authClient.useSession()
@@ -183,13 +187,13 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
         }
         console.error('Failed to share debug transcript:', error)
         if (!(error instanceof HttpError)) {
-          dispatch({ type: 'SUBMIT_FAILED', message: getDebugTranscriptErrorMessage() })
+          dispatch({ type: 'SUBMIT_FAILED', message: i18n._(getDebugTranscriptErrorMessage()) })
           return
         }
         const code = await readDebugTranscriptErrorCode(error)
         dispatch({
           type: 'SUBMIT_FAILED',
-          message: getDebugTranscriptErrorMessage(error.response.status, code),
+          message: i18n._(getDebugTranscriptErrorMessage(error.response.status, code)),
         })
       } finally {
         if (activeRequestRef.current === controller) {
@@ -202,7 +206,7 @@ export const useShareDebugTranscriptState = ({ chatInstance, threadId }: UseShar
   const dismissToast = useCallback(() => dispatch({ type: 'TOAST_DISMISSED' }), [])
   return {
     action: {
-      disabledReason: isPending ? 'Sending…' : null,
+      disabledReason: isPending ? t`Sending…` : null,
       onShare: () => dispatch({ type: 'DIALOG_OPENED' }),
     },
     dialog: {

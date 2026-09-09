@@ -14,6 +14,7 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { Textarea } from '@/components/ui/textarea'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { debugTranscriptNoteMaxLength } from '@shared/debug-transcript-contract'
 import { useId } from 'react'
 
@@ -42,40 +43,59 @@ export const ShareDebugTranscriptDialog = ({
   onConsentAcceptedChange,
   onSubmit,
 }: ShareDebugTranscriptDialogProps) => {
+  const { t } = useLingui()
   const userNoteId = useId()
   const consentId = useId()
 
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange} showCloseButton={false}>
       <ResponsiveModalHeader className="text-left sm:text-left">
-        <ResponsiveModalTitle>Having a problem with this chat?</ResponsiveModalTitle>
+        <ResponsiveModalTitle>
+          <Trans>Having a problem with this chat?</Trans>
+        </ResponsiveModalTitle>
       </ResponsiveModalHeader>
 
       <ResponsiveModalContent className="flex flex-col gap-4 py-0">
         <ResponsiveModalDescription asChild>
           <div className="flex flex-col gap-4">
-            <p>This will send the current chat with the Thunderbolt team so that they can debug the problem.</p>
+            <p>
+              <Trans>
+                This will send the current chat with the Thunderbolt team so that they can debug the problem.
+              </Trans>
+            </p>
 
             <dl className="divide-y divide-border rounded-xl border border-border">
               <div className="flex flex-col gap-1 p-3">
-                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">Who can read it?</dt>
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">
+                  <Trans>Who can read it?</Trans>
+                </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  The Thunderbolt team, plus whoever operates the server you&apos;re connected to, for debugging.
-                  It&apos;s tied to your account — it isn&apos;t anonymous.
+                  <Trans>
+                    The Thunderbolt team, plus whoever operates the server you&apos;re connected to, for debugging.
+                    It&apos;s tied to your account — it isn&apos;t anonymous.
+                  </Trans>
                 </dd>
               </div>
               <div className="flex flex-col gap-1 p-3">
-                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">What&apos;s in it?</dt>
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">
+                  <Trans>What&apos;s in it?</Trans>
+                </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  This chat session, including the messages you sent and the responses from agent, the data inputs and
-                  outputs of any tools used, errors, and timestamps.
+                  <Trans>
+                    This chat session, including the messages you sent and the responses from agent, the data inputs and
+                    outputs of any tools used, errors, and timestamps.
+                  </Trans>
                 </dd>
               </div>
               <div className="flex flex-col gap-1 p-3">
-                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">Where is it kept?</dt>
+                <dt className="text-[length:var(--font-size-sm)] font-medium text-foreground">
+                  <Trans>Where is it kept?</Trans>
+                </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  The chat will be retained by the current server as well as the Thunderbolt team until your account is
-                  deleted.
+                  <Trans>
+                    The chat will be retained by the current server as well as the Thunderbolt team until your account
+                    is deleted.
+                  </Trans>
                 </dd>
               </div>
             </dl>
@@ -83,12 +103,14 @@ export const ShareDebugTranscriptDialog = ({
         </ResponsiveModalDescription>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={userNoteId}>Anything else you&apos;d like to share?</Label>
+          <Label htmlFor={userNoteId}>
+            <Trans>Anything else you&apos;d like to share?</Trans>
+          </Label>
           <Textarea
             id={userNoteId}
             value={userNote}
             maxLength={debugTranscriptNoteMaxLength}
-            placeholder="In your own words: what were you trying to do, and what did the agent do instead?"
+            placeholder={t`In your own words: what were you trying to do, and what did the agent do instead?`}
             disabled={isPending}
             onChange={(event) => onUserNoteChange(event.target.value)}
           />
@@ -102,7 +124,7 @@ export const ShareDebugTranscriptDialog = ({
             onCheckedChange={(checked) => onConsentAcceptedChange(checked === true)}
           />
           <Label htmlFor={consentId} className="cursor-pointer text-[length:var(--font-size-sm)] leading-normal">
-            I agree to share this chat session with the Thunderbolt team.
+            <Trans>I agree to share this chat session with the Thunderbolt team.</Trans>
           </Label>
         </div>
 
@@ -118,16 +140,16 @@ export const ShareDebugTranscriptDialog = ({
 
       <FormFooter className="flex-col-reverse sm:flex-row">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Not now
+          <Trans>Not now</Trans>
         </Button>
         <Button
           type="button"
           isLoading={isPending}
-          loadingLabel="Sending…"
+          loadingLabel={t`Sending…`}
           disabled={!consentAccepted}
           onClick={onSubmit}
         >
-          {errorMessage ? 'Retry' : 'Send to the Thunderbolt team'}
+          {errorMessage ? <Trans>Retry</Trans> : <Trans>Send to the Thunderbolt team</Trans>}
         </Button>
       </FormFooter>
     </ResponsiveModal>

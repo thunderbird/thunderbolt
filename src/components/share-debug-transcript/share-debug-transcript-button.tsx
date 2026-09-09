@@ -3,10 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Bug } from 'lucide-react'
+import { useLingui } from '@lingui/react/macro'
 
 import { Button } from '@/components/ui/button'
-
-const actionLabel = 'Share debug transcript'
 
 type ShareDebugTranscriptButtonProps = {
   disabledReason: string | null
@@ -14,6 +13,9 @@ type ShareDebugTranscriptButtonProps = {
 }
 
 export const ShareDebugTranscriptButton = ({ disabledReason, onShare }: ShareDebugTranscriptButtonProps) => {
+  const { t } = useLingui()
+  const actionLabel = t`Share debug transcript`
+
   return (
     <Button
       type="button"

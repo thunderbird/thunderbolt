@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AnimatePresence, m } from 'framer-motion'
+import { useLingui } from '@lingui/react/macro'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -28,32 +29,41 @@ export const NotificationCard = ({
   details,
   actions,
   onDismiss,
-  dismissLabel = 'Dismiss notification',
+  dismissLabel,
   positionClassName,
-}: NotificationCardProps) => (
-  <AnimatePresence>
-    {open && (
-      <m.div
-        key="notification-card"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 20 }}
-        className={cn('fixed bottom-4 z-50', positionClassName ?? 'inset-x-4 md:right-4 md:left-auto md:max-w-sm')}
-      >
-        <div className="rounded-xl border border-border bg-card p-4 shadow-lg">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 shrink-0">{icon}</div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[length:var(--font-size-sm)] font-medium text-foreground">{message}</p>
-              {details}
-              {actions && <div className="mt-3 flex gap-2">{actions}</div>}
+}: NotificationCardProps) => {
+  const { t } = useLingui()
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <m.div
+          key="notification-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className={cn('fixed bottom-4 z-50', positionClassName ?? 'inset-x-4 md:right-4 md:left-auto md:max-w-sm')}
+        >
+          <div className="rounded-xl border border-border bg-card p-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">{icon}</div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[length:var(--font-size-sm)] font-medium text-foreground">{message}</p>
+                {details}
+                {actions && <div className="mt-3 flex gap-2">{actions}</div>}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={onDismiss}
+                aria-label={dismissLabel ?? t`Dismiss notification`}
+              >
+                <X className="size-4" />
+              </Button>
             </div>
-            <Button variant="ghost" size="icon-xs" onClick={onDismiss} aria-label={dismissLabel}>
-              <X className="size-4" />
-            </Button>
           </div>
-        </div>
-      </m.div>
-    )}
-  </AnimatePresence>
-)
+        </m.div>
+      )}
+    </AnimatePresence>
+  )
+}

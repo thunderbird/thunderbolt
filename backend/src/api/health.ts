@@ -25,6 +25,7 @@ export type HealthRouteDeps = {
   fetchFn?: typeof fetch
   probeModels?: typeof probeCatalogModels
   confidentialFetch?: typeof fetch
+  timeouts?: Partial<Record<'database' | 'powersync' | 'email', number>>
 }
 
 /** Creates token-protected deep health routes for backend dependencies. */
@@ -34,6 +35,7 @@ export const createHealthRoutes = ({
   fetchFn = globalThis.fetch,
   probeModels = probeCatalogModels,
   confidentialFetch,
+  timeouts = {},
 }: HealthRouteDeps) =>
   new Elysia({ prefix: '/health' })
     .onError(safeErrorHandler)
@@ -52,7 +54,7 @@ export const createHealthRoutes = ({
       try {
         const result = await Promise.race([
           database.execute(sql`select 1`),
-          delay(databaseTimeoutMs, 'timeout' as const, { signal: deadline.signal }),
+          delay(timeouts.database ?? databaseTimeoutMs, 'timeout' as const, { signal: deadline.signal }),
         ])
         if (result === 'timeout') {
           return status(503, { status: 'failed', reason: 'timeout' })
@@ -73,7 +75,7 @@ export const createHealthRoutes = ({
       }
       try {
         const response = await fetchFn(`${settings.powersyncUrl.replace(/\/$/, '')}/probes/liveness`, {
-          signal: AbortSignal.timeout(powersyncTimeoutMs),
+          signal: AbortSignal.timeout(timeouts.powersync ?? powersyncTimeoutMs),
         })
         if (!response.ok) {
           return status(503, { status: 'failed', reason: `http-${response.status}` })
@@ -93,7 +95,7 @@ export const createHealthRoutes = ({
       try {
         const response = await fetchFn('https://api.resend.com/domains', {
           headers: { Authorization: `Bearer ${settings.resendApiKey}` },
-          signal: AbortSignal.timeout(emailTimeoutMs),
+          signal: AbortSignal.timeout(timeouts.email ?? emailTimeoutMs),
         })
         if (response.status === 401 || response.status === 403) {
           return status(503, { status: 'failed', reason: 'rejected' })

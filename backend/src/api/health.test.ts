@@ -14,6 +14,9 @@ const settings = createTestSettings({
   monitoringToken: 'test-monitoring-token',
   powersyncUrl: 'https://sync.example.com',
   resendApiKey: 'test-resend-key',
+  anthropicApiKey: 'anthropic-test-key',
+  tinfoilApiKey: 'tinfoil-test-key',
+  tinfoilEnclaveUrl: 'https://inference.test/v1',
 })
 const headers = { Authorization: `Bearer ${settings.monitoringToken}` }
 /** Builds an authorized request to a deep health route. */
@@ -85,7 +88,41 @@ describe('deep health', () => {
     expect(await response.json()).toEqual({ status: 'failed', reason })
   })
 
-  for (const route of ['powersync', 'email']) {
+  it('bounds the database wait when execute never settles', async () => {
+    const response = await createHealthRoutes({
+      settings,
+      database: {
+        execute: new Proxy(database.execute, { apply: () => new Promise<never>(() => {}) }),
+        select: database.select.bind(database),
+        insert: database.insert.bind(database),
+      },
+      timeouts: { database: 5 },
+    }).handle(request('database'))
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ status: 'failed', reason: 'timeout' })
+  })
+
+  for (const route of ['powersync', 'email'] as const) {
+    it(`${route} cancels the upstream request at its deadline`, async () => {
+      const signals: AbortSignal[] = []
+      const fetchFn = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init!.signal!
+        signals.push(signal)
+        return new Promise<Response>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+      }
+      const response = await createHealthRoutes({
+        settings,
+        database,
+        fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+        timeouts: { [route]: 5 },
+      }).handle(request(route))
+      expect(response.status).toBe(503)
+      expect(await response.json()).toEqual({ status: 'failed', reason: 'timeout' })
+      expect(signals).toHaveLength(1)
+      expect(signals[0].aborted).toBe(true)
+    })
     it(`${route} makes an authenticated read where required`, async () => {
       const fetchFn = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
         const outgoing = new Request(input, init)
@@ -174,6 +211,46 @@ describe('deep health', () => {
     expect(probeModels).toHaveBeenCalledWith({ settings, database, fetchFn, confidentialFetch: undefined })
   })
 
+  it.each(['OK', ''])('wires models to the real catalog probe with confidential content %j', async (content) => {
+    const seen: { model: string; authorization: string | null; transport: string }[] = []
+    const fake = (transport: string, text: string) =>
+      Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const outgoing = new Request(input, init)
+          seen.push({
+            model: (await outgoing.json()).model,
+            authorization: outgoing.headers.get('authorization'),
+            transport,
+          })
+          return Response.json({ choices: [{ message: { content: text } }] })
+        },
+        { preconnect: globalThis.fetch.preconnect },
+      )
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: fake('anthropic', 'OK'),
+      confidentialFetch: fake('confidential', content),
+    }).handle(request('models'))
+    expect(response.status).toBe(content ? 200 : 503)
+    expect(await response.json()).toEqual(
+      content
+        ? { status: 'ok' }
+        : {
+            status: 'failed',
+            failures: [
+              { model: 'deepseek-v4-flash', reason: 'no-text' },
+              { model: 'glm-5-2', reason: 'no-text' },
+            ],
+          },
+    )
+    expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual([
+      { model: 'claude-opus-5', authorization: `Bearer ${settings.anthropicApiKey}`, transport: 'anthropic' },
+      { model: 'deepseek-v4-flash', authorization: `Bearer ${settings.tinfoilApiKey}`, transport: 'confidential' },
+      { model: 'glm-5-2', authorization: `Bearer ${settings.tinfoilApiKey}`, transport: 'confidential' },
+    ])
+  })
+
   it('mounts deep health under /v1 and preserves unconditional liveness', async () => {
     const originalToken = process.env.MONITORING_TOKEN
     const originalVersion = process.env.MIN_APP_VERSION
@@ -193,6 +270,7 @@ describe('deep health', () => {
       expect(await deep.json()).toEqual({ status: 'ok' })
       const rejected = await app.handle(new Request('http://localhost/v1/health/database'))
       expect(rejected.status).toBe(401)
+      expect(await rejected.json()).toEqual({ error: 'Unauthorized' })
     } finally {
       if (originalToken === undefined) {
         delete process.env.MONITORING_TOKEN

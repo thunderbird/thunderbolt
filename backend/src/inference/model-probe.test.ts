@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { inferencePrices } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { defaultModels } from '@shared/defaults/models'
@@ -117,23 +117,69 @@ describe('probeCatalogModels', () => {
   })
 
   it('joins text parts', async () => {
-    const fetchFn = transport(async () => completion([{ type: 'text', text: 'OK' }]))
+    const fetchFn = transport(async () =>
+      completion([{ type: 'text', text: '' }, { type: 'image_url' }, { type: 'text', text: 'OK' }]),
+    )
     expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([])
   })
 
+  it('rejects all-empty text parts', async () => {
+    const fetchFn = transport(async () =>
+      completion([
+        { type: 'text', text: '' },
+        { type: 'text', text: '' },
+      ]),
+    )
+    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual(
+      defaultModels.map(({ model }) => ({ model, reason: 'no-text' })),
+    )
+  })
+
   it('cancels timed-out upstream requests', async () => {
+    const controllers: AbortController[] = []
+    const timeout = spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+      const controller = new AbortController()
+      controllers.push(controller)
+      return controller.signal
+    })
+    const started = Promise.withResolvers<void>()
     const signals: AbortSignal[] = []
     const fetchFn = transport(async (request) => {
       signals.push(request.signal)
       return new Promise<Response>((_, reject) => {
         request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
+        if (signals.length === defaultModels.length) {
+          started.resolve()
+        }
       })
     })
-    expect(
-      await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn, timeoutMs: 5 }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'timeout' })))
-    expect(signals).toHaveLength(defaultModels.length)
-    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    try {
+      const result = probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })
+      await started.promise
+      for (const controller of controllers) {
+        controller.abort(new DOMException('deadline', 'TimeoutError'))
+      }
+      expect(await result).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'timeout' })))
+      expect(signals).toHaveLength(defaultModels.length)
+      expect(signals.every((signal) => signal.aborted)).toBe(true)
+    } finally {
+      timeout.mockRestore()
+    }
+  })
+
+  it('skips Anthropic when its price row is missing', async () => {
+    await env.db
+      .delete(inferencePrices)
+      .where(and(eq(inferencePrices.provider, 'anthropic'), eq(inferencePrices.model, 'claude-opus-5')))
+    const seen: string[] = []
+    const fetchFn = transport(async (request) => {
+      seen.push((await request.json()).model)
+      return completion()
+    })
+    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([
+      { model: 'opus-5', reason: 'missing-price' },
+    ])
+    expect(seen.sort()).toEqual(['deepseek-v4-flash', 'glm-5-2'])
   })
 
   it('skips upstream calls for missing price rows', async () => {
@@ -158,16 +204,32 @@ describe('probeCatalogModels', () => {
   })
 
   it('bounds concurrency', async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
     const active = new Set<Request>()
     const fetchFn = transport(async (request) => {
       active.add(request)
       expect(active.size).toBe(1)
-      await Bun.sleep(2)
+      started.resolve()
+      await release.promise
       active.delete(request)
       return completion()
     })
-    expect(
-      await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn, concurrency: 1 }),
-    ).toEqual([])
+    const result = probeCatalogModels({
+      database: env.db,
+      settings,
+      fetchFn,
+      confidentialFetch: fetchFn,
+      concurrency: 1,
+    })
+    await started.promise
+    try {
+      // Drain queued price reads while the first upstream request remains blocked.
+      await env.db.execute(sql`select 1`)
+      expect(active.size).toBe(1)
+    } finally {
+      release.resolve()
+    }
+    expect(await result).toEqual([])
   })
 })

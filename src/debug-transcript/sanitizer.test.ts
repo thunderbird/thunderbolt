@@ -119,4 +119,24 @@ describe('sanitizeDebugTranscriptSecrets', () => {
       nextToken: '[redacted]',
     })
   })
+
+  it('redacts private keys, passphrases, credentials, and pwd-style keys', () => {
+    const input: JsonValue = {
+      privateKey: '-----BEGIN PRIVATE KEY-----\nMIIEvQ==\n-----END PRIVATE KEY-----',
+      private_key: 'raw',
+      passphrase: 'correct horse battery staple',
+      credentials: { user: 'avery' },
+      DB_PWD: 'hunter2',
+      displayName: 'Avery Example',
+    }
+
+    expect(sanitizeDebugTranscriptSecrets(input)).toEqual({
+      privateKey: '[redacted]',
+      private_key: '[redacted]',
+      passphrase: '[redacted]',
+      credentials: '[redacted]',
+      DB_PWD: '[redacted]',
+      displayName: 'Avery Example',
+    })
+  })
 })

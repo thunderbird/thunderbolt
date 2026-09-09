@@ -5,7 +5,17 @@
 import type { JsonValue } from './types'
 
 const redacted = '[redacted]'
-const sensitiveKeyFragments = ['apikey', 'authorization', 'cookie', 'secret', 'password']
+const sensitiveKeyFragments = [
+  'apikey',
+  'authorization',
+  'cookie',
+  'secret',
+  'password',
+  'passphrase',
+  'privatekey',
+  'credential',
+  'pwd',
+]
 const jwtPattern = /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]{5,})?\b/g
 const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi
 const skProviderKeyPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/gi

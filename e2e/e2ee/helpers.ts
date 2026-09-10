@@ -675,6 +675,11 @@ export const stolenSessionContext = async (
 /**
  * A2/A8 — answer `GET /v1/encryption/org-key` with a key the attacker controls.
  *
+ * The backend route was deleted with THU-866 and no client requests this path any
+ * more, so this interception is a TRIPWIRE rather than a live attack: Playwright
+ * fulfills in the browser, so if a client ever re-acquires that fetch the lie lands
+ * and `attacks/org-key-substitution.spec.ts` fails.
+ *
  * The client fetches the escrow public key from the very server the design
  * distrusts, so this is the whole of claim C11: if nothing pins or verifies that
  * key out of band, every AK this context writes is wrapped to the attacker.

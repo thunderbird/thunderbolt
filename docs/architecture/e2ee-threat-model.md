@@ -19,7 +19,7 @@ A-ids stable — findings, tests, and Linear issues cite them.
 | A5 | Stolen live session | Valid auth token, no AK, no DEK, no device private keys. Can call every endpoint. |
 | A6 | Same-origin script | XSS or hostile extension running in the app origin. Reaches IndexedDB, `BroadcastChannel`, the SharedWorker, and the API. |
 | A7 | Another tenant | Own valid account. Tries to touch another user's rows, envelopes, nonces, keyring, or escrow row. |
-| A8 | Malicious operator | Holds the org-escrow private key, or can enable `ORG_ESCROW_ENABLED` and substitute the public key. |
+| A8 | Malicious operator | Holds the org-escrow private key. Since THU-866 substituting the *public* key needs control of the client **release** — the wrap target is the build's own pin — not just `ORG_ESCROW_ENABLED` and the server env. |
 | A9 | Harvest-now-decrypt-later | Records everything today, gets a cryptographically-relevant quantum computer later. |
 | A10 | Stale / offline / downgraded client | Old app version, or offline across a migration, rotation, or revocation — including a client an attacker *forces* into that state. |
 
@@ -33,8 +33,10 @@ falsify, not a fact.
   fail-open in the codec, upload encoder, or sync middleware; no plaintext in logs, error payloads,
   or telemetry.
 - **C2 — Server cannot induce key disclosure.** No server-controlled input (metadata, keyring rows,
-  org-escrow public key, `kdf_salt`, `key_version`, `scheme_version`, challenge nonces) steers a
-  client into wrapping, sending, or deriving a key the server can open.
+  `kdf_salt`, `key_version`, `scheme_version`, challenge nonces) steers a client into wrapping,
+  sending, or deriving a key the server can open. The org-escrow public key left this list in
+  THU-866: it is no longer a server-supplied input at all, because the wrap target comes from the
+  build's own pin (see C11).
 - **C3 — Ciphertext integrity and placement.** AAD (`table ‖ column ‖ row_id ‖ key_id`) prevents a
   malicious server from moving, swapping, or replaying ciphertext into a different cell. Covers
   cross-cell, cross-table, cross-row, cross-account, and same-cell rollback to an older ciphertext
@@ -83,10 +85,26 @@ falsify, not a fact.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.
-- **C11 — Escrow does not break C1.** The server holds only the public half. But the client fetches
-  that public key *from the server it is defending against* — pinning, TOFU, or out-of-band
-  verification must carry that weight. Enabling escrow must not silently capture accounts that never
-  consented. The documented post-quantum forfeiture is the only PQ regression.
+- **C11 — Escrow does not break C1.** The server holds only the public half, and pinning is what
+  carries the weight the claim always needed: the client wraps the AK to the key **its own build
+  pins** (`VITE_ORG_ESCROW_PUBLIC_KEY`) — and there is no longer any endpoint serving one, nor an
+  escrow key in the server's own config (THU-866).
+  No pin means no envelope, so a server that claims escrow is on for a deployment which configured
+  none captures nothing; a pin means that key alone, so escrow can be neither redirected nor
+  suppressed. That is also what settles "enabling escrow must not silently capture accounts that
+  never consented" — escrow now takes a deliberate build artifact, not a server flag. TOFU was never
+  an option here: the first fetch *is* the escrow event, so it would pin the attacker's key. Gated by
+  `attacks/org-key-substitution.spec.ts`. The documented post-quantum forfeiture is the only PQ
+  regression.
+  **Two residuals.** (1) A build-time pin is a full trust root only where the bundle ships out of
+  band — the Tauri desktop/mobile builds. For the **web** build A2 also serves the JS, so it can
+  serve a bundle carrying a different pin; what the pin buys there is a change of kind, turning an
+  invisible per-request JSON lie into a persistent, cacheable, diffable bundle modification. Closing
+  that needs out-of-band fingerprint verification by the user, which the POC lists as a non-goal.
+  (2) A build pinning the wrong key escrows to something the operator cannot open, and nothing
+  detects it — the server holds no key to compare against, by design. Catching that would need the
+  client to declare its wrap target and the server to hold a key again, trading a silent
+  misconfiguration for a restored steering surface; the POC accepts the former.
 - **C12 — Rollout gate holds.** `MIN_APP_VERSION` prevents a below-min client from syncing a flipped
   account, including via exempt routes, long-TTL PowerSync tokens, and `X-App-Version` spoofing.
 - **C13 — Multi-tab / worker key plumbing.** The key-request `BroadcastChannel` and SharedWorker path
@@ -130,7 +148,8 @@ Not findings. Documented trade-offs, listed so review does not relitigate them.
 - **Escrow is classical P-256, not hybrid.** An account with escrow enabled forfeits post-quantum
   protection for its AK — accepted POC trade-off, documented in `e2e-encryption.md`.
 - **Escrow POC non-goals:** no end-user disclosure UI, no backfill for pre-escrow accounts, no
-  revocation on disable, no recovery audit trail, no in-app admin decrypt.
+  revocation on disable, no recovery audit trail, no in-app admin decrypt, and no detection of a
+  build pinned to the wrong escrow key (THU-866 residual — see C11).
 - **Decrypt-failure handling and keys-before-data ordering** are deferred (planning gaps G2/G3);
   PowerSync retries make naive fail-closed poison the sync loop.
 - **Device fingerprint verification at approval** (Signal-style code compare) is deferred (G5).

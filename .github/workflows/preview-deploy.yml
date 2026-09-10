@@ -153,6 +153,10 @@ jobs:
       powersync_hostname: powersync-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io
       cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
       thunderbolt_inference_url: ${{ vars.THUNDERBOLT_INFERENCE_URL }}
+      # Off unless the repo variable is set, mirroring the flag's own default —
+      # previews are the only place a reviewer can exercise the PAT path, but
+      # nothing should switch it on for every PR implicitly.
+      confidential_api_keys_enabled: ${{ vars.PREVIEW_CONFIDENTIAL_API_KEYS_ENABLED == 'true' }}
       # Per-PR stacks read VPC/ALB/postgres/keycloak/powersync from the long-lived
       # `previews-shared` stack via Pulumi StackReference. The shared stack must
       # exist before this runs; deploy it once via the `Previews Shared Deploy`

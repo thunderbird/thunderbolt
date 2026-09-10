@@ -19,7 +19,7 @@ import { getModel } from '@/dal/models'
 import { saveMessagesWithContextUpdate } from '@/dal/chat-messages'
 import type { ThunderboltUIMessage } from '@/types'
 import { createElement, type ReactNode } from 'react'
-import { BrowserRouter } from 'react-router'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { MCPProvider } from '@/lib/mcp-provider'
 
 /**
@@ -480,6 +480,76 @@ describe('useHydrateChatStore', () => {
 
       // Verify no error was thrown
       expect(result.current.saveMessages).toBeDefined()
+    })
+  })
+  /*
+   * The first save of a new chat promotes the URL from /chats/new to
+   * /chats/<id>. That is right for the chat route and wrong for a chat embedded
+   * in another surface — the Mini App panel navigated away mid-send, unmounting
+   * the app and clearing the context the model was being asked about.
+   */
+  describe('navigation on create', () => {
+    /** Renders nothing; mirrors the router's current path into `seen`. */
+    const makeRouterWrapper = (initialPath: string, seen: { path: string }) => {
+      const LocationProbe = () => {
+        seen.path = useLocation().pathname
+        return null
+      }
+      return ({ children }: { children: ReactNode }) => {
+        const queryWrapper = createQueryTestWrapper()
+        return createElement(
+          MemoryRouter,
+          { initialEntries: [initialPath] },
+          createElement(LocationProbe),
+          createElement(queryWrapper, null, createElement(MCPProvider, null, children)),
+        )
+      }
+    }
+
+    /**
+     * Hydrate a brand-new thread and save one message through it.
+     *
+     * `onCreated` is the whole switch: supplying it means the host records the
+     * id itself and nothing navigates.
+     */
+    const hydrateAndSave = async (
+      threadId: string,
+      onCreated: ((chatThreadId: string) => void) | undefined,
+      wrapper: ReturnType<typeof makeRouterWrapper>,
+    ) => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: threadId, isNew: true, onCreated }), {
+        wrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+      await act(async () => {
+        await result.current.saveMessages({ id: threadId, messages: [createTestMessage()] })
+      })
+    }
+
+    it('navigates to the new thread on first save by default', async () => {
+      await createSystemModel()
+      const threadId = uuidv7()
+      const seen = { path: '' }
+
+      await hydrateAndSave(threadId, undefined, makeRouterWrapper('/chats/new', seen))
+
+      expect(seen.path).toBe(`/chats/${threadId}`)
+    })
+
+    it('stays put, and hands the id over, when the host takes it', async () => {
+      await createSystemModel()
+      const threadId = uuidv7()
+      const seen = { path: '' }
+      const recorded: string[] = []
+
+      await hydrateAndSave(threadId, (id) => recorded.push(id), makeRouterWrapper('/apps/finance-model', seen))
+
+      expect(seen.path).toBe('/apps/finance-model')
+      // The pair that used to be separable: suppressing the navigation without
+      // recording the id created a real row nothing knew about.
+      expect(recorded).toEqual([threadId])
     })
   })
 })

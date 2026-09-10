@@ -9,7 +9,6 @@ import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
 import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
@@ -17,22 +16,42 @@ import { SidebarWebview } from '@/content-view/sidebar-webview'
 import { Sideview } from '@/content-view/sideview'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
-import { isTauri } from '@/lib/platform'
+import { isTauri, isTauriDesktop } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
-import { Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+import { sharedHeaderHasControls } from './shared-header'
 
+/*
+ * Lazy, and the only content view that is.
+ *
+ * It reaches the whole shared element-picking stack — the overlay, the popover,
+ * the selection state machine — none of which any other entry-bundle module
+ * needs. A static import put roughly a thousand lines of it into the chunk every
+ * user downloads to see a chat, for a panel that only opens when someone clicks
+ * an artifact. The inline artifact card keeps `SandboxedHtmlFrame` in the entry
+ * bundle on purpose, because chat renders artifacts inline; picking is the part
+ * that can wait.
+ */
+const ArtifactSidebarContent = lazy(() =>
+  import('@/content-view/artifact-sidebar-content').then((module) => ({ default: module.ArtifactSidebarContent })),
+)
+
+/** The main app shell: sidebar-inset content area, floating header, and the
+ *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
+  const { pathname } = useLocation()
   const { state, close, previewHidden } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
   const { contentViewWidth } = useSettings({
     content_view_width: Number,
   })
+  const showsSharedHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   const isOpen = state.type !== null
   const isDesktopPanelOpen = isOpen && !isMobile
   const prevIsDesktopPanelOpen = useRef(isDesktopPanelOpen)
@@ -95,7 +114,11 @@ export default function Page() {
       {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
       {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
       {state.type === 'sideview' && <Sideview />}
-      {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
+      {state.type === 'artifact' && (
+        <Suspense fallback={<PageFallback />}>
+          <ArtifactSidebarContent data={state.data} onClose={close} />
+        </Suspense>
+      )}
     </>
   )
 
@@ -108,7 +131,15 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            <FloatingHeader />
+            {/* Wherever it has something to show — see `sharedHeaderHasControls`.
+                `/apps/` was chromeless for a while, on the reasoning that a
+                customer's app is the content and a bar above it duplicates the
+                app's own header. That cost the whole shared toolbar:
+                back/forward, the sidebar toggle, and — on frameless
+                Windows/Linux — the only drag region the window had. Putting it
+                back unconditionally then drew an empty bar over the app on web,
+                because everything else in the header is gated on `/chats`. */}
+            {showsSharedHeader && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />

@@ -4,6 +4,14 @@
 
 import { assembleBuiltInModelInput, createPromptParts, type BuiltInModelInput } from '@/ai/prompt'
 import { loadProjectContextForThread } from '@/projects/load-project-context'
+import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
+import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
+import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
+import { chooseEmbeddedSurface } from '@/ai/embedded-surface'
+import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
+import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
+import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
+import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
@@ -525,6 +533,52 @@ export const prepareAiRequestConfig = async ({
       titleByThreadId: projectContext.titleByThreadId,
     })
   }
+  // Mini App context is a tool for the same reason cross-chat recall is: the
+  // app's state changes on every click, and injecting it would invalidate the
+  // cacheable stable prompt on every send. Registered only while an app is open.
+  const miniAppSnapshot = getMiniAppSnapshot()
+  const miniApp = miniAppSnapshot.app
+  // One tool name for both embedded surfaces — see `chooseEmbeddedSurface` for
+  // which one it describes when both are open, and why that is a rule rather
+  // than a condition.
+  const artifactSnapshot = getArtifactContextSnapshot()
+  const surface = chooseEmbeddedSurface({
+    miniAppOpenedAt: miniApp ? miniAppSnapshot.openedAt : null,
+    artifactOpenedAt: artifactSnapshot.openedAt,
+    hasArtifactTitle: artifactSnapshot.title !== null,
+  })
+  if (supportsTools && surface === 'artifact') {
+    appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
+  } else if (supportsTools && surface === 'mini-app') {
+    appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
+  }
+  // Tools the app declares over the bridge. Merged the same way MCP tools are
+  // (prefixed, conflicts skipped) since both are externally-defined toolsets we
+  // discover at runtime.
+  const { invokeTool } = useMiniAppStore.getState()
+  // Approvals are queued on the chat that provoked them, so the request needs
+  // the thread id — a global queue showed one chat's prompt over another's.
+  const miniAppTools =
+    supportsTools && miniApp && invokeTool && chatThreadId
+      ? createMiniAppTools({
+          app: miniApp,
+          tools: miniAppSnapshot.tools,
+          invoke: invokeTool,
+          requestApproval: (tool, args) => requestMiniAppApproval({ chatThreadId, app: miniApp, tool, args }),
+        })
+      : {}
+  // Tracked, not just counted: a tool skipped for a name conflict is not
+  // callable, and advertising it in the prompt anyway had the model calling a
+  // name that was never registered.
+  const registeredMiniAppTools = new Set<string>()
+  for (const [name, miniAppTool] of Object.entries(miniAppTools)) {
+    if (appToolset[name]) {
+      console.warn(`Mini App tool "${name}" conflicts with an existing tool and was skipped`)
+      continue
+    }
+    appToolset[name] = miniAppTool
+    registeredMiniAppTools.add(name)
+  }
   const hasWebTools = 'search' in appToolset && 'fetch_content' in appToolset
   telemetry?.startPhase('mcp_discovery')
   const merged = supportsTools
@@ -544,6 +598,18 @@ export const prepareAiRequestConfig = async ({
       // Only advertise the tool when it was actually registered above.
       hasSearchableChats: supportsTools && (projectContext?.siblingThreadIds.length ?? 0) > 0,
     }),
+    // Same rule: only describe the app when `get_app_context` actually exists,
+    // and only advertise the actions that survived the merge above.
+    miniAppSection: supportsTools
+      ? [
+          buildMiniAppPromptSection(miniApp),
+          buildMiniAppToolsPromptSection(
+            miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
+          ),
+        ]
+          .filter((section) => section !== null)
+          .join('\n\n') || null
+      : null,
     preferredName: settings.preferredName,
     location: {
       name: settings.locationName,

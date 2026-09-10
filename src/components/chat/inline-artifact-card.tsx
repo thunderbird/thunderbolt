@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
+import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { Button } from '@/components/ui/button'
 import { useAppSettled } from '@/hooks/use-app-settled'
@@ -144,7 +144,7 @@ export const InlineArtifactCard = ({ html, title, streaming = false, onOpenInPan
         {/* min-h-0 lets the row collapse to exactly 0 — without it the grid leaves a ~1px
             sliver of the frame above the card's bottom border when closed. */}
         <div className="min-h-0 overflow-hidden">
-          {!streaming && runtimeError && <ArtifactErrorStrip message={runtimeError} />}
+          {!streaming && runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
           {showContent && (
             <SandboxedHtmlFrame
               html={html}

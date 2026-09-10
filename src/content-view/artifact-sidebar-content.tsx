@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { ArtifactErrorStrip } from '@/components/artifact/artifact-error-strip'
-import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
-import { useRef, useState } from 'react'
+import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
+import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
+import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
+import { useParams } from 'react-router'
+import { useArtifactContextStore } from '@/artifacts/artifact-context-store'
+import { useEffect, useRef, useState } from 'react'
 import { type ArtifactViewData } from './context'
 import { ContentViewHeader } from './header'
 
@@ -22,6 +25,39 @@ type ArtifactSidebarContentProps = {
  */
 export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContentProps) => {
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
+  // The artifact was produced by the chat this panel is open beside, so its
+  // quotes belong on that thread's composer — no session to mint, unlike a Mini
+  // App, which may be opened with no chat in play at all.
+  const { chatThreadId } = useParams()
+
+  /*
+   * Register the open artifact so `get_app_context` can describe it.
+   *
+   * An effect because it writes to a store outside React and the write must be
+   * undone: a context outliving its panel would have the model describing a
+   * surface the user already closed. Not a subscription — nothing flows back.
+   */
+  const openArtifact = useArtifactContextStore((state) => state.openArtifact)
+  const closeArtifact = useArtifactContextStore((state) => state.closeArtifact)
+  const setArtifactContext = useArtifactContextStore((state) => state.setContext)
+  useEffect(() => {
+    openArtifact(data.title)
+    return closeArtifact
+  }, [data.title, openArtifact, closeArtifact])
+  const askAbout = (passages: string[]) => {
+    if (!chatThreadId) {
+      // The panel can be open away from a `/chats/:id` route, and there is no
+      // thread to attach a quote to. Logged because from the user's side this is
+      // indistinguishable from the gesture being broken: they picked something
+      // and nothing happened.
+      console.warn('[artifacts] Nothing to attach the passage to — no chat thread on this route')
+      return
+    }
+    const { addQuote } = usePendingQuotesStore.getState()
+    for (const text of passages) {
+      addQuote(chatThreadId, { text })
+    }
+  }
   // Clear a stale error only at a reload boundary (a new document). Clearing on `ready` instead
   // would wipe an error the harness reports during initial load — it fires before `ready`, so the
   // user would never see it. Adjusting state during render is the React-blessed reset-on-prop-change.
@@ -41,9 +77,15 @@ export const ArtifactSidebarContent = ({ data, onClose }: ArtifactSidebarContent
         className="md:bg-card"
         actions={<ArtifactActions html={data.html} title={data.title} />}
       />
-      {runtimeError && <ArtifactErrorStrip message={runtimeError} />}
+      {runtimeError && <EmbeddedErrorStrip message={runtimeError} />}
       <div className="min-h-0 flex-1 bg-white">
-        <SandboxedHtmlFrame html={data.html} title={data.title} onError={setRuntimeError} />
+        <SelectableArtifact
+          html={data.html}
+          title={data.title}
+          onError={setRuntimeError}
+          onAsk={askAbout}
+          onContextChange={setArtifactContext}
+        />
       </div>
     </div>
   )

@@ -22,6 +22,7 @@
     "../shared/compare-semver.ts",
     "../shared/i18n/base-language.ts",
     "../shared/i18n/locales.ts",
+    "../shared/mini-app-registry.ts",
     "../shared/powersync-tables.ts",
     "../shared/proxy-protocol.ts",
     "../shared/url.ts",

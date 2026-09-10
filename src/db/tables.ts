@@ -31,6 +31,10 @@ export const chatThreadsTable = sqliteTable(
     /** Owning project, or null for a loose chat. Deleting a project orphans its
      *  chats (sets this back to null) rather than deleting them. */
     projectId: text('project_id'),
+    /** Mini App this chat was started from, or null. Deregistering an app leaves
+     *  its chats intact — the registry is deployment config, so an app can
+     *  disappear between releases and the chat has to outlive it. */
+    miniAppId: text('mini_app_id'),
     deletedAt: text('deleted_at'),
     userId: text('user_id'),
   },
@@ -40,6 +44,9 @@ export const chatThreadsTable = sqliteTable(
       .where(sql`${table.deletedAt} IS NULL`),
     index('idx_chat_threads_project')
       .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index('idx_chat_threads_mini_app')
+      .on(table.miniAppId)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 )

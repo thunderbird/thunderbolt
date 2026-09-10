@@ -7,7 +7,10 @@ import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useLingui } from '@lingui/react/macro'
-import { Check, Copy, Download } from 'lucide-react'
+import { downloadFile } from '@/lib/download'
+import { useTransientFlag } from '@/hooks/use-transient-flag'
+import { Check, Copy, Download, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
 
 /** Filename-safe slug from a human title, e.g. "Sales Dashboard" → "sales-dashboard". */
 const toFileSlug = (title: string): string =>
@@ -34,19 +37,43 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
   const { t } = useLingui()
   const { copy, isCopied } = useCopyToClipboard()
 
-  const handleDownload = () => {
-    // Ship the file with the same offline CSP the app renders it under, so opening the download in
-    // a browser can't run it unsandboxed with network access — a self-contained artifact needs none.
-    const url = URL.createObjectURL(new Blob([wrapArtifactPreviewHtml(html)], { type: 'text/html' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${toFileSlug(title)}.html`
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    // Defer revocation so the browser (notably WebKit in the Tauri webview) has time to start
-    // reading the blob — revoking synchronously after click() can cancel the download.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  // Falls back on its own — the first version never cleared this, so one
+  // download left the tick showing forever and the next gave no feedback.
+  const { isSet: isSaved, flag: flagSaved } = useTransientFlag()
+  /*
+   * The reason a failure is shown rather than only logged.
+   *
+   * The desktop path writes the bytes itself, so it can fail for reasons the
+   * user can act on: a build older than the `$DOWNLOAD` grant, a full disk, a
+   * Downloads folder they don't own. Every one of those used to reach
+   * `console.error` alone — which is indistinguishable, from the outside, from
+   * the do-nothing bug this button already had. "Still not working" was the
+   * whole of the second bug report.
+   *
+   * Held rather than transient: an error is worth reading, and it clears on the
+   * next attempt.
+   */
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const handleDownload = async () => {
+    setSaveError(null)
+    try {
+      await downloadFile({
+        name: `${toFileSlug(title)}.html`,
+        // Ship the file with the same offline CSP the app renders it under, so opening the download
+        // in a browser can't run it unsandboxed with network access — a self-contained artifact
+        // needs none.
+        contents: wrapArtifactPreviewHtml(html),
+        mimeType: 'text/html',
+      })
+      flagSaved()
+    } catch (error) {
+      console.error('[artifacts] Could not save the artifact', error)
+      // The platform's own message, not a rewrite of it: "forbidden path" and
+      // "no space left on device" call for different actions, and only the
+      // original text tells them apart.
+      setSaveError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   return (
@@ -66,14 +93,24 @@ export const ArtifactActions = ({ html, title, buttonClassName }: ArtifactAction
       <Button
         onClick={(event) => {
           event.stopPropagation()
-          handleDownload()
+          void handleDownload()
         }}
         variant="ghost"
         size="icon"
         className={cn('size-8 shrink-0 rounded-full', buttonClassName)}
-        title={t`Download HTML`}
+        // The failure rides the tooltip and the label rather than a strip of its
+        // own: this control appears in a collapsed card header where there is no
+        // room for one, and the app has no toast layer to put it in.
+        title={saveError ? t`Couldn't save: ${saveError}` : t`Download HTML`}
+        aria-label={saveError ? t`Couldn't save: ${saveError}` : t`Download HTML`}
       >
-        <Download className="size-4" />
+        {saveError ? (
+          <TriangleAlert className="size-4 text-destructive" />
+        ) : isSaved ? (
+          <Check className="size-4 animate-[fadeOut_2s_ease-in-out]" />
+        ) : (
+          <Download className="size-4" />
+        )}
       </Button>
     </>
   )

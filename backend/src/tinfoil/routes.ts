@@ -437,7 +437,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     .use(createAuthMacro(auth))
     .guard({ auth: true }, (g) => {
       const webSessionApp = g
-        .onBeforeHandle(rejectPersonalAccessToken)
+        .onBeforeHandle((ctx) => rejectPersonalAccessToken(ctx, settings.confidentialApiKeysEnabled))
         .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, ctx))
       if (rateLimit) {
         return webSessionApp

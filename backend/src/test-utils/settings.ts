@@ -53,6 +53,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   corsExposeHeaders: '',
   e2eeEnabled: false,
   cliDeviceRegistrationEnabled: false,
+  confidentialApiKeysEnabled: false,
   swaggerEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,

@@ -112,6 +112,13 @@ const settingsSchema = z
     // Kill switch for the server-owned CLI device row.
     cliDeviceRegistrationEnabled: z.boolean().default(false),
 
+    // Whether a personal access token may reach the confidential (Tinfoil) routes.
+    // Off by default: confidential inference is the only managed tier a PAT cannot
+    // buy without an operator saying so, and a PAT is longer-lived than a session.
+    // Attestation and HPKE are the caller's, not ours, so nothing here weakens the
+    // confidentiality boundary — see backend/docs/pat-lifecycle.md.
+    confidentialApiKeysEnabled: z.boolean().default(false),
+
     // Minimum app version clients must run. Empty string disables enforcement.
     // Surfaced to the frontend via GET /config; clients below this hard-block until they update.
     // Trimmed + semver-validated at startup so typos (`banana`, `0,2,0`) fail fast
@@ -227,6 +234,7 @@ const parseSettings = (): Settings => {
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
     cliDeviceRegistrationEnabled: process.env.CLI_DEVICE_REGISTRATION_ENABLED === 'true',
+    confidentialApiKeysEnabled: process.env.CONFIDENTIAL_API_KEYS_ENABLED === 'true',
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',

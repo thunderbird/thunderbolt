@@ -63,6 +63,7 @@ const powersyncSettings: Settings = {
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
   cliDeviceRegistrationEnabled: false,
+  confidentialApiKeysEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,
   inferenceQuotaAnonymousSevenDayCents: 60,

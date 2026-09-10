@@ -619,6 +619,23 @@ export const getSigningPublicKey = async (userId: string): Promise<string | null
 }
 
 /** Live sessions for one device — revocation is expected to leave none. */
+/**
+ * Delete every session row for a user, simulating the expiry that leaves a
+ * device holding its keys and device id but no valid session (THU-873). The
+ * device must then re-authenticate, and the new session starts bound to nothing.
+ */
+export const deleteUserSessions = async (userId: string): Promise<void> => {
+  await sql`DELETE FROM session WHERE user_id = ${userId}`
+}
+
+/** The device each of a user's sessions is bound to — null for a never-bound session. */
+export const getSessionDeviceIds = async (userId: string): Promise<Array<string | null>> => {
+  const rows = await sql<{ device_id: string | null }[]>`
+    SELECT device_id FROM session WHERE user_id = ${userId}
+  `
+  return rows.map((row) => row.device_id)
+}
+
 export const countDeviceSessions = async (userId: string, deviceId: string): Promise<number> => {
   const rows = await sql<{ count: number }[]>`
     SELECT COUNT(*)::int AS count

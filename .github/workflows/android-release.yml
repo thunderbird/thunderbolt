@@ -149,6 +149,7 @@ jobs:
             console.log('✅ Set versionCode to', data.bundle.android.versionCode);
           "
         env:
+          VERSION: ${{ env.BUILD_VERSION }}
           VERSION_CODE: ${{ steps.version_code.outputs.versionCode }}
 
       - name: Update tauri.properties with correct version

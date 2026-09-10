@@ -5,23 +5,25 @@
 /**
  * A1 — `X-Device-ID` spoofing and revoked-session replay (C5, C6, C14).
  * **Claims hold.** The residual C5 left open ("whether an A4 holding a live
- * session can spoof `X-Device-ID`") is settled here at the HTTP layer.
+ * session can spoof `X-Device-ID`") is settled here at the HTTP layer, and
+ * since THU-873 the spoof is refused outright rather than merely useless.
  *
- * The challenge protocol never authenticates *which* device signs: the signing
- * keypair is account-wide (canary --HKDF--> ECDSA), and `getCallerDevice`
- * resolves the caller from the client-supplied `X-Device-ID` header. So a proof
- * binds to a device id the caller *asserts*, gated only by that device's server
- * state (present / same-user / not-revoked) plus possession of the account key.
- * Test 2 shows the id is caller-asserted; Test 1 shows why that is not
- * exploitable.
+ * The challenge protocol still does not authenticate *which* device signs: the
+ * signing keypair is account-wide (canary --HKDF--> ECDSA) and a revoked device
+ * retains it (THU-872). What changed with THU-873 is that the caller's identity
+ * no longer comes from the signature OR the header: `getCallerDevice` resolves
+ * it from `session.deviceId`, which only the sealed-nonce bind handshake can
+ * set. Test 2 pins that — the device id in a proof is now SERVER-resolved, so a
+ * session cannot name a sibling at all. Test 1 pins the other barrier.
  *
- * The whole of C5's cryptographic revocation therefore rests on one barrier: a
- * revoked device must not be able to reach an authenticated route to fetch the
- * post-rotation canary (which is re-wrapped under the retained DEK "0" it still
- * holds — see revoked-device-identity.spec.ts). Test 1 replays the revoked
- * device's *retained bearer token* — the real credential, not just a check of
- * the deleted session row — and asserts every trust endpoint refuses it, even
- * when it spoofs a trusted sibling's device id.
+ * C5's cryptographic revocation therefore rests on two barriers now: a revoked
+ * device must not reach an authenticated route to fetch the post-rotation canary
+ * (which is re-wrapped under the retained DEK "0" it still holds — see
+ * revoked-device-identity.spec.ts), AND a session must not be able to act as a
+ * device it cannot prove possession of. Test 1 replays the revoked device's
+ * *retained bearer token* — the real credential, not just a check of the deleted
+ * session row — and asserts every trust endpoint refuses it, even when it spoofs
+ * a trusted sibling's device id.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/device-id-spoofing.spec.ts
@@ -92,7 +94,10 @@ test.describe.serial('A1 — X-Device-ID spoofing and revoked-session replay', (
     }
   })
 
-  test('the challenge device id is caller-asserted, gated only by device state', async ({ browser, page }) => {
+  test('the challenge device id is resolved from the session, not asserted by the caller', async ({
+    browser,
+    page,
+  }) => {
     const email = createE2eeEmail()
 
     await loginViaConsumerOtp(page, email)
@@ -107,23 +112,23 @@ test.describe.serial('A1 — X-Device-ID spoofing and revoked-session replay', (
       expect(own.status).toEqual(200)
       expect(hasNonce(own.body)).toBe(true)
 
-      // ...and for a DIFFERENT trusted device's id. The proof's device id is not
-      // authenticated — it is whatever the caller puts in the header, as long as
-      // it names a non-revoked device of this user. This is C6's "bound to
-      // device" being caller-asserted rather than proven. It grants nothing: the
-      // account-wide signing key means the caller could already act, and naming
-      // the sibling does not let it act *as* a device it is not.
+      // ...but NOT for a different trusted device's id, even though that device
+      // is live and non-revoked and this caller holds the account signing key.
+      // THU-873: the caller is `session.deviceId`, so naming a sibling is
+      // refused outright. Before the fix this returned 200 with a usable nonce.
       const asSibling = await encryptionApiRequest(page, challengePath('revoke'), { deviceId: sibling.deviceId })
-      expect(asSibling.status).toEqual(200)
-      expect(hasNonce(asSibling.body)).toBe(true)
+      expect(asSibling.status).toEqual(403)
+      expect(hasNonce(asSibling.body)).toBe(false)
 
-      // The device-state gate is the real check: an unknown id is 404...
+      // An unknown id is 403, NOT 404: the session/header mismatch is checked
+      // before the device lookup, so a caller cannot probe which device ids
+      // exist on its own account.
       const unknown = await encryptionApiRequest(page, challengePath('revoke'), {
         deviceId: `unknown-${crypto.randomUUID()}`,
       })
-      expect(unknown.status).toEqual(404)
+      expect(unknown.status).toEqual(403)
 
-      // ...and a missing id is 400. Neither yields a nonce.
+      // ...and a missing id is still 400. Neither yields a nonce.
       const missing = await encryptionApiRequest(page, challengePath('revoke'), {})
       expect(missing.status).toEqual(400)
     } finally {

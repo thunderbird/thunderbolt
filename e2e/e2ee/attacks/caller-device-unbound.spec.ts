@@ -3,26 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * THU-873 — `getCallerDevice` trusts `X-Device-ID` and never binds it to the
- * session (C5/C14, adversary A4/A5, High). **Claim: a trust route must resolve
- * the caller from its own session, not from a client-set header.**
+ * THU-873 — a trust route resolves its caller from its own session, never from
+ * a client-set header (C5/C14, adversaries A4/A5, High).
  *
- * `getCallerDevice` (backend/src/api/encryption.ts:90-107) resolves the caller
- * purely from the `X-Device-ID` header — present, same user, not revoked — and
- * never checks it against `session.deviceId`. So ANY authenticated session can
- * assert ANY trusted device's id. `GET /encryption/challenge` (:734) then issues
- * a trust-operation nonce bound to that asserted id. Combined with the two facts
- * this repo already establishes — the signing key is account-wide and a revoked
- * device retains it (revoked-device-identity.spec.ts), and revocation deletes
- * only sessions LINKED to the device while re-auth sessions are never linked
+ * `getCallerDevice` USED TO resolve the caller purely from the `X-Device-ID`
+ * header — present, same user, not revoked — without ever comparing it to
+ * `session.deviceId`, so ANY authenticated session could assert ANY trusted
+ * device's id and `GET /encryption/challenge` would mint a trust-operation nonce
+ * bound to that asserted id. Combined with two facts this repo establishes
+ * elsewhere — the signing key is account-wide and a revoked device retains it
+ * (revoked-device-identity.spec.ts), and revocation deletes only sessions LINKED
+ * to the device while a re-authenticated session was never linked
  * (`revokeDeviceSessions` / `linkSessionToDevice`, backend/src/dal/sessions.ts) —
- * a revoked A4 with a surviving unlinked session presents a trusted sibling's id,
- * gets a `rotate` nonce, signs it with the retained key, and drives an
+ * a revoked A4 with a surviving unlinked session could present a trusted
+ * sibling's id, get a `rotate` nonce, sign it with the retained key, and drive an
  * attacker-chosen AK rotation AFTER revocation (future plaintext + data loss).
  *
- * This spec proves the shared root cause deterministically: a session that is
- * NOT device V's obtains V's `rotate` challenge by setting `X-Device-ID: V`. The
- * A4 amplifier (retained key → signed rotate) rides on top of exactly this gate.
+ * This spec pins the shared root cause deterministically: a session that is NOT
+ * device V's must not obtain V's `rotate` challenge by setting `X-Device-ID: V`.
+ * The A4 amplifier (retained key → signed rotate) rode on top of exactly this
+ * gate, so closing it closes both.
  *
  * Capability audit: the attacker uses only A5 powers — one authenticated session
  * (`stolenSessionContext`, holds no device keys) and a client-set header. A
@@ -31,12 +31,26 @@
  * determinism. The spec asserts only what it executes — the gate admits the
  * foreign session — not the downstream signed rotate (which needs A4's key).
  *
- * Expected-failure (Option C): this test asserts the SECURE behavior — a session
- * that does not own device V must NOT obtain V's trust challenge — and is tagged
- * `test.fail()` because the vuln is open today, so that assertion fails now. When
- * THU-873 is fixed (pin `getCallerDevice` to `session.deviceId`, fail-closed on
- * null), the foreign session is rejected, the assertion passes, and Playwright
- * flags the unexpected pass → drop the `test.fail()` tag for a permanent gate.
+ * FIXED (THU-873). `getCallerDevice` now resolves the caller from
+ * `session.deviceId` and rejects a header that does not match it, fail-closed
+ * when the session is bound to nothing. Binding a session to a device is itself
+ * authenticated: the server seals a nonce to the device's registered ECDH public
+ * key (`GET /devices/me/bind-challenge`) and only that device can open it and
+ * echo it back (`POST /devices/me/bind`). `POST /devices` no longer links a
+ * session to an already-trusted device, which was the rebind bypass.
+ *
+ * Polarity: this spec asserts the SECURE property, so it PASSES on fixed code
+ * and FAILS if the pin is removed, the bind handshake is weakened, or the
+ * trusted fast path in `POST /devices` starts linking sessions again. Proven
+ * non-vacuous by dry-run: with the pin removed it fails on the 403 assertion.
+ *
+ * Residual: the account signing key is still account-wide and a revoked device
+ * retains it (THU-872), so this pin — not the proof — is what establishes WHICH
+ * device is calling. The sync routes (`GET /powersync/token`, `PUT
+ * /powersync/upload`) are pinned to the same binding, so a revoked device with a
+ * surviving unlinked session can no longer name a trusted sibling to keep
+ * reading or writing the stream; they answer `DEVICE_NOT_BOUND`, which the
+ * client treats as a retryable defer rather than a revocation.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/caller-device-unbound.spec.ts
@@ -56,14 +70,11 @@ import {
 const hasNonce = (body: unknown): boolean =>
   typeof body === 'object' && body !== null && typeof (body as { nonce?: unknown }).nonce === 'string'
 
-test.describe.serial('THU-873 — getCallerDevice unbound from session', () => {
-  test('a session that does not own the device obtains its trust challenge by spoofing X-Device-ID', async ({
+test.describe.serial('THU-873 — caller device is resolved from the session', () => {
+  test('a session that does not own the device cannot obtain its trust challenge by spoofing X-Device-ID', async ({
     browser,
     page,
   }) => {
-    // Expected-failure while the vuln is open — see the file header (Option C).
-    test.fail()
-
     const email = createE2eeEmail()
 
     // Victim first device, trusted.
@@ -88,8 +99,9 @@ test.describe.serial('THU-873 — getCallerDevice unbound from session', () => {
       })
 
       // SECURE assertion: a session that does not own device V must not get V's
-      // trust challenge. Fails today (nonce issued); passes once THU-873 pins
-      // getCallerDevice to session.deviceId.
+      // trust challenge. The status is asserted too — without it this would also
+      // "pass" if the route broke for some unrelated reason.
+      expect(spoofed.status).toEqual(403)
       expect(hasNonce(spoofed.body)).toBe(false)
     } finally {
       await attacker.context.close()

@@ -114,17 +114,22 @@ export const wrappedKeysTable = pgTable(
 
 /**
  * Org-escrow envelopes (THU-804 POC) — one row per user, the AK wrapped to the
- * operator-supplied P-256 escrow public key. The server only ever holds the
- * public half, so it cannot unwrap what it stores; recovery is a standalone
- * offline tool run by the operator holding the private key. Upserted inside the
- * same transaction as setup/rotate/upgrade whenever escrow is enabled.
+ * operator's P-256 escrow public key. Recovery is a standalone offline tool run
+ * by the operator holding the private key. Upserted inside the same transaction
+ * as setup/rotate/upgrade whenever escrow is enabled.
+ *
+ * The server holds no escrow key at all (THU-866): the client wraps to the key
+ * its own build pins, so the only thing stored here is opaque ciphertext. There
+ * is deliberately no fingerprint column — the server cannot tell which public
+ * key an ECDH envelope was wrapped to, so any fingerprint it recorded would be
+ * a restatement of its own config masquerading as a fact about the blob. The
+ * offline tool proves the wrap target by unwrapping.
  */
 export const orgEnvelopesTable = pgTable('org_envelopes', {
   userId: text('user_id')
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
   wrappedAk: text('wrapped_ak').notNull(),
-  keyFingerprint: text('key_fingerprint').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()

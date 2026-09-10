@@ -18,7 +18,7 @@ import { promisify } from 'node:util'
 import { expect, test } from './fixtures'
 import { getTaskIds, waitForNewEncryptedTasks, waitForOrgEnvelope, waitForUserId } from './db'
 import { completeFirstDeviceSetup, createE2eeEmail, createTask, enableTasks, loginViaConsumerOtp } from './helpers'
-import { testOrgEscrowFingerprint, testOrgEscrowPrivateKey } from './org-escrow-key'
+import { testOrgEscrowPrivateKey } from './org-escrow-key'
 
 const execFileAsync = promisify(execFile)
 
@@ -54,9 +54,10 @@ test.describe.serial('PowerSync E2EE org escrow', () => {
     const userId = await waitForUserId(email)
     await completeFirstDeviceSetup(page)
 
-    // Setup must have persisted the org envelope, tagged with the operator key's fingerprint.
+    // Setup must have persisted the org envelope. That it is wrapped to the
+    // OPERATOR key is proven below by the decrypt tool, not by a stored label.
     const orgEnvelope = await waitForOrgEnvelope(userId)
-    expect(orgEnvelope.keyFingerprint).toBe(testOrgEscrowFingerprint)
+    expect(orgEnvelope.wrappedAk.length).toBeGreaterThan(0)
 
     await enableTasks(page)
     const taskIdsBeforeCreate = await getTaskIds(userId)

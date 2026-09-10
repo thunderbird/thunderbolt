@@ -695,68 +695,105 @@ describe('encryption service (v2)', () => {
     })
   })
 
-  describe('org escrow (THU-804)', () => {
-    /** Configure the fake server with a freshly minted operator escrow key. */
-    const enableOrgEscrow = async (server: FakeServer): Promise<void> => {
+  describe('org escrow (THU-804 / THU-866)', () => {
+    const env = import.meta.env as Record<string, unknown>
+    let savedPin: unknown
+
+    beforeEach(() => {
+      savedPin = env.VITE_ORG_ESCROW_PUBLIC_KEY
+    })
+
+    afterEach(() => {
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = savedPin
+    })
+
+    /** Pin a freshly minted operator escrow key into this build's env (THU-866). */
+    const pinOrgEscrowKey = async (): Promise<void> => {
+      const { publicKey } = await generateKeyPair()
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = await exportPublicKey(publicKey)
+    }
+
+    /**
+     * A2 lying about escrow on the wire: enabled, with a key only the server
+     * holds. The real route was deleted with THU-866, so this handler exists to
+     * keep the assertion below non-vacuous — the fake server answers the old path
+     * plausibly, and a pass means the client took its build-time pin and never
+     * asked. If a client ever re-acquires that fetch, these tests fail.
+     */
+    const serveHostileOrgKey = async (server: FakeServer): Promise<void> => {
       const { publicKey } = await generateKeyPair()
       server.orgEscrow = { enabled: true, publicKey: await exportPublicKey(publicKey) }
     }
 
+    /** The deleted route that used to drive the wrap target — no flow may request it. */
+    const expectOrgKeyRouteUntouched = (server: FakeServer): void => {
+      expect(server.requests).not.toContain('GET /encryption/org-key')
+    }
+
     const makeAK = () => generateAK(true)
 
-    it('buildOrgEnvelope returns undefined when escrow is disabled', async () => {
-      const server = createFakeServer()
-      expect(await buildOrgEnvelope(await makeAK(), clientFor(server))).toBeUndefined()
+    it('buildOrgEnvelope escrows nothing when this build pins no key', async () => {
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
+      expect(await buildOrgEnvelope(await makeAK())).toBeUndefined()
     })
 
-    it('buildOrgEnvelope wraps the AK to the operator key when enabled', async () => {
-      const server = createFakeServer()
-      await enableOrgEscrow(server)
-      const envelope = await buildOrgEnvelope(await makeAK(), clientFor(server))
+    it('buildOrgEnvelope wraps the AK to the pinned key', async () => {
+      await pinOrgEscrowKey()
+      const envelope = await buildOrgEnvelope(await makeAK())
       expect(typeof envelope).toBe('string')
       expect(envelope!.length).toBeGreaterThan(0)
     })
 
-    it('completeFirstDeviceSetup omits orgEnvelope from the bootstrap body when disabled', async () => {
+    it('completeFirstDeviceSetup omits orgEnvelope when this build pins no key', async () => {
       const server = createFakeServer()
+      await serveHostileOrgKey(server)
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
       storedKeyPair = await generateFullKeyPair()
 
       await completeFirstDeviceSetup(clientFor(server))
 
+      // The escrow-DISABLED variant of THU-866: a deployment that configured no
+      // escrow must not be talked into one by a server claiming escrow is on.
       expect(server.lastOrgEnvelope).toBeNull()
+      expectOrgKeyRouteUntouched(server)
     })
 
-    it('completeFirstDeviceSetup sends an orgEnvelope in the bootstrap body when enabled', async () => {
+    it('completeFirstDeviceSetup escrows to the pin while the server serves a hostile key', async () => {
       const server = createFakeServer()
-      await enableOrgEscrow(server)
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
       storedKeyPair = await generateFullKeyPair()
 
       await completeFirstDeviceSetup(clientFor(server))
 
       expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
     })
 
-    it('rotateAccountKey sends an orgEnvelope in the rotate body when enabled', async () => {
+    it('rotateAccountKey escrows to the pin while the server serves a hostile key', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
       storedKeyPair = kp
       await seedV2Account(server, kp, await generateDEK(true))
       await checkApprovalAndUnwrap(clientFor(server))
-      await enableOrgEscrow(server)
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
 
       await rotateAccountKey(clientFor(server), {
         listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
       })
 
       expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
     })
 
-    it('migrateToV2 sends an orgEnvelope in the upgrade body when enabled', async () => {
+    it('migrateToV2 escrows to the pin while the server serves a hostile key', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
       storedKeyPair = kp
       await seedV1Account(server, kp)
-      await enableOrgEscrow(server)
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
 
       const result = await migrateToV2(clientFor(server), {
         listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
@@ -764,6 +801,7 @@ describe('encryption service (v2)', () => {
 
       expect(result.outcome).toBe('migrated')
       expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
     })
   })
 

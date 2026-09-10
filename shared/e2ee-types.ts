@@ -350,15 +350,6 @@ export const orgEscrowHkdfInfo = 'thunderbolt-org-escrow-ak-wrap-v1'
 /** Byte length of a raw uncompressed P-256 point (the operator public key and the ephemeral key). */
 export const p256RawPublicKeyLength = 65
 
-/** GET /v1/encryption/org-key — the operator escrow public key, when enabled. */
-export type OrgPublicKeyResponse = {
-  enabled: boolean
-  /** Base64 raw uncompressed P-256 point (65 bytes), null when disabled. */
-  publicKey: string | null
-  /** base64(SHA-256(raw public key bytes)) — display/audit only. */
-  fingerprint: string | null
-}
-
 // =============================================================================
 // Migration — scheme_version (plan §6.1, Decision D2)
 // =============================================================================

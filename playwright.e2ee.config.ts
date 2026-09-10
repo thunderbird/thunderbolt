@@ -44,8 +44,9 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
   // Org escrow (THU-804) enabled suite-wide: every AK create/change in every
   // spec must persist an org envelope, which exercises the required-when-enabled
   // path across setup/rotate/upgrade. org-escrow.spec.ts holds the private key.
+  // The backend takes no escrow key (THU-866) — the wrap target is the frontend
+  // pin below, and this flag only makes the envelope mandatory.
   ORG_ESCROW_ENABLED: 'true',
-  ORG_ESCROW_PUBLIC_KEY: testOrgEscrowPublicKey,
   PORT: String(port),
   POSTHOG_API_KEY: '',
   POWERSYNC_JWT_KID: 'powersync-dev',
@@ -95,6 +96,12 @@ export default defineConfig({
       timeout: 240_000,
       env: {
         VITE_AUTH_MODE: 'consumer',
+        // The escrow trust root (THU-866): the client wraps the AK only to this
+        // pinned key, never to whatever GET /encryption/org-key returns. REQUIRED
+        // here, not optional — the backend below runs with ORG_ESCROW_ENABLED and
+        // 400s every setup/rotate/upgrade that arrives without an envelope, so a
+        // missing pin fails the whole suite rather than degrading quietly.
+        VITE_ORG_ESCROW_PUBLIC_KEY: testOrgEscrowPublicKey,
         VITE_SKIP_ONBOARDING: 'true',
         VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${backendPort}/v1`,
       },

@@ -56,6 +56,7 @@ import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
+import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
 import {
   bindSession,
   fetchBindChallenge,
@@ -63,7 +64,6 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchEncryptionMetadata,
-  fetchOrgPublicKey,
   fetchWrappedKeys,
   fetchWrappedKey,
   fetchEnvelopeTargets,
@@ -223,18 +223,26 @@ const buildProof = async (
 }
 
 /**
- * Wrap `ak` to the operator escrow public key (THU-804), if the deployment has
- * one configured. Returns `undefined` when org escrow is disabled — callers
- * spread it into request bodies, where `JSON.stringify` simply omits the field.
+ * Wrap `ak` to the operator escrow public key (THU-804), if this BUILD pins one.
+ * Returns `undefined` otherwise — callers spread it into request bodies, where
+ * `JSON.stringify` simply omits the field.
+ *
+ * The pin is the whole trust root (THU-866, C11). No server response is consulted
+ * here — not a key, not an enabled flag — which is what makes escrow unsteerable:
+ * a lying server can neither redirect the AK to a key it holds nor suppress the
+ * operator's copy. A build with no pin escrows nothing, no matter what the server
+ * claims. The server keeps only `ORG_ESCROW_ENABLED`, to make the envelope
+ * mandatory.
+ *
  * Always call this with the NEW AK of the flow (the same key being wrapped into
  * the device envelopes) — never the old one.
  */
-export const buildOrgEnvelope = async (ak: CryptoKey, httpClient: HttpClient): Promise<string | undefined> => {
-  const { enabled, publicKey } = await fetchOrgPublicKey(httpClient)
-  if (!enabled || publicKey === null) {
+export const buildOrgEnvelope = async (ak: CryptoKey): Promise<string | undefined> => {
+  const pinnedPublicKey = pinnedOrgEscrowPublicKey()
+  if (!pinnedPublicKey) {
     return undefined
   }
-  return wrapAKForOrg(ak, await importOrgPublicKey(publicKey))
+  return wrapAKForOrg(ak, await importOrgPublicKey(pinnedPublicKey))
 }
 
 // =============================================================================
@@ -543,7 +551,7 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     kdfSalt: recovery.kdfSalt,
     wrappedKeys: [{ keyId: initialKeyId, wrappedKey }],
     ...recoverySlot,
-    orgEnvelope: await buildOrgEnvelope(extractableAK, httpClient),
+    orgEnvelope: await buildOrgEnvelope(extractableAK),
   })
 
   // AK stored LAST so its presence always implies a complete local keyring.
@@ -924,9 +932,9 @@ const runAKRotation = async (
 
   const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys, recovery.kdfSalt, canarySecret)
 
-  // Built OUTSIDE the try below: a failed org-key fetch must surface as-is, not
-  // masquerade as a stale-rotation 4xx.
-  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient)
+  // Built OUTSIDE the try below: a malformed escrow pin is a build
+  // misconfiguration and must surface as-is, not masquerade as a stale-rotation 4xx.
+  const orgEnvelope = await buildOrgEnvelope(newAK)
 
   try {
     await postRotate(httpClient, {
@@ -1153,9 +1161,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')
 
-  // Built OUTSIDE the try below: a failed org-key fetch must surface as-is, not
-  // be re-classified as a 409 CAS-loss.
-  const orgEnvelope = await buildOrgEnvelope(newAK, httpClient)
+  // Built OUTSIDE the try below: a malformed escrow pin is a build
+  // misconfiguration and must surface as-is, not be re-classified as a 409 CAS-loss.
+  const orgEnvelope = await buildOrgEnvelope(newAK)
 
   try {
     const { key_version: keyVersion } = await postUpgrade(httpClient, {

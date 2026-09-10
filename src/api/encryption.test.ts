@@ -12,7 +12,6 @@ import {
   storeEnvelope,
   fetchMyEnvelope,
   fetchEncryptionMetadata,
-  fetchOrgPublicKey,
   fetchWrappedKeys,
   fetchWrappedKey,
   postWrappedKey,
@@ -188,17 +187,6 @@ describe('encryption API client', () => {
 
       expect(getLastRequest().url).toContain('/encryption/canary')
       expect(result).toEqual(meta)
-    })
-
-    it('fetchOrgPublicKey hits /encryption/org-key and returns the DTO', async () => {
-      const orgKey = { enabled: true, publicKey: 'org-pk-base64', fingerprint: 'fp-base64' }
-      const { httpClient, getLastRequest } = createCapturingHttpClient(orgKey)
-
-      const result = await fetchOrgPublicKey(httpClient)
-
-      expect(getLastRequest().url).toContain('/encryption/org-key')
-      expect(getLastRequest().method).toBe('GET')
-      expect(result).toEqual(orgKey)
     })
 
     it('fetchWrappedKeys / fetchWrappedKey hit the keyring routes', async () => {

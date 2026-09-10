@@ -12,7 +12,6 @@ import type {
   EncryptionMetadataResponse,
   KeyId,
   RecoverySlotRequest,
-  OrgPublicKeyResponse,
   RotateRequest,
   RotateResponse,
   UpgradeRequest,
@@ -161,13 +160,6 @@ export const cancelPending = async (httpClient: HttpClient): Promise<void> => {
  */
 export const fetchEncryptionMetadata = async (httpClient: HttpClient): Promise<EncryptionMetadataResponse> =>
   httpClient.get('encryption/canary').json<EncryptionMetadataResponse>()
-
-/**
- * Fetch the operator escrow public key (THU-804). `enabled: false` (with null
- * key/fingerprint) means the deployment has no org escrow configured.
- */
-export const fetchOrgPublicKey = async (httpClient: HttpClient): Promise<OrgPublicKeyResponse> =>
-  httpClient.get('encryption/org-key').json<OrgPublicKeyResponse>()
 
 /** Check if the user has encryption set up (metadata exists on server). */
 export const checkCanaryExists = async (httpClient: HttpClient): Promise<boolean> => {

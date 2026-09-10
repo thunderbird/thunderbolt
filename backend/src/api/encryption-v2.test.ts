@@ -1145,21 +1145,15 @@ describe('Encryption API (v2)', () => {
 
   describe('org escrow', () => {
     let escrowApp: ReturnType<typeof createEncryptionRoutes>
-    let orgPublicKey: string
 
-    beforeEach(async () => {
-      const orgKeypair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
-      orgPublicKey = Buffer.from(await crypto.subtle.exportKey('raw', orgKeypair.publicKey)).toString('base64')
-      const escrowSettings = createTestSettings({ orgEscrowEnabled: true, orgEscrowPublicKey: orgPublicKey })
+    // THU-866: enabling escrow is the server's entire configuration surface — it
+    // holds no escrow public key, so there is nothing here to generate or match.
+    beforeEach(() => {
+      const escrowSettings = createTestSettings({ orgEscrowEnabled: true })
       escrowApp = new Elysia().use(createEncryptionRoutes(createAuth(db), db, escrowSettings)) as unknown as ReturnType<
         typeof createEncryptionRoutes
       >
     })
-
-    const expectedFingerprint = async () => {
-      const digest = await crypto.subtle.digest('SHA-256', Buffer.from(orgPublicKey, 'base64'))
-      return Buffer.from(digest).toString('base64')
-    }
 
     const orgEnvelopeRow = async (userId: string) =>
       db
@@ -1191,28 +1185,6 @@ describe('Encryption API (v2)', () => {
         }),
       )
 
-    describe('GET /encryption/org-key', () => {
-      it('returns disabled with null key and fingerprint by default', async () => {
-        await createUserAndSession(p('u'), p('tok'))
-        const res = await app.handle(new Request(`${baseUrl}/encryption/org-key`, { headers: authHeaders(p('tok')) }))
-        expect(res.status).toBe(200)
-        expect(await res.json()).toEqual({ enabled: false, publicKey: null, fingerprint: null })
-      })
-
-      it('returns the configured key and its SHA-256 fingerprint when enabled', async () => {
-        await createUserAndSession(p('u'), p('tok'))
-        const res = await escrowApp.handle(
-          new Request(`${baseUrl}/encryption/org-key`, { headers: authHeaders(p('tok')) }),
-        )
-        expect(res.status).toBe(200)
-        expect(await res.json()).toEqual({
-          enabled: true,
-          publicKey: orgPublicKey,
-          fingerprint: await expectedFingerprint(),
-        })
-      })
-    })
-
     describe('first-device bootstrap', () => {
       it('rejects a bootstrap missing orgEnvelope when escrow is enabled (400)', async () => {
         await createUserAndSession(p('u'), p('tok'), p('d'))
@@ -1225,7 +1197,7 @@ describe('Encryption API (v2)', () => {
         expect(await orgEnvelopeRow(p('u'))).toBeNull()
       })
 
-      it('persists the org envelope with the key fingerprint when provided', async () => {
+      it('persists the org envelope verbatim when provided', async () => {
         await createUserAndSession(p('u'), p('tok'), p('d'))
         await insertDevice(p('d'), p('u'))
 
@@ -1234,7 +1206,6 @@ describe('Encryption API (v2)', () => {
         expect(res.status).toBe(200)
         const row = await orgEnvelopeRow(p('u'))
         expect(row?.wrappedAk).toBe('org-wrapped-ak')
-        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
       })
 
       it('ignores a provided orgEnvelope entirely when escrow is disabled', async () => {
@@ -1317,7 +1288,6 @@ describe('Encryption API (v2)', () => {
         expect(res.status).toBe(200)
         const row = await orgEnvelopeRow(p('u'))
         expect(row?.wrappedAk).toBe('org-wrapped-new-ak')
-        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
       })
 
       it('never persists an orgEnvelope when escrow is disabled', async () => {
@@ -1385,7 +1355,6 @@ describe('Encryption API (v2)', () => {
         expect(res.status).toBe(200)
         const row = await orgEnvelopeRow(p('u'))
         expect(row?.wrappedAk).toBe('org-wrapped-migrated-ak')
-        expect(row?.keyFingerprint).toBe(await expectedFingerprint())
       })
 
       it('never persists an orgEnvelope when escrow is disabled', async () => {

@@ -301,8 +301,8 @@ const main = async (): Promise<void> => {
   const sql = postgres(args.dbUrl, { max: 1, onnotice: () => {} })
 
   try {
-    const envelopeRows = await sql<{ wrapped_ak: string; key_fingerprint: string }[]>`
-      SELECT wrapped_ak, key_fingerprint FROM org_envelopes WHERE user_id = ${args.userId}
+    const envelopeRows = await sql<{ wrapped_ak: string }[]>`
+      SELECT wrapped_ak FROM org_envelopes WHERE user_id = ${args.userId}
     `
     const envelopeRow = envelopeRows[0]
     if (!envelopeRow) {
@@ -311,7 +311,7 @@ const main = async (): Promise<void> => {
           'or ORG_ESCROW_ENABLED was never turned on',
       )
     }
-    console.error(`Found org envelope (key fingerprint ${envelopeRow.key_fingerprint})`)
+    console.error('Found org envelope')
 
     const ak = await unwrapEscrowedAK(parseOrgEnvelope(envelopeRow.wrapped_ak), args.privateKey)
     console.error('Account Key recovered')

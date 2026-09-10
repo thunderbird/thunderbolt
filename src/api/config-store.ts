@@ -9,9 +9,10 @@ import { persist } from 'zustand/middleware'
 export type AppConfig = {
   /**
    * Whether the deployment escrows every AK to an operator-held key (THU-804).
-   * Surfaced for the deferred end-user disclosure UI; nothing reads it yet — the
-   * wrap path takes the authoritative key straight from `GET /encryption/org-key`
-   * rather than branching on this cached flag.
+   * Surfaced for the deferred end-user disclosure UI; nothing reads it yet, and
+   * the wrap path must never branch on it — escrow is driven solely by the
+   * build-time pin (`pinnedOrgEscrowPublicKey`), since any server-supplied flag
+   * or key can be a lie (THU-866, C11).
    */
   orgEscrowEnabled?: boolean
   /** Deployment-level UI capability flags from `GET /config`. Optional so an

@@ -88,11 +88,11 @@ describe('DAL: encryption', () => {
     })
 
     it('upsertOrgEnvelope inserts then replaces the single per-user row', async () => {
-      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-1', keyFingerprint: 'fp-1' })
-      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-1', keyFingerprint: 'fp-1' })
+      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-1' })
+      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-1' })
 
-      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-2', keyFingerprint: 'fp-2' })
-      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-2', keyFingerprint: 'fp-2' })
+      await upsertOrgEnvelope(db, { userId, wrappedAk: 'wrapped-2' })
+      expect(await getOrgEnvelope(db, userId)).toEqual({ wrappedAk: 'wrapped-2' })
     })
   })
 

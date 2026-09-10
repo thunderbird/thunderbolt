@@ -53,7 +53,6 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   corsAllowHeaders: 'Content-Type,Authorization',
   corsExposeHeaders: '',
   orgEscrowEnabled: false,
-  orgEscrowPublicKey: '',
   swaggerEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,

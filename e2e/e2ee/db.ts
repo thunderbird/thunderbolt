@@ -218,17 +218,20 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
 
 export type OrgEnvelopeRow = {
   wrappedAk: string
-  keyFingerprint: string
 }
 
-/** Block until the org-escrow envelope row exists for the user (THU-804). */
+/**
+ * Block until the org-escrow envelope row exists for the user (THU-804). The row
+ * is opaque ciphertext — there is no fingerprint column to assert on (THU-866),
+ * so proving WHICH key it is wrapped to means running the offline decrypt tool.
+ */
 export const waitForOrgEnvelope = async (userId: string): Promise<OrgEnvelopeRow> =>
   poll(async () => {
-    const rows = await sql<{ wrapped_ak: string; key_fingerprint: string }[]>`
-      SELECT wrapped_ak, key_fingerprint FROM org_envelopes WHERE user_id = ${userId}
+    const rows = await sql<{ wrapped_ak: string }[]>`
+      SELECT wrapped_ak FROM org_envelopes WHERE user_id = ${userId}
     `
     const row = rows[0]
-    return row ? { wrappedAk: row.wrapped_ak, keyFingerprint: row.key_fingerprint } : null
+    return row ? { wrappedAk: row.wrapped_ak } : null
   }, 30_000)
 
 export const waitForConsumedChallenge = async (userId: string, operation: string): Promise<void> => {

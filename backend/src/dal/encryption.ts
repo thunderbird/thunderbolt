@@ -62,7 +62,7 @@ export const deleteEnvelope = async (database: typeof DbType, deviceId: string, 
 /** Get the org-escrow envelope for a user (the AK wrapped to the operator escrow key). */
 export const getOrgEnvelope = async (database: typeof DbType, userId: string) =>
   database
-    .select({ wrappedAk: orgEnvelopesTable.wrappedAk, keyFingerprint: orgEnvelopesTable.keyFingerprint })
+    .select({ wrappedAk: orgEnvelopesTable.wrappedAk })
     .from(orgEnvelopesTable)
     .where(eq(orgEnvelopesTable.userId, userId))
     .limit(1)
@@ -72,16 +72,13 @@ export const getOrgEnvelope = async (database: typeof DbType, userId: string) =>
  * Upsert the org-escrow envelope for a user. One row per user — every AK
  * change (setup / rotate / upgrade) replaces it inside the same transaction.
  */
-export const upsertOrgEnvelope = async (
-  database: typeof DbType,
-  envelope: { userId: string; wrappedAk: string; keyFingerprint: string },
-) =>
+export const upsertOrgEnvelope = async (database: typeof DbType, envelope: { userId: string; wrappedAk: string }) =>
   database
     .insert(orgEnvelopesTable)
     .values(envelope)
     .onConflictDoUpdate({
       target: orgEnvelopesTable.userId,
-      set: { wrappedAk: envelope.wrappedAk, keyFingerprint: envelope.keyFingerprint, updatedAt: new Date() },
+      set: { wrappedAk: envelope.wrappedAk, updatedAt: new Date() },
     })
 
 // ─── Encryption metadata ──────────────────────────────────────────────

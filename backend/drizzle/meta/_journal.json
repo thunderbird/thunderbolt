@@ -232,6 +232,13 @@
       "when": 1788958385215,
       "tag": "0032_thick_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789058654672,
+      "tag": "0033_new_molten_man",
+      "breakpoints": true
     }
   ]
 }

@@ -8,9 +8,11 @@
  * Org Escrow Keygen (THU-804 POC)
  *
  * Generates the operator-held P-256 escrow keypair for enterprise key escrow.
- * The PUBLIC half goes into the app server's `ORG_ESCROW_PUBLIC_KEY` env var;
- * the PRIVATE half must be stored OFFLINE by the operator and is consumed only
- * by scripts/org-escrow-decrypt.ts. Never imported by the running app.
+ * The PUBLIC half is the escrow PIN: it goes into the CLIENT build as
+ * `VITE_ORG_ESCROW_PUBLIC_KEY`, not onto the app server (THU-866 — a server that
+ * could choose the wrap target could escrow every account to itself). The
+ * PRIVATE half must be stored OFFLINE by the operator and is consumed only by
+ * scripts/org-escrow-decrypt.ts. Never imported by the running app.
  *
  * Usage:
  *   bun scripts/org-escrow-keygen.ts           # human-readable output
@@ -18,11 +20,11 @@
  */
 
 export type EscrowKeypair = {
-  /** Base64 raw uncompressed P-256 point (65 bytes) — the ORG_ESCROW_PUBLIC_KEY value. */
+  /** Base64 raw uncompressed P-256 point (65 bytes) — the VITE_ORG_ESCROW_PUBLIC_KEY value. */
   publicKey: string
   /** Base64 PKCS8 private key — operator-held, offline only. */
   privateKey: string
-  /** base64(SHA-256(raw public key bytes)) — display/audit only. */
+  /** base64(SHA-256(raw public key bytes)) — operator bookkeeping only; nothing stores or checks it. */
   fingerprint: string
 }
 
@@ -53,9 +55,10 @@ const main = async (): Promise<void> => {
   }
 
   console.log('Org escrow keypair generated (ECDH P-256).\n')
-  console.log('Public key — set this on the app server:')
-  console.log(`  ORG_ESCROW_PUBLIC_KEY=${keypair.publicKey}\n`)
-  console.log('Fingerprint (base64 SHA-256 of the raw public key, for display/audit):')
+  console.log('Public key — pin this in the CLIENT build (never on the server):')
+  console.log(`  VITE_ORG_ESCROW_PUBLIC_KEY=${keypair.publicKey}\n`)
+  console.log('The server only needs ORG_ESCROW_ENABLED=true; it holds no escrow key.\n')
+  console.log('Fingerprint (base64 SHA-256 of the raw public key, for your own records):')
   console.log(`  ${keypair.fingerprint}\n`)
   console.log('Private key (base64 PKCS8):')
   console.log(`  ${keypair.privateKey}\n`)

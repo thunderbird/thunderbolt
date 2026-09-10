@@ -41,7 +41,6 @@ import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
-import { getOrgKeyInfo } from '@/lib/org-escrow'
 import {
   type ChallengeOperation,
   type RecoverySlotRequest,
@@ -239,6 +238,12 @@ const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
  * escrow is enabled the envelope is REQUIRED (400 when missing) and upserted;
  * when disabled it is ignored entirely and never persisted. Device approval
  * does NOT route through here — approving a device does not change the AK.
+ *
+ * `ORG_ESCROW_ENABLED` is all this needs (THU-866). The server holds no escrow
+ * public key: the client wraps to the key its own build pins, so the envelope
+ * arrives as opaque ciphertext and the only server-side decision left is whether
+ * one is mandatory. That flag is what stops an account slipping through
+ * unescrowed on a deployment that expects escrow.
  */
 const persistOrgEnvelope = async (
   txDb: typeof DbType,
@@ -246,14 +251,13 @@ const persistOrgEnvelope = async (
   userId: string,
   orgEnvelope: string | undefined,
 ): Promise<void> => {
-  const orgKey = getOrgKeyInfo(settings)
-  if (!orgKey.enabled) {
+  if (!settings.orgEscrowEnabled) {
     return
   }
   if (!orgEnvelope) {
     throw new BadRequestError('orgEnvelope is required when org escrow is enabled')
   }
-  await upsertOrgEnvelope(txDb, { userId, wrappedAk: orgEnvelope, keyFingerprint: orgKey.fingerprint })
+  await upsertOrgEnvelope(txDb, { userId, wrappedAk: orgEnvelope })
 }
 
 /** Map a thrown BadRequest/Forbidden/SchemeConflict error onto the response; rethrow anything else. */
@@ -654,20 +658,6 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           primary_key_id: metadata.primaryKeyId,
           scheme_version: metadata.schemeVersion,
         }
-      },
-      { auth: true },
-    )
-    // Operator escrow public key (THU-804). The key itself is not a secret —
-    // it is public-key material — but the endpoint is auth-gated like every
-    // other encryption route so deployment configuration is not world-readable.
-    .get(
-      '/encryption/org-key',
-      () => {
-        const orgKey = getOrgKeyInfo(settings)
-        if (!orgKey.enabled) {
-          return { enabled: false, publicKey: null, fingerprint: null }
-        }
-        return { enabled: true, publicKey: orgKey.publicKey, fingerprint: orgKey.fingerprint }
       },
       { auth: true },
     )

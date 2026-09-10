@@ -3,16 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelDeepseekV4Flash } from '@shared/defaults/models'
+import { defaultModelGlm53Flash } from '@shared/defaults/models'
 
-export const defaultModelProfileDeepseekV4Flash: ModelProfile = {
-  modelId: defaultModelDeepseekV4Flash.id,
+export const defaultModelProfileGlm53Flash: ModelProfile = {
+  modelId: defaultModelGlm53Flash.id,
   temperature: 0.2,
   maxSteps: 20,
   maxAttempts: 2,
   nudgeThreshold: 6,
   useSystemMessageModeDeveloper: 0,
-  providerOptions: null,
+  providerOptions: { reasoningEffort: 'low' },
   toolsOverride: null,
   linkPreviewsOverride: null,
   chatModeAddendum: null,

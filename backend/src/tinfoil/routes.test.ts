@@ -485,6 +485,8 @@ describe('createTinfoilRoutes', () => {
     )
 
     it.each([
+      ['glm-5-3', '1500', '5250'],
+      ['glm-5-3-flash', '300', '700'],
       ['glm-5-2', '1500', '5250'],
       ['deepseek-v4-flash', '300', '700'],
     ])(
@@ -574,7 +576,7 @@ describe('createTinfoilRoutes', () => {
         expect(claims).toMatchObject({
           userId,
           provider: 'tinfoil',
-          model: 'glm-5-2',
+          model: 'glm-5-3',
           inputNanoUsdPerToken: '1500',
           outputNanoUsdPerToken: '5250',
         })
@@ -586,7 +588,7 @@ describe('createTinfoilRoutes', () => {
             context: {
               event: 'inference_usage_receipt_issued',
               provider: 'tinfoil',
-              model: 'glm-5-2',
+              model: 'glm-5-3',
               eventId: claims.eventId,
               route: '/tinfoil' + path.split('?')[0],
             },
@@ -650,12 +652,12 @@ describe('createTinfoilRoutes', () => {
       await response.arrayBuffer()
     })
 
-    it.each([undefined, 'glm-5-2', 'deepseek-v4-flash'])(
+    it.each([undefined, 'glm-5-3', 'glm-5-3-flash', 'glm-5-2', 'deepseek-v4-flash'])(
       'rejects before fetch when the price for header %s is missing',
       async (model) => {
         await database
           .delete(inferencePrices)
-          .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, model ?? 'glm-5-2')))
+          .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, model ?? 'glm-5-3')))
         const app = buildApp()
 
         const response = await app.handle(
@@ -817,7 +819,7 @@ describe('createTinfoilRoutes', () => {
       expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
         userId: 'test-user',
         provider: 'tinfoil',
-        model: 'glm-5-2',
+        model: 'glm-5-3',
         inputNanoUsdPerToken: '1500',
         outputNanoUsdPerToken: '5250',
       })
@@ -844,7 +846,7 @@ describe('createTinfoilRoutes', () => {
       await database
         .update(inferencePrices)
         .set({ inputNanoUsdPerToken: 9_999n, outputNanoUsdPerToken: 8_888n })
-        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-2')))
+        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-3')))
       upstreamResponse.resolve(makeOkResponse())
 
       const response = await responsePromise

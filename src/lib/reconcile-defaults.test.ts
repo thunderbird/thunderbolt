@@ -13,7 +13,8 @@ import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTab
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
-  defaultModelGlm52,
+  defaultModelGlm53,
+  defaultModelGlm53Flash,
   defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
@@ -807,6 +808,26 @@ describe('reconcileDefaultsForTable', () => {
   })
 })
 
+for (const [target, model, name] of [
+  [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
+  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+] as const) {
+  test(`reconciliation upgrades an edited ${model} row outside the hash gate`, async () => {
+    const db = getDb()
+    const legacy = { ...target, model, name }
+    const edited = { ...legacy, name: 'My model', contextWindow: 123_456, defaultHash: hashModel(legacy) }
+    await db.insert(modelsTable).values(edited)
+    await db.insert(settingsTable).values({ key: versionMarkerKeys.models, value: String(defaultModelsVersion) })
+
+    await reconcileDefaults(db, { initialSyncCompleted: false })
+
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, target.id)).get()).toEqual({
+      ...edited,
+      model: target.model,
+    })
+  })
+}
+
 describe('Opus 5 data migration', () => {
   const legacyDefault = (): SharedModel => ({
     ...defaultModelOpus5,
@@ -1015,7 +1036,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
     await db
       .update(modelsTable)
       .set({ description: 'Confidential chat via Tinfoil' })
-      .where(eq(modelsTable.id, defaultModelGlm52.id))
+      .where(eq(modelsTable.id, defaultModelGlm53.id))
     await db
       .update(settingsTable)
       .set({ value: String(defaultModelsVersion - 1) })
@@ -1023,7 +1044,7 @@ describe('reconcileDefaults version gate (THU-637)', () => {
 
     await reconcileDefaults(db)
 
-    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm52.id)).get()
+    const upgraded = await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelGlm53.id)).get()
     expect(upgraded?.description).toBe('Confidential chat via Thunderbolt')
     expect(upgraded?.provider).toBe('tinfoil')
     expect(upgraded?.isConfidential).toBe(1)

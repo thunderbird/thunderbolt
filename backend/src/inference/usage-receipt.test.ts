@@ -82,6 +82,11 @@ describe('inference usage receipts', () => {
     expect(verifyInferenceUsageReceipt(token, secret, nowSeconds)).toEqual(validClaims)
   })
 
+  it.each(['glm-5-2', 'deepseek-v4-flash'])('verifies a signed receipt carrying legacy slug %s', (model) => {
+    const claims = { ...validClaims, model }
+    expect(verifyInferenceUsageReceipt(signPayload(claims), secret, nowSeconds)).toEqual(claims)
+  })
+
   it.each([
     ['two segments', 'iu1.payload'],
     ['four segments', 'iu1.payload.signature.extra'],

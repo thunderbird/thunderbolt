@@ -15,7 +15,7 @@ import { devicesTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import { createTestSettings } from '@/test-utils/settings'
-import { initialKeyId, legacyKeyId } from '@shared/e2ee-types'
+import { deviceBindHkdfInfo, initialKeyId, legacyKeyId } from '@shared/e2ee-types'
 import { createHmac } from 'crypto'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -66,7 +66,13 @@ describe('Encryption API (v2)', () => {
     ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
   })
 
-  const createUserAndSession = async (userId: string, token: string) => {
+  /**
+   * `deviceId` binds the session to a device the way `POST /devices/me/bind`
+   * does in production (THU-873). Every trust route resolves its caller from
+   * `session.device_id`, so a test acting as a device must say which one; the
+   * unbound form is itself a case worth exercising (403, fail-closed).
+   */
+  const createUserAndSession = async (userId: string, token: string, deviceId?: string) => {
     await db.insert(userTable).values({
       id: userId,
       name: 'Test User',
@@ -77,13 +83,27 @@ describe('Encryption API (v2)', () => {
     })
     await db
       .insert(sessionTable)
-      .values({ id: `session-${userId}`, expiresAt, token, createdAt: now, updatedAt: now, userId })
+      .values({ id: `session-${userId}`, expiresAt, token, createdAt: now, updatedAt: now, userId, deviceId })
   }
+
+  /** Re-bind an existing test session — for flows that switch caller device mid-test. */
+  const bindSession = async (userId: string, deviceId: string | null) =>
+    db
+      .update(sessionTable)
+      .set({ deviceId })
+      .where(eq(sessionTable.id, `session-${userId}`))
 
   const insertDevice = async (
     id: string,
     userId: string,
-    options: { trusted?: boolean; approvalPending?: boolean; revokedAt?: Date; keyless?: boolean } = {},
+    options: {
+      trusted?: boolean
+      approvalPending?: boolean
+      revokedAt?: Date
+      keyless?: boolean
+      /** A REAL base64 raw P-256 point — required by the bind handshake, which seals to it. */
+      publicKey?: string
+    } = {},
   ) => {
     const { trusted = false, approvalPending = !trusted, revokedAt, keyless = false } = options
     await db.insert(devicesTable).values({
@@ -94,7 +114,7 @@ describe('Encryption API (v2)', () => {
       approvalPending,
       // `keyless` mirrors a bridge (`registerBridgeDevice`) or a v1 device that
       // never published v2 keys: trusted, but no envelope can be built for it.
-      publicKey: keyless ? null : 'pk-test',
+      publicKey: keyless ? null : (options.publicKey ?? 'pk-test'),
       mlkemPublicKey: keyless ? null : 'mlkem-pk-test',
       lastSeen: now,
       createdAt: now,
@@ -191,7 +211,7 @@ describe('Encryption API (v2)', () => {
     it('sets up a v2 account atomically (metadata scheme 2 + wrapped key "0")', async () => {
       const keypair = await generateSigningKeypair()
       const signingPublicKey = await exportSigningPublicKey(keypair)
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
 
       const response = await app.handle(
@@ -232,7 +252,7 @@ describe('Encryption API (v2)', () => {
 
     it('rejects bootstrap without a wrapped key for the primary key_id "0"', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
 
       const response = await app.handle(
@@ -263,7 +283,7 @@ describe('Encryption API (v2)', () => {
       ['recoveryAttestation', { recoveryEcdhPublicKey: 'e', recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w' }],
     ])('rejects bootstrap missing %s — no account may exist without a usable recovery slot', async (_label, slot) => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
 
       const response = await app.handle(
@@ -295,7 +315,7 @@ describe('Encryption API (v2)', () => {
 
     it('rejects bootstrap when metadata already exists without a proof', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('d'), p('u'))
 
@@ -317,7 +337,7 @@ describe('Encryption API (v2)', () => {
   describe('POST /devices/:deviceId/envelope — approval (challenge proof)', () => {
     it('approves a pending device with a valid rotate/approve signature', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertEnvelope(p('caller'), p('u'))
@@ -343,7 +363,7 @@ describe('Encryption API (v2)', () => {
     it('rejects approval when the signature is forged (wrong keypair)', async () => {
       const realKeypair = await generateSigningKeypair()
       const attackerKeypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(realKeypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertEnvelope(p('caller'), p('u'))
@@ -365,7 +385,7 @@ describe('Encryption API (v2)', () => {
 
     it('rejects a pre-flip v1 account (null signing key) fail-closed', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair), { schemeVersion: 1, signingKeyNull: true })
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertEnvelope(p('caller'), p('u'))
@@ -388,7 +408,7 @@ describe('Encryption API (v2)', () => {
 
   describe('GET /encryption/challenge', () => {
     it('issues a single-use nonce bound to (user, operation, device)', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true })
 
       const res = await app.handle(
@@ -406,7 +426,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('rejects an unknown operation', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true })
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/challenge?operation=bogus`, { headers: authHeaders(p('tok'), p('d')) }),
@@ -415,7 +435,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('rejects a missing X-Device-ID header', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/challenge?operation=approve`, { headers: authHeaders(p('tok')) }),
       )
@@ -424,7 +444,7 @@ describe('Encryption API (v2)', () => {
 
     it('nonce consumes exactly once (replay is rejected)', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertEnvelope(p('caller'), p('u'))
@@ -457,7 +477,7 @@ describe('Encryption API (v2)', () => {
 
   describe('GET/POST /encryption/keys', () => {
     it('returns the full keyring for a non-revoked device', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true })
       await insertWrappedKeyRow(p('u'), initialKeyId)
       await insertWrappedKeyRow(p('u'), legacyKeyId)
@@ -471,7 +491,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('rejects a revoked device (403)', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true, revokedAt: now })
       await insertWrappedKeyRow(p('u'), initialKeyId)
 
@@ -482,7 +502,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('returns one wrapped key and 404 for an unknown key_id', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true })
       await insertWrappedKeyRow(p('u'), initialKeyId, 'the-wrapped-dek')
 
@@ -500,7 +520,7 @@ describe('Encryption API (v2)', () => {
 
     it('POST mints a new key_id idempotently (ON CONFLICT DO NOTHING)', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('d'), p('u'), { trusted: true })
 
@@ -535,7 +555,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('POST rejects an untrusted device (before proof verification)', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u')) // pending
 
       const res = await app.handle(
@@ -554,7 +574,7 @@ describe('Encryption API (v2)', () => {
 
     it('POST rejects a mint without a valid challenge proof', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('d'), p('u'), { trusted: true })
 
@@ -599,7 +619,7 @@ describe('Encryption API (v2)', () => {
       )
 
     it('cancels the pending request when the token matches', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
 
       const res = await cancel(p('d'), { pendingSince: now.toISOString() })
@@ -612,7 +632,7 @@ describe('Encryption API (v2)', () => {
       // Regression: the cancel is fired without awaiting it, so a slow one used
       // to land after the user retried and wipe the FRESH request — the retry
       // vanished and the approving device showed "Request denied".
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
       const staleToken = new Date(now.getTime() - 60_000).toISOString()
 
@@ -623,7 +643,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('cancels unconditionally when no token is supplied', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'))
 
       const res = await cancel(p('d'))
@@ -633,7 +653,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('returns the pendingSince token on registration', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
 
       const res = await app.handle(
         new Request(`${baseUrl}/devices`, {
@@ -655,7 +675,7 @@ describe('Encryption API (v2)', () => {
 
   describe('GET /encryption/envelope-targets', () => {
     it('returns exactly the devices a rotation must cover, with their public keys', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertDevice(p('peer'), p('u'), { trusted: true })
       // Excluded: cannot hold an envelope, or must not receive the new AK.
@@ -677,7 +697,7 @@ describe('Encryption API (v2)', () => {
     })
 
     it('rejects a revoked caller', async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true, revokedAt: now })
 
       const res = await app.handle(
@@ -690,7 +710,7 @@ describe('Encryption API (v2)', () => {
   describe('POST /encryption/rotate', () => {
     const setupRotatable = async (keyIds: string[]) => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertEnvelope(p('caller'), p('u'))
@@ -898,7 +918,7 @@ describe('Encryption API (v2)', () => {
     const canarySecret = 'the-v1-content-key-canary-secret'
 
     const setupV1 = async () => {
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), 'unused', {
         schemeVersion: 1,
         signingKeyNull: true,
@@ -1080,7 +1100,7 @@ describe('Encryption API (v2)', () => {
   describe('POST /devices/:deviceId/deny', () => {
     it('denies a pending device with a valid proof', async () => {
       const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertDevice(p('target'), p('u'))
@@ -1104,7 +1124,7 @@ describe('Encryption API (v2)', () => {
     it('rejects deny with a forged proof', async () => {
       const keypair = await generateSigningKeypair()
       const attacker = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'))
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
       await insertDevice(p('caller'), p('u'), { trusted: true })
       await insertDevice(p('target'), p('u'))
@@ -1195,7 +1215,7 @@ describe('Encryption API (v2)', () => {
 
     describe('first-device bootstrap', () => {
       it('rejects a bootstrap missing orgEnvelope when escrow is enabled (400)', async () => {
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('d'))
         await insertDevice(p('d'), p('u'))
 
         const res = await bootstrap(escrowApp, await bootstrapBody())
@@ -1206,7 +1226,7 @@ describe('Encryption API (v2)', () => {
       })
 
       it('persists the org envelope with the key fingerprint when provided', async () => {
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('d'))
         await insertDevice(p('d'), p('u'))
 
         const res = await bootstrap(escrowApp, await bootstrapBody({ orgEnvelope: 'org-wrapped-ak' }))
@@ -1218,7 +1238,7 @@ describe('Encryption API (v2)', () => {
       })
 
       it('ignores a provided orgEnvelope entirely when escrow is disabled', async () => {
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('d'))
         await insertDevice(p('d'), p('u'))
 
         const res = await bootstrap(app, await bootstrapBody({ orgEnvelope: 'org-wrapped-ak' }))
@@ -1231,7 +1251,7 @@ describe('Encryption API (v2)', () => {
     describe('device approval', () => {
       it('does NOT require an orgEnvelope (approval does not change the AK)', async () => {
         const keypair = await generateSigningKeypair()
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('caller'))
         await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
         await insertDevice(p('caller'), p('u'), { trusted: true })
         await insertEnvelope(p('caller'), p('u'))
@@ -1254,7 +1274,7 @@ describe('Encryption API (v2)', () => {
     describe('POST /encryption/rotate', () => {
       const setupRotatable = async () => {
         const keypair = await generateSigningKeypair()
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('caller'))
         await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
         await insertDevice(p('caller'), p('u'), { trusted: true })
         await insertEnvelope(p('caller'), p('u'))
@@ -1312,7 +1332,7 @@ describe('Encryption API (v2)', () => {
       const canarySecret = 'the-v1-content-key-canary-secret'
 
       const setupV1 = async () => {
-        await createUserAndSession(p('u'), p('tok'))
+        await createUserAndSession(p('u'), p('tok'), p('caller'))
         await insertV2Metadata(p('u'), 'unused', {
           schemeVersion: 1,
           signingKeyNull: true,
@@ -1410,6 +1430,223 @@ describe('Encryption API (v2)', () => {
       expect(body.recovery_ecdh_public_key).toBeNull()
       expect(body.recovery_mlkem_public_key).toBeNull()
       expect(body.recovery_wrapped_ak).toBeNull()
+    })
+  })
+  // ─── Device–session binding (THU-873) ───────────────────────────────
+
+  describe('device–session binding', () => {
+    /** A device keypair as the client holds it: private half local, `raw` public half stored. */
+    const createDeviceKeys = async () => {
+      const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits'])
+      const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey))
+      return { privateKey: pair.privateKey, publicKeyBase64: Buffer.from(raw).toString('base64') }
+    }
+
+    /** The client half of the handshake (ships as `openBindNonce` in src/crypto/device-bind.ts). */
+    const openSealed = async (
+      privateKey: CryptoKey,
+      sealed: { ephemeral_public_key: string; iv: string; ciphertext: string },
+    ): Promise<string> => {
+      const ephRaw = new Uint8Array(Buffer.from(sealed.ephemeral_public_key, 'base64'))
+      const eph = await crypto.subtle.importKey('raw', ephRaw, { name: 'ECDH', namedCurve: 'P-256' }, false, [])
+      const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: eph }, privateKey, 256)
+      const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'HKDF',
+          hash: 'SHA-256',
+          salt: ephRaw as BufferSource,
+          info: new TextEncoder().encode(deviceBindHkdfInfo),
+        },
+        hkdfKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt'],
+      )
+      const plaintext = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(Buffer.from(sealed.iv, 'base64')) },
+        key,
+        new Uint8Array(Buffer.from(sealed.ciphertext, 'base64')),
+      )
+      return new TextDecoder().decode(plaintext)
+    }
+
+    const bindChallenge = (deviceId: string) =>
+      app.handle(new Request(`${baseUrl}/devices/me/bind-challenge`, { headers: authHeaders(p('tok'), deviceId) }))
+
+    const bind = (deviceId: string, nonce: string) =>
+      app.handle(
+        new Request(`${baseUrl}/devices/me/bind`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), deviceId),
+          body: JSON.stringify({ deviceId, nonce }),
+        }),
+      )
+
+    const sessionDeviceId = async (): Promise<string | null> => {
+      const [row] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.id, `session-${p('u')}`))
+      return row.deviceId
+    }
+
+    it('an unbound session cannot obtain a trust challenge (fail-closed)', async () => {
+      // The THU-873 core: this is the shape the attack spec exercises.
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('victim'), p('u'), { trusted: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=rotate`, {
+          headers: authHeaders(p('tok'), p('victim')),
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toBe('Session is not bound to a device')
+    })
+
+    it('a session bound to one device cannot act as another', async () => {
+      await createUserAndSession(p('u'), p('tok'), p('mine'))
+      await insertDevice(p('mine'), p('u'), { trusted: true })
+      await insertDevice(p('victim'), p('u'), { trusted: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=rotate`, {
+          headers: authHeaders(p('tok'), p('victim')),
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      expect((await res.json()).error).toBe('X-Device-ID does not match the authenticated device')
+    })
+
+    it('does not reveal whether a spoofed device id exists (mismatch is checked first)', async () => {
+      await createUserAndSession(p('u'), p('tok'), p('mine'))
+      await insertDevice(p('mine'), p('u'), { trusted: true })
+
+      const unknown = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=rotate`, {
+          headers: authHeaders(p('tok'), p('nope')),
+        }),
+      )
+
+      // 403 (not 404): an existing and a non-existing sibling are indistinguishable.
+      expect(unknown.status).toBe(403)
+    })
+
+    it('binds a re-authenticated session end to end, restoring its authority', async () => {
+      // The liveness half: a device whose session expired must be able to work
+      // again without re-approval.
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'), { trusted: true, publicKey: keys.publicKeyBase64 })
+
+      const challenge = await bindChallenge(p('d'))
+      expect(challenge.status).toBe(200)
+      const { sealed } = await challenge.json()
+
+      const nonce = await openSealed(keys.privateKey, sealed)
+      const bound = await bind(p('d'), nonce)
+      expect(bound.status).toBe(200)
+      expect(await sessionDeviceId()).toBe(p('d'))
+
+      const challengeAfter = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=rotate`, { headers: authHeaders(p('tok'), p('d')) }),
+      )
+      expect(challengeAfter.status).toBe(200)
+    })
+
+    it('never returns the bind nonce in the clear', async () => {
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'), { trusted: true, publicKey: keys.publicKeyBase64 })
+
+      const challenge = await bindChallenge(p('d'))
+      const body = await challenge.json()
+      const [stored] = await db
+        .select()
+        .from(challengeNoncesTable)
+        .where(eq(challengeNoncesTable.userId, p('u')))
+
+      expect(stored.operation).toBe('bind')
+      expect(JSON.stringify(body)).not.toContain(stored.nonce)
+    })
+
+    it('rejects a bind nonce that was not opened with the device key', async () => {
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'), { trusted: true, publicKey: keys.publicKeyBase64 })
+
+      await bindChallenge(p('d'))
+      const res = await bind(p('d'), 'guessed-nonce')
+
+      expect(res.status).toBe(403)
+      expect(await sessionDeviceId()).toBeNull()
+    })
+
+    it('consumes a bind nonce exactly once', async () => {
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('d'), p('u'), { trusted: true, publicKey: keys.publicKeyBase64 })
+
+      const { sealed } = await (await bindChallenge(p('d'))).json()
+      const nonce = await openSealed(keys.privateKey, sealed)
+
+      expect((await bind(p('d'), nonce)).status).toBe(200)
+      await bindSession(p('u'), null)
+      expect((await bind(p('d'), nonce)).status).toBe(403)
+      expect(await sessionDeviceId()).toBeNull()
+    })
+
+    it('will not issue a bind challenge for a revoked, unknown, or keyless device', async () => {
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('revoked'), p('u'), { trusted: false, revokedAt: now, publicKey: keys.publicKeyBase64 })
+      await insertDevice(p('bridge'), p('u'), { trusted: true, keyless: true })
+
+      expect((await bindChallenge(p('revoked'))).status).toBe(403)
+      expect((await bindChallenge(p('missing'))).status).toBe(404)
+      // A bridge has no key material to seal to, so it can never bind — and never
+      // needs to, since nothing keyless calls a caller-resolving route.
+      expect((await bindChallenge(p('bridge'))).status).toBe(409)
+    })
+
+    it('cannot mint a bind nonce through the cleartext challenge route', async () => {
+      // Domain separation: `bind` is deliberately absent from challengeOperations,
+      // so the route that returns nonces in the clear cannot produce one.
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'), { trusted: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/challenge?operation=bind`, { headers: authHeaders(p('tok'), p('d')) }),
+      )
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Invalid operation')
+    })
+
+    it('POST /devices does not bind a session to an already-trusted device', async () => {
+      // The rebind hole: this branch takes an unverified client-supplied id, so
+      // linking here would let any session inherit any trusted device.
+      await createUserAndSession(p('u'), p('tok'))
+      await insertDevice(p('victim'), p('u'), { trusted: true })
+      await insertEnvelope(p('victim'), p('u'))
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: authHeaders(p('tok')),
+          body: JSON.stringify({
+            deviceId: p('victim'),
+            publicKey: 'attacker-pk',
+            mlkemPublicKey: 'attacker-mlkem-pk',
+          }),
+        }),
+      )
+
+      expect(res.status).toBe(200)
+      expect(await sessionDeviceId()).toBeNull()
     })
   })
 })

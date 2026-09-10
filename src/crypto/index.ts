@@ -47,6 +47,9 @@ export {
   type SigningKeyPair,
 } from './canary'
 
+// Device–session binding (client half of the sealed-nonce handshake)
+export { openBindNonce } from './device-bind'
+
 // Recovery key (seed <-> mnemonic, KDF -> recovery-slot hybrid keypair)
 export {
   generateRecoverySeed,

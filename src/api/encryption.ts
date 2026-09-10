@@ -5,6 +5,7 @@
 import { type HttpClient } from '@/contexts'
 import { HttpError } from '@/lib/http'
 import type {
+  BindChallengeResponse,
   ChallengeOperation,
   ChallengeProof,
   ChallengeResponse,
@@ -120,6 +121,23 @@ export const storeEnvelope = async (
 /** Fetch the wrapped account key (envelope) for the current device. */
 export const fetchMyEnvelope = async (httpClient: HttpClient): Promise<FetchEnvelopeResponse> =>
   httpClient.get('devices/me/envelope').json<FetchEnvelopeResponse>()
+
+/**
+ * Step 1 of the device–session bind handshake (THU-873): ask for a nonce sealed
+ * to this device's registered ECDH public key. The `X-Device-ID` header the
+ * client already sends identifies which device to seal for; it is only a claim,
+ * which is why the answer is unreadable to anyone but that device.
+ */
+export const fetchBindChallenge = async (httpClient: HttpClient): Promise<BindChallengeResponse> =>
+  httpClient.get('devices/me/bind-challenge').json<BindChallengeResponse>()
+
+/** Step 2: echo the opened nonce so the server binds this session to this device. */
+export const bindSession = async (
+  httpClient: HttpClient,
+  params: { deviceId: string; nonce: string },
+): Promise<void> => {
+  await httpClient.post('devices/me/bind', { json: params })
+}
 
 /** Cancel this device's pending approval state (called by the pending device itself). */
 export const cancelPending = async (httpClient: HttpClient): Promise<void> => {

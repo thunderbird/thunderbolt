@@ -235,6 +235,13 @@ export const ecdsaSignAlgorithm = { name: 'ECDSA', hash: 'SHA-256' } as const
 /** Export/import format for the signing PUBLIC key (base64-encoded for transport/storage). */
 export const signingPublicKeyFormat = 'spki' as const
 
+/**
+ * ECDH key algorithm — used by importKey/generateKey on both sides. Device
+ * public keys are stored and transported as base64 `raw` (uncompressed P-256
+ * point), which is what `exportPublicKey` produces.
+ */
+export const ecdhKeyAlgorithm = { name: 'ECDH', namedCurve: 'P-256' } as const
+
 /** Challenge nonce TTL (~5 min) — enforced server-side, informational client-side. */
 export const challengeNonceTtlMs = 5 * 60 * 1000
 
@@ -254,6 +261,53 @@ export type ChallengeProof = {
   nonce: string
   operation: ChallengeOperation
   deviceId: string
+}
+
+// =============================================================================
+// Device–session binding (THU-873) — ECDH-sealed nonce
+// =============================================================================
+
+/**
+ * The trust routes resolve their caller from `session.deviceId`, never from the
+ * client-set `X-Device-ID` header, so a session must first PROVE it belongs to
+ * the device it claims. Every account-wide secret (AK, DEK "0", the
+ * canary-derived signing key) is retained by a revoked device, so none of them
+ * can authenticate a *device*; the only per-device secret is the device's ECDH
+ * private key, whose public half the server already stores.
+ *
+ * So the server SEALS a random nonce to that public key and only the device
+ * holding the private key can open it and echo it back. This binds the session.
+ *
+ * `bind` is deliberately NOT a member of `challengeOperations`: that list gates
+ * `GET /encryption/challenge`, which returns nonces in CLEARTEXT, and it types
+ * `ChallengeProof`. Keeping the two disjoint means a bind nonce can never be
+ * minted in the clear, and can never be replayed as a signature proof.
+ */
+export const bindOperation = 'bind' as const
+
+/** Nonce operations the server may store — the signable ones plus `bind`. */
+export type NonceOperation = ChallengeOperation | typeof bindOperation
+
+/** HKDF `info` for the bind-nonce sealing key. Domain-separates it from every other derivation. */
+export const deviceBindHkdfInfo = 'thunderbolt-device-bind-v1'
+
+/**
+ * A bind nonce sealed to one device's ECDH public key. All three fields are
+ * base64. The ephemeral public key is `raw` P-256 (matching how device public
+ * keys are stored) and doubles as the HKDF salt, binding the derivation to this
+ * exchange.
+ */
+export type SealedBindNonce = {
+  ephemeral_public_key: string
+  iv: string
+  ciphertext: string
+}
+
+/** Issued by GET /v1/devices/me/bind-challenge. */
+export type BindChallengeResponse = {
+  sealed: SealedBindNonce
+  /** ISO-8601 expiry. */
+  expires_at: string
 }
 
 // =============================================================================

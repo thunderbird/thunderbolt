@@ -10,7 +10,7 @@ import {
   orgEnvelopesTable,
   wrappedKeysTable,
 } from '@/db/schema'
-import type { ChallengeOperation, KeyId } from '@shared/e2ee-types'
+import type { KeyId, NonceOperation } from '@shared/e2ee-types'
 import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 
 // ─── Envelopes ────────────────────────────────────────────────────────
@@ -312,12 +312,18 @@ const generateNonce = () => {
 }
 
 /**
- * Issue a single-use challenge nonce bound to (user, operation, device).
- * Returns the nonce and its expiry for the ChallengeResponse DTO.
+ * Issue a single-use nonce bound to (user, operation, device). Returns the nonce
+ * and its expiry for the ChallengeResponse DTO.
+ *
+ * `operation` is a `NonceOperation`, which is wider than the signable
+ * `ChallengeOperation` set: it also covers `bind` (THU-873), whose nonce is
+ * never signed and is only ever returned SEALED to the device's public key.
+ * `GET /encryption/challenge` still validates against `challengeOperations`, so
+ * a bind nonce cannot be minted in cleartext through that route.
  */
 export const issueChallengeNonce = async (
   database: typeof DbType,
-  params: { userId: string; operation: ChallengeOperation; deviceId: string; ttlMs: number },
+  params: { userId: string; operation: NonceOperation; deviceId: string; ttlMs: number },
 ) => {
   const nonce = generateNonce()
   const expiresAt = new Date(Date.now() + params.ttlMs)

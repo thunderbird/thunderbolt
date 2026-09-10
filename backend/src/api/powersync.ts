@@ -24,28 +24,41 @@ import { Elysia, t } from 'elysia'
 type DeviceValidationResult =
   | { ok: true }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
  * Validates that the device belongs to the user, is not revoked, and is trusted.
  * The device must already exist (registered via the envelope/trust flow) — a device
  * that doesn't exist yet is always rejected.
+ *
+ * THU-873: `X-Device-ID` is client-set, so it must match `boundDeviceId` — the
+ * device this session proved possession of. Without that, a session could name
+ * any trusted sibling and keep syncing, which is how a revoked device with a
+ * surviving unlinked session retained read access to the stream.
+ *
+ * `DEVICE_NOT_BOUND` is deliberately its own code: the client maps it to NO
+ * credentials-invalid reason, so an unbound session defers sync and retries once
+ * the bind handshake completes, instead of tripping the revoked-device reset.
  */
 const validateDeviceForSync = async (
   userId: string,
   request: Request,
   database: typeof DbType,
+  boundDeviceId: string | null,
 ): Promise<DeviceValidationResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
     return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+  }
+  if (!boundDeviceId || boundDeviceId !== deviceId) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_BOUND' } }
   }
 
   const deviceRow = await getDeviceById(database, deviceId)
@@ -90,8 +103,9 @@ const issuePowerSyncToken = async (
   powersyncJwt: { sign: (payload: { sub: string; user_id: string }) => Promise<string> },
   settings: Settings,
   database: typeof DbType,
+  boundDeviceId: string | null,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const validation = await validateDeviceForSync(userId, request, database)
+  const validation = await validateDeviceForSync(userId, request, database, boundDeviceId)
   if (!validation.ok) {
     return validation
   }
@@ -161,9 +175,12 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
       // so `user.isAnonymous` is available here without an extra DB lookup.
       const sessionUser = session?.user as User | undefined
-      return { user: sessionUser ?? null }
+      // `session.deviceId` is the server-set device binding (THU-873) — the only
+      // trustworthy answer to "which device is asking".
+      const boundDeviceId = (session?.session as { deviceId?: string | null } | undefined)?.deviceId ?? null
+      return { user: sessionUser ?? null, boundDeviceId }
     })
-    .get('/token', async ({ powersyncJwt, request, set, user }) => {
+    .get('/token', async ({ powersyncJwt, request, set, user, boundDeviceId }) => {
       if (!validateOrigin(request, settings)) {
         set.status = 403
         return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
@@ -181,7 +198,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
+        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database, boundDeviceId)
         if (!result.ok) {
           set.status = result.status
           return result.body
@@ -225,7 +242,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       const userId = sessionRow.userId
-      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database)
+      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database, sessionRow.deviceId)
       if (!result.ok) {
         set.status = result.status
         return result.body
@@ -234,7 +251,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     })
     .put(
       '/upload',
-      async ({ body, request, set, user }) => {
+      async ({ body, request, set, user, boundDeviceId }) => {
         if (!validateOrigin(request, settings)) {
           set.status = 403
           return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
@@ -251,7 +268,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const validation = await validateDeviceForSync(user.id, request, database)
+        const validation = await validateDeviceForSync(user.id, request, database, boundDeviceId)
         if (!validation.ok) {
           set.status = validation.status
           return validation.body

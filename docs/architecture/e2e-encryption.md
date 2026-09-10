@@ -92,6 +92,73 @@ __enc:<iv-base64>:<ciphertext-base64>                  decrypted via the "v1" DE
 | **Migrate (v1 → v2)** | See below — seamless, data-preserving, never a reset.                                                                                                            |
 | **Sign out**          | All local keys cleared (dynamic DEK ids enumerated, not a static list) → next sign-in is a new device.                                                            |
 
+## Device–session binding
+
+Trust operations — approve, deny, revoke, rotate, add a key, fetch the keyring — are only meaningful
+if the backend knows **which device** is asking. Every client sends an `X-Device-ID` header, but a
+header is client-set: on its own it is a claim, not an identity. `getCallerDevice` used to accept it
+as long as it named a non-revoked device of the same account, so any authenticated session could act
+as any device on that account (THU-873).
+
+That mattered because of what sits behind it. The account signing key is derived from the canary and
+a revoked device retains it (THU-872), so a challenge proof shows *account* key possession, never
+*device* identity. Revocation deletes the sessions **linked** to the revoked device, and a session is
+linked only at first registration — so a device whose session expired and re-authenticated held an
+unlinked session that survived its own revocation. Naming a trusted sibling in the header was then
+enough to take a `rotate` challenge, sign it with the retained key, and rotate the account key to one
+the attacker chose, *after* being revoked.
+
+**Every caller-resolving route now resolves the caller from `session.deviceId`** and rejects a header
+that does not match it, fail-closed when the session is bound to nothing. The mismatch is checked
+before the device lookup, so a session cannot probe which device ids exist on its own account.
+
+That makes the session→device binding the authority, so the binding itself is authenticated. No
+account-wide secret can do it — a revoked device holds the AK, DEK `"0"` and the signing key — and the
+only per-device secret is the device's ECDH private key, whose public half the server already stores.
+Hence a two-step handshake:
+
+1. `GET /devices/me/bind-challenge` mints a single-use nonce (a `challenge_nonces` row with operation
+   `bind`) and returns it **sealed** to the claimed device's `public_key`: ECDH-P256 ephemeral →
+   HKDF-SHA256 → AES-GCM (`backend/src/lib/device-bind.ts`). Asking is harmless — anyone may name any
+   device and learn nothing, because the reply is unreadable without that device's private key.
+2. `POST /devices/me/bind` takes the opened nonce, consumes it, and links the session
+   (`openBindNonce`, `src/crypto/device-bind.ts`).
+
+`bind` is deliberately **not** a member of `challengeOperations`: that list gates
+`GET /encryption/challenge`, which returns nonces in cleartext, and types `ChallengeProof`. Keeping
+them disjoint means a bind nonce can never be minted in the clear nor replayed as a signature proof.
+The handshake is ECDH-only by design — the sealed value is an ephemeral liveness nonce, not stored
+ciphertext, so a hybrid KEM would buy no post-quantum property, and v1-era devices have no ML-KEM
+public key and would be permanently unbindable.
+
+Two client triggers, both calling the idempotent `ensureSessionBound` (deduped per bearer token):
+app init runs it before `startKeyRequestResponder`, so a keyring fetch cannot 403 into a fail-closed
+codec; and `useDeviceSessionBinding` re-runs it whenever the session id changes, which is what covers
+re-authentication — that flow never reloads the page, so app-init binding alone would leave the device
+locked out until the next launch.
+
+`POST /devices` no longer links a session for an already-trusted device. That branch took an
+unverified client-supplied id, so linking there was a rebind bypass that made the pin worthless. It
+still links at **first registration**, where the device is created as pending and the link grants
+nothing.
+
+**The sync routes are pinned too.** `GET /powersync/token` and `PUT /powersync/upload` resolve their
+device the same way, so a revoked device with a surviving unlinked session cannot name a trusted
+sibling to keep reading or writing the stream. They answer with a distinct `DEVICE_NOT_BOUND` code
+which is deliberately absent from `getCredentialsInvalidReason`: the client logs it quietly, defers
+sync, and retries once `ensureSessionBound` completes — it must never be mistaken for a revocation,
+which would trigger a full local reset. That matters because initial sync runs at init step 3, before
+the bind at step 6a, so the launch right after a re-authentication legitimately sees one deferred
+token fetch.
+
+The cost to weigh: a future headless client that syncs data but holds no device keypair (a server-side
+integration, an API-key job) cannot bind, and so cannot sync. That is now a deliberate constraint
+rather than an accident — enrolling as a device with its own keypair is the supported path.
+
+A keyless device (a bridge, or a v1 device that never published hybrid keys) cannot bind at all,
+which is safe because nothing keyless reaches a caller-resolving route. An API-key/PAT session
+likewise can never bind, so a pasteable secret can never drive a key operation.
+
 ## Verifying the recovery anchor
 
 A phrase-preserving rotation has to learn the recovery public keys from somewhere, and the only

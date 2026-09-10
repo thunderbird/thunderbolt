@@ -28,10 +28,12 @@ import {
   decrypt,
   exportPublicKey,
   exportMlKemPublicKey,
+  base64ToUint8Array,
+  uint8ArrayToBase64,
   type StoredKeyPair,
 } from '@/crypto'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
-import type { KeyId } from '@shared/e2ee-types'
+import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm } from '@shared/e2ee-types'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
@@ -99,6 +101,7 @@ mock.module('@/crypto/key-storage', () => ({
 }))
 
 const {
+  ensureSessionBound,
   registerThisDevice,
   completeFirstDeviceSetup,
   buildOrgEnvelope,
@@ -167,7 +170,53 @@ type FakeServer = {
   orgEscrow: { enabled: boolean; publicKey: string | null }
   /** `orgEnvelope` from the last bootstrap/rotate/upgrade body — null when the field was omitted. */
   lastOrgEnvelope: string | null
+  /** Device this session is bound to (THU-873) — set only by a completed bind handshake. */
+  boundDeviceId: string | null
+  /** Nonce the last bind-challenge sealed, so a test can assert it never leaked. */
+  lastBindNonce: string | null
   fetch: (input: Request) => Promise<Response>
+}
+
+/**
+ * Mirror of the BACKEND seal (`backend/src/lib/device-bind.ts`) so the fake
+ * server can answer a bind challenge the way production does — the client half
+ * under test then has to really open it with the device's private key.
+ */
+const sealForDevice = async (devicePublicKeyBase64: string, nonce: string) => {
+  const devicePublicKey = await crypto.subtle.importKey(
+    'raw',
+    base64ToUint8Array(devicePublicKeyBase64),
+    ecdhKeyAlgorithm,
+    false,
+    [],
+  )
+  const ephemeral = await crypto.subtle.generateKey(ecdhKeyAlgorithm, false, ['deriveBits'])
+  const ephemeralRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
+  const shared = await crypto.subtle.deriveBits(
+    { name: ecdhKeyAlgorithm.name, public: devicePublicKey },
+    ephemeral.privateKey,
+    256,
+  )
+  const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+  const sealingKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: ephemeralRaw as BufferSource,
+      info: new TextEncoder().encode(deviceBindHkdfInfo),
+    },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sealingKey, new TextEncoder().encode(nonce))
+  return {
+    ephemeral_public_key: uint8ArrayToBase64(ephemeralRaw),
+    iv: uint8ArrayToBase64(iv),
+    ciphertext: uint8ArrayToBase64(new Uint8Array(ciphertext)),
+  }
 }
 
 const jsonResponse = (data: unknown, status = 200): Response =>
@@ -186,6 +235,8 @@ const createFakeServer = (): FakeServer => {
     requests: [],
     orgEscrow: { enabled: false, publicKey: null },
     lastOrgEnvelope: null,
+    boundDeviceId: null,
+    lastBindNonce: null,
     fetch: async () => jsonResponse({}),
   }
 
@@ -261,6 +312,25 @@ const createFakeServer = (): FakeServer => {
         }
       }
       return jsonResponse({ trusted: true })
+    }
+    if (path === '/devices/me/bind-challenge' && method === 'GET') {
+      const keys = server.devicePublicKeys.get(callerDeviceId)
+      if (!keys) {
+        return jsonResponse({ error: 'Device not found' }, 404)
+      }
+      const nonce = `bind-nonce-${++nonceCounter}`
+      server.lastBindNonce = nonce
+      return jsonResponse({
+        sealed: await sealForDevice(keys.publicKey, nonce),
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      })
+    }
+    if (path === '/devices/me/bind' && method === 'POST') {
+      if (body!.nonce !== server.lastBindNonce) {
+        return jsonResponse({ error: 'Invalid or expired bind nonce' }, 403)
+      }
+      server.boundDeviceId = body!.deviceId as string
+      return jsonResponse({ deviceId: server.boundDeviceId })
     }
     if (path === '/encryption/canary' && method === 'GET') {
       return metaResponse()
@@ -502,6 +572,77 @@ describe('encryption service (v2)', () => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
     clearCachedSession()
+  })
+
+  describe('ensureSessionBound (THU-873)', () => {
+    it('opens the sealed challenge and binds the session to this device', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      // The device is registered, so the server holds its public key to seal to —
+      // the state a returning device is in after its session expired.
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+
+      await ensureSessionBound(clientFor(server))
+
+      expect(server.boundDeviceId).toBe('test-device-id')
+    })
+
+    it('does nothing when this device holds no key pair', async () => {
+      // Never registered: there is no private key to prove possession with, and
+      // registration will link the session anyway.
+      const server = createFakeServer()
+
+      await ensureSessionBound(clientFor(server))
+
+      expect(server.requests).toEqual([])
+      expect(server.boundDeviceId).toBeNull()
+    })
+
+    it('binds once per credential, not once per call', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+      const client = clientFor(server)
+
+      await ensureSessionBound(client)
+      const afterFirst = server.requests.length
+      await ensureSessionBound(client)
+
+      // App init and the session-change effect both call this; the second is a
+      // no-op rather than a second handshake.
+      expect(server.requests.length).toBe(afterFirst)
+
+      // A new bearer means a new (unbound) session, so it binds again.
+      localStorage.setItem(authTokenKey, 'a-fresh-session-token')
+      await ensureSessionBound(client)
+      expect(server.requests.length).toBeGreaterThan(afterFirst)
+    })
+
+    it('fails rather than binding when the challenge was sealed to another device', async () => {
+      const server = createFakeServer()
+      // A distinct bearer, because `ensureSessionBound` dedupes per token: the
+      // successful bind above already recorded the shared `test-token`, and in
+      // production a new session always means a new token.
+      localStorage.setItem(authTokenKey, 'another-session-token')
+      storedKeyPair = await generateFullKeyPair()
+      const otherDevice = await generateFullKeyPair()
+      // Server seals to a DIFFERENT device's public key — the shape of a server
+      // (or attacker) trying to bind a session it does not own.
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(otherDevice.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(otherDevice.mlkemPublicKey),
+      })
+
+      await expect(ensureSessionBound(clientFor(server))).rejects.toThrow()
+
+      expect(server.boundDeviceId).toBeNull()
+    })
   })
 
   describe('registerThisDevice', () => {

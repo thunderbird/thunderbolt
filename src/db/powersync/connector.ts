@@ -130,6 +130,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         const isQuietStatus =
           status === 401 ||
           body.code === 'DEVICE_NOT_TRUSTED' ||
+          // Expected on the launch right after a re-authentication: the session
+          // is not yet bound to this device (THU-873). `ensureSessionBound`
+          // fixes it within the same boot and PowerSync retries, so this is a
+          // transient defer, not an error. Deliberately absent from
+          // `getCredentialsInvalidReason` so it never trips a device reset.
+          body.code === 'DEVICE_NOT_BOUND' ||
           body.code === 'ANONYMOUS_SYNC_FORBIDDEN' ||
           (status === 503 && import.meta.env.DEV)
         if (!isQuietStatus) {

@@ -164,6 +164,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'some-device',
       })
 
       // Token exists in DB but is sent unsigned — must be rejected
@@ -199,6 +200,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'revoked-device-id',
       })
 
       const revokedAt = new Date()
@@ -243,6 +245,10 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId: userB,
+        // Bound to user A's device: unreachable through the real bind handshake
+        // (it requires same-user ownership), so this pins the ownership guard
+        // behind the binding check as defense-in-depth.
+        deviceId: sharedDeviceId,
       })
 
       await db.insert(devicesTable).values({
@@ -287,6 +293,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-that-does-not-exist',
       })
 
       const response = await app.handle(
@@ -323,6 +330,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'untrusted-device-id',
       })
 
       await db.insert(devicesTable).values({
@@ -345,6 +353,85 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(403)
       const data = await response.json()
       expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    })
+
+    it('returns 403 DEVICE_NOT_BOUND when the session is not bound to any device', async () => {
+      // THU-873: fail closed. An unlinked session — the state a re-authenticated
+      // device starts in — gets no sync token even while naming a trusted device.
+      const userId = 'user-unbound-session'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Unbound Session User',
+        email: 'unbound-session@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-unbound',
+        expiresAt,
+        token: 'bearer-unbound',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('trusted-device-unbound', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-unbound')}`,
+            'x-device-id': 'trusted-device-unbound',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
+    })
+
+    it('returns 403 DEVICE_NOT_BOUND when the session is bound to a different device', async () => {
+      // The residual THU-873 closed here: a revoked device with a surviving
+      // unlinked session could previously name a trusted sibling and keep
+      // syncing the stream after revocation.
+      const userId = 'user-sibling-spoof'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Sibling Spoof User',
+        email: 'sibling-spoof@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await insertTrustedDevice('own-device-spoof', userId)
+      await insertTrustedDevice('sibling-device-spoof', userId)
+      await db.insert(sessionTable).values({
+        id: 'session-sibling-spoof',
+        expiresAt,
+        token: 'bearer-sibling-spoof',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'own-device-spoof',
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-sibling-spoof')}`,
+            'x-device-id': 'sibling-device-spoof',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
     })
 
     it('returns 400 when x-device-id is missing', async () => {
@@ -480,6 +567,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'nonexistent-device',
       })
 
       // Device ID 'nonexistent-device' is NOT in the DB
@@ -517,6 +605,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'original-device',
       })
 
       // Register and revoke a device
@@ -551,9 +640,13 @@ describe('PowerSync API', () => {
           },
         }),
       )
-      // Must NOT succeed — unknown device IDs should be rejected
+      // Must NOT succeed. Since THU-873 it is refused one step earlier than it
+      // used to be: the session is bound to 'original-device', so naming an
+      // invented id fails the binding check before the trust check is reached.
+      // The device cannot bind to the invented id either — `bind-challenge`
+      // 404s on a device row that does not exist.
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -577,6 +670,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-session-token',
       })
       await insertTrustedDevice('device-session-token', userId)
 
@@ -617,6 +711,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-123',
       })
       await insertTrustedDevice('device-123', userId)
 
@@ -658,6 +753,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-empty-name',
       })
       await insertTrustedDevice('device-empty-name', userId)
 
@@ -698,6 +794,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-long-name',
       })
       await insertTrustedDevice('device-long-name', userId)
 
@@ -739,6 +836,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-100-char',
       })
       await insertTrustedDevice('device-100-char', userId)
 
@@ -780,6 +878,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-1-char',
       })
       await insertTrustedDevice('device-1-char', userId)
 
@@ -820,6 +919,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version',
       })
       await insertTrustedDevice('device-app-version', userId)
 
@@ -860,6 +960,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version-keep',
       })
       await insertTrustedDevice('device-app-version-keep', userId)
       await db.update(devicesTable).set({ appVersion: '0.1.80' }).where(eq(devicesTable.id, 'device-app-version-keep'))
@@ -899,6 +1000,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version-long',
       })
       await insertTrustedDevice('device-app-version-long', userId)
 
@@ -991,6 +1093,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'revoked-upload-device',
       })
 
       await db.insert(devicesTable).values({
@@ -1037,6 +1140,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'unknown-upload-device',
       })
 
       // Device 'unknown-upload-device' is NOT registered
@@ -1075,6 +1179,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1109,6 +1214,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1158,6 +1264,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1198,7 +1305,15 @@ describe('PowerSync API', () => {
       ])
       await db.insert(sessionTable).values([
         { id: 'session-a-same', expiresAt, token: 'bearer-a-same', createdAt: now, updatedAt: now, userId: userA },
-        { id: 'session-b-same', expiresAt, token: 'bearer-b-same', createdAt: now, updatedAt: now, userId: userB },
+        {
+          id: 'session-b-same',
+          expiresAt,
+          token: 'bearer-b-same',
+          createdAt: now,
+          updatedAt: now,
+          userId: userB,
+          deviceId: 'test-device-b-same',
+        },
       ])
       await insertTrustedDevice('test-device-b-same', userB)
 
@@ -1257,6 +1372,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1309,6 +1425,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1365,6 +1482,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1417,6 +1535,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       // No settings row exists for 'nonexistent_key'
@@ -1482,6 +1601,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-patch-attacker',
         },
       ])
       await insertTrustedDevice('test-device-patch-attacker', userB)
@@ -1537,6 +1657,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1589,6 +1710,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(promptsTable).values({
@@ -1647,6 +1769,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1691,6 +1814,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       // No settings row exists for 'nonexistent_to_delete'
@@ -1749,6 +1873,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-delete-attacker',
         },
       ])
       await insertTrustedDevice('test-device-delete-attacker', userB)
@@ -1796,6 +1921,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.update(devicesTable).set({ appVersion: '0.1.90' }).where(eq(devicesTable.id, 'test-device-id'))
@@ -1844,6 +1970,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1897,6 +2024,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1953,8 +2081,24 @@ describe('PowerSync API', () => {
         },
       ])
       await db.insert(sessionTable).values([
-        { id: 'session-multi-a', expiresAt, token: 'bearer-multi-a', createdAt: now, updatedAt: now, userId: userA },
-        { id: 'session-multi-b', expiresAt, token: 'bearer-multi-b', createdAt: now, updatedAt: now, userId: userB },
+        {
+          id: 'session-multi-a',
+          expiresAt,
+          token: 'bearer-multi-a',
+          createdAt: now,
+          updatedAt: now,
+          userId: userA,
+          deviceId: 'test-device-multi-a',
+        },
+        {
+          id: 'session-multi-b',
+          expiresAt,
+          token: 'bearer-multi-b',
+          createdAt: now,
+          updatedAt: now,
+          userId: userB,
+          deviceId: 'test-device-multi-b',
+        },
       ])
       await insertTrustedDevice('test-device-multi-a', userA)
       await insertTrustedDevice('test-device-multi-b', userB)
@@ -2021,6 +2165,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userA,
+          deviceId: 'test-device-isolated-a',
         },
         {
           id: 'session-isolated-b',
@@ -2029,6 +2174,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-isolated-b',
         },
       ])
       await insertTrustedDevice('test-device-isolated-a', userA)
@@ -2114,6 +2260,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -2163,6 +2310,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -2208,6 +2356,8 @@ describe('PowerSync cross-origin injection protection', () => {
       createdAt: now,
       updatedAt: now,
       userId,
+      // Bound to the device these requests name (THU-873).
+      deviceId: trustedDeviceId,
     })
     if (trustedDeviceId) {
       await db.insert(devicesTable).values({
@@ -2517,6 +2667,7 @@ describe('PowerSync API — anonymous sync guard', () => {
       createdAt: now,
       updatedAt: now,
       userId,
+      deviceId,
     })
 
     await db.insert(devicesTable).values({

@@ -9,7 +9,7 @@ import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
 import { startKeyRequestResponder } from '@/db/encryption'
-import { ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
+import { ensureSessionBound, ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
 import { fetchEncryptionMetadata } from '@/api/encryption'
 import { getKeyPair } from '@/crypto'
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
@@ -424,6 +424,21 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // thread. Both are fire-and-forget: staging/migration must never block boot,
   // and a repeat init run replaces the previous responder. The responder
   // self-gates on setup completeness internally.
+  // Bind this session to this device BEFORE anything calls a trust route
+  // (THU-873). Every keyring/envelope/challenge route resolves its caller from
+  // `session.deviceId`, and a re-authenticated session starts out bound to
+  // nothing — so an unbound session would 403 the keyring fetch below and leave
+  // the codec fail-closed, painting the UI with `__enc:v2:` ciphertext. Awaited
+  // for that ordering, but never fatal: a device with no key pair has nothing to
+  // bind, and a failure here self-heals on the next launch.
+  await time('step6a_bind_session', async () => {
+    try {
+      await ensureSessionBound(client)
+    } catch (error) {
+      console.warn('[init] session binding failed:', error)
+    }
+  })
+
   startKeyRequestResponder({
     stageKeyring: () => stageKeyring(client),
     refreshAK: () => refreshAK(client),

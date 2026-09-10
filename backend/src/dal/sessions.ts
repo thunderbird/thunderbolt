@@ -6,10 +6,15 @@ import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { session } from '@/db/auth-schema'
 import { and, eq, gt } from 'drizzle-orm'
 
-/** Get an active (non-expired) session by bearer token. Returns null if not found or expired. */
+/**
+ * Get an active (non-expired) session by bearer token. Returns null if not found
+ * or expired. `deviceId` rides along because the bearer-only PowerSync token
+ * path has no Better Auth session object to read it from, and every
+ * device-scoped route resolves its caller from that column (THU-873).
+ */
 export const getActiveSessionByToken = async (database: typeof DbType, token: string) =>
   database
-    .select({ userId: session.userId })
+    .select({ userId: session.userId, deviceId: session.deviceId })
     .from(session)
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
     .limit(1)

@@ -40,11 +40,13 @@ import type { Settings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
+import { sealBindNonce } from '@/lib/device-bind'
 import { getOrgKeyInfo } from '@/lib/org-escrow'
 import {
   type ChallengeOperation,
   type RecoverySlotRequest,
   type WrappedKeyEntry,
+  bindOperation,
   challengeNonceTtlMs,
   challengeOperations,
   initialKeyId,
@@ -82,19 +84,39 @@ type CallerDeviceResult =
   | { status: 400 | 403 | 404; error: string }
   | { deviceId: string; device: NonNullable<Awaited<ReturnType<typeof getDeviceById>>> }
 
+/** The session fields the caller gate reads. Narrowed so callers pass anything session-shaped. */
+type CallerSession = { deviceId?: string | null }
+
 /**
- * Resolve the caller's device from the X-Device-ID header: must be present,
- * belong to the authenticated user, and not be revoked. Trust is NOT required
- * here — routes that need a trusted caller check `device.trusted` themselves.
+ * Resolve the caller's device: the `X-Device-ID` header must be present AND
+ * match the device this session is bound to server-side. The device must belong
+ * to the authenticated user and not be revoked. Trust is NOT required here —
+ * routes that need a trusted caller check `device.trusted` themselves.
+ *
+ * THU-873: the header is client-set, so on its own it is a CLAIM, not an
+ * identity — any session could name any device and inherit its authority. The
+ * authority is `session.deviceId`, which is written only by the sealed-nonce
+ * bind handshake (`POST /devices/me/bind`) and by first registration. A session
+ * that was never bound fails closed rather than falling back to the header.
+ *
+ * The match is checked BEFORE the device lookup, so a session cannot probe which
+ * device ids exist on its own account either.
  */
 const getCallerDevice = async (
   database: typeof DbType,
   userId: string,
   request: Request,
+  session: CallerSession,
 ): Promise<CallerDeviceResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
     return { status: 400, error: 'X-Device-ID header is required' }
+  }
+  if (!session.deviceId) {
+    return { status: 403, error: 'Session is not bound to a device' }
+  }
+  if (session.deviceId !== deviceId) {
+    return { status: 403, error: 'X-Device-ID does not match the authenticated device' }
   }
   const device = await getDeviceById(database, deviceId)
   if (!device || device.userId !== userId) {
@@ -284,7 +306,15 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           // Encryption-registered device (has publicKey): return current state
           if (existingDevice.publicKey) {
             if (existingDevice.trusted) {
-              await linkSessionToDevice(database, session.id, deviceId, userId)
+              // NO session link here (THU-873). This branch takes an unverified
+              // client-supplied `deviceId`, so linking would let any session
+              // claim any already-trusted device — the rebind hole that made
+              // pinning `getCallerDevice` to `session.deviceId` worthless. A
+              // returning device binds through the sealed-nonce handshake
+              // (`GET /devices/me/bind-challenge` + `POST /devices/me/bind`),
+              // which proves it holds this device's private key.
+              // The envelope below is safe to return unbound: it is the AK
+              // wrapped TO this device's public keys, useless without them.
               const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
               return {
                 trusted: true as const,
@@ -371,7 +401,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     //    an active v2 account has no static-secret override.
     .post(
       '/devices/:deviceId/envelope',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const { deviceId } = params
         const {
@@ -404,6 +434,17 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+        // THU-873: the header is a claim; the session's bound device is the
+        // identity. First registration binds the session, so an enrolling
+        // device reaches this route already bound.
+        if (!session.deviceId) {
+          set.status = 403
+          return { error: 'Session is not bound to a device' }
+        }
+        if (session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         // Only the device itself can re-key its own envelope (prevents overwrite attacks)
@@ -537,13 +578,21 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     )
     .get(
       '/devices/me/envelope',
-      async ({ request, set, user: sessionUser }) => {
+      async ({ request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const deviceId = request.headers.get('x-device-id')?.trim()
 
         if (!deviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+        // THU-873: a device may only fetch ITS OWN envelope. The blob is wrapped
+        // to this device's public keys so it is useless to another session, but
+        // serving it on a client-set header alone would still leak which devices
+        // are enrolled.
+        if (!session.deviceId || session.deviceId !== deviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         const device = await getDeviceById(database, deviceId)
@@ -630,9 +679,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // useless without the AK. Revoked devices are rejected (403).
     .get(
       '/encryption/keys',
-      async ({ request, set, user: sessionUser }) => {
+      async ({ request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -654,9 +703,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // not secrets — they already sync to every device on the account.
     .get(
       '/encryption/envelope-targets',
-      async ({ request, set, user: sessionUser }) => {
+      async ({ request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -675,9 +724,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     )
     .get(
       '/encryption/keys/:keyId',
-      async ({ params, request, set, user: sessionUser }) => {
+      async ({ params, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -699,9 +748,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // POST /encryption/rotate only.
     .post(
       '/encryption/keys',
-      async ({ body, request, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -748,7 +797,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // Revoked devices are rejected by getCallerDevice.
     .get(
       '/encryption/challenge',
-      async ({ query, request, set, user: sessionUser }) => {
+      async ({ query, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
 
         const operation = query.operation
@@ -757,7 +806,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           return { error: 'Invalid operation' }
         }
 
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -789,9 +838,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // phrase-change path and is gated by the same proof.
     .post(
       '/encryption/rotate',
-      async ({ body, request, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -885,9 +934,9 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     // migrator loses the CAS and gets a 409.
     .post(
       '/encryption/upgrade',
-      async ({ body, request, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request)
+        const caller = await getCallerDevice(database, userId, request, session)
         if ('error' in caller) {
           set.status = caller.status
           return { error: caller.error }
@@ -980,13 +1029,20 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     )
     .post(
       '/devices/:deviceId/deny',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+        // THU-873: pin the caller to its session before trusting the header. The
+        // signature below proves ACCOUNT key possession, which a revoked device
+        // retains — only this check proves WHICH device is calling.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         // Proof-of-key-possession prevents X-Device-ID spoofing: only a device
@@ -1029,13 +1085,21 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     )
     .post(
       '/devices/:deviceId/node-id',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+
+        // THU-873: pin the caller to its session first — the account signing key
+        // the proof below checks is retained by a revoked device, so it cannot
+        // establish WHICH device is attesting.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         // Proof-of-key-possession prevents X-Device-ID spoofing: only a device
@@ -1209,15 +1273,118 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
       },
       { auth: true },
     )
-    .post(
-      '/devices/me/cancel-pending',
-      async ({ body, request, set, user: sessionUser }) => {
+    // Device–session binding (THU-873), the handshake that makes every trust
+    // route's `session.deviceId` gate meaningful. Two steps, both auth-gated:
+    //
+    //   1. GET  /devices/me/bind-challenge → a nonce SEALED to the claimed
+    //      device's stored ECDH public key. The `X-Device-ID` header here is a
+    //      CLAIM, not authority — anyone may ask for a challenge naming any
+    //      device, and learn nothing, because only the holder of that device's
+    //      private key can open the blob.
+    //   2. POST /devices/me/bind → echo the opened nonce; the server consumes
+    //      it and links the session to that device.
+    //
+    // This is the only path that binds a session to an already-trusted device.
+    // `POST /devices` deliberately links only at first registration, when the
+    // device is still pending and the link grants nothing.
+    .get(
+      '/devices/me/bind-challenge',
+      async ({ request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const deviceId = request.headers.get('x-device-id')?.trim()
 
         if (!deviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+
+        const device = await getDeviceById(database, deviceId)
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if (device.revokedAt != null) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+        // A keyless row (a bridge, or a v1 device that never published hybrid
+        // keys) has nothing to seal to, so it can never bind — and never needs
+        // to: nothing keyless reaches a route that resolves a caller device.
+        if (!device.publicKey) {
+          set.status = 409
+          return { error: 'Device has no key material to bind with' }
+        }
+
+        const { nonce, expiresAt } = await issueChallengeNonce(database, {
+          userId,
+          operation: bindOperation,
+          deviceId,
+          ttlMs: challengeNonceTtlMs,
+        })
+
+        return { sealed: await sealBindNonce(device.publicKey, nonce), expires_at: expiresAt.toISOString() }
+      },
+      { auth: true },
+    )
+    .post(
+      '/devices/me/bind',
+      async ({ body, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+
+        // Single-use: `consumeChallengeNonce` flips `consumed` in one UPDATE, so
+        // a replay matches 0 rows. Only a device that OPENED the sealed blob
+        // knows this value.
+        const consumed = await consumeChallengeNonce(database, body.nonce)
+        if (
+          !consumed ||
+          consumed.userId !== userId ||
+          consumed.operation !== bindOperation ||
+          consumed.deviceId !== body.deviceId
+        ) {
+          set.status = 403
+          return { error: 'Invalid or expired bind nonce' }
+        }
+
+        // Re-check state at bind time: the device may have been revoked between
+        // the challenge and this call.
+        const device = await getDeviceById(database, body.deviceId)
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if (device.revokedAt != null) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+
+        await linkSessionToDevice(database, session.id, body.deviceId, userId)
+
+        return { deviceId: body.deviceId }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          deviceId: t.String({ maxLength: 36 }),
+          nonce: t.String({ maxLength: 128 }),
+        }),
+      },
+    )
+    .post(
+      '/devices/me/cancel-pending',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const deviceId = request.headers.get('x-device-id')?.trim()
+
+        if (!deviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        // THU-873: only the device whose session this is may cancel its own
+        // pending registration.
+        if (!session.deviceId || session.deviceId !== deviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         const device = await getDeviceById(database, deviceId)

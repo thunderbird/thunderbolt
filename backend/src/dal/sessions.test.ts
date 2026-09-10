@@ -47,7 +47,7 @@ describe('sessions DAL', () => {
       userId,
     })
     const result = await getActiveSessionByToken(db, 'valid-token')
-    expect(result).toEqual({ userId })
+    expect(result).toEqual({ userId, deviceId: null })
   })
 
   it('returns null for expired token', async () => {

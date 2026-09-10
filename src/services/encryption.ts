@@ -40,6 +40,7 @@ import {
   generateKdfSalt,
   storeKeyPair,
   getKeyPair,
+  openBindNonce,
   storeAK,
   getAK,
   storeDEK,
@@ -51,11 +52,13 @@ import {
   ValidationError,
   type StoredKeyPair,
 } from '@/crypto'
-import { getDeviceId } from '@/lib/auth-token'
+import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import {
+  bindSession,
+  fetchBindChallenge,
   registerDevice,
   storeEnvelope,
   fetchMyEnvelope,
@@ -359,6 +362,48 @@ export const registerThisDevice = async (httpClient: HttpClient): Promise<Regist
     mlkemPublicKey: mlkemPublicKeyBase64,
     name: getDeviceDisplayName(),
   })
+}
+
+// =============================================================================
+// Device–session binding (THU-873)
+// =============================================================================
+
+/** Bearer token of the last successfully bound session — dedupes repeat calls. */
+let lastBoundToken: string | null = null
+
+/**
+ * Prove to the backend that this session belongs to THIS device, so every trust
+ * route can resolve its caller from `session.deviceId` instead of the
+ * client-set `X-Device-ID` header.
+ *
+ * Needed because a session is linked at first registration only: when a session
+ * expires, the client keeps its keys and device id and re-authenticates, and
+ * that new session is bound to nothing. Without this it would be refused by
+ * every keyring, challenge and rotation route.
+ *
+ * The server seals a nonce to this device's registered ECDH public key; opening
+ * it requires the non-extractable private key in IndexedDB, which is exactly
+ * the thing no other session — and no revoked device — can supply for us.
+ *
+ * No-ops when this device holds no key pair: it has never registered, so there
+ * is nothing to bind and registration will link the session anyway.
+ */
+export const ensureSessionBound = async (httpClient: HttpClient): Promise<void> => {
+  const keyPair = await getKeyPair()
+  if (!keyPair) {
+    return
+  }
+  // One handshake per credential. Keyed on the bearer because that IS the
+  // session: a re-authentication produces a new token and therefore a new,
+  // unbound session, which must be bound again.
+  const token = getAuthToken()
+  if (token && token === lastBoundToken) {
+    return
+  }
+  const { sealed } = await fetchBindChallenge(httpClient)
+  const nonce = await openBindNonce(keyPair.ecdhPrivateKey, sealed)
+  await bindSession(httpClient, { deviceId: getDeviceId(), nonce })
+  lastBoundToken = token
 }
 
 // =============================================================================

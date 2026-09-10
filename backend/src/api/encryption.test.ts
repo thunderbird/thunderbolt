@@ -378,7 +378,7 @@ describe('Encryption API', () => {
     })
 
     it('returns envelope for trusted device', async () => {
-      await createUserAndSession(p('u-me2'), p('tok-me2'))
+      await createUserAndSession(p('u-me2'), p('tok-me2'), undefined, p('d-me2'))
       await insertDevice(p('d-me2'), p('u-me2'), { trusted: true })
       await insertEnvelope(p('d-me2'), p('u-me2'), 'my-wrapped-ck')
 
@@ -398,7 +398,7 @@ describe('Encryption API', () => {
     })
 
     it('returns 404 when device belongs to different user', async () => {
-      await createUserAndSession(p('u-me3a'), p('tok-me3a'), `${p('me3a')}@test.com`)
+      await createUserAndSession(p('u-me3a'), p('tok-me3a'), `${p('me3a')}@test.com`, p('d-me3'))
       await createUserAndSession(p('u-me3b'), p('tok-me3b'), `${p('me3b')}@test.com`)
       await insertDevice(p('d-me3'), p('u-me3b'), { trusted: true })
       await insertEnvelope(p('d-me3'), p('u-me3b'))
@@ -418,7 +418,7 @@ describe('Encryption API', () => {
     })
 
     it('returns 403 when device is revoked', async () => {
-      await createUserAndSession(p('u-me4'), p('tok-me4'))
+      await createUserAndSession(p('u-me4'), p('tok-me4'), undefined, p('d-me4'))
       await insertDevice(p('d-me4'), p('u-me4'), { revokedAt: now })
 
       const response = await app.handle(
@@ -436,7 +436,7 @@ describe('Encryption API', () => {
     })
 
     it('returns 404 when device has no envelope (pending device)', async () => {
-      await createUserAndSession(p('u-me5'), p('tok-me5'))
+      await createUserAndSession(p('u-me5'), p('tok-me5'), undefined, p('d-me5'))
       await insertDevice(p('d-me5'), p('u-me5'))
 
       const response = await app.handle(
@@ -454,7 +454,7 @@ describe('Encryption API', () => {
     })
 
     it('returns 404 when deviceId does not exist', async () => {
-      await createUserAndSession(p('u-me6'), p('tok-me6'))
+      await createUserAndSession(p('u-me6'), p('tok-me6'), undefined, p('d-ghost'))
 
       const response = await app.handle(
         new Request(`${baseUrl}/devices/me/envelope`, {
@@ -921,6 +921,9 @@ describe('Bridge device lifecycle API through full app', () => {
       id: testId(`session-${label}`),
       token,
       userId,
+      // THU-873: trust routes resolve the caller from the session, so this test
+      // session is bound to the device its requests name.
+      deviceId: testId('caller-device'),
       expiresAt: fullAppExpiresAt,
       createdAt: fullAppNow,
       updatedAt: fullAppNow,

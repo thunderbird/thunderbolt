@@ -34,13 +34,21 @@ export const createAccountRoutes = (auth: Auth, database: typeof DbType) => {
     .use(createAuthMacro(auth))
     .post(
       '/devices/:id/revoke',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
 
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
+        }
+        // THU-873: pin the caller to the device its session is bound to. The
+        // 'revoke' proof below only shows ACCOUNT key possession, which a
+        // revoked device retains — so without this, a surviving unlinked
+        // session could revoke a sibling while naming it as the caller.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
         // If E2EE is active (encryption metadata exists), require a 'revoke'

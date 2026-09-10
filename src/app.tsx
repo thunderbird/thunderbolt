@@ -34,6 +34,7 @@ import { usePageTracking } from '@/hooks/use-analytics'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
+import { useDeviceSessionBinding } from '@/hooks/use-device-session-binding'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
@@ -174,6 +175,7 @@ const useBootstrapSystemAgents = () => {
 }
 
 const AppContent = ({ initData }: { initData: InitData }) => {
+  useDeviceSessionBinding()
   useMcpSync()
   useBootstrapSystemAgents()
   useKeyboardInset()

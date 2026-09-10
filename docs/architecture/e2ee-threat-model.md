@@ -45,11 +45,17 @@ falsify, not a fact.
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
   operation.** Note the coupling: the ECDSA signing keypair is derived from the canary secret, which
-  lives under a DEK the revoked device may still hold.
+  lives under a DEK the revoked device may still hold. That retained key is why the third clause now
+  rests on device—session binding rather than on the proof (THU-873): a proof shows *account* key
+  possession, so only `session.deviceId` establishes *which* device is calling. A revoked device can
+  rebind only as itself, and that row is revoked.
 - **C6 — Challenge-response is not replayable or confusable.** Nonces are single-use, expiring, and
   bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id). No
   cross-operation confusion, no cross-device reuse, no TOCTOU between issue and consume, no endpoint
-  missing the gate.
+  missing the gate. The bound device is **server-resolved** from `session.deviceId`, not asserted by
+  the caller's `X-Device-ID` header (THU-873); the `bind` nonce that establishes that binding is
+  disjoint from the signable operations and is only ever returned sealed to the device's public key,
+  so it can be neither minted in cleartext nor replayed as a proof.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
   hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
@@ -89,6 +95,12 @@ falsify, not a fact.
 - **C14 — Authorization on every endpoint.** Every encryption and device route scopes by
   authenticated user and device state (pending / trusted / denied / revoked). No IDOR, no keyring
   material served to untrusted devices, no missing advisory lock that strands a key under an old AK.
+  Since THU-873 the *caller* device is also authenticated rather than asserted: a session acts only
+  as the device it proved possession of via the sealed-nonce bind handshake. The sync routes
+  (`GET /powersync/token`, `PUT /powersync/upload`) are pinned to the same binding, so a revoked
+  device with a surviving unlinked session cannot name a trusted sibling to keep reading or writing
+  the stream. Accepted constraint: a client that holds no device keypair (an API-key job, a future
+  headless integration) cannot bind and therefore cannot sync — it must enrol as a device.
 
 ## v1 regressions
 

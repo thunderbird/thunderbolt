@@ -40,7 +40,6 @@ export {
   createDebugTranscript,
   findDebugTranscriptClientByKeyHash,
   upsertSelfDebugTranscriptClient,
-  deleteSelfDebugTranscriptsForUser,
 } from './debug-transcripts'
 
 // OTP Challenge (session binding)

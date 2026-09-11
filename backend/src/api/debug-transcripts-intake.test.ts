@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { user } from '@/db/auth-schema'
+import { deleteUser } from '@/dal/users'
 import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { hashDebugTranscriptClientKey } from '@/debug-transcripts/client-key'
 import { createRateLimitConsumer } from '@/middleware/rate-limit'
@@ -64,7 +66,13 @@ describe('Debug transcript intake', () => {
     const { id } = (await response.json()) as { id: string }
     const rows = await db.select().from(debugTranscriptsTable)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ id, clientId: 'acme', userId: 'origin-user', threadId: 'thread-1' })
+    expect(rows[0]).toMatchObject({
+      id,
+      clientId: 'acme',
+      userId: 'origin-user',
+      localUserId: null,
+      threadId: 'thread-1',
+    })
   })
 
   it('stores a null userId for anonymous submissions', async () => {
@@ -118,5 +126,34 @@ describe('Debug transcript intake', () => {
     expect(response.status).toBe(413)
     expect((await response.json()).code).toBe('DEBUG_TRANSCRIPT_TOO_LARGE')
     expect(await db.select().from(debugTranscriptsTable)).toHaveLength(1)
+  })
+  it('links self submissions to the local user and keeps anonymous self submissions unlinked', async () => {
+    const userId = crypto.randomUUID()
+    await db.insert(user).values({ id: userId, name: 'Local user', email: `${userId}@example.com` })
+    await ensureSelfDebugTranscriptClient(
+      db,
+      createTestSettings({ debugTranscriptIntakeEnabled: true, debugTranscriptUpstreamKey: 'self-key' }),
+    )
+    expect((await post(JSON.stringify({ ...body, userId }), 'self-key')).status).toBe(201)
+    expect((await db.select().from(debugTranscriptsTable))[0]).toMatchObject({
+      clientId: 'self',
+      userId,
+      localUserId: userId,
+    })
+    await deleteUser(db, userId)
+    expect((await post(JSON.stringify({ ...body, userId: null }), 'self-key')).status).toBe(201)
+    expect((await db.select().from(debugTranscriptsTable))[0]).toMatchObject({ userId: null, localUserId: null })
+  })
+
+  it('rejects a self upload that arrives after its account was deleted', async () => {
+    const userId = crypto.randomUUID()
+    await db.insert(user).values({ id: userId, name: 'Deleted user', email: `${userId}@example.com` })
+    await deleteUser(db, userId)
+    await ensureSelfDebugTranscriptClient(
+      db,
+      createTestSettings({ debugTranscriptIntakeEnabled: true, debugTranscriptUpstreamKey: 'self-key' }),
+    )
+    expect((await post(JSON.stringify({ ...body, userId }), 'self-key')).status).toBe(500)
+    expect(await db.select().from(debugTranscriptsTable)).toHaveLength(0)
   })
 })

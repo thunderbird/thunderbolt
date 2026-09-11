@@ -5,7 +5,7 @@
 import type { db as DbType } from '@/db/client'
 import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { selfDebugTranscriptClientId } from '@/debug-transcripts/client-key'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 /** Persist one transcript accepted by the intake. */
 export const createDebugTranscript = async (
@@ -29,13 +29,4 @@ export const upsertSelfDebugTranscriptClient = async (database: typeof DbType, k
     .insert(debugTranscriptClientsTable)
     .values({ id: selfDebugTranscriptClientId, name: 'Thunderbolt', keyHash })
     .onConflictDoUpdate({ target: debugTranscriptClientsTable.id, set: { keyHash } })
-}
-
-/** Account deletion: transcripts have no FK to `user`, so the self rows are removed explicitly. */
-export const deleteSelfDebugTranscriptsForUser = async (database: typeof DbType, userId: string) => {
-  await database
-    .delete(debugTranscriptsTable)
-    .where(
-      and(eq(debugTranscriptsTable.clientId, selfDebugTranscriptClientId), eq(debugTranscriptsTable.userId, userId)),
-    )
 }

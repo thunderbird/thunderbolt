@@ -960,15 +960,16 @@ describe('Account API', () => {
       const userId = p('transcript-user')
       const token = p('transcript-token')
       await createCliSession(userId, token)
+      await createCliSession(p('someone-else'), p('other-token'))
       await db.insert(debugTranscriptClientsTable).values([
         { id: 'self', name: 'Thunderbolt', keyHash: p('h') },
         { id: p('acme'), name: 'Acme', keyHash: p('a') },
       ])
       const base = { threadId: 't', schemaVersion: 1, payload: {} }
       await db.insert(debugTranscriptsTable).values([
-        { id: p('mine'), clientId: 'self', userId, ...base },
-        { id: p('theirs'), clientId: 'self', userId: p('someone-else'), ...base },
-        { id: p('external'), clientId: p('acme'), userId, ...base },
+        { id: p('mine'), clientId: 'self', userId, localUserId: userId, ...base },
+        { id: p('theirs'), clientId: 'self', userId: p('someone-else'), localUserId: p('someone-else'), ...base },
+        { id: p('external'), clientId: p('acme'), userId, localUserId: null, ...base },
       ])
       const response = await app.handle(
         new Request('http://localhost/v1/account', {

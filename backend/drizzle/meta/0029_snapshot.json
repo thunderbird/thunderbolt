@@ -1,5 +1,5 @@
 {
-  "id": "d3587775-b59d-47ad-b492-e1d5cd85b8de",
+  "id": "0afa8bd8-33d3-4c3c-81df-9e3cf6910c31",
   "prevId": "614bcb17-0aae-424a-9727-c75b82e4b7f3",
   "version": "7",
   "dialect": "postgresql",
@@ -2669,6 +2669,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "local_user_id": {
+          "name": "local_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "thread_id": {
           "name": "thread_id",
           "type": "text",
@@ -2742,6 +2748,19 @@
             "id"
           ],
           "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "debug_transcripts_local_user_id_user_id_fk": {
+          "name": "debug_transcripts_local_user_id_user_id_fk",
+          "tableFrom": "debug_transcripts",
+          "tableTo": "user",
+          "columnsFrom": [
+            "local_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

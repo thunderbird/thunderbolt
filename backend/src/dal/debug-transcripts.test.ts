@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { user } from '@/db/auth-schema'
+import { deleteUser } from './users'
 import { createTestDb } from '@/test-utils/db'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { hashDebugTranscriptClientKey, selfDebugTranscriptClientId } from '@/debug-transcripts/client-key'
 import {
   createDebugTranscript,
-  deleteSelfDebugTranscriptsForUser,
   findDebugTranscriptClientByKeyHash,
   upsertSelfDebugTranscriptClient,
 } from './debug-transcripts'
@@ -45,18 +46,16 @@ describe('debug transcript DAL', () => {
     expect(await findDebugTranscriptClientByKeyHash(db, 'nope')).toBeNull()
   })
 
-  it('deletes only the self transcripts of one user', async () => {
+  it('cascades local user deletion while preserving external transcripts', async () => {
+    await db.insert(user).values({ id: 'u1', name: 'Local user', email: 'local@example.com' })
     await upsertSelfDebugTranscriptClient(db, 'h')
     await db.insert(debugTranscriptClientsTable).values({ id: 'acme', name: 'Acme', keyHash: 'a' })
-    const base = { threadId: 't', schemaVersion: 1, payload: {} }
-    await createDebugTranscript(db, { id: '1', clientId: 'self', userId: 'u1', ...base })
-    await createDebugTranscript(db, { id: '2', clientId: 'self', userId: 'u2', ...base })
-    await createDebugTranscript(db, { id: '3', clientId: 'acme', userId: 'u1', ...base })
-    await createDebugTranscript(db, { id: '4', clientId: 'self', userId: null, ...base })
+    const base = { threadId: 't', schemaVersion: 1, payload: {}, userId: 'u1' }
+    await createDebugTranscript(db, { id: 'local', clientId: 'self', localUserId: 'u1', ...base })
+    await createDebugTranscript(db, { id: 'external', clientId: 'acme', localUserId: null, ...base })
 
-    await deleteSelfDebugTranscriptsForUser(db, 'u1')
+    await deleteUser(db, 'u1')
 
-    const ids = (await db.select({ id: debugTranscriptsTable.id }).from(debugTranscriptsTable)).map((r) => r.id).sort()
-    expect(ids).toEqual(['2', '3', '4'])
+    expect(await db.select({ id: debugTranscriptsTable.id }).from(debugTranscriptsTable)).toEqual([{ id: 'external' }])
   })
 })

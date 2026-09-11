@@ -7,7 +7,7 @@ import { createDebugTranscript, findDebugTranscriptClientByKeyHash, upsertSelfDe
 import type { db as DbType } from '@/db/client'
 import type { DebugTranscriptPayload } from '@/db/debug-transcript-schema'
 import { debugTranscriptIntakeBodySchema, readBoundedJson } from '@/debug-transcripts/body'
-import { hashDebugTranscriptClientKey } from '@/debug-transcripts/client-key'
+import { hashDebugTranscriptClientKey, selfDebugTranscriptClientId } from '@/debug-transcripts/client-key'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { RateLimitConsumer } from '@/middleware/rate-limit'
 import {
@@ -79,6 +79,7 @@ export const createDebugTranscriptsIntakeRoutes = ({ database, settings, rateLim
         id,
         clientId: client.id,
         userId: parsed.data.userId,
+        localUserId: client.id === selfDebugTranscriptClientId ? parsed.data.userId : null,
         threadId: parsed.data.threadId,
         schemaVersion: parsed.data.schemaVersion,
         payload: parsed.data.payload as DebugTranscriptPayload,

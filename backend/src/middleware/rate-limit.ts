@@ -13,7 +13,7 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth' | 'debug-transcript'
+type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth' | 'debug-transcript' | 'debug-transcript-intake'
 export type UserRateLimitTier = Exclude<RateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
@@ -36,6 +36,7 @@ const tierConfigs = {
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
+  'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
 } satisfies Record<RateLimitTier, RateLimitTierConfig>
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
@@ -153,4 +154,22 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
   }
   const limiter = createLimiter(database, 'auth')
   return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
+}
+
+type RateLimitSet = Parameters<typeof consumeOrReject>[2]
+
+/** Consume one point for `key`; resolves to the 429 body when the limit is hit. */
+export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ error: string } | undefined>
+
+/** Rate limiting for routes whose key is not the session user (e.g. an intake client). */
+export const createRateLimitConsumer = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  tier: RateLimitTier,
+): RateLimitConsumer | null => {
+  if (!settings.enabled) {
+    return null
+  }
+  const limiter = createLimiter(database, tier)
+  return (key, set) => consumeOrReject(limiter, key, set)
 }

@@ -108,7 +108,6 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
-    // Opt-in because uploads are plaintext and retained until account deletion.
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
     // Relay role: where this deployment forwards user transcripts, and its client key.

@@ -12,6 +12,7 @@ import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
+  createRateLimitConsumer,
   createUserTierRateLimit,
   type IpRateLimitSettings,
   type RateLimitSettings,
@@ -453,6 +454,31 @@ describe('Rate Limiting', () => {
 
       const blocked = await app.handle(requestWithIp('10.3.0.5'))
       expect(blocked.status).toBe(429)
+    })
+  })
+  describe('createRateLimitConsumer', () => {
+    it('returns null when rate limiting is disabled', () => {
+      expect(createRateLimitConsumer(database, { enabled: false }, 'debug-transcript-intake')).toBeNull()
+    })
+
+    it('limits each key independently and reports 429 through set', async () => {
+      const consume = createRateLimitConsumer(database, enabledSettings, 'debug-transcript-intake')!
+      const set = {
+        headers: {} as Record<string, string | string[] | number>,
+        status: undefined as number | string | undefined,
+      }
+
+      for (let i = 0; i < 600; i++) {
+        expect(await consume('client:a', set)).toBeUndefined()
+      }
+      expect(await consume('client:a', set)).toEqual({ error: 'Too many requests. Please try again later.' })
+      expect(set.status).toBe(429)
+
+      const other = {
+        headers: {} as Record<string, string | string[] | number>,
+        status: undefined as number | string | undefined,
+      }
+      expect(await consume('client:b', other)).toBeUndefined()
     })
   })
 })

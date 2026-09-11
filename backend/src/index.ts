@@ -165,7 +165,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(
         createDebugTranscriptsRoutes({
           auth,
-          database,
+          fetchFn,
           settings,
           rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
         }),

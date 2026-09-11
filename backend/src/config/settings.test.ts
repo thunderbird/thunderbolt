@@ -830,3 +830,52 @@ describe('Config Settings', () => {
     })
   })
 })
+
+describe('debug transcript settings', () => {
+  const envKeys = [
+    'DEBUG_TRANSCRIPT_UPSTREAM_URL',
+    'DEBUG_TRANSCRIPT_UPSTREAM_KEY',
+    'DEBUG_TRANSCRIPT_INTAKE_ENABLED',
+  ] as const
+  let savedEnv: Record<string, string | undefined>
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]))
+    clearSettingsCache()
+  })
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (savedEnv[key] === undefined) delete process.env[key]
+      else process.env[key] = savedEnv[key]
+    }
+    clearSettingsCache()
+  })
+  /** Parse an isolated upstream configuration through the public settings accessor. */
+  const parseWithEnv = (env: Record<string, string>) => {
+    for (const key of envKeys) delete process.env[key]
+    Object.assign(process.env, env)
+    clearSettingsCache()
+    return getSettings()
+  }
+  it('derives debugTranscriptsEnabled from the upstream pair', () => {
+    const off = parseWithEnv({})
+    expect(off.debugTranscriptsEnabled).toBe(false)
+
+    const on = parseWithEnv({
+      DEBUG_TRANSCRIPT_UPSTREAM_URL: 'https://api.example.test',
+      DEBUG_TRANSCRIPT_UPSTREAM_KEY: 'k',
+    })
+    expect(on.debugTranscriptsEnabled).toBe(true)
+    expect(on.debugTranscriptUpstreamUrl).toBe('https://api.example.test')
+  })
+
+  it('rejects an upstream url without a key and vice versa', () => {
+    expect(() => parseWithEnv({ DEBUG_TRANSCRIPT_UPSTREAM_URL: 'https://api.example.test' })).toThrow(
+      /debugTranscriptUpstreamKey/,
+    )
+    expect(() => parseWithEnv({ DEBUG_TRANSCRIPT_UPSTREAM_KEY: 'k' })).toThrow(/debugTranscriptUpstreamUrl/)
+  })
+
+  it('reads the intake flag', () => {
+    expect(parseWithEnv({ DEBUG_TRANSCRIPT_INTAKE_ENABLED: 'true' }).debugTranscriptIntakeEnabled).toBe(true)
+  })
+})

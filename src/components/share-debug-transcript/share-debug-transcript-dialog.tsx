@@ -71,8 +71,7 @@ export const ShareDebugTranscriptDialog = ({
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
                   <Trans>
-                    The Thunderbolt team, plus whoever operates the server you&apos;re connected to, for debugging.
-                    It&apos;s tied to your account — it isn&apos;t anonymous.
+                    The Thunderbolt team, for debugging. It&apos;s tied to your account — it isn&apos;t anonymous.
                   </Trans>
                 </dd>
               </div>
@@ -92,10 +91,7 @@ export const ShareDebugTranscriptDialog = ({
                   <Trans>Where is it kept?</Trans>
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  <Trans>
-                    The chat will be retained by the current server as well as the Thunderbolt team until your account
-                    is deleted.
-                  </Trans>
+                  <Trans>The chat will be retained by the Thunderbolt team until your account is deleted.</Trans>
                 </dd>
               </div>
             </dl>

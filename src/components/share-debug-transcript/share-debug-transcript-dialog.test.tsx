@@ -37,9 +37,7 @@ describe('ShareDebugTranscriptDialog', () => {
     const whoQuestion = screen.getByText('Who can read it?')
     expect(whoQuestion.tagName).toBe('DT')
     expect(
-      screen.getByText(
-        "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous.",
-      ),
+      screen.getByText("The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."),
     ).toBeVisible()
 
     const contentsQuestion = screen.getByText("What's in it?")
@@ -53,9 +51,7 @@ describe('ShareDebugTranscriptDialog', () => {
     const storageQuestion = screen.getByText('Where is it kept?')
     expect(storageQuestion.tagName).toBe('DT')
     expect(
-      screen.getByText(
-        'The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted.',
-      ),
+      screen.getByText('The chat will be retained by the Thunderbolt team until your account is deleted.'),
     ).toBeVisible()
 
     const facts = whoQuestion.closest('dl')

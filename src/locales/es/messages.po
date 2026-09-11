@@ -3518,7 +3518,11 @@ msgid "The AI provider took too long to respond. Try again."
 msgstr "El proveedor de IA tardó demasiado en responder. Inténtalo de nuevo."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
+#~ msgid "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
+#~ msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
@@ -3546,8 +3550,12 @@ msgid "The sign-in service is unavailable right now. Check your connection and t
 msgstr "El servicio de inicio de sesión no está disponible ahora mismo. Revisa tu conexión e inténtalo de nuevo."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
+msgid "The Thunderbolt team, for debugging. It's tied to your account — it isn't anonymous."
 msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+#~ msgid "The Thunderbolt team, plus whoever operates the server you're connected to, for debugging. It's tied to your account — it isn't anonymous."
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "The transcript was rejected by the server."

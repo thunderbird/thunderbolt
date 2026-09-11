@@ -15,7 +15,7 @@ import { submitDebugTranscript } from '@/debug-transcript/api'
 import { buildDebugTranscriptPayload } from '@/debug-transcript/build-payload'
 import { HttpError } from '@/lib/http'
 import {
-  anonymousTranscriptForbiddenCode,
+  debugTranscriptUpstreamFailedCode,
   type DebugTranscriptErrorCode,
   debugTranscriptsDisabledCode,
   debugTranscriptTooLargeCode,
@@ -24,7 +24,7 @@ import {
 const genericErrorMessage = msg`We could not send the transcript. Please check your connection and try again.`
 const debugTranscriptErrorBodySchema = z.object({
   code: z
-    .enum([debugTranscriptsDisabledCode, debugTranscriptTooLargeCode, anonymousTranscriptForbiddenCode])
+    .enum([debugTranscriptsDisabledCode, debugTranscriptTooLargeCode, debugTranscriptUpstreamFailedCode])
     .optional(),
 })
 const debugTranscriptUploadTimeoutMs = 30_000
@@ -102,9 +102,6 @@ export const getDebugTranscriptErrorMessage = (status?: number, code?: DebugTran
   }
   if (code === debugTranscriptTooLargeCode) {
     return msg`This transcript is too large to upload.`
-  }
-  if (code === anonymousTranscriptForbiddenCode) {
-    return msg`Sign in to a full account to share a debug transcript.`
   }
   if (status !== undefined && status >= 400 && status < 500) {
     return msg`The transcript was rejected by the server.`

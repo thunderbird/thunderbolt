@@ -3196,8 +3196,8 @@ msgid "Sign In"
 msgstr "サインイン"
 
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
-msgid "Sign in to a full account to share a debug transcript."
-msgstr ""
+#~ msgid "Sign in to a full account to share a debug transcript."
+#~ msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Sign in to a Thunderbolt account to approve this CLI request."

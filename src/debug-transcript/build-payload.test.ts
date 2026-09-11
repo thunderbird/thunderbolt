@@ -68,7 +68,7 @@ describe('buildDebugTranscriptPayload', () => {
     const payload = buildDebugTranscriptPayload({
       threadId: 'thread-1',
       messages,
-      authSession: { user: { id: 'user-1', email: 'user@example.com' } },
+      authSession: { user: { id: 'user-1', email: 'user@example.com', isAnonymous: false } },
       appVersion: '1.2.3',
       platform: 'web',
       capturedAt: '2026-08-18T12:00:00.000Z',
@@ -83,6 +83,7 @@ describe('buildDebugTranscriptPayload', () => {
     expect(payload.turns[1]?.systemPrompts).toEqual([
       expect.objectContaining({ text: 'Use Authorization: [redacted]', attempt: 1 }),
     ])
+    expect(payload.identity).toEqual({ userId: 'user-1', email: 'user@example.com' })
     expect(payload.capture).toEqual({
       capturedAt: '2026-08-18T12:00:00.000Z',
       appVersion: '1.2.3',
@@ -321,5 +322,19 @@ describe('buildDebugTranscriptPayload', () => {
 
     expect(new TextEncoder().encode(JSON.stringify(payload)).byteLength).toBeLessThanOrEqual(1_500_000)
     expect(payload.turns.map(({ userMessageId }) => userMessageId)).toEqual(['user-recent'])
+  })
+  it('leaves identity blank when there is no session', () => {
+    const payload = buildDebugTranscriptPayload({ threadId: 't', messages: [], authSession: null, appVersion: '1' })
+    expect(payload.identity).toEqual({ userId: null, email: null })
+  })
+
+  it('leaves identity blank for an anonymous session with a generated id and email', () => {
+    const payload = buildDebugTranscriptPayload({
+      threadId: 't',
+      messages: [],
+      appVersion: '1',
+      authSession: { user: { id: 'anon-id', email: 'anon@example.com', isAnonymous: true } },
+    })
+    expect(payload.identity).toEqual({ userId: null, email: null })
   })
 })

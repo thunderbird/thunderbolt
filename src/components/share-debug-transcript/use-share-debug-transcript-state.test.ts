@@ -89,10 +89,7 @@ describe('getDebugTranscriptErrorMessage', () => {
     expect(resolve(413, 'DEBUG_TRANSCRIPT_TOO_LARGE')).toBe('This transcript is too large to upload.')
   })
 
-  it('maps anonymous and unrecognized client errors without inviting retry', () => {
-    expect(resolve(403, 'ANONYMOUS_TRANSCRIPT_FORBIDDEN')).toBe(
-      'Sign in to a full account to share a debug transcript.',
-    )
+  it('maps unrecognized client errors without inviting retry', () => {
     expect(resolve(422)).toBe('The transcript was rejected by the server.')
   })
 
@@ -101,6 +98,7 @@ describe('getDebugTranscriptErrorMessage', () => {
 
     expect(resolve()).toBe(message)
     expect(resolve(500)).toBe(message)
+    expect(resolve(502, 'DEBUG_TRANSCRIPT_UPSTREAM_FAILED')).toBe(message)
   })
 })
 
@@ -135,9 +133,7 @@ const flushSubmission = async (submit: () => void) => {
 describe('useShareDebugTranscriptState errors', () => {
   it('reads a structured HttpError code from the response body', async () => {
     const errorLog = spyOn(console, 'error').mockImplementation(() => {})
-    const { httpClient } = createSpyHttpClient(async () =>
-      jsonResponse({ code: 'ANONYMOUS_TRANSCRIPT_FORBIDDEN' }, 403),
-    )
+    const { httpClient } = createSpyHttpClient(async () => jsonResponse({ code: 'DEBUG_TRANSCRIPTS_DISABLED' }, 403))
     const chatInstance = createChat()
     const { result } = renderHook(() => useShareDebugTranscriptState({ chatInstance, threadId: 'thread-1' }), {
       wrapper: createHookWrapper(httpClient),
@@ -146,7 +142,7 @@ describe('useShareDebugTranscriptState errors', () => {
     try {
       act(() => result.current.dialog.onConsentAcceptedChange(true))
       await flushSubmission(result.current.dialog.onSubmit)
-      expect(result.current.dialog.errorMessage).toBe('Sign in to a full account to share a debug transcript.')
+      expect(result.current.dialog.errorMessage).toBe('Debug transcript sharing is turned off on this server.')
     } finally {
       errorLog.mockRestore()
     }

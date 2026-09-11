@@ -21,7 +21,7 @@ const payloadEncoder = new TextEncoder()
 export type BuildDebugTranscriptPayloadInput = {
   threadId: string
   messages: readonly ThunderboltUIMessage[]
-  authSession: { user: Pick<Session['user'], 'id' | 'email'> } | null
+  authSession: { user: Pick<Session['user'], 'id' | 'email' | 'isAnonymous'> } | null
   appVersion?: string
   platform?: string
   capturedAt?: string
@@ -138,8 +138,8 @@ export const buildDebugTranscriptPayload = ({
     schemaVersion: 1,
     capture: { capturedAt, appVersion, platform, ...getDebugTranscriptCaptureStatus() },
     identity: {
-      userId: authSession?.user.id ?? null,
-      email: authSession?.user.email ?? null,
+      userId: authSession?.user.isAnonymous ? null : (authSession?.user.id ?? null),
+      email: authSession?.user.isAnonymous ? null : (authSession?.user.email ?? null),
     },
     thread: { threadId },
     turns: groupMessagesByTurn(messages).map((turn) => assembleTurn(turn, notes)),

@@ -9,6 +9,7 @@ import type { Settings } from '@/config/settings'
 import {
   countActiveDevices,
   deleteUser,
+  deleteSelfDebugTranscriptsForUser,
   revokeDevice,
   deleteEnvelope,
   revokeDeviceSessions,
@@ -315,7 +316,9 @@ export const createAccountRoutes = (
     .delete(
       '/',
       async ({ set, user }) => {
-        // tables have cascade delete on user_id and they will be deleted automatically
+        // Transcripts have no FK to `user` (their user_id may belong to another deployment),
+        // so the intake host removes this user's own rows explicitly before the cascade.
+        await deleteSelfDebugTranscriptsForUser(database, user.id)
         await deleteUser(database, user.id)
 
         set.status = 204

@@ -43,7 +43,27 @@ falsify, not a fact.
   (note: the AAD carries no version or timestamp).
 - **C4 — No v1 downgrade.** A v2 client never writes v1 (no-AAD) format and cannot be steered back
   into doing so — not by a server reporting `scheme_version: 1`, not by a `key_id` of `"v1"` on a
-  write path. The `"v1"` slot is never usable as an AAD-free oracle over v2 data.
+  write path. The `"v1"` slot is never usable as an AAD-free oracle over v2 data. The second clause
+  was FALSE until THU-876: `primary_key_id` is server-supplied and was stored verbatim, so one
+  rewritten metadata field sealed every new write on a migrated account under the decrypt-only
+  legacy CK — well-formed, AAD-bound `__enc:v2:v1:…`, so **key reuse rather than a format
+  downgrade**, but outside the hierarchy revocation controls (chained with THU-877, where A2 also
+  chooses that key, it breaks **C1** outright). It is now enforced by the mint grammar
+  (`isMintableKeyId`, which excludes `legacyKeyId` by construction — see C15) at three points: the
+  pointer is refused where a server response enters (`applyKeyring` keeps the primary already in
+  force; the upload path defers the batch), refused where it would become durable
+  (`storePrimaryKeyId`), and refused at the point of use (`codec.encode` fails closed). The last is
+  what makes a *transient* in-origin compromise (A6) non-persistent: the pointer lives in IndexedDB,
+  so one write around the API would otherwise steer every future write for the life of the device.
+
+  Residual: the pointer is unauthenticated server data, so a **grammar-valid** rollback is still
+  open — A2 reporting `"0"` on an account that rotated to `"1"` puts new writes back under a DEK a
+  revoked device copied while trusted. Same shape as C5's guarantee, different label. Nothing the
+  client holds can settle it: the canary, the one artifact a server cannot forge, is deliberately
+  bound to DEK `"0"` for the life of the account, so it attests nothing about which DEK is primary.
+  Closing it means signing the keyring (`primary_key_id` + `key_version`) under the epoch signing
+  key, or a monotonic local guard — which protects only a device that already saw the newer
+  pointer, since a freshly enrolled one has no baseline.
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
   operation.** Note the coupling: the ECDSA signing keypair is derived from the canary secret, which
@@ -134,6 +154,10 @@ falsify, not a fact.
   original wrapping and logged, never dropped (which would strand its data) and never deleted (which
   would turn recoverable corruption into permanent loss on a claim the server cannot verify — the
   slot is what lets a device still holding the relevant AK repair it later).
+
+  The grammar is also the **admissibility** rule for the primary pointer, not only the allocation
+  rule: `legacyKeyId` sits outside it precisely so that "which id may be minted" and "which id may
+  encrypt new writes" are the same question (THU-876, see C4).
 
   Residuals: passed-through rows accumulate, so an operator-gated cleanup is still owed; a keyring
   grown past `maxKeyringKeys` rows cannot be re-wrapped in one atomic request, which A2 can still

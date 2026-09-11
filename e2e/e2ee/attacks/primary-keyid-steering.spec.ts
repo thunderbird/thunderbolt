@@ -4,38 +4,52 @@
 
 /**
  * THU-876 — server `primary_key_id:"v1"` steers new writes onto the legacy CK
- * (C4/C5, adversary A2 + a legacy-CK holder, Medium). **Claim: new writes must
- * never be encrypted under the absorbed, never-rotating legacy `"v1"` key.**
+ * (C4/C5 standalone, **C1** chained with THU-877; adversary A2 + a legacy-CK
+ * holder, High). **Claim: new writes must never be encrypted under the
+ * absorbed, never-rotating legacy `"v1"` key.**
  *
- * The client stores the server-supplied `primary_key_id` verbatim (`applyKeyring`
- * → `storePrimaryKeyId`, src/services/encryption.ts:351). On a migrated account
- * the keyring carries a `"v1"` slot — the absorbed legacy CK, readable by any
- * holder of a v1-era phrase or device. If a malicious server reports
- * `primary_key_id:"v1"`, `codec.encode` resolves that slot and emits
- * `__enc:v2:v1:…` for every new write (src/db/encryption/codec.ts:262-276), so
- * future data is sealed under a key that never rotates and that revocation never
- * touches — defeating forward secrecy for new writes. (v2-native accounts have no
- * `"v1"` slot and fail closed, so the scope is migrated accounts.)
+ * The client used to store the server-supplied `primary_key_id` verbatim
+ * (`applyKeyring` → `storePrimaryKeyId`, src/services/encryption.ts:464-472),
+ * and `codec.encode` used whatever came back (src/db/encryption/codec.ts:
+ * 262-275). On a migrated account the keyring carries a `"v1"` slot — the
+ * absorbed legacy CK, decrypt-only by design: it never rotates, revocation
+ * never re-wraps it, and any holder of a v1-era phrase or device opens it (the
+ * v1 mnemonic WAS the raw CK). So a malicious server reporting
+ * `primary_key_id:"v1"` got every new write sealed under it: correctly formatted
+ * and AAD-bound (`__enc:v2:v1:…`), but outside the key hierarchy revocation
+ * controls. Chained with THU-877 the server also CHOOSES that key, so it needs
+ * no second party and reads the plaintext itself.
  *
  * Capability audit: the only attacker power exercised is A2 rewriting one field
  * of the metadata response. The v1 seed + migration is test setup that
  * reproduces a realistic migrated account, not an attacker privilege.
  *
- * Nuance (worth a note on the ticket): the steer is not instantaneous within a
- * session. `applyKeyring` persists the server's `primary_key_id` to IndexedDB,
- * but `invalidateKeyringCache` KEEPS the in-memory primary pointer, so a context
- * that already cached the real primary keeps using it. The persisted `"v1"`
- * takes effect on the next FRESH context — a reload or a new tab, which a real
- * user does constantly. This spec reproduces that: it lets `prime` persist
- * `"v1"`, waits until IndexedDB holds it, then writes from a fresh load.
+ * Nuance: the steer is not instantaneous within a session. `applyKeyring`
+ * persists the pointer while `invalidateKeyringCache` KEEPS the in-memory one,
+ * so a context that already cached the real primary keeps using it and the
+ * poison bites on the next FRESH context — a reload or a new tab, which a real
+ * user hits constantly. That durability is the attack: it outlives the response
+ * that delivered it.
  *
- * Expected-failure (Option C): this test asserts the SECURE behavior — a new
- * write's wire key_id must NOT be the legacy `"v1"` — and is tagged `test.fail()`
- * because the vuln is open today, so that assertion fails now. When THU-876 is
- * fixed (reject `legacyKeyId` as primary at the client store sites and in the
- * backend `setPrimaryKeyId`), new writes route through a real key again, the
- * assertion passes, and Playwright flags the unexpected pass → drop the
- * `test.fail()` tag for a permanent regression gate.
+ * The fix refuses any pointer outside the mint grammar (`isMintableKeyId`,
+ * THU-871 — `legacyKeyId` is deliberately outside it) at three points: the door
+ * (`applyKeyring` skips it and keeps the primary already in force; the upload
+ * path defers instead), the drawer (`storePrimaryKeyId` refuses to persist it),
+ * and the point of use (`codec.encode` fails closed on a pointer written around
+ * that API, which is what stops a transient in-origin compromise from becoming
+ * a permanent steer). The server-side half was already closed by THU-871: the
+ * only route that writes this column validates the id against `keyIdPattern`.
+ *
+ * Polarity: asserts the SECURE behavior. Authored as an Option C
+ * expected-failure while the vuln was open; the `test.fail()` tag was retired
+ * once the fix landed. **Assertion 1 is the non-vacuity anchor** — it proves the
+ * poisoned response really was processed and refused, rather than the write
+ * simply never seeing it. The original setup step (poll IndexedDB until it holds
+ * `"v1"`) is unreachable post-fix by construction, which is exactly the point,
+ * so it is replaced by the refusal signal; that couples this spec to a log
+ * substring on purpose. Assertions 3-4 then pin that the write was ROUTED, not
+ * stalled: a spec that only checked `keyId !== "v1"` would also pass if uploads
+ * had quietly stopped.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/primary-keyid-steering.spec.ts
@@ -62,7 +76,7 @@ import {
   seedV1Account,
 } from '../helpers'
 import { parseWireValue } from '../../../src/db/encryption/wire-format'
-import { legacyKeyId } from '../../../shared/e2ee-types'
+import { initialKeyId, legacyKeyId } from '../../../shared/e2ee-types'
 
 /** Read the client's persisted primary key_id straight from IndexedDB. */
 const readPersistedPrimaryKeyId = (page: Page): Promise<string | null> =>
@@ -80,10 +94,7 @@ const readPersistedPrimaryKeyId = (page: Page): Promise<string | null> =>
   )
 
 test.describe.serial('THU-876 — primary_key_id steering', () => {
-  test('a server-reported primary_key_id:v1 routes new writes onto the legacy CK', async ({ page }) => {
-    // Expected-failure while the vuln is open — see the file header (Option C).
-    test.fail()
-
+  test('a server-reported primary_key_id:v1 is refused, and writes stay on the real primary', async ({ page }) => {
     const email = createE2eeEmail()
     const marker = `steered-${crypto.randomUUID()}`
 
@@ -99,23 +110,42 @@ test.describe.serial('THU-876 — primary_key_id steering', () => {
     await waitForSchemeV2(userId, ['0', legacyKeyId])
     await enableTasks(page)
 
+    // Collect the client's own report of what it refused. Attached before the
+    // reload below, and kept across navigations for this page.
+    const consoleErrors: string[] = []
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        consoleErrors.push(message.text())
+      }
+    })
+
     // A2 reports the legacy slot as the primary. Reload so `prime` →
-    // `stageKeyring` → `applyKeyring` persists it, then wait until IndexedDB
-    // actually holds "v1" — that guarantees the next fresh context (the write
-    // below) reads the steered primary rather than a cached real one.
+    // `stageKeyring` → `applyKeyring` processes the poisoned response.
     await overrideEncryptionMetadata(page.context(), { primary_key_id: legacyKeyId })
     await page.goto('/tasks')
     await expect(page.getByRole('button', { name: 'New Task' })).toBeVisible()
-    await expect.poll(() => readPersistedPrimaryKeyId(page), { timeout: 30_000 }).toBe(legacyKeyId)
 
+    // 1. Non-vacuity anchor: the steer was seen and rejected, not missed.
+    await expect
+      .poll(() => consoleErrors.some((line) => line.includes('refused a non-mintable primary key_id')), {
+        timeout: 30_000,
+      })
+      .toBe(true)
+
+    // 2. Nothing hostile became durable local state — the primary already in
+    //    force survived, so the next fresh context reads a legitimate pointer.
+    expect(await readPersistedPrimaryKeyId(page)).toBe(initialKeyId)
+
+    // 3. The write is ROUTED, not stalled: it lands under the real primary.
     const before = await getTaskIds(userId)
     await createTask(page, marker)
     const [rowId] = [...(await waitForNewEncryptedTasks(userId, before)).map((row) => row.id)]
     const parsed = parseWireValue(await getTaskCiphertext(rowId))
     expect(parsed).toBeTruthy()
-
-    // SECURE assertion: the new write must not be sealed under the legacy CK.
-    // Fails today (key_id is "v1"); passes once THU-876 rejects it as primary.
     expect(parsed!.keyId).not.toBe(legacyKeyId)
+    expect(parsed!.keyId).toBe(initialKeyId)
+
+    // 4. And it round-trips, so the refusal cost the user nothing.
+    await expect(page.getByText(marker, { exact: true })).toBeVisible({ timeout: 30_000 })
   })
 })

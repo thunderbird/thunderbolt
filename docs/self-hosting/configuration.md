@@ -90,7 +90,7 @@ Users can share a chat's debug transcript with the Thunderbolt team from the cha
 | `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's client key, issued by the Thunderbolt team. Keep it server-side.    |
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Mounts the intake endpoint. Only the Thunderbolt-hosted deployment enables this.      |
 
-To obtain a key, contact the Thunderbolt team with a name for your deployment. Transcripts are identified (user id and email as known by your deployment; blank for anonymous users) and are kept by the Thunderbolt team until the submitting account is deleted.
+To obtain a key, contact the Thunderbolt team with a name for your deployment. Transcripts are identified (user id and email as known by your deployment; blank for anonymous users) and are kept by the Thunderbolt team; deleting the submitting account does not remove them.
 
 ## Rate Limiting and Proxy Trust
 
@@ -111,11 +111,11 @@ Settings are read once at startup, so **restart the backend** after changing `MI
 
 ## CLI Device Rollout
 
-| Variable                          | Default | Description                                                     |
-| --------------------------------- | ------- | --------------------------------------------------------------- |
-| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking   |
-| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true` |
-| `CONFIDENTIAL_API_KEYS_ENABLED` | `false` | Lets a personal access token reach the confidential (Tinfoil) routes when set to `true` |
+| Variable                          | Default | Description                                                                             |
+| --------------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking                           |
+| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true`                         |
+| `CONFIDENTIAL_API_KEYS_ENABLED`   | `false` | Lets a personal access token reach the confidential (Tinfoil) routes when set to `true` |
 
 Rollout has three mandatory, old-client-safe stages:
 

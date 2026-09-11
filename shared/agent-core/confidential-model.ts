@@ -19,7 +19,8 @@ import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
 const vendorAliases = { zhipu: 'zai' } as const
-const modelAliases = { 'glm-5-2': 'glm-5.2' } as const
+// pi-ai 0.80.7 has no glm-5.3; swap the alias for the real catalog id when upgrading Pi
+const modelAliases = { 'glm-5-2': 'glm-5.2', 'glm-5-3': 'glm-5.2', 'glm-5-3-flash': 'glm-5.2' } as const
 
 /** Stable structural codes surfaced by confidential model construction and transport. */
 export type ConfidentialModelErrorCode = 'compatibility-missing' | 'attestation-failed'
@@ -97,6 +98,12 @@ export const resolveConfidentialModelCompatibility = (
       'compatibility-missing',
       `Managed model "${model.modelId}" has no Pi compatibility metadata.`,
     )
+  }
+  if (model.modelId === 'glm-5-3' || model.modelId === 'glm-5-3-flash') {
+    return {
+      ...resolved,
+      thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
+    }
   }
   return resolved
 }

@@ -4,8 +4,8 @@
 
 import { isPiModelCandidate } from '@/acp/built-in-adapter'
 import {
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
+  defaultModelGlm53Flash,
+  defaultModelGlm53,
   defaultModelOpus5,
   defaultModels,
   type SharedModel,
@@ -20,8 +20,8 @@ export type EvalModel = {
 
 export const evalModelSlugs: Readonly<Record<string, string>> = {
   [defaultModelOpus5.id]: 'opus',
-  [defaultModelDeepseekV4Flash.id]: 'flash',
-  [defaultModelGlm52.id]: 'glm',
+  [defaultModelGlm53Flash.id]: 'flash',
+  [defaultModelGlm53.id]: 'glm',
 }
 
 /** Build the eval matrix from shipped defaults, requiring a stable CLI slug for every model. */

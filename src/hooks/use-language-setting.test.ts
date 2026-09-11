@@ -5,7 +5,7 @@
 import { getSettingsRecords, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
-import { setActiveLocale } from '@/i18n/active-locale'
+import { getActiveLocale, setActiveLocale } from '@/i18n/active-locale'
 import { getClock } from '@/testing-library'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
@@ -87,5 +87,49 @@ describe('useLanguageSetting', () => {
 
     expect(await storedValue('language')).toBe('de')
     expect(await storedValue('location_name_display')).toBeNull()
+  })
+
+  /**
+   * The fold's whole reason to exist (THU-808): the setting write queues a
+   * PowerSync CRUD upload that reads `X-App-Language` before React runs any
+   * effect, so the publish must land synchronously — before the returned
+   * promise, and therefore before the write. `applyLanguageSetting` is already
+   * covered for this in isolation (src/i18n/index.test.ts); this pins that
+   * `setLanguage` keeps calling it *first*, which that test cannot see.
+   */
+  it('publishes the new locale before the write settles', async () => {
+    const { result } = await renderLanguageSetting()
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.setLanguage('pt-BR')
+    })
+
+    expect(getActiveLocale()).toBe('pt-BR')
+    expect(localStorage.getItem('thunderbolt_locale')).toBe('pt-BR')
+
+    await act(async () => {
+      await pending
+    })
+    expect(await storedValue('language')).toBe('pt-BR')
+  })
+
+  it('publishes the negotiated locale before the reset settles', async () => {
+    await updateSettings(getDb(), { language: 'ja' })
+    setActiveLocale('ja')
+    const { result } = await renderLanguageSetting()
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.resetLanguage()
+    })
+
+    // happy-dom negotiates en-US.
+    expect(getActiveLocale()).toBe('en')
+
+    await act(async () => {
+      await pending
+    })
+    expect(await storedValue('language')).toBeNull()
   })
 })

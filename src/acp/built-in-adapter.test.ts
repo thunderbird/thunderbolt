@@ -430,7 +430,7 @@ describe('resolvePiModel — Tinfoil', () => {
     expect(evictSystemTinfoilClient).toHaveBeenCalledTimes(1)
   })
 
-  it('resolves BYOK directly as OpenAI-compatible without receipts', async () => {
+  it.each(['high', 'max'] as const)('resolves BYOK with %s effort directly without receipts', async (effort) => {
     const error = Object.assign(new Error('key changed'), { name: 'KeyConfigMismatchError' })
     const client = createSecureClient(async (_input, init) => {
       expect(new Headers(init?.headers).has(inferenceModelHeader)).toBe(false)
@@ -438,7 +438,7 @@ describe('resolvePiModel — Tinfoil', () => {
     })
     const getTinfoilClient = mock(async () => client)
     const evictUserTinfoilClient = mock(() => {})
-    const profile = { modelId: 'user-model', providerOptions: { reasoningEffort: 'high' } } as never
+    const profile = { modelId: 'user-model', providerOptions: { reasoningEffort: effort } } as never
     const model = tinfoilModel({
       id: 'user-model',
       model: 'private-model',
@@ -451,6 +451,7 @@ describe('resolvePiModel — Tinfoil', () => {
       getTinfoilClient,
       evictUserTinfoilClient,
     })
+    expect(resolved?.thinkingLevel).toBe(effort)
     const descriptor = requireDescriptor(resolved, 'openai-compat')
 
     expect(descriptor).toMatchObject({

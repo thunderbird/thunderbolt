@@ -792,7 +792,7 @@ export default function PreferencesSettingsPage() {
                 trackEvent('settings_localization_update')
               }}
             >
-              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Language`}>
+              <SelectTrigger className="w-auto rounded-lg" aria-label={t`Language`} data-testid="language">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

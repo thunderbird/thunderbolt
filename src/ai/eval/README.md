@@ -222,8 +222,8 @@ Here are the three leading stories on AP News for February 16, 2026:
 Use these names in `EVAL_MODELS`:
 
 - `opus` — Opus 5
-- `flash` — DeepSeek V4 Flash
-- `glm` — GLM 5.2
+- `flash` — GLM 5.3 Flash
+- `glm` — GLM 5.3
 
 The slug map is intentionally explicit. Its unit test fails when `defaultModels` gains an entry without a stable eval slug.
 

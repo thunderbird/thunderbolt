@@ -133,6 +133,10 @@ jobs:
             pkg.version = process.env.VERSION;
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
+          if [ "$(node -p "require('./package.json').version")" != "$BUILD_VERSION" ]; then
+            echo "::error::package.json version does not match BUILD_VERSION ($BUILD_VERSION)"
+            exit 1
+          fi
 
           # Update Cargo.toml version
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
@@ -149,6 +153,7 @@ jobs:
             console.log('✅ Set versionCode to', data.bundle.android.versionCode);
           "
         env:
+          VERSION: ${{ env.BUILD_VERSION }}
           VERSION_CODE: ${{ steps.version_code.outputs.versionCode }}
 
       - name: Update tauri.properties with correct version

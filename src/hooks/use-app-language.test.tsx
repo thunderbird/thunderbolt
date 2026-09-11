@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { updateSettings } from '@/dal'
+import { getSettingsRecords, resetSettingToDefault, updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { defaultSettings } from '@/defaults/settings'
 import { getActiveLocale, setActiveLocale, subscribeActiveLocale } from '@/i18n/active-locale'
 import { getClock } from '@/testing-library'
+import { PowerSyncReactivityTestProvider } from '@/test-utils/powersync-mock'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
@@ -51,6 +53,42 @@ const renderWithSettingReader = () =>
     },
     { wrapper: createTestProvider() },
   )
+
+/**
+ * Same hook pair, but over the reactive PowerSync mock, whose `triggerChange`
+ * makes the watched settings query re-emit — the stand-in for a synced write
+ * arriving from another device. This is the only way to exercise anything
+ * post-mount at the unit layer; with the default no-op mock (above) a written
+ * row stays invisible forever.
+ */
+const renderWithLiveSettings = () => {
+  const triggerChangeRef = { current: null as ((tables: string[]) => void) | null }
+  const rendered = renderHook(
+    () => {
+      useAppLanguage()
+      return useSettings({ language: 'en' })
+    },
+    {
+      wrapper: ({ children }) => (
+        <PowerSyncReactivityTestProvider tables={['settings']} triggerChangeRef={triggerChangeRef}>
+          {children}
+        </PowerSyncReactivityTestProvider>
+      ),
+    },
+  )
+  const settingsChanged = () => triggerChangeRef.current?.(['settings'])
+  return { ...rendered, settingsChanged }
+}
+
+const storedLanguage = async (): Promise<string | null> => {
+  const [record] = await getSettingsRecords(getDb(), ['language'])
+  return record?.value ?? null
+}
+
+const languageDefault = defaultSettings.find((setting) => setting.key === 'language')
+if (!languageDefault) {
+  throw new Error('language default missing from defaultSettings')
+}
 
 let unsubscribeAnnouncements: (() => void) | null = null
 
@@ -138,5 +176,52 @@ describe('useAppLanguage', () => {
     expect(result.current.language.isLoading).toBe(false)
     expect(getActiveLocale()).toBe('ja')
     expect(localStorage.getItem(storageKey)).toBe('ja')
+  })
+
+  /**
+   * A language change synced in from another device, arriving after mount: the
+   * watched query re-emits, and the hook must publish the new locale and
+   * refresh the mirror without a reload. This was untestable before the
+   * reactive mock — the THU-808 bugs in exactly this seam were all found by
+   * hand.
+   */
+  it('follows a cross-device language change arriving after mount', async () => {
+    stubBrowserLanguages(['en-US'])
+    await updateSettings(getDb(), { language: 'de' })
+    setActiveLocale('de')
+
+    const { settingsChanged } = renderWithLiveSettings()
+    await flush()
+    expect(getActiveLocale()).toBe('de')
+
+    await updateSettings(getDb(), { language: 'ja' })
+    settingsChanged()
+    await flush()
+
+    expect(getActiveLocale()).toBe('ja')
+    expect(localStorage.getItem(storageKey)).toBe('ja')
+  })
+
+  /**
+   * "Back to auto" arriving from another device: the row returns to the shipped
+   * null default, so this device renegotiates from its own browser — and, since
+   * its negotiation is non-English, re-seeds the row with it.
+   */
+  it('renegotiates and re-seeds when a reset arrives from another device', async () => {
+    stubBrowserLanguages(['de'])
+    await updateSettings(getDb(), { language: 'ja' })
+    setActiveLocale('ja')
+
+    const { settingsChanged } = renderWithLiveSettings()
+    await flush()
+    expect(getActiveLocale()).toBe('ja')
+
+    await resetSettingToDefault(getDb(), 'language', languageDefault)
+    settingsChanged()
+    await flush()
+
+    expect(getActiveLocale()).toBe('de')
+    expect(localStorage.getItem(storageKey)).toBe('de')
+    expect(await storedLanguage()).toBe('de')
   })
 })

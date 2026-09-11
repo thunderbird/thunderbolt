@@ -29,12 +29,16 @@ export const resolveManagedDirectRuntime = (model: string): ManagedDirectRuntime
     ? managedDirectRuntimes[model as keyof typeof managedDirectRuntimes]
     : undefined
 
+const legacyConfidentialModels = ['glm-5-2', 'deepseek-v4-flash']
 const confidentialManagedModels = new Map<string, ManagedInferenceIdentity>(
-  defaultModels
-    .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
-    .map(({ model }) => [model, { provider: 'tinfoil', model }]),
+  [
+    ...defaultModels
+      .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
+      .map(({ model }) => model),
+    ...legacyConfidentialModels,
+  ].map((model) => [model, { provider: 'tinfoil', model }]),
 )
 
-/** Resolve only confidential managed catalog identities, without prototype-property lookups. */
+/** Resolve confidential managed catalog and legacy identities, without prototype-property lookups. */
 export const resolveConfidentialManagedModel = (model: string): ManagedInferenceIdentity | undefined =>
   confidentialManagedModels.get(model)

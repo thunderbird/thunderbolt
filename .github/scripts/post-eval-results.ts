@@ -39,8 +39,8 @@ const workflowCommentAuthor = 'github-actions[bot]'
 const failureDisplayLimit = 20
 const modelDisplayNames: Readonly<Record<string, string>> = {
   opus: 'Opus 5',
-  flash: 'DeepSeek Flash',
-  glm: 'GLM 5.2',
+  flash: 'GLM 5.3 Flash',
+  glm: 'GLM 5.3',
 }
 const expectationByCategory: Readonly<Record<NecessityCategory, string>> = {
   never_search: 'answer from stable knowledge without searching',

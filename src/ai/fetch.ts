@@ -71,8 +71,8 @@ import {
   type Tool,
   type ToolSet,
 } from 'ai'
-import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
-import { isClosedConnectionError } from '@/lib/mcp-errors'
+import type { MCPClient, NamedMCPClient, ReconnectClient } from '@/lib/mcp-provider'
+import { isMcpDiscoveryError } from '@/lib/mcp-errors'
 import { smoothStreamWordDelayMs } from '@/chats/chat-throttle'
 import type { SkillDefinition } from '@shared/agent-core/skills'
 import { detectStreamChunk } from './smooth-chunking'
@@ -127,10 +127,6 @@ export const ollama = createOpenAI({
   fetch,
 })
 
-/** Reconnect a dropped MCP client; returns a fresh client or null. Supplied by
- *  the MCP provider via the chat store. See `src/lib/mcp-provider.tsx`. */
-type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
-
 type AiFetchStreamingResponseOptions = {
   init: RequestInit
   modelId: string
@@ -157,11 +153,10 @@ type AiFetchStreamingResponseOptions = {
  * (`render`, `render_2`, …); each final prefix is reserved, so a later server
  * that itself sanitizes to a generated prefix (`render_2`) is bumped again.
  *
- * Per server we call `tools()`; if it rejects with a closed-connection error we
- * reconnect once and retry. A reconnect that fails or a second `tools()` failure
- * skips that server — discovery must never block the send. Non-closed errors
- * propagate so real failures aren't masked. After prefixing, a name that still
- * collides with an already-registered tool is skipped (first-registered wins) as
+ * Expected discovery failures skip that server for this turn and reconnect once
+ * in the background for the next send, surfacing the error in the provider.
+ * Programming errors propagate. After prefixing, a name that still collides
+ * with an already-registered tool is skipped (first-registered wins) as
  * a safety net. The returned `summary` lists `- <prefix> (<n> tools)` per server
  * (undefined when no MCP tools were added), injected into the system prompt.
  *
@@ -214,28 +209,20 @@ export const mergeMcpTools = async (
     takenPrefixes.add(prefix)
 
     const server = { name: serverName, url }
-    const merge = async (): Promise<number> => {
+    const discover = async () => {
       try {
-        return addTools(prefix, server, await client.tools())
+        return await client.tools()
       } catch (err) {
-        if (!isClosedConnectionError(err)) {
+        if (!isMcpDiscoveryError(err)) {
           throw err
         }
-        const fresh = await reconnectClient(client)
-        if (!fresh) {
-          console.warn('MCP server reconnect failed; skipping its tools for this send')
-          return 0
-        }
-        try {
-          return addTools(prefix, server, await fresh.tools())
-        } catch (retryErr) {
-          console.warn('MCP server still failing after reconnect; skipping its tools for this send', retryErr)
-          return 0
-        }
+        console.warn(`MCP tool discovery failed for "${serverName}"; skipping its tools for this send`, err)
+        void reconnectClient(client, err)
+        return {}
       }
     }
 
-    const added = await merge()
+    const added = addTools(prefix, server, await discover())
     if (added > 0) {
       mcpServerEntries.push(`- ${prefix} (${added} ${added === 1 ? 'tool' : 'tools'})`)
     }

@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
-import { defaultModelGlm52, defaultModelDeepseekV4Flash, type SharedModel } from '../../../shared/defaults/models.ts'
+import { defaultModelGlm53, defaultModelGlm53Flash, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
@@ -20,7 +20,7 @@ import { testSessionCredential } from './test-fixtures.ts'
 import { createTinfoilBinding, type CreateTinfoilBindingOptions } from './tinfoil.ts'
 
 const confidentialModel: SharedModel = {
-  ...defaultModelGlm52,
+  ...defaultModelGlm53,
   name: 'GLM 5.2',
   description: 'Confidential GLM',
   vendor: 'zai',
@@ -311,11 +311,11 @@ describe('createTinfoilBinding', () => {
 
     expect(binding).toMatchObject({
       providerId: 'thunderbolt',
-      wireModel: 'glm-5-2',
+      wireModel: 'glm-5-3',
       persistsCredentialStatus: false,
     })
     expect(binding.piModel).toMatchObject({
-      id: 'glm-5-2',
+      id: 'glm-5-3',
       provider: 'thunderbolt',
       reasoning: true,
       contextWindow: 128_000,
@@ -335,10 +335,11 @@ describe('createTinfoilBinding', () => {
   })
 
   test.each([
-    ['off', { type: 'disabled' }, undefined],
-    ['minimal', { type: 'enabled', clear_thinking: false }, 'high'],
-    ['medium', { type: 'enabled', clear_thinking: false }, 'high'],
-  ] as const)('maps explicit %s thinking through Pi GLM 5.2 compatibility', async (level, expectedThinking, expectedEffort) => {
+    ['glm-5-3', 'off', { type: 'disabled' }, undefined],
+    ['glm-5-3', 'minimal', { type: 'enabled', clear_thinking: false }, 'low'],
+    ['glm-5-3', 'medium', { type: 'enabled', clear_thinking: false }, 'high'],
+    ['glm-5-2', 'low', { type: 'enabled', clear_thinking: false }, 'high'],
+  ] as const)('maps %s %s thinking through Pi compatibility', async (modelId, level, expectedThinking, expectedEffort) => {
     let requestThinking: unknown
     let requestEffort: unknown
     const createSecureClient = secureClientFactory(async (request) => {
@@ -346,11 +347,16 @@ describe('createTinfoilBinding', () => {
         readonly thinking?: unknown
         readonly reasoning_effort?: unknown
       }
+      expect(payload).toMatchObject({ model: modelId })
       requestThinking = payload.thinking
       requestEffort = payload.reasoning_effort
       return successfulCompletion('')
     })
-    const binding = await createTinfoilBinding({ ...bindingOptions(), createSecureClient })
+    const binding = await createTinfoilBinding({
+      ...bindingOptions(),
+      model: { ...confidentialModel, model: modelId },
+      createSecureClient,
+    })
     const runtime = await createRuntime(binding, level)
     try {
       await runtime.prompt(crypto.randomUUID())
@@ -384,7 +390,7 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test.each([confidentialModel, defaultModelDeepseekV4Flash])('sends $model identity and submits terminal usage', async (model) => {
+  test.each([confidentialModel, defaultModelGlm53Flash])('sends $model identity and submits terminal usage', async (model) => {
     const secureRequests: Request[] = []
     const receiptRequests: Request[] = []
     const receipt = 'iu1.canonicalPayload.canonicalSignature'

@@ -63,7 +63,7 @@ import { getPlatform } from '@/lib/platform'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
-import { vendorSupportsImages } from '@shared/defaults/models'
+import { modelSupportsImages } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
@@ -164,7 +164,7 @@ const piProviders = new Set<Model['provider']>([
 export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
   piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
 
-const piThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const piThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 const profileThinkingOptionsSchema = z
   .object({
     reasoningEffort: z.string().optional().catch(undefined),
@@ -392,7 +392,7 @@ export const resolvePiModel = async (
           receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
-          supportsImages: vendorSupportsImages(model.vendor),
+          supportsImages: modelSupportsImages(model),
         },
         thinkingLevel,
         tinfoilClient: client,
@@ -425,7 +425,7 @@ export const resolvePiModel = async (
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
-        supportsImages: vendorSupportsImages(model.vendor),
+        supportsImages: modelSupportsImages(model),
       },
       thinkingLevel,
       tinfoilClient: client,
@@ -466,7 +466,7 @@ export const resolvePiModel = async (
       // Pi's openai-compat descriptor is text-only by default; without this a
       // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
       // stripped before the wire and only sees the `[Attachment: …]` text label.
-      supportsImages: vendorSupportsImages(model.vendor),
+      supportsImages: modelSupportsImages(model),
     },
     thinkingLevel,
   }

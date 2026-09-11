@@ -23,6 +23,7 @@ import { capStream } from '@/proxy/streaming'
 import { filterHeaders } from '@/utils/request'
 import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
+import { defaultModelGlm53 } from '@shared/defaults/models'
 import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { Elysia, type AnyElysia } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
@@ -243,7 +244,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     const isManagedChat =
       method === 'POST' && decodePolicyPathname(new URL(upstreamUrl).pathname) === '/v1/chat/completions'
     // Preserve the default for clients predating the header.
-    const identity = resolveConfidentialManagedModel(request.headers.get(inferenceModelHeader) ?? 'glm-5-2')
+    const identity = resolveConfidentialManagedModel(
+      request.headers.get(inferenceModelHeader) ?? defaultModelGlm53.model,
+    )
     if (isManagedChat && !identity) {
       recordLatency({ status: 400, completedAt: nowFn() })
       return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)

@@ -16,8 +16,10 @@ import {
   debugTranscriptUpstreamFailedCode,
 } from '@shared/debug-transcript-contract'
 import { Elysia, type AnyElysia } from 'elysia'
+import { z } from 'zod'
 
 const upstreamTimeoutMs = 10_000
+const intakeResponseSchema = z.object({ id: z.string().min(1) })
 
 type DebugTranscriptsRoutesOptions = {
   auth: Auth
@@ -26,20 +28,34 @@ type DebugTranscriptsRoutesOptions = {
   rateLimit?: AnyElysia
 }
 
-/** Forward one submission to the configured intake. Resolves to the intake's response, or null on network failure. */
+/** Forward a submission and validate the intake acknowledgment; upstream failures resolve to null. */
 const forwardToIntake = async (
   settings: DebugTranscriptsRoutesOptions['settings'],
   fetchFn: typeof fetch,
   body: unknown,
-): Promise<Response | null> => {
+): Promise<{ id: string } | null> => {
   try {
-    return await fetchFn(`${settings.debugTranscriptUpstreamUrl.replace(/\/$/, '')}/v1/${debugTranscriptIntakePath}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.debugTranscriptUpstreamKey}` },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(upstreamTimeoutMs),
-    })
+    const response = await fetchFn(
+      `${settings.debugTranscriptUpstreamUrl.replace(/\/$/, '')}/v1/${debugTranscriptIntakePath}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.debugTranscriptUpstreamKey}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(upstreamTimeoutMs),
+      },
+    )
+    if (response.status !== 201) {
+      console.error('Debug transcript upstream failed', response.status)
+      return null
+    }
+    const parsed = intakeResponseSchema.safeParse(await response.json())
+    if (!parsed.success) {
+      console.error('Debug transcript upstream returned an invalid acknowledgment')
+      return null
+    }
+    return parsed.data
   } catch {
+    console.error('Debug transcript upstream fetch or response read failed')
     return null
   }
 }
@@ -89,13 +105,12 @@ export const createDebugTranscriptsRoutes = ({ auth, settings, fetchFn, rateLimi
               ...parsed.data,
               userId: user.isAnonymous ? null : user.id,
             })
-            if (!upstream || upstream.status !== 201) {
-              console.error('Debug transcript upstream failed', upstream?.status ?? 'network')
+            if (!upstream) {
               set.status = 502
               return { error: 'Debug transcript upstream rejected the upload', code: debugTranscriptUpstreamFailedCode }
             }
             set.status = 201
-            return (await upstream.json()) as { id: string }
+            return upstream
           },
           { parse: 'none' },
         )

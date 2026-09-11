@@ -145,4 +145,30 @@ describe('Debug transcript relay', () => {
     expect((await result.json()).code).toBe('DEBUG_TRANSCRIPT_TOO_LARGE')
     expect(intake.calls).toHaveLength(1)
   })
+  it.each([
+    ['missing id', () => Response.json({ error: 'not accepted' }, { status: 201 })],
+    ['empty id', () => Response.json({ id: '' }, { status: 201 })],
+    ['non-string id', () => Response.json({ id: 123 }, { status: 201 })],
+    ['malformed JSON', () => new Response('{invalid', { status: 201 })],
+    [
+      'body stream error',
+      () =>
+        new Response(
+          new ReadableStream({
+            start: (controller) => controller.error(new Error('Body read failed')),
+          }),
+          { status: 201 },
+        ),
+    ],
+  ] as const)('returns 502 for an intake 201 with %s', async (_name, response) => {
+    const intake = fakeIntake(response)
+    const app = createDebugTranscriptsRoutes({ auth: mockAuth, settings: relaySettings, fetchFn: intake.fetchFn })
+    const result = await post(app, JSON.stringify(validBody))
+    expect(result.status).toBe(502)
+    expect(await result.json()).toEqual({
+      error: 'Debug transcript upstream rejected the upload',
+      code: 'DEBUG_TRANSCRIPT_UPSTREAM_FAILED',
+    })
+    expect(intake.calls).toHaveLength(1)
+  })
 })

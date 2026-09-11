@@ -78,11 +78,15 @@ describe('sanitizeDebugTranscriptSecrets', () => {
     const input = {
       query: 'https://api.example.test/items?limit=10&access_token=secret-value&signature=signed-value#section',
       userinfo: 'postgres://database-user:database-password@db.example.test/app',
+      oauth:
+        'https://app.example.test/callback?code=auth-code&state=xyz&client_secret=cs&id_token=idt&refresh_token=rt&assertion=jwt',
     } satisfies JsonValue
 
     expect(sanitizeDebugTranscriptSecrets(input)).toEqual({
       query: 'https://api.example.test/items?limit=10&access_token=[redacted]&signature=[redacted]#section',
       userinfo: 'postgres://[redacted]:[redacted]@db.example.test/app',
+      oauth:
+        'https://app.example.test/callback?code=[redacted]&state=xyz&client_secret=[redacted]&id_token=[redacted]&refresh_token=[redacted]&assertion=[redacted]',
     })
   })
 

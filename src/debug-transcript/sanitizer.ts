@@ -21,7 +21,8 @@ const bearerPattern = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi
 const skProviderKeyPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/gi
 const knownProviderKeyPattern =
   /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|hf_[A-Za-z0-9]{20,}|pplx-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,})\b/gi
-const urlCredentialQueryPattern = /([?&](?:access_token|token|key|api_key|signature|sig|password)=)[^&#\s]*/gi
+const urlCredentialQueryPattern =
+  /([?&](?:access_token|refresh_token|id_token|token|key|api_key|client_secret|code|assertion|signature|sig|password)=)[^&#\s]*/gi
 const urlUserInfoPattern = /(\b[a-z][a-z0-9+.-]*:\/\/)[^:/@\s]+:[^/@\s]+@/gi
 
 const isSensitiveKey = (key: string): boolean => {

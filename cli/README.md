@@ -287,10 +287,13 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
 
 `THUNDERBOLT_TOKEN` takes precedence over a stored web session for the current
-process. PATs support direct managed models only. Confidential models use
-session-bound cache material and therefore require `thunderbolt login`; the CLI
-returns `WEB_LOGIN_REQUIRED` instead of falling back to direct inference or a
-BYOK provider.
+process. PATs support direct managed models only. Confidential models require
+`thunderbolt login`, because the CLI keeps its prompt-cache secret alongside the
+web-session credential and a PAT carries none; the CLI returns
+`WEB_LOGIN_REQUIRED` instead of falling back to direct inference or a BYOK
+provider. A self-hosted backend can allow PATs on the confidential routes for
+other service callers via `CONFIDENTIAL_API_KEYS_ENABLED`, but that flag does not
+change the CLI's own behaviour.
 
 ## Demo
 

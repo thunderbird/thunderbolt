@@ -115,6 +115,7 @@ Settings are read once at startup, so **restart the backend** after changing `MI
 | --------------------------------- | ------- | --------------------------------------------------------------- |
 | `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking   |
 | `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true` |
+| `CONFIDENTIAL_API_KEYS_ENABLED` | `false` | Lets a personal access token reach the confidential (Tinfoil) routes when set to `true` |
 
 Rollout has three mandatory, old-client-safe stages:
 

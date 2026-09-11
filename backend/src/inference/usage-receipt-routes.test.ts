@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearSettingsCache } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
@@ -180,6 +181,25 @@ describe('inference usage receipt routes', () => {
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
     expect(rateLimitCalls).not.toHaveBeenCalled()
+  })
+
+  it('accepts a personal access token when confidential API keys are enabled', async () => {
+    process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
+    clearSettingsCache()
+    try {
+      // The flag is read when the routes are constructed, so build inside the override.
+      const enabledApp = new Elysia().use(
+        createInferenceUsageReceiptRoutes({ auth: mockAuth, database, secret, nowSeconds: () => nowSeconds }),
+      )
+
+      const response = await postRaw(enabledApp, '{', { 'x-api-key': 'valid-personal-access-token' })
+
+      // Past the guard: a malformed body is now the caller's problem, so the route answers 400.
+      expect(response.status).toBe(400)
+    } finally {
+      delete process.env.CONFIDENTIAL_API_KEYS_ENABLED
+      clearSettingsCache()
+    }
   })
 
   it('sanitizes an internal authentication error without exposing its raw message', async () => {

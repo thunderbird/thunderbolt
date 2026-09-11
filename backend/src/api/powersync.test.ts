@@ -57,6 +57,7 @@ const powersyncSettings: Settings = {
   debugTranscriptUpstreamKey: '',
   debugTranscriptsEnabled: false,
   cliDeviceRegistrationEnabled: false,
+  confidentialApiKeysEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,
   inferenceQuotaAnonymousSevenDayCents: 60,

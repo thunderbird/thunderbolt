@@ -57,6 +57,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   debugTranscriptUpstreamKey: '',
   debugTranscriptsEnabled: false,
   cliDeviceRegistrationEnabled: false,
+  confidentialApiKeysEnabled: false,
   swaggerEnabled: false,
   rateLimitEnabled: false,
   inferenceQuotaAnonymousFiveHourCents: 10,

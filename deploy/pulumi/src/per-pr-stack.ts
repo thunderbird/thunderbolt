@@ -45,6 +45,8 @@ export type PerPrStackArgs = {
   minAppVersion: string
   /** Enables server-owned CLI device registration after compatible app clients ship. */
   cliDeviceRegistrationEnabled: boolean
+  /** Lets a personal access token reach the confidential (Tinfoil) routes. */
+  confidentialApiKeysEnabled: boolean
 }
 
 export type PerPrStackOutputs = {
@@ -378,6 +380,10 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           {
             name: 'CLI_DEVICE_REGISTRATION_ENABLED',
             value: args.cliDeviceRegistrationEnabled ? 'true' : 'false',
+          },
+          {
+            name: 'CONFIDENTIAL_API_KEYS_ENABLED',
+            value: args.confidentialApiKeysEnabled ? 'true' : 'false',
           },
           // Each preview is both relay and intake for itself, so the full flow runs end to end.
           { name: 'DEBUG_TRANSCRIPT_INTAKE_ENABLED', value: 'true' },

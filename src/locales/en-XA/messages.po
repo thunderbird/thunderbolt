@@ -3510,7 +3510,11 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
+#~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
+#~ msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the Thunderbolt team."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx

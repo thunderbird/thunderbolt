@@ -3510,8 +3510,12 @@ msgstr "The AI provider took too long to respond. Try again."
 #~ msgstr "The chat will be retained by the current server as well as the Thunderbolt team until your account is deleted."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
-msgstr "The chat will be retained by the Thunderbolt team until your account is deleted."
+#~ msgid "The chat will be retained by the Thunderbolt team until your account is deleted."
+#~ msgstr "The chat will be retained by the Thunderbolt team until your account is deleted."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "The chat will be retained by the Thunderbolt team."
+msgstr "The chat will be retained by the Thunderbolt team."
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."

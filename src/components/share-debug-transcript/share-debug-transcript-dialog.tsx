@@ -91,7 +91,7 @@ export const ShareDebugTranscriptDialog = ({
                   <Trans>Where is it kept?</Trans>
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
-                  <Trans>The chat will be retained by the Thunderbolt team until your account is deleted.</Trans>
+                  <Trans>The chat will be retained by the Thunderbolt team.</Trans>
                 </dd>
               </div>
             </dl>

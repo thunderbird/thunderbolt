@@ -52,9 +52,7 @@ describe('ShareDebugTranscriptDialog', () => {
 
     const storageQuestion = screen.getByText('Where is it kept?')
     expect(storageQuestion.tagName).toBe('DT')
-    expect(
-      screen.getByText('The chat will be retained by the Thunderbolt team until your account is deleted.'),
-    ).toBeVisible()
+    expect(screen.getByText('The chat will be retained by the Thunderbolt team.')).toBeVisible()
 
     const facts = whoQuestion.closest('dl')
     if (!facts) {

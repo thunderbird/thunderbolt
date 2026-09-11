@@ -50,7 +50,9 @@ falsify, not a fact.
   lives under a DEK the revoked device may still hold. That retained key is why the third clause now
   rests on device—session binding rather than on the proof (THU-873): a proof shows *account* key
   possession, so only `session.deviceId` establishes *which* device is calling. A revoked device can
-  rebind only as itself, and that row is revoked.
+  rebind only as itself, and that row is revoked. Revocation also has to SURVIVE a hostile keyring:
+  one unopenable `wrapped_keys` row used to throw the whole AK rotation, so a single planted row
+  voided the cryptographic half of every future revocation, permanently (THU-871 — see C15).
 - **C6 — Challenge-response is not replayable or confusable.** Nonces are single-use, expiring, and
   bound to user, device, and operation (approve / deny / revoke / rotate / recover / node-id). No
   cross-operation confusion, no cross-device reuse, no TOCTOU between issue and consume, no endpoint
@@ -119,6 +121,25 @@ falsify, not a fact.
   device with a surviving unlinked session cannot name a trusted sibling to keep reading or writing
   the stream. Accepted constraint: a client that holds no device keypair (an API-key job, a future
   headless integration) cannot bind and therefore cannot sync — it must enrol as a device.
+- **C15 — Keyring integrity and DEK-minting soundness.** A `wrapped_keys` row the account cannot
+  open — planted in the DB by A2, or minted by A6 from a trusted device — cannot brick the account.
+  Minting a DEK always yields a key the account actually holds: `key_id`s come from a bounded
+  canonical grammar (`keyIdPattern`, unpadded decimal ≤ 15 digits) and the allocator claims the
+  smallest UNUSED counter, so a planted row can neither alias the id being minted nor push the
+  allocation outside the grammar the server enforces; a mint that conflicts aborts its transaction
+  instead of being silently discarded; and a mint happens ONLY inside an AK rotation — so it is
+  atomic with the
+  rotation, is always wrapped under the AK that request installs, and there is no standalone endpoint
+  for planting rows. An unopenable row cannot void a rotation either: it is passed through with its
+  original wrapping and logged, never dropped (which would strand its data) and never deleted (which
+  would turn recoverable corruption into permanent loss on a claim the server cannot verify — the
+  slot is what lets a device still holding the relevant AK repair it later).
+
+  Residuals: passed-through rows accumulate, so an operator-gated cleanup is still owed; a keyring
+  grown past `maxKeyringKeys` rows cannot be re-wrapped in one atomic request, which A2 can still
+  reach through direct DB writes; and a revocation whose rotation fails leaves the device revoked but
+  not cryptographically locked out, with no in-UI affordance to resume it
+  (`src/settings/devices.tsx` hides the button once `revokedAt` is set).
 
 ## v1 regressions
 

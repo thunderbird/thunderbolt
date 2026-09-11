@@ -261,6 +261,16 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
     return s.arn
   })()
 
+  const debugTranscriptKey = new random.RandomPassword(`${name}-debug-transcript-key`, {
+    length: 48,
+    special: false,
+  }).result
+  const debugTranscriptKeySecret = new aws.secretsmanager.Secret(`${name}-debug-transcript-key`)
+  new aws.secretsmanager.SecretVersion(`${name}-debug-transcript-key-version`, {
+    secretId: debugTranscriptKeySecret.id,
+    secretString: debugTranscriptKey,
+  })
+
   const betterAuthSecretArn = (() => {
     const s = new aws.secretsmanager.Secret(`${name}-better-auth-secret`, {
       tags: { Name: `${name}-better-auth-secret` },
@@ -303,6 +313,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           Resource: [
             // Per-PR
             betterAuthSecretArn,
+            debugTranscriptKeySecret.arn,
             databaseUrlSecret.arn,
             postgresAdminUrlSecret.arn,
             oidcClientSecretArn,
@@ -368,7 +379,9 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
             name: 'CLI_DEVICE_REGISTRATION_ENABLED',
             value: args.cliDeviceRegistrationEnabled ? 'true' : 'false',
           },
-          { name: 'DEBUG_TRANSCRIPTS_ENABLED', value: 'true' },
+          // Each preview is both relay and intake for itself, so the full flow runs end to end.
+          { name: 'DEBUG_TRANSCRIPT_INTAKE_ENABLED', value: 'true' },
+          { name: 'DEBUG_TRANSCRIPT_UPSTREAM_URL', value: apiUrl },
           { name: 'THUNDERBOLT_INFERENCE_URL', value: args.thunderboltInferenceUrl ?? '' },
           { name: 'TINFOIL_ENCLAVE_URL', value: args.tinfoilEnclaveUrl ?? '' },
           { name: 'TRUSTED_PROXY', value: 'cloudflare' },
@@ -378,6 +391,7 @@ export const createPerPrStack = (args: PerPrStackArgs): PerPrStackOutputs => {
           { name: 'POSTGRES_ADMIN_URL', valueFrom: postgresAdminUrlSecret.arn },
           { name: 'OIDC_CLIENT_SECRET', valueFrom: oidcClientSecretArn },
           { name: 'BETTER_AUTH_SECRET', valueFrom: betterAuthSecretArn },
+          { name: 'DEBUG_TRANSCRIPT_UPSTREAM_KEY', valueFrom: debugTranscriptKeySecret.arn },
           { name: 'POWERSYNC_JWT_SECRET', valueFrom: shared.powersyncJwtSecretArn },
           { name: 'ANTHROPIC_API_KEY', valueFrom: shared.anthropicApiKeySecretArn },
           { name: 'FIREWORKS_API_KEY', valueFrom: shared.fireworksApiKeySecretArn },

@@ -82,9 +82,15 @@ See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the 
 
 ## Debug Transcripts
 
-| Variable                    | Default | Description                                                                                                             |
-| --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `DEBUG_TRANSCRIPTS_ENABLED` | `false` | Allow authenticated users to upload identified debug transcripts stored as plaintext in Postgres until account deletion |
+Users can share a chat's debug transcript with the Thunderbolt team from the chat view. The deployment never stores transcripts; it forwards them to the Thunderbolt intake with a key that identifies your deployment. The button is shown only when the relay is configured.
+
+| Variable                          | Default | Description                                                                           |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty   | Base URL of the Thunderbolt API that receives transcripts. Set together with the key. |
+| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's client key, issued by the Thunderbolt team. Keep it server-side.    |
+| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Mounts the intake endpoint. Only the Thunderbolt-hosted deployment enables this.      |
+
+To obtain a key, contact the Thunderbolt team with a name for your deployment. Transcripts are identified (user id and email as known by your deployment; blank for anonymous users) and are kept by the Thunderbolt team until the submitting account is deleted.
 
 ## Rate Limiting and Proxy Trust
 

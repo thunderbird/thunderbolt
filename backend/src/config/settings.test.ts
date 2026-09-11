@@ -844,14 +844,19 @@ describe('debug transcript settings', () => {
   })
   afterEach(() => {
     for (const key of envKeys) {
-      if (savedEnv[key] === undefined) delete process.env[key]
-      else process.env[key] = savedEnv[key]
+      if (savedEnv[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = savedEnv[key]
+      }
     }
     clearSettingsCache()
   })
   /** Parse an isolated upstream configuration through the public settings accessor. */
   const parseWithEnv = (env: Record<string, string>) => {
-    for (const key of envKeys) delete process.env[key]
+    for (const key of envKeys) {
+      delete process.env[key]
+    }
     Object.assign(process.env, env)
     clearSettingsCache()
     return getSettings()

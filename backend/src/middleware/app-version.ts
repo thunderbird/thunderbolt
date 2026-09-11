@@ -21,6 +21,7 @@ export const appVersionExemptPrefixes = [
   '/v1/api/auth/device',
   '/v1/posthog',
   '/v1/proxy/ws',
+  '/v1/debug-transcripts/intake', // server-to-server, no X-App-Version
 ] as const
 
 /** Settings the gate reads — a full `Settings` is assignable, keeping tests free of a cast. */

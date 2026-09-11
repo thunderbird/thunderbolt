@@ -17,7 +17,7 @@ import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createUserTierRateLimit } from '@/middleware/rate-limit'
+import { createAuthIpRateLimit, createUserTierRateLimit, createRateLimitConsumer } from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -34,6 +34,7 @@ import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
 import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
@@ -52,6 +53,8 @@ export const createApp = async (deps?: AppDeps) => {
     const { db } = await import('@/db/client')
     database = db
   }
+
+  await ensureSelfDebugTranscriptClient(database, settings)
 
   const app = new Elysia({
     prefix: '/v1',
@@ -168,6 +171,13 @@ export const createApp = async (deps?: AppDeps) => {
           fetchFn,
           settings,
           rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
+        }),
+      )
+      .use(
+        createDebugTranscriptsIntakeRoutes({
+          database,
+          settings,
+          rateLimit: createRateLimitConsumer(database, rateLimitSettings, 'debug-transcript-intake'),
         }),
       )
       .use(createPostHogRoutes(fetchFn))

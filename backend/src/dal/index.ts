@@ -36,7 +36,12 @@ export { getWaitlistByEmail, createWaitlistEntry, approveWaitlistEntry } from '.
 // PowerSync
 export { applyOperation } from './powersync'
 
-export { createDebugTranscript } from './debug-transcripts'
+export {
+  createDebugTranscript,
+  findDebugTranscriptClientByKeyHash,
+  upsertSelfDebugTranscriptClient,
+  deleteSelfDebugTranscriptsForUser,
+} from './debug-transcripts'
 
 // OTP Challenge (session binding)
 export {

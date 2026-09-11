@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { index, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
-import { user } from './auth-schema'
 
 export type DebugTranscriptJsonValue =
   | string
@@ -17,14 +16,25 @@ export type DebugTranscriptPayload = {
   [key: string]: DebugTranscriptJsonValue
 }
 
-/** Server-only plaintext transcripts retained until their owning account is deleted. */
+/** Deployments allowed to submit transcripts to the intake. Rows are revoked, never deleted. */
+export const debugTranscriptClientsTable = pgTable('debug_transcript_clients', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  keyHash: text('key_hash').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at'),
+})
+
+/** Every transcript the intake accepted, from any client. `user_id` is an id in the client's own database. */
 export const debugTranscriptsTable = pgTable(
   'debug_transcripts',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    clientId: text('client_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => debugTranscriptClientsTable.id, { onDelete: 'restrict' }),
+    userId: text('user_id'),
     threadId: text('thread_id').notNull(),
     schemaVersion: integer('schema_version').notNull(),
     payload: jsonb('payload').$type<DebugTranscriptPayload>().notNull(),
@@ -32,5 +42,5 @@ export const debugTranscriptsTable = pgTable(
     clientVersion: text('client_version'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (table) => [index('idx_debug_transcripts_user_id_created_at').on(table.userId, table.createdAt)],
+  (table) => [index('idx_debug_transcripts_client_id_created_at').on(table.clientId, table.createdAt)],
 )

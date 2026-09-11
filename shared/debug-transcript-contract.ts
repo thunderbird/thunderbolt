@@ -4,14 +4,17 @@
 
 export const debugTranscriptsDisabledCode = 'DEBUG_TRANSCRIPTS_DISABLED'
 export const debugTranscriptTooLargeCode = 'DEBUG_TRANSCRIPT_TOO_LARGE'
-export const anonymousTranscriptForbiddenCode = 'ANONYMOUS_TRANSCRIPT_FORBIDDEN'
+export const debugTranscriptUpstreamFailedCode = 'DEBUG_TRANSCRIPT_UPSTREAM_FAILED'
 
 export type DebugTranscriptErrorCode =
   | typeof debugTranscriptsDisabledCode
   | typeof debugTranscriptTooLargeCode
-  | typeof anonymousTranscriptForbiddenCode
+  | typeof debugTranscriptUpstreamFailedCode
 
+export const debugTranscriptIntakePath = 'debug-transcripts/intake'
 export const debugTranscriptNoteMaxLength = 2000
 export const debugTranscriptServerPayloadMaxBytes = 2 * 1024 * 1024
+// Whole request cap: payload plus the bounded metadata fields around it.
+export const debugTranscriptMaxRequestBytes = debugTranscriptServerPayloadMaxBytes + 4 * 1024
 // Client trimming leaves headroom below the server's hard payload limit.
 export const debugTranscriptClientPayloadTargetBytes = 1_500_000

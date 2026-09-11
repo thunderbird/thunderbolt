@@ -91,7 +91,6 @@ describe('Debug transcript intake', () => {
       id,
       clientId: 'acme',
       userId: 'origin-user',
-      localUserId: null,
       threadId: 'thread-1',
     })
   })
@@ -148,25 +147,7 @@ describe('Debug transcript intake', () => {
     expect((await response.json()).code).toBe('DEBUG_TRANSCRIPT_TOO_LARGE')
     expect(await db.select().from(debugTranscriptsTable)).toHaveLength(1)
   })
-  it('links self submissions to the local user and keeps anonymous self submissions unlinked', async () => {
-    const userId = crypto.randomUUID()
-    await db.insert(user).values({ id: userId, name: 'Local user', email: `${userId}@example.com` })
-    await ensureSelfDebugTranscriptClient(
-      db,
-      createTestSettings({ debugTranscriptIntakeEnabled: true, debugTranscriptUpstreamKey: 'self-key' }),
-    )
-    expect((await post(JSON.stringify({ ...body, userId }), 'self-key')).status).toBe(201)
-    expect((await db.select().from(debugTranscriptsTable))[0]).toMatchObject({
-      clientId: 'self',
-      userId,
-      localUserId: userId,
-    })
-    await deleteUser(db, userId)
-    expect((await post(JSON.stringify({ ...body, userId: null }), 'self-key')).status).toBe(201)
-    expect((await db.select().from(debugTranscriptsTable))[0]).toMatchObject({ userId: null, localUserId: null })
-  })
-
-  it('rejects a self upload that arrives after its account was deleted', async () => {
+  it('accepts a self upload that arrives after its account was deleted', async () => {
     const userId = crypto.randomUUID()
     await db.insert(user).values({ id: userId, name: 'Deleted user', email: `${userId}@example.com` })
     await deleteUser(db, userId)
@@ -174,7 +155,7 @@ describe('Debug transcript intake', () => {
       db,
       createTestSettings({ debugTranscriptIntakeEnabled: true, debugTranscriptUpstreamKey: 'self-key' }),
     )
-    expect((await post(JSON.stringify({ ...body, userId }), 'self-key')).status).toBe(500)
-    expect(await db.select().from(debugTranscriptsTable)).toHaveLength(0)
+    expect((await post(JSON.stringify({ ...body, userId }), 'self-key')).status).toBe(201)
+    expect((await db.select().from(debugTranscriptsTable))[0]).toMatchObject({ clientId: 'self', userId })
   })
 })

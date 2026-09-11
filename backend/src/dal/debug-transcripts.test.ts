@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { user } from '@/db/auth-schema'
-import { deleteUser } from './users'
 import { createTestDb } from '@/test-utils/db'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
@@ -46,16 +44,15 @@ describe('debug transcript DAL', () => {
     expect(await findDebugTranscriptClientByKeyHash(db, 'nope')).toBeNull()
   })
 
-  it('cascades local user deletion while preserving external transcripts', async () => {
-    await db.insert(user).values({ id: 'u1', name: 'Local user', email: 'local@example.com' })
+  it('stores userId as given, including null', async () => {
     await upsertSelfDebugTranscriptClient(db, 'h')
-    await db.insert(debugTranscriptClientsTable).values({ id: 'acme', name: 'Acme', keyHash: 'a' })
-    const base = { threadId: 't', schemaVersion: 1, payload: {}, userId: 'u1' }
-    await createDebugTranscript(db, { id: 'local', clientId: 'self', localUserId: 'u1', ...base })
-    await createDebugTranscript(db, { id: 'external', clientId: 'acme', localUserId: null, ...base })
+    const base = { clientId: 'self', threadId: 't', schemaVersion: 1, payload: {} }
+    await createDebugTranscript(db, { id: 'identified', userId: 'u1', ...base })
+    await createDebugTranscript(db, { id: 'anonymous', userId: null, ...base })
 
-    await deleteUser(db, 'u1')
-
-    expect(await db.select({ id: debugTranscriptsTable.id }).from(debugTranscriptsTable)).toEqual([{ id: 'external' }])
+    expect(await db.select().from(debugTranscriptsTable).orderBy(debugTranscriptsTable.id)).toMatchObject([
+      { id: 'anonymous', userId: null },
+      { id: 'identified', userId: 'u1' },
+    ])
   })
 })

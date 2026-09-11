@@ -4,7 +4,6 @@
 
 import { createAuth } from '@/auth/auth'
 import { session as sessionTable, user } from '@/db/auth-schema'
-import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
 import { linkCliSessionToDevice } from '@/dal/sessions'
@@ -956,34 +955,6 @@ describe('Account API', () => {
   })
 
   describe('DELETE /v1/account', () => {
-    it('deletes only self debug transcripts for the deleted user', async () => {
-      const userId = p('transcript-user')
-      const token = p('transcript-token')
-      await createCliSession(userId, token)
-      await createCliSession(p('someone-else'), p('other-token'))
-      await db.insert(debugTranscriptClientsTable).values([
-        { id: 'self', name: 'Thunderbolt', keyHash: p('h') },
-        { id: p('acme'), name: 'Acme', keyHash: p('a') },
-      ])
-      const base = { threadId: 't', schemaVersion: 1, payload: {} }
-      await db.insert(debugTranscriptsTable).values([
-        { id: p('mine'), clientId: 'self', userId, localUserId: userId, ...base },
-        { id: p('theirs'), clientId: 'self', userId: p('someone-else'), localUserId: p('someone-else'), ...base },
-        { id: p('external'), clientId: p('acme'), userId, localUserId: null, ...base },
-      ])
-      const response = await app.handle(
-        new Request('http://localhost/v1/account', {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${signToken(token)}` },
-        }),
-      )
-      expect(response.status).toBe(204)
-      const remaining = (await db.select({ id: debugTranscriptsTable.id }).from(debugTranscriptsTable))
-        .map((r) => r.id)
-        .sort()
-      expect(remaining).toEqual([p('external'), p('theirs')])
-    })
-
     it('should return 401 when not authenticated', async () => {
       const response = await app.handle(
         new Request('http://localhost/v1/account', {

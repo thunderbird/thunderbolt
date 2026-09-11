@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { mergeMcpTools } from '@/ai/fetch'
 import { useChatStore } from '@/chats/chat-store'
 import { setMcpServerCredentials } from '@/dal/mcp-secrets'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -11,8 +12,9 @@ import type { MCPTransportType } from '@/lib/mcp-transport'
 import type { MCPClient } from '@ai-sdk/mcp'
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test'
 import { createElement, type ReactNode } from 'react'
+import { z } from 'zod'
 import type { ensureValidMcpOAuthToken } from './mcp-auth/ensure-valid-token'
 import { MCPProvider, resolveMcpAccessToken, useMCP, type MCPClient as ProviderMCPClient } from './mcp-provider'
 
@@ -59,6 +61,78 @@ describe('MCPProvider reconnect', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it.each([false, true])(
+    'surfaces discovery failure during recovery and settles provider state (recovery fails: %p)',
+    async (fails) => {
+      const discoveryError = Object.assign(new Error('MCP SSE Transport Error: 404 Not Found'), {
+        name: 'MCPClientError',
+      })
+      const recoveryError = new TypeError('Failed to fetch')
+      const initial = Object.assign(fakeClient(), {
+        tools: async () => {
+          throw discoveryError
+        },
+      })
+      const recoveredTool = { description: 'Recovered tool', inputSchema: z.object({}) }
+      const fresh = Object.assign(fakeClient(), { tools: async () => ({ search: recoveredTool }) })
+      const gate = deferred<void>()
+      const clients = [initial]
+      const { result } = renderProvider(async () => {
+        const first = clients.pop()
+        if (first) {
+          return first
+        }
+        await gate.promise
+        if (fails) {
+          throw recoveryError
+        }
+        return fresh
+      })
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const error = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await act(async () => {
+          await result.current.addServer(server)
+        })
+        await act(async () => {
+          const send = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+          expect(send.toolset).toEqual({})
+        })
+        expect(result.current.servers[0]).toMatchObject({ isConnected: false, error: discoveryError, client: null })
+        expect(result.current.getEnabledClients()).toEqual([])
+        expect(initial.closeCount()).toBe(1)
+        await act(async () => {
+          gate.resolve()
+          await result.current.reconnectServer(server.id)
+        })
+        expect(result.current.servers[0]).toMatchObject({
+          isConnected: !fails,
+          error: fails ? recoveryError : null,
+          client: fails ? null : fresh,
+        })
+        const next = await mergeMcpTools({}, result.current.getEnabledClients(), result.current.reconnectClient)
+        expect(next.toolset).toEqual(fails ? {} : { server_1_search: recoveredTool })
+      } finally {
+        gate.resolve()
+        warn.mockRestore()
+        error.mockRestore()
+      }
+    },
+  )
+
+  it('reconnects without a discovery error and ignores a retired client callback', async () => {
+    const initial = fakeClient()
+    const fresh = fakeClient()
+    const clients = [fresh, initial]
+    const { result } = renderProvider(async () => clients.pop()!)
+    await act(async () => {
+      await result.current.addServer(server)
+      expect(await result.current.reconnectClient(initial)).toBe(fresh)
+      expect(await result.current.reconnectClient(initial, new TypeError('Failed to fetch'))).toBeNull()
+    })
+    expect(result.current.servers[0]).toMatchObject({ client: fresh, isConnected: true, error: null })
   })
 
   it('coalesces concurrent reconnects of the same server into one createClient call', async () => {

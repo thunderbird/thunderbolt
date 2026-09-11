@@ -9,7 +9,7 @@ import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
 import { createClient } from '@/lib/http'
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
 import { fetch as baseFetch } from '@/lib/fetch'
@@ -20,6 +20,11 @@ import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-mes
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { Model, Skill } from '@/types'
 import type { Tool } from 'ai'
+import { createMCPClient } from '@ai-sdk/mcp'
+import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { ErrorEvent } from 'eventsource'
+import { SSEClientTransport, SseError } from '@modelcontextprotocol/sdk/client/sse.js'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import {
   addSkillTool,
   buildVolatileSystemNotes,
@@ -206,6 +211,13 @@ describe('buildVolatileSystemNotes', () => {
 })
 
 describe('mergeMcpTools', () => {
+  beforeEach(() => {
+    spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    mock.restore()
+  })
+
   it('prefixes each tool with its sanitized server name', async () => {
     const render = named('render', async () => ({ list_services: tool('ls'), get_service: tool('gs') }))
 
@@ -272,66 +284,161 @@ describe('mergeMcpTools', () => {
     expect(summary).toBe('- render (1 tool)')
   })
 
-  it('reconnects once and retries when tools() throws a closed-connection error', async () => {
-    let calls = 0
+  it.each([
+    closedError(),
+    closedError('Attempted to send a request from a closed client'),
+    new StreamableHTTPError(404, 'Error POSTing to endpoint: expired session'),
+    closedError('MCP SSE Transport Error: 404 Not Found'),
+    new SseError(503, 'Service unavailable', new ErrorEvent('error', { code: 503 })),
+    new StreamableHTTPError(401, 'Error POSTing to endpoint: expired token'),
+    new UnauthorizedError(),
+    Object.assign(new Error('Unauthorized'), { name: 'UnauthorizedError' }),
+    Object.assign(new Error('Expired token'), { code: 401 }),
+    new TypeError('Failed to fetch'),
+    new TypeError('Load failed'),
+    new TypeError('NetworkError when attempting to fetch resource.'),
+  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
     const dropped = named('render', async () => {
-      calls++
-      throw closedError()
+      throw error
     })
-    const fresh = { tools: async () => ({ alpha: tool('fresh') }), close: () => {} } as unknown as MCPClient
-    const reconnect = mock(async () => fresh)
-
-    const { toolset } = await mergeMcpTools({}, [dropped], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(reconnect).toHaveBeenCalledWith(dropped.client)
-    expect(calls).toBe(1)
-    expect(toolset.render_alpha).toEqual(tool('fresh'))
-  })
-
-  it('skips the dropped server but still merges the others when reconnect fails (non-blocking)', async () => {
-    const dropped = named('render', async () => {
-      throw closedError('Attempted to send a request from a closed client')
-    })
+    const fresh = named('render', async () => ({ alpha: tool('fresh') }))
     const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => null)
+    const reconnect = mock(async () => fresh.client)
+    const builtIn = tool('app')
 
-    const { toolset, summary } = await mergeMcpTools({}, [dropped, healthy], reconnect)
+    const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
+    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
     expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
-    // The dropped server contributes nothing to the summary.
-    expect(summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+
+    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
+    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
   })
 
-  it('skips the server when the fresh client also fails after reconnect', async () => {
+  it.each([
+    { type: 'sse', body: 'Expired session', status: 404, errorName: 'Error' },
+    { type: 'http', body: '{', status: 200, errorName: 'SyntaxError' },
+    { type: 'http', body: '{"unexpected":true}', status: 200, errorName: 'ZodError' },
+  ])('skips real $type transport failure ($errorName)', async ({ type, body, status, errorName }) => {
+    const options = {
+      fetch: async () => new Response(body, { status, headers: { 'content-type': 'application/json' } }),
+    }
+    const transport =
+      type === 'sse'
+        ? new SSEClientTransport(new URL('https://mcp.test/sse'), {
+            ...options,
+            eventSourceInit: {
+              fetch: async () =>
+                new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(new TextEncoder().encode('event: endpoint\ndata: /messages\n\n'))
+                    },
+                  }),
+                  { headers: { 'content-type': 'text/event-stream' } },
+                ),
+            },
+          })
+        : new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), options)
+    const errors: Error[] = []
+    transport.onerror = (error) => {
+      errors.push(error)
+    }
+    await transport.start()
     const dropped = named('render', async () => {
-      throw closedError()
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+      return {}
     })
-    const stillBroken = {
-      tools: async () => {
-        throw closedError()
+    const reconnect = mock(async () => null)
+    try {
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [dropped, named('github', async () => ({ beta: tool('b') }))],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(errors[0].name).toBe(errorName)
+      expect(reconnect).toHaveBeenCalledWith(dropped.client, errors[0])
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), errors[0])
+    } finally {
+      await transport.close()
+    }
+  })
+
+  it('finishes the send while real SDK recovery waits for an initialization response after HTTP 202', async () => {
+    const accepted = Promise.withResolvers<void>()
+    const transport = new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), {
+      fetch: async () => {
+        accepted.resolve()
+        return new Response(null, { status: 202 })
       },
-      close: () => {},
-    } as unknown as MCPClient
-    const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => stillBroken)
-
-    const { toolset } = await mergeMcpTools({}, [dropped, healthy], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
+    })
+    const recovery = createMCPClient({ transport })
+    // Closing the transport in cleanup rejects the still-pending initialization.
+    const settledRecovery = recovery.catch((error: unknown) => {
+      expect(error).toMatchObject({ name: 'MCPClientError' })
+      return null
+    })
+    const reconnect = mock(() => settledRecovery)
+    try {
+      await accepted.promise
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [
+          named('render', async () => {
+            throw closedError()
+          }),
+          named('github', async () => ({ beta: tool('b') })),
+        ],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(reconnect).toHaveBeenCalledTimes(1)
+    } finally {
+      await transport.close()
+      await settledRecovery
+    }
   })
 
-  it('does not reconnect and propagates non-closed errors', async () => {
-    const boom = new Error('boom — capability missing')
-    const broken = named('render', async () => {
-      throw boom
+  it('keeps app and other server tools when recovery fails', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
     })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
     const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledTimes(1)
+  })
 
-    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toThrow('boom — capability missing')
+  it.each([new Error('boom — capability missing'), new TypeError('Cannot read properties of undefined'), null])(
+    'propagates programming errors %p without reconnecting',
+    async (boom) => {
+      const broken = named('render', async () => {
+        throw boom
+      })
+      const reconnect = mock(async () => null)
+
+      await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(boom)
+      expect(reconnect).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not treat application tool merging errors as discovery failures', async () => {
+    const error = new SyntaxError('Application processing failed')
+    const broken = named('render', async () => ({
+      get alpha(): Tool {
+        throw error
+      },
+    }))
+    const reconnect = mock(async () => null)
+    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(error)
     expect(reconnect).not.toHaveBeenCalled()
+    expect(console.warn).not.toHaveBeenCalled()
   })
 
   it('returns an undefined summary when no MCP tools were added', async () => {

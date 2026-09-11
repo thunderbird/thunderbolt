@@ -71,7 +71,6 @@ const HeaderAgentSelector = ({
   // Existing chats mount with `hasThread` already true, so they render docked
   // top-right with no transition (CSS transitions don't run on first paint).
   const collapsed = mobile !== undefined && (mobile.hasThread || isReplying)
-  const dockedTranslateClass = '[translate:calc(50cqw-100%)_0]'
 
   const selector = (
     <AgentSelector
@@ -92,7 +91,9 @@ const HeaderAgentSelector = ({
     // Absolutely positioned so the macOS traffic-light clearance on the left
     // column can't push the centered state off-center. Docked: a translate of
     // half the header width (50cqw — the header is a size container) minus the
-    // pill's own width pins the right edge flush with the content edge. When a
+    // pill's own width pins the right edge flush with the content edge (cqw is
+    // content-box based, so the header's px-2 padding provides the gap).
+    //
     // Only `translate` transitions — `left` stays fixed. Animating `left`
     // re-runs layout on the main thread every frame, and this slide fires at
     // the busiest main-thread moment in the app (first send mounts the message
@@ -106,10 +107,12 @@ const HeaderAgentSelector = ({
       {...mobile.dragProps}
       className={cn(
         'absolute top-2 left-1/2 z-10 flex items-center transition-[translate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
-        collapsed ? dockedTranslateClass : '[translate:-50%_0]',
+        collapsed ? '[translate:calc(50cqw-100%)_0]' : '[translate:-50%_0]',
       )}
     >
-      {/* Inside the wrapper so the project badge and selector travel together. */}
+      {/* Inside the wrapper, so the docked translate (which pins the group's
+          right edge to the content edge) accounts for it and the two circles
+          travel together. */}
       {leading}
       {selector}
     </div>
@@ -227,14 +230,14 @@ export const Header = () => {
       agents={allAgents}
       onSelect={handleAgentSelect}
       onAddAgent={allowCustomAgents ? handleAddAgent : undefined}
-      leading={isChatRoute && isMobile ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
+      leading={isChatRoute ? <ProjectBadge chatThreadId={chatThreadId ?? null} iconOnly /> : undefined}
       mobile={isMobile ? { hasThread, dragProps } : undefined}
     />
   )
 
   // Mobile: sidebar toggle on the left; the agent selector positions itself
-  // (centered pill on an empty new chat, then docked along the top edge once the
-  // chat has content — see HeaderAgentSelector).
+  // (centered pill on an empty new chat, top-right circle once the chat has
+  // content — see HeaderAgentSelector).
   if (isMobile) {
     return (
       <header
@@ -265,7 +268,9 @@ export const Header = () => {
 
         {agentSelector}
 
-        <div {...dragProps} className="flex flex-1" />
+        {/* Empty right column — keeps the header row a drag surface on the
+            Tauri desktop app. */}
+        <div {...dragProps} className="flex flex-1 items-center" />
       </header>
     )
   }

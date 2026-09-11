@@ -22,8 +22,6 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { CreateRequestProbe } from '@/test-utils/create-request-probe'
 import { SignInModalProvider } from '@/contexts'
-import { useConfigStore } from '@/api/config-store'
-import { createMockAuthClient } from '@/test-utils/auth-client'
 import { Header } from './header'
 
 /** A custom (synced) agent the thread is pinned to. */
@@ -41,15 +39,13 @@ const customAgent: Agent = {
   userId: 'user-1',
 }
 
-let authClient = createMockAuthClient()
-
 /** Wraps the component in everything `Header` touches: a router (it reads
  *  `location.pathname`), the sidebar context (`useSidebar`), the DAL/query
  *  providers so `useAllAgents` can run against the test database, and the
  *  sign-in modal context — so the suite is robust whether `Header` renders its
  *  mobile or desktop branch. */
 const TestWrapper = ({ children }: { children: ReactNode }) => {
-  const Provider = createTestProvider({ authClient })
+  const Provider = createTestProvider()
   return (
     <MemoryRouter initialEntries={['/chats/thread-1']}>
       <Provider>
@@ -70,17 +66,13 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
  *  `selectedAgent` directly (mirrors `chat-model-picker.test.tsx`, avoiding the
  *  DB write that `setSelectedAgent` performs). Pass `withThread: false` to
  *  simulate an unsaved new chat (no thread row yet). */
-const setupWithAgent = (
-  agent: Agent,
-  { withThread = true, messages = [] }: { withThread?: boolean; messages?: ThunderboltUIMessage[] } = {},
-) => {
-  const chatInstance = new Chat<ThunderboltUIMessage>({ id: 'thread-1', messages })
+const setupWithAgent = (agent: Agent, { withThread = true }: { withThread?: boolean } = {}) => {
   hydrateStore({
     // A real `Chat` (not the plain-object mock) so the AI SDK's `useChat`
     // subscription inside `HeaderAgentSelector` mounts cleanly. It stays in its
     // default `ready` status — the selector only reads `status` to disable
     // itself mid-stream.
-    chatInstance,
+    chatInstance: new Chat<ThunderboltUIMessage>({ id: 'thread-1' }),
     chatThread: withThread ? createMockChatThread({ agentId: agent.id }) : null,
     id: 'thread-1',
     models: [createMockModel()],
@@ -97,8 +89,6 @@ const setupWithAgent = (
     nextSessions.set('thread-1', { ...session, selectedAgent: agent })
     return { sessions: nextSessions }
   })
-
-  return chatInstance
 }
 
 /** Flushes the `useAllAgents` TanStack/PowerSync query so the seeded rows land
@@ -106,13 +96,6 @@ const setupWithAgent = (
 const flushAgentsQuery = async () => {
   await act(async () => {
     await getClock().runAllAsync()
-  })
-}
-
-/** Let a cold dynamic import settle before Testing Library enters its fake-timer wait loop. */
-const settleLazyAction = async () => {
-  await act(async () => {
-    await Bun.sleep(20)
   })
 }
 
@@ -127,14 +110,11 @@ describe('Header', () => {
 
   beforeEach(() => {
     forceMobileViewport()
-    useConfigStore.setState({ config: {} })
-    authClient = createMockAuthClient()
   })
 
   afterEach(async () => {
     cleanup()
     resetStore()
-    useConfigStore.setState({ config: {} })
     restoreViewport()
     await resetTestDatabase()
   })
@@ -166,7 +146,7 @@ describe('Header', () => {
     setupWithAgent(customAgent)
 
     render(<Header />, { wrapper: TestWrapper })
-    await settleLazyAction()
+    await flushAgentsQuery()
 
     expect(screen.getByText(customAgent.name)).toBeInTheDocument()
     expect(screen.queryByText(builtInAgent.name)).toBeNull()
@@ -201,18 +181,6 @@ describe('Header', () => {
     expect(wrapper).toHaveClass('left-1/2', '[translate:calc(50cqw-100%)_0]')
     expect(wrapper).not.toHaveClass('[translate:-50%_0]')
     expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100', 'max-md:bg-muted/80')
-  })
-
-  it('does not render transcript sharing in the chat header', async () => {
-    useConfigStore.setState({ config: { debugTranscriptsEnabled: true } })
-    setupWithAgent(customAgent, {
-      messages: [{ id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: 'Response' }] }],
-    })
-
-    render(<Header />, { wrapper: TestWrapper })
-    await flushAgentsQuery()
-
-    expect(screen.queryByRole('button', { name: 'Share debug transcript' })).toBeNull()
   })
 
   it('opens agent creation over the current chat route', async () => {

@@ -60,7 +60,7 @@ export const ShareDebugTranscriptDialog = ({
           <div className="flex flex-col gap-4">
             <p>
               <Trans>
-                This will send the current chat with the Thunderbolt team so that they can debug the problem.
+                This will share the current chat with the Thunderbolt team so that they can debug the problem.
               </Trans>
             </p>
 

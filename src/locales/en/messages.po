@@ -3700,8 +3700,12 @@ msgid "This will permanently delete your account and all of your data on our ser
 msgstr "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
-msgstr "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+#~ msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+#~ msgstr "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This will share the current chat with the Thunderbolt team so that they can debug the problem."
+msgstr "This will share the current chat with the Thunderbolt team so that they can debug the problem."
 
 #: src/components/approve-device-dialog.tsx
 msgid "This will share your encryption key with the device, allowing it to decrypt and sync your data."

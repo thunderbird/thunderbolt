@@ -3712,7 +3712,11 @@ msgid "This will permanently delete your account and all of your data on our ser
 msgstr "Esto eliminará de forma permanente tu cuenta y todos tus datos en nuestros servidores y en este dispositivo, incluidos los ajustes, el historial de chats y la información en caché. Esta acción no se puede deshacer."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+#~ msgid "This will send the current chat with the Thunderbolt team so that they can debug the problem."
+#~ msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This will share the current chat with the Thunderbolt team so that they can debug the problem."
 msgstr ""
 
 #: src/components/approve-device-dialog.tsx

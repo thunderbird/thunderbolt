@@ -31,7 +31,9 @@ describe('ShareDebugTranscriptDialog', () => {
     expect(dialog).toBeVisible()
     expect(dialog).toHaveAccessibleDescription(expect.stringContaining('data inputs and outputs'))
     expect(
-      screen.getByText('This will send the current chat with the Thunderbolt team so that they can debug the problem.'),
+      screen.getByText(
+        'This will share the current chat with the Thunderbolt team so that they can debug the problem.',
+      ),
     ).toBeVisible()
 
     const whoQuestion = screen.getByText('Who can read it?')

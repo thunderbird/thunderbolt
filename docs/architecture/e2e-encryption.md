@@ -77,6 +77,14 @@ The grammar (`keyIdPattern`: unpadded decimal, ≤ 15 digits) keeps ids short on
 
 The re-wrap path stays deliberately permissive about ids that *already* exist (`^[^:]+$`), because an account may carry a row that predates the grammar or was planted; rejecting it there would make that account permanently unrotatable.
 
+### Which key is primary
+
+`primary_key_id` arrives from the server (`GET /v1/encryption/canary`) and is the only piece of keyring state that is **not self-verifying**: every wrapped DEK has to unwrap under the device's AK, while the pointer has to be taken on trust. So the client validates it against the same mint grammar before it is allowed to matter (THU-876), at three points — `applyKeyring` skips a non-mintable pointer and keeps the one already in force (the upload path defers the batch instead), `storePrimaryKeyId` refuses to persist one, and `codec.encode` fails closed if it finds one anyway. The last of those is not redundant: the pointer lives in IndexedDB, so without it a single write from an in-origin script would steer every future write for the life of the device, long after the script itself was gone.
+
+The reserved `"v1"` slot is the reason this matters. It sits outside the grammar deliberately (`isMintableKeyId(legacyKeyId) === false`) because it is **decrypt-only**: it never rotates, revocation never re-wraps it, and the v1 recovery mnemonic *was* that key, so anyone holding an old phrase or retired device can open anything written under it. A pointer at `"v1"` would therefore produce well-formed, AAD-bound ciphertext that is nonetheless outside the hierarchy revocation controls.
+
+What the client cannot do is verify that a *grammar-valid* pointer is the newest one — the canary, the one artifact a server cannot forge, is deliberately bound to DEK `"0"` for the life of the account, so it attests nothing about which DEK is primary. Authenticating the pointer would mean signing the keyring.
+
 ## Wire Format
 
 New (v2) encrypted column values are written with a version tag, the `key_id`, and AAD bound to the row context (never stored on the wire):

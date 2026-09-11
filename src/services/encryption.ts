@@ -467,7 +467,18 @@ const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
   // key_id that is gone server-side would otherwise keep a stale wrapped blob
   // here forever, which resolves to a permanent `unwrap-failed` (THU-871).
   await pruneStagedDEKs(keyring.keys.map((key) => key.key_id))
-  await storePrimaryKeyId(keyring.primaryKeyId)
+  // The pointer is the one piece of keyring state that is NOT self-verifying:
+  // every DEK has to unwrap under the stored AK, the pointer has to be taken on
+  // trust. A non-mintable id is therefore a steer — most sharply onto the
+  // decrypt-only `"v1"` slot, whose CK any v1-era phrase or device opens
+  // (THU-876). Refuse it and keep the primary already in force, rather than
+  // rejecting the whole keyring: the DEKs above are legitimate and needed for
+  // reads, so failing here would turn a steer into a read outage.
+  if (isMintableKeyId(keyring.primaryKeyId)) {
+    await storePrimaryKeyId(keyring.primaryKeyId)
+  } else {
+    console.error(`[e2ee] refused a non-mintable primary key_id from the server: '${keyring.primaryKeyId}'`)
+  }
   await storeKeyVersion(keyring.keyVersion)
   invalidateKeyringCache()
 }

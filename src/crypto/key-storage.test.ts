@@ -250,6 +250,26 @@ describe('primary key_id + key_version pointers', () => {
     expect(await getPrimaryKeyId()).toBe('0')
   })
 
+  /**
+   * THU-876: the pointer is durable, so whatever lands here steers writes on
+   * every later load. `legacyKeyId` is the dangerous one — decrypt-only, never
+   * rotated, openable by any v1-era phrase — but the rule is the mint grammar,
+   * so a pointer at a planted out-of-grammar row is refused on the same basis.
+   */
+  it('refuses a primary key_id outside the mint grammar (THU-876)', async () => {
+    for (const keyId of ['v1', '', '01', '1'.repeat(16), '10000000000000000', '1e+21', '-1', 'ws1']) {
+      await expect(storePrimaryKeyId(keyId)).rejects.toThrow('non-mintable primary key_id')
+    }
+    expect(await getPrimaryKeyId()).toBeNull()
+  })
+
+  it('accepts every mintable counter', async () => {
+    for (const keyId of ['0', '1', '9', '12345', '9'.repeat(15)]) {
+      await storePrimaryKeyId(keyId)
+      expect(await getPrimaryKeyId()).toBe(keyId)
+    }
+  })
+
   it('round-trips the last applied key_version as a number', async () => {
     expect(await getKeyVersion()).toBeNull()
     await storeKeyVersion(3)

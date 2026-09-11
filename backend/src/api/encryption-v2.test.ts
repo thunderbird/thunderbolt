@@ -854,6 +854,41 @@ describe('Encryption API (v2)', () => {
         expect(keys.map((key) => key.keyId)).toEqual([initialKeyId])
       })
 
+      it('mints alongside the "v1" slot — a migrated account\'s first revocation', async () => {
+        // The combination a migrated user hits the first time they revoke a
+        // device: the keyring carries the absorbed legacy slot AND the rotation
+        // mints a new primary. `"v1"` is deliberately OUTSIDE the mintable
+        // grammar, so this pins that excluding it from minting never excluded it
+        // from being re-wrapped — the v1 slot must survive the rotation intact
+        // while the new primary lands beside it.
+        const keypair = await setupRotatable([initialKeyId, legacyKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({
+              ...(await rotateBody(keypair, [initialKeyId, legacyKeyId])),
+              newPrimaryKey: { keyId: '1', wrappedKey: 'minted-under-new-ak' },
+            }),
+          }),
+        )
+        expect(res.status).toBe(200)
+
+        const keys = await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(eq(wrappedKeysTable.userId, p('u')))
+        expect(keys.map((key) => key.keyId).sort()).toEqual([initialKeyId, '1', legacyKeyId].sort())
+        // The legacy slot was re-wrapped under the new AK, not dropped or skipped.
+        expect(keys.find((key) => key.keyId === legacyKeyId)?.wrappedKey).toBe(`rewrapped-${legacyKeyId}`)
+        expect(keys.find((key) => key.keyId === '1')?.wrappedKey).toBe('minted-under-new-ak')
+        const [metadata] = await db
+          .select()
+          .from(encryptionMetadataTable)
+          .where(eq(encryptionMetadataTable.userId, p('u')))
+        expect(metadata.primaryKeyId).toBe('1')
+      })
+
       it('still re-wraps a pre-existing out-of-grammar key_id (poisoned accounts must stay rotatable)', async () => {
         // The re-wrap path is DELIBERATELY permissive about existing ids: an
         // account may already carry a planted row, and rejecting it here would

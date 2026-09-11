@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, beforeEach, afterEach, afterAll, mock } from 'bun:test'
+import { describe, expect, it, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test'
 import { getAuthToken } from '@/lib/auth-token'
 import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
 import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
@@ -884,6 +884,44 @@ describe('encryption service (v2)', () => {
         expect(await unwrapDEK(storedDEKs.get(keyId)!, storedAK!).then(() => true)).toBe(true)
       }
       expect(storedKeyVersion).toBe(2)
+    })
+
+    it('refuses a steered primary key_id but still stages the keys (THU-876)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('0')
+
+      // A2 points the primary at the decrypt-only legacy slot. Every DEK it
+      // serves is honest and opens under our AK — only the pointer is a lie.
+      server.metadata!.primaryKeyId = 'v1'
+      server.metadata!.keyVersion += 1
+      storedDEKs.clear()
+
+      // `mockRestore` also clears the recorded calls, so collect them as they
+      // happen rather than reading the spy afterwards.
+      const errors: string[] = []
+      const consoleError = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(' '))
+      })
+      try {
+        await stageKeyring(clientFor(server))
+      } finally {
+        consoleError.mockRestore()
+      }
+
+      // The steer is refused, loudly, and the primary already in force survives...
+      expect(storedPrimaryKeyId).toBe('0')
+      expect(errors.some((line) => line.includes("refused a non-mintable primary key_id from the server: 'v1'"))).toBe(
+        true,
+      )
+      // ...while the keys and the version still land. Refusing a pointer must
+      // not cost the device its reads, which is why this is skip-and-log rather
+      // than a throw: the DEKs are self-verifying, the pointer is not.
+      expect([...storedDEKs.keys()].sort()).toEqual(['0', 'v1'])
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
     })
 
     it('does not re-fetch the envelope when the stored AK still opens the keyring', async () => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { KeyId, WrappedKeyEntry } from '@shared/e2ee-types'
+import { isMintableKeyId, type KeyId, type WrappedKeyEntry } from '@shared/e2ee-types'
 
 import { StorageError } from './errors'
 import { decryptBytes, deriveMlKemAtRestKey, encryptBytes, type EncryptedBytes } from './primitives'
@@ -278,8 +278,22 @@ export const pruneStagedDEKs = async (keepKeyIds: KeyId[]): Promise<void> => {
   })
 }
 
-/** Store the primary key_id pointer — the DEK version that encrypts all new writes. */
-export const storePrimaryKeyId = async (keyId: KeyId): Promise<void> => putValue(primaryKeyIdId, keyId)
+/**
+ * Store the primary key_id pointer — the DEK version that encrypts all new writes.
+ *
+ * INVARIANT: the primary pointer is always a MINTABLE `key_id`. `legacyKeyId`
+ * ("v1") is decrypt-only — it never rotates and revocation never re-wraps it —
+ * so a pointer at it seals every future write under a key that any v1-era
+ * phrase or device opens (THU-876). Enforced here, not only per-caller, because
+ * this entry is DURABLE: whatever lands in it steers writes on every later load,
+ * long after the response (or the script) that wrote it is gone.
+ */
+export const storePrimaryKeyId = async (keyId: KeyId): Promise<void> => {
+  if (!isMintableKeyId(keyId)) {
+    throw new StorageError(`Refusing to store a non-mintable primary key_id: '${keyId}'`)
+  }
+  return putValue(primaryKeyIdId, keyId)
+}
 
 /** Get the primary key_id pointer, or null when it was never set. */
 export const getPrimaryKeyId = async (): Promise<KeyId | null> => getValue<string>(primaryKeyIdId)

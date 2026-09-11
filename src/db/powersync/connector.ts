@@ -8,7 +8,7 @@ import { isSsoMode } from '@/lib/auth-mode'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload } from '@/db/encryption'
 import { getAK, getPrimaryKeyId, storePrimaryKeyId } from '@/crypto'
-import type { EncryptionMetadataResponse, KeyId } from '@shared/e2ee-types'
+import { isMintableKeyId, type EncryptionMetadataResponse, type KeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -258,6 +258,16 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     }
     if (!(await getAK())) {
       throw new Error('Account is E2EE but this device holds no access key — deferring upload instead of plaintext')
+    }
+    // Second place a server-reported pointer becomes durable local state (the
+    // other is `applyKeyring`), and it reads the same `/encryption/canary`
+    // response — so one lie steers both. A non-mintable id would seal this batch
+    // under the decrypt-only `"v1"` slot (THU-876); defer instead, which is what
+    // every other guard in this method does.
+    if (!isMintableKeyId(account.primaryKeyId)) {
+      throw new Error(
+        `Server reported a non-mintable primary key_id ('${account.primaryKeyId}') — deferring upload instead of encrypting under it`,
+      )
     }
     await storePrimaryKeyId(account.primaryKeyId)
   }

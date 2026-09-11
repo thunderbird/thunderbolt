@@ -5,6 +5,7 @@
 import { user as userTable } from '@/db/auth-schema'
 import { encryptionMetadataTable } from '@/db/encryption-schema'
 import { createTestDb } from '@/test-utils/db'
+import { legacyKeyId } from '@shared/e2ee-types'
 import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
@@ -17,6 +18,7 @@ import {
   insertWrappedKey,
   issueChallengeNonce,
   listWrappedKeys,
+  setPrimaryKeyId,
   updateWrappedKey,
   upsertOrgEnvelope,
 } from './encryption'
@@ -145,6 +147,24 @@ describe('DAL: encryption', () => {
       expect(metadata?.recoveryMlkemPublicKey).toBeNull()
       expect(metadata?.recoveryWrappedAk).toBeNull()
       expect(metadata?.recoveryAttestation).toBeNull()
+    })
+
+    /**
+     * THU-876: an invariant guard, not a request validator — every route that
+     * reaches this column already constrains the id, so this is unreachable
+     * today and exists so a future caller trips here instead of shipping a
+     * primary pointer at the decrypt-only `"v1"` slot.
+     */
+    it('setPrimaryKeyId refuses a non-mintable key_id', async () => {
+      await insertV1Metadata()
+      for (const keyId of [legacyKeyId, '01', '1'.repeat(16), '']) {
+        await expect(setPrimaryKeyId(db, userId, keyId)).rejects.toThrow('non-mintable primary key_id')
+      }
+      const metadata = await getEncryptionMetadata(db, userId)
+      expect(metadata?.primaryKeyId).toBe('0')
+
+      await setPrimaryKeyId(db, userId, '7')
+      expect((await getEncryptionMetadata(db, userId))?.primaryKeyId).toBe('7')
     })
 
     it('flipSchemeToV2 CAS succeeds once and returns null on a second flip', async () => {

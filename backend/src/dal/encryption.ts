@@ -10,7 +10,7 @@ import {
   orgEnvelopesTable,
   wrappedKeysTable,
 } from '@/db/schema'
-import type { KeyId, NonceOperation } from '@shared/e2ee-types'
+import { isMintableKeyId, type KeyId, type NonceOperation } from '@shared/e2ee-types'
 import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 
 // ─── Envelopes ────────────────────────────────────────────────────────
@@ -243,12 +243,28 @@ export const bumpKeyVersion = async (database: typeof DbType, userId: string) =>
     .returning()
     .then((rows) => rows[0]?.keyVersion ?? null)
 
-/** Point all new writes at a different DEK. Only an AK rotation that mints one calls this. */
-export const setPrimaryKeyId = async (database: typeof DbType, userId: string, keyId: KeyId) =>
-  database
+/**
+ * Point all new writes at a different DEK. Only an AK rotation that mints one
+ * calls this.
+ *
+ * The grammar assertion is an INVARIANT GUARD, not a request validator: every
+ * route that reaches this column already constrains the id (rotate validates
+ * `newPrimaryKey.keyId` against `keyIdPattern`, `/upgrade` pins it to
+ * `initialKeyId`, bootstrap leaves the column's `'0'` default), so it is
+ * unreachable today. It exists because a primary at the decrypt-only
+ * `legacyKeyId` slot would seal every device's future writes under a key any
+ * v1-era phrase opens (THU-876) — a future caller must trip here, in tests,
+ * rather than ship that.
+ */
+export const setPrimaryKeyId = async (database: typeof DbType, userId: string, keyId: KeyId) => {
+  if (!isMintableKeyId(keyId)) {
+    throw new Error(`Refusing to set a non-mintable primary key_id: '${keyId}'`)
+  }
+  return database
     .update(encryptionMetadataTable)
     .set({ primaryKeyId: keyId })
     .where(eq(encryptionMetadataTable.userId, userId))
+}
 
 // ─── Wrapped keys (versioned DEK keyring) ─────────────────────────────
 

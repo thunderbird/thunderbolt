@@ -5,7 +5,16 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'bun:test'
 
-import { clearAllKeys, encrypt, generateAK, mintDEK, storeAK, storeDEK, storePrimaryKeyId } from '@/crypto'
+import {
+  clearAllKeys,
+  encrypt,
+  generateAK,
+  getPrimaryKeyId,
+  mintDEK,
+  storeAK,
+  storeDEK,
+  storePrimaryKeyId,
+} from '@/crypto'
 import { encodeAAD, encPrefix, encV2Prefix, legacyKeyId, type KeyId } from '@shared/e2ee-types'
 import { formatWireValue, isV2EncryptedValue, parseWireValue } from './wire-format'
 import {
@@ -23,6 +32,29 @@ const deleteDatabase = (): Promise<void> =>
     const request = indexedDB.deleteDatabase('thunderbolt-keys')
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
+  })
+
+/**
+ * Write the primary-pointer entry straight into IndexedDB, around
+ * `storePrimaryKeyId`. Models the only way a non-mintable pointer can exist
+ * post-THU-876: local state written by something that is not this API.
+ */
+const plantRawPrimaryKeyId = (keyId: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const open = indexedDB.open('thunderbolt-keys')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const tx = open.result.transaction('keys', 'readwrite')
+      tx.objectStore('keys').put(keyId, 'thunderbolt_primary_key_id')
+      tx.oncomplete = () => {
+        open.result.close()
+        resolve()
+      }
+      tx.onerror = () => {
+        open.result.close()
+        reject(tx.error)
+      }
+    }
   })
 
 type FakeChannel = {
@@ -118,6 +150,26 @@ describe('encode', () => {
     const minted = await mintDEK(ak)
     await storeDEK(legacyKeyId, minted.wrappedKey)
     await expect(codec.encode('x', ctx)).rejects.toThrow('refusing to upload plaintext')
+  })
+
+  it('refuses to encode when a TAMPERED primary pointer names the "v1" slot (THU-876)', async () => {
+    // `storePrimaryKeyId` refuses this value now, so the only way to reach this
+    // state is a write that went AROUND that API: an in-origin script (A6), or
+    // a device poisoned before THU-876 shipped. Enforcing the grammar here, at
+    // the point of use, is what makes such a compromise non-persistent — the
+    // pointer is durable, so without this guard one transient write steers
+    // every future write onto the decrypt-only legacy CK.
+    const ak = await generateAK()
+    await storeAK(ak)
+    await storeDEK('0', (await mintDEK(ak)).wrappedKey)
+    await storeDEK(legacyKeyId, (await mintDEK(ak)).wrappedKey)
+    await plantRawPrimaryKeyId(legacyKeyId)
+    resetCodecState()
+
+    // Precondition: the plant is visible to the codec. Both DEKs are staged, so
+    // WITHOUT the guard this encode succeeds and emits `__enc:v2:v1:…`.
+    expect(await getPrimaryKeyId()).toBe(legacyKeyId)
+    await expect(codec.encode('x', ctx)).rejects.toThrow('non-mintable primary key_id')
   })
 
   it("falls back to key_id '0' when no primary pointer is set but DEK 0 exists", async () => {

@@ -427,6 +427,26 @@ describe('ThunderboltConnector upload encryption gate', () => {
     expect(wasCompleted()).toBe(false)
   })
 
+  it('defers the upload when the server steers the primary onto the legacy "v1" slot (THU-876)', async () => {
+    // The second place a server-reported pointer becomes durable local state.
+    // Same `/encryption/canary` response `applyKeyring` reads, so one lie steers
+    // both — a fix limited to `applyKeyring` would leave this path open.
+    await storeAK(await generateAK())
+    fetchMock = routeCanary(() => jsonResponse({ primary_key_id: 'v1' }))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+    const { database, wasCompleted } = makeDatabase()
+
+    // Matches the connector's OWN message, not the storage layer's: the drawer
+    // guard in `storePrimaryKeyId` would also refuse this value, so a looser
+    // pattern would pass with this method's guard removed.
+    await expect(connector.uploadData(database)).rejects.toThrow(/deferring upload instead of encrypting under it/)
+
+    expect(uploadAttempted()).toBe(false)
+    expect(wasCompleted()).toBe(false)
+    // Nothing durable was written, so a later honest response still lands.
+    expect(await getPrimaryKeyId()).toBeNull()
+  })
+
   it('uploads plaintext for an account that never enabled E2EE (404)', async () => {
     fetchMock = routeCanary(() => jsonResponse({ error: 'Encryption not set up' }, 404))
     const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)

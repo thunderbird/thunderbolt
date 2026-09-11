@@ -6,6 +6,7 @@ import { decrypt, encrypt, getAK, getDEK, getPrimaryKeyId, unwrapDEK } from '@/c
 import {
   encodeAAD,
   initialKeyId,
+  isMintableKeyId,
   legacyKeyId,
   type EncryptionCodec,
   type EncryptionContext,
@@ -264,6 +265,17 @@ const resolvePrimaryKeyId = async (): Promise<KeyId | null> => {
     return cachedPrimaryKeyId
   }
   const stored = await getPrimaryKeyId()
+  if (stored && !isMintableKeyId(stored)) {
+    // `storePrimaryKeyId` refuses these, so a non-mintable pointer means local
+    // state written AROUND that API — an in-origin script (A6), or a device
+    // poisoned before THU-876 shipped. Enforcing it HERE, at the point of use,
+    // is what stops a transient compromise from becoming a permanent steer onto
+    // the decrypt-only `"v1"` slot. Fail closed rather than falling through to
+    // the `initialKeyId` fallback below: a detected tamper is not the same
+    // condition as "no pointer yet", and silently writing under `"0"` would be
+    // the wrong key on any account that has since rotated.
+    throw new Error(`Refusing to encrypt under a non-mintable primary key_id: '${stored}'`)
+  }
   if (stored) {
     cachedPrimaryKeyId = stored
     return stored

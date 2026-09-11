@@ -17,7 +17,12 @@ import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
-import { createAuthIpRateLimit, createUserTierRateLimit, createRateLimitConsumer } from '@/middleware/rate-limit'
+import {
+  createAuthIpRateLimit,
+  createIpTierRateLimit,
+  createUserTierRateLimit,
+  createRateLimitConsumer,
+} from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
 import { createObservabilityRecorder } from '@/proxy/observability'
@@ -178,6 +183,7 @@ export const createApp = async (deps?: AppDeps) => {
           database,
           settings,
           rateLimit: createRateLimitConsumer(database, rateLimitSettings, 'debug-transcript-intake'),
+          ipRateLimit: createIpTierRateLimit(database, ipRateLimitSettings, 'debug-transcript-intake'),
         }),
       )
       .use(createPostHogRoutes(fetchFn))

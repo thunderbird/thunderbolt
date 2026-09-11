@@ -12,6 +12,7 @@ import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
+  createIpTierRateLimit,
   createRateLimitConsumer,
   createUserTierRateLimit,
   type IpRateLimitSettings,
@@ -275,6 +276,31 @@ describe('Rate Limiting', () => {
 
   describe('IP-based rate limiting', () => {
     const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
+
+    it('returns an empty IP tier plugin when disabled', async () => {
+      const plugin = createIpTierRateLimit(database, { ...ipSettings, enabled: false }, 'debug-transcript-intake')
+      expect(plugin.routes).toHaveLength(0)
+      const app = new Elysia().use(plugin).get('/v1/test', () => ({ ok: true }))
+      const response = await app.handle(requestWithIp('10.4.0.1'))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('ratelimit-limit')).toBeNull()
+      expect(await database.select().from(rateLimits)).toHaveLength(0)
+    })
+
+    it('allows 600 intake requests per IP each hour independently of other IPs', async () => {
+      const app = new Elysia()
+        .use(createIpTierRateLimit(database, ipSettings, 'debug-transcript-intake'))
+        .get('/v1/test', () => ({ ok: true }))
+
+      for (let index = 0; index < 600; index++) {
+        expect((await app.handle(requestWithIp('10.4.0.1'))).status).toBe(200)
+      }
+      const blocked = await app.handle(requestWithIp('10.4.0.1'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('600')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(3500)
+      expect((await app.handle(requestWithIp('10.4.0.2'))).status).toBe(200)
+    })
 
     it('should allow requests under the limit for an IP', async () => {
       const app = createIpTestApp(database, ipSettings)

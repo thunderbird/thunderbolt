@@ -15,12 +15,13 @@ import {
   debugTranscriptServerPayloadMaxBytes,
   debugTranscriptTooLargeCode,
 } from '@shared/debug-transcript-contract'
-import { Elysia } from 'elysia'
+import { Elysia, type AnyElysia } from 'elysia'
 
 type IntakeRoutesOptions = {
   database: typeof DbType
   settings: Pick<Settings, 'debugTranscriptIntakeEnabled'>
   rateLimit: RateLimitConsumer | null
+  ipRateLimit?: AnyElysia
 }
 
 type IntakeSettings = Pick<Settings, 'debugTranscriptIntakeEnabled' | 'debugTranscriptUpstreamKey'>
@@ -35,61 +36,71 @@ const bearerKey = (request: Request): string | null => {
  * Intake role: accept transcripts from registered clients (deployments) and
  * store them. Authenticated by a per-client key, never by a user session.
  */
-export const createDebugTranscriptsIntakeRoutes = ({ database, settings, rateLimit }: IntakeRoutesOptions) => {
+export const createDebugTranscriptsIntakeRoutes = ({
+  database,
+  settings,
+  rateLimit,
+  ipRateLimit,
+}: IntakeRoutesOptions) => {
   if (!settings.debugTranscriptIntakeEnabled) {
     return new Elysia()
   }
-  return new Elysia({ normalize: false }).onError(safeErrorHandler).post(
-    `/${debugTranscriptIntakePath}`,
-    async ({ request, set }) => {
-      const key = bearerKey(request)
-      const client = key ? await findDebugTranscriptClientByKeyHash(database, hashDebugTranscriptClientKey(key)) : null
-      if (!client) {
-        set.status = 401
-        return { error: 'Unknown debug transcript client' }
-      }
-      if (client.revokedAt) {
-        set.status = 403
-        return { error: 'Debug transcript client revoked' }
-      }
-      const limited = await rateLimit?.(`client:${client.id}`, set)
-      if (limited) {
-        return limited
-      }
+  return new Elysia({ normalize: false })
+    .onError(safeErrorHandler)
+    .use(ipRateLimit)
+    .post(
+      `/${debugTranscriptIntakePath}`,
+      async ({ request, set }) => {
+        const key = bearerKey(request)
+        const client = key
+          ? await findDebugTranscriptClientByKeyHash(database, hashDebugTranscriptClientKey(key))
+          : null
+        if (!client) {
+          set.status = 401
+          return { error: 'Unknown debug transcript client' }
+        }
+        if (client.revokedAt) {
+          set.status = 403
+          return { error: 'Debug transcript client revoked' }
+        }
+        const limited = await rateLimit?.(`client:${client.id}`, set)
+        if (limited) {
+          return limited
+        }
 
-      const read = await readBoundedJson(request, debugTranscriptMaxRequestBytes)
-      if (!read.ok && read.reason === 'too_large') {
-        set.status = 413
-        return { error: 'Debug transcript request exceeds maximum size', code: debugTranscriptTooLargeCode }
-      }
-      const parsed = read.ok ? debugTranscriptIntakeBodySchema.safeParse(read.value) : null
-      if (!parsed?.success) {
-        set.status = 422
-        return { error: 'Invalid debug transcript' }
-      }
+        const read = await readBoundedJson(request, debugTranscriptMaxRequestBytes)
+        if (!read.ok && read.reason === 'too_large') {
+          set.status = 413
+          return { error: 'Debug transcript request exceeds maximum size', code: debugTranscriptTooLargeCode }
+        }
+        const parsed = read.ok ? debugTranscriptIntakeBodySchema.safeParse(read.value) : null
+        if (!parsed?.success) {
+          set.status = 422
+          return { error: 'Invalid debug transcript' }
+        }
 
-      if (Buffer.byteLength(JSON.stringify(parsed.data.payload), 'utf8') > debugTranscriptServerPayloadMaxBytes) {
-        set.status = 413
-        return { error: 'Debug transcript payload exceeds 2 MB', code: debugTranscriptTooLargeCode }
-      }
+        if (Buffer.byteLength(JSON.stringify(parsed.data.payload), 'utf8') > debugTranscriptServerPayloadMaxBytes) {
+          set.status = 413
+          return { error: 'Debug transcript payload exceeds 2 MB', code: debugTranscriptTooLargeCode }
+        }
 
-      const id = crypto.randomUUID()
-      await createDebugTranscript(database, {
-        id,
-        clientId: client.id,
-        userId: parsed.data.userId,
-        localUserId: client.id === selfDebugTranscriptClientId ? parsed.data.userId : null,
-        threadId: parsed.data.threadId,
-        schemaVersion: parsed.data.schemaVersion,
-        payload: parsed.data.payload,
-        userNote: parsed.data.userNote,
-        clientVersion: parsed.data.clientVersion,
-      })
-      set.status = 201
-      return { id }
-    },
-    { parse: 'none' },
-  )
+        const id = crypto.randomUUID()
+        await createDebugTranscript(database, {
+          id,
+          clientId: client.id,
+          userId: parsed.data.userId,
+          localUserId: client.id === selfDebugTranscriptClientId ? parsed.data.userId : null,
+          threadId: parsed.data.threadId,
+          schemaVersion: parsed.data.schemaVersion,
+          payload: parsed.data.payload,
+          userNote: parsed.data.userNote,
+          clientVersion: parsed.data.clientVersion,
+        })
+        set.status = 201
+        return { id }
+      },
+      { parse: 'none' },
+    )
 }
 
 /** Startup: the intake host is a client of itself; keep its row in sync with the configured key. */

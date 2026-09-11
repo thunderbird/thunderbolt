@@ -6,7 +6,7 @@ import { user } from '@/db/auth-schema'
 import { deleteUser } from '@/dal/users'
 import { debugTranscriptClientsTable, debugTranscriptsTable } from '@/db/debug-transcript-schema'
 import { hashDebugTranscriptClientKey } from '@/debug-transcripts/client-key'
-import { createRateLimitConsumer } from '@/middleware/rate-limit'
+import { createIpTierRateLimit, createRateLimitConsumer } from '@/middleware/rate-limit'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { createTestSettings } from '@/test-utils/settings'
@@ -37,11 +37,15 @@ describe('Debug transcript intake', () => {
     })
   })
 
-  const post = (payload: BodyInit, key?: string) =>
+  const post = (payload: BodyInit, key?: string, ip?: string) =>
     app.handle(
       new Request('http://localhost/debug-transcripts/intake', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(key ? { Authorization: `Bearer ${key}` } : {}),
+          ...(ip ? { 'cf-connecting-ip': ip } : {}),
+        },
         body: payload,
       }),
     )
@@ -58,6 +62,23 @@ describe('Debug transcript intake', () => {
     expect((await post(JSON.stringify(body), 'unknown')).status).toBe(401)
     expect((await post(JSON.stringify(body), 'old-key')).status).toBe(403)
     expect(await db.select().from(debugTranscriptsTable)).toHaveLength(0)
+  })
+
+  it('rate limits unknown keys before client lookup while allowing another IP', async () => {
+    app = createDebugTranscriptsIntakeRoutes({
+      database: db,
+      settings: createTestSettings({ debugTranscriptIntakeEnabled: true }),
+      rateLimit: createRateLimitConsumer(db, { enabled: true }, 'debug-transcript-intake'),
+      ipRateLimit: createIpTierRateLimit(db, { enabled: true, trustedProxy: 'cloudflare' }, 'debug-transcript-intake'),
+    })
+
+    for (let index = 0; index < 600; index++) {
+      expect((await post(JSON.stringify(body), 'unknown', '10.5.0.1')).status).toBe(401)
+    }
+    const blocked = await post(JSON.stringify(body), 'unknown', '10.5.0.1')
+    expect(blocked.status).toBe(429)
+    expect(await blocked.json()).toEqual({ error: 'Too many requests. Please try again later.' })
+    expect((await post(JSON.stringify(body), 'acme-key', '10.5.0.2')).status).toBe(201)
   })
 
   it('stores an accepted transcript under the client and returns its id', async () => {

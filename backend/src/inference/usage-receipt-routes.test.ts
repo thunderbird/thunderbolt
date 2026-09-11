@@ -194,8 +194,8 @@ describe('inference usage receipt routes', () => {
 
       const response = await postRaw(enabledApp, '{', { 'x-api-key': 'valid-personal-access-token' })
 
-      // Past the guard: a malformed body is now the caller's problem, not a 403.
-      expect(response.status).not.toBe(403)
+      // Past the guard: a malformed body is now the caller's problem, so the route answers 400.
+      expect(response.status).toBe(400)
     } finally {
       delete process.env.CONFIDENTIAL_API_KEYS_ENABLED
       clearSettingsCache()

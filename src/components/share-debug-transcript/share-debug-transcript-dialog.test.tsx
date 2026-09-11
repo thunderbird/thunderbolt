@@ -44,7 +44,7 @@ describe('ShareDebugTranscriptDialog', () => {
     expect(contentsQuestion.tagName).toBe('DT')
     expect(
       screen.getByText(
-        'This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps.',
+        'This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps.',
       ),
     ).toBeVisible()
 

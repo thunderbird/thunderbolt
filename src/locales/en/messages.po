@@ -3568,8 +3568,12 @@ msgid "This can happen in private windows or when site data is blocked. Enable s
 msgstr "This can happen in private windows or when site data is blocked. Enable storage for this site and reload."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
-msgstr "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+#~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+#~ msgstr "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
+msgstr "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "This chat uses {agentName}, which is not available on this platform."

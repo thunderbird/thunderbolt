@@ -3580,7 +3580,11 @@ msgid "This can happen in private windows or when site data is blocked. Enable s
 msgstr "Esto puede ocurrir en ventanas privadas o cuando se bloquean los datos del sitio. Activa el almacenamiento para este sitio y recarga."
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
-msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+#~ msgid "This chat session, including the messages you sent and the responses from agent, the data inputs and outputs of any tools used, errors, and timestamps."
+#~ msgstr ""
+
+#: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
+msgid "This chat session, including the messages you sent and the responses from the agent, the data inputs and outputs of any tools used, errors, and timestamps."
 msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx

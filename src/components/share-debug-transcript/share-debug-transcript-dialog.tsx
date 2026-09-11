@@ -81,8 +81,8 @@ export const ShareDebugTranscriptDialog = ({
                 </dt>
                 <dd className="text-[length:var(--font-size-sm)] text-muted-foreground">
                   <Trans>
-                    This chat session, including the messages you sent and the responses from agent, the data inputs and
-                    outputs of any tools used, errors, and timestamps.
+                    This chat session, including the messages you sent and the responses from the agent, the data inputs
+                    and outputs of any tools used, errors, and timestamps.
                   </Trans>
                 </dd>
               </div>

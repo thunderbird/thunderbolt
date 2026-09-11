@@ -54,8 +54,8 @@ const forwardToIntake = async (
       return null
     }
     return parsed.data
-  } catch {
-    console.error('Debug transcript upstream fetch or response read failed')
+  } catch (error) {
+    console.error('Debug transcript upstream fetch or response read failed', error)
     return null
   }
 }

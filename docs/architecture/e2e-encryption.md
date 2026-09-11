@@ -31,7 +31,7 @@ The v1 → v2 rollout is a **hard cutover** guarded by the app-version gate (`cr
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Device key pair**      | Each device generates an **ECDH P-256** key pair and an **ML-KEM-768** key pair. Private keys never leave the device. The ML-KEM secret is encrypted at rest (self-ECDH → HKDF). |
 | **Account Key (AK)**     | An **AES-256** key with `wrapKey`/`unwrapKey` usages **only** — it never encrypts data; it is pure access control over the keyring. Randomly generated, never derived, so it can be rotated without the user's phrase. |
-| **DEK keyring**          | Versioned **AES-256-GCM** Data Encryption Keys (`key_id` `"0"`, `"1"`, …). Exactly one is `primary` (encrypts new writes); older DEKs are retained forever for reads.          |
+| **DEK keyring**          | Versioned **AES-256-GCM** Data Encryption Keys (`key_id` `"0"`, `"1"`, …). Exactly one is `primary` (encrypts new writes); older DEKs are retained forever for reads. A `key_id` is an unpadded decimal counter of at most 15 digits (`keyIdPattern`) — bounded so the "next id" arithmetic stays exact, see [Minting a DEK](#minting-a-dek). |
 | **`"v1"` slot**          | A reserved, read-only DEK slot holding the **absorbed legacy CK** from a migrated account. Decrypts legacy `__enc:<iv>:<ct>` rows (no AAD) forever. Never encrypts. See migration. |
 | **Device envelope**      | The **AK** wrapped for one device via a hybrid ECDH + ML-KEM envelope. (The stored column is still named `wrapped_ck` for wire compatibility — it carries the AK.)             |
 | **Recovery key**         | The 256-bit recovery **seed** encoded as a **24-word BIP-39 mnemonic**. Shown once at setup/migration/phrase change. `mnemonic → seed → KDF → recovery keypair`.               |
@@ -63,6 +63,20 @@ recovery keypair (ECDH-P256 + ML-KEM-768) — public half stored server-side
 
 Each device unwraps its own envelope to arrive at the same AK, then unwraps the wrapped-DEK keyring under that AK. The recovery slot is one more envelope over the same AK, so entering the phrase lands on exactly the same key hierarchy a device does.
 
+### Minting a DEK
+
+A new `key_id` enters an established keyring in exactly one way: the optional `newPrimaryKey` field on `POST /v1/encryption/rotate`. There is deliberately **no** standalone "add a key" endpoint (THU-871). Three properties follow from that, and all three were bugs before it:
+
+- **Atomic with the rotation.** A revocation needs both rotations, and an AK rotation is the step that is *documented* to ask the caller to retry. When the mint was its own request, every retry minted another keyring row, so a user on a flaky connection ratcheted their keyring toward the size at which no rotation fits in one request at all. A failed rotation now adds nothing.
+- **Always wrapped under the current AK.** The minted DEK is wrapped under the very AK that request installs, so it cannot be stranded under a stale one. Previously a device with an outdated AK could still pass the `rotate` proof — which attests possession of DEK `"0"`, not AK currency — and insert a row wrapped under the old AK, leaving the keyring mixed.
+- **No cheap planting surface.** An in-origin script on a trusted device (A6) could otherwise mint arbitrary unopenable rows with a valid proof.
+
+The `key_id` itself is allocated client-side as the **smallest canonical counter not already on the keyring**. On a healthy account that is just "one past the last" — rows are never deleted, so the ids run `0, 1, 2, …` with no holes — but choosing a hole rather than a maximum is what makes a planted row inert instead of load-bearing. Two earlier shapes of this allocation were both exploitable: an unfiltered `max + 1` collided with a row labelled with 17+ digits (`max + 1 === max` past 2^53), and a grammar-filtered `max + 1` still walked off the end of the grammar if a row claimed `999999999999999`, producing an id the server itself rejects and blocking every revocation. Smallest-unused cannot do either: the result is by construction absent from the keyring, and pigeonhole keeps it bounded by the keyring's own size.
+
+The grammar (`keyIdPattern`: unpadded decimal, ≤ 15 digits) keeps ids short on the wire — every encrypted cell carries one — canonical, and tightly validatable. The server independently validates it on `newPrimaryKey`, rejects an id that already exists, and asserts the insert actually happened: a conflict aborts the whole rotation instead of being silently dropped.
+
+The re-wrap path stays deliberately permissive about ids that *already* exist (`^[^:]+$`), because an account may carry a row that predates the grammar or was planted; rejecting it there would make that account permanently unrotatable.
+
 ## Wire Format
 
 New (v2) encrypted column values are written with a version tag, the `key_id`, and AAD bound to the row context (never stored on the wire):
@@ -88,7 +102,7 @@ __enc:<iv-base64>:<ciphertext-base64>                  decrypted via the "v1" DE
 | **Returning device**  | Key pair present, AK missing → fetch own envelope → unwrap AK → stage keyring → sync resumes.                                                                    |
 | **Recovery key**      | Enter 24-word phrase → seed → fetch `kdf_salt` → derive the recovery keypair → reject immediately if its public half doesn't match the stored one → unwrap the AK from `recovery_wrapped_ak` → verify canary → unwrap keyring (incl. `"v1"`) → new envelope for this device. |
 | **Change phrase**     | `changeRecoveryPhrase`: new random AK **and** a new seed; re-wrap the **entire** keyring under the new AK; re-issue every device envelope; re-anchor the recovery slot to the new phrase; new canary + signing key; `key_version++`. 0 rows re-encrypted. The new phrase is shown once. |
-| **Revoke device**     | Delete envelope + revoke sessions, then **rotate both AK and DEK** so the removed device is locked out of future keyring and data. The AK rotation re-anchors the recovery slot to the **existing** recovery public keys — after verifying their attestation — so the rotation is silent and the user's phrase keeps working. |
+| **Revoke device**     | Delete envelope + revoke sessions, then **rotate both AK and DEK in one atomic request** so the removed device is locked out of future keyring and data. The AK rotation re-anchors the recovery slot to the **existing** recovery public keys — after verifying their attestation — so the rotation is silent and the user's phrase keeps working. |
 | **Migrate (v1 → v2)** | See below — seamless, data-preserving, never a reset.                                                                                                            |
 | **Sign out**          | All local keys cleared (dynamic DEK ids enumerated, not a static list) → next sign-in is a new device.                                                            |
 

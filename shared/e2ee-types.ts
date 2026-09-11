@@ -30,10 +30,38 @@ export const wireVersionV2 = 'v2'
 export const encV2Prefix = `${encPrefix}${wireVersionV2}:`
 
 /**
- * Identifies one DEK version in the keyring: "0", "1", … (workspace DEKs get
- * ids like "ws1"). MUST never contain ':' — it is a wire-format segment.
+ * Identifies one DEK version in the keyring: "0", "1", … MUST never contain ':'
+ * — it is a wire-format segment. Every mintable id matches `keyIdPattern`;
+ * `legacyKeyId` is the one reserved id outside that grammar.
  */
 export type KeyId = string
+
+/**
+ * The grammar every MINTABLE key_id must match: an unpadded decimal counter,
+ * bounded to 15 digits (THU-871). Every clause is load-bearing:
+ *
+ * - **≤ 15 digits** keeps the id below 2^53, so it survives a round trip through
+ *   a JS number exactly and `String()` never emits exponent notation. Unbounded
+ *   ids are what made allocation exploitable: 17+ digits makes `max + 1 === max`
+ *   and 1e21+ stringifies to `"1e+21"`, so a planted row could alias the id a
+ *   mint was about to claim — and a colliding mint was silently discarded by the
+ *   server while the primary pointer moved onto the planted row (permanent
+ *   account-wide write lockout).
+ * - **unpadded** (no `"01"`) makes string↔number a bijection, so
+ *   `String(Number(id)) === id` for every id in the grammar, and a canonical
+ *   candidate can never alias a non-canonical row.
+ *
+ * The allocator additionally picks the smallest UNUSED counter rather than
+ * highest-plus-one, so non-collision no longer rests on arithmetic at all — see
+ * `nextPrimaryKeyId`. This grammar is what keeps ids short on the wire (every
+ * encrypted cell carries one), canonical, and tightly validatable server-side.
+ * `legacyKeyId` ("v1") is deliberately excluded: it is written only by the v1→v2
+ * upgrade path.
+ */
+export const keyIdPattern = '^(0|[1-9][0-9]{0,14})$'
+
+/** Whether `keyId` is a well-formed mintable key_id (see `keyIdPattern`). */
+export const isMintableKeyId = (keyId: string): boolean => new RegExp(keyIdPattern).test(keyId)
 
 /** The key_id minted at first-device setup and the default primary. */
 export const initialKeyId: KeyId = '0'
@@ -462,6 +490,17 @@ export type RotateRequest = RecoverySlotRequest & {
   envelopes: Array<{ deviceId: string; wrappedCK: string }>
   /** The FULL keyring re-wrapped under the new AK — every existing key_id, no exceptions. */
   wrappedKeys: WrappedKeyEntry[]
+  /**
+   * One freshly minted DEK, already wrapped under the NEW AK, which becomes the
+   * primary (THU-871). Present when the rotation is also a DEK rotation — that
+   * is, device revocation, which needs both. Omitted by a phrase change, which
+   * rotates only the AK.
+   *
+   * This is the ONLY way a key_id enters an established keyring. `keyId` must
+   * match `keyIdPattern` and must not already exist; the server mints it in the
+   * same transaction as the rotation, so a failed rotation adds nothing.
+   */
+  newPrimaryKey?: WrappedKeyEntry
   canaryIv: string
   canaryCtext: string
   /** Base64 SPKI ECDSA P-256 public key derived from the NEW canary secret. */

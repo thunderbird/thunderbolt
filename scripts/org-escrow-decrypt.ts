@@ -124,9 +124,19 @@ export const unwrapEscrowedAK = async (envelope: OrgEnvelope, privateKeyBase64: 
 /**
  * Unwrap the full DEK keyring under the recovered AK. Each `wrapped_key` is
  * base64 AES-KW(DEK); DEKs are AES-256-GCM decrypt-only.
+ *
+ * SKIPS rows that will not open, reporting them on stderr, rather than failing
+ * the run (THU-871). This is break-glass recovery and it needs exactly ONE
+ * key_id — the one the requested cell was written under. Aborting on an
+ * unrelated row let a single junk `wrapped_keys` row (planted by a malicious
+ * server, or left stranded by a rotation) deny the operator access to every
+ * cell on the account, including ones whose own key unwraps perfectly. If the
+ * cell's key is among the skipped rows the caller fails anyway, with a message
+ * naming that specific key_id.
  */
 export const unwrapKeyring = async (entries: WrappedKeyEntry[], ak: CryptoKey): Promise<Map<KeyId, CryptoKey>> => {
   const deks = new Map<KeyId, CryptoKey>()
+  const skipped: KeyId[] = []
   for (const { keyId, wrappedKey } of entries) {
     try {
       const dek = await crypto.subtle.unwrapKey(
@@ -139,11 +149,16 @@ export const unwrapKeyring = async (entries: WrappedKeyEntry[], ak: CryptoKey): 
         ['decrypt'],
       )
       deks.set(keyId, dek)
-    } catch (err) {
-      throw new Error(`Failed to unwrap DEK "${keyId}" — the keyring was re-wrapped under a different AK`, {
-        cause: err,
-      })
+    } catch {
+      skipped.push(keyId)
     }
+  }
+  if (skipped.length > 0) {
+    console.error(
+      `Warning: ${skipped.length} keyring row(s) did not unwrap under the recovered AK and were skipped: ` +
+        `${skipped.join(', ')}. They are wrapped under a different AK (stranded or planted). ` +
+        'Cells written under those key_ids are not recoverable with this key.',
+    )
   }
   return deks
 }

@@ -33,7 +33,7 @@ import {
   type StoredKeyPair,
 } from '@/crypto'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
-import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm } from '@shared/e2ee-types'
+import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
@@ -162,8 +162,6 @@ type FakeServer = {
   /** Applied when /upgrade returns 409 — simulates the winning migrator's committed v2 state. */
   winner?: { metadata: MetaState; envelopes: Map<string, string>; wrappedKeys: Map<KeyId, string> }
   rotateStatus: number
-  /** Status for `POST /encryption/keys` — lets a DEK rotation fail mid-flow. */
-  wrappedKeyStatus: number
   /** `METHOD /path` of every request, in order — lets a test assert nothing was called. */
   requests: string[]
   /** Operator escrow config served by GET /encryption/org-key (THU-804). */
@@ -231,7 +229,6 @@ const createFakeServer = (): FakeServer => {
     devicePublicKeys: new Map(),
     upgradeConflict: false,
     rotateStatus: 200,
-    wrappedKeyStatus: 200,
     requests: [],
     orgEscrow: { enabled: false, publicKey: null },
     lastOrgEnvelope: null,
@@ -359,16 +356,6 @@ const createFakeServer = (): FakeServer => {
       const wrapped = server.wrappedKeys.get(keyId)
       return wrapped ? jsonResponse({ key_id: keyId, wrapped_key: wrapped }) : jsonResponse({ error: 'not found' }, 404)
     }
-    if (path === '/encryption/keys' && method === 'POST') {
-      if (server.wrappedKeyStatus !== 200) {
-        return jsonResponse({ error: 'boom' }, server.wrappedKeyStatus)
-      }
-      server.wrappedKeys.set(body!.keyId as KeyId, body!.wrappedKey as string)
-      if (body!.setPrimary && server.metadata) {
-        server.metadata.primaryKeyId = body!.keyId as KeyId
-      }
-      return jsonResponse({ key_id: body!.keyId })
-    }
     if (path === '/encryption/challenge' && method === 'GET') {
       nonceCounter += 1
       return jsonResponse({ nonce: `nonce-${nonceCounter}`, expires_at: new Date(Date.now() + 300_000).toISOString() })
@@ -381,12 +368,23 @@ const createFakeServer = (): FakeServer => {
       for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
         server.envelopes.set(env.deviceId, env.wrappedCK)
       }
+      // A rotation may mint one new primary DEK (THU-871). Mirror the server's
+      // conflict check: a key_id that already exists aborts the whole rotation,
+      // it is never silently swallowed.
+      const newPrimaryKey = body!.newPrimaryKey as { keyId: KeyId; wrappedKey: string } | undefined
+      if (newPrimaryKey && server.wrappedKeys.has(newPrimaryKey.keyId)) {
+        return jsonResponse({ error: `key_id '${newPrimaryKey.keyId}' already exists — mint aborted` }, 409)
+      }
       server.wrappedKeys.clear()
       for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
         server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
       }
+      if (newPrimaryKey) {
+        server.wrappedKeys.set(newPrimaryKey.keyId, newPrimaryKey.wrappedKey)
+      }
       server.metadata = {
         ...server.metadata!,
+        ...(newPrimaryKey ? { primaryKeyId: newPrimaryKey.keyId } : {}),
         canaryIv: body!.canaryIv as string,
         canaryCtext: body!.canaryCtext as string,
         kdfSalt: body!.kdfSalt as string,
@@ -1181,23 +1179,120 @@ describe('encryption service (v2)', () => {
       expect(await unwrapDEK(server.wrappedKeys.get('1')!, recoveredAK)).toBeDefined()
     })
 
-    it('leaves the previous phrase valid when the DEK rotation fails', async () => {
-      // Regression: the DEK rotation used to run AFTER the AK rotation, so a
-      // failure here invalidated the old phrase while the new one was never
-      // returned — leaving the account with a phrase nobody knows.
+    it('ignores a planted out-of-grammar key_id when allocating the new primary (THU-871)', async () => {
+      // THE collision. A 17-digit key_id makes `max + 1 === max` under IEEE-754,
+      // so the unfiltered allocator handed back the attacker's own id: the
+      // server discarded the freshly minted DEK (ON CONFLICT DO NOTHING),
+      // reported success, and moved the primary onto a row nobody holds the key
+      // for — bricking every future write, permanently, because each later
+      // rotation recomputed the same id. Filtering candidates through
+      // `keyIdPattern` makes the planted row inert.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      // Carries a byte-copy of DEK '0's wrapping, so the row OPENS under the AK
+      // and the re-wrap succeeds — isolating the collision from the separate
+      // poison-pill defect that an unopenable row triggers.
+      const planted = '10000000000000000'
+      expect(String(Number.parseInt(planted, 10) + 1)).toBe(planted) // the arithmetic really does collide
+      const dek0Wrapping = server.wrappedKeys.get(initialKeyId)!
+      server.wrappedKeys.set(planted, dek0Wrapping)
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // Allocated past the real counter, not onto the planted row, and the
+      // primary points at a key this device actually minted.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(server.wrappedKeys.has(planted)).toBe(true)
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!)).toBeDefined()
+    })
+
+    it('is not blocked by a planted key_id at the top of the grammar (THU-871)', async () => {
+      // The boundary case that highest-plus-one left open. `'9'.repeat(15)` is
+      // itself grammar-valid, so filtering could not ignore it, and `max + 1`
+      // produced a 16-digit id the server's own mint validation rejects — every
+      // revocation then failed as "retry" forever. Allocating the smallest hole
+      // instead steps over the planted row entirely.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const planted = '9'.repeat(15)
+      server.wrappedKeys.set(planted, server.wrappedKeys.get(initialKeyId)!)
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // Allocated into the gap, well inside the grammar the server enforces.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(isMintableKeyId(server.metadata!.primaryKeyId)).toBe(true)
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!)).toBeDefined()
+    })
+
+    it('completes despite an unopenable keyring row, passing it through (THU-871)', async () => {
+      // The poison-pill. One junk row used to throw inside `rewrapKeyring`, and
+      // because revocation IS an AK rotation that permanently killed
+      // cryptographic revocation AND "Change Recovery Phrase" for the account.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      // Wrapped under an AK nobody on this account holds.
+      const junk = await wrapDEK(await generateDEK(true), await generateAK(true))
+      server.wrappedKeys.set('poison', junk)
+      const versionBefore = server.metadata!.keyVersion
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The rotation went through: version bumped, a new primary was minted, and
+      // the real keys moved to the new AK.
+      expect(server.metadata!.keyVersion).toBe(versionBefore + 1)
+      expect(server.metadata!.primaryKeyId).toBe('1')
+      expect(await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, storedAK!)).toBeDefined()
+      // The junk row kept its original blob — passed through, not dropped and not
+      // deleted, so it remains repairable by a device holding the old AK.
+      expect(server.wrappedKeys.get('poison')).toBe(junk)
+    })
+
+    it('leaves the previous phrase valid AND mints nothing when the rotation fails', async () => {
+      // Regression, in two parts. The phrase half: the DEK rotation used to run
+      // AFTER the AK rotation, so a failure invalidated the old phrase while the
+      // new one was never returned — leaving the account with a phrase nobody
+      // knows. The keyring half (THU-871): the DEK mint used to be its own
+      // request, so a failed rotation still left a new row behind and every
+      // retry added another one, ratcheting the keyring toward the size at
+      // which no rotation fits. Folded into /encryption/rotate, one failure
+      // leaves both untouched.
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
       storedKeyPair = kp
       const originalPhrase = await completeFirstDeviceSetup(clientFor(server))
       const saltBefore = server.metadata!.kdfSalt
-      server.wrappedKeyStatus = 500
+      const keyIdsBefore = [...server.wrappedKeys.keys()]
+      server.rotateStatus = 500
 
-      await expect(
-        revokeDeviceAndRotate(clientFor(server), 'other-device', {
-          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
-        }),
-      ).rejects.toThrow()
+      // Retried the way the UI asks the user to, to pin that it does not ratchet.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(
+          revokeDeviceAndRotate(clientFor(server), 'other-device', {
+            listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+          }),
+        ).rejects.toThrow()
+      }
 
+      expect([...server.wrappedKeys.keys()]).toEqual(keyIdsBefore)
       // The AK rotation never ran, so the account still answers to the phrase
       // the user already wrote down.
       expect(server.metadata!.kdfSalt).toBe(saltBefore)

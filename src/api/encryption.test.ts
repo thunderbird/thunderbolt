@@ -14,7 +14,6 @@ import {
   fetchEncryptionMetadata,
   fetchWrappedKeys,
   fetchWrappedKey,
-  postWrappedKey,
   fetchChallenge,
   postRotate,
   postUpgrade,
@@ -199,15 +198,6 @@ describe('encryption API client', () => {
       const key = await fetchWrappedKey(one.httpClient, 'v1')
       expect(one.getLastRequest().url).toContain('/encryption/keys/v1')
       expect(key.wrapped_key).toBe('wv1')
-    })
-
-    it('postWrappedKey mints a new key_id', async () => {
-      const { httpClient, getLastRequest } = createCapturingHttpClient({ key_id: '1' })
-      const proof = { signature: 'sig', nonce: 'n', operation: 'rotate' as const, deviceId: 'd1' }
-      await postWrappedKey(httpClient, { keyId: '1', wrappedKey: 'w1', setPrimary: true, proof })
-      const req = getLastRequest()
-      expect(req.method).toBe('POST')
-      expect(req.body).toEqual({ keyId: '1', wrappedKey: 'w1', setPrimary: true, proof })
     })
   })
 

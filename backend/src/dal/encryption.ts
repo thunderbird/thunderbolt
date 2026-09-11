@@ -243,7 +243,7 @@ export const bumpKeyVersion = async (database: typeof DbType, userId: string) =>
     .returning()
     .then((rows) => rows[0]?.keyVersion ?? null)
 
-/** Point all new writes at a different DEK (DEK rotation / workspace DEK promotion). */
+/** Point all new writes at a different DEK. Only an AK rotation that mints one calls this. */
 export const setPrimaryKeyId = async (database: typeof DbType, userId: string, keyId: KeyId) =>
   database
     .update(encryptionMetadataTable)
@@ -269,9 +269,15 @@ export const listWrappedKeys = async (database: typeof DbType, userId: string) =
     .where(eq(wrappedKeysTable.userId, userId))
 
 /**
- * Insert a NEW wrapped DEK — used ONLY to MINT a new key_id (setup / DEK
- * rotation / workspace DEK / the absorbed `"v1"` slot). `ON CONFLICT DO NOTHING`
- * makes it idempotent per (key_id, user_id).
+ * Insert a NEW wrapped DEK — used ONLY to MINT a new key_id (setup / the DEK
+ * minted by an AK rotation / the absorbed `"v1"` slot).
+ *
+ * Returns the inserted rows, so **callers MUST treat 0 rows as a conflict and
+ * abort** (THU-871). `ON CONFLICT DO NOTHING` is retained so a collision is a
+ * clean empty result rather than a raw unique-violation, but it is explicitly
+ * NOT an idempotency guarantee: swallowing a conflict means believing a DEK was
+ * minted when the stored wrapping is somebody else's, which silently orphans
+ * every value written under that key_id.
  *
  * INVARIANT: the DEK material for a key_id is immutable; its AK-wrapping is
  * mutable and MUST change on every AK rotation. AK-rotation re-wrap must NEVER
@@ -286,6 +292,7 @@ export const insertWrappedKey = async (
     .insert(wrappedKeysTable)
     .values(entry)
     .onConflictDoNothing({ target: [wrappedKeysTable.keyId, wrappedKeysTable.userId] })
+    .returning()
 
 /**
  * Overwrite the AK-wrapping of an EXISTING key_id (AK-rotation re-wrap). A plain

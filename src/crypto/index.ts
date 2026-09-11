@@ -69,6 +69,7 @@ export {
   getDEK,
   stageWrappedDEKs,
   listDEKs,
+  pruneStagedDEKs,
   storePrimaryKeyId,
   getPrimaryKeyId,
   storeKeyVersion,

@@ -108,6 +108,49 @@ describe('org escrow round trip (keygen → frontend wrap → decrypt tool)', ()
     expect(result).toEqual({ plaintext: 'legacy plaintext', wasEncrypted: true })
   })
 
+  test('a junk keyring row cannot deny recovery of a cell whose own key opens (THU-871)', async () => {
+    // `unwrapKeyring` used to throw on the first row that would not open, so one
+    // planted or stranded row DoSed the operator's break-glass recovery for the
+    // whole account — including cells whose key unwraps perfectly.
+    const keypair = await generateEscrowKeypair()
+    const ak = await generateAk()
+    const envelope = await wrapAkForOrg(ak, keypair.publicKey)
+    const primary = await mintWrappedDek(ak)
+    // Wrapped under a different AK: the shape of a planted or stranded row.
+    const stranded = await mintWrappedDek(await generateAk())
+
+    const ctx = { table: 'tasks', column: 'item', rowId: 'row-123' }
+    const aad = encodeAAD(ctx.table, ctx.column, ctx.rowId, '0')
+    const wire = await encryptV2('still recoverable', primary.dek, aad, '0')
+
+    const recoveredAk = await unwrapEscrowedAK(parseOrgEnvelope(envelope), keypair.privateKey)
+    const deks = await unwrapKeyring(
+      [
+        { keyId: '0', wrappedKey: primary.wrappedKey },
+        { keyId: '7', wrappedKey: stranded.wrappedKey },
+      ],
+      recoveredAk,
+    )
+
+    expect([...deks.keys()]).toEqual(['0'])
+    expect(await decryptCellValue(wire, deks, ctx)).toEqual({ plaintext: 'still recoverable', wasEncrypted: true })
+  })
+
+  test('a cell written under a skipped key_id still fails, naming that key_id', async () => {
+    const keypair = await generateEscrowKeypair()
+    const ak = await generateAk()
+    const envelope = await wrapAkForOrg(ak, keypair.publicKey)
+    const stranded = await mintWrappedDek(await generateAk())
+
+    const ctx = { table: 'tasks', column: 'item', rowId: 'row-123' }
+    const wire = await encryptV2('unreachable', stranded.dek, encodeAAD(ctx.table, ctx.column, ctx.rowId, '7'), '7')
+
+    const recoveredAk = await unwrapEscrowedAK(parseOrgEnvelope(envelope), keypair.privateKey)
+    const deks = await unwrapKeyring([{ keyId: '7', wrappedKey: stranded.wrappedKey }], recoveredAk)
+
+    await expect(decryptCellValue(wire, deks, ctx)).rejects.toThrow('No DEK "7"')
+  })
+
   test('passes unencrypted values through unchanged', async () => {
     const result = await decryptCellValue('just plaintext', new Map(), { table: 'tasks', column: 'item', rowId: 'x' })
     expect(result).toEqual({ plaintext: 'just plaintext', wasEncrypted: false })

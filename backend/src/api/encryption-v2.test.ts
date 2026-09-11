@@ -275,6 +275,40 @@ describe('Encryption API (v2)', () => {
       expect((await response.json()).error).toContain(initialKeyId)
     })
 
+    it('rejects bootstrap carrying an EXTRA key_id alongside "0" (mint paths are exact-set)', async () => {
+      // Bootstrap mints, so an extra id would enter the keyring un-vetted —
+      // including one crafted to collide with a later allocation (THU-871).
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+          body: JSON.stringify({
+            wrappedCK: 'wrapped-ak',
+            canaryIv: 'iv',
+            canaryCtext: 'ctext',
+            signingPublicKey: await exportSigningPublicKey(keypair),
+            kdfSalt: 'salt',
+            wrappedKeys: [
+              { keyId: initialKeyId, wrappedKey: 'wrapped-0' },
+              { keyId: '10000000000000000', wrappedKey: 'planted' },
+            ],
+            ...recoverySlot,
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      const keys = await db
+        .select()
+        .from(wrappedKeysTable)
+        .where(eq(wrappedKeysTable.userId, p('u')))
+      expect(keys).toHaveLength(0)
+    })
+
     it.each([
       ['the whole recovery slot', {}],
       ['recoveryEcdhPublicKey', { recoveryMlkemPublicKey: 'm', recoveryWrappedAK: 'w', recoveryAttestation: 'a' }],
@@ -475,7 +509,7 @@ describe('Encryption API (v2)', () => {
 
   // ─── Wrapped-DEK keyring ────────────────────────────────────────────
 
-  describe('GET/POST /encryption/keys', () => {
+  describe('GET /encryption/keys', () => {
     it('returns the full keyring for a non-revoked device', async () => {
       await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertDevice(p('d'), p('u'), { trusted: true })
@@ -518,61 +552,13 @@ describe('Encryption API (v2)', () => {
       expect(missing.status).toBe(404)
     })
 
-    it('POST mints a new key_id idempotently (ON CONFLICT DO NOTHING)', async () => {
-      const keypair = await generateSigningKeypair()
-      await createUserAndSession(p('u'), p('tok'), p('d'))
-      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
-      await insertDevice(p('d'), p('u'), { trusted: true })
-
-      // A fresh 'rotate' proof per POST (nonces are single-use).
-      const post = async (wrappedKey: string) =>
-        app.handle(
-          new Request(`${baseUrl}/encryption/keys`, {
-            method: 'POST',
-            headers: authHeaders(p('tok'), p('d')),
-            body: JSON.stringify({
-              keyId: '1',
-              wrappedKey,
-              setPrimary: true,
-              proof: await proofFor(p('tok'), p('d'), 'rotate', keypair),
-            }),
-          }),
-        )
-
-      expect((await post('first')).status).toBe(200)
-      expect((await post('second')).status).toBe(200)
-
-      const [key] = await db
-        .select()
-        .from(wrappedKeysTable)
-        .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, '1')))
-      expect(key.wrappedKey).toBe('first') // mint-only: the second POST is a no-op
-      const [metadata] = await db
-        .select()
-        .from(encryptionMetadataTable)
-        .where(eq(encryptionMetadataTable.userId, p('u')))
-      expect(metadata.primaryKeyId).toBe('1') // setPrimary applied in the same tx
-    })
-
-    it('POST rejects an untrusted device (before proof verification)', async () => {
-      await createUserAndSession(p('u'), p('tok'), p('d'))
-      await insertDevice(p('d'), p('u')) // pending
-
-      const res = await app.handle(
-        new Request(`${baseUrl}/encryption/keys`, {
-          method: 'POST',
-          headers: authHeaders(p('tok'), p('d')),
-          body: JSON.stringify({
-            keyId: '1',
-            wrappedKey: 'w',
-            proof: { signature: 's', nonce: 'n', operation: 'rotate', deviceId: p('d') },
-          }),
-        }),
-      )
-      expect(res.status).toBe(403)
-    })
-
-    it('POST rejects a mint without a valid challenge proof', async () => {
+    /**
+     * THU-871 removed the standalone mint route. A DEK is minted only as part of
+     * an AK rotation (`newPrimaryKey` on POST /encryption/rotate), so that the
+     * mint is atomic with the rotation, is always wrapped under the AK being
+     * installed, and is not reachable as a cheap endpoint for planting rows.
+     */
+    it('has no POST mint route — minting happens only inside an AK rotation', async () => {
       const keypair = await generateSigningKeypair()
       await createUserAndSession(p('u'), p('tok'), p('d'))
       await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
@@ -586,13 +572,12 @@ describe('Encryption API (v2)', () => {
             keyId: '1',
             wrappedKey: 'w',
             setPrimary: true,
-            proof: { signature: 'bad', nonce: 'nope', operation: 'rotate', deviceId: p('d') },
+            proof: await proofFor(p('tok'), p('d'), 'rotate', keypair),
           }),
         }),
       )
-      expect(res.status).toBe(403)
+      expect(res.status).toBe(404)
 
-      // Nothing was written — the mint is gated behind proof verification.
       const keys = await db
         .select()
         .from(wrappedKeysTable)
@@ -748,6 +733,152 @@ describe('Encryption API (v2)', () => {
         .from(wrappedKeysTable)
         .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, initialKeyId)))
       expect(key.wrappedKey).toBe(`rewrapped-${initialKeyId}`)
+    })
+
+    /**
+     * `newPrimaryKey` is the ONLY way a key_id enters an established keyring
+     * (THU-871), so these tests police the exact shape of that door. The
+     * standalone mint route is gone; loosening `wrappedKeys` to tolerate extra
+     * ids instead of using this dedicated field would hand back the same
+     * row-planting capability through a different entry point.
+     */
+    describe('newPrimaryKey (the folded DEK mint)', () => {
+      it('mints the new DEK and makes it primary, in the same transaction', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({
+              ...(await rotateBody(keypair, [initialKeyId])),
+              newPrimaryKey: { keyId: '1', wrappedKey: 'minted-under-new-ak' },
+            }),
+          }),
+        )
+        expect(res.status).toBe(200)
+
+        const [minted] = await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, '1')))
+        expect(minted.wrappedKey).toBe('minted-under-new-ak')
+        const [metadata] = await db
+          .select()
+          .from(encryptionMetadataTable)
+          .where(eq(encryptionMetadataTable.userId, p('u')))
+        expect(metadata.primaryKeyId).toBe('1')
+      })
+
+      it('rejects a key_id that already exists, instead of silently discarding the mint', async () => {
+        // THE collision (THU-871). This used to SUCCEED: `ON CONFLICT DO NOTHING`
+        // dropped the freshly minted DEK, the route still answered 200, and the
+        // primary pointer moved onto the pre-existing row — so the client
+        // encrypted under a key the server did not hold, permanently.
+        //
+        // The rejection also rolls the whole rotation back, but that is not
+        // assertable here: `createTestDb` is the BEGIN/ROLLBACK singleton, so the
+        // route's rollback unwinds this test's own wrapping transaction along
+        // with it. `attacks/dek-mint-collision.spec.ts` carries the
+        // "primary unmoved, existing wrapping intact" claim against real Postgres.
+        const keypair = await setupRotatable([initialKeyId, '1'])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({
+              ...(await rotateBody(keypair, [initialKeyId, '1'])),
+              newPrimaryKey: { keyId: '1', wrappedKey: 'would-have-been-discarded' },
+            }),
+          }),
+        )
+        expect(res.status).toBe(400)
+        expect((await res.json()).error).toContain("'1' already exists")
+      })
+
+      it('rejects the same key_id smuggled into wrappedKeys as well', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        const body = await rotateBody(keypair, [initialKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({
+              ...body,
+              wrappedKeys: [...body.wrappedKeys, { keyId: '1', wrappedKey: 'w' }],
+              newPrimaryKey: { keyId: '1', wrappedKey: 'w' },
+            }),
+          }),
+        )
+        // Caught as an unknown key_id in wrappedKeys — the strict set equality
+        // that keeps the planting door shut.
+        expect(res.status).toBe(400)
+      })
+
+      it('rejects a key_id outside the mintable grammar (422)', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        // 17 digits: `max + 1 === max` under IEEE-754, which is what made the
+        // collision reachable in the first place.
+        // '1000000000000000' is 16 digits — exactly what a grammar-filtered
+        // `max + 1` produced once a row claimed '9'.repeat(15), which is how
+        // that allocator shape blocked every revocation.
+        for (const keyId of ['1000000000000000', '10000000000000000', '01', legacyKeyId, 'ws1', '1e+21']) {
+          const res = await app.handle(
+            new Request(`${baseUrl}/encryption/rotate`, {
+              method: 'POST',
+              headers: authHeaders(p('tok'), p('caller')),
+              body: JSON.stringify({
+                ...(await rotateBody(keypair, [initialKeyId])),
+                newPrimaryKey: { keyId, wrappedKey: 'w' },
+              }),
+            }),
+          )
+          expect(res.status).toBe(422)
+        }
+      })
+
+      it('is optional — a phrase change rotates the AK without minting', async () => {
+        const keypair = await setupRotatable([initialKeyId])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify(await rotateBody(keypair, [initialKeyId])),
+          }),
+        )
+        expect(res.status).toBe(200)
+
+        const keys = await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(eq(wrappedKeysTable.userId, p('u')))
+        expect(keys.map((key) => key.keyId)).toEqual([initialKeyId])
+      })
+
+      it('still re-wraps a pre-existing out-of-grammar key_id (poisoned accounts must stay rotatable)', async () => {
+        // The re-wrap path is DELIBERATELY permissive about existing ids: an
+        // account may already carry a planted row, and rejecting it here would
+        // make that account permanently unrotatable — the freeze this ticket
+        // fixes. The grammar is enforced only where an id is minted.
+        const planted = '10000000000000000'
+        const keypair = await setupRotatable([initialKeyId, planted])
+        const res = await app.handle(
+          new Request(`${baseUrl}/encryption/rotate`, {
+            method: 'POST',
+            headers: authHeaders(p('tok'), p('caller')),
+            body: JSON.stringify({
+              ...(await rotateBody(keypair, [initialKeyId, planted])),
+              newPrimaryKey: { keyId: '1', wrappedKey: 'minted' },
+            }),
+          }),
+        )
+        expect(res.status).toBe(200)
+
+        const [row] = await db
+          .select()
+          .from(wrappedKeysTable)
+          .where(and(eq(wrappedKeysTable.userId, p('u')), eq(wrappedKeysTable.keyId, planted)))
+        expect(row.wrappedKey).toBe(`rewrapped-${planted}`)
+      })
     })
 
     it('does not require an envelope for a trusted keyless device (bridge)', async () => {
@@ -1009,6 +1140,30 @@ describe('Encryption API (v2)', () => {
       )
       expect(res.status).toBe(400)
       expect((await res.json()).error).toContain(initialKeyId)
+    })
+
+    it('rejects an EXTRA key_id alongside "0" and "v1" (mint paths are exact-set)', async () => {
+      // A hostile migrator could otherwise mint an arbitrary id at the moment the
+      // account is born — including one crafted to collide with the next
+      // allocation and wedge the account's first DEK rotation (THU-871).
+      await setupV1()
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/upgrade`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify(
+            await upgradeBody({
+              wrappedKeys: [
+                { keyId: initialKeyId, wrappedKey: 'fresh' },
+                { keyId: legacyKeyId, wrappedKey: 'absorbed' },
+                { keyId: '10000000000000000', wrappedKey: 'planted' },
+              ],
+            }),
+          ),
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain('10000000000000000')
     })
 
     it('rejects a keyring missing the "v1" slot', async () => {

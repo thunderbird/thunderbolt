@@ -14,6 +14,7 @@ import {
   getDEK,
   stageWrappedDEKs,
   listDEKs,
+  pruneStagedDEKs,
   storePrimaryKeyId,
   getPrimaryKeyId,
   storeKeyVersion,
@@ -220,6 +221,25 @@ describe('DEK keyring entries', () => {
     await storeDEK('0', 'old-blob')
     await stageWrappedDEKs([{ keyId: '0', wrappedKey: 'new-blob' }])
     expect(await getDEK('0')).toBe('new-blob')
+  })
+
+  it('pruneStagedDEKs drops key_ids the server no longer serves, keeping the rest', async () => {
+    await stageWrappedDEKs([
+      { keyId: '0', wrappedKey: 'blob-0' },
+      { keyId: 'v1', wrappedKey: 'blob-v1' },
+      { keyId: 'gone', wrappedKey: 'blob-gone' },
+    ])
+    await pruneStagedDEKs(['0', 'v1'])
+    expect((await listDEKs()).map((entry) => entry.keyId).sort()).toEqual(['0', 'v1'])
+    expect(await getDEK('gone')).toBeNull()
+  })
+
+  it('pruneStagedDEKs leaves non-DEK entries alone', async () => {
+    await storeAK(await generateAK())
+    await storeDEK('0', 'blob-0')
+    await pruneStagedDEKs([])
+    expect(await listDEKs()).toEqual([])
+    expect(await getAK()).not.toBeNull()
   })
 })
 

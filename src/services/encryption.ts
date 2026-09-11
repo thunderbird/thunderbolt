@@ -46,6 +46,7 @@ import {
   storeDEK,
   getDEK,
   stageWrappedDEKs,
+  pruneStagedDEKs,
   storePrimaryKeyId,
   storeKeyVersion,
   clearAllKeys,
@@ -67,7 +68,6 @@ import {
   fetchWrappedKeys,
   fetchWrappedKey,
   fetchEnvelopeTargets,
-  postWrappedKey,
   fetchChallenge,
   postRotate,
   postUpgrade,
@@ -82,6 +82,7 @@ import { encryptedColumnsMap } from '@/db/encryption'
 import { sql } from 'drizzle-orm'
 import {
   initialKeyId,
+  isMintableKeyId,
   legacyKeyId,
   type ChallengeOperation,
   type ChallengeProof,
@@ -462,6 +463,10 @@ const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<bool
 
 const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
   await stageWrappedDEKs(keyring.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })))
+  // Mirror the server's keyring rather than accumulating a superset of it: a
+  // key_id that is gone server-side would otherwise keep a stale wrapped blob
+  // here forever, which resolves to a permanent `unwrap-failed` (THU-871).
+  await pruneStagedDEKs(keyring.keys.map((key) => key.key_id))
   await storePrimaryKeyId(keyring.primaryKeyId)
   await storeKeyVersion(keyring.keyVersion)
   invalidateKeyringCache()
@@ -845,12 +850,51 @@ const buildDeviceEnvelopes = async (
   return envelopes
 }
 
+/**
+ * Allocate the key_id for a freshly minted primary DEK: the SMALLEST canonical
+ * counter not already on the live keyring.
+ *
+ * Smallest-unused rather than highest-plus-one, and that choice is the fix
+ * (THU-871). Highest-plus-one is what a planted row could weaponise:
+ *
+ * - Originally the max ran over every id `parseInt` accepted, so a row labelled
+ *   with 17+ digits made `max + 1 === max` and the "new" id collided with the
+ *   attacker's row. The server silently kept the attacker's wrapping while
+ *   moving the primary onto it, bricking every future write on the account.
+ * - Filtering to `keyIdPattern` fixed the collision but left the boundary: a
+ *   planted `'9'.repeat(15)` is itself grammar-valid, so `max + 1` produced a
+ *   16-digit id that the server's own mint validation then rejected — blocking
+ *   every revocation instead, which is the freeze this ticket also fixes.
+ *
+ * Picking a hole closes both, because the result is by construction an id that
+ * is not on the keyring and cannot leave the grammar: a keyring holding N
+ * mintable ids must leave one of the N+1 candidates `0..N` free (pigeonhole), so
+ * the id stays bounded by the keyring's own size no matter what was planted. On
+ * a healthy account there are no holes — rows are never deleted, so the ids are
+ * `0, 1, 2, …` and this is exactly highest-plus-one. A planted id only ever
+ * becomes a gap to step over.
+ *
+ * Ids outside the grammar are ignored entirely; they cannot alias a candidate,
+ * since candidates are canonical decimal strings.
+ */
+const nextPrimaryKeyId = (existingKeyIds: string[]): KeyId => {
+  const taken = new Set(existingKeyIds.filter(isMintableKeyId))
+  return Array.from({ length: taken.size + 1 }, (_, index) => String(index)).find((keyId) => !taken.has(keyId))!
+}
+
 export type RotateAKOptions = {
   /**
    * Devices that must NOT receive a new-AK envelope even if the synced
    * `devices` table still shows them trusted (sync lag after a revocation).
    */
   excludeDeviceIds?: string[]
+  /**
+   * Also mint a fresh primary DEK as part of this rotation (THU-871) — set by
+   * device revocation, which needs BOTH rotations: a new DEK so future writes
+   * use a key the removed device never held, and a new AK to lock it out of the
+   * keyring. A phrase change leaves it unset and rotates the AK alone.
+   */
+  mintNewPrimary?: boolean
   /** Dependency seam for the synced-devices read (tests). */
   listTrustedDevices?: () => Promise<TrustedDevicePublicKeys[]>
 }
@@ -903,7 +947,7 @@ const runAKRotation = async (
   // would strand the missing key_ids (esp. the `"v1"` slot) under the discarded
   // old AK (permanent data loss).
   const { keys } = await fetchWrappedKeys(httpClient)
-  const wrappedKeys: WrappedKeyEntry[] = await rewrapKeyring(
+  const { wrappedKeys, strandedKeyIds } = await rewrapKeyring(
     keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })),
     oldAK,
     newAK,
@@ -912,7 +956,34 @@ const runAKRotation = async (
   if (!dek0Wrapped) {
     throw new Error(`Keyring is missing key_id '${initialKeyId}' — cannot rotate`)
   }
+  // DEK '0' failing to open is not a poisoned row — it is the signature of a
+  // STALE local AK, since '0' always exists and is always wrapped under the
+  // current AK. Refresh and let the caller retry, rather than dying here: this
+  // guard runs BEFORE `postRotate`, so it never reached the 4xx branch below
+  // that does the refreshing, and a stale device stayed wedged on rotate until
+  // some unrelated decode failure happened to fix it (THU-871).
+  if (strandedKeyIds.includes(initialKeyId)) {
+    await refreshAK(httpClient)
+    throw new RotationStaleError()
+  }
+  if (strandedKeyIds.length > 0) {
+    // Passed through with their original wrapping so one bad row cannot void the
+    // rotation — and therefore cannot void a revocation. Logged loudly because a
+    // row no device can open should not be silent: it is either planted or
+    // corrupt.
+    console.error(
+      `[e2ee] keyring rows could not be re-wrapped and were passed through unchanged: ${strandedKeyIds.join(', ')}`,
+    )
+  }
   const dek0 = await unwrapDEK(dek0Wrapped, newAK)
+
+  // The DEK rotation half, when this rotation is also one (revocation). Minted
+  // under the NEW AK, so it needs no re-wrap and can never be stranded under a
+  // stale AK, and it rides the rotate transaction so a failure adds no keyring
+  // row at all — retrying a revocation cannot grow the keyring (THU-871).
+  const newPrimaryKey: WrappedKeyEntry | undefined = opts.mintNewPrimary
+    ? { keyId: nextPrimaryKeyId(keys.map((key) => key.key_id)), wrappedKey: (await mintDEK(newAK)).wrappedKey }
+    : undefined
 
   // New-AK envelope for every live trusted device, minus explicit exclusions
   // (a just-revoked device may still look trusted through sync lag).
@@ -941,6 +1012,7 @@ const runAKRotation = async (
       proof,
       envelopes,
       wrappedKeys,
+      newPrimaryKey,
       canaryIv,
       canaryCtext,
       signingPublicKey: publicKeySpki,
@@ -968,8 +1040,15 @@ const runAKRotation = async (
   // `refreshAK` and re-stages on next use — so it is logged, not propagated.
   try {
     await storeAK(await reimportAsNonExtractable(newAK))
-    await stageWrappedDEKs(wrappedKeys)
+    await stageWrappedDEKs(newPrimaryKey ? [...wrappedKeys, newPrimaryKey] : wrappedKeys)
     invalidateKeyringCache()
+    if (newPrimaryKey) {
+      await storePrimaryKeyId(newPrimaryKey.keyId)
+      // `invalidateKeyringCache` deliberately KEEPS the in-memory primary
+      // pointer, so without this the codec would keep encrypting under the old
+      // primary for the rest of the session even though the server moved on.
+      resetCodecState()
+    }
   } catch (err) {
     console.error('[e2ee] AK rotation committed but local key staging failed — keys will re-stage on next use:', err)
   }
@@ -1011,52 +1090,28 @@ export const changeRecoveryPhrase = async (
 }
 
 /**
- * Rotate the primary DEK (forward secrecy over future writes): mint a new DEK
- * at the next numeric key_id, wrapped under the current AK, and mark it
- * primary. Old DEKs are retained forever so existing values still decrypt.
- * Returns the new key_id.
- *
- * A DEK rotation does NOT bump `key_version`, so the local codec would keep its
- * stale primary pointer — `resetCodecState()` forces this device to pick up the
- * new primary immediately. The canary stays anchored to DEK '0' (the retained
- * initial DEK), so challenge proofs keep working without a canary re-write.
- */
-export const rotateDEK = async (httpClient: HttpClient): Promise<KeyId> => {
-  const ak = await getAK()
-  if (!ak) {
-    throw new Error('Account key not found in IndexedDB')
-  }
-
-  const { keys } = await fetchWrappedKeys(httpClient)
-  const numericIds = keys.map((key) => Number.parseInt(key.key_id, 10)).filter((id) => Number.isInteger(id) && id >= 0)
-  const nextKeyId: KeyId = String(numericIds.length > 0 ? Math.max(...numericIds) + 1 : 0)
-
-  const { wrappedKey } = await mintDEK(ak)
-  const proof = await buildProof(httpClient, 'rotate')
-  await postWrappedKey(httpClient, { keyId: nextKeyId, wrappedKey, setPrimary: true, proof })
-
-  await storeDEK(nextKeyId, wrappedKey)
-  await storePrimaryKeyId(nextKeyId)
-  resetCodecState()
-
-  return nextKeyId
-}
-
-/**
- * Device revocation double-rotation: cut server access, rotate the DEK (future
- * writes use a key_id the revoked device never held), then rotate the AK
- * (locking it out of the keyring — its envelope is gone and never re-issued).
+ * Device revocation: cut server access, then rotate the AK AND mint a new
+ * primary DEK in ONE atomic request. The AK rotation locks the removed device
+ * out of the keyring (its envelope is gone and never re-issued); the new DEK
+ * gives forward secrecy over future writes, under a key_id it never held.
  * Silent for the user: the recovery slot is re-anchored to the phrase they
  * already hold, so nothing needs to be shown.
  *
- * ORDER IS LOAD-BEARING. The AK rotation is the step that replaces the account's
- * canary and signing key, and the only one that is unrecoverable from a partial
- * run — the local AK and the server's diverge until a refresh. So it goes LAST:
- * a failure in any earlier step aborts with the account fully intact.
+ * TWO STEPS, NOT THREE (THU-871). The DEK mint used to be its own request
+ * between these two, and because it was neither atomic with the rotation nor
+ * idempotent, the retry the rotation is *documented* to ask for
+ * (`RotationStaleError`) minted another keyring row every time — so a user on a
+ * flaky connection ratcheted their keyring toward the size at which no rotation
+ * fits at all. Folded into `postRotate`, a failed attempt now adds nothing, and
+ * the minted DEK is wrapped under the same AK the request installs, so it can
+ * never be stranded under a stale one.
  *
- * The revoked device cannot exploit the window where the new DEK is still
- * wrapped under the old AK it holds: revocation already precedes it, and the
- * keyring endpoints reject revoked callers.
+ * ORDER IS STILL LOAD-BEARING. The rotation replaces the account's canary and
+ * signing key and is the only step unrecoverable from a partial run — the local
+ * AK and the server's diverge until a refresh — so it goes LAST. Revocation
+ * committing first is deliberate and safe: the keyring endpoints reject revoked
+ * callers, and re-running a revoke is a no-op server-side, so the whole flow is
+ * retryable.
  *
  * Remaining devices self-heal: their next decode of post-rotation data hits a
  * DEK that won't unwrap under their old AK, which triggers the responder's
@@ -1068,8 +1123,7 @@ export const revokeDeviceAndRotate = async (
   opts: Pick<RotateAKOptions, 'listTrustedDevices'> = {},
 ): Promise<void> => {
   await revokeDeviceWithProof(httpClient, deviceId)
-  await rotateDEK(httpClient)
-  await rotateAccountKey(httpClient, { ...opts, excludeDeviceIds: [deviceId] })
+  await rotateAccountKey(httpClient, { ...opts, excludeDeviceIds: [deviceId], mintNewPrimary: true })
 }
 
 // =============================================================================

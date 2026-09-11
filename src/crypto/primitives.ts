@@ -175,25 +175,56 @@ export const mintDEK = async (ak: CryptoKey): Promise<{ dek: CryptoKey; wrappedK
   return { dek, wrappedKey }
 }
 
+/** Outcome of one keyring re-wrap: every key_id, plus which ones could not be opened. */
+export type RewrapKeyringResult = {
+  /** Every input key_id — re-wrapped under the new AK, or passed through unchanged if stranded. */
+  wrappedKeys: Array<{ keyId: string; wrappedKey: string }>
+  /** key_ids whose old wrapping would not open, so their blob was passed through as-is. */
+  strandedKeyIds: string[]
+}
+
 /**
  * Re-wrap an entire DEK keyring under a NEW AK (AK rotation, plan §2.4). Each
  * DEK is unwrapped temporarily-extractable in-memory under the old AK and
  * re-wrapped under the new AK; no persistent extractable copy is ever produced.
  * The set of `keyId`s is preserved exactly — dropping any (esp. the `"v1"` slot)
  * would strand data (Risk 1), so callers validate coverage against this output.
+ *
+ * NON-FATAL on a row that will not open (THU-871). This used to be a bare
+ * `Promise.all`, so a single unopenable row threw the whole rotation — and since
+ * revocation IS an AK rotation, one junk `wrapped_keys` row (planted by a
+ * malicious server, or left behind by a trusted device) permanently killed
+ * cryptographic revocation and "Change Recovery Phrase" on that account.
+ *
+ * Such a row is passed through with its ORIGINAL blob and reported in
+ * `strandedKeyIds`. Pass-through, not omission and not deletion: the row keeps
+ * its (key_id, DEK) slot, so a device that still holds the old AK and its own
+ * staged copy can repair it later by re-wrapping and rotating again — a delete
+ * would turn recoverable damage into permanent loss, and the server cannot
+ * verify a claim that a row is junk in the first place. It is also
+ * information-neutral: the blob was already unopenable under the current AK.
+ *
+ * Callers MUST decide what a stranded `"0"` means (see `runAKRotation`): DEK '0'
+ * failing to open is the signature of a STALE AK, not of a poisoned keyring.
  */
 export const rewrapKeyring = async (
   wrappedKeys: Array<{ keyId: string; wrappedKey: string }>,
   oldAK: CryptoKey,
   newAK: CryptoKey,
-): Promise<Array<{ keyId: string; wrappedKey: string }>> => {
+): Promise<RewrapKeyringResult> => {
   try {
-    return await Promise.all(
+    const strandedKeyIds: string[] = []
+    const rewrapped = await Promise.all(
       wrappedKeys.map(async ({ keyId, wrappedKey }) => {
-        const tempDek = await unwrapDEK(wrappedKey, oldAK, true)
+        const tempDek = await unwrapDEK(wrappedKey, oldAK, true).catch(() => null)
+        if (!tempDek) {
+          strandedKeyIds.push(keyId)
+          return { keyId, wrappedKey }
+        }
         return { keyId, wrappedKey: await wrapDEK(tempDek, newAK) }
       }),
     )
+    return { wrappedKeys: rewrapped, strandedKeyIds }
   } catch (err) {
     if (err instanceof EncryptionError || err instanceof DecryptionError) {
       throw err

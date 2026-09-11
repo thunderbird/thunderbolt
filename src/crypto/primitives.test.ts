@@ -236,7 +236,7 @@ describe('rewrapKeyring (AK rotation)', () => {
     const value0 = await encrypt('value under key 0', dek0)
     const value1 = await encrypt('value under key 1', dek1)
 
-    const rewrapped = await rewrapKeyring(
+    const { wrappedKeys: rewrapped, strandedKeyIds } = await rewrapKeyring(
       [
         { keyId: '0', wrappedKey: wrapped0 },
         { keyId: 'v1', wrappedKey: wrapped1 },
@@ -245,6 +245,7 @@ describe('rewrapKeyring (AK rotation)', () => {
       newAK,
     )
 
+    expect(strandedKeyIds).toEqual([])
     expect(rewrapped.map((e) => e.keyId).sort()).toEqual(['0', 'v1'])
     const byId = Object.fromEntries(rewrapped.map((e) => [e.keyId, e.wrappedKey]))
 
@@ -252,6 +253,58 @@ describe('rewrapKeyring (AK rotation)', () => {
     await expect(unwrapDEK(byId['0'], oldAK)).rejects.toThrow('Failed to unwrap DEK')
     expect(await decrypt(value0, await unwrapDEK(byId['0'], newAK))).toBe('value under key 0')
     expect(await decrypt(value1, await unwrapDEK(byId['v1'], newAK))).toBe('value under key 1')
+  })
+
+  /**
+   * THU-871: this used to be a bare `Promise.all`, so ONE unopenable row threw
+   * the whole rotation. Since revocation IS an AK rotation, a single junk
+   * `wrapped_keys` row permanently killed cryptographic revocation and "Change
+   * Recovery Phrase" for that account.
+   */
+  it('passes an unopenable row through unchanged instead of failing the rotation', async () => {
+    const oldAK = await generateAK()
+    const newAK = await generateAK()
+    const { dek: dek0, wrappedKey: wrapped0 } = await mintDEK(oldAK)
+    const value0 = await encrypt('value under key 0', dek0)
+    // Wrapped under a key nobody on the account holds — the shape of a planted row.
+    const { wrappedKey: junk } = await mintDEK(await generateAK())
+
+    const { wrappedKeys, strandedKeyIds } = await rewrapKeyring(
+      [
+        { keyId: '0', wrappedKey: wrapped0 },
+        { keyId: '7', wrappedKey: junk },
+      ],
+      oldAK,
+      newAK,
+    )
+
+    expect(strandedKeyIds).toEqual(['7'])
+    const byId = Object.fromEntries(wrappedKeys.map((e) => [e.keyId, e.wrappedKey]))
+    // Every key_id survives — dropping one would strand its data, and the server
+    // rejects a partial keyring anyway.
+    expect(Object.keys(byId).sort()).toEqual(['0', '7'])
+    // The stranded row keeps its ORIGINAL blob, so a device still holding the
+    // key it was wrapped under can repair it by rotating again.
+    expect(byId['7']).toBe(junk)
+    // The good rows really did move to the new AK.
+    expect(await decrypt(value0, await unwrapDEK(byId['0'], newAK))).toBe('value under key 0')
+  })
+
+  it('reports every key_id as stranded when none of them open', async () => {
+    const { wrappedKey: junkA } = await mintDEK(await generateAK())
+    const { wrappedKey: junkB } = await mintDEK(await generateAK())
+
+    const { wrappedKeys, strandedKeyIds } = await rewrapKeyring(
+      [
+        { keyId: '0', wrappedKey: junkA },
+        { keyId: 'v1', wrappedKey: junkB },
+      ],
+      await generateAK(),
+      await generateAK(),
+    )
+
+    expect(strandedKeyIds.sort()).toEqual(['0', 'v1'])
+    expect(wrappedKeys.map((e) => e.wrappedKey)).toEqual([junkA, junkB])
   })
 })
 

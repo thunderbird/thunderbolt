@@ -191,15 +191,6 @@ export const fetchWrappedKey = async (httpClient: HttpClient, keyId: KeyId): Pro
 export const fetchEnvelopeTargets = async (httpClient: HttpClient): Promise<EnvelopeTargetsResponse> =>
   httpClient.get('encryption/envelope-targets').json<EnvelopeTargetsResponse>()
 
-/**
- * Mint a NEW key_id on the server-side keyring (DEK rotation / workspace DEK).
- * Trusted device only; idempotent per key_id — never overwrites.
- */
-export const postWrappedKey = async (
-  httpClient: HttpClient,
-  params: { keyId: KeyId; wrappedKey: string; setPrimary?: boolean; proof: ChallengeProof },
-): Promise<{ key_id: KeyId }> => httpClient.post('encryption/keys', { json: params }).json<{ key_id: KeyId }>()
-
 // =============================================================================
 // Challenge-response + rotation + upgrade
 // =============================================================================

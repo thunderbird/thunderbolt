@@ -244,6 +244,40 @@ export const listDEKs = async (): Promise<WrappedKeyEntry[]> => {
   })
 }
 
+/**
+ * Drop every staged DEK whose key_id is not in `keepKeyIds` — keeps the local
+ * keyring a mirror of the server's rather than an ever-growing superset.
+ *
+ * `stageWrappedDEKs` only ever puts, so a key_id that leaves the server-side
+ * keyring left a stale wrapped blob behind forever. Resolving one yields an
+ * `unwrap-failed` that the key-request responder answers with a refresh + re-stage
+ * that cannot remove it either, so it just re-fails on a cooldown (THU-871).
+ */
+export const pruneStagedDEKs = async (keepKeyIds: KeyId[]): Promise<void> => {
+  const keep = new Set(keepKeyIds.map(dekEntryId))
+  const staged = await listDEKs()
+  const stale = staged.map(({ keyId }) => dekEntryId(keyId)).filter((id) => !keep.has(id))
+  if (stale.length === 0) {
+    return
+  }
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    for (const id of stale) {
+      store.delete(id)
+    }
+    tx.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    tx.onerror = () => {
+      db.close()
+      reject(new StorageError('Failed to prune staged DEKs', { cause: tx.error }))
+    }
+  })
+}
+
 /** Store the primary key_id pointer — the DEK version that encrypts all new writes. */
 export const storePrimaryKeyId = async (keyId: KeyId): Promise<void> => putValue(primaryKeyIdId, keyId)
 

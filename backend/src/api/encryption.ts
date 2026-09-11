@@ -49,6 +49,7 @@ import {
   challengeNonceTtlMs,
   challengeOperations,
   initialKeyId,
+  keyIdPattern,
   legacyKeyId,
 } from '@shared/e2ee-types'
 import { sql } from 'drizzle-orm'
@@ -56,8 +57,33 @@ import { Elysia, t } from 'elysia'
 
 const maxDevicesPerUser = 10
 
+/**
+ * Upper bound on keyring rows carried in one request. The keyring grows by one
+ * DEK per device revocation and rows are retained forever, so this must sit far
+ * above any reachable count: it is the size at which an AK rotation — which must
+ * re-wrap the FULL keyring atomically — stops fitting, and a rotation that
+ * cannot be expressed is a revocation that cannot be made cryptographic
+ * (THU-871).
+ *
+ * 1000 is ~10x the human ceiling (revocations, not devices) and well inside the
+ * tightest transport limit on any deployment path: real entries are ~90 bytes,
+ * and the nginx paths in `deploy/` set no `client_max_body_size`, so they cap at
+ * the 1 MiB default — room for ~11k entries.
+ */
+const maxKeyringKeys = 1000
+
 /** Thrown when a concurrent migrator already flipped the account (CAS 1→2 lost) — mapped to 409. */
 class SchemeConflictError extends Error {}
+
+/**
+ * Thrown when minting a key_id that already exists — mapped to 409 (THU-871).
+ *
+ * `insertWrappedKey` is `ON CONFLICT DO NOTHING`, so a colliding mint used to be
+ * discarded in silence while the route still reported success and moved the
+ * primary pointer onto the pre-existing row. Every mint path now asserts that a
+ * row was actually inserted, so a conflict aborts its transaction instead.
+ */
+class KeyConflictError extends Error {}
 
 /** Elysia schema for the shared ChallengeProof request DTO. */
 const proofSchema = t.Object({
@@ -67,9 +93,27 @@ const proofSchema = t.Object({
   deviceId: t.String({ maxLength: 36 }),
 })
 
-/** Elysia schema for one wrapped-DEK keyring entry. key_id is a wire-format segment — no ':' allowed. */
+/**
+ * Elysia schema for one wrapped-DEK keyring entry. key_id is a wire-format
+ * segment — no ':' allowed.
+ *
+ * DELIBERATELY NOT tightened to `keyIdPattern` (THU-871). This schema is used by
+ * paths that RE-WRAP an existing keyring, and an account may already carry a row
+ * whose id predates the grammar or was planted by a malicious server. Rejecting
+ * it here would make that account permanently unrotatable — which is exactly the
+ * rotation freeze this ticket fixes. The grammar is enforced where a key_id is
+ * MINTED (`newPrimaryKey` on /encryption/rotate, and the fixed reserved ids on
+ * bootstrap and /encryption/upgrade), so no new id can enter the keyring outside
+ * it.
+ */
 const wrappedKeyEntrySchema = t.Object({
   keyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
+  wrappedKey: t.String({ minLength: 1, maxLength: 500 }),
+})
+
+/** Elysia schema for the freshly minted primary DEK an AK rotation may carry (THU-871). */
+const newPrimaryKeySchema = t.Object({
+  keyId: t.String({ minLength: 1, maxLength: 15, pattern: keyIdPattern }),
   wrappedKey: t.String({ minLength: 1, maxLength: 500 }),
 })
 
@@ -158,11 +202,24 @@ const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ d
 /**
  * AK-rotation keyring coverage: the FULL keyring must be re-wrapped under the
  * new AK — re-wrapping a subset strands the missing key_ids under the discarded
- * old AK (permanent data loss). Rotation never mints, so unknown key_ids are
- * rejected too. This naturally requires the `"v1"` slot when the account carries
- * one (plan Risk 1). Throws BadRequestError on any mismatch.
+ * old AK (permanent data loss). `wrappedKeys` therefore has to match the existing
+ * id set EXACTLY, which naturally requires the `"v1"` slot when the account
+ * carries one (plan Risk 1). Throws BadRequestError on any mismatch.
+ *
+ * A rotation may also MINT one new primary DEK (THU-871), and that is the only
+ * way a new key_id ever enters an established keyring. It arrives in its own
+ * `newPrimaryKey` field rather than as an extra `wrappedKeys` entry, and the
+ * strict set equality above is what keeps that door shut: loosening it to "extra
+ * ids are fine" would let any caller holding a 'rotate' proof plant arbitrary
+ * unopenable rows, which is precisely the capability this ticket removed by
+ * deleting `POST /encryption/keys`. So the mint is exactly one id, it must not
+ * already exist, and it must not be smuggled into `wrappedKeys` as well.
  */
-const assertRotateKeyCoverage = (existingKeyIds: string[], wrappedKeys: WrappedKeyEntry[]): void => {
+const assertRotateKeyCoverage = (
+  existingKeyIds: string[],
+  wrappedKeys: WrappedKeyEntry[],
+  newPrimaryKey?: { keyId: string },
+): void => {
   const existing = new Set(existingKeyIds)
   const submitted = new Set(wrappedKeys.map((entry) => entry.keyId))
   if (submitted.size !== wrappedKeys.length) {
@@ -176,13 +233,28 @@ const assertRotateKeyCoverage = (existingKeyIds: string[], wrappedKeys: WrappedK
   if (unknown.length > 0) {
     throw new BadRequestError(`wrappedKeys contains unknown key_ids: ${unknown.join(', ')}`)
   }
+  if (!newPrimaryKey) {
+    return
+  }
+  if (existing.has(newPrimaryKey.keyId)) {
+    throw new BadRequestError(`newPrimaryKey.keyId '${newPrimaryKey.keyId}' already exists on the keyring`)
+  }
+  if (submitted.has(newPrimaryKey.keyId)) {
+    throw new BadRequestError(`newPrimaryKey.keyId '${newPrimaryKey.keyId}' must not also appear in wrappedKeys`)
+  }
 }
 
 /**
- * Upgrade keyring coverage: the migrated keyring MUST contain BOTH a fresh
- * primary DEK `"0"` (post-flip writes need an encrypt-capable primary) AND the
+ * Upgrade keyring coverage: the migrated keyring MUST be EXACTLY the fresh
+ * primary DEK `"0"` (post-flip writes need an encrypt-capable primary) plus the
  * absorbed legacy `"v1"` slot (without it, all legacy data is stranded). Throws
- * BadRequestError when either is missing (plan §4 Track A upgrade).
+ * BadRequestError on anything else (plan §4 Track A upgrade).
+ *
+ * The exact-set rule (THU-871) is what stops a hostile migrator minting an
+ * extra, arbitrary key_id at the moment the account is born — including one
+ * crafted to collide with the next allocation and wedge the account's first DEK
+ * rotation. Upgrade is a MINT path, so unlike the re-wrap paths it can afford to
+ * be strict: the legitimate client submits precisely these two ids.
  */
 const assertUpgradeKeyCoverage = (wrappedKeys: WrappedKeyEntry[], primaryKeyId: string): void => {
   const submitted = new Set(wrappedKeys.map((entry) => entry.keyId))
@@ -194,6 +266,12 @@ const assertUpgradeKeyCoverage = (wrappedKeys: WrappedKeyEntry[], primaryKeyId: 
   }
   if (!submitted.has(legacyKeyId)) {
     throw new BadRequestError(`upgrade requires the absorbed legacy '${legacyKeyId}' slot`)
+  }
+  const unexpected = [...submitted].filter((keyId) => keyId !== initialKeyId && keyId !== legacyKeyId)
+  if (unexpected.length > 0) {
+    throw new BadRequestError(
+      `upgrade must mint only '${initialKeyId}' and '${legacyKeyId}' — got: ${unexpected.join(', ')}`,
+    )
   }
   // The primary MUST be the freshly-minted encrypt-capable DEK "0" — never the
   // read-only "v1" slot or a key_id absent from the keyring, either of which
@@ -270,7 +348,7 @@ const mapEncryptionError = (err: unknown, set: { status?: number | string }): { 
     set.status = 403
     return { error: err.message }
   }
-  if (err instanceof SchemeConflictError) {
+  if (err instanceof SchemeConflictError || err instanceof KeyConflictError) {
     set.status = 409
     return { error: err.message }
   }
@@ -489,8 +567,14 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
                   'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys, recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK, and recoveryAttestation',
                 )
               }
-              if (!wrappedKeys.some((entry) => entry.keyId === initialKeyId)) {
-                throw new BadRequestError(`First device bootstrap requires a wrapped key for key_id '${initialKeyId}'`)
+              // Exactly `"0"`, nothing else (THU-871). Bootstrap is a MINT path,
+              // so an extra id here would enter the keyring un-vetted — including
+              // one crafted to collide with a later allocation and wedge every
+              // future DEK rotation. The legitimate client submits precisely one.
+              if (wrappedKeys.length !== 1 || wrappedKeys[0]!.keyId !== initialKeyId) {
+                throw new BadRequestError(
+                  `First device bootstrap requires exactly one wrapped key, for key_id '${initialKeyId}'`,
+                )
               }
               await insertEncryptionMetadataIfNotExists(txDb, {
                 userId,
@@ -504,7 +588,17 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
                 recoveryAttestation,
               })
               for (const entry of wrappedKeys) {
-                await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
+                const inserted = await insertWrappedKey(txDb, {
+                  userId,
+                  keyId: entry.keyId,
+                  wrappedKey: entry.wrappedKey,
+                })
+                if (inserted.length === 0) {
+                  // A pre-existing row for this key_id means the keyring was
+                  // written before setup — the bootstrap's own DEK would be
+                  // discarded and the account born unreadable (THU-871).
+                  throw new KeyConflictError(`key_id '${entry.keyId}' already exists — cannot bootstrap over it`)
+                }
               }
               // Bootstrap mints the account's first AK — escrow it in the same tx.
               await persistOrgEnvelope(txDb, settings, userId, orgEnvelope)
@@ -571,7 +665,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           canaryCtext: t.Optional(t.String({ maxLength: 500 })),
           signingPublicKey: t.Optional(t.String({ maxLength: 500 })),
           kdfSalt: t.Optional(t.String({ maxLength: 500 })),
-          wrappedKeys: t.Optional(t.Array(wrappedKeyEntrySchema, { maxItems: 100 })),
+          wrappedKeys: t.Optional(t.Array(wrappedKeyEntrySchema, { maxItems: maxKeyringKeys })),
           recoveryEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
           recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
           recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
@@ -732,55 +826,13 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
       },
       { auth: true },
     )
-    // Mint a NEW key_id (DEK rotation / workspace DEK). Idempotent per key_id
-    // (insertWrappedKey is ON CONFLICT DO NOTHING) — this route can NEVER
-    // overwrite an existing key's wrapping; AK-rotation re-wrap goes through
-    // POST /encryption/rotate only.
-    .post(
-      '/encryption/keys',
-      async ({ body, request, set, user: sessionUser, session }) => {
-        const userId = sessionUser!.id
-        const caller = await getCallerDevice(database, userId, request, session)
-        if ('error' in caller) {
-          set.status = caller.status
-          return { error: caller.error }
-        }
-        if (!caller.device.trusted) {
-          set.status = 403
-          return { error: 'Only trusted devices can add keys' }
-        }
-
-        await database.transaction(async (tx) => {
-          const txDb = tx as unknown as typeof database
-          // Same per-user advisory lock as /rotate and /upgrade: a DEK add must
-          // not interleave with an in-flight AK rotation, which reads the keyring
-          // then re-wraps it — an unlocked insert of a DEK wrapped under the OLD
-          // AK would be stranded (permanently unrecoverable) after the flip.
-          await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
-          // Proof-gated for parity with every other key/envelope mutator: a
-          // hijacked trusted session without the signing key must not be able to
-          // install a (mis-wrapped) primary DEK and lock the account out.
-          if (!(await verifyChallengeSignature(txDb, userId, body.proof, 'rotate', caller.deviceId))) {
-            throw new ForbiddenError('Invalid challenge proof')
-          }
-          await insertWrappedKey(txDb, { userId, keyId: body.keyId, wrappedKey: body.wrappedKey })
-          if (body.setPrimary) {
-            await setPrimaryKeyId(txDb, userId, body.keyId)
-          }
-        })
-
-        return { key_id: body.keyId }
-      },
-      {
-        auth: true,
-        body: t.Object({
-          keyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
-          wrappedKey: t.String({ minLength: 1, maxLength: 500 }),
-          setPrimary: t.Optional(t.Boolean()),
-          proof: proofSchema,
-        }),
-      },
-    )
+    // NOTE: there is deliberately no standalone "mint a key_id" route (THU-871).
+    // A new DEK is minted only as part of an AK rotation, via `newPrimaryKey` on
+    // POST /encryption/rotate. That is what makes minting atomic (a failed
+    // rotation adds nothing, so a retried revocation cannot ratchet the keyring),
+    // guarantees every row is wrapped under the CURRENT AK (the mint happens in
+    // the same request that installs that AK), and denies an in-origin script a
+    // cheap endpoint for planting unopenable rows.
     // Issue a single-use challenge nonce bound to (user, operation, caller
     // device). Pending devices may request one — a recovering device needs an
     // 'approve' challenge before it is trusted; the signature is the real gate.
@@ -818,10 +870,18 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
     )
     // Atomic AK rotation: replace every trusted device's envelope, re-anchor the
     // recovery slot, re-wrap EVERY key_id on the keyring under the new AK,
-    // replace canary + signing key + kdf_salt, and bump key_version — one
-    // all-or-nothing transaction under the per-user advisory lock (shared with
-    // envelope approval, upgrade and revoke, so rotation can't race them). Gated
-    // by a 'rotate' challenge signature.
+    // OPTIONALLY mint one new primary DEK, replace canary + signing key +
+    // kdf_salt, and bump key_version — one all-or-nothing transaction under the
+    // per-user advisory lock (shared with envelope approval, upgrade and revoke,
+    // so rotation can't race them). Gated by a 'rotate' challenge signature.
+    //
+    // `newPrimaryKey` is the ONLY way a key_id enters an established keyring
+    // (THU-871). Device revocation needs both rotations — a new DEK so future
+    // writes use a key the removed device never held, and a new AK to lock it out
+    // of the keyring — and doing them in one transaction is what makes the pair
+    // atomic: a failure adds nothing, so retrying a revocation cannot grow the
+    // keyring, and the minted DEK is wrapped under the very AK this request
+    // installs, so it can never be stranded under a stale one.
     //
     // The recovery public keys normally match the stored ones (a silent rotation
     // keeps the user's phrase working); submitting DIFFERENT ones is the explicit
@@ -856,6 +916,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
             assertRotateKeyCoverage(
               existingKeys.map((key) => key.keyId),
               body.wrappedKeys,
+              body.newPrimaryKey,
             )
             const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
             assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
@@ -865,7 +926,29 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
               await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
             }
             for (const entry of body.wrappedKeys) {
-              await updateWrappedKey(txDb, userId, entry.keyId, entry.wrappedKey)
+              const updated = await updateWrappedKey(txDb, userId, entry.keyId, entry.wrappedKey)
+              if (updated.length === 0) {
+                // Unreachable under coverage validation + the advisory lock, but
+                // a silently dropped re-wrap strands that key_id under the AK
+                // about to be discarded, so it must abort rather than commit.
+                throw new BadRequestError(`key_id '${entry.keyId}' vanished mid-rotation — aborting`)
+              }
+            }
+            // The freshly minted primary DEK, already wrapped under the NEW AK
+            // (THU-871). Minting inside the rotation transaction is what makes it
+            // atomic: a rotation that fails anywhere adds no keyring row, so a
+            // retried revocation cannot ratchet the keyring, and the new row can
+            // never be wrapped under a stale AK.
+            if (body.newPrimaryKey) {
+              const inserted = await insertWrappedKey(txDb, {
+                userId,
+                keyId: body.newPrimaryKey.keyId,
+                wrappedKey: body.newPrimaryKey.wrappedKey,
+              })
+              if (inserted.length === 0) {
+                throw new KeyConflictError(`key_id '${body.newPrimaryKey.keyId}' already exists — mint aborted`)
+              }
+              await setPrimaryKeyId(txDb, userId, body.newPrimaryKey.keyId)
             }
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
             await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
@@ -897,7 +980,8 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
         body: t.Object({
           proof: proofSchema,
           envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxDevicesPerUser }),
-          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: 100 }),
+          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: maxKeyringKeys }),
+          newPrimaryKey: t.Optional(newPrimaryKeySchema),
           canaryIv: t.String({ maxLength: 500 }),
           canaryCtext: t.String({ maxLength: 500 }),
           signingPublicKey: t.String({ maxLength: 500 }),
@@ -964,7 +1048,14 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
             assertRecoveryCoverage(body)
 
             for (const entry of body.wrappedKeys) {
-              await insertWrappedKey(txDb, { userId, keyId: entry.keyId, wrappedKey: entry.wrappedKey })
+              const inserted = await insertWrappedKey(txDb, {
+                userId,
+                keyId: entry.keyId,
+                wrappedKey: entry.wrappedKey,
+              })
+              if (inserted.length === 0) {
+                throw new KeyConflictError(`key_id '${entry.keyId}' already exists — cannot absorb over it`)
+              }
             }
             for (const envelope of body.envelopes) {
               await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
@@ -1003,7 +1094,7 @@ export const createEncryptionRoutes = (auth: Auth, database: typeof DbType, sett
           nonce: t.String({ maxLength: 128 }),
           possessionProof: t.String({ maxLength: 500 }),
           envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxDevicesPerUser }),
-          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 2, maxItems: 100 }),
+          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 2, maxItems: maxKeyringKeys }),
           primaryKeyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
           canaryIv: t.String({ maxLength: 500 }),
           canaryCtext: t.String({ maxLength: 500 }),

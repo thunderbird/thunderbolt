@@ -5,23 +5,12 @@
 import { debugTranscriptNoteMaxLength } from '@shared/debug-transcript-contract'
 import { z } from 'zod'
 
-const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(jsonValueSchema),
-    z.record(z.string(), jsonValueSchema),
-  ]),
-)
-
 /** What the app sends to its own deployment. Mirrors the TypeBox shape the route used before. */
 export const debugTranscriptSubmissionSchema = z
   .object({
     threadId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/),
     schemaVersion: z.number().int().min(1).max(1000),
-    payload: z.record(z.string(), jsonValueSchema),
+    payload: z.record(z.string(), z.json()),
     userNote: z.string().max(debugTranscriptNoteMaxLength).optional(),
     clientVersion: z.string().max(100).optional(),
   })

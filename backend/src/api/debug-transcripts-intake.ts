@@ -5,7 +5,6 @@
 import type { Settings } from '@/config/settings'
 import { createDebugTranscript, findDebugTranscriptClientByKeyHash, upsertSelfDebugTranscriptClient } from '@/dal'
 import type { db as DbType } from '@/db/client'
-import type { DebugTranscriptPayload } from '@/db/debug-transcript-schema'
 import { debugTranscriptIntakeBodySchema, readBoundedJson } from '@/debug-transcripts/body'
 import { hashDebugTranscriptClientKey, selfDebugTranscriptClientId } from '@/debug-transcripts/client-key'
 import { safeErrorHandler } from '@/middleware/error-handling'
@@ -82,7 +81,7 @@ export const createDebugTranscriptsIntakeRoutes = ({ database, settings, rateLim
         localUserId: client.id === selfDebugTranscriptClientId ? parsed.data.userId : null,
         threadId: parsed.data.threadId,
         schemaVersion: parsed.data.schemaVersion,
-        payload: parsed.data.payload as DebugTranscriptPayload,
+        payload: parsed.data.payload,
         userNote: parsed.data.userNote,
         clientVersion: parsed.data.clientVersion,
       })

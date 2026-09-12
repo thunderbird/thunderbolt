@@ -145,6 +145,20 @@ export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = 
   // `icon` (a single emoji chosen from a fixed set) and `pinned_order` stay
   // plaintext — neither carries user-authored content.
   projects: ['name', 'description', 'instructions'],
+  // THU-870. `url` is the routing field for BOTH transports — iroh carries its
+  // NodeId/ticket in it too (`src/acp/transports/index.ts`) — so encrypting it
+  // is what stops a server choosing where an agent connects. `type`,
+  // `transport` and `enabled` stay plaintext: they are closed enums/flags that
+  // carry no user-authored content and are inert without `url`. `icon` matches
+  // the `skills` rule above.
+  //
+  // Forward-only: rows written before this entry existed stay cleartext at rest
+  // (no re-encryption pass exists anywhere) — an accepted residual recorded in
+  // C1. NOTE `name` and `url` are the first mapped columns that are NOT NULL in
+  // Postgres (`backend/src/db/powersync-schema.ts`), so a download-side
+  // quarantine (THU-874) cannot null them without the rejected upload wedging
+  // the CRUD queue.
+  agents: ['name', 'url', 'description'],
 }
 
 // =============================================================================
@@ -198,8 +212,23 @@ const utf8 = new TextEncoder()
 
 /**
  * Canonical AAD byte layout bound to every v2 AES-GCM encrypt/decrypt:
- * UTF-8(`table ␟ column ␟ rowId ␟ keyId`). Both the upload encoder and the
+ * UTF-8(`table ‖ column ‖ rowId ‖ keyId`). Both the upload encoder and the
  * sync-decode path MUST build AAD through this helper — never inline.
+ *
+ * DELIBERATELY NO ACCOUNT COMPONENT, and adding one was considered and rejected
+ * (THU-891, cancelled — see claim C3 in `docs/architecture/e2ee-threat-model.md`).
+ * An AAD component only buys separation between two contexts that resolve the
+ * SAME key material, and two accounts never do: `decrypt` fails on the auth tag
+ * long before the AAD is consulted. Note this is load-bearing for the reconciled
+ * defaults, whose row ids are hardcoded and so byte-identical across accounts.
+ *
+ * THE PRECONDITION: no DEK material is ever shared between two accounts. It holds
+ * structurally today — `keyIdPattern` forecloses shared/workspace DEKs, and a
+ * server never holds another account's AK in openable form. A design that breaks
+ * either (a workspace/shared DEK, any cross-account key delivery) makes
+ * cross-account relocation a real disclosure on fixed-id rows and MUST bind the
+ * account here. Such a design changes the wire format anyway, so the binding
+ * rides along at that point rather than costing a v3 tag of its own.
  */
 export const encodeAAD = (table: string, column: string, rowId: string, keyId: KeyId): Uint8Array =>
   utf8.encode([table, column, rowId, keyId].join(payloadSeparator))

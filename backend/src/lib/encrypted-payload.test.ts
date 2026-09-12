@@ -45,10 +45,25 @@ describe('findPlaintextViolation', () => {
     expect(violation).toBeNull()
   })
 
-  it('ignores tables with no encrypted columns', () => {
-    const violation = findPlaintextViolation([{ op: 'PUT', type: 'agents', id: 'a-1', data: { name: 'plain' } }])
+  // Since THU-870 mapped `agents`, EVERY synced table has encrypted columns
+  // (`attacks/synced-table-coverage.spec.ts` is the standing guard for that), so
+  // there is no longer a real synced table to use here. The `!columns` branch
+  // still has to hold: it is what stops an unknown/renamed table name from
+  // throwing instead of being ignored.
+  it('ignores a table name that is not in the map at all', () => {
+    const violation = findPlaintextViolation([
+      { op: 'PUT', type: 'not_a_mapped_table', id: 'a-1', data: { name: 'plain' } },
+    ])
 
     expect(violation).toBeNull()
+  })
+
+  it('now rejects plaintext in agents columns (THU-870 mapped them)', () => {
+    const violation = findPlaintextViolation([
+      { op: 'PUT', type: 'agents', id: 'a-1', data: { name: 'plain', url: 'wss://example.test' } },
+    ])
+
+    expect(violation).toEqual({ table: 'agents', id: 'a-1', column: 'name' })
   })
 
   it('ignores non-string values, which are never encryptable', () => {

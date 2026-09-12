@@ -37,6 +37,60 @@ falsify, not a fact.
   sending, or deriving a key the server can open. The org-escrow public key left this list in
   THU-866: it is no longer a server-supplied input at all, because the wrap target comes from the
   build's own pin (see C11).
+
+  The **AK envelope** was the sharpest violation, and it was FALSE until THU-869. `wrapAK` needs
+  only a device's PUBLIC ECDH + ML-KEM keys, which the server stores, so the envelope is
+  **anonymous**: A2 mints an Account Key of its own, wraps it to the victim's own public keys, and
+  the device unwraps it with its own private keys with no way to tell the sender changed. Every
+  write after that is sealed under a server-held key — and, because those writes are under a DEK
+  absent from the honest keyring, they are lost to the user once the attack stops. A2 triggered the
+  adoption at will: bump `key_version`, serve one unopenable ciphertext, or return any 4xx from
+  `POST /encryption/rotate`. Reachable against an established, fully trusted device.
+
+  The guard that existed was not one. `keyringUnwrapsUnderLocalAK` is a **currency** probe — it
+  cannot authenticate anything, because on the `refreshAK` path the stored AK had already been
+  replaced before it ran, and on the staging path *failing* it is what triggers the adoption. Its
+  outcome was attacker-chosen either way.
+
+  Now enforced by a **device-local witness to DEK `"0"`'s key material** (`keyring-anchor.ts`): a
+  fixed-plaintext AES-GCM sample under DEK `"0"`, minted once from purely local state and never
+  rewritten. A candidate AK is adopted only if it unwraps the **served** DEK `"0"` row into material
+  that opens that sample. This rests on DEK `"0"`'s material being immutable for the life of a v2
+  account — minted once at bootstrap or upgrade, re-wrapped (never re-minted) by every rotation —
+  which is exactly why the witness is a ciphertext UNDER the key rather than a copy of its
+  wrapping: a wrapping legitimately changes on every rotation, so it could never be written once,
+  and a server can relabel one blob as another `key_id` (AES-KW carries no id binding) to repoint a
+  witness that tracked wrappings. On refusal nothing is persisted: the device keeps the keys it
+  had, keeps working, and recovers by itself when an openable envelope is served. The same change
+  closed a follower TOCTOU — `followToV2` verified one keyring and persisted a re-fetched one, via a
+  call that could itself adopt a fresh AK and un-set the AK just verified.
+
+  **Residuals.** (1) A device's FIRST adoption is trust-on-first-use and cannot be otherwise: a new
+  device shares no secret with the account and its only channel is the adversary. At approval there
+  is nothing to check against; at phrase recovery the AK is wrapped *to* the recovery slot's public
+  halves, which the server stores, so it can wrap its own AK to them. Authenticating that wrap
+  under the phrase seed would close it and would break silent re-escrow on rotation — which is why
+  THU-865 built an attestation instead, and that attestation is signed with a key this very attack
+  controls. The real close is out-of-band device verification, a POC non-goal (see C11's first
+  residual, which is the same wall). (2) **Rollback passes the witness by construction** — an old
+  honest envelope with its matching old keyring verifies, because DEK `"0"` is immutable. The
+  replayed set includes the canary, `signing_public_key` and `key_version`, so the device is
+  returned wholesale to an epoch a revoked device holds and whose old envelope is valid for: that
+  is **C5 defeated**, not C4's pointer residual, and no DEK-`"0"`-bound artifact can ever catch it.
+  Closing it needs the keyring authenticated, and binding `key_id → material` rather than merely
+  signing `key_version` (THU-890). (3) A refusing device keeps writing under its stale primary,
+  which after a revocation-driven rotation is a DEK the revoked device holds — confidential against
+  A2, **not** against A4. Failing `encode` closed instead would wall a legitimate user on a signal
+  they cannot see. (4) **Ending an attack is what wedges the device**: pre-fix a device self-healed
+  once A2 stopped lying, whereas a device whose witness was minted inside the attack window can
+  never clear the check. Signing out clears it, at the cost of a re-approval; the phrase-recovery
+  path stays ungated for exactly this reason. (5) A2 **withholding** an openable envelope is a DoS —
+  degradation, not disclosure, same shape as C9's first residual. (6) The immutability this rests on
+  is enforced at **no layer**: `assertRotateKeyCoverage` validates key_id sets, not key material,
+  because the server holds no AK. A keyring compaction that drops `"0"`, a v3 that re-mints it, or a
+  re-key must each delete the witness in the same change or every established device on the account
+  refuses every future AK. Gated by `attacks/inbound-envelope-adoption.spec.ts` (green, untagged);
+  the no-wedge property is gated by `rotation.spec.ts`'s surviving-third-device case.
 - **C3 — Ciphertext integrity and placement.** AAD (`table ‖ column ‖ row_id ‖ key_id`) prevents a
   malicious server from moving, swapping, or replaying ciphertext into a different cell. Covers
   cross-cell, cross-table, cross-row, cross-account, and same-cell rollback to an older ciphertext
@@ -88,7 +142,10 @@ falsify, not a fact.
   key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2/A9,
   who author `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple; the
   migrator absorbs the CK from that forged canary without checking it against real legacy data
-  (THU-877). Same scope for the follower-side continuity check.
+  (THU-877). Same scope for the follower-side continuity check. This concession is also why the
+  canary cannot serve as C2's anchor for an inbound Account Key: verifying a server-served canary
+  under a server-served DEK, reached through a server-served AK, is the same tautology one level up.
+  Hence the separate device-local witness there.
 - **C9 — Recovery-phrase path is sound.** 256-bit CSPRNG entropy; PBKDF2-SHA512 600k with a
   per-account salt; the derived public half is checked against the stored one before use; a wrong
   server-supplied `kdf_salt` or public key fails cleanly rather than downgrading or leaking. Recovery-
@@ -98,12 +155,19 @@ falsify, not a fact.
   cannot forge that signature — it does not hold DEK `"0"`, so it cannot learn the canary secret — and
   a missing or bad attestation fails closed, so a substituted anchor aborts the rotation instead of
   escrowing the next AK. Gated by `attacks/recovery-slot-substitution.spec.ts` (green, untagged).
-  **Three residuals.** (1) A2 can *withhold* the attestation and thereby block AK rotation —
+  **Four residuals.** (1) A2 can *withhold* the attestation and thereby block AK rotation —
   degradation, not takeover, same shape as THU-871. (2) The signing key derives from the canary
   secret, and a **revoked** device retains DEK `"0"` and can still fetch the current canary (THU-872),
   so A2 colluding with a revoked device can forge an attestation; closing THU-872 closes this too.
   (3) `revokeDeviceAndRotate` verifies the anchor only at its third step, so under this attack the
   revoke and DEK rotation commit while the AK never rotates — pre-flighting the check is follow-up.
+  (4) **The verifying key is only as trustworthy as the AK it derives through.** "A key it derives
+  from its OWN keyring" means AK → DEK `"0"` → canary → signing key, and until THU-869 the AK itself
+  was adoptable from a server-minted envelope — so A2 substituted the AK and thereby owned the key
+  that verifies the attestation, with no collusion needed. Closed for an **established** device,
+  which now refuses an AK that cannot reproduce its DEK `"0"` witness (see C2). NOT closed for a
+  freshly enrolled one, whose first adoption is trust-on-first-use: there, this claim still rests on
+  the server not having substituted the AK at enrolment.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.

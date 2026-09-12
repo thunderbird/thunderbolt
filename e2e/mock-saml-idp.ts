@@ -8,7 +8,7 @@ import * as samlify from 'samlify'
 import { getTestCerts } from './saml-test-certs'
 
 /** Test user claims returned by the mock IdP */
-const TEST_USER = {
+const testUser = {
   email: 'e2e-saml@thunderbolt.test',
   displayName: 'E2E SAML User',
   givenName: 'E2E',
@@ -34,7 +34,9 @@ export const createMockSamlIdp = async (port: number) => {
     entityID: issuer,
     signingCert: cert,
     privateKey,
-    singleSignOnService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect', Location: `${issuer}/saml/sso` }],
+    singleSignOnService: [
+      { Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect', Location: `${issuer}/saml/sso` },
+    ],
     nameIDFormat: ['urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'],
     isAssertionEncrypted: false,
     wantAuthnRequestsSigned: false,
@@ -82,8 +84,14 @@ export const createMockSamlIdp = async (port: number) => {
           sp,
           { extract: { request: { id: requestId } } },
           'post',
-          TEST_USER,
-          createAttributeTemplate(TEST_USER),
+          testUser,
+          // samlify types this parameter as a CustomTagReplacement callback
+          // `(template: string) => BindingContext`, not the template string we
+          // pass, so the attribute statement is likely never injected. Left as-is
+          // rather than fixed here: the SAML specs pass without it, and changing
+          // what the mock IdP asserts belongs with someone verifying those flows.
+          // @ts-expect-error samlify expects a CustomTagReplacement callback
+          createAttributeTemplate(testUser),
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)
@@ -122,7 +130,7 @@ const escapeHtml = (str: string) =>
 /**
  * Build a custom SAML attribute statement with the test user's claims.
  */
-const createAttributeTemplate = (user: typeof TEST_USER) =>
+const createAttributeTemplate = (user: typeof testUser) =>
   `<saml:AttributeStatement>
     <saml:Attribute Name="email"><saml:AttributeValue xsi:type="xs:string">${user.email}</saml:AttributeValue></saml:Attribute>
     <saml:Attribute Name="displayName"><saml:AttributeValue xsi:type="xs:string">${user.displayName}</saml:AttributeValue></saml:Attribute>

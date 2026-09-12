@@ -12,7 +12,11 @@
 import postgres from 'postgres'
 
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
-const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
+/**
+ * Shared connection. Exported so `oracles.ts` can query the server's view of the
+ * data without opening a second pool (`max: 1`, so a second one would contend).
+ */
+export const sql = postgres(`postgresql://postgres:postgres@localhost:${postgresPort}/postgres`, {
   max: 1,
   onnotice: () => {},
 })
@@ -193,6 +197,18 @@ export const getEncryptionServerSnapshot = async (userId: string): Promise<Encry
     recoveryWrappedAk: metadataRow.recovery_wrapped_ak,
     recoveryAttestation: metadataRow.recovery_attestation,
   }
+}
+
+/** The account's KDF salt — needed to reproduce the phrase-derived recovery keypair. */
+export const getKdfSalt = async (userId: string): Promise<string> => {
+  const rows = await sql<{ kdf_salt: string | null }[]>`
+    SELECT kdf_salt FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  const salt = rows[0]?.kdf_salt
+  if (!salt) {
+    throw new Error(`No kdf_salt for ${userId}`)
+  }
+  return salt
 }
 
 export const getSchemeVersion = async (userId: string): Promise<number | null> => {
@@ -386,6 +402,61 @@ export type EncryptedTaskRow = {
   item: string
 }
 
+/**
+ * The device's stored hybrid public keys (base64), read straight from Postgres.
+ * A malicious server (A2) holds exactly this — the public halves it was handed at
+ * registration — so an attack that mints an AK envelope for the device uses only
+ * server-side state, nothing the device kept private.
+ */
+export const getDevicePublicKeys = async (deviceId: string): Promise<{ ecdh: string; mlkem: string }> => {
+  const rows = await sql<{ public_key: string | null; mlkem_public_key: string | null }[]>`
+    SELECT public_key, mlkem_public_key FROM powersync.devices WHERE id = ${deviceId}
+  `
+  const row = rows[0]
+  if (!row?.public_key || !row?.mlkem_public_key) {
+    throw new Error(`Device ${deviceId} has no stored public keys`)
+  }
+  return { ecdh: row.public_key, mlkem: row.mlkem_public_key }
+}
+
+/**
+ * A2 — insert a synced `models` row carrying attacker-chosen PLAINTEXT into
+ * mapped columns (name/model/url), as a malicious server would on the sync
+ * download path. `provider: 'custom'` + a plaintext `url` is the exfil vector:
+ * inference then ships the decrypted prompt (and the LEFT-JOINed API key) there.
+ */
+export const injectPlaintextModel = async (
+  userId: string,
+  model: { id: string; name: string; modelName: string; url: string },
+): Promise<void> => {
+  await sql`
+    INSERT INTO powersync.models (id, user_id, provider, name, model, url, enabled, is_system)
+    VALUES (${model.id}, ${userId}, 'custom', ${model.name}, ${model.modelName}, ${model.url}, 1, 0)
+  `
+}
+
+/**
+ * A2 — plant a junk `wrapped_keys` row (a `key_id` whose `wrapped_key` will not
+ * unwrap under any AK). Models a malicious server with DB access, or the state a
+ * trusted device leaves via `POST /encryption/keys`. Every future AK rotation
+ * must re-wrap this row and throws when it cannot.
+ */
+export const plantWrappedKey = async (userId: string, keyId: string, wrappedKey: string): Promise<void> => {
+  await sql`INSERT INTO wrapped_keys (user_id, key_id, wrapped_key) VALUES (${userId}, ${keyId}, ${wrappedKey})`
+}
+
+export type AgentRow = { id: string; name: string; url: string; description: string | null }
+
+/** Poll for a synced `agents` row to reach Postgres, returned exactly as stored. */
+export const waitForAgentRow = async (userId: string): Promise<AgentRow> =>
+  poll(async () => {
+    const rows = await sql<AgentRow[]>`
+      SELECT id, name, url, description FROM powersync.agents
+      WHERE user_id = ${userId} AND deleted_at IS NULL
+    `
+    return rows[0] ?? null
+  }, 30_000)
+
 export const getTaskCiphertext = async (taskId: string): Promise<string> => {
   const rows = await sql<{ item: string }[]>`
     SELECT item FROM powersync.tasks WHERE id = ${taskId}
@@ -461,4 +532,115 @@ export const waitForAccountDeletion = async (userId: string): Promise<void> => {
       ? true
       : null
   }, 30_000)
+}
+
+// =============================================================================
+// Adversary primitives (A2 — malicious / compelled / breached server)
+// =============================================================================
+
+/**
+ * One cell in a synced table, addressed the way the server sees it. `table` is a
+ * `powersync` schema table and `column` one of its columns — the pairs in
+ * `encryptedColumnsMap` are the interesting ones.
+ */
+export type CellRef = {
+  table: string
+  rowId: string
+  column: string
+}
+
+/** Read a cell exactly as stored, with no decryption. */
+export const readCell = async ({ table, rowId, column }: CellRef): Promise<string | null> => {
+  const rows = await sql<{ value: string | null }[]>`
+    SELECT ${sql(column)} AS value
+    FROM powersync.${sql(table)}
+    WHERE id = ${rowId}
+  `
+  if (rows.length === 0) {
+    throw new Error(`${table}.${column}: row ${rowId} not found`)
+  }
+  return rows[0].value
+}
+
+/**
+ * Takes the connection to run on so a caller inside `sql.begin` can pass the
+ * transaction handle. The pool is `max: 1`: a query issued on the outer `sql`
+ * while a transaction holds that connection waits for one that never frees.
+ */
+const updateCell = async (
+  handle: postgres.Sql | postgres.TransactionSql,
+  { table, rowId, column }: CellRef,
+  value: string | null,
+): Promise<void> => {
+  const result = await handle`
+    UPDATE powersync.${handle(table)}
+    SET ${handle(column)} = ${value}
+    WHERE id = ${rowId}
+  `
+  if (result.count === 0) {
+    throw new Error(`${table}.${column}: row ${rowId} not found`)
+  }
+}
+
+/**
+ * Overwrite a cell behind the client's back — the core A2 capability. Bypasses
+ * the API, PowerSync's upload path, and every client-side guard, which is the
+ * point: it models a server that has decided to lie.
+ */
+export const writeCell = async (ref: CellRef, value: string | null): Promise<void> => {
+  await updateCell(sql, ref, value)
+}
+
+/**
+ * Exchange two cells' stored values — ciphertext substitution (C3). Works across
+ * rows, tables and accounts; whether the client notices is what the AAD binding
+ * is meant to decide.
+ *
+ * Both reads happen before the transaction opens, for the `max: 1` reason above.
+ */
+export const swapCells = async (a: CellRef, b: CellRef): Promise<void> => {
+  const [valueA, valueB] = await Promise.all([readCell(a), readCell(b)])
+  await sql.begin(async (tx) => {
+    await updateCell(tx, a, valueB)
+    await updateCell(tx, b, valueA)
+  })
+}
+
+/**
+ * The account-wide ECDSA public key the server checks every challenge proof
+ * against. Deliberately not folded into `EncryptionServerSnapshot`: specs assert
+ * on that shape, and this is the one field a C5 attack cares about.
+ */
+export const getSigningPublicKey = async (userId: string): Promise<string | null> => {
+  const rows = await sql<{ signing_public_key: string | null }[]>`
+    SELECT signing_public_key FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  return rows[0]?.signing_public_key ?? null
+}
+
+/** Live sessions for one device — revocation is expected to leave none. */
+/**
+ * Delete every session row for a user, simulating the expiry that leaves a
+ * device holding its keys and device id but no valid session (THU-873). The
+ * device must then re-authenticate, and the new session starts bound to nothing.
+ */
+export const deleteUserSessions = async (userId: string): Promise<void> => {
+  await sql`DELETE FROM session WHERE user_id = ${userId}`
+}
+
+/** The device each of a user's sessions is bound to — null for a never-bound session. */
+export const getSessionDeviceIds = async (userId: string): Promise<Array<string | null>> => {
+  const rows = await sql<{ device_id: string | null }[]>`
+    SELECT device_id FROM session WHERE user_id = ${userId}
+  `
+  return rows.map((row) => row.device_id)
+}
+
+export const countDeviceSessions = async (userId: string, deviceId: string): Promise<number> => {
+  const rows = await sql<{ count: number }[]>`
+    SELECT COUNT(*)::int AS count
+    FROM session
+    WHERE user_id = ${userId} AND device_id = ${deviceId}
+  `
+  return rows[0]?.count ?? 0
 }

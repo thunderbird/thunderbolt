@@ -17,19 +17,16 @@
  * (no DB), so it doubles as a fast, permanent guard against a future table being
  * added to sync but forgotten in the map.
  *
- * Expected-failure (Option C): asserts the SECURE state — every synced table is
- * mapped — and is tagged `test.fail()` because `agents` is unmapped today. When
- * THU-870 adds `agents` to the map, this passes, Playwright flags the unexpected
- * pass → drop the `test.fail()` tag and it becomes the standing drift guard.
+ * THU-870 added `agents` to the map, this passed, and the `test.fail()` tag was
+ * retired — so this is now the standing drift guard rather than an attack spec.
+ * It must stay green: a new synced table with user-authored text and no map
+ * entry fails here, which is the whole point.
  */
 
 import { expect, test } from '../fixtures'
 import { expectAllSyncedTablesMapped, findUnmappedSyncedTables } from '../oracles'
 
 test('THU-878 — every synced table is covered by encryptedColumnsMap', () => {
-  // Expected-failure while `agents` is unmapped — see the file header (Option C).
-  test.fail()
-
   // Surfaces the offending table names in the report when this trips.
   expect(findUnmappedSyncedTables()).toEqual([])
   expectAllSyncedTablesMapped()

@@ -11,9 +11,10 @@
  * `encryptedColumnsMap` (shared/e2ee-types.ts:71-99), and the upload encoder only
  * encrypts mapped columns. So on a fully E2EE account, a user-created custom
  * agent's `name` / `url` / `description` land in Postgres in cleartext — zero
- * adversary action, the server just reads them. (`url` is an endpoint, not a
- * bearer secret — credentials live in the local-only `agents_secrets` — which
- * keeps it High, not Critical.)
+ * adversary action, the server just reads them. Raised to Critical on re-review:
+ * `validate-agent-url.ts` accepts userinfo and query strings, so a token-in-URL
+ * endpoint is stored cleartext too, and there are no preconditions to stack down
+ * from.
  *
  * The gap is invisible to the existing C1 oracle because `scanServerForPlaintext`
  * only scans MAPPED columns, so an unmapped synced table is never looked at —
@@ -23,13 +24,17 @@
  * Capability audit: no adversary action at all. The client itself uploads the
  * plaintext; a passive server (A1/A2) simply stores and reads it.
  *
- * Expected-failure (Option C): this test asserts the SECURE behavior — the
- * agent's `name` is stored as `__enc:` ciphertext — and is tagged `test.fail()`
- * because the vuln is open today, so that assertion fails now (the value is
- * cleartext). When THU-870 is fixed (add `agents: ['name','url','description']`
- * to the map via the two-PR sync-rule flow), the value is encrypted, the
- * assertion passes, and Playwright flags the unexpected pass → drop the
- * `test.fail()` tag for a permanent regression gate.
+ * FIXED by THU-870 — `agents: ['name','url','description']` is in the map, this
+ * spec passed, and the `test.fail()` tag was retired. It is now a permanent
+ * regression gate and must stay green. No sync-rule change was needed: `agents`
+ * was already synced, so only the map entry moved.
+ *
+ * RESIDUAL, deliberately not covered here: the fix is forward-only. Rows written
+ * before the map entry existed stay cleartext at rest, because no re-encryption
+ * pass exists anywhere in the system. This spec creates its agent after setup,
+ * so it cannot witness that; it is recorded in C1 instead. Server-INJECTED
+ * plaintext arriving on the download path is a different defect (THU-874) and is
+ * not covered here either.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/agents-plaintext.spec.ts
@@ -40,10 +45,7 @@ import { waitForAgentRow, waitForUserId } from '../db'
 import { completeFirstDeviceSetup, createE2eeEmail, loginViaConsumerOtp } from '../helpers'
 
 test.describe.serial('THU-870 — agents plaintext', () => {
-  test('a custom agent syncs its name to the server in cleartext despite E2EE', async ({ page }) => {
-    // Expected-failure while the vuln is open — see the file header (Option C).
-    test.fail()
-
+  test('a custom agent encrypts name, url and description before they reach the server', async ({ page }) => {
     const email = createE2eeEmail()
     const nameMarker = `agent-name-${crypto.randomUUID()}`
     const descriptionMarker = `agent-desc-${crypto.randomUUID()}`
@@ -83,9 +85,15 @@ test.describe.serial('THU-870 — agents plaintext', () => {
     // name, so the assertion below still flips on the fix.
     const row = await waitForAgentRow(userId)
 
-    // SECURE assertion: user content must be encrypted at rest. Fails today (the
-    // name is stored verbatim because `agents` is unmapped); passes once THU-870
-    // adds `agents` to `encryptedColumnsMap`.
+    // SECURE assertion: every mapped column must be ciphertext at rest, not just
+    // `name`. `url` is the load-bearing one — it is the routing field for both
+    // transports, so cleartext there is what would let a server choose where the
+    // agent connects. Asserting the markers are absent as well catches a partial
+    // encode that leaves the plaintext somewhere in the row.
     expect(row.name).toMatch(/^__enc:/)
+    expect(row.url).toMatch(/^__enc:/)
+    expect(row.description).toMatch(/^__enc:/)
+    expect(JSON.stringify(row)).not.toContain(nameMarker)
+    expect(JSON.stringify(row)).not.toContain(descriptionMarker)
   })
 })

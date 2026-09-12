@@ -63,7 +63,28 @@ export const keyIdPattern = '^(0|[1-9][0-9]{0,14})$'
 /** Whether `keyId` is a well-formed mintable key_id (see `keyIdPattern`). */
 export const isMintableKeyId = (keyId: string): boolean => new RegExp(keyIdPattern).test(keyId)
 
-/** The key_id minted at first-device setup and the default primary. */
+/**
+ * The key_id minted at first-device setup and the default primary.
+ *
+ * LOAD-BEARING INVARIANT: DEK `"0"`'s KEY MATERIAL never changes for the life of
+ * a v2 account. Bootstrap and the v1→v2 upgrade each mint it exactly once; every
+ * AK rotation RE-WRAPS the same key (`rewrapKeyring`); set-equality coverage
+ * means the row can never be dropped; and the allocator never re-mints `"0"`
+ * because it claims the smallest UNUSED counter.
+ *
+ * Clients depend on this to authenticate an inbound Account Key: each device
+ * keeps a local ciphertext witness under DEK `"0"` and refuses an AK that cannot
+ * reproduce it (THU-869, `src/crypto/keyring-anchor.ts`). It is why the witness
+ * survives legitimate rotations — and it means anything that gives DEK `"0"`
+ * NEW material makes every established device on that account refuse every
+ * future AK, permanently.
+ *
+ * NOTHING ENFORCES THIS. The server validates key_id SETS, not key material
+ * (see `assertRotateKeyCoverage`) — it holds no AK, so it cannot. A keyring
+ * compaction that drops `"0"`, a v3 scheme that re-mints it, or a re-key /
+ * crypto-shred feature must each delete the local witness as part of the same
+ * change. Read the note on `dbVersion` in `src/crypto/key-storage.ts` first.
+ */
 export const initialKeyId: KeyId = '0'
 
 /**

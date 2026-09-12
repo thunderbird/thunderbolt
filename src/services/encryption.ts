@@ -49,6 +49,11 @@ import {
   pruneStagedDEKs,
   storePrimaryKeyId,
   storeKeyVersion,
+  storeKeyringAnchor,
+  getKeyringAnchor,
+  mintKeyringAnchor,
+  keyringAnchorOpens,
+  anchorVersion,
   clearAllKeys,
   ValidationError,
   type StoredKeyPair,
@@ -123,6 +128,51 @@ export class RecoveryAnchorError extends Error {
       options,
     )
     this.name = 'RecoveryAnchorError'
+  }
+}
+
+/**
+ * Why an inbound Account Key was refused. Reported verbatim in telemetry —
+ * these are SYMPTOMS, not diagnoses, because the two underlying causes are not
+ * distinguishable from the client:
+ *
+ * - `unopenable` — the candidate AK does not open the served DEK `"0"` row.
+ *   Either the server paired a forged envelope with an honest keyring, or the
+ *   envelope and the keyring were read either side of a concurrent rotation.
+ * - `material-mismatch` — the candidate DOES open the row, but the key material
+ *   inside is not what this device witnessed. Either the server minted a
+ *   matching AK'/DEK-0' pair of its own, or DEK `"0"`'s material genuinely
+ *   changed — which v2 never does legitimately (see the invariant note on
+ *   `assertRotateKeyCoverage` and on `dbVersion` in `src/crypto/key-storage.ts`).
+ * - `no-witness` — an established device (it holds an AK) has neither an anchor
+ *   nor a local DEK `"0"` to mint one from. Unreachable honestly; it is what a
+ *   server withholding `key_id "0"` produces, and refusing is what stops that
+ *   from being a silent bypass.
+ */
+export type AKRefusalReason = 'unopenable' | 'material-mismatch' | 'no-witness'
+
+/**
+ * Thrown when a server-supplied Account Key cannot be tied back to this
+ * device's local witness of DEK `"0"` (THU-869). The AK envelope is anonymous —
+ * `wrapAK` needs only public keys the server itself stores — so a well-formed
+ * envelope proves nothing about who minted the key inside it.
+ *
+ * Deliberately NOT retryable the way `RotationStaleError` is: retrying re-reads
+ * the same untrusted envelope. Nothing is persisted, so the device keeps the
+ * keys it already had, keeps working, and recovers by itself the moment an
+ * openable envelope is served.
+ */
+export class AKAnchorError extends Error {
+  readonly reason: AKRefusalReason
+
+  constructor(reason: AKRefusalReason, options?: ErrorOptions) {
+    super(
+      `Refusing the account key the server supplied (${reason}) — it does not match this device's ` +
+        `witness of DEK '${initialKeyId}'. This may indicate tampering.`,
+      options,
+    )
+    this.name = 'AKAnchorError'
+    this.reason = reason
   }
 }
 
@@ -426,25 +476,178 @@ type FetchedKeyring = {
   keyVersion: number
 }
 
+/** Fetch the keyring and its pointers as one snapshot. */
+const fetchKeyring = async (httpClient: HttpClient): Promise<FetchedKeyring> => {
+  const [{ keys }, metadata] = await Promise.all([fetchWrappedKeys(httpClient), fetchEncryptionMetadata(httpClient)])
+  return { keys, primaryKeyId: metadata.primary_key_id, keyVersion: metadata.key_version }
+}
+
 /**
- * Re-fetch this device's envelope, unwrap the AK it carries, and store it.
- * Split out of `refreshAK` so `stageKeyring` can adopt a rotated AK without
- * recursing back through it.
+ * DEK `"0"`'s wrapped blob as the SERVER just served it.
+ *
+ * Never use `getWrappedDek0` for this: it prefers the LOCAL blob, which after a
+ * rotation is still wrapped under the OLD AK, so unwrapping it under a candidate
+ * new AK fails and every legitimate rotation would be refused. The check reads
+ * the served row; the mint reads the local one. Opposite directions, same
+ * key_id — keep them apart.
  */
-const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<void> => {
-  const { wrappedCK } = await fetchMyEnvelope(httpClient)
+const servedWrappedDek0 = (keyring: FetchedKeyring): string | null =>
+  keyring.keys.find((key) => key.key_id === initialKeyId)?.wrapped_key ?? null
+
+/** DEK `"0"` as derived from purely LOCAL state, or null when either half is absent. */
+const localDek0 = async (): Promise<CryptoKey | null> => {
+  const [ak, wrapped] = await Promise.all([getAK(), getDEK(initialKeyId)])
+  if (!ak || !wrapped) {
+    return null
+  }
+  return unwrapDEK(wrapped, ak).catch(() => null)
+}
+
+/**
+ * Create the local DEK `"0"` witness when this device has none, or replace it
+ * when its on-disk format is superseded.
+ *
+ * MINTS FROM LOCAL STATE ONLY. Minting from a served keyring would hand the
+ * adversary the check's own bypass: the skip condition is "no anchor", so a
+ * server that simply omits `key_id "0"` from its keyring response guarantees no
+ * device ever mints one and the guard never fires anywhere. That is how the
+ * first draft of this fix managed to be a no-op.
+ *
+ * A CURRENT anchor is never rewritten — deliberately, and this is the subtle
+ * part. "Re-mint whenever the anchor does not open under the local DEK `"0"`"
+ * looks like a harmless self-heal and is not: AES-KW carries no key_id binding,
+ * so a server can serve an honest blob for a DIFFERENT key relabelled as
+ * `"0"`. It unwraps fine under the local AK, so `localDek0` would hand back the
+ * wrong key material and the re-mint would quietly repoint the witness at a
+ * key the server chose. Write-once is what makes that impossible.
+ *
+ * The cost of that choice is that a FOREIGN anchor — account A's, surviving on a
+ * device now signed in as B because `clearLocalData` logs and continues when
+ * `handleFullWipe` throws — wedges adoption until the next successful wipe.
+ * Signing out again clears it, and the `device_id_taken` reset path already
+ * does so incidentally.
+ *
+ * A version bump is therefore a deliberate trust-on-first-use moment: keep them
+ * rare, and when a second format appears, verify the old anchor under the old
+ * reader before replacing it rather than minting blind.
+ */
+const reconcileKeyringAnchor = async (): Promise<void> => {
+  const anchor = await getKeyringAnchor()
+  if (anchor?.version === anchorVersion) {
+    return
+  }
+  const dek0 = await localDek0()
+  if (!dek0) {
+    return
+  }
+  await storeKeyringAnchor(await mintKeyringAnchor(dek0))
+}
+
+/**
+ * Refuse a candidate AK unless it proves it belongs to this account.
+ *
+ * The proof: unwrap the SERVED DEK `"0"` row under the candidate, then open
+ * this device's local witness with the result. DEK `"0"`'s material is
+ * immutable for the life of a v2 account — bootstrap and the v1 upgrade mint it
+ * once, and every AK rotation re-wraps the SAME key (`rewrapKeyring`) — so this
+ * passes for a legitimately rotated AK and fails for one the server minted. That
+ * immutability is the whole reason the witness is a ciphertext UNDER DEK `"0"`
+ * rather than a copy of its wrapping: a wrapping legitimately changes on every
+ * rotation, so it could never be written once.
+ *
+ * A device with no witness and no AK is genuinely new: its first AK is
+ * trust-on-first-use and cannot be otherwise, because it shares no secret with
+ * the account and the only channel is the adversary. A device with an AK but no
+ * witness is not new — see `no-witness`.
+ *
+ * FAILS CLOSED, unlike `runContinuityCheck` below, which has the same shape and
+ * skips-and-swallows. That one is defence-in-depth behind a server-side proof;
+ * this one is the only thing between a malicious server and every future write.
+ */
+const assertCandidateAKIsOurs = async (candidate: CryptoKey, keyring: FetchedKeyring): Promise<void> => {
+  const anchor = await getKeyringAnchor()
+  if (!anchor) {
+    if (await getAK()) {
+      throw new AKAnchorError('no-witness')
+    }
+    return
+  }
+
+  const served = servedWrappedDek0(keyring)
+  if (!served) {
+    throw new AKAnchorError('unopenable')
+  }
+  const candidateDek0 = await unwrapDEK(served, candidate).catch(() => null)
+  if (!candidateDek0) {
+    throw new AKAnchorError('unopenable')
+  }
+  if (!(await keyringAnchorOpens(anchor, candidateDek0))) {
+    throw new AKAnchorError('material-mismatch')
+  }
+}
+
+/**
+ * The single place a server-supplied AK becomes this device's AK: verify it,
+ * store it, and return the keyring that was verified WITH it.
+ *
+ * Returning the keyring is not a convenience — it is what lets callers persist
+ * the exact snapshot that was checked. Re-fetching afterwards reopens the gap
+ * the check exists to close (that was the follower-path defect, THU-869).
+ *
+ * Nothing is written on refusal: the device keeps the AK, keyring and pointer it
+ * already had and carries on using them.
+ */
+const acceptCandidateAK = async (httpClient: HttpClient, candidate: CryptoKey): Promise<FetchedKeyring> => {
+  await reconcileKeyringAnchor()
+  const keyring = await fetchKeyring(httpClient)
+  try {
+    await assertCandidateAKIsOurs(candidate, keyring)
+  } catch (err) {
+    if (err instanceof AKAnchorError) {
+      console.error(`[e2ee] refused an inbound account key (${err.reason}) — keeping the keys already in force`)
+      trackError(createHandleError('AK_ANCHOR_REFUSED', `Refused an inbound account key: ${err.reason}`, err))
+    }
+    throw err
+  }
+  await storeAK(candidate)
+  return keyring
+}
+
+/** Unwrap an AK envelope with this device's transport keys. */
+const unwrapEnvelopeAK = async (wrappedCK: string): Promise<CryptoKey> => {
   const keyPair = await getKeyPair()
   if (!keyPair) {
     throw new Error('Key pair not found in IndexedDB')
   }
-  await storeAK(await unwrapAK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey))
+  return unwrapAK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
+}
+
+/**
+ * Re-fetch this device's envelope and adopt the AK it carries, subject to the
+ * DEK `"0"` witness check. Returns the verified keyring.
+ *
+ * A 404 propagates: for `refreshAK` a missing envelope means this device was
+ * revoked, which must surface rather than look like a no-op. The one caller that
+ * reads 404 as "not approved yet" narrows that catch itself.
+ */
+const adoptEnvelopeAK = async (httpClient: HttpClient): Promise<FetchedKeyring> => {
+  const { wrappedCK } = await fetchMyEnvelope(httpClient)
+  return acceptCandidateAK(httpClient, await unwrapEnvelopeAK(wrappedCK))
 }
 
 /**
  * Does the locally stored AK still open the keyring the server just handed us?
- * A `false` means the AK was rotated elsewhere and this device has not caught
- * up yet. No local AK (first setup, mid-recovery) is not a contradiction —
- * there is nothing to be stale.
+ *
+ * A CURRENCY probe, NOT a security check — `false` only means the AK was
+ * rotated elsewhere and this device has not caught up. It cannot authenticate
+ * anything: on the `refreshAK` path the stored AK has already been replaced by
+ * the time it would run, and its outcome is attacker-chosen anyway, since
+ * failing it is what TRIGGERS an adoption. Possession lives in
+ * `assertCandidateAKIsOurs`. This function being mislabelled as a guard is how
+ * `refreshAK` came to look protected while adopting unconditionally (THU-869).
+ *
+ * No local AK (first setup, mid-recovery) is not a contradiction — there is
+ * nothing to be stale.
  */
 const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<boolean> => {
   const ak = await getAK()
@@ -462,6 +665,9 @@ const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<bool
 }
 
 const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
+  // Witness DEK "0" BEFORE the staging below, so an established device mints
+  // from the blob it already held rather than the one now arriving.
+  await reconcileKeyringAnchor()
   await stageWrappedDEKs(keyring.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key })))
   // Mirror the server's keyring rather than accumulating a superset of it: a
   // key_id that is gone server-side would otherwise keep a stale wrapped blob
@@ -480,6 +686,17 @@ const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
     console.error(`[e2ee] refused a non-mintable primary key_id from the server: '${keyring.primaryKeyId}'`)
   }
   await storeKeyVersion(keyring.keyVersion)
+  // Again, for a device being ESTABLISHED: before the staging above it had no
+  // local DEK "0" to witness, so the call at the top could not mint. Idempotent
+  // — a device that already minted one hits the version check and returns.
+  //
+  // Minting here reads a blob that arrived in this very response, which is why
+  // it is second rather than first. That is not a weakness added by ordering: a
+  // device's FIRST witness is trust-on-first-use whatever it is derived from,
+  // since a new device shares no secret with the account and an existing one
+  // holds only blobs the server previously served. See the residuals in
+  // `.red-team/thu-869-plan.md`.
+  await reconcileKeyringAnchor()
   invalidateKeyringCache()
 }
 
@@ -500,31 +717,58 @@ const applyKeyring = async (keyring: FetchedKeyring): Promise<void> => {
  * with `() => stageKeyring(client)`.
  */
 export const stageKeyring = async (httpClient: HttpClient): Promise<void> => {
-  const [{ keys }, metadata] = await Promise.all([fetchWrappedKeys(httpClient), fetchEncryptionMetadata(httpClient)])
-  const keyring: FetchedKeyring = {
-    keys,
-    primaryKeyId: metadata.primary_key_id,
-    keyVersion: metadata.key_version,
+  const keyring = await fetchKeyring(httpClient)
+  if (await keyringUnwrapsUnderLocalAK(keyring)) {
+    await applyKeyring(keyring)
+    return
   }
-
-  if (!(await keyringUnwrapsUnderLocalAK(keyring))) {
-    await adoptEnvelopeAK(httpClient)
-  }
-  await applyKeyring(keyring)
+  // Behind a rotation. Adopt, and apply the keyring the adoption VERIFIED —
+  // not the one fetched above, which was never tied to the new AK.
+  await applyKeyring(await adoptEnvelopeAK(httpClient))
 }
 
 /**
  * Refresh this device's AK after a rotation (key_version bump or DEK-unwrap
- * failure): re-fetch the replaced envelope, unwrap the new AK, store it, then
- * re-stage the keyring. Without this, no remaining device can read
+ * failure): re-fetch the replaced envelope, verify the AK it carries against
+ * this device's DEK `"0"` witness, store it, and persist the keyring that was
+ * verified with it. Without this, no remaining device can read
  * post-revocation data.
+ *
+ * Previously this called `stageKeyring`, which adopted a SECOND time from a
+ * separately-fetched keyring — two unverified adoptions per refresh, and the
+ * inner one is what made the currency probe look like a guard (THU-869).
  *
  * Track F wires the responder's zero-arg `refreshAK: () => Promise<void>` with
  * `() => refreshAK(client)`.
  */
 export const refreshAK = async (httpClient: HttpClient): Promise<void> => {
-  await adoptEnvelopeAK(httpClient)
-  await stageKeyring(httpClient)
+  await applyKeyring(await adoptEnvelopeAK(httpClient))
+}
+
+/**
+ * `refreshAK` for the rotation paths, tolerant of one torn read.
+ *
+ * The envelope and the keyring are two requests. A rotation landing between
+ * them yields an envelope from one epoch and a keyring from the next, so the
+ * candidate AK cannot open the served DEK `"0"` and the witness check refuses —
+ * on a perfectly honest server. Both rotation callers run exactly when that is
+ * likely (one of them IS the "another device rotated first" branch) and both are
+ * user-facing, so the retry is the difference between "please try again" and
+ * telling someone their server may be tampering with their account.
+ *
+ * Only `unopenable` is retried. `material-mismatch` and `no-witness` are not
+ * timing artefacts — re-reading cannot change them, and they must surface.
+ */
+const refreshAKForRotation = async (httpClient: HttpClient): Promise<void> => {
+  try {
+    await refreshAK(httpClient)
+  } catch (err) {
+    if (err instanceof AKAnchorError && err.reason === 'unopenable') {
+      await refreshAK(httpClient)
+      return
+    }
+    throw err
+  }
 }
 
 // =============================================================================
@@ -575,6 +819,11 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   await storePrimaryKeyId(initialKeyId)
   await storeKeyVersion(1)
   await storeAK(ak)
+  // Witness DEK "0" now, from an AK this device generated itself — the most
+  // trustworthy moment that will ever exist on this account. Waiting for the
+  // first `stageKeyring` would leave a window in which an adoption could be
+  // driven before any witness exists.
+  await reconcileKeyringAnchor()
   invalidateKeyringCache()
 
   // Marked at the mint, not at the display: the phrase below lives only in
@@ -688,25 +937,21 @@ export const revokeDeviceWithProof = async (httpClient: HttpClient, deviceId: st
  * Returns true if the AK was unwrapped and stored, false if not yet approved.
  */
 export const checkApprovalAndUnwrap = async (httpClient: HttpClient): Promise<boolean> => {
-  try {
-    const { wrappedCK } = await fetchMyEnvelope(httpClient)
-    const keyPair = await getKeyPair()
-    if (!keyPair) {
-      throw new Error('Key pair not found in IndexedDB')
-    }
-
-    const ak = await unwrapAK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
-    await storeAK(ak)
-    await stageKeyring(httpClient)
-    return true
-  } catch (err) {
-    // 404 = not yet approved, return false so caller can retry
+  // The 404 catch is scoped to the ENVELOPE fetch alone. A single try/catch
+  // around the whole body would also read a 404 from the keyring or metadata
+  // route as "this device is not approved yet" and poll forever.
+  const envelope = await fetchMyEnvelope(httpClient).catch((err: unknown) => {
     if (err instanceof HttpError && err.response.status === 404) {
-      return false
+      return null
     }
-    // Re-throw transient/unexpected errors so they surface properly
     throw err
+  })
+  if (!envelope) {
+    return false
   }
+
+  await applyKeyring(await acceptCandidateAK(httpClient, await unwrapEnvelopeAK(envelope.wrappedCK)))
+  return true
 }
 
 // =============================================================================
@@ -803,7 +1048,27 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
   const proof = await buildProof(httpClient, 'approve', canarySecret)
   await storeEnvelope(httpClient, { deviceId, wrappedCK, proof })
 
+  // DELIBERATELY NOT gated by the DEK "0" witness check: the phrase is the
+  // account's break-glass, and one the thing it rescues you from can disable is
+  // not a break-glass. A device re-established from the phrase must be able to
+  // come back.
+  //
+  // It re-mints the witness ONLY when this device held no AK — the fresh-device
+  // and re-establishment case, where any surviving anchor is necessarily stale
+  // (e.g. the previous account's, left behind because `clearLocalData` logs and
+  // continues when `handleFullWipe` throws) and where trust-on-first-use applies
+  // regardless. On a device that still HOLDS an AK, the witness is left alone:
+  // the phrase does not authenticate the AK — `wrapAK` needs only the recovery
+  // slot's PUBLIC halves, which the server stores, so a malicious server can
+  // wrap an AK of its own to them and the phrase still opens it. Re-minting
+  // there would turn "talk the user into a recovery" into a witness bypass.
+  // An established device with a poisoned witness recovers by signing out, which
+  // wipes the store outright.
+  const hadLocalAK = (await getAK()) !== null
   await storeAK(ak)
+  if (!hadLocalAK) {
+    await storeKeyringAnchor(await mintKeyringAnchor(dek0))
+  }
   await stageKeyring(httpClient)
 }
 
@@ -973,8 +1238,16 @@ const runAKRotation = async (
   // guard runs BEFORE `postRotate`, so it never reached the 4xx branch below
   // that does the refreshing, and a stale device stayed wedged on rotate until
   // some unrelated decode failure happened to fix it (THU-871).
+  // NOTE: an `AKAnchorError` from the refresh propagates instead of the
+  // retryable error. That is correct — nothing should rotate under an
+  // unverifiable AK — but for `revokeDeviceAndRotate` the revoke has already
+  // committed by this point, so the device ends up revoked without being
+  // cryptographically locked out and `src/settings/devices.tsx` hides the
+  // button that would resume it. That is THU-871's open "no retry affordance"
+  // residual, reached by one more route; it is not made worse here beyond
+  // adding the route.
   if (strandedKeyIds.includes(initialKeyId)) {
-    await refreshAK(httpClient)
+    await refreshAKForRotation(httpClient)
     throw new RotationStaleError()
   }
   if (strandedKeyIds.length > 0) {
@@ -1034,8 +1307,10 @@ const runAKRotation = async (
   } catch (err) {
     if (err instanceof HttpError && err.response.status >= 400 && err.response.status < 500) {
       // Stale local state (concurrent rotation / device change) — re-fetch our
-      // envelope + keyring so the caller can rebuild and retry.
-      await refreshAK(httpClient)
+      // envelope + keyring so the caller can rebuild and retry. This 4xx fires
+      // precisely when another device rotated first, which is also exactly when
+      // a torn envelope/keyring read is likely — hence the tolerant variant.
+      await refreshAKForRotation(httpClient)
       throw new RotationStaleError({ cause: err })
     }
     throw err
@@ -1259,6 +1534,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     await storePrimaryKeyId(initialKeyId)
     await storeKeyVersion(keyVersion)
     await storeAK(await reimportAsNonExtractable(newAK))
+    // Same reasoning as first-device setup: witness DEK "0" from the AK this
+    // device just minted, not from whatever a later keyring fetch returns.
+    await reconcileKeyringAnchor()
     invalidateKeyringCache()
 
     markRecoveryPhrasePending()
@@ -1351,6 +1629,14 @@ const defaultGetLegacyV1Sample = async (): Promise<LegacyV1Sample | null> => {
  * IndexedDB. A rejected keyring that had already been persisted would leave the
  * AK behind, and `ensureV2Encryption` short-circuits to `already-v2` on AK
  * presence — so the check would never run again on that device.
+ *
+ * DELIBERATELY DIVERGENT from `assertCandidateAKIsOurs`, which has the same
+ * shape (verify a server-supplied keyring against locally-held ciphertext) and
+ * the opposite failure policy. This one SKIPS when no sample exists and
+ * swallows errors into a skip, because it is defence-in-depth behind the
+ * server-side D1 proof and must never block an unlock. That one FAILS CLOSED,
+ * because it is the only thing standing between a malicious server and every
+ * future write. Do not harmonize them.
  */
 const runContinuityCheck = async (
   ak: CryptoKey,
@@ -1410,12 +1696,22 @@ export const followToV2 = async (httpClient: HttpClient, opts: FollowToV2Options
 
   const ak = await unwrapAK(envelope.wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey)
 
-  const { keys } = await fetchWrappedKeys(httpClient)
-  const keyring: WrappedKeyEntry[] = keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
+  const fetched = await fetchKeyring(httpClient)
+  const keyring: WrappedKeyEntry[] = fetched.keys.map((key) => ({ keyId: key.key_id, wrappedKey: key.wrapped_key }))
   await runContinuityCheck(ak, keyring, opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample)
 
   await storeAK(ak)
-  await stageKeyring(httpClient)
+  // Persist the keyring the continuity check just VERIFIED. This used to call
+  // `stageKeyring`, which re-fetched — so the checked keyring and the stored one
+  // were different reads, and that call could itself adopt a fresh envelope AK,
+  // un-setting the AK verified two lines above (THU-869). Going straight to
+  // `applyKeyring` also means a follow can no longer reach an adoption path at
+  // all, which is the property rather than a side effect.
+  //
+  // No DEK "0" witness check here: a follow only runs with no local AK
+  // (`ensureV2Encryption` short-circuits on one), so there is never an anchor to
+  // check against. The v1 continuity check above is this path's anchor.
+  await applyKeyring(fetched)
 
   return { outcome: 'followed' }
 }

@@ -47,6 +47,9 @@ export {
   type SigningKeyPair,
 } from './canary'
 
+// Local witness to DEK "0"'s material — gates inbound AK adoption (THU-869)
+export { anchorVersion, mintKeyringAnchor, keyringAnchorOpens, type KeyringAnchor } from './keyring-anchor'
+
 // Device–session binding (client half of the sealed-nonce handshake)
 export { openBindNonce } from './device-bind'
 
@@ -74,6 +77,8 @@ export {
   getPrimaryKeyId,
   storeKeyVersion,
   getKeyVersion,
+  storeKeyringAnchor,
+  getKeyringAnchor,
   clearAllKeys,
   type StoredKeyPair,
 } from './key-storage'

@@ -5,6 +5,7 @@
 import { isMintableKeyId, type KeyId, type WrappedKeyEntry } from '@shared/e2ee-types'
 
 import { StorageError } from './errors'
+import { type KeyringAnchor } from './keyring-anchor'
 import { decryptBytes, deriveMlKemAtRestKey, encryptBytes, type EncryptedBytes } from './primitives'
 
 const dbName = 'thunderbolt-keys'
@@ -15,6 +16,13 @@ const storeName = 'keys'
 // pairs) are preserved so a formerly-v1 device keeps its transport keys. A
 // leftover v1 plaintext ML-KEM secret is re-encrypted lazily by `getKeyPair`
 // (WS1.5 read-migration).
+//
+// INVARIANT FOR ANY FUTURE SCHEME BUMP: `thunderbolt_keyring_anchor` witnesses
+// DEK "0"'s key MATERIAL, which v2 never changes (bootstrap and the v1 upgrade
+// mint it once; every AK rotation re-wraps the same key). A v3 that re-mints
+// DEK "0" — or any re-key / crypto-shred of it — MUST delete the anchor in the
+// same step, or every established device on the account refuses every Account
+// Key from then on. See `src/crypto/keyring-anchor.ts`.
 const dbVersion = 2
 
 const privateKeyId = 'thunderbolt_private_key'
@@ -25,6 +33,7 @@ const akId = 'thunderbolt_ak'
 const dekIdPrefix = 'thunderbolt_dek_'
 const primaryKeyIdId = 'thunderbolt_primary_key_id'
 const keyVersionId = 'thunderbolt_key_version'
+const keyringAnchorId = 'thunderbolt_keyring_anchor'
 
 const dekEntryId = (keyId: KeyId): string => `${dekIdPrefix}${keyId}`
 
@@ -47,7 +56,7 @@ const openDB = (): Promise<IDBDatabase> =>
     request.onerror = () => reject(new StorageError('Failed to open IndexedDB', { cause: request.error }))
   })
 
-type StorableValue = CryptoKey | Uint8Array | EncryptedBytes | string
+type StorableValue = CryptoKey | Uint8Array | EncryptedBytes | KeyringAnchor | string
 
 const putValue = async (id: string, value: StorableValue): Promise<void> => {
   const db = await openDB()
@@ -309,6 +318,23 @@ export const getKeyVersion = async (): Promise<number | null> => {
   const stored = await getValue<string>(keyVersionId)
   return stored === null ? null : Number(stored)
 }
+
+// =============================================================================
+// Keyring anchor (local witness to DEK "0"'s material — THU-869)
+// =============================================================================
+
+/**
+ * Persist the local witness to DEK `"0"`'s key material. WRITE-ONCE in spirit:
+ * callers mint it only when absent, or re-mint it when it no longer opens under
+ * the LOCAL DEK `"0"` (stale format, or a foreign anchor left by a failed wipe).
+ *
+ * A rewrite driven by anything the SERVER said is a bypass, not an update — see
+ * `mintKeyringAnchor`.
+ */
+export const storeKeyringAnchor = async (anchor: KeyringAnchor): Promise<void> => putValue(keyringAnchorId, anchor)
+
+/** Get the local DEK `"0"` witness, or null on a device that never minted one. */
+export const getKeyringAnchor = async (): Promise<KeyringAnchor | null> => getValue<KeyringAnchor>(keyringAnchorId)
 
 // =============================================================================
 // Full wipe

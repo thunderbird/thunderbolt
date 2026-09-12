@@ -85,6 +85,22 @@ The reserved `"v1"` slot is the reason this matters. It sits outside the grammar
 
 What the client cannot do is verify that a *grammar-valid* pointer is the newest one — the canary, the one artifact a server cannot forge, is deliberately bound to DEK `"0"` for the life of the account, so it attests nothing about which DEK is primary. Authenticating the pointer would mean signing the keyring.
 
+### Adopting an AK from the server
+
+A device gets its AK from a per-device envelope the server stores, and re-reads it whenever the AK rotates elsewhere (`refreshAK`, or `stageKeyring` when the local AK no longer opens the served keyring). That envelope is **anonymous**: `wrapAK` needs only the target device's *public* ECDH + ML-KEM keys, and the server stores both — so a well-formed envelope proves only that someone who had those public keys built it, which is everyone. Nothing in the envelope says who minted the key inside it.
+
+So adoption is gated on a **device-local witness to DEK `"0"`'s key material** (`src/crypto/keyring-anchor.ts`, THU-869): a fixed-plaintext AES-GCM sample encrypted under DEK `"0"` and stored in IndexedDB as `thunderbolt_keyring_anchor`. Before a server-supplied AK is stored, the client unwraps the **served** DEK `"0"` row under it and requires the result to open that sample. A mismatch refuses the adoption and writes nothing — the device keeps the AK, keyring and pointer it already had, keeps working, and recovers on its own once an openable envelope is served.
+
+Three things make this work, and each is easy to get wrong:
+
+- **It survives legitimate rotations.** DEK `"0"`'s *material* is immutable for the life of a v2 account: bootstrap and the v1→v2 upgrade each mint it once, and every AK rotation **re-wraps the same key**. So a real rotation still opens the witness. This is also why the witness is a ciphertext *under* the key rather than a copy of its wrapping — a wrapping changes on every rotation, so it could never be written once, and AES-KW carries no `key_id` binding, so a server can relabel one blob as another id and repoint a witness that tracked wrappings.
+- **It is minted from local state, never from a served keyring.** The check skips when there is no witness, so if the mint read the served keyring a server could simply omit `key_id "0"` forever and no device would ever have one. An established device that has an AK but no witness and nothing local to mint from therefore **refuses** rather than skipping.
+- **It is write-once.** A current witness is never rewritten, only replaced when its own on-disk format version is superseded. "Re-mint whenever it disagrees with local state" looks like a harmless self-heal and is the relabelling hole above.
+
+The costs are deliberate. A device's **first** adoption — approval, or phrase recovery — is trust-on-first-use and cannot be otherwise: a new device shares no secret with the account and its only channel is the server. Phrase recovery therefore stays ungated and re-mints the witness on a device that holds no AK, so the recovery phrase remains a genuine break-glass. And a **rollback** to an older honest epoch passes by construction, since DEK `"0"` is the same in every epoch; catching that needs the keyring itself authenticated.
+
+`keyringUnwrapsUnderLocalAK` is *not* part of this. It asks "has my AK fallen behind?" — a currency probe. It cannot authenticate anything, because failing it is what triggers an adoption in the first place.
+
 ## Wire Format
 
 New (v2) encrypted column values are written with a version tag, the `key_id`, and AAD bound to the row context (never stored on the wire):
@@ -267,6 +283,7 @@ Add the table and column name to `encryptedColumnsMap` in [src/db/encryption/con
 | `src/crypto/primitives.ts`          | AK/DEK primitives, hybrid AK wrap/unwrap, `unwrapLegacyCK`, AES-256-GCM + AAD |
 | `src/crypto/key-storage.ts`         | IndexedDB key storage (AK + dynamic `thunderbolt_dek_{keyId}`, ML-KEM at rest) |
 | `src/crypto/canary.ts`              | Canary create/verify, deterministic ECDSA signing keypair, `recoverCanarySecretV1` |
+| `src/crypto/keyring-anchor.ts`      | Device-local witness to DEK `"0"`'s material — gates adopting a server-supplied AK |
 | `src/crypto/recovery-key.ts`        | Recovery seed ↔ BIP-39 mnemonic, `deriveRecoveryKeyPairFromSeed` (KDF)       |
 | `src/db/encryption/wire-format.ts`  | v1/v2 wire parse/format + `isV2EncryptedValue` classifier                    |
 | `src/db/encryption/config.ts`       | Encrypted columns map (single source of truth)                              |

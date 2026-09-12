@@ -214,6 +214,16 @@ const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ d
  * unopenable rows, which is precisely the capability this ticket removed by
  * deleting `POST /encryption/keys`. So the mint is exactly one id, it must not
  * already exist, and it must not be smuggled into `wrappedKeys` as well.
+ *
+ * WHAT THIS CANNOT CHECK: key MATERIAL. The server holds no AK, so a submitted
+ * `wrappedKeys` entry is an opaque blob — a caller with a valid 'rotate' proof
+ * could send freshly minted material for `key_id "0"` and this would accept it.
+ * Clients rely on DEK `"0"`'s material being immutable for the life of the
+ * account (see `initialKeyId` in `shared/e2ee-types.ts`): each device keeps a
+ * local witness under it and refuses any Account Key that cannot reproduce it
+ * (THU-869). Giving `"0"` new material therefore makes every established device
+ * on that account refuse every future AK, permanently. Preserving it is a
+ * client-side obligation of `rewrapKeyring`, enforced nowhere.
  */
 const assertRotateKeyCoverage = (
   existingKeyIds: string[],

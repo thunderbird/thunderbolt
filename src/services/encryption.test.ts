@@ -30,6 +30,10 @@ import {
   exportMlKemPublicKey,
   base64ToUint8Array,
   uint8ArrayToBase64,
+  anchorVersion,
+  keyringAnchorOpens,
+  mintKeyringAnchor,
+  type KeyringAnchor,
   type StoredKeyPair,
 } from '@/crypto'
 import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
@@ -44,6 +48,7 @@ let storedAK: CryptoKey | null = null
 const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
+let storedKeyringAnchor: KeyringAnchor | null = null
 /** Simulates an IndexedDB write failure inside `storeAK` (post-commit staging). */
 let failStoreAK = false
 
@@ -91,12 +96,17 @@ mock.module('@/crypto/key-storage', () => ({
     storedKeyVersion = version
   },
   getKeyVersion: async () => storedKeyVersion,
+  storeKeyringAnchor: async (anchor: KeyringAnchor) => {
+    storedKeyringAnchor = anchor
+  },
+  getKeyringAnchor: async () => storedKeyringAnchor,
   clearAllKeys: async () => {
     storedKeyPair = null
     storedAK = null
     storedDEKs.clear()
     storedPrimaryKeyId = null
     storedKeyVersion = null
+    storedKeyringAnchor = null
   },
 }))
 
@@ -114,6 +124,8 @@ const {
   revokeDeviceAndRotate,
   RecoveryAnchorError,
   RotationStaleError,
+  AKAnchorError,
+  refreshAK,
   migrateToV2,
   followToV2,
   ensureV2Encryption,
@@ -560,6 +572,7 @@ describe('encryption service (v2)', () => {
     storedDEKs.clear()
     storedPrimaryKeyId = null
     storedKeyVersion = null
+    storedKeyringAnchor = null
     failStoreAK = false
     clearRecoveryPhrasePending()
   })
@@ -938,6 +951,175 @@ describe('encryption service (v2)', () => {
     })
   })
 
+  /**
+   * THU-869 — the AK envelope is ANONYMOUS: `wrapAK` needs only this device's
+   * PUBLIC ECDH + ML-KEM keys, which the server stores. So a malicious server
+   * mints an AK of its own, wraps it to those keys, and the device unwraps it
+   * with its own private keys and cannot tell the sender changed. The defence is
+   * a device-local witness to DEK "0"'s key material: DEK "0" is minted once per
+   * account and every rotation re-wraps the SAME key, so a candidate AK that
+   * cannot reproduce it is not this account's AK.
+   */
+  describe('inbound AK adoption (THU-869)', () => {
+    /** A2 mints its own AK + DEK "0" and serves both, as a matching pair. */
+    const substituteAKOnServer = async (server: FakeServer, kp: StoredKeyPair): Promise<CryptoKey> => {
+      const attackerAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        void wrapped
+        server.wrappedKeys.set(keyId, await wrapDEK(await generateDEK(true), attackerAK))
+      }
+      server.envelopes.set('test-device-id', await wrapAK(attackerAK, kp.ecdhPublicKey, kp.mlkemPublicKey))
+      server.metadata!.keyVersion += 1
+      return attackerAK
+    }
+
+    const establishedDevice = async (): Promise<{ server: FakeServer; kp: StoredKeyPair }> => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      return { server, kp }
+    }
+
+    it('mints a witness for an established device, from local state', async () => {
+      await establishedDevice()
+
+      expect(storedKeyringAnchor).not.toBeNull()
+      expect(storedKeyringAnchor!.version).toBe(anchorVersion)
+      // Bound to DEK "0"'s material, so it opens under the DEK "0" the local AK
+      // yields — and under nothing else.
+      const dek0 = await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('refuses a substituted AK and keeps the keys already in force', async () => {
+      const { server, kp } = await establishedDevice()
+      const honestAK = storedAK
+      const honestDEKs = new Map(storedDEKs)
+      const honestVersion = storedKeyVersion
+
+      const attackerAK = await substituteAKOnServer(server, kp)
+
+      const errors: string[] = []
+      const consoleError = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(' '))
+      })
+      try {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      } finally {
+        consoleError.mockRestore()
+      }
+
+      // Nothing was written: not the AK, not the keyring, not the version.
+      expect(storedAK).toBe(honestAK)
+      expect(storedAK).not.toBe(attackerAK)
+      expect([...storedDEKs]).toEqual([...honestDEKs])
+      expect(storedKeyVersion).toBe(honestVersion)
+      expect(errors.some((line) => line.includes('refused an inbound account key (material-mismatch)'))).toBe(true)
+    })
+
+    it('still adopts a LEGITIMATELY rotated AK — the no-wedge property', async () => {
+      const { server, kp } = await establishedDevice()
+      const anchorBefore = storedKeyringAnchor
+
+      // A real rotation elsewhere: the SAME DEKs re-wrapped under a new AK.
+      const oldAK = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      const newAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, oldAK, true), newAK))
+      }
+      server.envelopes.set('test-device-id', await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey))
+      server.metadata!.keyVersion += 1
+
+      await refreshAK(clientFor(server))
+
+      // Adopted, keyring staged, and the witness untouched — a rotation changes
+      // the wrapping, never DEK "0"'s material, which is why this passes.
+      expect(await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!).then(() => true)).toBe(true)
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      expect(storedKeyringAnchor).toBe(anchorBefore)
+    })
+
+    it('refuses when the server withholds key_id "0" from an established device', async () => {
+      // The bypass that made the first draft of this fix a no-op: the check
+      // skips when there is no witness, so a server that never serves DEK "0"
+      // means no device ever mints one. Refusing turns that starvation from a
+      // silent bypass into a denial of service.
+      const { server, kp } = await establishedDevice()
+      storedKeyringAnchor = null
+      storedDEKs.delete(initialKeyId)
+      await substituteAKOnServer(server, kp)
+      server.wrappedKeys.delete(initialKeyId)
+
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(/no-witness/)
+      } finally {
+        consoleError.mockRestore()
+      }
+    })
+
+    it('does not rewrite a current witness when the served DEK "0" is relabelled', async () => {
+      // AES-KW carries no key_id binding, so the server can serve an honest blob
+      // for a DIFFERENT key under key_id "0". It unwraps fine under the local
+      // AK, so a "re-mint whenever the witness disagrees with local state" rule
+      // would quietly repoint the witness at a key the server chose. Write-once
+      // is what makes that impossible.
+      const { server, kp } = await establishedDevice()
+      const anchorBefore = storedKeyringAnchor
+      expect(anchorBefore).not.toBeNull()
+
+      const ak = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      server.wrappedKeys.set(initialKeyId, await wrapDEK(await generateDEK(true), ak))
+      server.metadata!.keyVersion += 1
+
+      await stageKeyring(clientFor(server)).catch(() => undefined)
+
+      expect(storedKeyringAnchor).toBe(anchorBefore)
+    })
+
+    it('re-mints only when the stored witness format is superseded', async () => {
+      const { server } = await establishedDevice()
+      const dek0 = await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!)
+      // A device carrying the previous on-disk format. It must re-mint from
+      // local state rather than read as a substituted key, or an `anchorVersion`
+      // bump would brick every device on every account.
+      storedKeyringAnchor = { ...(await mintKeyringAnchor(dek0)), version: anchorVersion - 1 }
+
+      await stageKeyring(clientFor(server))
+
+      expect(storedKeyringAnchor!.version).toBe(anchorVersion)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('leaves a brand-new device unverified — first adoption is trust-on-first-use', async () => {
+      // A device with no AK and no witness shares no secret with the account and
+      // its only channel is the adversary, so its FIRST key cannot be checked.
+      // Pinned deliberately so the skip is never mistaken for an oversight.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      expect(storedAK).toBeNull()
+      expect(storedKeyringAnchor).toBeNull()
+
+      expect(await checkApprovalAndUnwrap(clientFor(server))).toBe(true)
+      expect(storedAK).not.toBeNull()
+      expect(storedKeyringAnchor).not.toBeNull()
+    })
+
+    it('reports a device that is not approved yet rather than treating it as tampering', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      server.envelopes.delete('test-device-id')
+
+      expect(await checkApprovalAndUnwrap(clientFor(server))).toBe(false)
+    })
+  })
+
   describe('recoverWithKey', () => {
     it('re-derives the AK from the phrase, verifies the canary, and self-approves', async () => {
       const server = createFakeServer()
@@ -1006,6 +1188,42 @@ describe('encryption service (v2)', () => {
         const dek = await unwrapDEK(storedDEKs.get(keyId)!, storedAK!)
         expect(dek.algorithm.name).toBe('AES-GCM')
       }
+    })
+
+    /**
+     * Pins the invariant every device's AK check depends on, at the only layer
+     * that can break it. `assertRotateKeyCoverage` validates key_id SETS and
+     * cannot see key material — the server holds no AK — so if a rotation ever
+     * submitted FRESH material for `key_id "0"` the backend would accept it and
+     * every established device on the account would refuse every future Account
+     * Key, permanently and silently (THU-869). Nothing else would fail: not a
+     * type, not the coverage check, not the rotation itself.
+     */
+    it('re-wraps DEK "0" rather than minting fresh material for it', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const akBefore = storedAK!
+      const rawBefore = await crypto.subtle.exportKey(
+        'raw',
+        await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, akBefore, true),
+      )
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The wrapping changed; the key underneath did not.
+      expect(server.wrappedKeys.get(initialKeyId)).not.toBe(undefined)
+      expect(storedAK).not.toBe(akBefore)
+      const rawAfter = await crypto.subtle.exportKey(
+        'raw',
+        await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, storedAK!, true),
+      )
+      expect(uint8ArrayToBase64(new Uint8Array(rawAfter))).toBe(uint8ArrayToBase64(new Uint8Array(rawBefore)))
     })
 
     it('re-anchors the recovery slot to the existing phrase without minting a new one', async () => {

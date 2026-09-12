@@ -199,8 +199,10 @@ export const decryptCellValue = async (
       return new TextDecoder().decode(plaintext)
     } catch (err) {
       throw new Error(
-        `AES-GCM decryption failed for key "${keyId}" — ciphertext corrupt or AAD mismatch ` +
-          `(table/column/row-id must match what the value was encrypted under)`,
+        `AES-GCM decryption failed for key "${keyId}". Either the ciphertext belongs to a ` +
+          `DIFFERENT KEY — most often another account's row, since row ids are not unique ` +
+          `across accounts and the AAD carries no account component — or the AAD does not ` +
+          `match (table/column/row-id), or the ciphertext is corrupt.`,
         { cause: err },
       )
     }
@@ -345,12 +347,23 @@ const main = async (): Promise<void> => {
 
     // Data tables live in the `powersync` Postgres schema; identifiers are safe —
     // both were validated against encryptedColumnsMap above.
+    //
+    // MUST be scoped by user_id. Row ids are NOT unique across accounts: every
+    // synced data table is keyed on `(id, user_id)` (see
+    // `backend/src/db/powersync-schema.ts`), and the reconciled defaults —
+    // tasks, models, prompts, skills, modes, model_profiles, agents — ship
+    // FIXED ids, so one id matches one row per account that seeded it. Without
+    // the scope this returned an arbitrary account's row and then decrypted it
+    // under the requested account's DEK. The AAD is table ‖ column ‖ row_id ‖
+    // key_id and carries no account component, so it matched perfectly and the
+    // only symptom was a bare GCM auth-tag failure that read as corruption.
     const valueRows = await sql<Record<string, string | null>[]>`
-      SELECT ${sql(args.column)} FROM ${sql(`powersync.${args.table}`)} WHERE id = ${args.rowId}
+      SELECT ${sql(args.column)} FROM ${sql(`powersync.${args.table}`)}
+      WHERE id = ${args.rowId} AND user_id = ${args.userId}
     `
     const valueRow = valueRows[0]
     if (!valueRow) {
-      throw new Error(`No row with id ${args.rowId} in powersync.${args.table}`)
+      throw new Error(`No row with id ${args.rowId} in powersync.${args.table} for user ${args.userId}`)
     }
     const value = valueRow[args.column]
     if (value === null || value === undefined) {

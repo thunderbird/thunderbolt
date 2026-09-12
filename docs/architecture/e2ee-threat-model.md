@@ -31,7 +31,25 @@ falsify, not a fact.
 - **C1 — Zero-knowledge server.** The server never obtains plaintext or any key that yields it, even
   when malicious or compelled. No client path uploads plaintext into an encrypted column; no
   fail-open in the codec, upload encoder, or sync middleware; no plaintext in logs, error payloads,
-  or telemetry.
+  or telemetry. The set of columns this covers is `encryptedColumnsMap`, and membership is the whole
+  claim: a synced table with user-authored text and no map entry is not protected at all, which is
+  how THU-870 shipped — `agents` was synced from `backend/drizzle/0018_colorful_lorna_dane.sql`
+  onward while absent from the map, so every custom agent's `name`/`url`/`description` sat in
+  Postgres in cleartext with no adversary action. Closed by adding `agents:
+  ['name','url','description']`; `agents` was already synced, so no sync-rule change was needed. Two
+  residuals. (1) **The fix is forward-only.** Rows written before the map entry existed stay
+  cleartext at rest, because no re-encryption pass exists anywhere in the system — the same
+  concession the permanently-AAD-free `"v1"` slot makes, and accepted on the same terms. So C1 holds
+  for everything written after the entry, not for the back catalogue. (2) **Membership is unenforced
+  by anything but a test.** `attacks/synced-table-coverage.spec.ts` is now the standing drift guard
+  (green, untagged) and fails when a synced table with user-authored text has no map entry;
+  `scanServerForPlaintext` cannot catch it, because it only scans MAPPED columns and so never looks
+  at an unmapped table — which is precisely why the drift went unnoticed. Note also what membership
+  does NOT buy: it stops the client uploading plaintext, and it is what lets THU-874's download-side
+  check cover a column at all, but until 874 lands a server can still inject plaintext into a mapped
+  column and have the client persist it verbatim. For `agents.url` — the routing field for both
+  transports, iroh included — that is endpoint substitution, so C1 and the integrity half of this
+  claim close together rather than separately.
 - **C2 — Server cannot induce key disclosure.** No server-controlled input (metadata, keyring rows,
   `kdf_salt`, `key_version`, `scheme_version`, challenge nonces) steers a client into wrapping,
   sending, or deriving a key the server can open. The org-escrow public key left this list in
@@ -93,8 +111,40 @@ falsify, not a fact.
   the no-wedge property is gated by `rotation.spec.ts`'s surviving-third-device case.
 - **C3 — Ciphertext integrity and placement.** AAD (`table ‖ column ‖ row_id ‖ key_id`) prevents a
   malicious server from moving, swapping, or replaying ciphertext into a different cell. Covers
-  cross-cell, cross-table, cross-row, cross-account, and same-cell rollback to an older ciphertext
-  (note: the AAD carries no version or timestamp).
+  cross-cell, cross-table, cross-row, and same-cell rollback to an older ciphertext (note: the AAD
+  carries no version or timestamp). **Cross-account is NOT covered by the AAD** — this claim listed
+  it until 2026-09-12, and that was an overclaim. `encodeAAD` (`shared/e2ee-types.ts:204`) has no
+  account component, the reconciled defaults ship hardcoded row ids (`tasks`, `skills`, `models`,
+  `prompts` and `model_profiles` are each fixed-id *and* in `encryptedColumnsMap`), and every synced
+  table is keyed `(id, user_id)` so the same id exists once per account — so on those rows the AAD
+  is byte-identical across accounts. Cross-account separation is therefore **cryptographic**
+  (per-account DEK material), not contextual: relocation discloses only where the destination
+  resolves the *same* key material, and across accounts it never does — `decrypt` fails on the auth
+  tag before the AAD is ever consulted. The precondition this now rests on is that **no DEK material
+  is ever shared between two accounts**, and it holds structurally rather than by convention. (1)
+  Shared/workspace DEKs are foreclosed by the mint grammar (`keyIdPattern`,
+  `shared/e2ee-types.ts:61`; the server rejects anything outside it — see C15), so reintroducing one
+  is a wire-format change rather than a comment someone implements. (2) A2 never holds another
+  account's AK in openable form: only wrappings to that account's own device public keys, plus the
+  org-escrow envelope, which is C8's deliberate operator concession. (3) A `user_id` never changes
+  under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:414`) deletes the anonymous user
+  outright, so no ciphertext survives an id change. Any change to (1) or (2) invalidates this claim
+  and must revisit the AAD. **Adding the account id to the AAD was considered and rejected**
+  (THU-891, cancelled): it closes nothing reachable, and against the one path that *is* reachable —
+  the residual below — it is either inert or harmful. `codec.decode` runs in the SharedWorker, which
+  has no localStorage, so the id would have to come from state staged *with the keys*, and in that
+  scenario the staged id is the stale account's and matches the relocated ciphertext anyway;
+  sourcing it from the session instead auth-tag-fails every row at once whenever the session cache
+  is cleared (401) while the keys are deliberately kept, and `codec.decode` fails **open** to the
+  raw `__enc:v2:…` string (`src/db/encryption/codec.ts:388`), so the app would fill with unreadable
+  values and raise nothing. Residual: a **failed local wipe** leaves the one reachable cross-account
+  read. `handleFullWipe` throwing is logged-and-continued by `clearLocalData`
+  (`src/lib/cleanup.ts:55`), so a device signed in as B can still hold A's AK and A's staged DEKs.
+  C2's witness correctly refuses the inbound AK (`material-mismatch`), but a refusal leaves local
+  key state as A's, so rows A2 pushes into B's sync stream under their original ids decrypt and
+  render. Narrow — it needs an IndexedDB wipe failure, a second account in the same browser, and a
+  hostile server — and the refusal makes the common case a loud wedge rather than silent confusion.
+  The fix is account-scoped key storage or a fail-closed wipe, not the AAD.
 - **C4 — No v1 downgrade.** A v2 client never writes v1 (no-AAD) format and cannot be steered back
   into doing so — not by a server reporting `scheme_version: 1`, not by a `key_id` of `"v1"` on a
   write path. The `"v1"` slot is never usable as an AAD-free oracle over v2 data. The second clause

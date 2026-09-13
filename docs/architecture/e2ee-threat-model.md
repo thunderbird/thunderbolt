@@ -187,15 +187,33 @@ falsify, not a fact.
 - **C7 — Migration is atomic and lossless.** Exactly one migrator wins the CAS; a 409 loser degrades
   cleanly; nothing is persisted locally before HTTP 200; the recovery phrase is shown only on 200. A
   hostile flip from a stolen session is a recoverable DoS — never plaintext exposure or data loss.
+  **Lossless now also holds against A2 (THU-877).** The migrator used to absorb the legacy CK from
+  its v1 envelope having checked it only against the server-supplied canary — and A2 authors both,
+  so a self-consistent forged pair passed and sealed every pre-migration row under a key nobody
+  holds. The offered CK is now verified against material A2 does not author, and the migration
+  **fails closed** rather than absorbing an unverifiable key: first against a real legacy row
+  already on the device (a CK that decrypts it *is* the CK), and when none has synced, against the
+  CK this device kept from v1. That retained copy can only ever be a *comparator* — v1 stored it
+  non-extractable, so `crypto.subtle.wrapKey` cannot put it in the keyring — which is why the secure
+  outcome is a refused migration rather than a repaired one: the account stays on v1 with its
+  ciphertext intact and retries once the server serves the genuine envelope. **Residual:** a device
+  with neither anchor (a fresh device enrolled against a v1 account, where sync has not yet run)
+  still absorbs a forged envelope; siblings reject the poisoned keyring in `followToV2`, so it
+  cannot spread past that device. A second, narrower residual: with no synced row, a previous
+  account's leftover CK on the same browser (a wipe that threw and was logged-and-continued) fails
+  the comparison and blocks the migration loudly — preferred over poisoning the keyring for every
+  device on the account.
 - **C8 — Possession proof is meaningful against A4/A5.** `hash(canarySecret) == canary_secret_hash`
   proves CK possession to an adversary that cannot rewrite the DB — a stolen session (A5) or a
-  key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2/A9,
-  who author `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple; the
-  migrator absorbs the CK from that forged canary without checking it against real legacy data
-  (THU-877). Same scope for the follower-side continuity check. This concession is also why the
-  canary cannot serve as C2's anchor for an inbound Account Key: verifying a server-served canary
-  under a server-served DEK, reached through a server-served AK, is the same tautology one level up.
-  Hence the separate device-local witness there.
+  key-holding device (A4) — and A5 (no keys) cannot satisfy it. It does **not** bind against A2, who
+  authors `canary_secret_hash` and can forge a self-consistent `(secret, hash, canary)` triple. That
+  concession stands, but it is no longer sufficient for the attack: since THU-877 the migrator
+  additionally verifies the offered CK against material A2 does not author and refuses it otherwise,
+  so a forged triple yields a refused migration rather than an orphaned account (see C7). Same scope
+  for the follower-side continuity check. (A9 was listed here in error — it has no DB-write power.)
+  This concession is also why the canary cannot serve as C2's anchor for an inbound Account Key:
+  verifying a server-served canary under a server-served DEK, reached through a server-served AK, is
+  the same tautology one level up. Hence the separate device-local witness there.
 - **C9 — Recovery-phrase path is sound.** 256-bit CSPRNG entropy; PBKDF2-SHA512 600k with a
   per-account salt; the derived public half is checked against the stored one before use; a wrong
   server-supplied `kdf_salt` or public key fails cleanly rather than downgrading or leaking. Recovery-

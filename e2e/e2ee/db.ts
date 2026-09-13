@@ -636,6 +636,23 @@ export const getSigningPublicKey = async (userId: string): Promise<string | null
   return rows[0]?.signing_public_key ?? null
 }
 
+/**
+ * The canary envelope exactly as the server holds it. This is the A2 relay in
+ * `attacks/revoked-device-signing-key.spec.ts`: a colluding server does not need
+ * the ungated `GET /encryption/canary` route to hand these two fields to a
+ * revoked device — it owns the row.
+ */
+export const getCanaryCiphertext = async (userId: string): Promise<{ iv: string; ctext: string }> => {
+  const rows = await sql<{ canary_iv: string; canary_ctext: string }[]>`
+    SELECT canary_iv, canary_ctext FROM encryption_metadata WHERE user_id = ${userId}
+  `
+  const row = rows[0]
+  if (!row) {
+    throw new Error(`Encryption metadata not found for ${userId}`)
+  }
+  return { iv: row.canary_iv, ctext: row.canary_ctext }
+}
+
 /** Live sessions for one device — revocation is expected to leave none. */
 /**
  * Delete every session row for a user, simulating the expiry that leaves a

@@ -422,6 +422,8 @@ export type V1SeedCrypto = {
   wrapForDevice: (keys: DeviceKeys) => Promise<string>
   /** Build the CK-encrypted, no-AAD canary + its SHA-256 possession hash. */
   makeCanary: () => Promise<{ canaryIv: string; canaryCtext: string; canarySecretHash: string }>
+  /** Base64 raw key bytes, for seeding this CK into a device's IndexedDB (THU-877). */
+  exportRaw: () => Promise<string>
 }
 
 /**
@@ -450,7 +452,50 @@ export const createV1SeedCrypto = async (): Promise<V1SeedCrypto> => {
     return { canaryIv: iv, canaryCtext: ciphertext, canarySecretHash: await sha256Hex(canarySecret) }
   }
 
-  return { encryptV1, wrapForDevice, makeCanary }
+  const exportRaw = async (): Promise<string> => {
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', ck))
+    return Buffer.from(raw).toString('base64')
+  }
+
+  return { encryptV1, wrapForDevice, makeCanary, exportRaw }
+}
+
+/**
+ * Put a legacy v1 content key into this device's IndexedDB under
+ * `thunderbolt_ck`, where a formerly-v1 device already has it (the v1->v2 db bump
+ * is non-destructive, so it survives).
+ *
+ * NOT an attacker capability — it models the ordinary state of every real user
+ * about to migrate, and it is the anchor THU-877's check actually relies on. A
+ * seeded-server spec cannot otherwise reproduce it: it registers a brand-new
+ * device, and sync is off until the wizard turns it on, so no legacy row is local
+ * at migration time either. Imported NON-EXTRACTABLE, exactly as v1 stored it.
+ */
+export const seedLocalLegacyCK = async (page: Page, rawKeyBase64: string): Promise<void> => {
+  await page.evaluate(async (raw) => {
+    const bytes = Uint8Array.from(atob(raw), (character) => character.charCodeAt(0))
+    const ck = await crypto.subtle.importKey('raw', bytes as BufferSource, { name: 'AES-GCM', length: 256 }, false, [
+      'encrypt',
+      'decrypt',
+    ])
+    const request = indexedDB.open('thunderbolt-keys', 2)
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains('keys')) {
+        request.result.createObjectStore('keys')
+      }
+    }
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction('keys', 'readwrite')
+      tx.objectStore('keys').put(ck, 'thunderbolt_ck')
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    database.close()
+  }, rawKeyBase64)
 }
 
 export type SeededV1Data = {

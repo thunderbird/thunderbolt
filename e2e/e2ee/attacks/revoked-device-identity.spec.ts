@@ -21,14 +21,23 @@
  * This spec is therefore a regression test, not an exploit: it fails if that
  * re-mint is ever refactored away.
  *
- * Residual (now a FINDING — THU-872): DEK "0" is retained forever and the
- * revoked device still holds it, so every FUTURE canary is encrypted under a key
- * that device can unwrap. This re-mint would protect only if a revoked device
- * could not fetch the new canary ciphertext — but it can: `GET /encryption/canary`
- * is `{ auth: true }` only, with NO device-state gate (contrary to an earlier
- * claim here that it was `getCallerDevice`-gated). So a revoked A4 that reaches
- * the route (via a surviving unlinked session, THU-873) re-derives the current
- * signing key from its retained DEK-0. See `canary-route-ungated.spec.ts`.
+ * Residual (now a FINDING — THU-872): **the re-mint asserted below is not
+ * actually a protection.** DEK "0" is retained forever and the revoked device
+ * still holds it, so every FUTURE canary is encrypted under a key that device can
+ * unwrap — it computes each new secret as it is minted, and therefore each new
+ * signing key. `expect(getSigningPublicKey(...)).not.toEqual(signingKeyBefore)`
+ * below is true and beside the point.
+ *
+ * Corrected 2026-09-12: an earlier version of this note said the re-mint fails
+ * only because a revoked A4 can FETCH the new canary from the ungated
+ * `GET /encryption/canary`. That framing is wrong twice over. The session check
+ * asserted at the end of this very spec (`countDeviceSessions === 0`) is what
+ * stops A4 reaching that route at all; and the route is irrelevant anyway,
+ * because the A2 + A4 collusion that carries THU-872 has a server that owns
+ * `encryption_metadata` and simply reads `canary_ctext` out of the row. The break
+ * is the DEK-0 anchoring, not the route. Witnessed by
+ * `attacks/revoked-device-signing-key.spec.ts`; `canary-route-ungated.spec.ts`
+ * covers the ungated route as separate metadata hygiene.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/revoked-device-identity.spec.ts
@@ -96,8 +105,9 @@ test.describe.serial('C5 — revocation and the account signing identity', () =>
       // secret changed. That is what the residual note above is about.
       expect(await getEncryptionKeyNames(victim.page)).toEqual(expect.arrayContaining(['thunderbolt_dek_0']))
 
-      // Defence in depth: sessions are revoked too, so it cannot reach an
-      // authenticated route to fetch the new canary in the first place.
+      // Sessions are revoked too, so A4 cannot reach an authenticated route to
+      // fetch the new canary. NOT defence in depth for the signing key: a
+      // colluding server relays the canary envelope without any route (THU-872).
       expect(await countDeviceSessions(userId, victim.deviceId)).toEqual(0)
     } finally {
       await victim.context.close()

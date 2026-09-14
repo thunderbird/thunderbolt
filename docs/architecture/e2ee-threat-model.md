@@ -37,19 +37,47 @@ falsify, not a fact.
   onward while absent from the map, so every custom agent's `name`/`url`/`description` sat in
   Postgres in cleartext with no adversary action. Closed by adding `agents:
   ['name','url','description']`; `agents` was already synced, so no sync-rule change was needed. Two
-  residuals. (1) **The fix is forward-only.** Rows written before the map entry existed stay
-  cleartext at rest, because no re-encryption pass exists anywhere in the system — the same
-  concession the permanently-AAD-free `"v1"` slot makes, and accepted on the same terms. So C1 holds
-  for everything written after the entry, not for the back catalogue. (2) **Membership is unenforced
-  by anything but a test.** `attacks/synced-table-coverage.spec.ts` is now the standing drift guard
-  (green, untagged) and fails when a synced table with user-authored text has no map entry;
-  `scanServerForPlaintext` cannot catch it, because it only scans MAPPED columns and so never looks
-  at an unmapped table — which is precisely why the drift went unnoticed. Note also what membership
-  does NOT buy: it stops the client uploading plaintext, and it is what lets THU-874's download-side
-  check cover a column at all, but until 874 lands a server can still inject plaintext into a mapped
-  column and have the client persist it verbatim. For `agents.url` — the routing field for both
-  transports, iroh included — that is endpoint substitution, so C1 and the integrity half of this
-  claim close together rather than separately.
+  residuals. (1) **The fix was forward-only until THU-874's companion migration.** No general
+  re-encryption pass exists, but the one real back catalogue — `agents` rows written while the
+  table was synced and unmapped — is now re-saved through the encrypting upload path by the
+  `reencrypt-agents` data migration (delete+reinsert, because a same-value UPDATE diffs to an empty
+  patch and never changes the server copy). The migration marks the account done via a synced
+  setting, and deliberately does NOT mark it when it finds zero local rows: a fresh device whose
+  downloads were quarantined is indistinguishable from an agentless account, so it retries each
+  launch and converges when any data-holding device runs it. Residual within the residual: an
+  account whose plaintext agents rows survive on NO device keeps them server-side, invisible to
+  newly-enrolled devices, until such a device appears. The permanently-AAD-free `"v1"` slot
+  concession stands unchanged. (2) **Membership is unenforced by anything but a test.**
+  `attacks/synced-table-coverage.spec.ts` is now the standing drift guard (green, untagged) and
+  fails when a synced table with user-authored text has no map entry; `scanServerForPlaintext`
+  cannot catch it, because it only scans MAPPED columns and so never looks at an unmapped table —
+  which is precisely why the drift went unnoticed.
+
+  **The download side is now map-aware (THU-874).** Until it was, a server could inject plaintext
+  into a mapped column and have the client persist it verbatim — for `models.url` (with
+  `provider: 'custom'`) that shipped the full decrypted prompt and, through the `models_secrets`
+  row-id join, the user's BYOK API key to an attacker endpoint, all while the Private badge stayed
+  green; for `agents.url` it was endpoint substitution for both transports, so C1 and the
+  integrity half of this claim closed together rather than separately. Closed in
+  `EncryptionMiddleware`: on a device holding an Account Key (a client-local fact — gating on the
+  server-supplied `scheme_version` would let A2 switch the guard off, the config-flag-downgrade
+  shape), a PUT carrying a non-`__enc:` value in a mapped column is flipped to a MOVE op — op_id
+  and checksum consumed, nothing written, so a mutated row keeps its previous good value and an
+  injected row never lands. Legacy `__enc:` v1 values stay accepted (dual-read), decryption stays
+  map-blind (stale bundles still decode columns they do not know), nothing is ever nulled
+  (`models.name`/`url` are NOT NULL, and a nulled cell riding a later upload wedges the CRUD
+  queue). Gated by `attacks/models-plaintext-injection.spec.ts` (green, untagged) and the
+  quarantine suite in `EncryptionMiddleware.test.ts`. Residuals: A2 deleting rows — or
+  delete-and-reinserting them as plaintext, since the reinsert is quarantined — hides data, a DoS
+  the row owner has anyway, never a disclosure; a stale bundle whose map predates a column fails
+  open for that column until the app updates; the injected value itself stays in Postgres,
+  refused rather than rewritten; and `devices` is exempt from the quarantine outright — its rows
+  are inserted by the backend at registration with the plaintext name a keyless device sent, a
+  structural plaintext writer — so a server-rewritten `devices.name` (a display label, no routing
+  or content payoff) is accepted. RULE for future schema work: adding a column or table to
+  `encryptedColumnsMap` while plaintext rows for it already exist server-side requires a
+  re-encryption migration in the same change (the `reencrypt-agents` shape), or established
+  accounts' history is quarantined on every device enrolled afterwards.
 - **C2 — Server cannot induce key disclosure.** No server-controlled input (metadata, keyring rows,
   `kdf_salt`, `key_version`, `scheme_version`, challenge nonces) steers a client into wrapping,
   sending, or deriving a key the server can open. The org-escrow public key left this list in

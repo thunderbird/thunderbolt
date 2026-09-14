@@ -52,11 +52,13 @@
  * one: with the attestation verification disabled in `readStoredRecoveryPlan` it
  * fails again on assertion 1.
  *
- * Residual it does NOT cover: `revokeDeviceAndRotate` still revokes and rotates
- * the DEK before the anchor is verified, so under this attack the revoke commits
- * while the AK never rotates (degradation, not takeover — same shape as THU-871).
- * Pre-flighting the verification is follow-up work, and it will change this spec:
- * the revoke will abort before its challenge is consumed.
+ * That residual is now CLOSED, and closing it rewrote the second half of this
+ * spec. THU-887 pre-flights `readStoredRecoveryPlan` before the cut, so under
+ * this attack the revoke aborts with nothing applied: the device stays trusted,
+ * no `revoke` challenge is ever issued, and the dialog stays open carrying the
+ * pre-cut "Nothing was changed" copy. What this spec no longer covers is the
+ * verification on the ROTATION path — the one `changeRecoveryPhrase` takes —
+ * since the attack is stopped before any rotation begins.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/recovery-slot-substitution.spec.ts
@@ -67,7 +69,6 @@ import {
   getEncryptionServerSnapshot,
   getKdfSalt,
   getTaskIds,
-  waitForConsumedChallenge,
   waitForDeviceState,
   waitForEncryptedSetting,
   waitForNewEncryptedTasks,
@@ -82,7 +83,6 @@ import {
   getDeviceId,
   loginViaConsumerOtp,
   overrideEncryptionMetadata,
-  revokeTrustedDevice,
   startAdditionalDeviceSetup,
   trustAdditionalDevice,
 } from '../helpers'
@@ -132,19 +132,40 @@ test.describe.serial('THU-865 — recovery-slot substitution', () => {
       recovery_mlkem_public_key: attackerMlkemPublicKey,
     })
 
-    await revokeTrustedDevice(page, victim.label)
-    await waitForConsumedChallenge(userId, 'revoke')
+    // Driven locally rather than through `revokeTrustedDevice`, whose closing
+    // assertion is that the dialog CLOSES — true on every success path, and the
+    // opposite of the point here. THU-887 pre-flights the anchor verification,
+    // so this revoke aborts BEFORE the cut and the dialog stays open carrying
+    // the pre-cut copy.
+    await page.goto('/settings/devices')
+    await page.getByRole('button', { name: `Revoke ${victim.label}` }).click()
+    const revokeDialog = page.getByRole('alertdialog')
+    await expect(revokeDialog.getByText('Revoke this device?')).toBeVisible()
+    await revokeDialog.getByRole('button', { name: 'Revoke' }).click()
+
+    // SECURE assertion 1: the tampered anchor is refused, and refused EARLY —
+    // the wording is the pre-cut branch of `describeRevokeFailure`, so it is
+    // also the proof that nothing was applied.
+    await expect(revokeDialog.getByText(/Nothing was changed/i)).toBeVisible({ timeout: 30_000 })
+
     // Closed before the assertions below — leaving it open leaks the context on
     // every run.
     await victim.context.close()
 
-    // SECURE assertion 1 (root cause): the re-anchor must wrap the new AK to the
-    // account's OWN recovery keypair, so the stored public key is unchanged. The
-    // attestation over the served anchor does not verify under this device's key
-    // material, so the rotation aborts rather than adopting the attacker's keys.
-    await expect
-      .poll(async () => (await getEncryptionServerSnapshot(userId)).recoveryEcdhPublicKey, { timeout: 30_000 })
-      .toBe(legit.recoveryEcdhPublicKey)
+    // SECURE assertion 2: nothing was applied. The victim is still trusted, so
+    // the user has not been left with a device that looks revoked and is not
+    // locked out (THU-887) — and no `revoke` challenge was ever issued, because
+    // the nonce is fetched inside `revokeDeviceWithProof`, which never ran.
+    const victimState = await waitForDeviceState(userId, victim.deviceId, (state) => state.trusted)
+    expect(victimState.revokedAt).toBeNull()
+
+    // SECURE assertion 3 (root cause): the recovery slot still holds the
+    // account's OWN public key. Note this now passes because the attack is
+    // stopped before any rotation runs, rather than by a rotation that refuses
+    // the served anchor — the same function (`readStoredRecoveryPlan`) at an
+    // earlier call site. The rotation-path verification, which
+    // `changeRecoveryPhrase` takes, is no longer covered here.
+    expect((await getEncryptionServerSnapshot(userId)).recoveryEcdhPublicKey).toBe(legit.recoveryEcdhPublicKey)
 
     // The takeover attempt: a fresh device submits the ATTACKER's phrase (no
     // intercept needed — if the re-anchor took, the server already holds the
@@ -159,7 +180,7 @@ test.describe.serial('THU-865 — recovery-slot substitution', () => {
       await input.fill(attackerPhrase)
       await dialog.getByRole('button', { name: 'Submit' }).click()
 
-      // SECURE assertion 2: a phrase the account never minted must not unlock a
+      // SECURE assertion 4: a phrase the account never minted must not unlock a
       // device, so the recovery is refused and the device stays untrusted with no
       // envelope. Before the fix it became trusted and read the victim's task —
       // that takeover was executed in full at commit `17e79451`.

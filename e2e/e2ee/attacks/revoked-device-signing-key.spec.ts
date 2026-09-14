@@ -40,12 +40,12 @@
  * the row. That is deliberate: `attacks/canary-route-ungated.spec.ts` covers the
  * route as metadata hygiene, and gating it does not affect this spec.
  *
- * Fidelity: no crypto is re-implemented. The page does only AES-KW unwrap +
- * AES-GCM decrypt (plain WebCrypto, exactly as the SharedWorker does), and the
- * HKDF -> P-256 step calls the app's own `deriveSigningKeyPair` in the spec
- * process. `canaryAAD` comes from `@shared/e2ee-types`, so the AAD layout cannot
- * drift from production. This is what lets the full exploit be spec'd at L1
- * rather than argued by composition.
+ * Fidelity: no crypto is re-implemented. The page does only an AES-GCM DEK
+ * unwrap + AES-GCM decrypt (plain WebCrypto, exactly as the SharedWorker does),
+ * and the HKDF -> P-256 step calls the app's own `deriveSigningKeyPair` in the
+ * spec process. `canaryAAD` and `dekWrapAAD` come from `@shared/e2ee-types`, so
+ * neither AAD layout can drift from production. This is what lets the full
+ * exploit be spec'd at L1 rather than argued by composition.
  *
  * Expected-failure (Option C): this asserts the SECURE behavior — the recovered
  * canary secret does NOT yield the account's live `signing_public_key` — and is
@@ -58,7 +58,7 @@
  *   bash scripts/run-e2ee-powersync.sh attacks/revoked-device-signing-key.spec.ts
  */
 
-import { canaryAAD } from '@shared/e2ee-types'
+import { canaryAAD, dekWrapAAD } from '@shared/e2ee-types'
 import { deriveSigningKeyPair } from '@/crypto/canary'
 
 import { expect, test } from '../fixtures'
@@ -87,12 +87,15 @@ const canaryPrefix = 'thunderbolt-canary-v2'
  * retained plus the envelope A2 relayed: unwrap DEK-0 with the retained AK, then
  * AES-GCM-decrypt the post-rotation canary under the AAD the app would use.
  *
- * Returns the staged wrapped DEK-0 blob alongside the plaintext so the caller can
- * pin the epoch: AES-KW is deterministic, so a blob that differs from the
- * post-rotation server copy proves this material is wrapped under the OLD AK.
- * Without that check the spec cannot distinguish "opens the new canary with its
- * old AK" (the finding) from "revocation failed to lock it out at all" (a much
- * louder bug), because DEK-0's material is identical either way.
+ * Also pins the epoch: it additionally tries to unwrap the POST-ROTATION server
+ * copy of DEK-0 under the retained AK. That must FAIL (`serverBlobOpens: false`)
+ * — the rotation re-wrapped the row under a new AK this device was denied —
+ * while the LOCAL staged blob opens. Without that pin the spec cannot
+ * distinguish "opens the new canary with its old AK" (the finding) from
+ * "revocation failed to lock it out at all" (a much louder bug), because DEK-0's
+ * material is identical either way. (This used to compare blob bytes, which
+ * worked because AES-KW was deterministic; the THU-893 AAD-bound GCM wrapping
+ * has a random IV, so equality is vacuous and the pin unwraps instead.)
  *
  * `plaintext` is null when the decrypt fails — which is what a fix that re-keys
  * the canary off DEK-0 would produce, and is reported rather than thrown so the
@@ -102,9 +105,11 @@ const recoverCanarySecretFromRevokedDevice = async (
   page: import('@playwright/test').Page,
   envelope: { iv: string; ctext: string },
   aad: number[],
-): Promise<{ plaintext: string | null; wrappedDek0: string | null }> =>
+  wrapAad: number[],
+  serverWrappedDek0: string,
+): Promise<{ plaintext: string | null; hasLocalDek0: boolean; serverBlobOpens: boolean }> =>
   page.evaluate(
-    async ({ iv, ctext, aad }) => {
+    async ({ iv, ctext, aad, wrapAad, serverWrappedDek0 }) => {
       // Annotated `Uint8Array<ArrayBuffer>` so TS narrows the backing buffer to
       // BufferSource at every WebCrypto call site (the same copy-to-narrow dance
       // `verifyRecoveryAttestation` does in src/crypto/canary.ts).
@@ -128,31 +133,46 @@ const recoverCanarySecretFromRevokedDevice = async (
       const ak = await read<CryptoKey>('thunderbolt_ak')
       const wrappedDek0 = await read<string>('thunderbolt_dek_0')
       database.close()
-      if (!ak || !wrappedDek0) {
-        return { plaintext: null, wrappedDek0: wrappedDek0 ?? null }
-      }
 
-      try {
-        const dek0 = await crypto.subtle.unwrapKey(
+      // The DEK wrap format since THU-893: base64(iv(12) ‖ AES-GCM(raw DEK))
+      // with `dekWrapAAD(keyId)` bound as AAD — mirrored here byte-for-byte
+      // because a revoked client is exactly as capable of following the format
+      // as a trusted one.
+      const unwrapDek0 = async (wrappingKey: CryptoKey, blobBase64: string): Promise<CryptoKey> => {
+        const blob = fromBase64(blobBase64)
+        return crypto.subtle.unwrapKey(
           'raw',
-          fromBase64(wrappedDek0),
-          ak,
-          'AES-KW',
+          blob.slice(12),
+          wrappingKey,
+          { name: 'AES-GCM', iv: blob.slice(0, 12), additionalData: new Uint8Array(wrapAad) },
           { name: 'AES-GCM', length: 256 },
           false,
           ['decrypt'],
         )
+      }
+
+      if (!ak || !wrappedDek0) {
+        return { plaintext: null, hasLocalDek0: Boolean(wrappedDek0), serverBlobOpens: false }
+      }
+
+      const serverBlobOpens = await unwrapDek0(ak, serverWrappedDek0).then(
+        () => true,
+        () => false,
+      )
+
+      try {
+        const dek0 = await unwrapDek0(ak, wrappedDek0)
         const plaintext = await crypto.subtle.decrypt(
           { name: 'AES-GCM', iv: fromBase64(iv), additionalData: new Uint8Array(aad) },
           dek0,
           fromBase64(ctext),
         )
-        return { plaintext: new TextDecoder().decode(plaintext), wrappedDek0 }
+        return { plaintext: new TextDecoder().decode(plaintext), hasLocalDek0: true, serverBlobOpens }
       } catch {
-        return { plaintext: null, wrappedDek0 }
+        return { plaintext: null, hasLocalDek0: true, serverBlobOpens }
       }
     },
-    { iv: envelope.iv, ctext: envelope.ctext, aad },
+    { iv: envelope.iv, ctext: envelope.ctext, aad, wrapAad, serverWrappedDek0 },
   )
 
 test.describe.serial('THU-872 — revoked device re-derives the current signing key', () => {
@@ -200,17 +220,21 @@ test.describe.serial('THU-872 — revoked device re-derives the current signing 
       // A2 relays the post-rotation canary envelope out of the row it owns. No
       // route, no session — `revokeDeviceSessions` already deleted A4's session.
       const envelope = await getCanaryCiphertext(userId)
-      const { plaintext, wrappedDek0 } = await recoverCanarySecretFromRevokedDevice(victim.page, envelope, [
-        ...canaryAAD(userId, '0'),
-      ])
+      const { plaintext, hasLocalDek0, serverBlobOpens } = await recoverCanarySecretFromRevokedDevice(
+        victim.page,
+        envelope,
+        [...canaryAAD(userId, '0')],
+        [...dekWrapAAD('0')],
+        after.wrappedKeys['0'],
+      )
 
-      // Epoch pin: the rotation re-wrapped DEK-0 under the new AK, and AES-KW is
-      // deterministic, so the victim holding a DIFFERENT blob proves its material
-      // is the pre-rotation wrapping — i.e. it really was locked out and is
-      // opening the new canary with its OLD AK, which is the finding. Without
-      // this the assertion below would also pass if revocation had simply failed.
-      expect(wrappedDek0).not.toBeNull()
-      expect(wrappedDek0).not.toEqual(after.wrappedKeys['0'])
+      // Epoch pin: the rotation re-wrapped DEK-0 under the new AK, so the
+      // victim's retained AK must FAIL on the post-rotation server copy while
+      // its own staged blob opens — i.e. it really was locked out and is opening
+      // the new canary with its OLD AK, which is the finding. Without this the
+      // assertion below would also pass if revocation had simply failed.
+      expect(hasLocalDek0).toBe(true)
+      expect(serverBlobOpens).toBe(false)
 
       // Non-vacuity: if the canary did not decrypt at all, this spec proves
       // nothing about the signing key and must not pass by accident. A fix that

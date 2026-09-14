@@ -122,7 +122,7 @@ test.describe.serial('THU-869 — inbound AK-envelope adoption', () => {
     // response is left untouched, so no key_version bump is needed — the failed
     // local-AK probe alone drives adoption.
     const primaryKeyId = '0'
-    const attackerWrappedDek = await wrapDEK(attackerDek, attackerAk)
+    const attackerWrappedDek = await wrapDEK(attackerDek, attackerAk, primaryKeyId)
 
     // Collect the guard's refusal before navigating, so the boot that runs the
     // key responder's `prime` is observed.

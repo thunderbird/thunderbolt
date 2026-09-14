@@ -77,8 +77,9 @@ falsify, not a fact.
   account — minted once at bootstrap or upgrade, re-wrapped (never re-minted) by every rotation —
   which is exactly why the witness is a ciphertext UNDER the key rather than a copy of its
   wrapping: a wrapping legitimately changes on every rotation, so it could never be written once,
-  and a server can relabel one blob as another `key_id` (AES-KW carries no id binding) to repoint a
-  witness that tracked wrappings. On refusal nothing is persisted: the device keeps the keys it
+  and when this was designed a server could relabel one blob as another `key_id` to repoint a
+  witness that tracked wrappings (dead since THU-893's wrap AAD, but the write-once rule never
+  rested on it). On refusal nothing is persisted: the device keeps the keys it
   had, keeps working, and recovers by itself when an openable envelope is served. The same change
   closed a follower TOCTOU — `followToV2` verified one keyring and persisted a re-fetched one, via a
   call that could itself adopt a fresh AK and un-set the AK just verified.
@@ -160,14 +161,36 @@ falsify, not a fact.
   what makes a *transient* in-origin compromise (A6) non-persistent: the pointer lives in IndexedDB,
   so one write around the API would otherwise steer every future write for the life of the device.
 
+  The grammar constrains the LABEL, not the key behind it, and that gap was its own attack
+  (THU-893): A2 served the account's own genuine `"v1"` blob a second time under `key_id "1"` and
+  pointed the primary at the copy. Every gate above passed — the pointer is grammar-valid, the blob
+  is authentically wrapped under the real AK, and the AK is untouched so C2's witness never fires —
+  because AES-KW bound no `key_id` into a wrapped blob, so nothing tied the label a row was served
+  under to the label its key was created under. Every new write became well-formed, AAD-bound
+  `__enc:v2:1:…` sealed under the legacy CK: revocation-exempt, never rotated, and openable by any
+  v1-era device or pre-migration recovery phrase. Closed at the cipher layer: `wrapDEK` is AES-GCM
+  with the `key_id` bound as AAD (`dekWrapAAD`), and `unwrapDEK` builds the AAD from the id the
+  client is RESOLVING, so a relabelled blob — this one or any other — fails the auth tag on every
+  device, with no local state and nothing for the server to withhold. (An interim design compared
+  the primary DEK's material against the legacy CK; it needed an anchor to compare against, and A2
+  disarmed it on post-migration devices by withholding the `"v1"` slot. The AAD has no anchor.)
+  The pointer naming an unopenable row is still ADOPTED — it is grammar-valid — and the failure
+  lands at `codec.encode`, which fails closed and retries the upload. Under an active A2 that is a
+  write outage, accepted deliberately: A2 can always cause one, and refusing to move off a stale
+  key instead would keep writes on exactly the DEK a revoked device copied (C5). Gated by
+  `attacks/relabelled-v1-primary.spec.ts` (green, untagged) and the unit relabel tests in
+  `src/crypto/primitives.test.ts`.
+
   Residual: the pointer is unauthenticated server data, so a **grammar-valid** rollback is still
   open — A2 reporting `"0"` on an account that rotated to `"1"` puts new writes back under a DEK a
   revoked device copied while trusted. Same shape as C5's guarantee, different label. Nothing the
   client holds can settle it: the canary, the one artifact a server cannot forge, is deliberately
   bound to DEK `"0"` for the life of the account, so it attests nothing about which DEK is primary.
-  Closing it means signing the keyring (`primary_key_id` + `key_version`) under the epoch signing
-  key, or a monotonic local guard — which protects only a device that already saw the newer
-  pointer, since a freshly enrolled one has no baseline.
+  THU-893's wrap AAD does not reach it — nothing is mislabelled in a rollback; the row is genuine
+  under its own honest name. What the AAD settles is the `key_id → material` half: a signed pointer
+  can no longer be satisfied by an honest-looking relabel, so what remains for THU-890 is
+  FRESHNESS — an attestation that proves the pointer is current, not merely well-formed, minus a
+  monotonic local guard's blind spot (a freshly enrolled device has no baseline).
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
   operation.** Note the coupling: the ECDSA signing keypair is derived from the canary secret, which

@@ -287,6 +287,29 @@ falsify, not a fact.
   which now refuses an AK that cannot reproduce its DEK `"0"` witness (see C2). NOT closed for a
   freshly enrolled one, whose first adoption is trust-on-first-use: there, this claim still rests on
   the server not having substituted the AK at enrolment.
+
+  **Scope correction + closure (THU-875).** "Cannot be abused for takeover" was an overclaim: the
+  attestation authenticates the ACCOUNT — any keyring holder signs a valid one — not the human. A
+  still-trusted attacker (A6 in-origin script, a borrowed unlocked session, a compromised trusted
+  device) could run the legitimate change-phrase flow and re-anchor the slot to ITS keys, silently:
+  the pending marker is device-local, no other device signals, and every later rotation — including
+  the revoke that removed the attacker — faithfully re-anchored to the planted keys. A transient
+  origin-level compromise became permanent account takeover. Closed 2026-09-14 by a **server-enforced
+  step-up gate plus out-of-band notification**: `POST /encryption/rotate` refuses a body whose
+  recovery public keys differ from the stored ones (intent derived from EFFECT, never a client-
+  declared mode — the client is the attacker here) unless it carries a fresh emailed code, checked
+  against the SESSION's email and consumed only on commit; and every recovery re-anchor and every
+  device-gains-access event (approval, recovery-phrase use, bridge registration, bootstrap, upgrade)
+  emails the account out-of-band — the one channel an in-origin attacker cannot suppress. Same-key
+  rotations are untouched, so revocation stays one-click and silent. The same differ-check closes
+  this claim's residual shape from THU-865's follow-ups: differing keys can no longer ride a
+  keep-shaped rotation unnoticed. Gated by `attacks/silent-recovery-takeover.spec.ts` (green,
+  untagged: the attacker dies at the gate with the anchor unmoved) and the gate matrix in
+  `backend/src/api/encryption-v2.test.ts`. **Boundary + residuals:** full device/OS compromise is
+  out of scope — the guarantee is that a TRANSIENT, ORIGIN-LEVEL compromise cannot become permanent
+  takeover. The interim step-up factor is an email OTP, defeatable by an attacker who also reads the
+  victim's inbox in the same browser; the factor upgrades to a passkey/PRF assertion when THU-790
+  lands (recorded there), and the notification remains the net beneath the gate either way.
 - **C10 — Key material at rest.** Non-extractable where it must be; the ML-KEM secret is encrypted at
   rest and its wrapping key is itself non-extractable; `rewrapKeyring`'s temporary extractability is
   never persisted; sign-out leaves no orphaned key.

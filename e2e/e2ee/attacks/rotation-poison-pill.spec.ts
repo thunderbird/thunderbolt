@@ -57,7 +57,7 @@
 
 import { expect, test } from '../fixtures'
 import { getEncryptionServerSnapshot, plantWrappedKey, waitForUserId } from '../db'
-import { completeFirstDeviceSetup, createE2eeEmail, loginViaConsumerOtp } from '../helpers'
+import { completeFirstDeviceSetup, completeStepUpCode, createE2eeEmail, loginViaConsumerOtp } from '../helpers'
 
 test.describe.serial('THU-871 — rotation poison-pill', () => {
   test('a junk keyring row does not block AK rotation', async ({ page }) => {
@@ -80,7 +80,10 @@ test.describe.serial('THU-871 — rotation poison-pill', () => {
     await page.goto('/settings/preferences')
     await page.getByRole('button', { name: 'Change Recovery Phrase' }).click()
     const confirm = page.getByRole('alertdialog')
-    await confirm.getByRole('button', { name: 'Generate new phrase' }).click()
+    // Step-up gated since THU-875 — complete it; this spec attacks the keyring,
+    // not the gate.
+    await confirm.getByRole('button', { name: 'Send code' }).click()
+    await completeStepUpCode(page, email)
 
     // SECURE assertion: the rotation completes despite the junk row.
     await expect

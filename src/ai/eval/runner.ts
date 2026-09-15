@@ -20,14 +20,25 @@ import { extractLastUserText } from '@/skills/resolve-skill-system-messages'
 import { v7 as uuidv7 } from 'uuid'
 import type { AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { evaluateWithJudge, judgeScenario } from './judge'
+import { evaluateWithJudge, judgeScenario, requiresJudge, semanticVerdicts, type JudgeVerdict } from './judge'
 import { verbose } from './options'
 import { getModelId } from './scenarios'
 import { getWebToolCalls, scoreResult } from './scoring'
+import { getScenarioTurns } from './turns'
 import { positiveFinite, serializeArtifact } from './stats'
 import { printResult, startSpinner, stopSpinner } from './ui'
 import { describeExecutionError, parseStream } from './stream-parser'
-import type { EvalAttempt, EvalCriteria, EvalScenario, EvalTrial, ParsedStream, Verdict } from './types'
+import type {
+  EvalAttempt,
+  EvalCriteria,
+  EvalScenario,
+  EvalTrial,
+  ParsedStream,
+  Verdict,
+  EvalEvidence,
+  EvalTurnResult,
+  JudgeTurn,
+} from './types'
 
 let evalHttpClient: HttpClient | undefined
 const getEvalHttpClient = () =>
@@ -173,14 +184,6 @@ const emptyStream = (): ParsedStream => ({
   events: [],
 })
 
-const judgeFields = {
-  expectCorrectAnswer: 'correct',
-  expectSearchOffer: 'searchOffer',
-  expectPremiseRebuttal: 'premiseRebuttal',
-  expectVerificationDisclaimer: 'verificationDisclaimer',
-  expectReplyLanguage: 'replyLanguageMatches',
-} as const
-
 const traceAssertions = new Set([
   'maxToolCalls',
   'maxSteps',
@@ -200,7 +203,7 @@ export const deterministicVerdicts = (
     Object.entries(scenario.criteria)
       .filter(([, value]) => value !== undefined && value !== false)
       .map(([key, value]) => {
-        if (Object.hasOwn(judgeFields, key) || (!completed && !traceAssertions.has(key))) {
+        if (requiresJudge({ mustProduceOutput: false, [key]: value }) || (!completed && !traceAssertions.has(key))) {
           return [key, 'unknown']
         }
         const criteria: EvalCriteria = { mustProduceOutput: false, [key]: value }
@@ -249,12 +252,79 @@ export const recoveredToolEvents = (streams: ParsedStream[]): EvalAttempt['toolE
   return counts
 }
 
+/** Keep source IDs from each turn's web-tool outputs; sufficient snippets are evidence too. */
+export const extractTurnEvidence = (stream: ParsedStream): EvalEvidence[] => {
+  const calls = new Map(getWebToolCalls(stream.toolCalls).map((call) => [call.toolCallId, call.toolName]))
+  return (stream.events ?? []).flatMap((event) => {
+    const toolName = calls.get(String(event.toolCallId))
+    if (event.type !== 'tool-output-available' || (toolName !== 'search' && toolName !== 'fetch_content')) {
+      return []
+    }
+    const output = toolOutput(event)
+    return (Array.isArray(output) ? output : [output]).flatMap((value: unknown) => {
+      if (!value || typeof value !== 'object') {
+        return []
+      }
+      const source = value as Record<string, unknown>
+      const url = source.url ?? source.pageUrl
+      if (typeof source.sourceIndex !== 'number' || typeof url !== 'string') {
+        return []
+      }
+      return [
+        {
+          sourceIndex: source.sourceIndex,
+          url,
+          title: String(source.title ?? url),
+          text: [source.text, source.snippet].filter((part) => typeof part === 'string' && part.trim()).join('\n'),
+          toolName,
+        },
+      ]
+    })
+  })
+}
+
+type EvaluateTurn = (scenario: EvalScenario, conversation: JudgeTurn[], signal: AbortSignal) => Promise<JudgeVerdict>
+
+/** Grade only this turn's declarations, preserving unknowns when generation was interrupted. */
+const gradeTurn = async (
+  scenario: EvalScenario,
+  parsed: ParsedStream,
+  durationMs: number,
+  conversation: JudgeTurn[],
+  evaluate: EvaluateTurn,
+): Promise<EvalTurnResult> => {
+  const verdicts = deterministicVerdicts(scenario, parsed, !parsed.error)
+  const criteria: EvalCriteria = parsed.error
+    ? {
+        mustProduceOutput: false,
+        ...Object.fromEntries(Object.entries(scenario.criteria).filter(([key]) => verdicts[key] === 'fail')),
+      }
+    : scenario.criteria
+  const deterministic = scoreResult({ ...scenario, criteria }, { ...parsed, error: undefined }, durationMs)
+  const result = parsed.error
+    ? {
+        ...deterministic,
+        scenario,
+        passed: false,
+        error: parsed.error,
+        failures: [...deterministic.failures, parsed.error],
+      }
+    : await evaluateWithJudge(deterministic, (signal) => evaluate(scenario, conversation, signal))
+  return {
+    turn: conversation.length,
+    result,
+    verdicts: { ...verdicts, ...semanticVerdicts(scenario.criteria, result.judgeVerdict) },
+  }
+}
+
 /** Execute one isolated trajectory; generation and judging have separate deadlines. */
 export const runScenario = async (
   scenario: EvalScenario,
   adapter: AgentAdapter,
   fetchTurn = fetchAndParseTurn,
+  evaluateTurn?: EvaluateTurn,
 ): Promise<EvalAttempt> => {
+  const allTurns = getScenarioTurns(scenario)
   const timeout = positiveFinite(process.env.EVAL_TIMEOUT, 600000, 'EVAL_TIMEOUT')
   const start = performance.now()
   const selectedModel = await getModel(getDb(), getModelId(scenario.modelName))
@@ -271,6 +341,12 @@ export const runScenario = async (
   const proxyFetch = createProxyFetch({ cloudUrl: getLocalSetting('cloudUrl'), getProxyAuthToken: getAuthToken })
   const history: ThunderboltUIMessage[] = []
   const streams: ParsedStream[] = []
+  const conversation: JudgeTurn[] = []
+  const turnResults: EvalTurnResult[] = []
+  const evaluate: EvaluateTurn =
+    evaluateTurn ??
+    ((turnScenario, turns, signal) =>
+      judgeScenario(turnScenario, turns.at(-1)!.responseText, () => proxyFetch, signal, turns))
   const instrumentation: EvalAttempt['instrumentation'] = {
     emitted: 0,
     executed: 0,
@@ -289,13 +365,16 @@ export const runScenario = async (
       toolsCapture: 'unavailable',
     },
   }
-  const allTurns = [scenario.prompt, ...(scenario.followUps ?? [])]
-  const state: { setupFailure?: string; scoredTurnReached: boolean } = { scoredTurnReached: false }
-  for (const [index, text] of allTurns.entries()) {
+  const state: { setupFailure?: string; scoredTurnReached: boolean; judgeDurationMs: number } = {
+    scoredTurnReached: false,
+    judgeDurationMs: 0,
+  }
+  for (const [index, turn] of allTurns.entries()) {
+    const turnStart = performance.now()
     const user: ThunderboltUIMessage = {
       id: uuidv7(),
       role: 'user',
-      parts: [{ type: 'text', text: `${skillToken}${text}` }],
+      parts: [{ type: 'text', text: `${skillToken}${turn.prompt}` }],
     }
     const messages = [...history, user]
     const context = createEvalAdapterContext({
@@ -319,7 +398,7 @@ export const runScenario = async (
       }
       return result
     }
-    const remaining = timeout - (performance.now() - start)
+    const remaining = timeout - (performance.now() - start - state.judgeDurationMs)
     state.scoredTurnReached = index === allTurns.length - 1 && remaining > 0
     const parsed =
       remaining <= 0
@@ -331,6 +410,30 @@ export const runScenario = async (
             remaining,
           )
     streams.push(parsed)
+    conversation.push({ prompt: turn.prompt, responseText: parsed.text, evidence: extractTurnEvidence(parsed) })
+    if (turn.criteria && (index < allTurns.length - 1 || state.scoredTurnReached)) {
+      const turnScenario: EvalScenario = {
+        ...scenario,
+        prompt: turn.prompt,
+        followUps: undefined,
+        promptCriteria: undefined,
+        promptExpectation: undefined,
+        criteria: turn.criteria,
+        expectation: turn.expectation,
+      }
+      const graded = await gradeTurn(
+        turnScenario,
+        parsed,
+        Math.round(performance.now() - turnStart),
+        conversation,
+        evaluate,
+      )
+      turnResults.push(graded)
+      state.judgeDurationMs += graded.result.judgeAttempts?.reduce((sum, attempt) => sum + attempt.durationMs, 0) ?? 0
+      if (!graded.result.passed) {
+        break
+      }
+    }
     if (parsed.error) {
       break
     }
@@ -341,10 +444,16 @@ export const runScenario = async (
     history.push(user, { id: uuidv7(), role: 'assistant', parts: parsed.assistantParts })
   }
   const parsed = streams.at(-1)!
-  const generationDurationMs = Math.round(performance.now() - start)
-  const completed = !parsed.error
+  const generationDurationMs = Math.round(performance.now() - start - state.judgeDurationMs)
   const onScoredTurn = state.scoredTurnReached
-  const verdicts = onScoredTurn ? deterministicVerdicts(scenario, parsed, completed) : {}
+  const verdicts: Record<string, Verdict> = Object.fromEntries(
+    turnResults.flatMap(({ turn, verdicts }) =>
+      Object.entries(verdicts).map(([key, verdict]) => [
+        turn === allTurns.length ? key : `turn${turn}.${key}`,
+        verdict,
+      ]),
+    ),
+  )
   if (state.setupFailure) {
     verdicts.setupTurn = 'fail'
   }
@@ -352,36 +461,24 @@ export const runScenario = async (
     verdicts.deadline = 'fail'
   }
   const provenFailure = Object.values(verdicts).includes('fail')
-  const observedCriteria: EvalCriteria = {
-    mustProduceOutput: false,
-    ...Object.fromEntries(Object.entries(scenario.criteria).filter(([key]) => verdicts[key] === 'fail')),
-  }
-  const deterministic = scoreResult(
-    completed && onScoredTurn ? scenario : { ...scenario, criteria: observedCriteria },
-    onScoredTurn ? { ...parsed, error: undefined } : emptyStream(),
-    generationDurationMs,
-  )
-  const result =
-    completed && onScoredTurn && !state.setupFailure
-      ? await evaluateWithJudge(deterministic, (signal) =>
-          judgeScenario(scenario, parsed.text, () => proxyFetch, signal),
-        )
-      : {
-          ...deterministic,
-          passed: false,
-          error: parsed.error,
-          failures: [
-            ...(provenFailure ? deterministic.failures : []),
-            ...(state.setupFailure ? [state.setupFailure] : []),
-            ...(parsed.error ? [parsed.error] : []),
-          ],
-        }
-  for (const [key, field] of Object.entries(judgeFields)) {
-    if (!(key in verdicts)) {
-      continue
-    }
-    const value = result.judgeVerdict?.[field]
-    verdicts[key] = typeof value === 'boolean' ? (value ? 'pass' : 'fail') : 'unknown'
+  const scored =
+    turnResults.find(({ turn }) => turn === allTurns.length)?.result ??
+    scoreResult({ ...scenario, criteria: { mustProduceOutput: false } }, emptyStream(), 0)
+  const error = parsed.error ?? turnResults.at(-1)?.result.error
+  const result = {
+    ...scored,
+    scenario,
+    error,
+    passed: onScoredTurn && !error && !state.setupFailure && turnResults.every(({ result }) => result.passed),
+    failures: [
+      ...new Set([
+        ...turnResults.flatMap(({ turn, result }) =>
+          result.failures.map((failure) => (turn === allTurns.length ? failure : `Turn ${turn}: ${failure}`)),
+        ),
+        ...(state.setupFailure ? [state.setupFailure] : []),
+        ...(parsed.error ? [parsed.error] : []),
+      ]),
+    ],
   }
   const events = streams.flatMap(({ events }) => events ?? [])
   const researchCalls = events.filter(
@@ -417,7 +514,7 @@ export const runScenario = async (
     console.log(`${dim}${JSON.parse(serializeArtifact(parsed.text || '(empty response)'))}${reset}`)
     console.log(`${yellow}--- END RESPONSE ---${reset}\n`)
   }
-  const judgeDurationMs = result.judgeAttempts?.reduce((sum, attempt) => sum + attempt.durationMs, 0) ?? 0
+  const judgeDurationMs = state.judgeDurationMs
   return structuredClone({
     threadId,
     status:
@@ -434,6 +531,7 @@ export const runScenario = async (
     generationDurationMs,
     judgeDurationMs,
     streams,
+    turnResults,
     scoredTurnReached: onScoredTurn,
     result: { ...result, durationMs: generationDurationMs + judgeDurationMs },
     verdicts,

@@ -395,7 +395,10 @@ const widgetSearchPrompts: PromptDef[] = [
 // Scenario Generation
 // ──────────────────────────────────────────────
 
-type PromptDef = { id: string; prompt: string; followUps?: string[]; criteria?: EvalCriteria }
+type PromptDef = Pick<
+  EvalScenario,
+  'id' | 'prompt' | 'followUps' | 'expectation' | 'promptCriteria' | 'promptExpectation'
+> & { criteria?: EvalCriteria }
 
 const buildScenarios = (
   prompts: PromptDef[],
@@ -410,6 +413,9 @@ const buildScenarios = (
       modeName,
       prompt: p.prompt,
       followUps: p.followUps,
+      expectation: p.expectation,
+      promptCriteria: p.promptCriteria,
+      promptExpectation: p.promptExpectation,
       criteria: p.criteria ?? defaultCriteria,
     })),
   )

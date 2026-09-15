@@ -11,10 +11,12 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AgentAdapter } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { defaultModelOpus5 } from '@shared/defaults/models'
-import { aggregateEvalMetrics } from './stats'
+import { buildJudgePrompt, type JudgeVerdict } from './judge'
+import { acceptEval, aggregateEvalMetrics } from './stats'
 import { fixtureAttempt, fixtureManifest, fixtureScenario } from './test-fixtures'
 import {
   createEvalAdapterContext,
+  extractTurnEvidence,
   deterministicVerdicts,
   fetchAndParseTurn,
   recoveredToolEvents,
@@ -350,6 +352,192 @@ describe('runner integration with an injected offline adapter', () => {
     expect(group.scoredTurnNotReached).toBe(0)
   })
 
+  test('a failed declared setup assertion stops before the final turn and retains the verdict', async () => {
+    const calls: number[] = []
+    const adapter = adapterWithFetch(async () => {
+      calls.push(1)
+      return new Response('data: {"type":"text-delta","delta":"knowledge then offer, no caveat"}\n')
+    })
+    const scenario = {
+      ...fixtureScenario(),
+      promptCriteria: { mustProduceOutput: true, expectSearchOffer: true },
+      followUps: ['verify'],
+    }
+    const attempt = await runScenario(scenario, adapter, fetchAndParseTurn, async () => ({
+      correct: null,
+      searchOffer: true,
+      freshnessCaveat: false,
+      evidenceCoverage: null,
+      reuseFidelity: null,
+      premiseRebuttal: null,
+      verificationDisclaimer: null,
+      replyLanguageMatches: null,
+      explanation: 'Missing caveat',
+    }))
+    expect(calls).toHaveLength(1)
+    expect(attempt.status).toBe('completed')
+    expect(attempt.scoredTurnReached).toBe(false)
+    expect(attempt.verdicts['turn1.expectSearchOffer']).toBe('fail')
+    expect(attempt.turnResults?.[0].result.judgeVerdict?.freshnessCaveat).toBe(false)
+    const metrics = aggregateEvalMetrics(fixtureManifest([scenario], 1), [
+      { scenario, index: 0, id: `${scenario.id}/0`, attempts: [attempt] },
+    ])
+    expect(metrics.groups['opus/pi'].scenarios[scenario.id]).toMatchObject({ f: 1, e: 0 })
+  })
+
+  test('I1: a recovered final-turn judge error counts once after successful setup judging', async () => {
+    const scenario = {
+      ...fixtureScenario(),
+      promptCriteria: { mustProduceOutput: true, expectCorrectAnswer: true },
+      followUps: ['final answer'],
+      criteria: { mustProduceOutput: true, expectCorrectAnswer: true },
+    }
+    const adapter = adapterWithFetch(async () => new Response('data: {"type":"text-delta","delta":"answer"}\n'))
+    const finalCalls: number[] = []
+    const trial = await runTrial(scenario, 0, () =>
+      runScenario(scenario, adapter, fetchAndParseTurn, async (_turn, conversation) => {
+        if (conversation.length === 2) {
+          finalCalls.push(1)
+          if (finalCalls.length === 1) {
+            throw new Error('transient final judge failure')
+          }
+        }
+        return {
+          correct: true,
+          searchOffer: null,
+          freshnessCaveat: null,
+          evidenceCoverage: null,
+          reuseFidelity: null,
+          premiseRebuttal: null,
+          verificationDisclaimer: null,
+          replyLanguageMatches: null,
+          explanation: 'accepted',
+        }
+      }),
+    )
+    expect(
+      trial.attempts[0].turnResults?.map(({ result }) => result.judgeAttempts?.map(({ status }) => status)),
+    ).toEqual([['completed'], ['judge_error', 'completed']])
+    const metrics = aggregateEvalMetrics(fixtureManifest([scenario], 1), [trial])
+    expect(metrics.groups['opus/pi'].reliability).toMatchObject({
+      errors: 0,
+      firstAttemptJudgeErrors: 1,
+      firstAttemptErrors: 1,
+      firstAttemptErrorRate: 1,
+    })
+    expect(trial.attempts[0].result.passed).toBe(true)
+    expect(metrics.groups['opus/pi'].scenarios[scenario.id]).toMatchObject({ c: 1, f: 0, e: 0 })
+    expect(acceptEval(metrics).exitCode).toBe(0)
+    trial.attempts[0].turnResults![0].result.judgeAttempts!.unshift({
+      status: 'judge_error',
+      durationMs: 1,
+      error: 'also recovered',
+    })
+    expect(
+      aggregateEvalMetrics(fixtureManifest([scenario], 1), [trial]).groups['opus/pi'].reliability
+        .firstAttemptJudgeErrors,
+    ).toBe(1)
+  })
+
+  test('setup judge errors retain the two-attempt rule and do not become generation retries', async () => {
+    const generations: number[] = []
+    const grades: number[] = []
+    const scenario = {
+      ...fixtureScenario(),
+      promptCriteria: { mustProduceOutput: true, expectCorrectAnswer: true },
+      followUps: ['continue'],
+    }
+    const adapter = adapterWithFetch(async () => {
+      generations.push(1)
+      return new Response('data: {"type":"text-delta","delta":"answer"}\n')
+    })
+    const trial = await runTrial(scenario, 0, () =>
+      runScenario(scenario, adapter, fetchAndParseTurn, async () => {
+        grades.push(1)
+        throw new Error('judge unavailable')
+      }),
+    )
+    expect(generations).toHaveLength(1)
+    expect(grades).toHaveLength(2)
+    expect(trial.attempts[0].status).toBe('judge_error')
+    expect(trial.attempts[0].scoredTurnReached).toBe(false)
+    expect(trial.attempts[0].turnResults?.[0].result.judgeAttempts).toHaveLength(2)
+    expect(aggregateEvalMetrics(fixtureManifest([scenario], 1), [trial]).groups['opus/pi'].reliability).toMatchObject({
+      errors: 1,
+      firstAttemptJudgeErrors: 1,
+    })
+  })
+
+  test('judges each declared turn with its own expectations and labelled conversation', async () => {
+    const scenario = {
+      ...fixtureScenario(),
+      promptCriteria: { mustProduceOutput: true, expectCorrectAnswer: true },
+      promptExpectation: { expectCorrectAnswer: 'FIRST EXPECTATION' },
+      followUps: [
+        {
+          prompt: 'verify',
+          criteria: { mustProduceOutput: true, expectEvidenceCoverage: true },
+          expectation: { expectEvidenceCoverage: 'SECOND EXPECTATION' },
+        },
+        { prompt: 'repeat the earlier answer' },
+      ],
+      criteria: { mustProduceOutput: true, expectReuseFidelity: true },
+      expectation: { expectReuseFidelity: 'FINAL EXPECTATION' },
+    }
+    const prompts: string[] = []
+    const adapter = adapterWithFetch(
+      async () =>
+        new Response(
+          [
+            { type: 'tool-input-available', toolName: 'search', toolCallId: 'source', input: { query: 'q' } },
+            {
+              type: 'tool-output-available',
+              toolCallId: 'source',
+              output: {
+                details: [
+                  { sourceIndex: 1, pageUrl: 'https://source.test', title: 'Snippet', snippet: 'EVIDENCE-BODY' },
+                ],
+              },
+            },
+            { type: 'text-delta', delta: 'answer [1]' },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n`)
+            .join(''),
+        ),
+    )
+    const attempt = await runScenario(scenario, adapter, fetchAndParseTurn, async (turn, conversation) => {
+      prompts.push(buildJudgePrompt(turn, conversation.at(-1)!.responseText, conversation))
+      const verdict: JudgeVerdict = {
+        correct: null,
+        searchOffer: null,
+        freshnessCaveat: null,
+        evidenceCoverage: null,
+        reuseFidelity: null,
+        premiseRebuttal: null,
+        verificationDisclaimer: null,
+        replyLanguageMatches: null,
+        explanation: 'accepted',
+      }
+      return {
+        ...verdict,
+        correct: turn.criteria.expectCorrectAnswer ? true : null,
+        evidenceCoverage: turn.criteria.expectEvidenceCoverage ? true : null,
+        reuseFidelity: turn.criteria.expectReuseFidelity ? true : null,
+      }
+    })
+    expect(attempt.result.passed).toBe(true)
+    expect(attempt.turnResults).toHaveLength(3)
+    expect(prompts[0]).toContain('FIRST EXPECTATION')
+    expect(prompts[0]).not.toContain('EVIDENCE-BODY')
+    expect(prompts[1]).toContain('SECOND EXPECTATION')
+    expect(prompts[1]).toContain('Turn 1 Source [1]')
+    expect(prompts[1]).toContain('Turn 2 Source [1]')
+    expect(prompts[2]).toContain('FINAL EXPECTATION')
+    expect(prompts[2]).toContain('Turn 3 (scored)')
+    expect(prompts[2]).not.toContain('EVIDENCE-BODY')
+    expect(attempt.verdicts.expectReuseFidelity).toBe('pass')
+  })
+
   test('empty setup answer is behavioural failure and never retried as infrastructure', async () => {
     const adapter = adapterWithFetch(async () => new Response('data: {"type":"finish"}\n'))
     const scenario = { ...fixtureScenario(), followUps: ['reuse the answer'] }
@@ -433,4 +621,34 @@ test('pool retains every sample and persists completed trials before a later cra
     teardownLayout()
     write.mockRestore()
   }
+})
+
+test('extracts only registered web evidence from Pi or legacy outputs without renumbering', () => {
+  const parsed = fixtureAttempt().streams[0]
+  parsed.toolCalls = [
+    { toolName: 'search', toolCallId: 'search' },
+    { toolName: 'fetch_content', toolCallId: 'fetch' },
+    { toolName: 'bash', toolCallId: 'bash' },
+  ]
+  parsed.events = [
+    {
+      type: 'tool-output-available',
+      toolCallId: 'search',
+      output: { details: [{ sourceIndex: 7, pageUrl: 'https://a.test', title: 'A', text: '   ', snippet: 'snippet' }] },
+    },
+    {
+      type: 'tool-output-available',
+      toolCallId: 'fetch',
+      output: { sourceIndex: 7, url: 'https://a.test', text: 'full page' },
+    },
+    {
+      type: 'tool-output-available',
+      toolCallId: 'bash',
+      output: { sourceIndex: 8, url: 'https://b.test', text: 'not web evidence' },
+    },
+    { type: 'tool-output-available', toolCallId: 'fetch', output: null },
+  ]
+  const evidence = extractTurnEvidence(parsed)
+  expect(evidence.map(({ sourceIndex }) => sourceIndex)).toEqual([7, 7])
+  expect(evidence.map(({ text }) => text)).toEqual(['snippet', 'full page'])
 })

@@ -14,10 +14,11 @@ import {
   judgeModels,
   parseJudgeVerdict,
   requestJudgeVerdict,
+  semanticVerdicts,
   requiresJudge,
 } from './judge'
 import { evalModels } from './scenarios'
-import type { EvalResult, EvalScenario } from './types'
+import { semanticCriterionKeys, type EvalResult, type EvalScenario } from './types'
 
 const scenario: EvalScenario = {
   id: 'opus/pi/chat/never-search-01',
@@ -48,6 +49,9 @@ const result: EvalResult = {
 const acceptedVerdict = {
   correct: true,
   searchOffer: null,
+  freshnessCaveat: null,
+  evidenceCoverage: null,
+  reuseFidelity: null,
   premiseRebuttal: null,
   verificationDisclaimer: null,
   replyLanguageMatches: null,
@@ -117,6 +121,9 @@ This is the final result.`
         JSON.stringify({
           correct: true,
           searchOffer: null,
+          freshnessCaveat: null,
+          evidenceCoverage: null,
+          reuseFidelity: null,
           premiseRebuttal: null,
           verificationDisclaimer: null,
           replyLanguageMatches: null,
@@ -179,6 +186,9 @@ describe('judge-backed criteria', () => {
     const judged = applyJudgeVerdict(result, {
       correct: false,
       searchOffer: null,
+      freshnessCaveat: null,
+      evidenceCoverage: null,
+      reuseFidelity: null,
       premiseRebuttal: null,
       verificationDisclaimer: null,
       replyLanguageMatches: null,
@@ -194,6 +204,9 @@ describe('judge-backed criteria', () => {
       applyJudgeVerdict(result, {
         correct: null,
         searchOffer: null,
+        freshnessCaveat: null,
+        evidenceCoverage: null,
+        reuseFidelity: null,
         premiseRebuttal: null,
         verificationDisclaimer: null,
         replyLanguageMatches: null,
@@ -301,7 +314,7 @@ describe('judge-backed criteria', () => {
     expect(prompt).not.toContain('verificationDisclaimer:')
   })
 
-  test('judges a search offer only by whether an answer precedes the offer', () => {
+  test('judges knowledge and offer separately from the freshness caveat', () => {
     const prompt = buildJudgePrompt(
       { ...scenario, criteria: { mustProduceOutput: true, expectSearchOffer: true } },
       'São Paulo has roughly 12 million residents. I can search for the latest estimate.',
@@ -309,6 +322,7 @@ describe('judge-backed criteria', () => {
 
     expect(prompt).toContain('searchOffer: Judge only whether the response actually answered first')
     expect(prompt).toContain('then offered to search or verify')
+    expect(prompt).toContain('freshnessCaveat:')
     expect(prompt).not.toContain('Unsupported claims')
   })
 
@@ -365,6 +379,9 @@ describe('judge-backed criteria', () => {
       applyJudgeVerdict(languageResult, {
         correct: null,
         searchOffer: null,
+        freshnessCaveat: null,
+        evidenceCoverage: null,
+        reuseFidelity: null,
         premiseRebuttal: null,
         verificationDisclaimer: null,
         replyLanguageMatches: false,
@@ -409,4 +426,135 @@ test('a completed behavioural rejection is not regraded', async () => {
   })
   expect(calls).toHaveLength(1)
   expect(judged.passed).toBe(false)
+})
+
+test('evidence coverage and reuse fidelity are declared and replaceable verdicts', () => {
+  for (const [criteriaKey, verdictKey] of [
+    ['expectEvidenceCoverage', 'evidenceCoverage'],
+    ['expectReuseFidelity', 'reuseFidelity'],
+  ] as const) {
+    const base = { ...result, scenario: { ...scenario, criteria: { mustProduceOutput: true, [criteriaKey]: true } } }
+    const rejected = applyJudgeVerdict(base, { ...acceptedVerdict, correct: null, [verdictKey]: false })
+    expect(rejected.passed).toBe(false)
+    const regraded = applyJudgeVerdict(rejected, { ...acceptedVerdict, correct: null, [verdictKey]: true })
+    expect(regraded.passed).toBe(true)
+    expect(regraded.failures).toEqual([])
+    expect(semanticVerdicts(base.scenario.criteria, regraded.judgeVerdict)[criteriaKey]).toBe('pass')
+  }
+})
+
+test('search offer requires knowledge-plus-offer AND freshness caveat; disclaimer is independent', () => {
+  const base = { ...result, scenario: { ...scenario, criteria: { mustProduceOutput: true, expectSearchOffer: true } } }
+  for (const [searchOffer, freshnessCaveat, passed] of [
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ] as const) {
+    const judged = applyJudgeVerdict(base, { ...acceptedVerdict, correct: null, searchOffer, freshnessCaveat })
+    expect(judged.passed).toBe(passed)
+    expect(semanticVerdicts(base.scenario.criteria, judged.judgeVerdict).expectSearchOffer).toBe(
+      passed ? 'pass' : 'fail',
+    )
+  }
+  expect(() => applyJudgeVerdict(base, { ...acceptedVerdict, correct: null, searchOffer: true })).toThrow(
+    'freshnessCaveat',
+  )
+  const disclaimer = {
+    ...result,
+    scenario: { ...scenario, criteria: { mustProduceOutput: true, expectVerificationDisclaimer: true } },
+  }
+  expect(
+    applyJudgeVerdict(disclaimer, { ...acceptedVerdict, correct: null, verificationDisclaimer: true }).passed,
+  ).toBe(true)
+})
+
+test('undeclared fields must stay null and missing declared fields are judge errors', () => {
+  expect(() => applyJudgeVerdict(result, { ...acceptedVerdict, evidenceCoverage: true })).toThrow(
+    'undeclared assertion: evidenceCoverage',
+  )
+  expect(() => parseJudgeVerdict(JSON.stringify({ correct: true }))).toThrow('Invalid judge verdict')
+})
+
+test('expectation text is attached to its declared assertion only', () => {
+  const prompt = buildJudgePrompt(
+    {
+      ...scenario,
+      criteria: { mustProduceOutput: true, expectCorrectAnswer: true, expectSearchOffer: true },
+      expectation: { expectCorrectAnswer: 'CORRECTNESS-EXPECTATION', expectSearchOffer: 'OFFER-EXPECTATION' },
+    },
+    'answer',
+  )
+  expect(prompt.indexOf('CORRECTNESS-EXPECTATION')).toBeGreaterThan(prompt.indexOf('correct:'))
+  expect(prompt.indexOf('CORRECTNESS-EXPECTATION')).toBeLessThan(prompt.indexOf('searchOffer:'))
+  expect(prompt.indexOf('OFFER-EXPECTATION')).toBeGreaterThan(prompt.indexOf('searchOffer:'))
+  expect(() => buildJudgePrompt({ ...scenario, expectation: { expectEvidenceCoverage: 'unbound' } }, 'answer')).toThrow(
+    'undeclared assertion',
+  )
+})
+
+test('evidence enters only evidence-dependent judging and citations retain their turn namespace', () => {
+  const conversation = [
+    {
+      prompt: 'first',
+      responseText: 'first fact [1]',
+      evidence: [
+        { sourceIndex: 1, url: 'https://first.test', title: 'First', text: 'FIRST-BODY', toolName: 'search' as const },
+      ],
+    },
+    {
+      prompt: 'second',
+      responseText: 'second fact [1]',
+      evidence: [
+        {
+          sourceIndex: 1,
+          url: 'https://second.test',
+          title: 'Second',
+          text: 'SECOND-BODY',
+          toolName: 'fetch_content' as const,
+        },
+      ],
+    },
+  ]
+  const prompt = buildJudgePrompt(
+    { ...scenario, criteria: { mustProduceOutput: true, expectEvidenceCoverage: true } },
+    'second fact [1]',
+    conversation,
+  )
+  for (const text of [
+    'Turn 1 Source [1]',
+    'Turn 2 Source [1]',
+    'FIRST-BODY',
+    'SECOND-BODY',
+    'Turn 2 (scored)',
+    'sufficient search snippet',
+    'Honest incompleteness',
+  ]) {
+    expect(prompt).toContain(text)
+  }
+  expect(prompt).not.toContain('Source [2]')
+  for (const criteria of [
+    { mustProduceOutput: true, expectCorrectAnswer: true },
+    { mustProduceOutput: true, expectReuseFidelity: true },
+    { mustProduceOutput: true, expectSearchOffer: true },
+  ]) {
+    const without = buildJudgePrompt({ ...scenario, criteria }, 'second fact [1]', conversation)
+    expect(without).toContain('first fact [1]')
+    expect(without).not.toContain('FIRST-BODY')
+    expect(without).not.toContain('SECOND-BODY')
+  }
+})
+
+test('M1: supported expectation keys match the judge registry', () => {
+  const criteria = {
+    mustProduceOutput: true,
+    expectCorrectAnswer: true,
+    expectSearchOffer: true,
+    expectEvidenceCoverage: true,
+    expectReuseFidelity: true,
+    expectPremiseRebuttal: true,
+    expectVerificationDisclaimer: true,
+    expectReplyLanguage: 'en' as const,
+  }
+  expect(Object.keys(semanticVerdicts(criteria)).sort()).toEqual([...semanticCriterionKeys].sort())
 })

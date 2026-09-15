@@ -5,14 +5,17 @@
 import { evalModels } from './scenarios'
 import type { EvalCriteria, EvalScenario, NecessityCategory } from './types'
 
-type NecessityPrompt = {
-  id: string
-  category: NecessityCategory
-  prompt: string
-  followUps?: string[]
-  criteria: EvalCriteria
-  isNegativeControl?: boolean
-}
+type NecessityPrompt = Pick<
+  EvalScenario,
+  | 'id'
+  | 'prompt'
+  | 'followUps'
+  | 'criteria'
+  | 'expectation'
+  | 'promptCriteria'
+  | 'promptExpectation'
+  | 'isNegativeControl'
+> & { category: NecessityCategory }
 
 const reviewBy = '2026-11-04'
 const noSearchCorrect: EvalCriteria = {
@@ -659,6 +662,9 @@ export const getNecessityScenarios = (
           modeName: 'chat',
           prompt: definition.prompt,
           followUps: definition.followUps,
+          expectation: definition.expectation,
+          promptCriteria: definition.promptCriteria,
+          promptExpectation: definition.promptExpectation,
           criteria: definition.criteria,
           category: definition.category,
           reviewBy,

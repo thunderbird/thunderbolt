@@ -26,10 +26,10 @@ import type { EvalScenario } from './types'
  * `EVAL_LANGUAGE=ja` they check the fallback actually reaches the setting. Every
  * other scenario states its expected language outright and holds either way.
  */
-type LanguagePrompt = {
-  id: string
-  prompt: string
-  followUps?: string[]
+type LanguagePrompt = Pick<
+  EvalScenario,
+  'id' | 'prompt' | 'followUps' | 'expectation' | 'promptCriteria' | 'promptExpectation'
+> & {
   /** Omitted where the expectation is the run's app language rather than a fixed one. */
   expectReplyLanguage?: AppLocale
   /** Set where the turn must actually reach the web, so English sources are in play. */
@@ -129,6 +129,9 @@ export const getLanguageScenarios = (
         modeName: 'chat' as const,
         prompt: definition.prompt,
         followUps: definition.followUps,
+        expectation: definition.expectation,
+        promptCriteria: definition.promptCriteria,
+        promptExpectation: definition.promptExpectation,
         criteria: {
           mustProduceOutput: true,
           expectReplyLanguage: definition.expectReplyLanguage ?? appLanguage,

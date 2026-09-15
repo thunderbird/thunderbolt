@@ -121,7 +121,15 @@ describe('necessity scenarios', () => {
   test('keeps every necessity scenario in un-tokenized chat mode', () => {
     const scenarios = getNecessityScenarios(undefined, undefined, true)
 
-    expect(scenarios.every(({ modeName, prompt }) => modeName === 'chat' && !prompt.startsWith('/'))).toBe(true)
-    expect(scenarios.every(({ followUps }) => followUps?.every((prompt) => !prompt.startsWith('/')) ?? true)).toBe(true)
+    expect(
+      scenarios.every(
+        ({ modeName, prompt }) => modeName === 'chat' && typeof prompt === 'string' && !prompt.startsWith('/'),
+      ),
+    ).toBe(true)
+    expect(
+      scenarios.every(
+        ({ followUps }) => followUps?.every((prompt) => typeof prompt === 'string' && !prompt.startsWith('/')) ?? true,
+      ),
+    ).toBe(true)
   })
 })

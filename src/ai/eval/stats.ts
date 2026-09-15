@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getScenarioTurns } from './turns'
 import { createHash } from 'node:crypto'
 import type {
   EvalAcceptance,
@@ -97,6 +98,7 @@ export const createManifest = (
   >,
   environment: Record<string, string | undefined> = {},
 ): EvalManifest => {
+  scenarios.forEach(getScenarioTurns)
   const smoke = environment.EVAL_SMOKE === '1'
   const manifest: EvalManifest = {
     ...metadata,
@@ -164,7 +166,7 @@ const summarizeScenario = (scenario: EvalScenario, planned: number, trials: Eval
   const f = trials.filter((trial) => trialVerdict(trial) === 'fail').length
   const e = planned - c - f
   return {
-    prompt: scenario.followUps?.at(-1) ?? scenario.prompt,
+    prompt: getScenarioTurns(scenario).at(-1)!.prompt,
     category: scenario.category ?? 'core',
     c,
     f,
@@ -221,8 +223,10 @@ const rateMetric = (count: number, total: number, planned: number): NecessityRat
 
 const firstGenerationErrored = (trial: EvalTrial): boolean => trial.attempts[0]?.status === 'infra_error'
 const firstJudgeErrored = (trial: EvalTrial): boolean =>
-  trial.attempts.find(({ result }) => result.judgeAttempts?.length)?.result.judgeAttempts?.[0]?.status ===
-    'judge_error' || trial.attempts[0]?.status === 'judge_error'
+  trial.attempts
+    .flatMap((attempt) => attempt.turnResults?.map(({ result }) => result) ?? [attempt.result])
+    .some((result) => result.judgeAttempts?.[0]?.status === 'judge_error') ||
+  trial.attempts[0]?.status === 'judge_error'
 
 const aggregateGroup = (
   cell: EvalManifest['cells'][number],

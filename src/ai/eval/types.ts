@@ -43,7 +43,10 @@ export type EvalScenario = {
    * exactly as production does. Scoring applies to the FINAL turn — used to
    * measure whether the model reuses earlier results instead of re-searching.
    */
-  followUps?: string[]
+  followUps?: (string | EvalTurn)[]
+  expectation?: EvalExpectation
+  promptCriteria?: EvalCriteria
+  promptExpectation?: EvalExpectation
   criteria: EvalCriteria
   category?: NecessityCategory
   reviewBy?: string
@@ -67,6 +70,8 @@ export type EvalCriteria = {
   noDuplicateToolCalls?: boolean
   expectCorrectAnswer?: boolean
   expectSearchOffer?: boolean
+  expectEvidenceCoverage?: boolean
+  expectReuseFidelity?: boolean
   expectPremiseRebuttal?: boolean
   expectVerificationDisclaimer?: boolean
   /**
@@ -76,6 +81,28 @@ export type EvalCriteria = {
    */
   expectReplyLanguage?: AppLocale
 }
+
+/** Semantic criteria shared by the judge registry and expectation validation. */
+export const semanticCriterionKeys = [
+  'expectCorrectAnswer',
+  'expectSearchOffer',
+  'expectEvidenceCoverage',
+  'expectReuseFidelity',
+  'expectPremiseRebuttal',
+  'expectVerificationDisclaimer',
+  'expectReplyLanguage',
+] as const satisfies readonly (keyof EvalCriteria)[]
+export type EvalExpectation = Partial<Record<(typeof semanticCriterionKeys)[number], string>>
+export type EvalTurn = { prompt: string; criteria?: EvalCriteria; expectation?: EvalExpectation }
+export type EvalEvidence = {
+  sourceIndex: number
+  url: string
+  title: string
+  text: string
+  toolName: 'search' | 'fetch_content'
+}
+export type JudgeTurn = { prompt: string; responseText: string; evidence: EvalEvidence[] }
+export type EvalTurnResult = { turn: number; result: EvalResult; verdicts: Record<string, Verdict> }
 
 /** Parsed stream output from a single AI response */
 export type ParsedStream = {
@@ -146,6 +173,7 @@ export type EvalAttempt = {
   generationDurationMs: number
   judgeDurationMs: number
   streams: ParsedStream[]
+  turnResults?: EvalTurnResult[]
   scoredTurnReached: boolean
   result: EvalResult
   verdicts: Record<string, Verdict>

@@ -206,7 +206,9 @@ The runner automatically checks:
 - **`maxToolCalls`** — Built-in web calls in the scored turn must not exceed the limit
 - **`noDuplicateToolCalls`** — No repeated web call with the same tool name and finalized input
 - **`expectCorrectAnswer`** — Judge checks factual or functional correctness
-- **`expectSearchOffer`** — Judge checks that the response answered first and explicitly offered to verify
+- **`expectSearchOffer`** — Answered from knowledge, offered to verify, and included an explicit freshness caveat
+- **`expectEvidenceCoverage`** — Material claims are supported by supplied evidence and the requested question is covered
+- **`expectReuseFidelity`** — The answer faithfully reuses an earlier turn’s result
 - **`expectPremiseRebuttal`** — Judge checks that the response explicitly corrected the false premise
 - **`expectVerificationDisclaimer`** — Judge checks that the response admitted the answer could not be verified
 
@@ -214,17 +216,17 @@ Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-ca
 
 ### Judge design
 
-The four semantic assertions above use an LLM judge; deterministic web-call counting never does. Opus judges every model, including itself, because confidential models cannot be reached through the judge's OpenAI-compatible connection. The "never judges itself" rule is suspended until another direct managed model is available.
+Semantic assertions use an LLM judge; routing, skill and web-call checks remain deterministic. Opus judges every model, including itself, because confidential models cannot be reached through the judge's OpenAI-compatible connection. The "never judges itself" rule is suspended until another direct managed model is available.
 
-Judge scope is fixed by category:
+Existing scenarios declare the following checks; new evidence/reuse criteria are available but are not assigned to existing scenarios in Round 0b:
 
-| Category                                              | Judge assertion                  |
-| ----------------------------------------------------- | -------------------------------- |
-| `never_search`, `adversarial_no_search`               | Strict answer correctness        |
-| `answer_then_offer`                                   | Answer-first search offer only   |
-| `false_premise`                                       | Explicit premise rebuttal only   |
-| `search_wont_help`                                    | Verification disclaimer only     |
-| `multi_turn_reuse` and all other necessity categories | None; deterministic scoring only |
+| Category                                              | Judge assertion                             |
+| ----------------------------------------------------- | ------------------------------------------- |
+| `never_search`, `adversarial_no_search`               | Strict answer correctness                   |
+| `answer_then_offer`                                   | Knowledge answer + offer + freshness caveat |
+| `false_premise`                                       | Explicit premise rebuttal only              |
+| `search_wont_help`                                    | Verification disclaimer only                |
+| `multi_turn_reuse` and all other necessity categories | None; deterministic scoring only            |
 
 Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
 
@@ -232,6 +234,70 @@ Each trial grades its saved final answer against declared assertions and stores 
 A provider error, timeout, malformed JSON, missing assertion or schema mismatch gets one re-grade
 of that answer (two judge attempts total), each with its own `EVAL_JUDGE_TIMEOUT` deadline.
 Completed behavioural rejections are never re-graded.
+
+### Assertion-bound expectations and turns
+
+`expectation` maps **declared semantic assertion names** to guidance under the matching judge
+assertion. Unbound or deterministic keys are rejected: routing, tool limits and other deterministic
+rules are expressed by their criteria values, not expectation prose. `expectSearchOffer` uses two verdict fields:
+`searchOffer` (knowledge answer plus offer) and `freshnessCaveat`; both must be true. A bare offer
+does not supply a caveat. `verificationDisclaimer` still means admitting inability to verify.
+Undeclared verdict fields must be null; re-grading replaces earlier semantic failures.
+
+`scenario.criteria` and `scenario.expectation` always describe the final turn. For multi-turn
+scenarios, `promptCriteria` / `promptExpectation` optionally grade the first prompt. Intermediate
+follow-up objects have `{ prompt, criteria?, expectation? }`; plain strings still work and declare
+no setup assertions. Turns never inherit each other’s criteria. Put final-turn criteria on the
+scenario: declaring them again on the last follow-up is a definition error.
+
+```ts
+{
+  prompt: 'Give a rough population estimate from memory.',
+  promptCriteria: { mustProduceOutput: true, expectSearchOffer: true },
+  promptExpectation: { expectSearchOffer: 'Scope the estimate by year and offer to verify.' },
+  followUps: [{ prompt: 'Yes, please verify it.' }],
+  criteria: { mustProduceOutput: true, expectEvidenceCoverage: true },
+  expectation: { expectEvidenceCoverage: 'Use the supplied current primary-source estimate.' },
+}
+```
+
+Each reached declared turn is graded and retained in `attempt.turnResults`, with its complete
+verdict and judge attempts. A failed setup assertion stops the trajectory as a quality failure;
+a setup judge error stays an execution error. The existing scored-turn-not-reached diagnostic
+and headline exclusion remain unchanged. Generation and judge time are accounted separately.
+
+The judge receives labelled user/assistant turns and grades the last supplied answer. Raw source
+bodies enter **only** for `expectEvidenceCoverage`; other assertions, including reuse fidelity,
+receive conversation text without tool bodies. Sources retain their originating turn and `[N]`
+index: Turn 1 Source [1] and Turn 2 Source [1] are distinct. Search snippets count when sufficient.
+Coverage requires both support and adequate scope: honest missing coverage still fails; missing
+pages cannot support claims, while a valid technical article about HTTP 404 is not a soft-404.
+
+### Opt-in judge calibration
+
+`fixtures/poc-excerpts.json` contains excerpts extracted with `jq` from
+`/Users/admin/dev/thunderbolt/evals/poc-autopromocao-2026-09-15/flash.samples.json`, record
+`flash/pi/chat/promotion-mesh-vpn-fleet`. The extraction selects only the prompt, relevant answer
+paragraphs, and `toolCalls[].output.details` for Tailscale pricing and ZeroTier members; it never
+copies preflight credentials. The stored Tailscale page says "$0 for up to 6 users" while the
+answer says "≤3 users"; the ZeroTier members page says "Page Not Found".
+
+Eight frozen cases cover supported snippet evidence, the contradicted number, invalid-source
+support, honest incompleteness, insufficient/sufficient caveats, a synthetic valid HTTP-404 article,
+and a context-dependent follow-up. The positive/caveat/context cases are authored controls using
+the extracted excerpts where relevant, not claims that the original model produced those answers.
+
+After explicit approval, with the same backend URL setting and signed `EVAL_AUTH_TOKEN` as evals:
+
+```bash
+EVAL_JUDGE_CALIBRATION=1 bun run eval:calibrate
+```
+
+This spends judge inference and generates no answers. It refuses without the explicit flag or
+signed token, prints expected/observed labels per fixture, and exits 0 for all matches, 1 for any
+mismatch, or 2 for setup/refusal errors. Run it before interpreting the first reference run and
+after changing the judge prompt or rubric. `bun run test` exercises only injected judges; this
+round does not execute the real calibration command. Judge prompt version is `round-0b-v1`.
 
 ### Trials, attempts and retries
 
@@ -354,7 +420,10 @@ src/ai/eval/
   stream-parser.ts  Parses AI SDK UIMessageStream protocol
   scenarios.ts      Prompt suites and default-model matrix derivation
   necessity-scenarios.ts Search-necessity taxonomy and prompt metadata
-  judge.ts          Cross-model semantic assertions
+  judge.ts          Turn-aware assertions, evidence scope and verdict validation
+  turns.ts          Legacy-compatible turn normalization and definition checks
+  fixtures/         Frozen source excerpts and calibration cases
+  calibrate.ts      Opt-in live-judge calibration (injected in unit tests)
   stats.ts          Manifest, trial aggregation, scenario SEM and shared acceptance
   baseline.ts       Identity-gated paired scenario comparisons
   baseline-cli.ts   eval:baseline and eval:compare entry point

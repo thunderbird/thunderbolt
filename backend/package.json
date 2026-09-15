@@ -39,13 +39,14 @@
     "elysia": "^1.4.28",
     "exa-js": "^2.16.0",
     "jose": "^6.2.2",
-    "openai": "^6.34.0",
+    "openai": "^6.49.0",
     "pino": "^9.11.0",
     "postgres": "^3.4.7",
     "posthog-node": "^5.8.8",
     "rate-limiter-flexible": "^11.0.1",
     "react-email": "^6.0.5",
     "resend": "^6.5.2",
+    "tinfoil": "^1.2.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

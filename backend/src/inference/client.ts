@@ -13,6 +13,8 @@ import type { ManagedInferenceIdentity } from './usage-ledger'
 
 export type InferenceProvider = 'fireworks' | 'anthropic' | 'tinfoil'
 
+export const anthropicCompatBaseUrl = 'https://api.anthropic.com/v1/'
+
 export type InferenceClient = {
   client: OpenAI | PostHogOpenAI
   provider: InferenceProvider
@@ -261,7 +263,7 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
 
   const params = {
     apiKey: settings.anthropicApiKey,
-    baseURL: 'https://api.anthropic.com/v1/',
+    baseURL: anthropicCompatBaseUrl,
     fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
   }
 

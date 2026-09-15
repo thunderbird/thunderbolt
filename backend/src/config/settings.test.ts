@@ -202,6 +202,26 @@ describe('Config Settings', () => {
   })
 
   describe('Settings validation and defaults', () => {
+    it('loads the Resend API key and defaults to empty when unset', () => {
+      const originalValue = process.env.RESEND_API_KEY
+      try {
+        delete process.env.RESEND_API_KEY
+        clearSettingsCache()
+        expect(getSettings().resendApiKey).toBe('')
+
+        process.env.RESEND_API_KEY = 'test-resend-key'
+        clearSettingsCache()
+        expect(getSettings().resendApiKey).toBe('test-resend-key')
+      } finally {
+        if (originalValue === undefined) {
+          delete process.env.RESEND_API_KEY
+        } else {
+          process.env.RESEND_API_KEY = originalValue
+        }
+        clearSettingsCache()
+      }
+    })
+
     it('keeps CLI device registration disabled unless explicitly enabled', () => {
       const originalValue = process.env.CLI_DEVICE_REGISTRATION_ENABLED
       try {

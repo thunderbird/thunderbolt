@@ -26,12 +26,17 @@ import { createWorkspaceTools } from './workspace-jail.ts'
 import { createWebFetchTool } from './webfetch.ts'
 
 /** Build complete toolset shared by local CLI and ACP-served harnesses. */
-export const createHarnessTools = (config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills'>): AgentTool[] => {
+export const createHarnessTools = (
+  config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills' | 'mcpTools'>,
+): AgentTool[] => {
   const codingTools = config.workspaceRoot
     ? createWorkspaceTools(config.workspaceRoot)
     : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
   const skillTools = config.skills?.length ? [createSkillTool(config.skills)] : []
-  return [...codingTools, createWebFetchTool(), ...skillTools]
+  // MCP tools arrive already connected: their clients are process-scoped and
+  // outlive any single harness, and connecting is async while tool assembly is
+  // not. See `createMcpRuntime`.
+  return [...codingTools, createWebFetchTool(), ...skillTools, ...(config.mcpTools ?? [])]
 }
 
 /** Build the sole live runtime from a prepared provider binding. */

@@ -11,6 +11,7 @@
  * are imported directly from `@earendil-works/pi-agent-core` where needed.
  */
 
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import type { InvocationSelection } from '../provider-runtime/types.ts'
 
@@ -105,6 +106,8 @@ export type HarnessConfig = {
   readonly announceModel?: boolean
   /** Skill definitions delivered by ACP session metadata. */
   readonly skills?: readonly SkillDefinition[]
+  /** Tools from already-connected MCP servers, produced by `createMcpRuntime`. */
+  readonly mcpTools?: readonly AgentTool[]
 }
 
 type CommandExecutionConfig = Pick<HarnessConfig, 'cwd' | 'thinking'> & {

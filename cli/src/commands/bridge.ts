@@ -197,6 +197,41 @@ export const bridgeAllowedOrigins = (): ReadonlySet<string> => {
  *  upgrade, so only a client the user explicitly handed that URL to can connect. */
 export const generateBridgeToken = (): string => randomBytes(32).toString('hex')
 
+/** Minimum length for an operator-supplied bridge token. The generated one is
+ *  64 hex chars; anything materially shorter is guessable against a service
+ *  that, unlike the loopback default, is reachable from the internet. */
+export const minConfiguredTokenLength = 32
+
+/**
+ * The bridge secret for this run: an operator-supplied
+ * `THUNDERBOLT_BRIDGE_TOKEN` when present, otherwise a fresh random one.
+ *
+ * A hosted bridge needs a stable token — clients are configured once with a
+ * URL, and regenerating on every restart would silently break all of them.
+ * Throws on a short value rather than accepting it: the failure has to happen
+ * at startup, not as an eventual compromise.
+ */
+export const resolveBridgeToken = (env: NodeJS.ProcessEnv = process.env): string => {
+  const configured = env.THUNDERBOLT_BRIDGE_TOKEN
+  if (configured === undefined || configured === '') return generateBridgeToken()
+  if (configured.length < minConfiguredTokenLength) {
+    throw new Error(`THUNDERBOLT_BRIDGE_TOKEN must be at least ${minConfiguredTokenLength} characters.`)
+  }
+  return configured
+}
+
+/**
+ * Interface the bridge binds to. Loopback unless an operator opts out.
+ *
+ * Binding publicly is supported for a deployed agent, where the platform
+ * terminates TLS in front of this process — but it is opt-in because the
+ * origin allowlist and token become the only thing between the internet and a
+ * process that spawns agents. A deployment that sets this must also set
+ * `THUNDERBOLT_BRIDGE_TOKEN` and `THUNDERBOLT_APP_ORIGIN`.
+ */
+export const resolveBridgeHost = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.THUNDERBOLT_BRIDGE_HOST || '127.0.0.1'
+
 /** Constant-time token comparison. A length mismatch short-circuits to `false`
  *  (`timingSafeEqual` throws on unequal lengths); the token length is fixed and
  *  non-secret, so the early return leaks nothing exploitable. */
@@ -247,18 +282,19 @@ export const authorizeUpgrade = (req: Request, token: string, allowedOrigins: Re
  * is listening; the live server keeps the process alive until interrupted.
  */
 export const runBridge = async (config: BridgeConfig): Promise<void> => {
-  const token = generateBridgeToken()
+  const token = resolveBridgeToken()
   const allowedOrigins = bridgeAllowedOrigins()
   // Cap concurrently-live agents: the upgrade gate authorizes *connections*, not
   // sessions, so an authorized client holding many sockets open would otherwise
   // spawn unbounded agent processes. At the ceiling a new socket is refused.
   const activeProcs = new Set<BridgeProc>()
   const server = Bun.serve<BridgeSocketData>({
-    // Loopback-only: this transport is unauthenticated, so it must not be
-    // reachable from the LAN (Bun's default binds every interface). The G3
-    // consumer is the app running on the same machine; authenticated remote
-    // access is the separate iroh transport (G4).
-    hostname: '127.0.0.1',
+    // Loopback by default: the origin allowlist and token are real gates, but
+    // keeping the socket off the LAN means a misconfigured one is not instantly
+    // exploitable. A deployed agent opts out with THUNDERBOLT_BRIDGE_HOST, at
+    // which point those two gates are the whole boundary — see
+    // docs/hosted-agent.md.
+    hostname: resolveBridgeHost(),
     port: config.port,
     fetch(req, srv) {
       // Loopback alone is not a security boundary: WebSocket upgrades bypass CORS,
@@ -322,11 +358,14 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
   process.on('SIGTERM', shutdown)
 
   // Advertise the exact bound address (not `localhost`, which can resolve to
-  // the IPv6 `::1` and miss this IPv4-only loopback bind). The token rides in the
+  // the IPv6 `::1` and miss an IPv4-only loopback bind). The token rides in the
   // URL, so pasting it whole into the app authenticates with no client change.
-  const url = `ws://127.0.0.1:${server.port}/?token=${token}`
+  // A public bind reports the wildcard it was given rather than pretending to
+  // know the deployment's external hostname — the operator substitutes it.
+  const advertisedHost = resolveBridgeHost()
+  const url = `ws://${advertisedHost}:${server.port}/?token=${token}`
   process.stdout.write(
-    `⚡ thunderbolt ${config.protocol} bridge (${config.transport}) listening on ws://127.0.0.1:${server.port}\n` +
+    `⚡ thunderbolt ${config.protocol} bridge (${config.transport}) listening on ws://${advertisedHost}:${server.port}\n` +
       `   spawning per connection: ${redactArgv(config.command)}\n` +
       `   set this as the agent URL in the app (includes the access token): ${url}\n`,
   )

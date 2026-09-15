@@ -63,7 +63,7 @@ const summarize = (toolName: string, input: Record<string, unknown>): string => 
  */
 export const attachPermissionGate = (
   target: Pick<HarnessRuntime, 'registerToolCallGate'>,
-  opts: { getMode: () => PermissionMode; ask: PermissionPrompt },
+  opts: { getMode: () => PermissionMode; ask: PermissionPrompt; trustedToolNames?: ReadonlySet<string> },
 ): void => {
   const sessionAllowed = new Set<string>()
 
@@ -74,6 +74,15 @@ export const attachPermissionGate = (
     if (mode === 'yolo') return undefined
     if (mode === 'read-only') return { block: true, reason: readOnlyBlockReason }
     if (mode === 'accept-edits' && (toolName === 'write' || toolName === 'edit')) return undefined
+    // An MCP tool whose server the operator marked `trustTools` runs unprompted.
+    // Checked after the mode, not before: trust waives the prompt, it does not
+    // override read-only — that mode is an explicit request that nothing change,
+    // and a trusted server can still write. Everything else from MCP is gated
+    // like a write, because `isReadOnlyAgentTool` only knows the built-in tools
+    // and an unknown name must never fall through to allowed. MCP does advertise
+    // read-only hints, but they are the server's own self-description; honouring
+    // them would let a server opt itself out of the gate.
+    if (opts.trustedToolNames?.has(toolName)) return undefined
     if (mode === 'ask' && sessionAllowed.has(toolName)) return undefined
 
     const request: PermissionRequest = { toolName, summary: summarize(toolName, input) }

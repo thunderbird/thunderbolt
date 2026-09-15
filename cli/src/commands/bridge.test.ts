@@ -19,6 +19,9 @@ import {
   forwardFrameToStdin,
   generateBridgeToken,
   maxActiveProcs,
+  minConfiguredTokenLength,
+  resolveBridgeHost,
+  resolveBridgeToken,
 } from './bridge.ts'
 
 const token = generateBridgeToken()
@@ -181,5 +184,27 @@ describe('forwardFrameToStdin', () => {
     expect(flush).not.toHaveBeenCalled()
     expect(close).toHaveBeenCalledTimes(1)
     expect(close.mock.calls[0][0]).toBe(1011)
+  })
+})
+
+describe('deployment configuration', () => {
+  test('generates a token when none is configured', () => {
+    expect(resolveBridgeToken({}).length).toBe(64)
+    expect(resolveBridgeToken({ THUNDERBOLT_BRIDGE_TOKEN: '' }).length).toBe(64)
+  })
+
+  test('uses an operator-supplied token so a restart does not break clients', () => {
+    const token = 'a'.repeat(minConfiguredTokenLength)
+    expect(resolveBridgeToken({ THUNDERBOLT_BRIDGE_TOKEN: token })).toBe(token)
+  })
+
+  test('refuses a short token at startup rather than serving with it', () => {
+    expect(() => resolveBridgeToken({ THUNDERBOLT_BRIDGE_TOKEN: 'short' })).toThrow('at least')
+  })
+
+  test('binds loopback unless an operator opts out', () => {
+    expect(resolveBridgeHost({})).toBe('127.0.0.1')
+    expect(resolveBridgeHost({ THUNDERBOLT_BRIDGE_HOST: '' })).toBe('127.0.0.1')
+    expect(resolveBridgeHost({ THUNDERBOLT_BRIDGE_HOST: '0.0.0.0' })).toBe('0.0.0.0')
   })
 })

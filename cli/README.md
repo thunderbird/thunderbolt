@@ -141,9 +141,9 @@ thunderbolt
 | Command                                                                      | Purpose                                                        |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `thunderbolt agent [options] [prompt]`                                       | Run coding agent; `agent` is optional/default.                 |
-| `thunderbolt config`                                                         | Manage the Thunderbolt account and local BYOK profiles.         |
-| `thunderbolt login`                                                          | Bind this CLI to a Thunderbolt account through web login.       |
-| `thunderbolt logout`                                                         | Revoke and clear the stored Thunderbolt web session.            |
+| `thunderbolt config`                                                         | Manage the Thunderbolt account and local BYOK profiles.        |
+| `thunderbolt login`                                                          | Bind this CLI to a Thunderbolt account through web login.      |
+| `thunderbolt logout`                                                         | Revoke and clear the stored Thunderbolt web session.           |
 | `thunderbolt acp serve [options]`                                            | Expose built-in coding agent as stdio ACP server.              |
 | `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>`       | Bridge stdio ACP agent.                                        |
 | `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>`      | Bridge stdio MCP server.                                       |
@@ -154,13 +154,13 @@ thunderbolt
 
 The TUI and plain REPL share these commands:
 
-| Command        | Purpose                                                        |
-| -------------- | -------------------------------------------------------------- |
-| `/providers`   | Manage the account connection and local BYOK profiles.         |
-| `/models`      | Select a model for the active provider.                        |
-| `/login`       | Bind this CLI to a Thunderbolt account through web login.      |
-| `/logout`      | Revoke and clear the stored Thunderbolt web session.           |
-| `/permissions` | Choose any tool permission mode.                               |
+| Command        | Purpose                                                   |
+| -------------- | --------------------------------------------------------- |
+| `/providers`   | Manage the account connection and local BYOK profiles.    |
+| `/models`      | Select a model for the active provider.                   |
+| `/login`       | Bind this CLI to a Thunderbolt account through web login. |
+| `/logout`      | Revoke and clear the stored Thunderbolt web session.      |
+| `/permissions` | Choose any tool permission mode.                          |
 
 While a TUI turn is running, Enter queues another message. Press ↑ to select a
 queued message, then Enter to send it immediately, Backspace/Delete to remove
@@ -198,7 +198,7 @@ elsewhere on the machine are outside its workspace and unavailable.
 | Flag                 | Description                                                                |
 | -------------------- | -------------------------------------------------------------------------- |
 | `-m`, `--model <id>` | Provider model id (provider-specific default).                             |
-| `--provider <id>`    | Profile ID or unique provider/label shorthand for this process.           |
+| `--provider <id>`    | Profile ID or unique provider/label shorthand for this process.            |
 | `--base-url <url>`   | Custom endpoint URL (required for `openai-compat`).                        |
 | `--api-key <key>`    | Compatibility-only provider key override; may leak via shell history.      |
 | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
@@ -258,31 +258,34 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 
 ### Environment
 
-| Variable                                     | Description                                                                                                     |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                                                                   |
-| `OPENAI_API_KEY`                             | OpenAI API key.                                                                                                 |
-| `GEMINI_API_KEY`                             | Google Gemini API key.                                                                                          |
-| `XAI_API_KEY`                                | xAI API key.                                                                                                    |
-| `DEEPSEEK_API_KEY`                           | DeepSeek API key.                                                                                               |
-| `ZAI_API_KEY`                                | Z.AI API key.                                                                                                   |
-| `MISTRAL_API_KEY`                            | Mistral API key.                                                                                                |
-| `GROQ_API_KEY`                               | Groq API key.                                                                                                   |
-| `OPENROUTER_API_KEY`                         | OpenRouter API key.                                                                                             |
-| `MOONSHOT_API_KEY`                           | Moonshot AI API key.                                                                                            |
-| `MINIMAX_API_KEY`                            | MiniMax API key.                                                                                                |
-| `CEREBRAS_API_KEY`                           | Cerebras API key.                                                                                               |
-| `TOGETHER_API_KEY`                           | Together API key.                                                                                               |
-| `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
-| `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
-| `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
-| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
-| `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).        |
+| Variable                                     | Description                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                                                                                                                                                                                                                                                              |
+| `OPENAI_API_KEY`                             | OpenAI API key.                                                                                                                                                                                                                                                                                            |
+| `GEMINI_API_KEY`                             | Google Gemini API key.                                                                                                                                                                                                                                                                                     |
+| `XAI_API_KEY`                                | xAI API key.                                                                                                                                                                                                                                                                                               |
+| `DEEPSEEK_API_KEY`                           | DeepSeek API key.                                                                                                                                                                                                                                                                                          |
+| `ZAI_API_KEY`                                | Z.AI API key.                                                                                                                                                                                                                                                                                              |
+| `MISTRAL_API_KEY`                            | Mistral API key.                                                                                                                                                                                                                                                                                           |
+| `GROQ_API_KEY`                               | Groq API key.                                                                                                                                                                                                                                                                                              |
+| `OPENROUTER_API_KEY`                         | OpenRouter API key.                                                                                                                                                                                                                                                                                        |
+| `MOONSHOT_API_KEY`                           | Moonshot AI API key.                                                                                                                                                                                                                                                                                       |
+| `MINIMAX_API_KEY`                            | MiniMax API key.                                                                                                                                                                                                                                                                                           |
+| `CEREBRAS_API_KEY`                           | Cerebras API key.                                                                                                                                                                                                                                                                                          |
+| `TOGETHER_API_KEY`                           | Together API key.                                                                                                                                                                                                                                                                                          |
+| `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                                                                                                                                                                                                                         |
+| `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                                                                                                                                                                                                                 |
+| `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`).                                                                                                                                                                            |
+| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env.                                                        |
+| `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).                                                                                                                                                                                                   |
 | `THUNDERBOLT_TOKEN`                          | Personal access token for headless direct managed inference and bridges only. It cannot use confidential models, bind a CLI device, or be cleared by `thunderbolt logout`; remove it from the environment or revoke it in the web account. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run. |
-| `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
-| `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
-| `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
-| `NO_COLOR`                                   | Disable terminal color when set.                                                                                |
+| `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                                                                                                                                                                                                               |
+| `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                                                                                                                                                                                                             |
+| `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                                                                                                                                                                                                                        |
+| `THUNDERBOLT_AGENT_CONFIG`                   | Agent-owned skills and MCP servers for `acp serve` (default: `agent.json` under the state root). See [docs/hosted-agent.md](docs/hosted-agent.md).                                                                                                                                                         |
+| `THUNDERBOLT_BRIDGE_HOST`                    | Interface the wss bridge binds to (default `127.0.0.1`). Set to `0.0.0.0` only for a deployed agent, alongside a token and an app origin.                                                                                                                                                                  |
+| `THUNDERBOLT_BRIDGE_TOKEN`                   | Stable bridge secret (≥32 chars). Unset mints a fresh one per run, which breaks configured clients on restart.                                                                                                                                                                                             |
+| `NO_COLOR`                                   | Disable terminal color when set.                                                                                                                                                                                                                                                                           |
 
 Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
 

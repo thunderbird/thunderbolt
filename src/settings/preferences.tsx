@@ -4,7 +4,17 @@
 
 import { useAuth, useDatabase } from '@/contexts'
 import { useSignInModal } from '@/contexts/sign-in-modal-context'
-import { exportUserData, importUserData, summarizeExportEnvelope, type ExportSummary } from '@/dal'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  allExportGroupIds,
+  exportGroups,
+  exportUserData,
+  importUserData,
+  summarizeExportEnvelope,
+  tablesForGroups,
+  type ExportGroupId,
+  type ExportSummary,
+} from '@/dal'
 import { downloadJson, exportFilenameFor } from '@/lib/export-download'
 import { readJsonFile } from '@/lib/import-upload'
 import { useLocalStorage } from '@/hooks/use-local-storage'
@@ -68,6 +78,7 @@ type PreferencesState = {
   isResetting: boolean
   isDeletingAccount: boolean
   isExporting: boolean
+  exportGroupIds: ExportGroupId[]
   isImporting: boolean
   exportError: string | null
   importError: string | null
@@ -85,6 +96,7 @@ type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
   | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'SET_IS_EXPORTING'; payload: boolean }
+  | { type: 'TOGGLE_EXPORT_GROUP'; payload: ExportGroupId }
   | { type: 'SET_IS_IMPORTING'; payload: boolean }
   | { type: 'SET_EXPORT_ERROR'; payload: string | null }
   | { type: 'SET_IMPORT_ERROR'; payload: string | null }
@@ -105,6 +117,8 @@ export const initialPreferencesState: PreferencesState = {
   isResetting: false,
   isDeletingAccount: false,
   isExporting: false,
+  // Everything selected by default, so the plain action stays a full backup.
+  exportGroupIds: [...allExportGroupIds],
   isImporting: false,
   exportError: null,
   importError: null,
@@ -126,6 +140,13 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
       return { ...state, isDeletingAccount: action.payload }
     case 'SET_IS_EXPORTING':
       return { ...state, isExporting: action.payload }
+    case 'TOGGLE_EXPORT_GROUP':
+      return {
+        ...state,
+        exportGroupIds: state.exportGroupIds.includes(action.payload)
+          ? state.exportGroupIds.filter((id) => id !== action.payload)
+          : [...state.exportGroupIds, action.payload],
+      }
     case 'SET_IS_IMPORTING':
       return { ...state, isImporting: action.payload }
     case 'SET_EXPORT_ERROR':
@@ -184,6 +205,7 @@ export default function PreferencesSettingsPage() {
     isResetting,
     isDeletingAccount,
     isExporting,
+    exportGroupIds,
     isImporting,
     exportError,
     importError,
@@ -498,6 +520,19 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'SET_PENDING_IMPORT', payload: null })
   }
 
+  // Built during render rather than at module scope: a `t` evaluated at import
+  // time pins to the boot locale and never follows a language change.
+  const exportGroupLabels: Record<ExportGroupId, string> = {
+    chats: t`Chats, projects and prompts`,
+    connections: t`MCP connections`,
+    skillsAgents: t`Skills and agents`,
+    models: t`Models and providers`,
+    automation: t`Tasks and automations`,
+    preferences: t`Preferences`,
+  }
+  const isFullExport = exportGroupIds.length === allExportGroupIds.length
+  const hasExportSelection = exportGroupIds.length > 0
+
   const handleExportData = async () => {
     const userId = session?.user?.id
     if (!userId) {
@@ -506,10 +541,13 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'SET_EXPORT_ERROR', payload: null })
     dispatch({ type: 'SET_IS_EXPORTING', payload: true })
     try {
-      const payload = await exportUserData(db, {
-        id: userId,
-        email: session.user.email ?? null,
-      })
+      const payload = await exportUserData(
+        db,
+        { id: userId, email: session.user.email ?? null },
+        // Omitted entirely when everything is selected, so a full backup takes
+        // the same path it always has rather than a filtered equivalent.
+        isFullExport ? {} : { tables: tablesForGroups(exportGroupIds) },
+      )
       downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
     } catch (error) {
@@ -1105,22 +1143,45 @@ export default function PreferencesSettingsPage() {
                   <Trans>Export Your Data</Trans>
                 </label>
                 <p id="export-data-description" className="text-sm text-muted-foreground">
-                  <Trans>Export all of your data as JSON.</Trans>
+                  <Trans>Export your data as JSON. Uncheck anything you do not want included.</Trans>
                 </p>
                 {exportError && (
                   <p id="export-data-error" className="text-sm text-destructive" role="alert">
                     {exportError}
                   </p>
                 )}
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="sr-only">
+                    <Trans>Data to include in the export</Trans>
+                  </legend>
+                  {exportGroups.map((group) => (
+                    <label key={group.id} className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={exportGroupIds.includes(group.id)}
+                        onCheckedChange={() => dispatch({ type: 'TOGGLE_EXPORT_GROUP', payload: group.id })}
+                      />
+                      <span>
+                        {exportGroupLabels[group.id]}
+                        {group.containsSecrets && (
+                          <span className="text-muted-foreground">
+                            {' — '}
+                            <Trans>includes saved keys</Trans>
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
                 <Button
                   id="export-data-button"
                   variant="secondary"
-                  disabled={isExporting}
+                  disabled={isExporting || !hasExportSelection}
                   aria-busy={isExporting}
                   aria-describedby={exportError ? 'export-data-error' : 'export-data-description'}
                   onClick={handleExportData}
                 >
-                  {isExporting ? t`Exporting…` : t`Export My Data`}
+                  {isExporting ? t`Exporting…` : isFullExport ? t`Export My Data` : t`Export Selected`}
                 </Button>
               </div>
 

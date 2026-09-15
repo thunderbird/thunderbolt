@@ -588,6 +588,10 @@ msgstr "Conversations"
 msgid "Chats in a project inherit its instructions."
 msgstr "Les conversations d'un projet héritent de ses instructions."
 
+#: src/settings/preferences.tsx
+msgid "Chats, projects and prompts"
+msgstr ""
+
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
@@ -1163,6 +1167,10 @@ msgstr "Données"
 msgid "Data is stored securely on your device."
 msgstr "Les données sont stockées de manière sécurisée sur votre appareil."
 
+#: src/settings/preferences.tsx
+msgid "Data to include in the export"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
@@ -1626,16 +1634,24 @@ msgid "Expand Sidebar"
 msgstr "Développer la barre latérale"
 
 #: src/settings/preferences.tsx
-msgid "Export all of your data as JSON."
-msgstr "Exportez toutes vos données au format JSON."
+#~ msgid "Export all of your data as JSON."
+#~ msgstr "Exportez toutes vos données au format JSON."
 
 #: src/settings/preferences.tsx
 msgid "Export My Data"
 msgstr "Exporter mes données"
 
 #: src/settings/preferences.tsx
+msgid "Export Selected"
+msgstr ""
+
+#: src/settings/preferences.tsx
 msgid "Export Your Data"
 msgstr "Exporter vos données"
+
+#: src/settings/preferences.tsx
+msgid "Export your data as JSON. Uncheck anything you do not want included."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Exporting…"
@@ -1927,6 +1943,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "Incluez le préfixe de version (par ex. /v1). Cliquez ensuite sur « Charger les modèles » pour remplir les sélecteurs ci-dessous."
 
+#: src/settings/preferences.tsx
+msgid "includes saved keys"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr "Installer"
@@ -2145,6 +2165,10 @@ msgstr "Les cartes ne peuvent pas s’afficher ici — WebGL est désactivé ou 
 msgid "Maximize"
 msgstr "Agrandir"
 
+#: src/settings/preferences.tsx
+msgid "MCP connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
@@ -2192,6 +2216,10 @@ msgstr "Le nom du modèle est requis."
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "Modèles"
+
+#: src/settings/preferences.tsx
+msgid "Models and providers"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
@@ -3283,6 +3311,10 @@ msgstr "Simple"
 msgid "Skills"
 msgstr "Compétences"
 
+#: src/settings/preferences.tsx
+msgid "Skills and agents"
+msgstr ""
+
 #: src/skills/skills-list.tsx
 msgid "Skills are reusable instruction templates you summon in chat with <0>/name</0>."
 msgstr "Les compétences sont des modèles d'instructions réutilisables que vous invoquez dans la conversation avec <0>/name</0>."
@@ -3445,6 +3477,10 @@ msgstr "Touchez pour rechercher des mises à jour."
 #: src/tasks/index.tsx
 msgid "Tasks"
 msgstr "Tâches"
+
+#: src/settings/preferences.tsx
+msgid "Tasks and automations"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Telemetry isn't configured for this organization, so no usage data is being collected."

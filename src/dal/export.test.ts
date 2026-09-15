@@ -116,8 +116,25 @@ describe('Export DAL', () => {
 
     const exported = await exportUserData(db, { id: 'user-1', email: null })
 
-    const ids = exported.tables.chat_threads.map((row) => (row as { id: string }).id).sort()
+    const ids = (exported.tables.chat_threads ?? []).map((row) => (row as { id: string }).id).sort()
     expect(ids).toEqual(['thread-active', 'thread-deleted'])
+  })
+
+  it('walks only the requested tables and omits the rest entirely', async () => {
+    const db = getDb()
+    const exported = await exportUserData(db, { id: 'user-1', email: null }, { tables: ['skills'] })
+
+    expect(Object.keys(exported.tables)).toEqual(['skills'])
+    // Omitted, not emptied: an empty array would claim the user has no chats,
+    // which a restore could act on. A missing key says nothing was asked for.
+    expect('chat_threads' in exported.tables).toBe(false)
+  })
+
+  it('exports everything when no table selection is given', async () => {
+    const db = getDb()
+    const exported = await exportUserData(db, { id: 'user-1', email: null })
+
+    expect(Object.keys(exported.tables).sort()).toEqual([...exportedTableNames].sort())
   })
 
   it('omits tables that are intentionally excluded from the export', async () => {

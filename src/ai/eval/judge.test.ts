@@ -209,45 +209,38 @@ describe('judge-backed criteria', () => {
       throw new Error('upstream unavailable')
     })
 
-    expect(attempts).toBe(1)
+    expect(attempts).toBe(2)
     expect(judged.passed).toBe(false)
     expect(judged.error).toBe('Judge error: upstream unavailable')
     expect(judged.failures).toContain('Judge error: upstream unavailable')
   })
 
   test('aborts a hanging judge attempt when its timeout expires', async () => {
-    let triggerTimeout: (() => void) | undefined
-    let aborted = false
+    const firstReady = Promise.withResolvers<() => void>()
+    const secondReady = Promise.withResolvers<() => void>()
+    const schedulers = [firstReady, secondReady]
+    const signals: AbortSignal[] = []
     const judgedPromise = evaluateWithJudge(
       result,
-      (signal) =>
-        new Promise((_, reject) => {
-          signal.addEventListener(
-            'abort',
-            () => {
-              aborted = true
-              reject(signal.reason)
-            },
-            { once: true },
-          )
-        }),
+      (signal) => {
+        signals.push(signal)
+        return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+      },
       {
         attemptTimeoutMs: 60_000,
         scheduleTimeout: (callback) => {
-          triggerTimeout = callback
-          return () => {
-            triggerTimeout = undefined
-          }
+          schedulers.shift()!.resolve(callback)
+          return () => {}
         },
       },
     )
-    await Promise.resolve()
-
-    expect(triggerTimeout).toBeDefined()
-    triggerTimeout?.()
+    const expireFirst = await firstReady.promise
+    expireFirst()
+    const expireSecond = await secondReady.promise
+    expireSecond()
     const judged = await judgedPromise
-
-    expect(aborted).toBe(true)
+    expect(signals).toHaveLength(2)
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
     expect(judged.passed).toBe(false)
     expect(judged.error).toBe('Judge error: Judge timed out')
   })
@@ -263,7 +256,7 @@ describe('judge-backed criteria', () => {
     expect(judged.error).toBe('Judge error: Judge omitted declared assertion: correct')
   })
 
-  test('caps a retry to the remaining overall judge deadline', async () => {
+  test('gives each of the two judge attempts its own deadline', async () => {
     const scheduledDelays: number[] = []
     const nowValues = [0, 0, 90_000]
     let attempts = 0
@@ -284,7 +277,7 @@ describe('judge-backed criteria', () => {
     )
 
     expect(judged.passed).toBe(true)
-    expect(scheduledDelays).toEqual([60_000, 30_000])
+    expect(scheduledDelays).toEqual([60_000, 60_000])
   })
 
   test('retries a JSON parse failure once and accepts the second verdict', async () => {
@@ -388,4 +381,32 @@ describe('judge-backed criteria', () => {
     expect(prompt).toContain('Every DECLARED assertion MUST be true or false')
     expect(prompt).toContain('ONLY UNDECLARED assertion fields may be null')
   })
+})
+
+test('stores the whole judge verdict and replaces an earlier rejection on regrade', () => {
+  const rejected = applyJudgeVerdict(result, { ...acceptedVerdict, correct: false, explanation: 'initial rejection' })
+  expect(rejected.judgeVerdict?.explanation).toBe('initial rejection')
+  const accepted = applyJudgeVerdict(rejected, acceptedVerdict)
+  expect(accepted.passed).toBe(true)
+  expect(accepted.failures).toEqual([])
+  expect(accepted.judgeVerdict).toEqual(acceptedVerdict)
+})
+
+test('schema mismatch retries the same answer exactly once and records both durations', async () => {
+  const responses = [JSON.stringify({ ...acceptedVerdict, extra: true }), JSON.stringify(acceptedVerdict)]
+  const judged = await evaluateWithJudge(result, async () => parseJudgeVerdict(responses.shift()!))
+  expect(judged.passed).toBe(true)
+  expect(judged.judgeAttempts?.map(({ status }) => status)).toEqual(['judge_error', 'completed'])
+  expect(judged.judgeAttempts?.every(({ durationMs }) => durationMs >= 0)).toBe(true)
+  expect(judged.responseText).toBe(result.responseText)
+})
+
+test('a completed behavioural rejection is not regraded', async () => {
+  const calls: number[] = []
+  const judged = await evaluateWithJudge(result, async () => {
+    calls.push(1)
+    return { ...acceptedVerdict, correct: false }
+  })
+  expect(calls).toHaveLength(1)
+  expect(judged.passed).toBe(false)
 })

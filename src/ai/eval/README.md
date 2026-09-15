@@ -81,7 +81,7 @@ answer in the conversation's language, stay there when foreign-language content 
 mid-thread, switch on an explicit request, and fall back to the app language when a turn
 establishes none. Scenarios live in `language-scenarios.ts` and run as Chat turns across
 the same model/engine matrix. `language` shares the scored-category machinery (samples,
-gate, Wilson interval) but is **not** a search-necessity category — `stats.ts` excludes it
+gate, scenario SEM interval) but is **not** a search-necessity category — `stats.ts` excludes it
 from the search headline rates.
 
 | Scenario                       | Shape                                            | Expected reply |
@@ -118,54 +118,25 @@ Language is judged semantically (`replyLanguage` in `judge.ts`), scoped to the a
 own prose: quoted error text, code, identifiers, URLs, and proper nouns carry their own
 language and do not fail the assertion.
 
-### Example Output
-
-```
-============================================================
-EVAL REPORT
-============================================================
-
-Overall: 12/15 passed (80%)
-
-By Model:
-  opus: 12/15 (80%)
-
-By Engine:
-  pi: 12/15 (80%)
-
-By Mode:
-  chat: 12/15 (80%)
-
-Failures (3):
-  FAIL opus/pi/chat/C4
-    - Empty response — no text output produced
-  FAIL opus/pi/chat/C11
-    - Insufficient citations: 0 found, 2 required
-  FAIL opus/pi/chat/C15
-    - Empty response — no text output produced
-
-============================================================
-
-Report saved to: evals/eval-results-20260804-164000.md
-```
-
 ## Environment Variables
 
-| Variable                  | Default                             | Example           | Description                                              |
-| ------------------------- | ----------------------------------- | ----------------- | -------------------------------------------------------- |
-| `EVAL_MODELS`             | all                                 | `opus,glm`        | Model short names to test                                |
-| `EVAL_ENGINES`            | all                                 | `pi`              | Engines to test                                          |
-| `EVAL_MODES`              | all                                 | `chat,search`     | Modes to test                                            |
-| `EVAL_SCENARIO_PARALLEL`  | `3`                                 | `1`               | Concurrent scenarios                                     |
-| `EVAL_TIMEOUT`            | `120000`                            | `60000`           | Timeout per turn (ms)                                    |
-| `EVAL_JUDGE_TIMEOUT`      | `60000`                             | `30000`           | Timeout per judge attempt (ms)                           |
-| `EVAL_OUTPUT`             | `evals/eval-results-<timestamp>.md` | `reports/eval.md` | Report file path                                         |
-| `EVAL_AUTH_TOKEN`         | local storage token                 | signed bearer     | Backend bearer used by inference and proxy requests      |
-| `EVAL_SAMPLES`            | `3`                                 | `5`               | Samples per necessity scenario; core suites always use 1 |
-| `EVAL_SMOKE`              | unset                               | `1`               | Run the fixed smoke subset and force all samples to 1    |
-| `EVAL_NECESSITY_OPTIONAL` | unset                               | `1`               | Include `search_wont_help` scenarios                     |
-| `EVAL_SUITES`             | all                                 | `language`        | Suites to run: `core`, `necessity`, `language`           |
-| `EVAL_LANGUAGE`           | `en`                                | `ja`              | App language for the run; reply-language fallback target |
+Generation and judge deadlines must be positive finite numbers.
+
+| Variable                  | Default                 | Example           | Description                                              |
+| ------------------------- | ----------------------- | ----------------- | -------------------------------------------------------- |
+| `EVAL_MODELS`             | all                     | `opus,glm`        | Model short names to test                                |
+| `EVAL_ENGINES`            | all                     | `pi`              | Engines to test                                          |
+| `EVAL_MODES`              | all                     | `chat,search`     | Modes to test                                            |
+| `EVAL_SCENARIO_PARALLEL`  | `3`                     | `1`               | Concurrent scenarios                                     |
+| `EVAL_TIMEOUT`            | `600000`                | `60000`           | Generation deadline per attempt (ms)                     |
+| `EVAL_JUDGE_TIMEOUT`      | `60000`                 | `30000`           | Timeout per judge attempt (ms)                           |
+| `EVAL_OUTPUT`             | `evals/eval-results.md` | `reports/eval.md` | Report file path                                         |
+| `EVAL_AUTH_TOKEN`         | local storage token     | signed bearer     | Backend bearer used by inference and proxy requests      |
+| `EVAL_SAMPLES`            | `3`                     | `5`               | Samples per necessity scenario; core suites always use 1 |
+| `EVAL_SMOKE`              | unset                   | `1`               | Run the fixed smoke subset and force all samples to 1    |
+| `EVAL_NECESSITY_OPTIONAL` | unset                   | `1`               | Include `search_wont_help` scenarios                     |
+| `EVAL_SUITES`             | all                     | `language`        | Suites to run: `core`, `necessity`, `language`           |
+| `EVAL_LANGUAGE`           | `en`                    | `ja`              | App language for the run; reply-language fallback target |
 
 ### CLI Flags
 
@@ -173,49 +144,6 @@ Report saved to: evals/eval-results-20260804-164000.md
 | ------------ | -------------------------------------------------------------------------------- |
 | `--verbose`  | Shows the full system prompt and raw model response for each scenario            |
 | `--detailed` | Adds a Failures section to the markdown report with prompts, errors, and reasons |
-
-Example with detailed report:
-
-```
-$ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --detailed
-
-# The timestamped markdown report will include:
-## Failures
-
-### opus/pi/chat/C4
-
-- **Prompt**: Compare the iPhone 16 Pro and Samsung Galaxy S25 Ultra
-- **Duration**: 60.0s
-- **Error**: Scenario timed out
-- **Reasons**:
-  - Empty response — no text output produced
-  - Insufficient citations: 0 found, 2 required
-```
-
-Example with verbose:
-
-```
-$ EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
-
---- SYSTEM PROMPT (opus/pi/chat/C1) ---
-You are an executive assistant using the **Opus 5** model...
-# Principles
-...
-# Active Mode (follow these instructions)
-Make quick decisions—don't overthink...
---- USER PROMPT ---
-What are the top 3 news stories today?
---- END PROMPT ---
-
-  PASS opus/pi/chat/C1 (2.1s)
-
---- RESPONSE (opus/pi/chat/C1) ---
-Here are the three leading stories on AP News for February 16, 2026:
-- **Europeans push back at the U.S...** [1]
-- **"First feline" Larry marks 15 years...** [2]
-- **Ukrainian drone strike sparks fires...** [3]
---- END RESPONSE ---
-```
 
 ### Model names
 
@@ -300,115 +228,104 @@ Judge scope is fixed by category:
 
 Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
 
-Each judged scenario sample normally makes one judge call containing the user prompt, final response, and only the declared assertion. Verdicts must be strict JSON; malformed JSON or an omitted declared field is retried once. Each attempt is abortable and limited by `EVAL_JUDGE_TIMEOUT`; both attempts share an overall deadline of twice that value. An API failure, timeout, or invalid verdict after the retry marks that sample as an error rather than passing it. Multi-turn reuse scenarios never invoke the judge because the scored follow-up depends on context from the earlier turn; their reuse and negative-control behavior is measured only by web-call counts.
+Each trial grades its saved final answer against declared assertions and stores the whole verdict.
+A provider error, timeout, malformed JSON, missing assertion or schema mismatch gets one re-grade
+of that answer (two judge attempts total), each with its own `EVAL_JUDGE_TIMEOUT` deadline.
+Completed behavioural rejections are never re-graded.
 
-### Sampling, gates, and headline metrics
+### Trials, attempts and retries
 
-Core suites run once. Necessity scenarios run three independent fresh-thread samples by default, and their binary result plus web-call count is reduced to the modal outcome. Two passing samples out of three pass; error samples count as failures.
+Core suites run once; necessity and language default to three independent trials. Each trial has
+an ID `scenario ID/index` and retains every attempt, parsed turn, tool call, SSE error, verdict and
+generation/judge duration. Execution (`completed`, `timeout`, `infra_error`, `judge_error`) and
+behaviour (`pass`, `fail`, `unknown`) are independent.
 
-Category gates use the modal outcomes and report a 95% Wilson score interval. Two cross-category gates catch policy drift:
+Only evidence-classified generation infrastructure errors get one fresh-thread retry. Unclassified
+adapter exceptions retain their message/stack and remain non-retryable error trials; the run continues.
+A proven deterministic violation blocks retry and counts as a valid failure, as do timeouts with
+preserved partial streams. Unresolved infrastructure/judge errors without a proven failure count
+against reliability. Recovered `toolInfraError`, `toolMisuse` and `budgetDenial` events are diagnostic.
 
-- **Unnecessary-search rate ≤5%** — share of `never_search`, `answer_then_offer`, `adversarial_no_search`, and non-control `multi_turn_reuse` scenarios whose modal outcome made a web call.
-- **Missed-search rate ≤5%** — share of `single_search`, `research`, `unknown_entity`, `false_premise`, and negative-control `multi_turn_reuse` scenarios whose modal outcome made no web call.
-- **Mean web calls per no-search-expected prompt** — secondary metric without a gate.
+### Aggregation and acceptance
 
-### Metrics JSON
+Each required scenario has `(c, f, e, n)`: passed valid trials, failed valid trials, error trials
+and planned trials. Missing completions remain in `e`, so `c+f+e=n`. Triage displays two labels:
 
-Every report writes `eval-metrics.json` beside the Markdown file. The stable schema is:
+| Counts  | Behaviour | Completeness |
+| ------- | --------- | ------------ |
+| (2,0,1) | pass      | partial      |
+| (1,1,1) | flaky     | partial      |
+| (0,0,3) | none      | error        |
 
-```json
-{
-  "schemaVersion": 3,
-  "generatedAt": "2026-08-04T12:00:00.000Z",
-  "groups": {
-    "opus/pi": {
-      "model": "opus",
-      "engine": "pi",
-      "scenarios": {
-        "C1": {
-          "prompt": "What are the top 3 news stories today?",
-          "category": "core",
-          "passed": true,
-          "webToolCalls": 1,
-          "duplicateWebToolCalls": 0,
-          "sampleCount": 1,
-          "passedSampleCount": 1,
-          "errorSampleCount": 0,
-          "isNegativeControl": false,
-          "reviewBy": null,
-          "failures": []
-        },
-        "never-search-01": {
-          "prompt": "Write a Python function that reverses a singly linked list.",
-          "category": "never_search",
-          "passed": true,
-          "webToolCalls": 0,
-          "duplicateWebToolCalls": 0,
-          "sampleCount": 3,
-          "passedSampleCount": 3,
-          "errorSampleCount": 0,
-          "isNegativeControl": false,
-          "reviewBy": "2026-11-04",
-          "failures": []
-        }
-      },
-      "categories": {
-        "never_search": {
-          "passed": 12,
-          "total": 12,
-          "rate": 1,
-          "wilson": { "lower": 0.7575, "upper": 1 },
-          "threshold": 0.95,
-          "gatePassed": true
-        }
-      },
-      "headline": {
-        "unnecessarySearchRate": {
-          "count": 0,
-          "total": 50,
-          "rate": 0,
-          "threshold": 0.05,
-          "gatePassed": true
-        },
-        "missedSearchRate": {
-          "count": 0,
-          "total": 42,
-          "rate": 0,
-          "threshold": 0.05,
-          "gatePassed": true
-        },
-        "meanWebCallsNoSearchExpected": 0
-      }
-    }
-  }
-}
-```
+Behaviour is pass/flaky/fail/none over valid trials; completeness is complete/partial/error.
+These labels never gate. Category quality is the **equal-weight mean of scenario `c/(c+f)`**,
+using required scenarios with valid trials. Existing percentage thresholds apply to that point
+estimate. A category is `not_applicable` when unselected, `unmeasured` if any required scenario
+has no valid trials or coverage is below 80%, otherwise `pass` or `fail`.
 
-Rates are fractions from 0 to 1. Groups are keyed by `model/engine`; scenario keys are the human-readable final ID segment. Every scored scenario appears in `scenarios`: core chat/search/research/widget scenarios use `category: "core"` and `reviewBy: null`, while taxonomy scenarios retain their necessity category and review date. `prompt` contains the scored user turn, which is the final follow-up for a multi-turn scenario. `categories` and `headline` are calculated only from taxonomy scenarios, so core outcomes never affect necessity gates. This shape is intended for CI baselines and PR-comment generation. Baseline comparison also accepts schema v2 baseline files, which predate `prompt`.
+Consistency `pass^3` is `C(c,3)/C(c+f,3)`, averaged over scenarios with at least three valid trials,
+with eligible/required coverage. It is omitted for smoke or samples below three. End-to-end
+`mean(c/n)` is diagnostic. Uncertainty uses `mean ± 1.96·s/√m` over scenario means, flags fewer
+than five scenarios or zero variance, and warns that paraphrase families are correlated.
+There is no binomial/Wilson quality interval or statistical-significance claim.
 
-## CI
+Headline rates use **valid necessity trials and scored-turn bounds**, excluding language and
+`search_wont_help`: `maxToolCalls=0` means no search expected, `minToolCalls>0` means search
+expected, otherwise unconstrained. Attempts explicitly record whether the scored turn was reached.
+A setup-only failure or timeout remains a quality failure, but is excluded from both headline
+denominators and counted in the per-cell “scored turn not reached” diagnostic. Setup streams
+remain available as evidence and never supply the scored turn’s call counts. Unnecessary-search and missed-search rates both gate at
+≤5%; mean web calls with no search expected is diagnostic. Unselected headline denominators
+are `not_applicable`, not a failing 0/0.
 
-The `AI Evals` workflow has two paths:
+Reports lead with per-cell verdicts from the `acceptEval` policy shared by CLI, report, PR comment
+and baseline comparison:
 
-- Pull requests run the deterministic smoke subset when they change AI-behavior paths: `src/ai/**`, `src/lib/tools.ts`, `backend/src/inference/**`, `backend/src/api/search.ts`, `backend/src/pro/**`, `shared/agent-core/**`, `shared/defaults/**`, `src/acp/**`, or the eval workflow. Broader trees such as DAL, HTTP, and skills plumbing are deliberately excluded as low-signal-per-dollar changes and remain covered by the nightly full run. Smoke is temporarily informational: its sticky comment is the per-PR signal, but gate failures do not fail the check until checked-in baselines show the necessity gates passing. The report and metrics JSON are uploaded together.
-- A nightly run at 03:00 UTC executes the full suite with the default three samples per necessity scenario and fails when gates fail. It can run for every model/engine cell without multiplying the work by separate before/after revisions.
+1. Exit **2** for a harness crash or any cell's post-retry error rate above **10%**.
+2. Otherwise exit **1** for any failed/unmeasured required category or headline, any failed/error
+   core trial, or missing required cell/category/scenario.
+3. Otherwise exit **0**. Partial runs still cannot establish definition-of-done evidence.
 
-The pull-request comment is updated in place using a hidden marker. It leads with a plain-language verdict and care table, summarizes each model's classic-suite and search-policy results, explains up to 20 failures in plain words, and keeps raw gates, rates, and category numbers collapsed. Scenario-level improved/regressed counts appear when baselines exist. Rate deltas are labeled significant only when the current run's and baseline run's 95% Wilson intervals are disjoint. The one-scenario, one-sample smoke categories therefore remain descriptive without significance claims, while the full run's larger categories and three samples per scenario can produce meaningful labels. The footer links to the workflow run, whose job summary renders the full Markdown report, and to the downloadable artifact.
+First-attempt errors include recovered judge errors and report generation/judge counts separately.
+That rate and the pooled post-retry error rate are diagnostic; reliability gates apply per cell.
 
-### Baselines
+### Artifacts and manifest
 
-Checked-in baselines live in `baselines/` as one `model--engine.json` file per cell. They contain the observed metrics from a full run, not hand-authored targets. Generate or compare them locally from a metrics artifact with:
+Schema **4** stores the manifest, every trial, aggregates and crash status in `eval-metrics.json`.
+Scenario keys are full IDs. `eval-trials.jsonl` starts with the manifest and appends each completed
+trial, preserving work on a crash. A new invocation replaces these artifacts and the Markdown report
+at `EVAL_OUTPUT` (default above).
 
-Baseline regeneration requires a full-matrix metrics file; partial runs selected with `EVAL_MODELS` or `EVAL_ENGINES` are rejected before any files change.
+The manifest declares required cells, selected suites/scenarios, planned samples, provider kind,
+and the measurement identity and treatment fields listed under Baselines below.
+It copies only this settings allowlist:
+`EVAL_MODELS`, `EVAL_ENGINES`, `EVAL_MODES`, `EVAL_SUITES`, `EVAL_SAMPLES`, `EVAL_TIMEOUT`,
+`EVAL_JUDGE_TIMEOUT`, `EVAL_SCENARIO_PARALLEL`, `EVAL_SMOKE`, `EVAL_LANGUAGE`,
+`EVAL_NECESSITY_OPTIONAL`, `WEB_BUDGET_PROMOTION`.
+Auth is only `present`/`absent`; tokens, Authorization values and cookies are redacted at every
+artifact boundary. The preflight reads `/config.webToolsProvider` or records `unknown` when
+that field is absent. The runner captures its model/profile/context and budget observations;
+adapter-internal prompt/tools are explicitly `unavailable` pending the later adapter hook.
+
+### Baselines and PR comments
+
+Baseline files remain one `model--engine.json` per cell. Regeneration rejects filtered/partial
+runs and missing required matrix cells before changing files. Offline commands:
 
 ```bash
 bun run eval:baseline -- evals/eval-metrics.json
 bun run eval:compare -- evals/eval-metrics.json
 ```
 
-The nightly workflow regenerates the files and, when they change, force-updates the dedicated `evals/baseline-refresh` branch. It opens a draft pull request if that branch has no open refresh pull request; it never commits directly to `main`.
+Comparison requires matching rubric hash, judge prompt version, actual judge model ID, samples,
+generation/judge deadlines, provider kind, cell aliases and actual generation model IDs (not DB UUIDs).
+Mismatches name the field as **not comparable**; old schemas are never reinterpreted. Comparable pairs
+report scenario `c/(c+f)` deltas. Generation commit plus optional `EVAL_OVERLAY_COMMIT`, system-prompt
+source hash and `WEB_BUDGET_PROMOTION` are treatments: they may differ and are printed side by side.
 
-No baseline files are shipped until the first scheduled run produces real measurements. Before then, comments explain that PR impact is unknown and omit deltas and significance claims.
+Sticky PR comments use shared acceptance, compact cell/gate summaries, at most 20 diagnostics
+(prompt, expected, observed) and bounded treatment comparisons. Full tables/manifests are linked
+artifacts. The workflow remains manual-dispatch only.
 
 ### CI authentication
 
@@ -438,8 +355,8 @@ src/ai/eval/
   scenarios.ts      Prompt suites and default-model matrix derivation
   necessity-scenarios.ts Search-necessity taxonomy and prompt metadata
   judge.ts          Cross-model semantic assertions
-  stats.ts          Modal sampling, Wilson intervals, gates, and metrics aggregation
-  baseline.ts       Baseline file generation and Wilson-based comparisons
+  stats.ts          Manifest, trial aggregation, scenario SEM and shared acceptance
+  baseline.ts       Identity-gated paired scenario comparisons
   baseline-cli.ts   eval:baseline and eval:compare entry point
   smoke.ts          Deterministic pull-request subset selection
   scoring.ts        Citation extraction, URL validation, criteria checking

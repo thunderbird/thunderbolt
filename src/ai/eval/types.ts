@@ -4,6 +4,7 @@
 
 import type { ThunderboltUIMessage } from '@/types'
 import type { WidgetName } from '@/widgets'
+import type { JudgeVerdict } from './judge'
 import type { AppLocale } from '@shared/i18n/locales'
 
 export type { WidgetName }
@@ -22,7 +23,7 @@ export type NecessityCategory =
   | 'search_wont_help'
   /**
    * Reply-language adherence. Not a search-necessity category — it shares the
-   * scored-category machinery (samples, gate, Wilson interval) because the
+   * scored-category machinery (samples, gate, scenario interval) because the
    * behaviour is equally stochastic, but it is excluded from the search headline
    * rates in `stats.ts`.
    */
@@ -90,6 +91,9 @@ export type ParsedStream = {
   retryCount: number
   finishReason: string
   error?: string
+  errorStack?: string
+  unclassified?: boolean
+  events?: Record<string, unknown>[]
 }
 
 export type ToolCallInfo = {
@@ -118,78 +122,167 @@ export type EvalResult = {
   retryCount: number
   durationMs: number
   error?: string
-  sampleCount?: number
-  passedSampleCount?: number
-  errorSampleCount?: number
+  judgeVerdict?: JudgeVerdict
+  judgeAttempts?: JudgeAttempt[]
 }
 
-/** Summary stats for report generation */
-export type EvalSummary = {
-  total: number
-  passed: number
-  failed: number
-  passRate: number
-  byModel: Record<string, { total: number; passed: number; passRate: number }>
-  byEngine: Record<string, { total: number; passed: number; passRate: number }>
-  byMode: Record<string, { total: number; passed: number; passRate: number }>
+export type Verdict = 'pass' | 'fail' | 'unknown'
+export type ExecutionStatus = 'completed' | 'timeout' | 'infra_error' | 'judge_error'
+export type CategoryState = 'not_applicable' | 'unmeasured' | 'pass' | 'fail'
+
+export type JudgeAttempt = {
+  status: 'completed' | 'judge_error'
+  durationMs: number
+  verdict?: JudgeVerdict
+  error?: string
 }
 
-export type WilsonInterval = {
+export type EvalAttempt = {
+  threadId: string
+  status: ExecutionStatus
+  error?: string
+  errorStack?: string
+  unclassified?: boolean
+  generationDurationMs: number
+  judgeDurationMs: number
+  streams: ParsedStream[]
+  scoredTurnReached: boolean
+  result: EvalResult
+  verdicts: Record<string, Verdict>
+  provenFailure: boolean
+  toolEvents: { toolInfraError: number; toolMisuse: number; budgetDenial: number }
+  instrumentation: {
+    emitted: number
+    executed: number
+    cacheHits: number
+    initialCap: number
+    finalCap: number
+    promoted: boolean
+    researchSkill: { attempted: boolean; loaded: boolean; beforeFirstWebResult: boolean | null }
+    preflight: unknown
+  }
+}
+
+export type EvalTrial = {
+  id: string
+  scenario: EvalScenario
+  index: number
+  attempts: EvalAttempt[]
+}
+
+export type EvalManifest = {
+  cells: { key: string; model: string; engine: EvalEngine; modelId: string }[]
+  suites: string[]
+  scenarios: { scenario: EvalScenario; planned: number }[]
+  settings: Record<string, string>
+  samples: number
+  timeout: number
+  judgeTimeout: number
+  judgeModelId: string
+  judgePromptVersion: string
+  rubricHash: string
+  providerKind: string
+  auth: 'present' | 'absent'
+  partial: boolean
+  smoke: boolean
+  treatment: {
+    generationRevision: { commit: string; overlayCommit: string | null }
+    systemPromptVersion: string
+    WEB_BUDGET_PROMOTION: string
+  }
+  preflight: unknown
+}
+
+export type ScenarioInterval = {
   lower: number
   upper: number
+  margin: number
+  scenarios: number
+  flagged: boolean
+  label: string
 }
 
 export type NecessityCategoryMetrics = {
-  passed: number
-  total: number
-  rate: number
-  wilson: WilsonInterval
+  state: CategoryState
+  rate: number | null
+  valid: number
+  planned: number
+  scenarios: number
+  measuredScenarios: number
+  interval: ScenarioInterval | null
   threshold: number
-  gatePassed: boolean
+  pass3?: { rate: number | null; eligible: number; required: number }
+  endToEnd: number | null
 }
 
 export type NecessityRateMetric = {
+  state: CategoryState
   count: number
   total: number
-  rate: number
+  planned: number
+  rate: number | null
   threshold: number
-  gatePassed: boolean
 }
 
 export type EvalScenarioMetrics = {
   prompt: string
   category: NecessityCategory | 'core'
-  passed: boolean
-  webToolCalls: number
-  duplicateWebToolCalls: number
-  sampleCount: number
-  passedSampleCount: number
-  errorSampleCount: number
-  isNegativeControl: boolean
-  reviewBy: string | null
+  c: number
+  f: number
+  e: number
+  n: number
+  behaviour: 'pass' | 'flaky' | 'fail' | 'none'
+  completeness: 'complete' | 'partial' | 'error'
+  rate: number | null
   failures: string[]
+  reviewBy: string | null
 }
 
 export type EvalScenarioComparison = {
-  baselinePassed: boolean | null
-  currentPassed: boolean
-  direction: 'improved' | 'regressed' | 'unchanged' | 'no-baseline'
+  baselineRate: number | null
+  currentRate: number | null
+  delta: number | null
+  direction: 'improved' | 'regressed' | 'unchanged' | 'not comparable'
 }
 
 export type EvalMetricsGroup = {
   model: string
   engine: EvalEngine
   scenarios: Record<string, EvalScenarioMetrics>
-  categories: Partial<Record<NecessityCategory, NecessityCategoryMetrics>>
+  categories: Record<NecessityCategory, NecessityCategoryMetrics>
   headline: {
     unnecessarySearchRate: NecessityRateMetric
     missedSearchRate: NecessityRateMetric
-    meanWebCallsNoSearchExpected: number
+    meanWebCallsNoSearchExpected: number | null
   }
+  reliability: {
+    errors: number
+    planned: number
+    rate: number
+    firstAttemptGenerationErrors: number
+    firstAttemptJudgeErrors: number
+    firstAttemptErrors: number
+    firstAttemptErrorRate: number
+    toolInfraErrorRate: number
+    toolMisuseRate: number
+  }
+  scoredTurnNotReached: number
+  corePassed: boolean
 }
 
 export type EvalMetrics = {
-  schemaVersion: 3
+  schemaVersion: 4
   generatedAt: string
+  manifest: EvalManifest
+  trials: EvalTrial[]
+  harnessCrashed: boolean
   groups: Record<string, EvalMetricsGroup>
+  pooledErrorRate: number
+}
+
+export type EvalAcceptance = {
+  exitCode: 0 | 1 | 2
+  partial: boolean
+  reasons: string[]
+  cells: Record<string, { exitCode: 0 | 1 | 2; reasons: string[] }>
 }

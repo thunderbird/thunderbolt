@@ -10,7 +10,8 @@ import { defaultModelOpus5 } from '@shared/defaults/models'
 import { englishLanguageName } from '@shared/i18n/locales'
 import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
-import type { EvalCriteria, EvalResult, EvalScenario } from './types'
+import { positiveFinite } from './stats'
+import type { EvalCriteria, EvalResult, EvalScenario, JudgeAttempt } from './types'
 
 const judgeVerdictSchema = z
   .object({
@@ -26,8 +27,6 @@ const judgeVerdictSchema = z
 export type JudgeVerdict = z.infer<typeof judgeVerdictSchema>
 export type JudgeModelName = 'opus'
 
-class RetryableJudgeError extends Error {}
-
 type ScheduleTimeout = (callback: () => void, delayMs: number) => () => void
 
 type JudgeTimeoutOptions = {
@@ -36,7 +35,7 @@ type JudgeTimeoutOptions = {
   scheduleTimeout?: ScheduleTimeout
 }
 
-const judgeAttemptTimeoutMs = Number.parseInt(process.env.EVAL_JUDGE_TIMEOUT ?? '60000', 10)
+export const judgePromptVersion = 'round-0a-v1'
 const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
   const timer = setTimeout(callback, delayMs)
   return () => clearTimeout(timer)
@@ -132,16 +131,8 @@ const extractJudgeJson = (text: string): string => {
 
 /** Parse the judge's JSON response, tolerating formatting noise but rejecting schema drift. */
 export const parseJudgeVerdict = (text: string): JudgeVerdict => {
-  let parsed: unknown
   try {
-    parsed = JSON.parse(extractJudgeJson(text))
-  } catch (error) {
-    throw new RetryableJudgeError(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`, {
-      cause: error,
-    })
-  }
-  try {
-    return judgeVerdictSchema.parse(parsed)
+    return judgeVerdictSchema.parse(JSON.parse(extractJudgeJson(text)))
   } catch (error) {
     throw new Error(`Invalid judge verdict: ${error instanceof Error ? error.message : String(error)}`, {
       cause: error,
@@ -154,12 +145,23 @@ export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): Ev
   const judgeFailures = declaredAssertions(result.scenario.criteria).flatMap(({ verdictKey, label }) => {
     const value = verdict[verdictKey]
     if (value === null) {
-      throw new RetryableJudgeError(`Judge omitted declared assertion: ${verdictKey}`)
+      throw new Error(`Judge omitted declared assertion: ${verdictKey}`)
     }
     return value ? [] : [`Judge rejected ${label}: ${verdict.explanation}`]
   })
-  const failures = [...result.failures, ...judgeFailures]
-  return { ...result, passed: failures.length === 0, failures }
+  const failures = [
+    ...result.failures.filter(
+      (failure) => !failure.startsWith('Judge rejected ') && !failure.startsWith('Judge error:'),
+    ),
+    ...judgeFailures,
+  ]
+  return {
+    ...result,
+    passed: failures.length === 0,
+    failures,
+    error: result.error?.startsWith('Judge error:') ? undefined : result.error,
+    judgeVerdict: verdict,
+  }
 }
 
 /** Run one judge attempt with an abort signal and reject when its time budget expires. */
@@ -190,36 +192,30 @@ export const evaluateWithJudge = async (
   if (!requiresJudge(result.scenario.criteria)) {
     return result
   }
-  const attemptTimeoutMs = options.attemptTimeoutMs ?? judgeAttemptTimeoutMs
+  const attemptTimeoutMs = positiveFinite(
+    options.attemptTimeoutMs === undefined ? process.env.EVAL_JUDGE_TIMEOUT : String(options.attemptTimeoutMs),
+    60000,
+    'EVAL_JUDGE_TIMEOUT',
+  )
   const now = options.now ?? (() => performance.now())
   const scheduleTimeout = options.scheduleTimeout ?? defaultScheduleTimeout
-  const deadline = now() + attemptTimeoutMs * 2
-  try {
-    const evaluateOnce = async (): Promise<EvalResult> => {
-      const remainingMs = deadline - now()
-      if (remainingMs <= 0) {
-        throw new Error('Judge timed out')
-      }
-      const verdict = await runAbortableJudgeAttempt(evaluate, Math.min(attemptTimeoutMs, remainingMs), scheduleTimeout)
-      return applyJudgeVerdict(result, verdict)
-    }
+  const judgeAttempts: JudgeAttempt[] = []
+  for (const index of [0, 1]) {
+    const start = now()
     try {
-      return await evaluateOnce()
+      const verdict = await runAbortableJudgeAttempt(evaluate, attemptTimeoutMs, scheduleTimeout)
+      const judged = applyJudgeVerdict(result, verdict)
+      judgeAttempts.push({ status: 'completed', durationMs: now() - start, verdict })
+      return { ...judged, judgeAttempts }
     } catch (error) {
-      if (!(error instanceof RetryableJudgeError)) {
-        throw error
+      const message = `Judge error: ${error instanceof Error ? error.message : String(error)}`
+      judgeAttempts.push({ status: 'judge_error', durationMs: now() - start, error: message })
+      if (index === 1) {
+        return { ...result, passed: false, failures: [...result.failures, message], error: message, judgeAttempts }
       }
-      return await evaluateOnce()
-    }
-  } catch (error) {
-    const message = `Judge error: ${error instanceof Error ? error.message : String(error)}`
-    return {
-      ...result,
-      passed: false,
-      failures: [...result.failures, message],
-      error: message,
     }
   }
+  throw new Error('Judge attempts exhausted')
 }
 
 /** Build the terse semantic grading prompt for a scenario's scored turn. */

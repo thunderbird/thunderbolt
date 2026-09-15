@@ -27,3 +27,15 @@ test('starts the eval entrypoint with auth under plain Bun', async () => {
   expect(output).toContain('No scenarios matched the filters.')
   expect(output).not.toContain('localStorage is not defined')
 }, 30_000)
+
+test.each(['EVAL_TIMEOUT', 'EVAL_JUDGE_TIMEOUT'])('rejects invalid %s before model work', async (setting) => {
+  const child = Bun.spawn(['bun', '--preload', './scripts/lingui-macro-bun-shim.ts', 'src/ai/eval/run.ts'], {
+    cwd: join(import.meta.dir, '../../..'),
+    env: { ...process.env, EVAL_MODELS: 'missing-model', [setting]: 'NaN' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
+  expect(code).toBe(2)
+  expect(stderr).toContain(`${setting} must be a positive finite number`)
+})

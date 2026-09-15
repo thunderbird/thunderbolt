@@ -2,127 +2,184 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, describe, expect, test } from 'bun:test'
+import { afterAll, expect, spyOn, test } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { summarize, writeMarkdownReport, writeMetricsReport } from './report'
-import type { EvalEngine, EvalResult } from './types'
+import { appendTrial, renderMetricsReport, startTrialJournal, writeMarkdownReport, writeMetricsReport } from './report'
+import { createManifest, aggregateEvalMetrics, serializeArtifact } from './stats'
+import { initLayout, printResult, teardownLayout } from './ui'
+import { renderEvalComment } from '../../../.github/scripts/post-eval-results'
+import { compareMetricsToBaselines } from './baseline'
+import { fixtureManifest, fixtureMetrics, fixtureScenario, fixtureTrial } from './test-fixtures'
 
-const result = (engineName: EvalEngine, passed: boolean): EvalResult => ({
-  scenario: {
-    id: `model/${engineName}/chat/C1`,
-    modelName: 'model',
-    engineName,
-    modeName: 'chat',
-    prompt: 'prompt',
-    criteria: { mustProduceOutput: true },
-  },
-  passed,
-  failures: passed ? [] : ['failed'],
-  responseText: 'response',
-  responseLength: 8,
-  citations: [],
-  widgets: [],
-  linkPreviewUrls: [],
-  homepageUrls: [],
-  reviewSiteUrls: [],
-  toolCallCount: 0,
-  duplicateToolCallCount: 0,
-  retryCount: 0,
-  durationMs: 1,
+const directory = mkdtempSync(join(tmpdir(), 'eval-report-'))
+afterAll(() => rmSync(directory, { recursive: true, force: true }))
+
+test('M2: the actual report shows independent model and engine acceptance rows', () => {
+  const pi = fixtureScenario()
+  const legacy = { ...pi, id: 'opus/legacy/chat/never', engineName: 'legacy' as const }
+  const metrics = aggregateEvalMetrics(fixtureManifest([pi, legacy], 1), [
+    fixtureTrial(pi),
+    fixtureTrial(legacy, 0, false),
+  ])
+  const report = renderMetricsReport(metrics)
+  expect(report).toContain('| opus/pi | pass |')
+  expect(report).toContain('| opus/legacy | exit 1 |')
 })
 
-describe('summarize', () => {
-  test('breaks pass rates down by engine', () => {
-    const summary = summarize([result('pi', true), result('pi', false), result('legacy', true)])
-
-    expect(summary.byEngine).toEqual({
-      pi: { total: 2, passed: 1, passRate: 50 },
-      legacy: { total: 1, passed: 1, passRate: 100 },
-    })
+test('JSON metrics retain manifest, every trial, and scored follow-up prompt', () => {
+  const scenario = { ...fixtureScenario(), followUps: ['Repeat the price you just found.'] }
+  const metrics = aggregateEvalMetrics(fixtureManifest([scenario]), [fixtureTrial(scenario)])
+  const path = writeMetricsReport(metrics, join(directory, 'report.md'))
+  expect(path).toBe(join(directory, 'eval-metrics.json'))
+  const written = JSON.parse(readFileSync(path, 'utf8'))
+  expect(written.schemaVersion).toBe(4)
+  expect(written.trials).toHaveLength(1)
+  expect(written.groups['opus/pi'].scenarios[scenario.id]).toMatchObject({
+    n: 3,
+    c: 1,
+    e: 2,
+    prompt: scenario.followUps[0],
   })
 })
 
-describe('necessity reports', () => {
-  const outputDirectory = mkdtempSync(join(tmpdir(), 'thunderbolt-eval-'))
+test('markdown leads with cells and includes category states, SEM, headlines, labels and overdue warnings', () => {
+  const metrics = fixtureMetrics(2)
+  const path = join(directory, 'report.md')
+  writeMarkdownReport(metrics, path, true)
+  const markdown = readFileSync(path, 'utf8')
+  expect(markdown.indexOf('| Cell |')).toBeLessThan(markdown.indexOf('## Category'))
+  for (const text of [
+    'exit 1',
+    'never_search | fail',
+    '66.7%',
+    'paraphrase families are correlated',
+    'pass^3',
+    'flaky (complete)',
+    'Unnecessary-search rate',
+    'Past-due review dates',
+  ]) {
+    expect(markdown).toContain(text)
+  }
+  expect(markdown).not.toContain('Wilson')
+})
 
-  afterAll(() => rmSync(outputDirectory, { recursive: true, force: true }))
+test('journal persists each completed trial before final metrics exist', () => {
+  const manifest = fixtureManifest()
+  const path = startTrialJournal(manifest, directory)
+  appendTrial(path, fixtureTrial())
+  const records = readFileSync(path, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+  expect(records).toHaveLength(2)
+  expect(records[0].manifest).toEqual(manifest)
+  expect(records[1].id).toBe(fixtureTrial().id)
+})
 
-  test('writes stable JSON metrics keyed by model and engine', () => {
-    const necessityResult: EvalResult = {
-      ...result('pi', true),
-      scenario: {
-        ...result('pi', true).scenario,
-        id: 'opus/pi/chat/never-search-01',
-        modelName: 'opus',
-        prompt: 'Find the current price.',
-        followUps: ['Repeat the price you just found.'],
-        category: 'never_search',
-        reviewBy: '2026-11-04',
-      },
-      sampleCount: 3,
-      passedSampleCount: 2,
-      errorSampleCount: 0,
+test('synthetic EVAL_AUTH_TOKEN and credentials never appear in any serialized artifact or report', () => {
+  const token = 'synthetic-EVAL_AUTH_TOKEN-marker-932'
+  const previous = process.env.EVAL_AUTH_TOKEN
+  process.env.EVAL_AUTH_TOKEN = token
+  try {
+    const metadata = fixtureManifest()
+    metadata.preflight = {
+      Authorization: `Bearer ${token}`,
+      cookie: token,
+      nested: { accessToken: token },
+      error: `Request used Bearer ${token}`,
     }
-    const markdownPath = join(outputDirectory, 'report.md')
-
-    const coreResult: EvalResult = {
-      ...result('pi', false),
-      scenario: {
-        ...result('pi', false).scenario,
-        id: 'opus/pi/chat/C1',
-        modelName: 'opus',
-      },
-    }
-    const metricsPath = writeMetricsReport([coreResult, necessityResult], markdownPath, '2026-08-04T12:00:00.000Z')
-    const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as {
-      schemaVersion: number
-      groups: Record<string, { scenarios: Record<string, { category: string; prompt: string; sampleCount: number }> }>
-    }
-
-    expect(metrics.schemaVersion).toBe(3)
-    expect(metrics.groups['opus/pi'].scenarios.C1).toMatchObject({
-      category: 'core',
-      prompt: 'prompt',
-      sampleCount: 1,
+    const manifest = createManifest([fixtureScenario()], metadata, {
+      EVAL_AUTH_TOKEN: token,
+      EVAL_MODELS: 'opus',
+      UNLISTED: 'secret',
     })
-    expect(metrics.groups['opus/pi'].scenarios['never-search-01']).toMatchObject({
-      prompt: 'Repeat the price you just found.',
-      sampleCount: 3,
-    })
-    expect(metricsPath).toBe(join(outputDirectory, 'eval-metrics.json'))
-  })
-
-  test('includes category gates, headlines, and overdue review warnings in markdown', () => {
-    const necessityResult: EvalResult = {
-      ...result('pi', true),
-      scenario: {
-        ...result('pi', true).scenario,
-        id: 'opus/pi/chat/never-search-01',
-        modelName: 'opus',
-        category: 'never_search',
-        reviewBy: '2026-01-01',
-      },
-      sampleCount: 3,
-      passedSampleCount: 3,
-      errorSampleCount: 0,
+    expect(manifest.auth).toBe('present')
+    expect(manifest.settings).toEqual({ EVAL_MODELS: 'opus' })
+    const trial = fixtureTrial()
+    trial.attempts[0].instrumentation.preflight = metadata.preflight
+    trial.attempts[0].result.responseText = token
+    trial.attempts[0].result.failures = [token]
+    const metrics = aggregateEvalMetrics(manifest, [trial])
+    const journal = startTrialJournal(manifest, directory)
+    appendTrial(journal, trial)
+    const markdown = join(directory, 'redaction.md')
+    writeMarkdownReport(metrics, markdown, true)
+    const json = writeMetricsReport(metrics, markdown)
+    const artifacts = [
+      JSON.stringify(manifest),
+      serializeArtifact(trial),
+      serializeArtifact(compareMetricsToBaselines(metrics, {})),
+      renderMetricsReport(metrics, true),
+      ...[journal, markdown, json].map((path) => readFileSync(path, 'utf8')),
+    ]
+    for (const artifact of artifacts) {
+      expect(artifact).not.toContain(token)
     }
-    const outputPath = join(outputDirectory, 'necessity.md')
+    expect(serializeArtifact({ cookie: 'cookie-secret', error: 'cookie-secret' })).not.toContain('cookie-secret')
+    const escaped = 'credential-with-"-and-newline\n'
+    expect(JSON.parse(serializeArtifact({ token: escaped, echoed: escaped })).echoed).toBe('[REDACTED]')
+  } finally {
+    if (previous === undefined) {
+      delete process.env.EVAL_AUTH_TOKEN
+    } else {
+      process.env.EVAL_AUTH_TOKEN = previous
+    }
+  }
+})
 
-    writeMarkdownReport(
-      [necessityResult],
-      summarize([necessityResult]),
-      outputPath,
-      false,
-      new Date('2026-08-04T12:00:00.000Z'),
-    )
-    const markdown = readFileSync(outputPath, 'utf8')
-
-    expect(markdown).toContain('## Search Necessity Gate')
-    expect(markdown).toContain('| never_search | 1/1 | 100.0%')
-    expect(markdown).toContain('Unnecessary-search rate')
-    expect(markdown).toContain('Past-due review dates')
-    expect(markdown).toContain('opus/pi/chat/never-search-01')
+test('C1: embedded Authorization Cookie and Set-Cookie credentials are redacted at every artifact boundary', () => {
+  const markers = [
+    'basic-only-secret',
+    'digest-only-secret',
+    'cookie-only-secret',
+    'set-cookie-only-secret',
+    'quoted-only-secret',
+  ]
+  const diagnostic = [
+    `request failed; Authorization: Basic ${markers[0]}; Cookie: session=${markers[2]}`,
+    `authorization: Digest username="${markers[1]}", response="${markers[1]}"`,
+    `Cookie: session=${markers[2]}; second=${markers[2]}`,
+    `Set-Cookie: session=${markers[3]}; HttpOnly; Path=/`,
+    `headers: {"Authorization":"CustomScheme ${markers[4]}"}`,
+  ].join('\n')
+  const manifest = fixtureManifest(undefined, 1)
+  manifest.preflight = { error: diagnostic }
+  const trial = fixtureTrial(undefined, 0, false, 'infra_error')
+  trial.attempts[0].error = diagnostic
+  trial.attempts[0].result.failures = [diagnostic]
+  trial.attempts[0].instrumentation.preflight = { error: diagnostic }
+  trial.attempts[0].streams[0].events = [{ type: 'tool-output-error', errorText: diagnostic }]
+  const metrics = aggregateEvalMetrics(manifest, [trial])
+  const journal = startTrialJournal(manifest, directory)
+  appendTrial(journal, trial)
+  const markdown = join(directory, 'embedded-headers.md')
+  writeMarkdownReport(metrics, markdown, true)
+  const json = writeMetricsReport(metrics, markdown)
+  const output: string[] = []
+  const write = spyOn(process.stdout, 'write').mockImplementation((text) => {
+    output.push(String(text))
+    return true
   })
+  try {
+    initLayout([trial.scenario], 1)
+    printResult(trial)
+    teardownLayout()
+  } finally {
+    write.mockRestore()
+  }
+  const artifacts = [
+    serializeArtifact({ error: diagnostic }, ['different-EVAL_AUTH_TOKEN']),
+    serializeArtifact({ ...compareMetricsToBaselines(metrics, {}), error: diagnostic }),
+    renderEvalComment(metrics, {}, { artifactUrl: 'https://example.test/artifacts' }),
+    output.join(''),
+    ...[journal, markdown, json].map((path) => readFileSync(path, 'utf8')),
+  ]
+  for (const artifact of artifacts) {
+    expect(artifact).toContain('[REDACTED]')
+    for (const marker of markers) {
+      expect(artifact).not.toContain(marker)
+    }
+  }
 })

@@ -142,3 +142,23 @@ describe('parseStream', () => {
     })
   })
 })
+
+test('retains SSE and recovered tool errors alongside the partial answer', async () => {
+  const events = [
+    { type: 'text-delta', delta: 'partial' },
+    {
+      type: 'tool-input-available',
+      toolCallId: 'failed',
+      toolName: 'fetch_content',
+      input: { url: 'https://example.test' },
+    },
+    { type: 'tool-output-error', toolCallId: 'failed', errorText: 'HTTP 503' },
+    { type: 'error', errorText: 'provider disconnected' },
+  ]
+  const parsed = await parseStream(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')))
+  expect(parsed.text).toBe('partial')
+  expect(parsed.error).toBe('provider disconnected')
+  expect(parsed.assistantParts[0]).toMatchObject({ state: 'output-error', errorText: 'HTTP 503' })
+  expect(parsed.events).toEqual(events)
+  expect(parsed.toolCalls).toHaveLength(1)
+})

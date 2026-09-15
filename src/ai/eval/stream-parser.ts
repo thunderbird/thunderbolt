@@ -5,6 +5,53 @@
 import type { ThunderboltUIMessage } from '@/types'
 import type { ParsedStream, ToolCallInfo } from './types'
 
+const transportCodes = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ETIMEDOUT',
+  'EPIPE',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+])
+const providerErrorNames = new Set([
+  'AI_APICallError',
+  'AI_EmptyResponseBodyError',
+  'APIConnectionError',
+  'APIConnectionTimeoutError',
+  'NetworkError',
+  'TimeoutError',
+  'HttpError',
+])
+
+const recognizedException = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+  if ('name' in error && providerErrorNames.has(String(error.name))) {
+    return true
+  }
+  if ('code' in error && transportCodes.has(String(error.code))) {
+    return true
+  }
+  if ('status' in error && typeof error.status === 'number' && error.status >= 400 && error.status <= 599) {
+    return true
+  }
+  return 'cause' in error && error.cause !== error ? recognizedException(error.cause) : false
+}
+
+/** Preserve unknown adapter exceptions as non-retryable error trials, rather than guessing infrastructure. */
+export const describeExecutionError = (
+  error: unknown,
+): Pick<ParsedStream, 'error' | 'errorStack' | 'unclassified'> => ({
+  error: error instanceof Error ? error.message : String(error),
+  errorStack: error instanceof Error ? error.stack : undefined,
+  unclassified: !recognizedException(error),
+})
+
 /**
  * Reconstruct an assistant message's parts from a parsed stream: each completed
  * tool call (those whose output arrived) as a `dynamic-tool` part, then the
@@ -20,16 +67,18 @@ export const buildAssistantParts = (
   text: string,
   toolCalls: ToolCallInfo[],
   toolOutputs: Map<string, unknown>,
+  toolErrors = new Map<string, string>(),
 ): ThunderboltUIMessage['parts'] => {
   const toolParts: ThunderboltUIMessage['parts'] = toolCalls
-    .filter((call) => toolOutputs.has(call.toolCallId))
+    .filter((call) => toolOutputs.has(call.toolCallId) || toolErrors.has(call.toolCallId))
     .map((call) => ({
       type: 'dynamic-tool',
       toolName: call.toolName,
       toolCallId: call.toolCallId,
-      state: 'output-available',
       input: call.input,
-      output: toolOutputs.get(call.toolCallId),
+      ...(toolErrors.has(call.toolCallId)
+        ? { state: 'output-error' as const, errorText: toolErrors.get(call.toolCallId)! }
+        : { state: 'output-available' as const, output: toolOutputs.get(call.toolCallId) }),
     }))
   if (text.trim().length === 0) {
     return toolParts
@@ -51,7 +100,11 @@ export const buildAssistantParts = (
  * - finish: { type: "finish" }
  * - start-step: { type: "start-step" }
  */
-export const parseStream = async (response: Response, signal?: AbortSignal): Promise<ParsedStream> => {
+export const parseStream = async (
+  response: Response,
+  signal?: AbortSignal,
+  onProgress?: (parsed: ParsedStream) => void,
+): Promise<ParsedStream> => {
   const reader = response.body?.getReader()
   if (!reader) {
     return emptyResult('No response body')
@@ -70,9 +123,23 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
   const textParts: string[] = []
   const toolCalls: ToolCallInfo[] = []
   const toolOutputs = new Map<string, unknown>()
+  const toolErrors = new Map<string, string>()
+  const events: Record<string, unknown>[] = []
+  const errors: string[] = []
   let stepCount = 0
   let retryCount = 0
   let finishReason = 'unknown'
+
+  const snapshot = (): ParsedStream => ({
+    text: textParts.join(''),
+    toolCalls,
+    assistantParts: buildAssistantParts(textParts.join(''), toolCalls, toolOutputs, toolErrors),
+    stepCount,
+    retryCount,
+    finishReason,
+    events,
+    ...(errors.length ? { error: errors.join('; ') } : {}),
+  })
 
   const processLine = (line: string) => {
     const trimmed = line.trim()
@@ -81,17 +148,14 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
     }
 
     // Strip the "data: " SSE prefix
-    const jsonStr = trimmed.startsWith('data: ')
-      ? trimmed.slice(6)
-      : trimmed.startsWith('data:')
-        ? trimmed.slice(5)
-        : null
+    const jsonStr = trimmed.startsWith('data:') ? trimmed.slice(5) : null
     if (!jsonStr) {
       return
     }
 
     const event = JSON.parse(jsonStr) as Record<string, unknown>
 
+    events.push(event)
     switch (event.type) {
       case 'text-delta':
         textParts.push(event.delta as string)
@@ -109,6 +173,14 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
         toolOutputs.set(event.toolCallId as string, event.output)
         break
 
+      case 'error':
+        errors.push(String(event.errorText ?? event.error ?? 'SSE error'))
+        break
+
+      case 'tool-output-error':
+        toolErrors.set(event.toolCallId as string, String(event.errorText))
+        break
+
       case 'finish-step':
         stepCount++
         if (event.finishReason) {
@@ -122,6 +194,7 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
         }
         break
     }
+    onProgress?.(snapshot())
   }
 
   try {
@@ -145,15 +218,10 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
       processLine(buffer)
     }
   } catch (err) {
-    const text = textParts.join('')
-    return {
-      ...emptyResult(String(err)),
-      text,
-      toolCalls,
-      assistantParts: buildAssistantParts(text, toolCalls, toolOutputs),
-      stepCount,
-      retryCount,
-    }
+    const exception = describeExecutionError(err)
+    const unclassified = errors.length === 0 && exception.unclassified
+    errors.push(String(err))
+    return { ...snapshot(), errorStack: exception.errorStack, unclassified }
   } finally {
     signal?.removeEventListener('abort', cancelOnAbort)
   }
@@ -165,14 +233,10 @@ export const parseStream = async (response: Response, signal?: AbortSignal): Pro
     retryCount++
   }
 
-  return {
-    text: fullText,
-    toolCalls,
-    assistantParts: buildAssistantParts(fullText, toolCalls, toolOutputs),
-    stepCount,
-    retryCount,
-    finishReason,
+  if (signal?.aborted) {
+    errors.push(String(signal.reason))
   }
+  return snapshot()
 }
 
 const emptyResult = (error: string): ParsedStream => ({

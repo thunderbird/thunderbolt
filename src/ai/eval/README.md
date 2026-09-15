@@ -58,21 +58,32 @@ Each scenario checks a combination of criteria depending on the mode:
 
 Necessity scenarios use plain Chat turns, so the production `auto` web budget applies. They multiply across the same model/engine matrix as the core suites.
 
-| Category                | Prompts | Expected behavior                                                  | Gate |
-| ----------------------- | :-----: | ------------------------------------------------------------------ | :--: |
-| `never_search`          |   12    | No web calls; correct answer                                       | 95%  |
-| `answer_then_offer`     |   12    | Answer without web calls, then explicitly offer to verify          | 80%  |
-| `single_search`         |   12    | 1-2 web calls                                                      | 90%  |
-| `research`              |   12    | Search in Chat; deep-research wording requires at least 2 attempts | 85%  |
-| `unknown_entity`        |    8    | 1-2 web calls                                                      | 85%  |
-| `false_premise`         |    8    | Search and explicitly rebut the embedded false premise             | 75%  |
-| `adversarial_no_search` |   16    | Resist lexical/recency bait; no web calls; correct answer          | 90%  |
-| `multi_turn_reuse`      |   12    | Reuse prior results; two negative controls require a fresh search  | 90%  |
-| `search_wont_help`      |    4    | Do not fabricate; explicitly admit the answer cannot be verified   | 60%  |
+| Category                | Prompts per cell | Expected behavior                                                                   | Gate |
+| ----------------------- | ---------------: | ----------------------------------------------------------------------------------- | ---: |
+| `never_search`          |               14 | Correct stable/code answers; no web or research-skill load                          |  95% |
+| `answer_then_offer`     |                8 | Correct scoped answer, freshness caveat and offer; no web/research load             |  80% |
+| `single_search`         |               26 | 1–2 web calls, supported answer covering the narrow question, no research load      |  90% |
+| `research`              |               26 | Successful research-skill load and evidence-backed coverage of requested dimensions |  85% |
+| `unknown_entity`        |                8 | 1–2 web calls, no research load; routing-only under Q3                              |  85% |
+| `false_premise`         |                8 | Verify, rebut and support corrected facts in 1–3 calls; no research load            |  75% |
+| `adversarial_no_search` |               19 | Correct task completion despite search bait; no web/research load                   |  90% |
+| `multi_turn_reuse`      |               12 | Ten faithful recalls of sourced setup answers; two new-lookup controls              |  90% |
+| `search_wont_help`      |                4 | Admit inability to verify; 0–2 tolerated calls, no research load                    |  60% |
 
-`search_wont_help` is excluded by default and enabled with `EVAL_NECESSITY_OPTIONAL=1`.
+There are 125 definitions per cell, 121 enabled by default. `search_wont_help` is enabled with
+`EVAL_NECESSITY_OPTIONAL=1`; it and unknown entities gain no implicit evidence-coverage assertion.
+The two search-positive reuse controls also remain routing-only. Every semantic expectation is
+bound to its declared assertion; routing and skill requirements are deterministic criteria.
 
-The `research` category measures the decision to search in ordinary Chat, not exhaustive depth. Prompts that explicitly say “research,” “deep dive,” or “comprehensive” require at least two web-call attempts; other multi-source prompts require at least one. There is no scored maximum because the model may attempt additional angles after Chat's two-call execution budget is exhausted. The existing `/research` suite measures depth under its 30-call budget.
+The approved Round 1 table retains the 96 existing IDs, adds all 27 PoC prompts under `poc-*-01`,
+and adds `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases
+move to narrow search; WebGPU gets a bounded support overview. Version questions mean latest
+non-prerelease, and match questions permit sourced no-fixture results. The three English/Portuguese
+PoC pairs additionally check reply language. No gate was lowered.
+
+Research keeps existing minima of one or two emitted web calls; retained PoC research requires two.
+There is no scenario maximum. Budget behavior is unchanged in this round: loading instructions does
+not yet promote Chat's budget. Future promotion is separate work, and no live result is claimed here.
 
 ### Reply-language suite
 
@@ -182,11 +193,11 @@ Core suites contain 15 prompts per mode, tested against every model in `defaultM
 
 **Widget regression** covers spontaneous weather forecasts, link previews, integration connection prompts, interactive questions, and maps, plus factual and coding prompts that must remain plain text. Citation tags are excluded because citation instructions explicitly forbid them. Document-result tags are excluded because they require Document Search mode and tool results, which this runner does not support.
 
-All scenarios are defined in `scenarios.ts`.
+Core scenarios are in `scenarios.ts`; necessity and language definitions have their own files.
 
 ### Smoke subset
 
-`EVAL_SMOKE=1` selects a fixed list rather than sampling randomly. Every shipped model/engine cell runs `C1`, `S1`, and `R1`, plus the first prompt from each enabled search-necessity category. With the current matrix that is 11 scenarios per cell and 33 total. Enabling `EVAL_NECESSITY_OPTIONAL=1` adds `search-wont-help-01` per cell.
+`EVAL_SMOKE=1` selects a fixed list rather than sampling randomly. Every shipped model/engine cell runs `C1`, `S1`, and `R1`, plus the first prompt from each enabled search-necessity category. Core plus necessity smoke remains 11 scenarios per cell (33 total); the default all-suite run also includes two language cases per cell (39 total). Enabling `EVAL_NECESSITY_OPTIONAL=1` adds `search-wont-help-01` per cell.
 
 Smoke mode always uses one sample, even when `EVAL_SAMPLES` is set. The explicit IDs and invariant tests keep the subset stable and reviewable while limiting pull-request runtime.
 
@@ -211,6 +222,7 @@ The runner automatically checks:
 - **`expectReuseFidelity`** — The answer faithfully reuses an earlier turn’s result
 - **`expectPremiseRebuttal`** — Judge checks that the response explicitly corrected the false premise
 - **`expectVerificationDisclaimer`** — Judge checks that the response admitted the answer could not be verified
+- **`expectResearchSkill`** — Deterministically require or forbid a successful research-instruction load in the scored turn; attempted, failed, unrelated or earlier-turn loads do not satisfy it
 
 Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-call counts. Calls emitted after the web budget is exhausted still count because they represent a model decision to call the tool, even when the result is `budget_exhausted`.
 
@@ -218,15 +230,11 @@ Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-ca
 
 Semantic assertions use an LLM judge; routing, skill and web-call checks remain deterministic. Opus judges every model, including itself, because confidential models cannot be reached through the judge's OpenAI-compatible connection. The "never judges itself" rule is suspended until another direct managed model is available.
 
-Existing scenarios declare the following checks; new evidence/reuse criteria are available but are not assigned to existing scenarios in Round 0b:
-
-| Category                                              | Judge assertion                             |
-| ----------------------------------------------------- | ------------------------------------------- |
-| `never_search`, `adversarial_no_search`               | Strict answer correctness                   |
-| `answer_then_offer`                                   | Knowledge answer + offer + freshness caveat |
-| `false_premise`                                       | Explicit premise rebuttal only              |
-| `search_wont_help`                                    | Verification disclaimer only                |
-| `multi_turn_reuse` and all other necessity categories | None; deterministic scoring only            |
+The approved necessity rubric declares correctness for stable/no-search answers, correctness plus
+search-offer/caveat for dated guidance, evidence coverage for single search and research, and rebuttal
+plus coverage for false premises. Faithful reuse declares first-turn coverage and final-turn reuse
+fidelity. Unknown entities and new-lookup reuse controls stay routing-only; `search_wont_help` declares
+only its verification disclaimer. Paired Portuguese/English cases also check reply language.
 
 Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
 

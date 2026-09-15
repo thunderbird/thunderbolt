@@ -68,6 +68,8 @@ export type EvalCriteria = {
   /** Maximum built-in web calls allowed in the final turn. */
   maxToolCalls?: number
   noDuplicateToolCalls?: boolean
+  /** Whether research instructions must (or must not) be successfully loaded in this turn. */
+  expectResearchSkill?: boolean
   expectCorrectAnswer?: boolean
   expectSearchOffer?: boolean
   expectEvidenceCoverage?: boolean
@@ -108,6 +110,7 @@ export type EvalTurnResult = { turn: number; result: EvalResult; verdicts: Recor
 export type ParsedStream = {
   text: string
   toolCalls: ToolCallInfo[]
+  researchSkillLoaded?: boolean
   /**
    * Assistant message parts reconstructed from the stream (completed tool calls
    * with their outputs, then the final text). Fed back as history for the next

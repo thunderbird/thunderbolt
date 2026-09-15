@@ -4,44 +4,35 @@
 
 import { describe, expect, test } from 'bun:test'
 import { getNecessityScenarios } from './necessity-scenarios'
-import type { EvalCriteria, NecessityCategory } from './types'
+import { getScenarioTurns } from './turns'
+import { semanticCriterionKeys, type NecessityCategory } from './types'
 
 /** The search-necessity taxonomy proper — `language` shares the machinery but not the taxonomy. */
 type SearchCategory = Exclude<NecessityCategory, 'language'>
 
 const expectedCounts: Record<SearchCategory, number> = {
-  never_search: 12,
-  answer_then_offer: 12,
-  single_search: 12,
-  research: 12,
+  never_search: 14,
+  answer_then_offer: 8,
+  single_search: 26,
+  research: 26,
   unknown_entity: 8,
   false_premise: 8,
-  adversarial_no_search: 16,
+  adversarial_no_search: 19,
   multi_turn_reuse: 12,
   search_wont_help: 4,
 }
 
-type JudgeAssertion = keyof Pick<
-  EvalCriteria,
-  'expectCorrectAnswer' | 'expectSearchOffer' | 'expectPremiseRebuttal' | 'expectVerificationDisclaimer'
->
-
-const judgeAssertions: JudgeAssertion[] = [
-  'expectCorrectAnswer',
-  'expectSearchOffer',
-  'expectPremiseRebuttal',
-  'expectVerificationDisclaimer',
-]
+type JudgeAssertion = (typeof semanticCriterionKeys)[number]
 
 const expectedJudgeAssertions: Record<SearchCategory, JudgeAssertion[]> = {
   never_search: ['expectCorrectAnswer'],
-  answer_then_offer: ['expectSearchOffer'],
-  single_search: [],
-  research: [],
+  answer_then_offer: ['expectCorrectAnswer', 'expectSearchOffer'],
+  single_search: ['expectEvidenceCoverage'],
+  research: ['expectEvidenceCoverage'],
   unknown_entity: [],
-  false_premise: ['expectPremiseRebuttal'],
+  false_premise: ['expectEvidenceCoverage', 'expectPremiseRebuttal'],
   adversarial_no_search: ['expectCorrectAnswer'],
-  multi_turn_reuse: [],
+  multi_turn_reuse: ['expectReuseFidelity'],
   search_wont_help: ['expectVerificationDisclaimer'],
 }
 
@@ -112,9 +103,16 @@ describe('necessity scenarios', () => {
     const scenarios = getNecessityScenarios(['opus'], undefined, true)
 
     for (const scenario of scenarios) {
-      const declared = judgeAssertions.filter((assertion) => scenario.criteria[assertion])
-
-      expect(declared).toEqual(expectedJudgeAssertions[scenario.category as SearchCategory])
+      const declared = semanticCriterionKeys.filter((assertion) => scenario.criteria[assertion])
+      const pairedLanguage = /poc-(desktop-transcripts|apple-silicon-llms|official-stable-version)(-pt)?-01$/.test(
+        scenario.id,
+      )
+      const expected =
+        scenario.category === 'multi_turn_reuse' && scenario.isNegativeControl
+          ? []
+          : expectedJudgeAssertions[scenario.category as SearchCategory]
+      expect(declared).toEqual([...expected, ...(pairedLanguage ? (['expectReplyLanguage'] as const) : [])])
+      expect(Object.keys(scenario.expectation ?? {}).sort()).toEqual([...declared].sort())
     }
   })
 
@@ -127,9 +125,97 @@ describe('necessity scenarios', () => {
       ),
     ).toBe(true)
     expect(
-      scenarios.every(
-        ({ followUps }) => followUps?.every((prompt) => typeof prompt === 'string' && !prompt.startsWith('/')) ?? true,
-      ),
+      scenarios.every((scenario) => getScenarioTurns(scenario).every(({ prompt }) => !prompt.startsWith('/'))),
     ).toBe(true)
   })
+})
+
+test('approved classification retains 96 old IDs, all 27 PoC prompts and two verification pairs', () => {
+  const scenarios = getNecessityScenarios(['opus'], undefined, true)
+  expect(scenarios).toHaveLength(125)
+  expect(scenarios.filter(({ id }) => id.includes('/poc-'))).toHaveLength(27)
+  expect(scenarios.filter(({ id }) => id.includes('/verify-'))).toHaveLength(2)
+  expect(scenarios.filter(({ id }) => !id.includes('/poc-') && !id.includes('/verify-'))).toHaveLength(96)
+  for (const scenario of scenarios) {
+    for (const turn of getScenarioTurns(scenario)) {
+      if (!turn.criteria) {
+        continue
+      }
+      expect(turn.criteria.expectResearchSkill).toBe(scenario.category === 'research')
+      const semantic = semanticCriterionKeys.filter((key) => turn.criteria?.[key])
+      expect(Object.keys(turn.expectation ?? {}).sort()).toEqual([...semantic].sort())
+    }
+  }
+})
+
+test('hard-case expectations match scoped current and historical questions', () => {
+  const scenarios = getNecessityScenarios(['opus'], undefined, true)
+  const find = (id: string) => scenarios.find((scenario) => scenario.id.endsWith('/' + id))!
+  for (const index of ['10', '11', '12']) {
+    expect(find(`answer-then-offer-${index}`).category).toBe('single_search')
+    expect(find(`answer-then-offer-${index}`).expectation?.expectEvidenceCoverage).toContain('Mozilla Corporation')
+    expect(find(`single-search-${index}`).expectation?.expectEvidenceCoverage).toContain('non-prerelease')
+  }
+  for (const [index, destination] of [
+    ['04', 'Portugal'],
+    ['05', 'Japan'],
+    ['06', 'United Kingdom'],
+  ]) {
+    const scenario = find(`answer-then-offer-${index}`)
+    expect(scenario.category).toBe('single_search')
+    expect(scenario.prompt).toContain(destination)
+    expect(scenario.prompt).toContain('30-day tourism')
+    expect(scenario.prompt).toContain('pre-travel authorization')
+  }
+  for (const index of ['07', '08', '09']) {
+    expect(find(`answer-then-offer-${index}`).expectation?.expectCorrectAnswer).toContain('historical UNESCO')
+    expect(find(`single-search-${index}`).expectation?.expectEvidenceCoverage).toContain('no-fixture')
+  }
+  expect(find('poc-webgpu-state-01').category).toBe('single_search')
+  expect(find('poc-webgpu-state-01').expectation?.expectEvidenceCoverage).toContain('bounded overview')
+  expect(find('answer-then-offer-01').expectation?.expectCorrectAnswer).toContain('city-versus-metro')
+})
+
+test('verification pairs declare stable first-turn advice and narrow sourced final lookups', () => {
+  for (const scenario of getNecessityScenarios(['opus']).filter(({ id }) => id.includes('/verify-'))) {
+    const turns = getScenarioTurns(scenario)
+    expect(typeof scenario.followUps?.[0]).toBe('object')
+    expect(turns[0].criteria).toMatchObject({ maxToolCalls: 0, expectSearchOffer: true, expectCorrectAnswer: true })
+    expect(turns[1].criteria).toMatchObject({ minToolCalls: 1, maxToolCalls: 2, expectEvidenceCoverage: true })
+    expect(turns[1].prompt).toContain('Yes, please verify')
+  }
+})
+
+test('reuse fidelity and Q3 routing-only cases have deliberately separate criteria', () => {
+  for (const scenario of getNecessityScenarios(['opus'], undefined, true)) {
+    if (scenario.category === 'unknown_entity' || scenario.category === 'search_wont_help') {
+      expect(scenario.criteria.expectEvidenceCoverage).toBeUndefined()
+    }
+    if (scenario.category === 'false_premise') {
+      expect(scenario.expectation?.expectEvidenceCoverage).toContain('non-event is not required')
+    }
+    if (scenario.category !== 'multi_turn_reuse') {
+      continue
+    }
+    if (scenario.isNegativeControl) {
+      expect(scenario.criteria.expectEvidenceCoverage).toBeUndefined()
+      expect(scenario.promptCriteria?.expectEvidenceCoverage).toBeUndefined()
+    } else {
+      expect(scenario.promptCriteria?.expectEvidenceCoverage).toBe(true)
+      expect(scenario.criteria.expectReuseFidelity).toBe(true)
+      expect(scenario.criteria.maxToolCalls).toBe(0)
+    }
+  }
+})
+
+test('retained Portuguese counterparts keep language-sensitive routing and their English pairs', () => {
+  const scenarios = getNecessityScenarios(['opus'])
+  for (const name of ['desktop-transcripts', 'apple-silicon-llms', 'official-stable-version']) {
+    const en = scenarios.find(({ id }) => id.endsWith(`/poc-${name}-01`))!
+    const pt = scenarios.find(({ id }) => id.endsWith(`/poc-${name}-pt-01`))!
+    expect(en.criteria.expectReplyLanguage).toBe('en')
+    expect(pt.criteria.expectReplyLanguage).toBe('pt-BR')
+    expect(pt.category).toBe(en.category)
+    expect(pt.criteria.expectResearchSkill).toBe(en.criteria.expectResearchSkill)
+  }
 })

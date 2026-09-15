@@ -538,6 +538,126 @@ describe('runner integration with an injected offline adapter', () => {
     expect(attempt.verdicts.expectReuseFidelity).toBe('pass')
   })
 
+  test.each([{ name: 42 }, { name: {} }, { name: [] }])(
+    'I1: records a recovered malformed skill input %j without counting a load',
+    async (input) => {
+      const events: Record<string, unknown>[] = [
+        { type: 'tool-input-available', toolName: 'skill', toolCallId: 'bad', input },
+        { type: 'tool-output-error', toolCallId: 'bad', errorText: 'Invalid arguments: name must be a string' },
+      ]
+      const adapter = adapterWithFetch(
+        async () =>
+          new Response(
+            [...events, { type: 'text-delta', delta: 'Recovered answer' }]
+              .map((event) => `data: ${JSON.stringify(event)}\n`)
+              .join(''),
+          ),
+      )
+      const scenario = { ...fixtureScenario(), criteria: { mustProduceOutput: true, expectResearchSkill: false } }
+      const trial = await runTrial(scenario, 0, () => runScenario(scenario, adapter))
+      expect(trial.attempts).toHaveLength(1)
+      const attempt = trial.attempts[0]
+      expect(attempt.status).toBe('completed')
+      expect(attempt.result.passed).toBe(true)
+      expect(attempt.result.responseText).toBe('Recovered answer')
+      expect(attempt.streams[0].researchSkillLoaded).toBe(false)
+      expect(attempt.instrumentation.researchSkill.loaded).toBe(false)
+      expect(attempt.verdicts.expectResearchSkill).toBe('pass')
+      expect(attempt.toolEvents.toolMisuse).toBe(1)
+      expect(attempt.streams[0].events?.slice(0, 2)).toEqual(events)
+
+      events.push(
+        { type: 'tool-input-available', toolName: 'skill', toolCallId: 'good', input: { name: ' /research ' } },
+        { type: 'tool-output-available', toolCallId: 'good', output: { details: 'Research instructions' } },
+      )
+      const required = { ...scenario, criteria: { mustProduceOutput: true, expectResearchSkill: true } }
+      const recovered = await runTrial(required, 1, () => runScenario(required, adapter))
+      expect(recovered.attempts[0].result.passed).toBe(true)
+      expect(recovered.attempts[0].streams[0].researchSkillLoaded).toBe(true)
+      expect(recovered.attempts[0].instrumentation.researchSkill.loaded).toBe(true)
+      expect(recovered.attempts[0].toolEvents.toolMisuse).toBe(1)
+    },
+  )
+
+  test('research-skill criteria use successful loads in the scored turn only', async () => {
+    const turns: number[] = []
+    const adapter = adapterWithFetch(async () => {
+      turns.push(1)
+      const events =
+        turns.length === 1
+          ? [
+              { type: 'tool-input-available', toolName: 'skill', toolCallId: 'load', input: { name: ' /research ' } },
+              { type: 'tool-output-available', toolCallId: 'load', output: { details: 'research instructions' } },
+            ]
+          : []
+      return new Response(
+        [...events, { type: 'text-delta', delta: 'answer' }]
+          .map((event) => `data: ${JSON.stringify(event)}\n`)
+          .join(''),
+      )
+    })
+    const scenario = {
+      ...fixtureScenario(),
+      promptCriteria: { mustProduceOutput: true, expectResearchSkill: true },
+      followUps: ['Answer from the prior result'],
+      criteria: { mustProduceOutput: true, expectResearchSkill: false },
+    }
+    const attempt = await runScenario(scenario, adapter)
+    expect(attempt.result.passed).toBe(true)
+    expect(attempt.streams.map(({ researchSkillLoaded }) => researchSkillLoaded)).toEqual([true, false])
+    expect(attempt.instrumentation.researchSkill.loaded).toBe(true)
+    expect(attempt.verdicts.expectResearchSkill).toBe('pass')
+  })
+
+  test.each(['tool-output-error', 'unrelated', 'empty'] as const)(
+    'research-skill criterion rejects %s loads',
+    async (kind) => {
+      const events = [
+        {
+          type: 'tool-input-available',
+          toolName: 'skill',
+          toolCallId: 'load',
+          input: { name: kind === 'unrelated' ? 'weather' : 'research' },
+        },
+        {
+          type: kind === 'tool-output-error' ? kind : 'tool-output-available',
+          toolCallId: 'load',
+          errorText: 'load failed',
+          output: { details: kind === 'empty' ? '   ' : 'instructions' },
+        },
+        { type: 'text-delta', delta: 'answer' },
+      ]
+      const adapter = adapterWithFetch(
+        async () => new Response(events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')),
+      )
+      const attempt = await runScenario(
+        { ...fixtureScenario(), criteria: { mustProduceOutput: true, expectResearchSkill: true } },
+        adapter,
+      )
+      expect(attempt.result.passed).toBe(false)
+      expect(attempt.verdicts.expectResearchSkill).toBe('fail')
+    },
+  )
+
+  test('a forbidden successful research load before transport failure blocks generation retry', async () => {
+    const events = [
+      { type: 'tool-input-available', toolName: 'skill', toolCallId: 'load', input: { name: 'research' } },
+      { type: 'tool-output-available', toolCallId: 'load', output: { details: 'research instructions' } },
+      { type: 'error', errorText: 'transport failed' },
+    ]
+    const adapter = adapterWithFetch(
+      async () => new Response(events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')),
+    )
+    const scenario = { ...fixtureScenario(), criteria: { mustProduceOutput: true, expectResearchSkill: false } }
+    const trial = await runTrial(scenario, 0, () => runScenario(scenario, adapter))
+    expect(trial.attempts).toHaveLength(1)
+    expect(trial.attempts[0].status).toBe('infra_error')
+    expect(trial.attempts[0].verdicts.expectResearchSkill).toBe('fail')
+    expect(trial.attempts[0].provenFailure).toBe(true)
+    const required = { ...scenario, criteria: { mustProduceOutput: true, expectResearchSkill: true } }
+    expect(deterministicVerdicts(required, fixtureAttempt().streams[0], false).expectResearchSkill).toBe('unknown')
+  })
+
   test('empty setup answer is behavioural failure and never retried as infrastructure', async () => {
     const adapter = adapterWithFetch(async () => new Response('data: {"type":"finish"}\n'))
     const scenario = { ...fixtureScenario(), followUps: ['reuse the answer'] }

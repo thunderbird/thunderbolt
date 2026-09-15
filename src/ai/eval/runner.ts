@@ -191,6 +191,7 @@ const traceAssertions = new Set([
   'mustNotUseWidgets',
   'noHomepageLinks',
   'noReviewSites',
+  'expectResearchSkill',
 ])
 
 /** Grade each declared deterministic assertion independently; incomplete traces can only prove violations. */
@@ -201,9 +202,12 @@ export const deterministicVerdicts = (
 ): Record<string, Verdict> =>
   Object.fromEntries(
     Object.entries(scenario.criteria)
-      .filter(([, value]) => value !== undefined && value !== false)
+      .filter(([key, value]) => value !== undefined && (value !== false || key === 'expectResearchSkill'))
       .map(([key, value]) => {
-        if (requiresJudge({ mustProduceOutput: false, [key]: value }) || (!completed && !traceAssertions.has(key))) {
+        if (
+          requiresJudge({ mustProduceOutput: false, [key]: value }) ||
+          (!completed && (!traceAssertions.has(key) || (key === 'expectResearchSkill' && value === true)))
+        ) {
           return [key, 'unknown']
         }
         const criteria: EvalCriteria = { mustProduceOutput: false, [key]: value }
@@ -216,6 +220,44 @@ export const deterministicVerdicts = (
 const toolOutput = (event: Record<string, unknown>): unknown => {
   const output = event.output
   return output !== null && typeof output === 'object' && 'details' in output ? output.details : output
+}
+
+/** Observe successful research-instruction loads and their timing from the same stream evidence used by scoring. */
+const observeResearchSkill = (
+  streams: ParsedStream[],
+  explicitResearch: boolean,
+): EvalAttempt['instrumentation']['researchSkill'] => {
+  const events = streams.flatMap(({ events }) => events ?? [])
+  const researchCalls = events.filter((event) => {
+    const name = (event.input as { name?: unknown } | undefined)?.name
+    return (
+      event.type === 'tool-input-available' &&
+      event.toolName === 'skill' &&
+      typeof name === 'string' &&
+      name.trim().replace(/^\//, '') === 'research'
+    )
+  })
+  const researchCallIds = new Set(researchCalls.map((event) => event.toolCallId))
+  const loadedIndex = events.findIndex((event) => {
+    const output = toolOutput(event)
+    return (
+      event.type === 'tool-output-available' &&
+      researchCallIds.has(event.toolCallId) &&
+      typeof output === 'string' &&
+      output.trim().length > 0
+    )
+  })
+  const loaded = explicitResearch || loadedIndex >= 0
+  const webResult = events.findIndex(
+    (event) =>
+      event.type === 'tool-output-available' &&
+      streams.some(({ toolCalls }) => getWebToolCalls(toolCalls).some((call) => call.toolCallId === event.toolCallId)),
+  )
+  return {
+    attempted: explicitResearch || researchCalls.length > 0,
+    loaded,
+    beforeFirstWebResult: loaded && webResult >= 0 ? explicitResearch || loadedIndex < webResult : null,
+  }
 }
 
 /** Classify recovered tool failures only from the tool event's evidence. */
@@ -409,6 +451,7 @@ export const runScenario = async (
             context,
             remaining,
           )
+    parsed.researchSkillLoaded = observeResearchSkill([parsed], explicitResearch).loaded
     streams.push(parsed)
     conversation.push({ prompt: turn.prompt, responseText: parsed.text, evidence: extractTurnEvidence(parsed) })
     if (turn.criteria && (index < allTurns.length - 1 || state.scoredTurnReached)) {
@@ -480,33 +523,10 @@ export const runScenario = async (
       ]),
     ],
   }
-  const events = streams.flatMap(({ events }) => events ?? [])
-  const researchCalls = events.filter(
-    (event) =>
-      event.type === 'tool-input-available' &&
-      event.toolName === 'skill' &&
-      ['research', '/research'].includes((event.input as { name?: string } | undefined)?.name ?? ''),
-  )
-  const researchCallIds = new Set(researchCalls.map((event) => event.toolCallId))
-  const loadedIndex = events.findIndex((event) => {
-    const output = toolOutput(event)
-    return (
-      event.type === 'tool-output-available' &&
-      researchCallIds.has(event.toolCallId) &&
-      typeof output === 'string' &&
-      output.length > 0
-    )
-  })
-  const loaded = explicitResearch || loadedIndex >= 0
-  const webResult = events.findIndex(
-    (event) =>
-      event.type === 'tool-output-available' &&
-      streams.some(({ toolCalls }) => getWebToolCalls(toolCalls).some((call) => call.toolCallId === event.toolCallId)),
-  )
+  const researchObservation = observeResearchSkill(streams, explicitResearch)
   instrumentation.researchSkill = {
-    attempted: instrumentation.researchSkill.attempted || researchCalls.length > 0,
-    loaded,
-    beforeFirstWebResult: loaded && webResult >= 0 ? explicitResearch || loadedIndex < webResult : null,
+    ...researchObservation,
+    attempted: instrumentation.researchSkill.attempted || researchObservation.attempted,
   }
   instrumentation.emitted = streams.reduce((sum, stream) => sum + getWebToolCalls(stream.toolCalls).length, 0)
   if (verbose) {

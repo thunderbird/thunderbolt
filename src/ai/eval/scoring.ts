@@ -212,6 +212,15 @@ const checkCriteria = (
     failures.push(`Too many web tool calls: ${webToolCallCount} (max: ${criteria.maxToolCalls})`)
   }
 
+  if (
+    criteria.expectResearchSkill !== undefined &&
+    (parsed.researchSkillLoaded ?? false) !== criteria.expectResearchSkill
+  ) {
+    failures.push(
+      criteria.expectResearchSkill ? 'Research skill was not loaded' : 'Research skill was loaded when forbidden',
+    )
+  }
+
   if (criteria.noDuplicateToolCalls && duplicateToolCallCount > 0) {
     failures.push(`Duplicate web tool calls: ${duplicateToolCallCount}`)
   }

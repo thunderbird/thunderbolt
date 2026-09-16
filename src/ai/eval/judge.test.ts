@@ -42,7 +42,6 @@ const result: EvalResult = {
   reviewSiteUrls: [],
   toolCallCount: 0,
   duplicateToolCallCount: 0,
-  retryCount: 0,
   durationMs: 1,
 }
 

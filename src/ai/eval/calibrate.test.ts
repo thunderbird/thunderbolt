@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { runCalibration } from './calibrate'
 import { loadCalibrationFixtures } from './fixtures'
 import type { JudgeVerdict } from './judge'
@@ -80,4 +83,63 @@ test('calibration returns a nonzero mismatch exit code with an injected judge', 
     }),
   ).toBe(1)
   expect(lines.find((line) => line.includes('contradicted-number'))).toContain('MISMATCH')
+})
+
+test('plain calibration entrypoint sends its signed bearer through the real managed judge transport', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'eval-calibration-'))
+  const preload = join(directory, 'transport.ts')
+  writeFileSync(
+    preload,
+    `
+    import { strict as assert } from 'node:assert'
+    Reflect.deleteProperty(globalThis, 'localStorage')
+    const verdicts = ${JSON.stringify(loadCalibrationFixtures().map(({ expected }) => verdictFor(expected)))}
+    globalThis.fetch = async (input, init) => {
+      assert.equal(String(input), 'http://calibration.invalid/v1/chat/completions')
+      assert.equal(new Headers(init.headers).get('authorization'), 'Bearer synthetic-signed-calibration-token')
+      assert.equal(JSON.parse(init.body).stream, true)
+      console.log('AUTH_OK')
+      const chunk = { id: 'judge', object: 'chat.completion.chunk', created: 0, model: 'judge',
+        choices: [{ index: 0, delta: { role: 'assistant', content: JSON.stringify(verdicts.shift()) }, finish_reason: 'stop' }] }
+      return new Response('data: ' + JSON.stringify(chunk) + '\\n\\n' + 'data: [DONE]\\n\\n',
+        { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+  `,
+  )
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--preload',
+      './scripts/lingui-macro-bun-shim.ts',
+      '--preload',
+      preload,
+      'src/ai/eval/calibrate.ts',
+    ],
+    {
+      cwd: join(import.meta.dir, '../../..'),
+      env: {
+        ...process.env,
+        EVAL_JUDGE_CALIBRATION: '1',
+        EVAL_AUTH_TOKEN: 'synthetic-signed-calibration-token',
+        VITE_THUNDERBOLT_CLOUD_URL: 'http://calibration.invalid/v1',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const timeout = setTimeout(() => child.kill(), 3000)
+  try {
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect({ code, stderr }).toEqual({ code: 0, stderr: '' })
+    expect(stdout.match(/AUTH_OK/g)).toHaveLength(8)
+    expect(stdout).not.toContain('MISMATCH')
+  } finally {
+    clearTimeout(timeout)
+    rmSync(directory, { recursive: true, force: true })
+  }
 })

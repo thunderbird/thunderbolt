@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { getModel } from '@/dal/models'
 import { getDb } from '@/db/database'
@@ -21,7 +19,14 @@ import { getLanguageScenarios } from './language-scenarios'
 import { getNecessityScenarios } from './necessity-scenarios'
 import { detailed, verbose } from './options'
 import { appendTrial, generateReport, startTrialJournal } from './report'
-import { acceptEval, aggregateEvalMetrics, createManifest, positiveFinite, serializeArtifact } from './stats'
+import {
+  acceptEval,
+  aggregateEvalMetrics,
+  createManifest,
+  getSystemPromptVersion,
+  positiveFinite,
+  serializeArtifact,
+} from './stats'
 import { judgeModels, judgePromptVersion } from './judge'
 import type { EvalTrial } from './types'
 import { runPool } from './runner'
@@ -135,9 +140,7 @@ const main = async (): Promise<number> => {
           commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
           overlayCommit: process.env.EVAL_OVERLAY_COMMIT ?? null,
         },
-        systemPromptVersion: createHash('sha256')
-          .update(readFileSync(new URL('../prompt.ts', import.meta.url)))
-          .digest('hex'),
+        systemPromptVersion: getSystemPromptVersion(),
         WEB_BUDGET_PROMOTION: process.env.WEB_BUDGET_PROMOTION ?? 'unset',
       },
     },

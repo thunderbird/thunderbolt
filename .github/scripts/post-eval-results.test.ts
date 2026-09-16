@@ -235,3 +235,18 @@ test('missing required cells render a non-passing report instead of crashing', (
   expect(comment).toContain('Acceptance exit: 1')
   expect(comment).toContain('Required cell absent')
 })
+
+test.each([true, false])('expected diagnostics include cross-round assertions and research loading=%s', (research) => {
+  const metrics = fixtureMetrics(2)
+  Object.assign(metrics.manifest.scenarios[0].scenario.criteria, {
+    expectEvidenceCoverage: true,
+    expectReuseFidelity: true,
+    expectSearchOffer: true,
+    expectResearchSkill: research,
+  })
+  const comment = renderEvalComment(metrics, {}, renderOptions)
+  expect(comment).toContain('support and cover the answer with source evidence')
+  expect(comment).toContain('faithfully reuse the earlier answer')
+  expect(comment).toContain('answer with a freshness caveat, then offer to verify')
+  expect(comment).toContain(research ? '; load the research skill' : '; do not load the research skill')
+})

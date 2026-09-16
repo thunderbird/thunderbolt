@@ -93,6 +93,8 @@ test.each([
     }))
     expect(body.success).toBe(Boolean(text.trim()))
     expect(body.data?.text ?? null).toBe(text.trim() ? text : null)
-    if (!text.trim()) expect(body.error).toContain('Source did not load')
+    if (!text.trim()) {
+      expect(body.error).toContain('Source did not load')
+    }
   }
 })

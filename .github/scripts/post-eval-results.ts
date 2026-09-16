@@ -39,7 +39,12 @@ const expectedBehaviour = (criteria: EvalCriteria): string =>
           : []),
       ...(criteria.minCitations ? [`cite at least ${criteria.minCitations} sources`] : []),
       ...(criteria.expectCorrectAnswer ? ['give a correct answer'] : []),
-      ...(criteria.expectSearchOffer ? ['answer, then offer to verify'] : []),
+      ...(criteria.expectSearchOffer ? ['answer with a freshness caveat, then offer to verify'] : []),
+      ...(criteria.expectEvidenceCoverage ? ['support and cover the answer with source evidence'] : []),
+      ...(criteria.expectReuseFidelity ? ['faithfully reuse the earlier answer'] : []),
+      ...(criteria.expectResearchSkill === undefined
+        ? []
+        : [criteria.expectResearchSkill ? 'load the research skill' : 'do not load the research skill']),
       ...(criteria.expectPremiseRebuttal ? ['rebut the false premise'] : []),
       ...(criteria.expectVerificationDisclaimer ? ['admit when verification is impossible'] : []),
       ...(criteria.expectReplyLanguage ? [`reply in ${criteria.expectReplyLanguage}`] : []),

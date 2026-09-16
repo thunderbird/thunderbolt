@@ -25,19 +25,18 @@ const main = () => {
   if (command === 'generate') {
     const written = writeBaselineFiles(metrics, baselineDirectory, expectedGroupKeys)
     process.stdout.write(`Wrote ${written.length} eval baseline file${written.length === 1 ? '' : 's'}.\n`)
-    return
+    return 0
   }
 
   if (command === 'compare') {
     const comparison = compareMetricsToBaselines(metrics, loadBaselineFiles(baselineDirectory))
     process.stdout.write(`${serializeArtifact(comparison, undefined, 2)}\n`)
-    process.exitCode = comparison.acceptance.exitCode
-    return
+    return comparison.acceptance.exitCode
   }
 
   throw new Error('Usage: baseline-cli.ts <generate|compare> [metrics-path] [baseline-directory]')
 }
 
 if (import.meta.main) {
-  main()
+  process.exit(main())
 }

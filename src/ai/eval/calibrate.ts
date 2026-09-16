@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Storage } from 'happy-dom'
+import { setAuthToken } from '@/lib/auth-token'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { createProxyFetch } from '@/lib/proxy-fetch'
 import { evaluateWithJudge, judgeScenario, type JudgeVerdict } from './judge'
@@ -25,6 +27,12 @@ export const runCalibration = async ({
   const token = process.env.EVAL_AUTH_TOKEN
   if (!evaluate && !token) {
     throw new Error('Judge calibration requires a signed EVAL_AUTH_TOKEN')
+  }
+  if (!evaluate) {
+    if (typeof localStorage === 'undefined') {
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: new Storage() })
+    }
+    setAuthToken(token!)
   }
   const proxyFetch = evaluate
     ? undefined

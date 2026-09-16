@@ -382,7 +382,9 @@ It copies only this settings allowlist:
 Auth is only `present`/`absent`; tokens, Authorization values and cookies are redacted at every
 artifact boundary. The preflight reads `/config.webToolsProvider` or records `unknown` when
 that field is absent. The runner captures its model/profile/context and budget observations;
-adapter-internal prompt/tools are explicitly `unavailable` pending the later adapter hook.
+adapter-internal prompt/tools capture is deferred by the final scope decision. Records carry
+`promptCapture: "unavailable"` and `toolsCapture: "unavailable"` by design; runner-visible preflight
+is the agreed capture for the measurement phase.
 
 ### Baselines and PR comments
 

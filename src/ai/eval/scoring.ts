@@ -154,7 +154,6 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     reviewSiteUrls,
     toolCallCount: webToolCalls.length,
     duplicateToolCallCount,
-    retryCount: parsed.retryCount,
     durationMs: Math.round(durationMs),
     error: parsed.error,
   }

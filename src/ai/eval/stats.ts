@@ -4,6 +4,7 @@
 
 import { getScenarioTurns } from './turns'
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type {
   EvalAcceptance,
   EvalManifest,
@@ -17,6 +18,25 @@ import type {
   NecessityRateMetric,
   ScenarioInterval,
 } from './types'
+
+/** Fingerprint prompt composition and shipped instructions, independently of run-time date/context. */
+export const getSystemPromptVersion = (
+  readSource = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8'),
+): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify(
+        [
+          '../prompt.ts',
+          '../prompts/chat.ts',
+          '../prompts/web-tools.ts',
+          '../../defaults/skills.ts',
+          '../../../shared/agent-core/environment-prompt.ts',
+          '../../../shared/agent-core/skills.ts',
+        ].map(readSource),
+      ),
+    )
+    .digest('hex')
 
 export const categoryGateThresholds: Record<NecessityCategory, number> = {
   never_search: 0.95,

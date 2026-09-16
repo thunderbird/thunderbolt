@@ -8,6 +8,7 @@ import {
   aggregateEvalMetrics,
   categoryGateThresholds,
   createManifest,
+  getSystemPromptVersion,
   passThree,
   positiveFinite,
   scenarioInterval,
@@ -251,4 +252,19 @@ test('a recovered first judge error remains visible with a separate generation/j
     firstAttemptJudgeErrors: 1,
   })
   expect(acceptEval(metrics).exitCode).toBe(0)
+})
+
+test('prompt identity includes imported web instructions and the research skill', () => {
+  const inputs: string[] = []
+  const original = getSystemPromptVersion((path) => {
+    inputs.push(path)
+    return path
+  })
+  expect(inputs).toContain('../prompts/web-tools.ts')
+  expect(inputs).toContain('../../defaults/skills.ts')
+  for (const changed of inputs) {
+    expect(getSystemPromptVersion((path) => path + (path === changed ? ' edited' : ''))).not.toBe(original)
+  }
+  expect(getSystemPromptVersion()).toMatch(/^[a-f0-9]{64}$/)
+  expect(getSystemPromptVersion()).toBe(getSystemPromptVersion())
 })

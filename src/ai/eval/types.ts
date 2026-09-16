@@ -149,7 +149,6 @@ export type EvalResult = {
   toolCallCount: number
   /** Web calls whose (toolName, input) repeated an earlier call in the scored turn. */
   duplicateToolCallCount: number
-  retryCount: number
   durationMs: number
   error?: string
   judgeVerdict?: JudgeVerdict

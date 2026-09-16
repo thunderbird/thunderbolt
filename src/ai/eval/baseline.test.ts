@@ -142,3 +142,35 @@ describe('paired comparison replaces modal pass and Wilson significance', () => 
     expect(group.treatment.baseline?.WEB_BUDGET_PROMOTION).toBe('0')
   })
 })
+
+test.each([0, 1, 2])('baseline comparison CLI exits with acceptance %i despite retained handles', async (code) => {
+  const directory = mkdtempSync(join(tmpdir(), 'eval-baseline-cli-'))
+  const metricsPath = join(directory, 'metrics.json')
+  const preload = join(directory, 'keep-alive.ts')
+  writeFileSync(metricsPath, JSON.stringify({ ...fixtureMetrics(code === 0 ? 3 : 2), harnessCrashed: code === 2 }))
+  writeFileSync(preload, 'setInterval(() => {}, 60000)')
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--preload',
+      './scripts/lingui-macro-bun-shim.ts',
+      '--preload',
+      preload,
+      'src/ai/eval/baseline-cli.ts',
+      'compare',
+      metricsPath,
+      join(directory, 'absent'),
+    ],
+    { cwd: join(import.meta.dir, '../../..'), stdout: 'pipe', stderr: 'pipe' },
+  )
+  const timeout = setTimeout(() => child.kill(), 3000)
+  try {
+    const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()])
+    expect(exitCode).toBe(code)
+    expect(JSON.parse(stdout).acceptance.exitCode).toBe(code)
+  } finally {
+    clearTimeout(timeout)
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

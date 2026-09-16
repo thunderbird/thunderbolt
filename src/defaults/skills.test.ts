@@ -42,8 +42,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 7,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:p6vyjy|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 8,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:nxa7vu|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -140,4 +140,14 @@ describe('defaultSkills', () => {
       expect(skill.enabled).toBe(skill === defaultSkillImportantEmails ? 0 : 1)
     }
   })
+})
+
+test('research instructions respect live capacity instead of fixed call quotas and allow a fresh-turn load', () => {
+  const text = defaultSkillResearch.instruction
+  expect(text).toContain('absolute ceiling of 30 web calls')
+  expect(text).toContain('available cap may be smaller')
+  expect(text).toContain('capacity-restored instruction supersedes that stop')
+  expect(text).toContain('load this skill again')
+  expect(text).not.toContain('At least 10 page fetches')
+  expect(text).not.toContain('At least 5 different searches')
 })

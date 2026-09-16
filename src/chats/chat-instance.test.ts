@@ -1321,7 +1321,7 @@ describe('createChatInstance — retry policy', () => {
 })
 
 /** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
-const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable') => {
+const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
   const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
   const adapter: AgentAdapter = {
     ...makeAdapter(builtInAgent),
@@ -1329,6 +1329,9 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
       const budget = context.webToolBudget!
       attempts.push(budget)
       if (attempts.length === 1) {
+        if (promote) {
+          budget.promoteToResearch()
+        }
         for (let call = 0; call < webCalls; call++) {
           await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))
         }
@@ -1402,6 +1405,31 @@ describe('logical-turn web retry state through the SDK', () => {
       await instance.sendMessage({ text: 'A new question' })
       expect(attempts[2]).not.toBe(attempts[0])
       expect(attempts[2]!.probe.isExhausted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('preserves promotion, consumed calls and cache on automatic retry but starts a new turn at auto', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1, '503: temporarily unavailable', true)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      expect(attempts[1].cap).toBe(30)
+      expect(attempts[1].consumed).toBe(1)
+      expect(
+        await attempts[1].execute('search', { query: 'query 0' }, async () => {
+          throw new Error('must be cached')
+        }),
+      ).toEqual({ title: 'source 0' })
+      expect(attempts[1].consumed).toBe(1)
+      await instance.sendMessage({ text: 'A new ordinary question' })
+      expect(attempts[2].cap).toBe(2)
+      expect(attempts[2].consumed).toBe(0)
+      expect(attempts[2].promoted).toBe(false)
     } finally {
       consoleError.mockRestore()
     }

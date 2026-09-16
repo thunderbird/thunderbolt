@@ -451,6 +451,9 @@ export const runScenario = async (
             context,
             remaining,
           )
+    instrumentation.initialCap = budget.initialCap
+    instrumentation.finalCap = budget.cap
+    instrumentation.promoted = budget.promoted
     parsed.researchSkillLoaded = observeResearchSkill([parsed], explicitResearch).loaded
     streams.push(parsed)
     conversation.push({ prompt: turn.prompt, responseText: parsed.text, evidence: extractTurnEvidence(parsed) })

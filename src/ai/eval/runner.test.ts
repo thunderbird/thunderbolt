@@ -695,6 +695,15 @@ describe('runner integration with an injected offline adapter', () => {
     expect(attempt.toolEvents.budgetDenial).toBe(1)
   })
 
+  test('records the promoted live cap from the scored turn budget', async () => {
+    const adapter = adapterWithFetch(async (_init, context) => {
+      context.webToolBudget!.promoteToResearch()
+      return new Response('data: {"type":"text-delta","delta":"answer"}\n')
+    })
+    const attempt = await runScenario(fixtureScenario(), adapter)
+    expect(attempt.instrumentation).toMatchObject({ initialCap: 2, finalCap: 30, promoted: true })
+  })
+
   test('records actual budget executions and cache hits separately from emitted calls', async () => {
     const adapter = adapterWithFetch(async (_init, context) => {
       const budget = context.webToolBudget!

@@ -82,8 +82,11 @@ non-prerelease, and match questions permit sourced no-fixture results. The three
 PoC pairs additionally check reply language. No gate was lowered.
 
 Research keeps existing minima of one or two emitted web calls; retained PoC research requires two.
-There is no scenario maximum. Budget behavior is unchanged in this round: loading instructions does
-not yet promote Chat's budget. Future promotion is separate work, and no live result is claimed here.
+There is no scenario maximum. A successful research-skill load now promotes an ordinary Chat turn
+to an absolute 30-call budget, preserving spent calls, cache and source IDs; `/search` and `/research`
+retain their 12/30 caps. `WEB_BUDGET_PROMOTION=on|off` is a run/lab option (unset means on; other
+values fail at budget construction), not a product setting. Eval records expose the current/scored
+turn’s `initialCap`, `finalCap` and `promoted`; a later user turn starts fresh. No live result is claimed.
 
 ### Reply-language suite
 

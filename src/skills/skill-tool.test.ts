@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { createWebToolBudget } from '@/ai/web-tool-budget'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { resolveSkillTokenInstructions } from './resolve-skill-system-messages'
@@ -70,4 +71,37 @@ describe('createSkillTool', () => {
       'Gather weather, news, email, and calendar details.',
     ])
   })
+})
+
+it('promotes only a successful resolved research load, including a slash-prefixed name', async () => {
+  const budget = createWebToolBudget('auto', true)
+  const skills = selectEnabledSkillDefinitions([
+    ...storedSkills,
+    { name: 'research', description: 'Research', instruction: 'Research instructions', enabled: 1 },
+  ])
+  const skill = createSkillTool(skills, budget)
+  await skill.execute!({ name: 'daily-brief' }, toolCallOptions)
+  expect(budget.cap).toBe(2)
+  await expect(skill.execute!({ name: 'missing' }, toolCallOptions)).rejects.toThrow('not found')
+  expect(budget.cap).toBe(2)
+  expect(await skill.execute!({ name: ' /research ' }, toolCallOptions)).toBe('Research instructions')
+  expect(budget.cap).toBe(30)
+  await skill.execute!({ name: 'research' }, toolCallOptions)
+  expect(budget.cap).toBe(30)
+})
+
+it('does not promote disabled or empty research instructions', async () => {
+  for (const enabled of [0, 1]) {
+    const budget = createWebToolBudget('auto', true)
+    const skill = createSkillTool(
+      selectEnabledSkillDefinitions([{ name: 'research', description: 'Research', instruction: '   ', enabled }]),
+      budget,
+    )
+    if (enabled) {
+      await skill.execute!({ name: 'research' }, toolCallOptions)
+    } else {
+      await expect(skill.execute!({ name: 'research' }, toolCallOptions)).rejects.toThrow('disabled')
+    }
+    expect(budget.cap).toBe(2)
+  }
 })

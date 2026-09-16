@@ -20,6 +20,11 @@ export type WebToolBudgetProbe = {
 }
 
 export type WebToolBudget = {
+  readonly initialCap: number
+  readonly cap: number
+  readonly consumed: number
+  readonly promoted: boolean
+  promoteToResearch: () => void
   execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
   probe: WebToolBudgetProbe
   intent: WebToolIntent
@@ -41,9 +46,22 @@ export const resolveWebToolIntent = (lastUserText: string): WebToolIntent => {
   return slugs.includes('search') ? 'search' : 'auto'
 }
 
+/** Resolve the run/lab option once per budget; browsers have no such environment setting. */
+export const resolveWebBudgetPromotion = (value: string | undefined): boolean => {
+  if (value !== undefined && !['on', 'off'].includes(value)) {
+    throw new Error('WEB_BUDGET_PROMOTION must be on or off')
+  }
+  return value !== 'off'
+}
+
 /** Create one combined per-turn budget for search and page-fetch calls. */
-export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
-  const cap = webToolCaps[intent]
+export const createWebToolBudget = (
+  intent: WebToolIntent,
+  promotionEnabled = resolveWebBudgetPromotion(
+    typeof process === 'undefined' ? undefined : process.env.WEB_BUDGET_PROMOTION,
+  ),
+): WebToolBudget => {
+  let cap = webToolCaps[intent]
   let consumed = 0
   let exhaustedAttempts = 0
   const dedupe = new Map<string, Promise<unknown>>()
@@ -59,6 +77,21 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
 
   return {
     intent,
+    initialCap: webToolCaps[intent],
+    get cap() {
+      return cap
+    },
+    get consumed() {
+      return consumed
+    },
+    get promoted() {
+      return cap !== webToolCaps[intent]
+    },
+    promoteToResearch: () => {
+      if (promotionEnabled && intent === 'auto') {
+        cap = webToolCaps.research
+      }
+    },
     sourceCollector: [],
     execute: (toolName, input, run) => {
       const key = normalizeWebToolKey(toolName, input)

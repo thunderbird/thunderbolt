@@ -444,9 +444,10 @@ export const addSkillTool = (
   toolset: Record<string, Tool>,
   skills: readonly SkillDefinition[],
   supportsTools: boolean,
+  webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills)
+    toolset.skill = createSkillTool(skills, webToolBudget)
   }
   return toolset
 }
@@ -503,7 +504,12 @@ export const prepareAiRequestConfig = async ({
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
-  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache, webToolBudget), skills, supportsTools)
+  const appToolset = addSkillTool(
+    createToolset(availableTools, toolCallCache, webToolBudget),
+    skills,
+    supportsTools,
+    webToolBudget,
+  )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
   // is actually something to search.

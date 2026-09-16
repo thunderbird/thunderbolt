@@ -80,7 +80,7 @@ describe('Thunderbolt Pro Tools', () => {
           favicon: 'https://example.com/favicon.ico',
           image: 'https://example.com/image.jpg',
           author: 'John Doe',
-          published_date: '2024-01-01T10:00:00Z',
+          publishedDate: '2024-01-01T10:00:00Z',
         },
         success: true,
       }
@@ -105,7 +105,7 @@ describe('Thunderbolt Pro Tools', () => {
           favicon: null,
           image: null,
           author: null,
-          published_date: null,
+          publishedDate: null,
         },
         success: true,
       }
@@ -245,7 +245,7 @@ describe('createConfigs source collector', () => {
       favicon: 'https://example.com/fav.ico',
       image: null,
       author: 'Jane Doe',
-      published_date: '2024-06-15',
+      publishedDate: '2024-06-15',
     })
     const sourceCollector: SourceMetadata[] = []
     const configs = createConfigs(dummyHttpClient, sourceCollector)
@@ -274,7 +274,7 @@ describe('createConfigs source collector', () => {
       favicon: 'https://example.com/fav.ico',
       image: 'https://example.com/hero.jpg',
       author: 'Jane Doe',
-      published_date: '2024-06-15',
+      publishedDate: '2024-06-15',
     })
     const configs = createConfigs(dummyHttpClient, sourceCollector)
 
@@ -298,7 +298,7 @@ describe('createConfigs source collector', () => {
       favicon: null,
       image: null,
       author: null,
-      published_date: null,
+      publishedDate: null,
     })
     const sourceCollector: SourceMetadata[] = []
     const configs = createConfigs(dummyHttpClient, sourceCollector)
@@ -321,4 +321,24 @@ describe('createConfigs source collector', () => {
     expect(result[0].sourceIndex).toBe(1)
     expect(result[1].sourceIndex).toBe(2)
   })
+})
+
+it('passes search snippets and canonical publication dates from the API to model results and sources', async () => {
+  const sourceCollector: SourceMetadata[] = []
+  const client = createMockHttpClient({
+    results: [
+      {
+        title: 'Article',
+        pageUrl: 'https://source.test/article',
+        faviconUrl: null,
+        previewImageUrl: null,
+        snippet: 'Supported fact.',
+        publishedDate: '2026-09-01',
+      },
+    ],
+  })
+  const config = createConfigs(client, sourceCollector).find(({ name }) => name === 'search')!
+  const result = await config.execute({ query: 'query', max_results: 1 })
+  expect(result).toMatchObject([{ sourceIndex: 1, snippet: 'Supported fact.', publishedDate: '2026-09-01' }])
+  expect(sourceCollector).toMatchObject([{ index: 1, description: 'Supported fact.', publishedDate: '2026-09-01' }])
 })

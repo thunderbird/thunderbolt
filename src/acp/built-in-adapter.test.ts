@@ -14,7 +14,7 @@ import '@/testing-library'
 
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { describe, expect, it, mock, spyOn } from 'bun:test'
-import { prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
+import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createModel as insertModel } from '@/dal/models'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
@@ -1043,6 +1043,7 @@ const providerResponse = (reply: ProviderToolCall[] | string, requestId: number)
 const createBudgetAdapter = (
   replies: Array<ProviderToolCall[] | string | ((init?: RequestInit) => Promise<Response>)>,
   prepareConfig?: BuiltInAdapterOptions['prepareConfig'],
+  onHarness?: (harness: AgentHarness) => void,
 ) => {
   const budget = createWebToolBudget('auto')
   const requests: ProviderRequest[] = []
@@ -1071,18 +1072,23 @@ const createBudgetAdapter = (
     profile: null,
     supportsTools: true,
     sourceCollector: webToolBudget.sourceCollector,
-    toolset: {
-      ...createToolset(createConfigs(httpClient, webToolBudget.sourceCollector), new Map(), webToolBudget),
-      save_report: tool({
-        description: 'Save report',
-        inputSchema: z.object({ text: z.string() }),
-        execute: async ({ text }) => {
-          writes.push(text)
-          return 'saved'
-        },
-      }),
-    },
-    skills: [],
+    toolset: addSkillTool(
+      {
+        ...createToolset(createConfigs(httpClient, webToolBudget.sourceCollector), new Map(), webToolBudget),
+        save_report: tool({
+          description: 'Save report',
+          inputSchema: z.object({ text: z.string() }),
+          execute: async ({ text }) => {
+            writes.push(text)
+            return 'saved'
+          },
+        }),
+      },
+      [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
+      true,
+      webToolBudget,
+    ),
+    skills: [{ name: 'research', description: 'Research', instruction: 'Research within the current web budget.' }],
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
@@ -1094,6 +1100,7 @@ const createBudgetAdapter = (
       ...realAgentCore,
       buildAppHarness: async (options) => {
         const harness = await realAgentCore.buildAppHarness(options)
+        onHarness?.(harness)
         const on = harness.on.bind(harness)
         harness.on = (type, handler) => {
           const remove = on(type, handler)
@@ -1382,5 +1389,155 @@ describe('createBuiltInAdapter stop', () => {
     // Without this the in-browser loop keeps calling the model and running tools
     // after Stop — the AI SDK only aborts the signal, it never cancels the body.
     expect(signals).toEqual([controller.signal])
+  })
+})
+
+describe('research promotion through the real Pi adapter', () => {
+  it('restores web tools after denial and does not re-floor on historical denials', async () => {
+    const run = createBudgetAdapter(
+      [
+        [
+          { name: 'search', args: { query: 'one', max_results: 1 } },
+          { name: 'search', args: { query: 'two', max_results: 1 } },
+          { name: 'search', args: { query: 'denied', max_results: 1 } },
+        ],
+        [{ name: 'skill', args: { name: 'research' } }],
+        [
+          { name: 'search', args: { query: 'three', max_results: 1 } },
+          { name: 'save_report', args: { text: 'report' } },
+        ],
+        'Done.',
+      ],
+      undefined,
+      (harness) => {
+        const setTools = harness.setTools.bind(harness)
+        harness.setTools = (tools, active) =>
+          setTools(
+            tools,
+            active?.filter((name) => name !== 'fetch_content'),
+          )
+      },
+    )
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.searches).toEqual(['one', 'two', 'three'])
+      expect(run.budget.cap).toBe(30)
+      expect(run.budget.consumed).toBe(3)
+      expect(run.budget.probe.exhaustedAttempts).toBe(1)
+      expect(run.requests[1].tools?.map(({ function: fn }) => fn.name)).not.toContain('search')
+      for (const request of run.requests.slice(2)) {
+        expect(request.tools?.map(({ function: fn }) => fn.name)).toContain('search')
+        expect(request.tools?.map(({ function: fn }) => fn.name)).not.toContain('fetch_content')
+        expect(request.tools?.map(({ function: fn }) => fn.name)).toContain('save_report')
+        expect(JSON.stringify(request.messages)).toContain('supersedes the earlier budget-exhaustion')
+      }
+      expect(run.registrations.size).toBe(0)
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('does not reuse old denials to floor cached calls at the promoted cap', async () => {
+    const run = createBudgetAdapter([
+      [
+        { name: 'search', args: { query: 'one', max_results: 1 } },
+        { name: 'search', args: { query: 'two', max_results: 1 } },
+        { name: 'search', args: { query: 'denied', max_results: 1 } },
+      ],
+      [{ name: 'skill', args: { name: 'research' } }],
+      Array.from({ length: 28 }, (_, index) => ({ name: 'search', args: { query: `extra-${index}`, max_results: 1 } })),
+      [{ name: 'search', args: { query: 'one', max_results: 1 } }],
+      'Done.',
+    ])
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.budget.consumed).toBe(30)
+      expect(run.budget.probe.exhaustedAttempts).toBe(1)
+      expect(run.searches).toHaveLength(30)
+      expect(run.requests[3].tools?.map(({ function: fn }) => fn.name)).toContain('search')
+      expect(run.requests[4].tools?.map(({ function: fn }) => fn.name)).toContain('search')
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('delivers a queued stop together with its superseding steer and preserves other queued input', async () => {
+    const floored = Promise.withResolvers<void>()
+    const live: { harness?: AgentHarness } = {}
+    const run = createBudgetAdapter(
+      [
+        [
+          { name: 'search', args: { query: 'one', max_results: 1 } },
+          { name: 'search', args: { query: 'two', max_results: 1 } },
+          { name: 'search', args: { query: 'denied', max_results: 1 } },
+          { name: 'skill', args: { name: 'research' } },
+        ],
+        [{ name: 'search', args: { query: 'after promotion', max_results: 1 } }],
+        'Done.',
+      ],
+      undefined,
+      (harness) => {
+        live.harness = harness
+        harness.subscribe((event) => {
+          if (event.type === 'queue_update' && JSON.stringify(event.steer).includes('web tool budget is exhausted')) {
+            floored.resolve()
+          }
+        })
+        harness.on('before_agent_start', async () => {
+          const skill = harness.getTools().find(({ name }) => name === 'skill')!
+          const execute = skill.execute
+          skill.execute = async (...args) => {
+            await floored.promise
+            await harness.steer('Keep the report concise.')
+            return execute(...args)
+          }
+          return undefined
+        })
+      },
+    )
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      const next = run.requests[1]
+      expect(next.tools?.map(({ function: fn }) => fn.name)).toContain('search')
+      const messages = JSON.stringify(next.messages)
+      expect(messages).toContain('web tool budget is exhausted')
+      expect(messages).toContain('Keep the report concise')
+      expect(messages).toContain('supersedes the earlier budget-exhaustion')
+      expect(run.searches).toEqual(['one', 'two', 'after promotion'])
+      expect(live.harness!.getSteeringMode()).toBe('one-at-a-time')
+    } finally {
+      run.adapter.disconnect()
+    }
+  })
+
+  it('respects independently disabled tools or final synthesis after promotion', async () => {
+    const run = createBudgetAdapter(
+      [
+        [
+          { name: 'search', args: { query: 'one', max_results: 1 } },
+          { name: 'search', args: { query: 'two', max_results: 1 } },
+          { name: 'search', args: { query: 'denied', max_results: 1 } },
+        ],
+        [{ name: 'skill', args: { name: 'research' } }],
+        'Final synthesis.',
+      ],
+      undefined,
+      (harness) => {
+        harness.on('tool_result', async (event) => {
+          if (event.toolName === 'skill') {
+            await harness.setActiveTools([])
+          }
+          return undefined
+        })
+      },
+    )
+    try {
+      expect(await run.send()).not.toContain('"type":"error"')
+      expect(run.budget.cap).toBe(30)
+      expect(run.requests[2].tools ?? []).toHaveLength(0)
+      expect(JSON.stringify(run.requests[2].messages)).not.toContain('web tools are available again')
+    } finally {
+      run.adapter.disconnect()
+    }
   })
 })

@@ -222,6 +222,11 @@ describe('shared acceptance', () => {
       language: 0.95,
     })
   })
+  test('scenario filters are recorded and mark runs partial', () => {
+    const manifest = createManifest([fixtureScenario()], fixtureManifest(), { EVAL_SCENARIOS: 'never-search-01' })
+    expect(manifest.settings.EVAL_SCENARIOS).toBe('never-search-01')
+    expect(manifest.partial).toBe(true)
+  })
   test('invalid and duplicate trial identities fail loudly', () => {
     const trial = fixtureTrial()
     expect(() => aggregateEvalMetrics(fixtureManifest(), [trial, trial])).toThrow('duplicate')

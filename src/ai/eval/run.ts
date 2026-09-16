@@ -77,6 +77,7 @@ const main = async (): Promise<number> => {
   const modelFilter = process.env.EVAL_MODELS?.split(',').map((s) => s.trim())
   const modeFilter = process.env.EVAL_MODES?.split(',').map((s) => s.trim())
   const engineFilter = process.env.EVAL_ENGINES?.split(',').map((s) => s.trim())
+  const scenarioFilter = process.env.EVAL_SCENARIOS?.split(',').map((s) => s.trim())
   const scenarioParallel = positiveFinite(process.env.EVAL_SCENARIO_PARALLEL, 3, 'EVAL_SCENARIO_PARALLEL')
   if (!Number.isInteger(scenarioParallel)) {
     throw new Error('EVAL_SCENARIO_PARALLEL must be an integer')
@@ -101,7 +102,17 @@ const main = async (): Promise<number> => {
     ...(includeSuite('necessity') && chatScenariosIncluded ? getNecessityScenarios(modelFilter, engineFilter) : []),
     ...(includeSuite('language') && chatScenariosIncluded ? getLanguageScenarios(modelFilter, engineFilter) : []),
   ]
-  const scenarios = smoke ? selectSmokeScenarios(filteredScenarios) : filteredScenarios
+  if (scenarioFilter) {
+    const availableIds = new Set(filteredScenarios.map(({ id }) => id.split('/').at(-1)))
+    const unknown = scenarioFilter.filter((id) => !availableIds.has(id))
+    if (unknown.length > 0) {
+      throw new Error(`Unknown EVAL_SCENARIOS for selected filters: ${unknown.join(', ')}`)
+    }
+  }
+  const selectedScenarios = scenarioFilter
+    ? filteredScenarios.filter(({ id }) => scenarioFilter.includes(id.split('/').at(-1)!))
+    : filteredScenarios
+  const scenarios = smoke ? selectSmokeScenarios(selectedScenarios) : selectedScenarios
 
   if (scenarios.length === 0) {
     console.error('No scenarios matched the filters.')
@@ -109,6 +120,7 @@ const main = async (): Promise<number> => {
     console.error(`  EVAL_MODES=${process.env.EVAL_MODES ?? '(all)'}`)
     console.error(`  EVAL_ENGINES=${process.env.EVAL_ENGINES ?? '(all)'}`)
     console.error(`  EVAL_SUITES=${suites.join(',')}`)
+    console.error(`  EVAL_SCENARIOS=${process.env.EVAL_SCENARIOS ?? '(all)'}`)
     console.error(`  EVAL_LANGUAGE=${getActiveLocale()}`)
     return 1
   }

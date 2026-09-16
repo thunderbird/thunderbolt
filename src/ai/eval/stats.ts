@@ -58,6 +58,7 @@ const settingAllowlist = [
   'EVAL_ENGINES',
   'EVAL_MODES',
   'EVAL_SUITES',
+  'EVAL_SCENARIOS',
   'EVAL_SAMPLES',
   'EVAL_TIMEOUT',
   'EVAL_JUDGE_TIMEOUT',
@@ -129,7 +130,10 @@ export const createManifest = (
     rubricHash: createHash('sha256').update(JSON.stringify(scenarios)).digest('hex'),
     auth: environment.EVAL_AUTH_TOKEN ? 'present' : 'absent',
     partial:
-      smoke || ['EVAL_MODELS', 'EVAL_SUITES', 'EVAL_ENGINES', 'EVAL_MODES'].some((key) => Boolean(environment[key])),
+      smoke ||
+      ['EVAL_MODELS', 'EVAL_SUITES', 'EVAL_ENGINES', 'EVAL_MODES', 'EVAL_SCENARIOS'].some((key) =>
+        Boolean(environment[key]),
+      ),
     smoke,
     timeout: positiveFinite(environment.EVAL_TIMEOUT, 600000, 'EVAL_TIMEOUT'),
     judgeTimeout: positiveFinite(environment.EVAL_JUDGE_TIMEOUT, 60000, 'EVAL_JUDGE_TIMEOUT'),

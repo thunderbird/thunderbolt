@@ -385,3 +385,17 @@ test('citation requirements apply only to tool-derived claims', () => {
   expect(prompt).toContain('Wrong for a claim drawn from tool results:')
   expect(prompt).not.toContain('You ALWAYS cite sources')
 })
+
+test('reference-run guidance preserves source identities, verifies known-false premises and retains dated qualifiers', () => {
+  const prompt = createPrompt({ ...baseParams, hasWebTools: true })
+  for (const instruction of [
+    'never renumber a selected subset',
+    'Cite the emitted [Source N] IDs exactly as [N]',
+    'one targeted official lookup',
+    'Portugal left the EU',
+    'I can check an up-to-date source',
+    'preserve its earlier date, scope and qualifications',
+  ]) {
+    expect(prompt).toContain(instruction)
+  }
+})

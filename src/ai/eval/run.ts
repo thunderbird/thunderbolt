@@ -131,6 +131,7 @@ const main = async (): Promise<number> => {
       cells,
       suites: [...suites],
       samples: necessitySamples,
+      scenarioConcurrency: Math.min(scenarioParallel, scenarios.length),
       judgeModelId: judgeModels.opus.model,
       judgePromptVersion,
       providerKind: 'unknown',

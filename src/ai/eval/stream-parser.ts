@@ -37,18 +37,40 @@ const recognizedException = (error: unknown): boolean => {
   if ('code' in error && transportCodes.has(String(error.code))) {
     return true
   }
-  if ('status' in error && typeof error.status === 'number' && error.status >= 400 && error.status <= 599) {
+  const status = 'statusCode' in error ? error.statusCode : 'status' in error ? error.status : undefined
+  if (typeof status === 'number' && status >= 400 && status <= 599) {
     return true
   }
   return 'cause' in error && error.cause !== error ? recognizedException(error.cause) : false
 }
 
+/** Preserve only the admission header from SDK errors, including wrapped transport errors. */
+const readHttpErrorMetadata = (error: unknown): Pick<ParsedStream, 'retryAfter' | 'httpStatus'> => {
+  if (!error || typeof error !== 'object') {
+    return {}
+  }
+  const headers = 'responseHeaders' in error ? error.responseHeaders : 'headers' in error ? error.headers : undefined
+  const value =
+    headers instanceof Headers
+      ? headers.get('retry-after')
+      : headers && typeof headers === 'object'
+        ? Object.entries(headers).find(([name]) => name.toLowerCase() === 'retry-after')?.[1]
+        : undefined
+  const status = 'statusCode' in error ? error.statusCode : 'status' in error ? error.status : undefined
+  return {
+    ...('cause' in error && error.cause !== error ? readHttpErrorMetadata(error.cause) : {}),
+    ...(typeof value === 'string' ? { retryAfter: value } : {}),
+    ...(typeof status === 'number' ? { httpStatus: status } : {}),
+  }
+}
+
 /** Preserve unknown adapter exceptions as non-retryable error trials, rather than guessing infrastructure. */
 export const describeExecutionError = (
   error: unknown,
-): Pick<ParsedStream, 'error' | 'errorStack' | 'unclassified'> => ({
+): Pick<ParsedStream, 'error' | 'errorStack' | 'unclassified' | 'retryAfter' | 'httpStatus'> => ({
   error: error instanceof Error ? error.message : String(error),
   errorStack: error instanceof Error ? error.stack : undefined,
+  ...readHttpErrorMetadata(error),
   unclassified: !recognizedException(error),
 })
 
@@ -107,7 +129,7 @@ export const parseStream = async (
 ): Promise<ParsedStream> => {
   const reader = response.body?.getReader()
   if (!reader) {
-    return emptyResult('No response body')
+    return { ...emptyResult('No response body'), ...readHttpErrorMetadata(response) }
   }
   const cancelOnAbort = () => {
     void reader.cancel(signal?.reason).catch(() => {})
@@ -129,6 +151,8 @@ export const parseStream = async (
   let stepCount = 0
   let retryCount = 0
   let finishReason = 'unknown'
+  let retryAfter = response.headers.get('retry-after') ?? undefined
+  let httpStatus = response.status
 
   const snapshot = (): ParsedStream => ({
     text: textParts.join(''),
@@ -138,6 +162,8 @@ export const parseStream = async (
     retryCount,
     finishReason,
     events,
+    retryAfter,
+    httpStatus,
     ...(errors.length ? { error: errors.join('; ') } : {}),
   })
 
@@ -173,9 +199,13 @@ export const parseStream = async (
         toolOutputs.set(event.toolCallId as string, event.output)
         break
 
-      case 'error':
+      case 'error': {
+        const metadata = readHttpErrorMetadata(event)
+        retryAfter = metadata.retryAfter ?? (typeof event.retryAfter === 'string' ? event.retryAfter : retryAfter)
+        httpStatus = metadata.httpStatus ?? httpStatus
         errors.push(String(event.errorText ?? event.error ?? 'SSE error'))
         break
+      }
 
       case 'tool-output-error':
         toolErrors.set(event.toolCallId as string, String(event.errorText))
@@ -221,7 +251,13 @@ export const parseStream = async (
     const exception = describeExecutionError(err)
     const unclassified = errors.length === 0 && exception.unclassified
     errors.push(String(err))
-    return { ...snapshot(), errorStack: exception.errorStack, unclassified }
+    return {
+      ...snapshot(),
+      httpStatus: exception.httpStatus ?? httpStatus,
+      retryAfter: exception.retryAfter ?? retryAfter,
+      errorStack: exception.errorStack,
+      unclassified,
+    }
   } finally {
     signal?.removeEventListener('abort', cancelOnAbort)
   }

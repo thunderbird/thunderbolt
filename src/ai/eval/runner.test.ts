@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
+import { getClock } from '@/testing-library'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { initLayout, teardownLayout } from './ui'
 import { builtInAgent } from '@/defaults/agents'
@@ -254,6 +255,99 @@ describe('runner integration with an injected offline adapter', () => {
       error: 'adapter invariant broke',
     })
     expect(trial.attempts[0].errorStack).toContain('adapter invariant broke')
+  })
+
+  test.each([
+    { name: 'HTTP Retry-After', status: 429, header: '5', message: 'busy', waitMs: 5000 },
+    { name: 'empty HTTP 429', status: 429, header: '2', message: undefined, waitMs: 2000 },
+    { name: 'negative Retry-After', status: 429, header: '-1', message: 'busy', waitMs: 60000 },
+    {
+      name: 'SSE rate limit',
+      status: 200,
+      header: undefined,
+      message: '429 Too many requests. Please try again later.',
+      waitMs: 60000,
+    },
+    { name: 'invalid Retry-After', status: 429, header: 'invalid', message: 'busy', waitMs: 60000 },
+  ])('backs off once for $name before the only fresh generation retry', async ({ status, header, message, waitMs }) => {
+    const threads: string[] = []
+    const ready = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const adapter = adapterWithFetch(async (_init, context) => {
+      threads.push(context.threadId)
+      return new Response(
+        message === undefined ? null : `data: ${JSON.stringify({ type: 'error', errorText: message })}\n`,
+        {
+          status,
+          headers: header ? { 'Retry-After': header } : {},
+        },
+      )
+    })
+    const pending = runTrial(
+      fixtureScenario(),
+      0,
+      () => runScenario(fixtureScenario(), adapter),
+      async (delay) => {
+        expect(delay).toBe(waitMs)
+        ready.resolve()
+        await release.promise
+      },
+    )
+    await ready.promise
+    expect(threads).toHaveLength(1)
+    release.resolve()
+    const trial = await pending
+    expect(trial.attempts).toHaveLength(2)
+    expect(new Set(threads).size).toBe(2)
+    expect(trial.attempts[0].retryWaitMs).toBe(waitMs)
+    expect(trial.attempts[1].retryWaitMs).toBeUndefined()
+  })
+
+  test('reader 429 retains partial evidence and admission metadata before one paced retry', async () => {
+    const waits: number[] = []
+    let calls = 0
+    const events = [
+      { type: 'text-delta', delta: 'partial answer' },
+      { type: 'error', errorText: 'provider interrupted' },
+    ]
+    const adapter = adapterWithFetch(async () => {
+      calls++
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start: (controller) => {
+            controller.enqueue(
+              new TextEncoder().encode(events.map((event) => `data: ${JSON.stringify(event)}\n`).join('')),
+            )
+          },
+          pull: (controller) => {
+            controller.error(
+              Object.assign(new Error('admission denied'), {
+                statusCode: 429,
+                responseHeaders: { 'Retry-After': '7' },
+              }),
+            )
+          },
+        }),
+        { headers: { 'Retry-After': '12' } },
+      )
+    })
+    const trial = await runTrial(
+      fixtureScenario(),
+      0,
+      () => runScenario(fixtureScenario(), adapter),
+      async (delay) => {
+        waits.push(delay)
+      },
+    )
+    expect(calls).toBe(2)
+    expect(waits).toEqual([7000])
+    expect(trial.attempts[0].retryWaitMs).toBe(7000)
+    for (const attempt of trial.attempts) {
+      expect(attempt.status).toBe('infra_error')
+      expect(attempt.streams[0]).toMatchObject({ httpStatus: 429, retryAfter: '7', text: 'partial answer', events })
+      expect(attempt.streams[0].error).toContain('provider interrupted')
+      expect(attempt.streams[0].error).toContain('admission denied')
+    }
   })
 
   test('recognized transport errors retry once with a fresh thread', async () => {
@@ -780,4 +874,128 @@ test('extracts only registered web evidence from Pi or legacy outputs without re
   const evidence = extractTurnEvidence(parsed)
   expect(evidence.map(({ sourceIndex }) => sourceIndex)).toEqual([7, 7])
   expect(evidence.map(({ text }) => text)).toEqual(['snippet', 'full page'])
+})
+
+test('honours an HTTP-date Retry-After carried by a classified SDK exception', async () => {
+  const retryAfter = new Date(Date.now() + 60000).toUTCString()
+  const stream = await fetchAndParseTurn(
+    adapterWithFetch(async () => {
+      throw Object.assign(new Error('admission denied'), {
+        statusCode: 429,
+        responseHeaders: { 'Retry-After': retryAfter },
+      })
+    }),
+    {},
+    contextFor([]),
+    5000,
+  )
+  expect(stream).toMatchObject({ httpStatus: 429, unclassified: false, retryAfter })
+  const first = { ...fixtureAttempt(undefined, false, 'infra_error'), error: stream.error, streams: [stream] }
+  const waits: number[] = []
+  const attempts = [first, fixtureAttempt()]
+  await runTrial(
+    fixtureScenario(),
+    0,
+    async () => attempts.shift()!,
+    async (delay) => {
+      waits.push(delay)
+    },
+  )
+  expect(waits).toHaveLength(1)
+  expect(waits[0]).toBeGreaterThan(55000)
+  expect(waits[0]).toBeLessThanOrEqual(60000)
+})
+
+test('preserves publication, page status and separate retrieval/crawl/observation metadata for judging', () => {
+  const stream = fixtureAttempt().streams[0]
+  const metadata = {
+    publishedDate: '2026-09-01',
+    status: 200,
+    retrievedAt: '2026-09-16T10:00:00Z',
+    crawledAt: '2026-09-15T10:00:00Z',
+    observedAt: '2026-09-01T09:00:00Z',
+  }
+  stream.toolCalls = [{ toolName: 'fetch_content', toolCallId: 'page' }]
+  stream.events = [
+    {
+      type: 'tool-output-available',
+      toolCallId: 'page',
+      output: {
+        details: { sourceIndex: 7, url: 'https://example.test', text: 'Price: 10', ...metadata },
+      },
+    },
+  ]
+  const evidence = extractTurnEvidence(stream)
+  expect(evidence[0]).toMatchObject({
+    publishedDate: metadata.publishedDate,
+    retrievedAt: metadata.retrievedAt,
+    crawledAt: metadata.crawledAt,
+    observedAt: metadata.observedAt,
+    pageStatus: 200,
+  })
+  const prompt = buildJudgePrompt(
+    { ...fixtureScenario(), criteria: { mustProduceOutput: true, expectEvidenceCoverage: true } },
+    'Price: 10 [7]',
+    [{ prompt: 'price?', responseText: 'Price: 10 [7]', evidence }],
+  )
+  for (const value of [
+    metadata.publishedDate,
+    metadata.retrievedAt,
+    metadata.crawledAt,
+    metadata.observedAt,
+    '"pageStatus":200',
+  ]) {
+    expect(prompt).toContain(value)
+  }
+  expect(prompt).toContain('retrieval/crawl times, not live observation times')
+  expect(prompt).toContain('Source [7]')
+})
+
+test.each([
+  { header: '2147484', retry: false },
+  { header: '61', retry: false },
+  { header: '9'.repeat(400), retry: false },
+  { header: 'Wed, 01 Jan 2100 00:00:00 GMT', retry: false },
+  { header: '0', retry: true },
+  { header: '-1', retry: true },
+  { header: String(-3000), retry: true },
+  { header: '-3000', retry: true },
+  { header: '"-3000"', retry: true },
+  { header: '-2027', retry: true },
+  { header: '-9999', retry: true },
+  { header: 'NaN', retry: true },
+  { header: '1000000000000', retry: false },
+  { header: 'Wed, 01 Jan 2020 00:00:00 GMT', retry: true },
+  { header: 'invalid', retry: true },
+  { header: '60', retry: true },
+  { header: 'Wednesday, 16-Sep-26 12:00:07 GMT', retry: true, waitMs: 7000 },
+  { header: 'Wed Sep 16 12:00:07 2026', retry: true, waitMs: 7000 },
+  { header: 'Wednesday, 16-Sep-26 12:02:00 GMT', retry: false },
+  { header: 'Wed Sep 16 12:02:00 2026', retry: false },
+])('bounds admission wait for Retry-After=$header', async ({ header, retry, waitMs = 60000 }) => {
+  getClock().setSystemTime(Date.UTC(2026, 8, 16, 12))
+  const first = fixtureAttempt(undefined, false, 'infra_error')
+  first.streams[0].httpStatus = 429
+  first.streams[0].retryAfter = header
+  const waits: number[] = []
+  let calls = 0
+  const trial = await runTrial(
+    fixtureScenario(),
+    0,
+    async () => {
+      calls++
+      return calls === 1 ? first : fixtureAttempt()
+    },
+    async (delay) => {
+      waits.push(delay)
+    },
+  )
+  expect(calls).toBe(retry ? 2 : 1)
+  expect(waits).toEqual(retry ? [waitMs] : [])
+  expect(trial.attempts[0].streams[0].retryAfter).toBe(header)
+  expect(trial.attempts[0].retryDecision).toBe(retry ? 'waited' : 'not_retried_delay_over_window')
+  expect(trial.attempts[0].retryWaitMs).toBe(retry ? waitMs : undefined)
+  if (!retry) {
+    expect(trial.attempts[0].status).toBe('infra_error')
+  }
 })

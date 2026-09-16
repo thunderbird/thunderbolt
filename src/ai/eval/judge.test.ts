@@ -608,3 +608,10 @@ test('M1: supported expectation keys match the judge registry', () => {
   }
   expect(Object.keys(semanticVerdicts(criteria)).sort()).toEqual([...semanticCriterionKeys].sort())
 })
+
+test('judge requests bounded explanations while retaining declared-only strict verdict instructions', () => {
+  const prompt = buildJudgePrompt(scenario, '1989')
+  expect(prompt).toContain('Keep the explanation under 500 characters')
+  expect(prompt).toContain('every undeclared assertion field MUST be null')
+  expect(prompt).toContain('Every DECLARED assertion MUST be true or false')
+})

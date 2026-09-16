@@ -121,6 +121,19 @@ export const createTool = (config: ToolConfig, cache?: ToolCallCache, webToolBud
   return tool({
     description: config.description,
     inputSchema: config.parameters,
+    toModelOutput:
+      webToolBudget && webToolNames.has(config.name)
+        ? ({ output }) => ({
+            type: 'content',
+            value: [
+              { type: 'text', text: JSON.stringify(output) },
+              {
+                type: 'text',
+                text: `Web calls remaining this turn: ${Math.max(0, webToolBudget.cap - webToolBudget.consumed)}.${webToolBudget.probe.isExhausted ? ' Synthesize now from the available evidence; do not call web tools again.' : ''}`,
+              },
+            ],
+          })
+        : undefined,
     execute:
       webToolBudget && webToolNames.has(config.name) ? budgetedWebExecute(config, webToolBudget, execute) : execute,
   })

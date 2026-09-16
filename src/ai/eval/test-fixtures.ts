@@ -39,6 +39,7 @@ export const fixtureManifest = (scenarios = [fixtureScenario()], samples = 3): E
     ],
     suites: ['necessity'],
     samples,
+    scenarioConcurrency: Math.min(3, scenarios.length),
     judgeModelId: 'opus-actual',
     judgePromptVersion: 'v1',
     providerKind: 'local',

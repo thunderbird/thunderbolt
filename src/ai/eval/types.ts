@@ -102,6 +102,11 @@ export type EvalEvidence = {
   title: string
   text: string
   toolName: 'search' | 'fetch_content'
+  publishedDate?: string
+  pageStatus?: string | number
+  retrievedAt?: string
+  crawledAt?: string
+  observedAt?: string
 }
 export type JudgeTurn = { prompt: string; responseText: string; evidence: EvalEvidence[] }
 export type EvalTurnResult = { turn: number; result: EvalResult; verdicts: Record<string, Verdict> }
@@ -122,6 +127,8 @@ export type ParsedStream = {
   finishReason: string
   error?: string
   errorStack?: string
+  retryAfter?: string
+  httpStatus?: number
   unclassified?: boolean
   events?: Record<string, unknown>[]
 }
@@ -174,6 +181,9 @@ export type EvalAttempt = {
   error?: string
   errorStack?: string
   unclassified?: boolean
+  /** Backoff after this failed generation attempt, before its one permitted retry. */
+  retryWaitMs?: number
+  retryDecision?: 'waited' | 'not_retried_delay_over_window'
   generationDurationMs: number
   judgeDurationMs: number
   streams: ParsedStream[]
@@ -208,6 +218,7 @@ export type EvalManifest = {
   scenarios: { scenario: EvalScenario; planned: number }[]
   settings: Record<string, string>
   samples: number
+  scenarioConcurrency: number
   timeout: number
   judgeTimeout: number
   judgeModelId: string

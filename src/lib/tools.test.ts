@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, test } from 'bun:test'
+import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { z } from 'zod'
 import type { HttpClient } from '@/contexts'
@@ -268,4 +269,32 @@ describe('getAvailableTools (injected context)', () => {
     )
     expect(tools.some((tool) => tool.name === 'search')).toBe(true)
   })
+})
+
+test('web results expose live remaining calls through the real Pi bridge without changing source IDs or cached data', async () => {
+  const budget = createWebToolBudget('auto', true)
+  const { config, calls } = makeConfig({
+    name: 'search',
+    execute: async (input) => {
+      calls.push(input)
+      return [{ sourceIndex: 7, sourceLabel: '[Source 7]', snippet: 'fact' }]
+    },
+  })
+  const [web] = await toPiAgentTools(createToolset([config], undefined, budget))
+  const first = await web.execute('one', { query: 'one' })
+  expect(first.content).toContainEqual({ type: 'text', text: 'Web calls remaining this turn: 1.' })
+  const last = await web.execute('two', { query: 'two' })
+  expect(last.content).toContainEqual({
+    type: 'text',
+    text: 'Web calls remaining this turn: 0. Synthesize now from the available evidence; do not call web tools again.',
+  })
+  expect(last.details).toEqual(first.details)
+  const cached = await web.execute('cache', { query: 'one' })
+  expect(cached.content).toEqual(last.content)
+  expect(calls).toHaveLength(2)
+  budget.promoteToResearch()
+  const promoted = await web.execute('promoted-cache', { query: 'one' })
+  expect(promoted.content).toContainEqual({ type: 'text', text: 'Web calls remaining this turn: 28.' })
+  expect(promoted.details).toEqual(first.details)
+  expect(budget.consumed).toBe(2)
 })

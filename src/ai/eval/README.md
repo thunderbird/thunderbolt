@@ -242,6 +242,8 @@ only its verification disclaimer. Paired Portuguese/English cases also check rep
 Correctness is checked against the judge's own knowledge of the timeless fact or task. Incorrect or unsupported claims fail that assertion, but the response does not need sources or citations. The other assertions are independent: correctness requirements do not affect whether the response offered to search, rebutted a false premise, or admitted it could not verify an answer.
 
 Each trial grades its saved final answer against declared assertions and stores the whole verdict.
+Judge explanations are requested under 500 characters. Evidence includes publication date, page status,
+and retrieval/crawl/observation timestamps when supplied; retrieval time is not proof of live observation.
 A provider error, timeout, malformed JSON, missing assertion or schema mismatch gets one re-grade
 of that answer (two judge attempts total), each with its own `EVAL_JUDGE_TIMEOUT` deadline.
 Completed behavioural rejections are never re-graded.
@@ -310,7 +312,7 @@ This spends judge inference and generates no answers. It refuses without the exp
 signed token, prints expected/observed labels per fixture, and exits 0 for all matches, 1 for any
 mismatch, or 2 for setup/refusal errors. Run it before interpreting the first reference run and
 after changing the judge prompt or rubric. `bun run test` exercises only injected judges; this
-round does not execute the real calibration command. Judge prompt version is `round-0b-v1`.
+round does not execute the real calibration command. Judge prompt version is `round-4-v1`.
 
 ### Trials, attempts and retries
 
@@ -319,7 +321,17 @@ an ID `scenario ID/index` and retains every attempt, parsed turn, tool call, SSE
 generation/judge duration. Execution (`completed`, `timeout`, `infra_error`, `judge_error`) and
 behaviour (`pass`, `fail`, `unknown`) are independent.
 
-Only evidence-classified generation infrastructure errors get one fresh-thread retry. Unclassified
+Only evidence-classified generation infrastructure errors get one fresh-thread retry.
+For HTTP 429 or rate-limit SSE failures, the runner waits for `Retry-After` (seconds or HTTP date)
+before that retry, with a maximum wait of 60 seconds. An absent, invalid, zero or past value uses
+60 seconds; a valid delay above that window remains an infrastructure error without retrying early.
+The failed attempt records `retryDecision` (`waited` or `not_retried_delay_over_window`) and, only
+when waiting, `retryWaitMs`. The stream retains the observed status and Retry-After value, including
+metadata from stream-reader exceptions.
+The manifest records effective worker count in `scenarioConcurrency`, including the default and selection cap.
+For an isolated lab backend, the existing `RATE_LIMIT_ENABLED=false` knob disables backend admission
+limits; production defaults remain enabled (the shared pro tier is 100 requests per 60 seconds).
+This knob does not change retry counts, evaluation gates or paid inference quotas. Unclassified
 adapter exceptions retain their message/stack and remain non-retryable error trials; the run continues.
 A proven deterministic violation blocks retry and counts as a valid failure, as do timeouts with
 preserved partial streams. Unresolved infrastructure/judge errors without a proven failure count

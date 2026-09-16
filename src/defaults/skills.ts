@@ -100,12 +100,13 @@ A new user turn starts with a fresh ordinary budget. If that new request needs r
 
 ## Plan and investigate
 - Identify the requested dimensions and break them into focused sub-questions.
-- Allocate the available calls across those dimensions; use varied queries and primary sources.
+- Allocate the available calls across all requested entities and dimensions before deep-diving into any one; use varied queries and primary sources.
 - Use a sufficient search snippet directly. Fetch a page when its full text is needed to support a claim, resolve a conflict, or fill a material gap.
 - Reuse cached results and their source IDs instead of repeating identical calls.
 - Continue until the requested coverage is supported or the available budget is exhausted; do not add calls merely to fill a quota.
 
 ## Output
+Verify each material number and quote against its cited source, preserve qualifiers, and omit unsupported asides.
 1. **Executive Summary** — Direct answer with an appropriate confidence level.
 2. **Detailed Findings** — Organized by sub-question, with inline [N] citations for sourced claims.
 3. **Conflicts & Gaps** — Explain disagreements, missing evidence and what could not be verified.
@@ -279,4 +280,4 @@ export const defaultSkills: ReadonlyArray<Skill> = [
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 8
+export const defaultSkillsVersion = 9

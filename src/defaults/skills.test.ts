@@ -42,8 +42,8 @@ const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 8,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:nxa7vu|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 9,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {
@@ -150,4 +150,10 @@ test('research instructions respect live capacity instead of fixed call quotas a
   expect(text).toContain('load this skill again')
   expect(text).not.toContain('At least 10 page fetches')
   expect(text).not.toContain('At least 5 different searches')
+})
+
+test('research allocates evidence across entities before depth and checks precise source claims', () => {
+  expect(defaultSkillResearch.instruction).toContain('across all requested entities and dimensions before deep-diving')
+  expect(defaultSkillResearch.instruction).toContain('Verify each material number and quote against its cited source')
+  expect(defaultSkillResearch.instruction).toContain('preserve qualifiers, and omit unsupported asides')
 })

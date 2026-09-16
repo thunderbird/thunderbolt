@@ -309,6 +309,7 @@ export const extractTurnEvidence = (stream: ParsedStream): EvalEvidence[] => {
       }
       const source = value as Record<string, unknown>
       const url = source.url ?? source.pageUrl
+      const pageStatus = source.pageStatus ?? source.status
       if (typeof source.sourceIndex !== 'number' || typeof url !== 'string') {
         return []
       }
@@ -319,6 +320,11 @@ export const extractTurnEvidence = (stream: ParsedStream): EvalEvidence[] => {
           title: String(source.title ?? url),
           text: [source.text, source.snippet].filter((part) => typeof part === 'string' && part.trim()).join('\n'),
           toolName,
+          ...(typeof source.publishedDate === 'string' ? { publishedDate: source.publishedDate } : {}),
+          ...(typeof pageStatus === 'string' || typeof pageStatus === 'number' ? { pageStatus } : {}),
+          ...(typeof source.retrievedAt === 'string' ? { retrievedAt: source.retrievedAt } : {}),
+          ...(typeof source.crawledAt === 'string' ? { crawledAt: source.crawledAt } : {}),
+          ...(typeof source.observedAt === 'string' ? { observedAt: source.observedAt } : {}),
         },
       ]
     })
@@ -569,10 +575,28 @@ export const runTrial = async (
   scenario: EvalScenario,
   index: number,
   execute: () => Promise<EvalAttempt>,
+  wait: (milliseconds: number) => Promise<void> = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds)),
 ): Promise<EvalTrial> => {
   const first = await execute()
   const attempts = [first]
   if (first.status === 'infra_error' && !first.unclassified && !first.provenFailure) {
+    const stream = first.streams.at(-1)
+    if (
+      stream?.httpStatus === 429 ||
+      /\b429\b|rate.?limit|too many requests/i.test(first.error ?? stream?.error ?? '')
+    ) {
+      const header = stream?.retryAfter?.trim().replace(/^"(.*)"$/, '$1')
+      const delay = header && /^-?\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header ?? '') - Date.now()
+      const maxWaitMs = 60000
+      if (delay > maxWaitMs) {
+        first.retryDecision = 'not_retried_delay_over_window'
+        return { id: `${scenario.id}/${index}`, scenario, index, attempts }
+      }
+      first.retryWaitMs = Number.isFinite(delay) && delay > 0 ? delay : maxWaitMs
+      await wait(first.retryWaitMs)
+      first.retryDecision = 'waited'
+    }
     attempts.push(await execute())
   }
   return { id: `${scenario.id}/${index}`, scenario, index, attempts }

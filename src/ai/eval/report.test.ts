@@ -183,3 +183,27 @@ test('C1: embedded Authorization Cookie and Set-Cookie credentials are redacted 
     }
   }
 })
+
+test('journal and metrics retain effective concurrency and the generation retry wait', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'eval-retry-record-'))
+  try {
+    const manifest = fixtureManifest()
+    const trial = fixtureTrial()
+    trial.attempts[0].retryWaitMs = 60000
+    const journal = startTrialJournal(manifest, directory)
+    appendTrial(journal, trial)
+    const records = readFileSync(journal, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(JSON.stringify(records)).toContain('"scenarioConcurrency":1')
+    expect(JSON.stringify(records)).toContain('"retryWaitMs":60000')
+    const metrics = aggregateEvalMetrics(manifest, [trial])
+    const metricsPath = writeMetricsReport(metrics, join(directory, 'report.md'))
+    const saved = JSON.parse(readFileSync(metricsPath, 'utf8'))
+    expect(saved.manifest.scenarioConcurrency).toBe(1)
+    expect(saved.trials[0].attempts[0].retryWaitMs).toBe(60000)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

@@ -162,3 +162,17 @@ test('retains SSE and recovered tool errors alongside the partial answer', async
   expect(parsed.events).toEqual(events)
   expect(parsed.toolCalls).toHaveLength(1)
 })
+
+test('preserves rate-limit status and Retry-After carried inside an SSE error', async () => {
+  const parsed = await parseStream(
+    sseResponse([
+      {
+        type: 'error',
+        status: 429,
+        responseHeaders: { 'Retry-After': '9' },
+        errorText: 'admission denied',
+      },
+    ]),
+  )
+  expect(parsed).toMatchObject({ error: 'admission denied', httpStatus: 429, retryAfter: '9' })
+})

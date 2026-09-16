@@ -52,12 +52,16 @@ test('calibration refuses without explicit opt-in before calling the injected ju
   expect(calls).toHaveLength(0)
 })
 
-test('calibration reports every fixture and exits zero when injected labels match', async () => {
+test('calibration matches unchanged fixtures despite undeclared correctness on freshness cases', async () => {
   const lines: string[] = []
   expect(
     await runCalibration({
       enabled: true,
-      evaluate: async (fixture) => verdictFor(fixture.expected),
+      evaluate: async (fixture) =>
+        verdictFor({
+          ...fixture.expected,
+          ...(fixture.id.includes('freshness-caveat') ? { correct: true } : {}),
+        }),
       write: (line) => {
         lines.push(line)
       },

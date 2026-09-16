@@ -163,6 +163,8 @@ export type JudgeAttempt = {
   status: 'completed' | 'judge_error'
   durationMs: number
   verdict?: JudgeVerdict
+  /** Non-null undeclared assertions ignored in this completed judge attempt. */
+  judgeUndeclaredFields?: number
   error?: string
 }
 

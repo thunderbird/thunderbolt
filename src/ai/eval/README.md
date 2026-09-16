@@ -253,7 +253,9 @@ assertion. Unbound or deterministic keys are rejected: routing, tool limits and 
 rules are expressed by their criteria values, not expectation prose. `expectSearchOffer` uses two verdict fields:
 `searchOffer` (knowledge answer plus offer) and `freshnessCaveat`; both must be true. A bare offer
 does not supply a caveat. `verificationDisclaimer` still means admitting inability to verify.
-Undeclared verdict fields must be null; re-grading replaces earlier semantic failures.
+Undeclared non-null assertion values are ignored and stored as null; each completed judge attempt
+records their count in `judgeUndeclaredFields`. Missing declared assertions still trigger a re-grade;
+re-grading replaces earlier semantic failures.
 
 `scenario.criteria` and `scenario.expectation` always describe the final turn. For multi-turn
 scenarios, `promptCriteria` / `promptExpectation` optionally grade the first prompt. Intermediate

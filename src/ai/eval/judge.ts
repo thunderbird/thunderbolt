@@ -176,9 +176,10 @@ export const parseJudgeVerdict = (text: string): JudgeVerdict => {
 export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): EvalResult => {
   const assertions = declaredAssertions(result.scenario.criteria)
   const declared = new Set(assertions.map(({ verdictKey }) => verdictKey))
+  const normalized = { ...verdict }
   for (const { verdictKey } of semanticAssertions) {
-    if (!declared.has(verdictKey) && verdict[verdictKey] !== null) {
-      throw new Error(`Judge populated undeclared assertion: ${verdictKey}`)
+    if (!declared.has(verdictKey)) {
+      normalized[verdictKey] = null
     }
   }
   const judgeFailures = assertions.flatMap(({ verdictKey, label }) => {
@@ -199,7 +200,7 @@ export const applyJudgeVerdict = (result: EvalResult, verdict: JudgeVerdict): Ev
     passed: failures.length === 0,
     failures,
     error: result.error?.startsWith('Judge error:') ? undefined : result.error,
-    judgeVerdict: verdict,
+    judgeVerdict: normalized,
   }
 }
 
@@ -244,7 +245,14 @@ export const evaluateWithJudge = async (
     try {
       const verdict = await runAbortableJudgeAttempt(evaluate, attemptTimeoutMs, scheduleTimeout)
       const judged = applyJudgeVerdict(result, verdict)
-      judgeAttempts.push({ status: 'completed', durationMs: now() - start, verdict })
+      judgeAttempts.push({
+        status: 'completed',
+        durationMs: now() - start,
+        verdict: judged.judgeVerdict,
+        judgeUndeclaredFields: semanticAssertions.filter(
+          ({ verdictKey }) => verdict[verdictKey] !== judged.judgeVerdict?.[verdictKey],
+        ).length,
+      })
       return { ...judged, judgeAttempts }
     } catch (error) {
       const message = `Judge error: ${error instanceof Error ? error.message : String(error)}`

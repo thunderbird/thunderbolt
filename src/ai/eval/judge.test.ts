@@ -468,11 +468,62 @@ test('search offer requires knowledge-plus-offer AND freshness caveat; disclaime
   ).toBe(true)
 })
 
-test('undeclared fields must stay null and missing declared fields are judge errors', () => {
-  expect(() => applyJudgeVerdict(result, { ...acceptedVerdict, evidenceCoverage: true })).toThrow(
-    'undeclared assertion: evidenceCoverage',
-  )
-  expect(() => parseJudgeVerdict(JSON.stringify({ correct: true }))).toThrow('Invalid judge verdict')
+test('undeclared non-null fields are ignored, normalized and counted without a retry', async () => {
+  const raw = { ...acceptedVerdict, evidenceCoverage: true, reuseFidelity: false }
+  let calls = 0
+  const judged = await evaluateWithJudge(result, async () => {
+    calls++
+    return parseJudgeVerdict(JSON.stringify(raw))
+  })
+  expect(calls).toBe(1)
+  expect(judged.passed).toBe(true)
+  expect(judged.error).toBeUndefined()
+  expect(judged.judgeVerdict).toEqual(acceptedVerdict)
+  expect(judged.judgeAttempts).toEqual([
+    {
+      status: 'completed',
+      durationMs: expect.any(Number),
+      verdict: acceptedVerdict,
+      judgeUndeclaredFields: 2,
+    },
+  ])
+  expect(applyJudgeVerdict(result, raw).judgeVerdict).toEqual(acceptedVerdict)
+  expect(raw.evidenceCoverage).toBe(true)
+  expect(raw.reuseFidelity).toBe(false)
+})
+
+test.each([true, false])(
+  'freshness caveat=%s keeps its declared outcome despite undeclared correctness',
+  async (freshnessCaveat) => {
+    const base = {
+      ...result,
+      scenario: { ...scenario, criteria: { mustProduceOutput: true, expectSearchOffer: true } },
+    }
+    const judged = await evaluateWithJudge(base, async () => ({
+      ...acceptedVerdict,
+      searchOffer: true,
+      freshnessCaveat,
+    }))
+    expect(judged.passed).toBe(freshnessCaveat)
+    expect(judged.error).toBeUndefined()
+    expect(judged.judgeAttempts).toHaveLength(1)
+    expect(judged.judgeAttempts?.[0]).toMatchObject({
+      status: 'completed',
+      judgeUndeclaredFields: 1,
+      verdict: { correct: null, searchOffer: true, freshnessCaveat },
+    })
+    expect(judged.judgeVerdict).toMatchObject({ correct: null, searchOffer: true, freshnessCaveat })
+  },
+)
+
+test('a missing declared field in JSON still retries before accepting a complete verdict', async () => {
+  const incomplete = { ...acceptedVerdict, correct: undefined }
+  const responses = [JSON.stringify(incomplete), JSON.stringify(acceptedVerdict)]
+  const judged = await evaluateWithJudge(result, async () => parseJudgeVerdict(responses.shift()!))
+  expect(judged.passed).toBe(true)
+  expect(judged.judgeAttempts?.map(({ status }) => status)).toEqual(['judge_error', 'completed'])
+  expect(judged.judgeAttempts?.[0].error).toContain('Invalid judge verdict')
+  expect(judged.judgeAttempts?.[1].judgeUndeclaredFields).toBe(0)
 })
 
 test('expectation text is attached to its declared assertion only', () => {

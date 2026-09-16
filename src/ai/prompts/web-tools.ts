@@ -9,4 +9,5 @@
  */
 export const webToolsPrompt = `Web lookups use the \`search\` and \`fetch_content\` tools.
 Quick questions: run at most one search and answer from its snippets. Fetch a page only when the snippets are insufficient.
-Deep dives, research requests, or comprehensive reports: break the question into sub-questions, search each from multiple angles, fetch the pages needed for evidence, and synthesize the findings.`
+Deep dives, research requests, or comprehensive reports: break the question into sub-questions, search each from multiple angles, fetch the pages needed for evidence, and synthesize the findings.
+Transcribe numbers, prices, limits and quotes exactly as the source states them. If a source did not load, say so instead of citing it as evidence.`

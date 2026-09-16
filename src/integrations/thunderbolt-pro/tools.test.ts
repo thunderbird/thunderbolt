@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { loadCalibrationFixtures } from '@/ai/eval/fixtures'
+import { createToolset } from '@/lib/tools'
+import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { SourceMetadata } from '@/types/source'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -341,4 +344,30 @@ it('passes search snippets and canonical publication dates from the API to model
   const result = await config.execute({ query: 'query', max_results: 1 })
   expect(result).toMatchObject([{ sourceIndex: 1, snippet: 'Supported fact.', publishedDate: '2026-09-01' }])
   expect(sourceCollector).toMatchObject([{ index: 1, description: 'Supported fact.', publishedDate: '2026-09-01' }])
+})
+
+it('surfaces a failed fetch as a Pi tool failure without registering a source', async () => {
+  const sources: SourceMetadata[] = []
+  const client = createMockHttpClient({
+    success: false,
+    data: null,
+    error: 'Source did not load or returned no usable text.',
+  })
+  const tools = await toPiAgentTools(createToolset(createConfigs(client, sources)))
+  const fetchTool = tools.find(({ name }) => name === 'fetch_content')!
+  await expect(fetchTool.execute('fetch-1', { url: 'https://source.test' })).rejects.toThrow('Source did not load')
+  expect(sources).toEqual([])
+})
+
+it('passes the technical-404 negative-control fixture through as model content', async () => {
+  const fixture = loadCalibrationFixtures().find(({ id }) => id === 'valid-technical-page-about-404')!
+  const evidence = fixture.conversation[0].evidence[0]
+  const sources: SourceMetadata[] = []
+  const tools = await toPiAgentTools(
+    createToolset(createConfigs(createMockHttpClient({ success: true, data: evidence }), sources)),
+  )
+  const fetchTool = tools.find(({ name }) => name === 'fetch_content')!
+  const result = await fetchTool.execute('fetch-1', { url: evidence.url })
+  expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(evidence.text) }])
+  expect(sources).toMatchObject([{ index: 1, url: evidence.url }])
 })

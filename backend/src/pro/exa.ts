@@ -45,13 +45,14 @@ export const createExaPlugin = (client: Pick<Exa, 'getContents'> | null = getExa
         })
 
         const result = response.results[0]
-        if (!result) {
-          return { data: null, success: true }
+        const status = response.statuses?.find(({ id }) => id === result?.id)
+        if (!result?.text?.trim() || (status && status.status !== 'success')) {
+          return { data: null, success: false, error: 'Source did not load or returned no usable text.' }
         }
 
         // Use >= as a conservative check: if Exa returns exactly maxCharacters,
         // the original content was likely longer and got truncated by Exa's API
-        const isTruncated = (result.text?.length ?? 0) >= maxCharacters
+        const isTruncated = result.text.length >= maxCharacters
 
         // If truncated and not at hard cap, suggest fetching more
         const truncationHint =
@@ -62,7 +63,7 @@ export const createExaPlugin = (client: Pick<Exa, 'getContents'> | null = getExa
         return {
           data: {
             ...result,
-            text: (result.text ?? '') + truncationHint,
+            text: result.text + truncationHint,
             isTruncated,
           },
           success: true,

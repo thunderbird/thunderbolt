@@ -173,6 +173,10 @@ describe('createPrompt', () => {
     const result = createPromptParts({ ...baseParams, hasWebTools: true })
 
     expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
+    expect(result.stablePrompt).toContain(
+      'Transcribe numbers, prices, limits and quotes exactly as the source states them.',
+    )
+    expect(result.stablePrompt).toContain('If a source did not load, say so instead of citing it as evidence.')
   })
 
   test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {

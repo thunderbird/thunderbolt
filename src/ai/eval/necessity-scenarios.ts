@@ -26,6 +26,13 @@ const noSearchCorrect: EvalCriteria = {
   expectCorrectAnswer: true,
 }
 
+const weatherWidget: EvalCriteria = {
+  mustProduceOutput: true,
+  maxToolCalls: 0,
+  expectResearchSkill: false,
+  mustUseWidget: 'weather-forecast',
+}
+
 const answerThenOffer: EvalCriteria = { ...noSearchCorrect, expectSearchOffer: true }
 
 const searchOnce: EvalCriteria = {
@@ -53,6 +60,11 @@ const reusePriorResult: EvalCriteria = {
   maxToolCalls: 0,
   expectResearchSkill: false,
   expectReuseFidelity: true,
+}
+
+const reuseExpectation: EvalExpectation = {
+  expectReuseFidelity:
+    'Faithfully repeat the requested earlier value, applying only the transformation asked for in the follow-up. Do not require restating a time, channel or other qualifier the follow-up did not ask for. Do not substitute a newer or remembered value; if the earlier answer provided no value, do not invent one.',
 }
 
 const verifyPremise: EvalCriteria = { ...evidenceLookup, maxToolCalls: 3, expectPremiseRebuttal: true }
@@ -87,11 +99,6 @@ const bitcoinExpectation: EvalExpectation = {
     'Give a sourced Bitcoin price in USD with observation time; distinguish a stale or unavailable current quote instead of presenting an undated number as live.',
 }
 
-const weatherExpectation: EvalExpectation = {
-  expectEvidenceCoverage:
-    'Answer the specific Lisbon weather question with sourced observation time and units; distinguish dated or unavailable observations from conditions right now.',
-}
-
 const matchExpectation: EvalExpectation = {
   expectEvidenceCoverage:
     'Use official results to identify the latest completed fixture’s teams, date and score; a supported no-fixture listing is accepted and an unverified score is not.',
@@ -103,7 +110,7 @@ const nodeReleaseExpectation: EvalExpectation = {
 }
 
 const correctedFactEvidence =
-  'Support the corrected positive facts with relevant primary evidence; a source proving the imaginary non-event is not required.'
+  'Require relevant primary evidence only for the central corrected fact, such as Thunderbird’s continued development or Portugal’s EU membership. Background history and side details are not graded for evidence support; a source proving the imaginary non-event is not required.'
 
 const prompts: NecessityPrompt[] = [
   {
@@ -339,24 +346,21 @@ const prompts: NecessityPrompt[] = [
   },
   {
     id: 'single-search-04',
-    category: 'single_search',
+    category: 'never_search',
     prompt: 'What is the weather in Lisbon right now?',
-    criteria: evidenceLookup,
-    expectation: weatherExpectation,
+    criteria: weatherWidget,
   },
   {
     id: 'single-search-05',
-    category: 'single_search',
+    category: 'never_search',
     prompt: 'Tell me Lisbon’s current temperature and conditions.',
-    criteria: evidenceLookup,
-    expectation: weatherExpectation,
+    criteria: weatherWidget,
   },
   {
     id: 'single-search-06',
-    category: 'single_search',
+    category: 'never_search',
     prompt: 'Is it raining in Lisbon at the moment?',
-    criteria: evidenceLookup,
-    expectation: weatherExpectation,
+    criteria: weatherWidget,
   },
   {
     id: 'single-search-07',
@@ -822,26 +826,15 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Repeat the price you just found, rounded to the nearest dollar.'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Faithfully repeat the earlier USD Bitcoin price rounded to the nearest whole dollar, preserving any qualification about quote time.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-02',
-    category: 'multi_turn_reuse',
+    category: 'never_search',
     prompt: 'What is the weather in Lisbon right now, including wind speed?',
-    promptCriteria: evidenceLookup,
-    promptExpectation: {
-      expectEvidenceCoverage:
-        'Provide sourced Lisbon weather including wind speed, units and observation time; disclose if only dated observations are available.',
-    },
-    followUps: ['What wind speed did you find?'],
-    criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the wind speed and units actually provided earlier, retaining any timing or availability qualification.',
-    },
+    promptCriteria: weatherWidget,
+    followUps: ['Show me Lisbon’s weather widget again.'],
+    criteria: weatherWidget,
   },
   {
     id: 'multi-turn-reuse-03',
@@ -854,10 +847,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['What release date did you just give me?'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the release date actually given for the earlier Node.js version without changing the version or inventing a date.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-04',
@@ -870,10 +860,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Who were the scorers in that match?'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Recall the scorers from the earlier identified fixture; if the earlier supported result had no fixture or scorers, preserve that limitation.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-05',
@@ -881,15 +868,11 @@ const prompts: NecessityPrompt[] = [
     prompt: 'What is React’s latest GitHub release and when was it published?',
     promptCriteria: evidenceLookup,
     promptExpectation: {
-      expectEvidenceCoverage:
-        'Give React’s latest GitHub release tag and publication date, clearly stating whether the release is a prerelease.',
+      expectEvidenceCoverage: 'Give React’s latest GitHub release tag and publication date supported by the source.',
     },
     followUps: ['Remind me of that release tag.'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the React release tag actually given earlier, preserving any prerelease qualification.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-06',
@@ -902,10 +885,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Which launch site was that?'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the launch site for the specific launch established earlier, retaining any stated non-event limitation.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-07',
@@ -918,9 +898,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['What percentage move did you report?'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity: 'Repeat the percentage move and trading-session qualification actually reported earlier.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-08',
@@ -933,10 +911,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Tell me that version number again.'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the Bun version number established earlier without substituting a newer or remembered version.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-09',
@@ -949,10 +924,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Repeat the number without looking it up again.'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the Firefox release number from the earlier answer and preserve the stated release channel.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-10',
@@ -965,10 +937,7 @@ const prompts: NecessityPrompt[] = [
     },
     followUps: ['Which team did you say?'],
     criteria: reusePriorResult,
-    expectation: {
-      expectReuseFidelity:
-        'Repeat the winning driver’s team from the earlier race result, preserving any sourced no-event limitation.',
-    },
+    expectation: reuseExpectation,
   },
   {
     id: 'multi-turn-reuse-11',
@@ -981,12 +950,11 @@ const prompts: NecessityPrompt[] = [
   },
   {
     id: 'multi-turn-reuse-12',
-    category: 'multi_turn_reuse',
+    category: 'never_search',
     prompt: 'What is the weather in Lisbon right now?',
-    promptCriteria: searchOnce,
+    promptCriteria: weatherWidget,
     followUps: ['And what is the weather in Porto right now?'],
-    criteria: searchOnce,
-    isNegativeControl: true,
+    criteria: weatherWidget,
   },
   {
     id: 'search-wont-help-01',

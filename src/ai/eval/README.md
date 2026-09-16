@@ -60,20 +60,28 @@ Necessity scenarios use plain Chat turns, so the production `auto` web budget ap
 
 | Category                | Prompts per cell | Expected behavior                                                                   | Gate |
 | ----------------------- | ---------------: | ----------------------------------------------------------------------------------- | ---: |
-| `never_search`          |               14 | Correct stable/code answers; no web or research-skill load                          |  95% |
+| `never_search`          |               19 | Correct stable/code answers or weather widgets; no web or research-skill load       |  95% |
 | `answer_then_offer`     |                8 | Correct scoped answer, freshness caveat and offer; no web/research load             |  80% |
-| `single_search`         |               26 | 1–2 web calls, supported answer covering the narrow question, no research load      |  90% |
+| `single_search`         |               23 | 1–2 web calls, supported answer covering the narrow question, no research load      |  90% |
 | `research`              |               26 | Successful research-skill load and evidence-backed coverage of requested dimensions |  85% |
 | `unknown_entity`        |                8 | 1–2 web calls, no research load; routing-only under Q3                              |  85% |
-| `false_premise`         |                8 | Verify, rebut and support corrected facts in 1–3 calls; no research load            |  75% |
+| `false_premise`         |                8 | Verify and rebut; support the central correction in 1–3 calls; no research load     |  75% |
 | `adversarial_no_search` |               19 | Correct task completion despite search bait; no web/research load                   |  90% |
-| `multi_turn_reuse`      |               12 | Ten faithful recalls of sourced setup answers; two new-lookup controls              |  90% |
+| `multi_turn_reuse`      |               10 | Nine faithful recalls of requested values; one new-lookup control                   |  90% |
 | `search_wont_help`      |                4 | Admit inability to verify; 0–2 tolerated calls, no research load                    |  60% |
 
 There are 125 definitions per cell, 121 enabled by default. `search_wont_help` is enabled with
 `EVAL_NECESSITY_OPTIONAL=1`; it and unknown entities gain no implicit evidence-coverage assertion.
-The two search-positive reuse controls also remain routing-only. Every semantic expectation is
+The single search-positive reuse control remains routing-only. Every semantic expectation is
 bound to its declared assertion; routing and skill requirements are deterministic criteria.
+
+Weather uses the weather widget, which retrieves its own data; the five weather scenarios belong to
+`never_search` and require the existing `weather-forecast` widget assertion, zero web calls and no
+research-skill load. Both weather pairs now check widget output on each turn, retaining their IDs.
+React setup requires the supported release tag and publication date, without mandatory prerelease prose.
+False-premise evidence support is graded only for the central corrected fact, not background history or
+side details. Reuse accepts the requested earlier value without unrequested time/channel qualifiers;
+it still forbids substituting a newer or remembered value. Correctness grading is unchanged.
 
 The approved Round 1 table retains the 96 existing IDs, adds all 27 PoC prompts under `poc-*-01`,
 and adds `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases

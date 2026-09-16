@@ -4,21 +4,22 @@
 
 import { describe, expect, test } from 'bun:test'
 import { getNecessityScenarios } from './necessity-scenarios'
+import { scoreResult } from './scoring'
 import { getScenarioTurns } from './turns'
-import { semanticCriterionKeys, type NecessityCategory } from './types'
+import { semanticCriterionKeys, type EvalScenario, type NecessityCategory } from './types'
 
 /** The search-necessity taxonomy proper — `language` shares the machinery but not the taxonomy. */
 type SearchCategory = Exclude<NecessityCategory, 'language'>
 
 const expectedCounts: Record<SearchCategory, number> = {
-  never_search: 14,
+  never_search: 19,
   answer_then_offer: 8,
-  single_search: 26,
+  single_search: 23,
   research: 26,
   unknown_entity: 8,
   false_premise: 8,
   adversarial_no_search: 19,
-  multi_turn_reuse: 12,
+  multi_turn_reuse: 10,
   search_wont_help: 4,
 }
 
@@ -34,6 +35,29 @@ const expectedJudgeAssertions: Record<SearchCategory, JudgeAssertion[]> = {
   adversarial_no_search: ['expectCorrectAnswer'],
   multi_turn_reuse: ['expectReuseFidelity'],
   search_wont_help: ['expectVerificationDisclaimer'],
+}
+
+const weatherScenarioIds = new Set([
+  'single-search-04',
+  'single-search-05',
+  'single-search-06',
+  'multi-turn-reuse-02',
+  'multi-turn-reuse-12',
+])
+
+/** Apply the same semantic invariant to shipped definitions and deliberate regression mutants. */
+const assertScenarioSemantics = (scenario: EvalScenario) => {
+  const declared = semanticCriterionKeys.filter((assertion) => scenario.criteria[assertion])
+  const pairedLanguage = /poc-(desktop-transcripts|apple-silicon-llms|official-stable-version)(-pt)?-01$/.test(
+    scenario.id,
+  )
+  const expected =
+    weatherScenarioIds.has(scenario.id.split('/').at(-1)!) ||
+    (scenario.category === 'multi_turn_reuse' && scenario.isNegativeControl)
+      ? []
+      : expectedJudgeAssertions[scenario.category as SearchCategory]
+  expect(declared).toEqual([...expected, ...(pairedLanguage ? (['expectReplyLanguage'] as const) : [])])
+  expect(Object.keys(scenario.expectation ?? {}).sort()).toEqual([...declared].sort())
 }
 
 describe('necessity scenarios', () => {
@@ -61,12 +85,12 @@ describe('necessity scenarios', () => {
     expect(scenarios.every(({ reviewBy }) => /^\d{4}-\d{2}-\d{2}$/.test(reviewBy ?? ''))).toBe(true)
   })
 
-  test('contains two multi-turn negative controls that require a new search', () => {
+  test('contains one multi-turn negative control that requires a new search', () => {
     const controls = getNecessityScenarios(['opus'], undefined, false).filter(
       ({ category, isNegativeControl }) => category === 'multi_turn_reuse' && isNegativeControl,
     )
 
-    expect(controls).toHaveLength(2)
+    expect(controls).toHaveLength(1)
     expect(controls.every(({ followUps, criteria }) => followUps?.length === 1 && criteria.minToolCalls === 1)).toBe(
       true,
     )
@@ -103,16 +127,7 @@ describe('necessity scenarios', () => {
     const scenarios = getNecessityScenarios(['opus'], undefined, true)
 
     for (const scenario of scenarios) {
-      const declared = semanticCriterionKeys.filter((assertion) => scenario.criteria[assertion])
-      const pairedLanguage = /poc-(desktop-transcripts|apple-silicon-llms|official-stable-version)(-pt)?-01$/.test(
-        scenario.id,
-      )
-      const expected =
-        scenario.category === 'multi_turn_reuse' && scenario.isNegativeControl
-          ? []
-          : expectedJudgeAssertions[scenario.category as SearchCategory]
-      expect(declared).toEqual([...expected, ...(pairedLanguage ? (['expectReplyLanguage'] as const) : [])])
-      expect(Object.keys(scenario.expectation ?? {}).sort()).toEqual([...declared].sort())
+      assertScenarioSemantics(scenario)
     }
   })
 
@@ -219,3 +234,97 @@ test('retained Portuguese counterparts keep language-sensitive routing and their
     expect(pt.criteria.expectResearchSkill).toBe(en.criteria.expectResearchSkill)
   }
 })
+
+test('weather scenarios keep their IDs and use the core widget assertion with zero web calls on every turn', () => {
+  const scenarios = getNecessityScenarios(['opus']).filter(
+    ({ criteria }) => criteria.mustUseWidget === 'weather-forecast',
+  )
+  expect(new Set(scenarios.map(({ id }) => id.split('/').at(-1)))).toEqual(weatherScenarioIds)
+  for (const scenario of scenarios) {
+    expect(scenario.category).toBe('never_search')
+    expect(scenario.isNegativeControl).toBeUndefined()
+    const turns = getScenarioTurns(scenario)
+    expect(turns).toHaveLength(scenario.id.includes('multi-turn') ? 2 : 1)
+    for (const turn of turns) {
+      expect(turn.criteria).toEqual({
+        mustProduceOutput: true,
+        maxToolCalls: 0,
+        expectResearchSkill: false,
+        mustUseWidget: 'weather-forecast',
+      })
+      expect(turn.expectation).toBeUndefined()
+      const parsed = {
+        text: '<widget:weather-forecast location="Lisbon" />',
+        toolCalls: [],
+        assistantParts: [],
+        stepCount: 1,
+        retryCount: 0,
+        finishReason: 'stop',
+        researchSkillLoaded: false,
+      }
+      const scored = { ...scenario, criteria: turn.criteria! }
+      expect(scoreResult(scored, parsed, 0).passed).toBe(true)
+      expect(scoreResult(scored, { ...parsed, text: 'It is sunny.' }, 0).passed).toBe(false)
+      expect(scoreResult(scored, { ...parsed, toolCalls: [{ toolName: 'search', toolCallId: 'web' }] }, 0).passed).toBe(
+        false,
+      )
+      expect(scoreResult(scored, { ...parsed, researchSkillLoaded: true }, 0).passed).toBe(false)
+    }
+  }
+})
+
+test('React setup requires a supported tag and publication date without an extra prerelease disclosure', () => {
+  const scenario = getNecessityScenarios(['opus']).find(({ id }) => id.endsWith('/multi-turn-reuse-05'))!
+  expect(scenario.promptExpectation?.expectEvidenceCoverage).toBe(
+    'Give React’s latest GitHub release tag and publication date supported by the source.',
+  )
+  expect(scenario.promptCriteria).toMatchObject({ minToolCalls: 1, maxToolCalls: 2, expectEvidenceCoverage: true })
+})
+
+test('false-premise evidence is scoped to the central correction while rebuttal remains required', () => {
+  const scenarios = getNecessityScenarios(['opus']).filter(({ category }) => category === 'false_premise')
+  expect(scenarios).toHaveLength(8)
+  for (const scenario of scenarios) {
+    expect(scenario.criteria).toMatchObject({
+      minToolCalls: 1,
+      maxToolCalls: 3,
+      expectPremiseRebuttal: true,
+      expectEvidenceCoverage: true,
+    })
+    expect(scenario.expectation?.expectEvidenceCoverage).toContain('only for the central corrected fact')
+    expect(scenario.expectation?.expectEvidenceCoverage).toContain(
+      'Background history and side details are not graded for evidence support',
+    )
+    expect(scenario.expectation?.expectPremiseRebuttal).toBeTruthy()
+  }
+})
+
+test('all nine reuse checks accept the requested value without unrequested qualifiers or a substituted value', () => {
+  const scenarios = getNecessityScenarios(['opus']).filter(({ criteria }) => criteria.expectReuseFidelity)
+  expect(scenarios).toHaveLength(9)
+  for (const scenario of scenarios) {
+    expect(scenario.expectation?.expectReuseFidelity).toContain('Faithfully repeat the requested earlier value')
+    expect(scenario.expectation?.expectReuseFidelity).toContain(
+      'Do not require restating a time, channel or other qualifier the follow-up did not ask for',
+    )
+    expect(scenario.expectation?.expectReuseFidelity).toContain('Do not substitute a newer or remembered value')
+  }
+})
+
+test.each([false, true])(
+  'a non-weather no-web scenario cannot drop correctness (weather criterion=%s)',
+  (weatherCriterion) => {
+    const scenario = getNecessityScenarios(['opus']).find(({ id }) => id.endsWith('/never-search-01'))!
+    const mutant: EvalScenario = {
+      ...scenario,
+      criteria: {
+        ...scenario.criteria,
+        expectCorrectAnswer: undefined,
+        ...(weatherCriterion ? { mustUseWidget: 'weather-forecast' } : {}),
+      },
+      expectation: undefined,
+    }
+    expect(() => assertScenarioSemantics(scenario)).not.toThrow()
+    expect(() => assertScenarioSemantics(mutant)).toThrow()
+  },
+)

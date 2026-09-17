@@ -530,6 +530,44 @@ const prompts: NecessityPrompt[] = [
     },
   },
   {
+    id: 'multi-turn-deep-01',
+    category: 'research',
+    prompt:
+      'Research a production PostgreSQL procurement decision across Amazon RDS for PostgreSQL, Azure Database for PostgreSQL Flexible Server, Google Cloud SQL for PostgreSQL, Aiven for PostgreSQL, Crunchy Bridge, and DigitalOcean Managed PostgreSQL. Build a current, dated comparison covering all six providers and these seven dimensions: supported PostgreSQL major versions and extension restrictions; high-availability topology and failover guarantees; backup retention and point-in-time recovery limits; maintenance scheduling and major-version upgrade or rollback paths; private networking and customer-managed encryption keys; audit logging and monitoring retention; and public compute, storage, backup, and outbound-transfer charges for an explicitly stated comparable US-region deployment. Check each provider against its official pricing, service limits, backup/restore, security, release/support, and SLA documentation rather than relying on a product landing page or third-party comparison. Preserve regional and plan qualifications, distinguish contractual guarantees from estimates, and cite the evidence for each material cell. Cover every provider before deep-diving into one; if the available research budget prevents full verification, return the supported matrix and identify the exact unverified cells rather than inventing them.',
+    promptCriteria: { ...researchSearch, minToolCalls: webToolCaps.research - 2 },
+    promptExpectation: {
+      expectEvidenceCoverage:
+        'Cover all six named PostgreSQL providers and the seven requested dimensions with current official evidence, explicit comparable deployment assumptions, and accurate regional/plan qualifications. Distinguish availability guarantees from operational estimates and identify specific unsupported cells if the budget limits verification; a generic list of provider homepages is insufficient.',
+    },
+    followUps: [
+      'Go deeper on disaster recovery and security for all six providers, and add contractual data residency and subprocessors as a new dimension. Find new official sources beyond the material already cited: cross-region restore procedures and documented recovery limitations; security advisories or incident postmortems published in the last twelve months; and the applicable data-processing agreement and subprocessor list, including where backups, support access, and telemetry may leave the selected region. Produce a sourced decision matrix distinguishing tested recovery evidence, advertised capabilities, and contractual commitments. Reuse earlier verified facts, but do fresh research for these added requirements; report an absence of public incident evidence without treating it as proof that no incidents occurred.',
+    ],
+    criteria: { ...researchSearch, minToolCalls: webToolCaps.auto + 1 },
+    expectation: {
+      expectEvidenceCoverage:
+        'Provide new official evidence for all six providers on cross-region recovery, recent security/incident disclosures, and the added contractual residency/subprocessor dimension. Clearly distinguish documented limits, public evidence gaps and contractual commitments; merely repeating the first matrix or refusing because the previous turn spent its budget does not cover this request.',
+    },
+  },
+  {
+    id: 'multi-turn-deep-02',
+    category: 'research',
+    prompt:
+      'Research which public space-observatory datasets a university group should use across JWST, Hubble, Euclid, Gaia, TESS, and XRISM. Compare all six using current official mission, instrument, archive, release, calibration, and observing-policy documentation. For each, cover seven dimensions: operational status and observing schedule; wavelength or energy coverage and instrument modes; angular or spectral resolution and field of view; sky coverage, revisit cadence and time-series limitations; latest public data release, proprietary periods and access conditions; archive APIs, download formats and required calibration products; and published sensitivity or measurement-accuracy limits with known systematic errors. Identify the release or instrument configuration behind every numerical claim, separate design targets from achieved performance, and explain non-comparable quantities instead of ranking unlike measurements. Build a dated evidence matrix with source support for every material cell, using instrument handbooks and archive release notes where a mission overview lacks the needed detail. Cover every observatory; if the available research budget runs out, name the precise remaining evidence gaps and retain the verified results.',
+    promptCriteria: { ...researchSearch, minToolCalls: webToolCaps.research - 2 },
+    promptExpectation: {
+      expectEvidenceCoverage:
+        'Compare all six named observatories across status, instrument coverage/modes, resolution/field, cadence, public releases/access, archive/calibration products and sensitivity/systematics using official evidence. Tie numerical claims to their configurations or releases, preserve incomparable units and distinguish achieved performance from design targets; identify precise gaps if the budget limits coverage.',
+    },
+    followUps: [
+      'Go deeper on calibration systematics and time-series reliability for all six observatories, and add reproducibility of a real archive workflow as a new dimension. Find new official pipeline manuals, known-issue pages, and release notes beyond the sources already used. For each observatory, identify a documented public example dataset or observation, show the archive query and required data products, identify the current supported pipeline and reference-file versions, and explain quality flags, relevant calibration caveats, and how a researcher would record provenance to reproduce the analysis. Cite current maintenance or release evidence and distinguish an executable documented workflow from a conceptual sketch; do not invent observation identifiers or imply you ran an analysis. Reuse the previous comparison only as background and gather fresh evidence for the new workflows and limitations.',
+    ],
+    criteria: { ...researchSearch, minToolCalls: webToolCaps.auto + 1 },
+    expectation: {
+      expectEvidenceCoverage:
+        'Add new official evidence for calibration and time-series caveats plus a documented archive workflow for each of the six observatories, including example data, query/products, pipeline/reference versions, quality flags and provenance. Preserve release-specific limitations and identify unsupported workflow steps; repeating mission overviews or refusing solely due to the earlier budget is insufficient, and no execution or dataset identifier may be invented.',
+    },
+  },
+  {
     id: 'unknown-entity-01',
     category: 'unknown_entity',
     prompt: 'What is Tofes 17?',

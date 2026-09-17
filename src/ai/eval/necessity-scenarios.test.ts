@@ -16,7 +16,7 @@ const expectedCounts: Record<SearchCategory, number> = {
   never_search: 19,
   answer_then_offer: 8,
   single_search: 23,
-  research: 26,
+  research: 28,
   unknown_entity: 8,
   false_premise: 8,
   adversarial_no_search: 19,
@@ -146,12 +146,16 @@ describe('necessity scenarios', () => {
   })
 })
 
-test('approved classification retains 96 old IDs, all 27 PoC prompts and two verification pairs', () => {
+test('approved classification retains old IDs and includes two deep research follow-ups', () => {
   const scenarios = getNecessityScenarios(['opus'], undefined, true)
-  expect(scenarios).toHaveLength(125)
+  expect(scenarios).toHaveLength(127)
   expect(scenarios.filter(({ id }) => id.includes('/poc-'))).toHaveLength(27)
   expect(scenarios.filter(({ id }) => id.includes('/verify-'))).toHaveLength(2)
-  expect(scenarios.filter(({ id }) => !id.includes('/poc-') && !id.includes('/verify-'))).toHaveLength(96)
+  expect(
+    scenarios.filter(
+      ({ id }) => !id.includes('/poc-') && !id.includes('/verify-') && !id.includes('/multi-turn-deep-'),
+    ),
+  ).toHaveLength(96)
   for (const scenario of scenarios) {
     for (const turn of getScenarioTurns(scenario)) {
       if (!turn.criteria) {
@@ -160,6 +164,21 @@ test('approved classification retains 96 old IDs, all 27 PoC prompts and two ver
       expect(turn.criteria.expectResearchSkill).toBe(scenario.category === 'research')
       const semantic = semanticCriterionKeys.filter((key) => turn.criteria?.[key])
       expect(Object.keys(turn.expectation ?? {}).sort()).toEqual([...semantic].sort())
+    }
+  }
+})
+
+test('deep research follow-ups require a fresh skill load and more than the ordinary web budget', () => {
+  const scenarios = getNecessityScenarios(['opus'], ['pi']).filter(({ id }) => id.includes('/multi-turn-deep-'))
+  expect(scenarios.map(({ id }) => id.split('/').at(-1))).toEqual(['multi-turn-deep-01', 'multi-turn-deep-02'])
+  for (const scenario of scenarios) {
+    const turns = getScenarioTurns(scenario)
+    expect(turns).toHaveLength(2)
+    expect(turns[0].criteria?.minToolCalls).toBeGreaterThanOrEqual(webToolCaps.research - 2)
+    expect(turns[1].criteria?.minToolCalls).toBeGreaterThan(webToolCaps.auto)
+    for (const turn of turns) {
+      expect(turn.prompt).not.toContain('/research')
+      expect(turn.criteria).toMatchObject({ expectResearchSkill: true, expectEvidenceCoverage: true })
     }
   }
 })

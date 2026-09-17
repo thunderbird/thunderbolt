@@ -181,9 +181,23 @@ describe('createPrompt', () => {
     expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
   })
 
-  test('includes the reuse-before-search gate', () => {
+  test('keeps the reuse gate while allowing research reloads in a new user turn', () => {
     const result = createPrompt(baseParams)
-    expect(result).toContain("Don't repeat a tool call you already made")
+    expect(result).toContain(
+      'apply only to the turn that produced them; each new user turn starts with a fresh web budget',
+    )
+    expect(result).toContain(
+      'For deeper or continued research needing new sources or dimensions, load the research skill once in the current turn',
+    )
+    expect(result).toContain(
+      'even if its instructions or a previous load remain in history, unless the current user message contains /research',
+    )
+    expect(result).toContain(
+      'This does not apply to acknowledgments, summaries, translations, repeated data, narrow checks, or deeper explanations needing no external sources',
+    )
+    expect(result).toContain(
+      "Except for the research skill reload required above, don't repeat a tool call you already made this conversation with the same inputs—reuse sufficient earlier results",
+    )
   })
 
   test('keeps the time-sensitive re-search carve-out', () => {

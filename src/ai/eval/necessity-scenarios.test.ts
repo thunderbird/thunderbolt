@@ -124,7 +124,7 @@ describe('necessity scenarios', () => {
     ).toEqual(new Set([webToolCaps.auto]))
   })
 
-  test('declares only the semantic assertions approved for each category', () => {
+  test('declares only the semantic assertions required for each category', () => {
     const scenarios = getNecessityScenarios(['opus'], undefined, true)
 
     for (const scenario of scenarios) {
@@ -146,7 +146,7 @@ describe('necessity scenarios', () => {
   })
 })
 
-test('approved classification retains old IDs and includes two deep research follow-ups', () => {
+test('classification includes retained IDs and two deep research follow-ups', () => {
   const scenarios = getNecessityScenarios(['opus'], undefined, true)
   expect(scenarios).toHaveLength(127)
   expect(scenarios.filter(({ id }) => id.includes('/poc-'))).toHaveLength(27)

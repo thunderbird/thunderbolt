@@ -236,7 +236,7 @@ test('missing required cells render a non-passing report instead of crashing', (
   expect(comment).toContain('Required cell absent')
 })
 
-test.each([true, false])('expected diagnostics include cross-round assertions and research loading=%s', (research) => {
+test.each([true, false])('expected diagnostics include semantic assertions and research loading=%s', (research) => {
   const metrics = fixtureMetrics(2)
   Object.assign(metrics.manifest.scenarios[0].scenario.criteria, {
     expectEvidenceCoverage: true,

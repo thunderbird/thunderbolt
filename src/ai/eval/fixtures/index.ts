@@ -34,7 +34,7 @@ const fixture = (
 const coverage = { mustProduceOutput: true, expectEvidenceCoverage: true }
 const offer = { mustProduceOutput: true, expectSearchOffer: true }
 
-/** Load the frozen PoC excerpts and explicitly authored controls; expectations are never inferred from the judge. */
+/** Load frozen judge-calibration excerpts and explicitly authored controls; expectations are never inferred from the judge. */
 export const loadCalibrationFixtures = (): CalibrationFixture[] => {
   const reuse = fixture(
     'context-dependent-follow-up',

@@ -24,7 +24,7 @@ import {
  *   2. Update `expected` below to match the actual values from the failure.
  *
  * The version is the ordering signal reconcile uses to decide who owns the
- * newest defaults across devices (THU-637). Changing defaults without bumping
+ * newest defaults across devices. Changing defaults without bumping
  * the version breaks that ordering silently.
  */
 const computeSnapshotHash = () =>

@@ -23,7 +23,7 @@ const verdictFor = (expected: Partial<JudgeVerdict>): JudgeVerdict => ({
   ...expected,
 })
 
-test('loads all frozen fixture cases including exact PoC counterexamples', () => {
+test('loads all frozen fixture cases including evidence counterexamples', () => {
   const fixtures = loadCalibrationFixtures()
   expect(fixtures).toHaveLength(8)
   expect(new Set(fixtures.map(({ id }) => id)).size).toBe(8)

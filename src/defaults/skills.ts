@@ -69,7 +69,7 @@ Do not show skipped sections at all, even placeholders — just skip them entire
 
 const importantEmailsInstruction = `Review the user's inbox and summarize the 5 most important emails that need attention today. Include sender, subject, and why each is important.`
 
-/** Former "Search" chat mode, now shipped as a default skill (`/search`). */
+/** Default search skill (`/search`). */
 const searchInstruction = `SEARCH MODE: ALWAYS search the web and return link previews. Never answer from memory.
 
 For ANY query—even simple facts you know—you MUST:
@@ -88,7 +88,7 @@ CRITICAL QUALITY RULES:
 
 Do NOT answer questions directly. Do NOT write paragraphs. Just search and show links.`
 
-/** Former "Research" chat mode, now shipped as a default skill (`/research`). */
+/** Default research skill (`/research`). */
 const researchInstruction = `You are **Deep Research**. Investigate the requested question thoroughly using primary evidence.
 
 ## Current-turn budget
@@ -272,8 +272,8 @@ export const defaultSkills: ReadonlyArray<Skill> = [
 /**
  * Monotonic version of the shipped skill defaults. Bump every time
  * `defaultSkills` changes in any way. Reconcile uses this as the ordering
- * signal so multi-device sync groups converge without ping-ponging (THU-637
- * pattern extended to skills in THU-677): a device only overwrites existing
+ * signal so multi-device sync groups converge without ping-ponging:
+ * a device only overwrites existing
  * rows when this bundled version is strictly newer than the highest ever
  * applied on this account.
  *

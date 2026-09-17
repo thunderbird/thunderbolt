@@ -74,24 +74,24 @@ bound to its declared assertion; routing and skill requirements are deterministi
 
 Weather uses the weather widget, which retrieves its own data; the five weather scenarios belong to
 `never_search` and require the existing `weather-forecast` widget assertion, zero web calls and no
-research-skill load. Both weather pairs now check widget output on each turn, retaining their IDs.
+research-skill load. Both weather pairs check widget output on each turn.
 React setup requires the supported release tag and publication date, without mandatory prerelease prose.
 False-premise evidence support is graded only for the central corrected fact, not background history or
 side details. Reuse accepts the requested earlier value without unrequested time/channel qualifiers;
-it still forbids substituting a newer or remembered value. Correctness grading is unchanged.
+it still forbids substituting a newer or remembered value.
 
-Definitions include the 96 original IDs, 27 PoC prompts under `poc-*-01`,
+Definitions include 96 scenarios, 27 retained scenarios under `poc-*-01`,
 and `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases
 use narrow search; WebGPU gets a bounded support overview. Version questions mean latest
 non-prerelease, and match questions permit sourced no-fixture results. The three English/Portuguese
-PoC pairs additionally check reply language. No gate was lowered.
+retained pairs additionally check reply language.
 
-Research keeps existing minima of one or two emitted web calls; retained PoC research requires two.
-There is no scenario maximum. A successful research-skill load now promotes an ordinary Chat turn
+Research requires at least one or two emitted web calls; retained research scenarios require two.
+There is no scenario maximum. A successful research-skill load promotes an ordinary Chat turn
 to an absolute 30-call budget, preserving spent calls, cache and source IDs; `/search` and `/research`
 retain their 12/30 caps. `WEB_BUDGET_PROMOTION=on|off` is a run/lab option (unset means on; other
 values fail at budget construction), not a product setting. Eval records expose the current/scored
-turn’s `initialCap`, `finalCap` and `promoted`; a later user turn starts fresh. No live result is claimed.
+turn’s `initialCap`, `finalCap` and `promoted`; a later user turn starts fresh.
 
 ### Reply-language suite
 
@@ -240,7 +240,7 @@ Pi coding tools (`bash`, `read`, `write`, and `edit`) never contribute to web-ca
 
 Semantic assertions use an LLM judge; routing, skill and web-call checks remain deterministic. Opus judges every model, including itself, because confidential models cannot be reached through the judge's OpenAI-compatible connection. The "never judges itself" rule is suspended until another direct managed model is available.
 
-The approved necessity rubric declares correctness for stable/no-search answers, correctness plus
+The necessity rubric declares correctness for stable/no-search answers, correctness plus
 search-offer/caveat for dated guidance, evidence coverage for single search and research, and rebuttal
 plus coverage for false premises. Faithful reuse declares first-turn coverage and final-turn reuse
 fidelity. Unknown entities and new-lookup reuse controls stay routing-only; `search_wont_help` declares
@@ -285,8 +285,8 @@ scenario: declaring them again on the last follow-up is a definition error.
 
 Each reached declared turn is graded and retained in `attempt.turnResults`, with its complete
 verdict and judge attempts. A failed setup assertion stops the trajectory as a quality failure;
-a setup judge error stays an execution error. The existing scored-turn-not-reached diagnostic
-and headline exclusion remain unchanged. Generation and judge time are accounted separately.
+a setup judge error stays an execution error. Attempts that do not reach the scored turn are
+reported separately and excluded from headline rates. Generation and judge time are accounted separately.
 
 The judge receives labelled user/assistant turns and grades the last supplied answer. Raw source
 bodies enter **only** for `expectEvidenceCoverage`; other assertions, including reuse fidelity,
@@ -297,17 +297,15 @@ pages cannot support claims, while a valid technical article about HTTP 404 is n
 
 ### Opt-in judge calibration
 
-`fixtures/poc-excerpts.json` contains excerpts extracted with `jq` from
-`/Users/admin/dev/thunderbolt/evals/poc-autopromocao-2026-09-15/flash.samples.json`, record
-`flash/pi/chat/promotion-mesh-vpn-fleet`. The extraction selects only the prompt, relevant answer
-paragraphs, and `toolCalls[].output.details` for Tailscale pricing and ZeroTier members; it never
-copies preflight credentials. The stored Tailscale page says "$0 for up to 6 users" while the
-answer says "≤3 users"; the ZeroTier members page says "Page Not Found".
+The frozen judge-calibration excerpts contain the prompt, relevant answer paragraphs, and
+tool evidence for Tailscale pricing and ZeroTier members, without preflight credentials.
+The stored Tailscale page says "$0 for up to 6 users" while the answer says "≤3 users";
+the ZeroTier members page says "Page Not Found".
 
 Eight frozen cases cover supported snippet evidence, the contradicted number, invalid-source
 support, honest incompleteness, insufficient/sufficient caveats, a synthetic valid HTTP-404 article,
 and a context-dependent follow-up. The positive/caveat/context cases are authored controls using
-the extracted excerpts where relevant, not claims that the original model produced those answers.
+the frozen excerpts where relevant.
 
 After explicit approval, with the same backend URL setting and signed `EVAL_AUTH_TOKEN` as evals:
 
@@ -317,9 +315,8 @@ EVAL_JUDGE_CALIBRATION=1 bun run eval:calibrate
 
 This spends judge inference and generates no answers. It refuses without the explicit flag or
 signed token, prints expected/observed labels per fixture, and exits 0 for all matches, 1 for any
-mismatch, or 2 for setup/refusal errors. Run it before interpreting the first reference run and
-after changing the judge prompt or rubric. `bun run test` exercises only injected judges; this
-round does not execute the real calibration command. Judge prompt version is `round-4-v1`.
+mismatch, or 2 for setup/refusal errors. Run it before interpreting a reference run and
+after changing the judge prompt or rubric. `bun run test` exercises only injected judges.
 
 ### Trials, attempts and retries
 
@@ -399,10 +396,9 @@ It copies only this settings allowlist:
 `EVAL_NECESSITY_OPTIONAL`, `WEB_BUDGET_PROMOTION`.
 Auth is only `present`/`absent`; tokens, Authorization values and cookies are redacted at every
 artifact boundary. The preflight reads `/config.webToolsProvider` or records `unknown` when
-that field is absent. The runner captures its model/profile/context and budget observations;
-adapter-internal prompt/tools capture is deferred by the final scope decision. Records carry
-`promptCapture: "unavailable"` and `toolsCapture: "unavailable"` by design; runner-visible preflight
-is the agreed capture for the measurement phase.
+that field is absent. The runner captures its model/profile/context and budget observations.
+Adapter-internal prompts and tools are not captured; records carry
+`promptCapture: "unavailable"` and `toolsCapture: "unavailable"`.
 
 ### Baselines and PR comments
 

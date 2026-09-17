@@ -220,7 +220,7 @@ const researchPrompts = [
 
 // ──────────────────────────────────────────────
 // Validation Set — different prompts, same criteria philosophy
-// Used to verify 100% is real, not overfit to the original prompts
+// Checks generalization beyond the core prompts
 // ──────────────────────────────────────────────
 
 const validationChatPrompts = [

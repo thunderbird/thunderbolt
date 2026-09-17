@@ -34,9 +34,8 @@ import {
  *   2. Update `expected` below to match the actual values from the failure.
  *
  * The version is the ordering signal reconcile uses to decide who owns the
- * newest defaults across devices (THU-637 pattern extended to skills in
- * THU-677). Changing defaults without bumping the version breaks that
- * ordering silently.
+ * newest defaults across devices. Changing defaults without bumping the
+ * version breaks that ordering silently.
  */
 const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')

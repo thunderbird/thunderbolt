@@ -369,8 +369,7 @@ describe('judge-backed criteria', () => {
 
     expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Return only JSON with exactly:')
     expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('replyLanguageMatches, explanation.')
-    // The field name used to read as a value slot, so judges returned "English"
-    // instead of a boolean and broke every scenario that does not declare it.
+    // Reply-language verdicts must be boolean or null, never language names.
     expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('boolean or null — never a string')
     expect(buildJudgePrompt(languageScenario, 'resposta')).toContain('Answer true or false — never a language name')
     expect(requiresJudge(languageScenario.criteria)).toBe(true)

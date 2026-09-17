@@ -528,7 +528,7 @@ describe('createChatInstance — retry policy', () => {
     // Two halves of one invariant, asserted together because each masks the
     // other's regression: kept, the shell renders an empty-turn recovery spinner
     // nothing will recover; dropped without the `stopRequested` gate, the now
-    // trailing user message makes the SDK re-send the stopped turn (THU-791).
+    // trailing user message makes the SDK re-send the stopped turn.
     expect(instance.messages).toHaveLength(1)
     expect(instance.messages[0]!.role).toBe('user')
     expect(wouldAutoSend()).toBe(false)
@@ -604,7 +604,7 @@ describe('createChatInstance — retry policy', () => {
 
     // Dropping the shell leaves the user message trailing — the exact shape
     // useChatAutomation auto-runs. The flag must survive the turn settling
-    // (THU-791: without it, Stop restarts the turn it cancelled).
+    // so Stop cannot restart the turn it cancelled.
     expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
 
     await instance.sendMessage({ text: 'again' })
@@ -641,7 +641,7 @@ describe('createChatInstance — retry policy', () => {
     await finishAborted()
 
     // Left streaming, the reasoning part keeps its spinner running after the stop
-    // (reasoning-group.tsx) even though the turn has settled (THU-791).
+    // (reasoning-group.tsx) even though the turn has settled.
     const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
     expect(last.parts[0]!.state).toBe('done')
   })

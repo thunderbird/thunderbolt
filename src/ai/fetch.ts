@@ -301,7 +301,7 @@ export const resolveOpenAiCompatConnection = (
       // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
       // mDNS `.local`, public endpoints — stays on the proxy path (browser
       // blocks non-loopback http from https origins as mixed content, and
-      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      // public Custom endpoints rely on the proxy for CORS bypass).
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
       const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()

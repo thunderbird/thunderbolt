@@ -119,7 +119,6 @@ export const buildStepOverrides = <TMessage>({
     }
   }
 
-  // THU-889: the legacy path keeps its synthesis floor; a promoted live budget bypasses it.
   if (webBudgetProbe?.isExhausted && webBudgetProbe.exhaustedAttempts > 0) {
     return {
       system: citationSystem,

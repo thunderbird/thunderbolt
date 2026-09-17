@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { resolveSkillTokenInstructions } from './resolve-skill-system-messages'
@@ -81,9 +81,9 @@ it('promotes only a successful resolved research load, including a slash-prefixe
   ])
   const skill = createSkillTool(skills, budget)
   await skill.execute!({ name: 'daily-brief' }, toolCallOptions)
-  expect(budget.cap).toBe(2)
+  expect(budget.cap).toBe(webToolCaps.auto)
   await expect(skill.execute!({ name: 'missing' }, toolCallOptions)).rejects.toThrow('not found')
-  expect(budget.cap).toBe(2)
+  expect(budget.cap).toBe(webToolCaps.auto)
   expect(await skill.execute!({ name: ' /research ' }, toolCallOptions)).toBe('Research instructions')
   expect(budget.cap).toBe(30)
   await skill.execute!({ name: 'research' }, toolCallOptions)
@@ -102,6 +102,6 @@ it('does not promote disabled or empty research instructions', async () => {
     } else {
       await expect(skill.execute!({ name: 'research' }, toolCallOptions)).rejects.toThrow('disabled')
     }
-    expect(budget.cap).toBe(2)
+    expect(budget.cap).toBe(webToolCaps.auto)
   }
 })

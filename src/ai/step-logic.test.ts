@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import type { ModelProfile } from '@/types'
-import { createWebToolBudget } from './web-tool-budget'
+import { createWebToolBudget, webToolCaps } from './web-tool-budget'
 import { buildVolatileSystemNotes } from './fetch'
 import { assembleBuiltInModelInput } from './prompt'
 import {
@@ -388,9 +388,11 @@ describe('buildStepOverrides', () => {
 
   test('a promoted legacy budget bypasses exhaustion while final synthesis still disables tools', async () => {
     const budget = createWebToolBudget('auto', true)
-    for (const query of ['one', 'two', 'denied']) {
-      await budget.execute('search', { query }, async () => query)
+    for (let call = 0; call <= webToolCaps.auto; call++) {
+      await budget.execute('search', { query: String(call) }, async () => call)
     }
+    expect(budget.probe.isExhausted).toBe(true)
+    expect(budget.probe.exhaustedAttempts).toBe(1)
     budget.promoteToResearch()
     expect(
       buildStepOverrides({ ...baseParams, steps: toolCallSteps(2), messages: [], webBudgetProbe: budget.probe }),

@@ -9,6 +9,7 @@
  */
 
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
+import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
@@ -1370,7 +1371,7 @@ describe('logical-turn web retry state through the SDK', () => {
   it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
     try {
-      const { instance, attempts } = createWebRetryChat(2)
+      const { instance, attempts } = createWebRetryChat(webToolCaps.auto)
       await instance.sendMessage({ text: 'Research a topic' })
       const partial = [...instance.messages]
       await getClock().tickAsync(5000)
@@ -1400,7 +1401,9 @@ describe('logical-turn web retry state through the SDK', () => {
       await getClock().tickAsync(5000)
       expect(attempts).toHaveLength(2)
       expect(attempts[1]).toBe(attempts[0])
-      await attempts[1]!.execute('search', { query: 'remaining' }, async () => 'source')
+      for (let call = 1; call < webToolCaps.auto; call++) {
+        await attempts[1]!.execute('search', { query: `remaining ${call}` }, async () => 'source')
+      }
       expect(attempts[1]!.probe.isExhausted).toBe(true)
       await instance.sendMessage({ text: 'A new question' })
       expect(attempts[2]).not.toBe(attempts[0])
@@ -1427,7 +1430,7 @@ describe('logical-turn web retry state through the SDK', () => {
       ).toEqual({ title: 'source 0' })
       expect(attempts[1].consumed).toBe(1)
       await instance.sendMessage({ text: 'A new ordinary question' })
-      expect(attempts[2].cap).toBe(2)
+      expect(attempts[2].cap).toBe(webToolCaps.auto)
       expect(attempts[2].consumed).toBe(0)
       expect(attempts[2].promoted).toBe(false)
     } finally {

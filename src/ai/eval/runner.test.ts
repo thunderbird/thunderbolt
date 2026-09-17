@@ -4,6 +4,7 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { getClock } from '@/testing-library'
+import { webToolCaps } from '@/ai/web-tool-budget'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { initLayout, teardownLayout } from './ui'
 import { builtInAgent } from '@/defaults/agents'
@@ -795,7 +796,7 @@ describe('runner integration with an injected offline adapter', () => {
       return new Response('data: {"type":"text-delta","delta":"answer"}\n')
     })
     const attempt = await runScenario(fixtureScenario(), adapter)
-    expect(attempt.instrumentation).toMatchObject({ initialCap: 2, finalCap: 30, promoted: true })
+    expect(attempt.instrumentation).toMatchObject({ initialCap: webToolCaps.auto, finalCap: 30, promoted: true })
   })
 
   test('records actual budget executions and cache hits separately from emitted calls', async () => {
@@ -808,7 +809,13 @@ describe('runner integration with an injected offline adapter', () => {
       return new Response('data: {"type":"text-delta","delta":"answer"}\n')
     })
     const attempt = await runScenario(fixtureScenario(), adapter)
-    expect(attempt.instrumentation).toMatchObject({ emitted: 0, executed: 1, cacheHits: 1, initialCap: 2, finalCap: 2 })
+    expect(attempt.instrumentation).toMatchObject({
+      emitted: 0,
+      executed: 1,
+      cacheHits: 1,
+      initialCap: webToolCaps.auto,
+      finalCap: webToolCaps.auto,
+    })
     expect(attempt.status).toBe('completed')
   })
 })

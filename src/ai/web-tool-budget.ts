@@ -9,7 +9,7 @@ import { skillTokenRegex } from '@/skills/parse-skill-tokens'
 export type WebToolIntent = 'auto' | 'search' | 'research'
 
 export const webToolCaps: Record<WebToolIntent, number> = {
-  auto: 2,
+  auto: 5,
   search: 12,
   research: 30,
 }

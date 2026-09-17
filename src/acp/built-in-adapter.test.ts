@@ -1148,13 +1148,17 @@ const createBudgetAdapter = (
   return { adapter, budget, context, response, send, requests, searches, writes, registrations }
 }
 
+const budgetSearchCalls = Array.from({ length: webToolCaps.auto }, (_, index) => ({
+  name: 'search',
+  args: { query: `query-${index}`, max_results: 10 },
+}))
+
 describe('real Pi web-budget payload', () => {
   it('pairs a mixed batch, retains non-web tools and steers only once after concurrent denials', async () => {
     const run = createBudgetAdapter([
       [
-        { name: 'search', args: { query: 'one', max_results: 10 } },
-        { name: 'search', args: { query: 'two', max_results: 10 } },
-        { name: 'search', args: { query: 'three', max_results: 10 } },
+        ...budgetSearchCalls,
+        { name: 'search', args: { query: 'denied', max_results: 10 } },
         { name: 'fetch_content', args: { url: 'https://denied.test' } },
         { name: 'save_report', args: { text: 'batched report' } },
       ],
@@ -1163,12 +1167,13 @@ describe('real Pi web-budget payload', () => {
     ])
     try {
       const output = await run.send()
-      expect(run.searches).toEqual(['one', 'two'])
+      expect(run.searches).toEqual(budgetSearchCalls.map(({ args }) => args.query))
+      expect(run.budget.probe.exhaustedAttempts).toBe(2)
       expect(run.writes).toEqual(['batched report', 'complete report'])
       expect(output).toContain('Finished [1] and [2].')
       expect(output).not.toContain('"type":"error"')
-      expect(output).toContain('https://source.test/one')
-      expect(output).toContain('https://source.test/two')
+      expect(output).toContain('https://source.test/query-0')
+      expect(output).toContain('https://source.test/query-1')
       for (const request of run.requests.slice(1)) {
         const names = request.tools?.map(({ function: fn }) => fn.name)
         expect(names).toContain('save_report')
@@ -1182,7 +1187,7 @@ describe('real Pi web-budget payload', () => {
         )
       }
       const messages = run.requests[1]!.messages
-      expect(messages.filter(({ role }) => role === 'tool')).toHaveLength(5)
+      expect(messages.filter(({ role }) => role === 'tool')).toHaveLength(webToolCaps.auto + 3)
       expect(messages.at(-1)?.role).toBe('user')
       expect(JSON.stringify(messages.at(-1)?.content)).toContain('coverage gaps')
       expect(run.registrations.size).toBe(0)
@@ -1192,17 +1197,11 @@ describe('real Pi web-budget payload', () => {
   })
 
   it('allows cached web calls at the cap until the first denial', async () => {
-    const run = createBudgetAdapter([
-      [
-        { name: 'search', args: { query: 'one', max_results: 10 } },
-        { name: 'search', args: { query: 'two', max_results: 10 } },
-      ],
-      [{ name: 'search', args: { query: 'one', max_results: 10 } }],
-      'Done [1].',
-    ])
+    const run = createBudgetAdapter([budgetSearchCalls, [budgetSearchCalls[0]!], 'Done [1].'])
     try {
       await run.send()
-      expect(run.searches).toEqual(['one', 'two'])
+      expect(run.searches).toEqual(budgetSearchCalls.map(({ args }) => args.query))
+      expect(run.budget.probe.isExhausted).toBe(true)
       expect(run.budget.probe.exhaustedAttempts).toBe(0)
       expect(run.requests[2]!.tools?.map(({ function: fn }) => fn.name)).toContain('search')
       expect(run.requests[2]!.messages.filter(({ role }) => role === 'user')).toHaveLength(1)
@@ -1213,8 +1212,9 @@ describe('real Pi web-budget payload', () => {
 
   it('reports an exhausted replay through the error stream without asking for evidence-free synthesis', async () => {
     const run = createBudgetAdapter(['Should not be requested'])
-    await run.budget.execute('search', { query: 'one' }, async () => 'old evidence')
-    await run.budget.execute('search', { query: 'two' }, async () => 'old evidence')
+    for (const { args } of budgetSearchCalls) {
+      await run.budget.execute('search', args, async () => 'old evidence')
+    }
     run.context.regenerationRevision = 1
     try {
       const output = await run.send()
@@ -1266,11 +1266,7 @@ it('keeps real adapter citation metadata across a below-cap harness rebuild', as
 
 it('removes the budget listener after provider failure and restores web tools for the next user turn', async () => {
   const run = createBudgetAdapter([
-    [
-      { name: 'search', args: { query: 'one', max_results: 10 } },
-      { name: 'search', args: { query: 'two', max_results: 10 } },
-      { name: 'search', args: { query: 'denied', max_results: 10 } },
-    ],
+    [...budgetSearchCalls, { name: 'search', args: { query: 'denied', max_results: 10 } }],
     async () =>
       Response.json({ error: { message: 'Invalid request', type: 'BadRequestError', code: 400 } }, { status: 400 }),
     [{ name: 'search', args: { query: 'fresh', max_results: 10 } }],
@@ -1278,10 +1274,11 @@ it('removes the budget listener after provider failure and restores web tools fo
   ])
   try {
     expect(await run.send()).toContain('"type":"error"')
+    expect(run.budget.probe.exhaustedAttempts).toBe(1)
     expect(run.registrations.size).toBe(0)
     run.context.webToolBudget = createWebToolBudget('auto')
     await run.send()
-    expect(run.searches).toEqual(['one', 'two', 'fresh'])
+    expect(run.searches).toEqual([...budgetSearchCalls.map(({ args }) => args.query), 'fresh'])
     expect(run.requests.at(-1)!.tools?.map(({ function: fn }) => fn.name)).toContain('search')
     expect(run.registrations.size).toBe(0)
   } finally {
@@ -1396,11 +1393,7 @@ describe('research promotion through the real Pi adapter', () => {
   it('restores web tools after denial and does not re-floor on historical denials', async () => {
     const run = createBudgetAdapter(
       [
-        [
-          { name: 'search', args: { query: 'one', max_results: 1 } },
-          { name: 'search', args: { query: 'two', max_results: 1 } },
-          { name: 'search', args: { query: 'denied', max_results: 1 } },
-        ],
+        [...budgetSearchCalls, { name: 'search', args: { query: 'denied', max_results: 1 } }],
         [{ name: 'skill', args: { name: 'research' } }],
         [
           { name: 'search', args: { query: 'three', max_results: 1 } },
@@ -1420,9 +1413,9 @@ describe('research promotion through the real Pi adapter', () => {
     )
     try {
       expect(await run.send()).not.toContain('"type":"error"')
-      expect(run.searches).toEqual(['one', 'two', 'three'])
+      expect(run.searches).toEqual([...budgetSearchCalls.map(({ args }) => args.query), 'three'])
       expect(run.budget.cap).toBe(30)
-      expect(run.budget.consumed).toBe(3)
+      expect(run.budget.consumed).toBe(webToolCaps.auto + 1)
       expect(run.budget.probe.exhaustedAttempts).toBe(1)
       expect(run.requests[1].tools?.map(({ function: fn }) => fn.name)).not.toContain('search')
       for (const request of run.requests.slice(2)) {
@@ -1439,14 +1432,13 @@ describe('research promotion through the real Pi adapter', () => {
 
   it('does not reuse old denials to floor cached calls at the promoted cap', async () => {
     const run = createBudgetAdapter([
-      [
-        { name: 'search', args: { query: 'one', max_results: 1 } },
-        { name: 'search', args: { query: 'two', max_results: 1 } },
-        { name: 'search', args: { query: 'denied', max_results: 1 } },
-      ],
+      [...budgetSearchCalls, { name: 'search', args: { query: 'denied', max_results: 1 } }],
       [{ name: 'skill', args: { name: 'research' } }],
-      Array.from({ length: 28 }, (_, index) => ({ name: 'search', args: { query: `extra-${index}`, max_results: 1 } })),
-      [{ name: 'search', args: { query: 'one', max_results: 1 } }],
+      Array.from({ length: webToolCaps.research - webToolCaps.auto }, (_, index) => ({
+        name: 'search',
+        args: { query: `extra-${index}`, max_results: 1 },
+      })),
+      [budgetSearchCalls[0]!],
       'Done.',
     ])
     try {
@@ -1467,8 +1459,7 @@ describe('research promotion through the real Pi adapter', () => {
     const run = createBudgetAdapter(
       [
         [
-          { name: 'search', args: { query: 'one', max_results: 1 } },
-          { name: 'search', args: { query: 'two', max_results: 1 } },
+          ...budgetSearchCalls,
           { name: 'search', args: { query: 'denied', max_results: 1 } },
           { name: 'skill', args: { name: 'research' } },
         ],
@@ -1503,7 +1494,7 @@ describe('research promotion through the real Pi adapter', () => {
       expect(messages).toContain('web tool budget is exhausted')
       expect(messages).toContain('Keep the report concise')
       expect(messages).toContain('supersedes the earlier budget-exhaustion')
-      expect(run.searches).toEqual(['one', 'two', 'after promotion'])
+      expect(run.searches).toEqual([...budgetSearchCalls.map(({ args }) => args.query), 'after promotion'])
       expect(live.harness!.getSteeringMode()).toBe('one-at-a-time')
     } finally {
       run.adapter.disconnect()
@@ -1513,11 +1504,7 @@ describe('research promotion through the real Pi adapter', () => {
   it('respects independently disabled tools or final synthesis after promotion', async () => {
     const run = createBudgetAdapter(
       [
-        [
-          { name: 'search', args: { query: 'one', max_results: 1 } },
-          { name: 'search', args: { query: 'two', max_results: 1 } },
-          { name: 'search', args: { query: 'denied', max_results: 1 } },
-        ],
+        [...budgetSearchCalls, { name: 'search', args: { query: 'denied', max_results: 1 } }],
         [{ name: 'skill', args: { name: 'research' } }],
         'Final synthesis.',
       ],

@@ -26,10 +26,10 @@ describe('resolveWebToolIntent', () => {
 })
 
 describe('createWebToolBudget', () => {
-  for (const intent of Object.keys(webToolCaps) as WebToolIntent[]) {
+  for (const [intent, cap] of Object.entries({ auto: 5, search: 12, research: 30 }) as [WebToolIntent, number][]) {
     it(`enforces the ${intent} cap`, async () => {
       const budget = createWebToolBudget(intent)
-      for (let call = 0; call < webToolCaps[intent]; call++) {
+      for (let call = 0; call < cap; call++) {
         await expect(budget.execute('search', { query: `query ${call}` }, async () => ({ call }))).resolves.toEqual({
           call,
         })
@@ -89,7 +89,7 @@ describe('research promotion state table', () => {
     budget.promoteToResearch()
     budget.promoteToResearch()
     expect(budget.cap).toBe(30)
-    expect(budget.initialCap).toBe(2)
+    expect(budget.initialCap).toBe(webToolCaps.auto)
     expect(budget.promoted).toBe(true)
     expect(budget.consumed).toBe(1)
     expect(budget.execute('search', { query: 'first' }, async () => 'must stay cached')).toBe(first)
@@ -114,14 +114,14 @@ describe('research promotion state table', () => {
 
   it('never promotes from exhaustion alone; a later permitted load reopens live capacity', async () => {
     const budget = createWebToolBudget('auto', true)
-    for (const query of ['one', 'two', 'denied']) {
-      await budget.execute('search', { query }, async () => query)
+    for (let call = 0; call <= webToolCaps.auto; call++) {
+      await budget.execute('search', { query: String(call) }, async () => call)
     }
-    expect(budget.cap).toBe(2)
+    expect(budget.cap).toBe(webToolCaps.auto)
     expect(budget.probe.isExhausted).toBe(true)
     budget.promoteToResearch()
     expect(budget.cap).toBe(30)
-    expect(budget.consumed).toBe(2)
+    expect(budget.consumed).toBe(webToolCaps.auto)
     expect(budget.probe.exhaustedAttempts).toBe(1)
     expect(budget.probe.isExhausted).toBe(false)
   })
@@ -129,11 +129,11 @@ describe('research promotion state table', () => {
   it('keeps the original cap when promotion is off and starts fresh on a new budget', () => {
     const disabled = createWebToolBudget('auto', false)
     disabled.promoteToResearch()
-    expect(disabled.cap).toBe(2)
+    expect(disabled.cap).toBe(webToolCaps.auto)
     const promoted = createWebToolBudget('auto', true)
     promoted.promoteToResearch()
     const fresh = createWebToolBudget('auto', true)
-    expect(fresh.cap).toBe(2)
+    expect(fresh.cap).toBe(webToolCaps.auto)
     expect(fresh.promoted).toBe(false)
   })
 
@@ -157,7 +157,7 @@ it('reads the run option at construction and rejects invalid values before execu
     expect(enabled.cap).toBe(30)
     const disabled = createWebToolBudget('auto')
     disabled.promoteToResearch()
-    expect(disabled.cap).toBe(2)
+    expect(disabled.cap).toBe(webToolCaps.auto)
     process.env.WEB_BUDGET_PROMOTION = 'invalid'
     expect(() => createWebToolBudget('auto')).toThrow('WEB_BUDGET_PROMOTION')
   } finally {

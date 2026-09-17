@@ -13,7 +13,7 @@ export const defaultModelProfileOpus5: ModelProfile = {
   nudgeThreshold: 6,
   useSystemMessageModeDeveloper: 0,
   providerOptions: null,
-  toolsOverride: null,
+  toolsOverride: `• For a narrow current-fact lookup, use an official source for the requested value and the fact's own date or observation time; fetch a page if that evidence is missing. If a volatile value still has no observation time, attribute it to the source, label any publication date as such (or say "source undated"), and state "observation time unavailable; not a live quote". Never substitute today's date or call that value current; if the requested fact itself is missing, state the gap instead of filling it from memory.`,
   linkPreviewsOverride: null,
   chatModeAddendum: null,
   searchModeAddendum: null,

@@ -9,7 +9,7 @@ import { expect, type Browser, type BrowserContext, type Locator, type Page } fr
 // primitives are DOM/IndexedDB-free (WebCrypto + @noble only), so they run in the
 // Playwright Node process. Absorption on the migrator (`unwrapLegacyCK`) shares
 // the same envelope derivation, which is what makes the round-trip real.
-import { encrypt, importMlKemPublicKey, importPublicKey, wrapAK } from '../../src/crypto/primitives'
+import { encrypt, importMlKemPublicKey, importPublicKey, wrapLegacyCK } from '../../src/crypto/primitives'
 import {
   getCurrentOtp,
   getServerSetting,
@@ -443,7 +443,7 @@ export const createV1SeedCrypto = async (): Promise<V1SeedCrypto> => {
   const wrapForDevice = async (keys: DeviceKeys): Promise<string> => {
     const ecdhPublicKey = await importPublicKey(keys.publicKey)
     const mlkemPublicKey = importMlKemPublicKey(keys.mlkemPublicKey)
-    return wrapAK(ck, ecdhPublicKey, mlkemPublicKey)
+    return wrapLegacyCK(ck, ecdhPublicKey, mlkemPublicKey)
   }
 
   const makeCanary = async (): Promise<{ canaryIv: string; canaryCtext: string; canarySecretHash: string }> => {

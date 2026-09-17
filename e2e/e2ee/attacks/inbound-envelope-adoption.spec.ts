@@ -116,6 +116,9 @@ test.describe.serial('THU-869 — inbound AK-envelope adoption', () => {
       attackerAk,
       await importPublicKey(devicePublicKeys.ecdh),
       importMlKemPublicKey(devicePublicKeys.mlkem),
+      // A2 seals whatever pointer it likes — the DEK-0 witness, not the sealed
+      // pointer, is what must refuse this envelope (THU-869).
+      '0',
     )
     // Wrap the attacker DEK under the attacker AK for the served keyring. The
     // primary key_id is the one minted at first-device setup ("0"); the metadata

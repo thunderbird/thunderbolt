@@ -23,9 +23,6 @@ EVAL_MODES=chat bun run eval
 # Run one suite in isolation — the whole point when iterating on it
 EVAL_SUITES=language bun run eval
 
-# Verbose mode — shows the full system prompt and model response for each scenario
-EVAL_MODELS=opus EVAL_MODES=chat bun run eval -- --verbose
-
 # Test Opus in Search mode only
 EVAL_MODELS=opus EVAL_MODES=search bun run eval
 ```
@@ -83,9 +80,9 @@ False-premise evidence support is graded only for the central corrected fact, no
 side details. Reuse accepts the requested earlier value without unrequested time/channel qualifiers;
 it still forbids substituting a newer or remembered value. Correctness grading is unchanged.
 
-The approved Round 1 table retains the 96 existing IDs, adds all 27 PoC prompts under `poc-*-01`,
-and adds `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases
-move to narrow search; WebGPU gets a bounded support overview. Version questions mean latest
+Definitions include the 96 original IDs, 27 PoC prompts under `poc-*-01`,
+and `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases
+use narrow search; WebGPU gets a bounded support overview. Version questions mean latest
 non-prerelease, and match questions permit sourced no-fixture results. The three English/Portuguese
 PoC pairs additionally check reply language. No gate was lowered.
 
@@ -160,11 +157,13 @@ Generation and judge deadlines must be positive finite numbers.
 | `EVAL_SUITES`             | all                     | `language`        | Suites to run: `core`, `necessity`, `language`           |
 | `EVAL_LANGUAGE`           | `en`                    | `ja`              | App language for the run; reply-language fallback target |
 
+`EVAL_SCENARIOS` selects comma-separated ID suffixes (for example, `answer-then-offer-08,unknown-entity-05`) after suite/model/mode/engine filters and before smoke selection.
+Unknown IDs within those filters fail; when `EVAL_SMOKE=1` is also set, only the intersection with the fixed smoke subset runs.
+
 ### CLI Flags
 
 | Flag         | Description                                                                      |
 | ------------ | -------------------------------------------------------------------------------- |
-| `--verbose`  | Shows the full system prompt and raw model response for each scenario            |
 | `--detailed` | Adds a Failures section to the markdown report with prompts, errors, and reasons |
 
 ### Model names
@@ -337,10 +336,7 @@ The failed attempt records `retryDecision` (`waited` or `not_retried_delay_over_
 when waiting, `retryWaitMs`. The stream retains the observed status and Retry-After value, including
 metadata from stream-reader exceptions.
 The manifest records effective worker count in `scenarioConcurrency`, including the default and selection cap.
-For an isolated lab backend, the existing `RATE_LIMIT_ENABLED=false` knob disables backend admission
-limits; production defaults remain enabled (the shared pro tier is 100 requests per 60 seconds).
-This knob does not change retry counts, evaluation gates or paid inference quotas. Unclassified
-adapter exceptions retain their message/stack and remain non-retryable error trials; the run continues.
+Unclassified adapter exceptions retain their message/stack and remain non-retryable error trials; the run continues.
 A proven deterministic violation blocks retry and counts as a valid failure, as do timeouts with
 preserved partial streams. Unresolved infrastructure/judge errors without a proven failure count
 against reliability. Recovered `toolInfraError`, `toolMisuse` and `budgetDenial` events are diagnostic.
@@ -398,7 +394,7 @@ at `EVAL_OUTPUT` (default above).
 The manifest declares required cells, selected suites/scenarios, planned samples, provider kind,
 and the measurement identity and treatment fields listed under Baselines below.
 It copies only this settings allowlist:
-`EVAL_MODELS`, `EVAL_ENGINES`, `EVAL_MODES`, `EVAL_SUITES`, `EVAL_SAMPLES`, `EVAL_TIMEOUT`,
+`EVAL_MODELS`, `EVAL_ENGINES`, `EVAL_MODES`, `EVAL_SUITES`, `EVAL_SCENARIOS`, `EVAL_SAMPLES`, `EVAL_TIMEOUT`,
 `EVAL_JUDGE_TIMEOUT`, `EVAL_SCENARIO_PARALLEL`, `EVAL_SMOKE`, `EVAL_LANGUAGE`,
 `EVAL_NECESSITY_OPTIONAL`, `WEB_BUDGET_PROMOTION`.
 Auth is only `present`/`absent`; tokens, Authorization values and cookies are redacted at every
@@ -417,6 +413,9 @@ runs and missing required matrix cells before changing files. Offline commands:
 bun run eval:baseline -- evals/eval-metrics.json
 bun run eval:compare -- evals/eval-metrics.json
 ```
+
+`EVAL_METRICS_PATH` sets the input metrics file for both baseline commands (default: `evals/eval-metrics.json`); the first positional path takes precedence.
+`EVAL_BASELINE_DIR` sets their baseline directory (default: `src/ai/eval/baselines`); the second positional path takes precedence.
 
 Comparison requires matching rubric hash, judge prompt version, actual judge model ID, samples,
 generation/judge deadlines, provider kind, cell aliases and actual generation model IDs (not DB UUIDs).

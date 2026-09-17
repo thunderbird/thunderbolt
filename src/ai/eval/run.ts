@@ -17,7 +17,7 @@ import { settableLocales } from '@/i18n/resolve-locale'
 import { Storage } from 'happy-dom'
 import { getLanguageScenarios } from './language-scenarios'
 import { getNecessityScenarios } from './necessity-scenarios'
-import { detailed, verbose } from './options'
+import { detailed } from './options'
 import { appendTrial, generateReport, startTrialJournal } from './report'
 import {
   acceptEval,
@@ -172,9 +172,7 @@ const main = async (): Promise<number> => {
     manifest.providerKind = typeof config.webToolsProvider === 'string' ? config.webToolsProvider : 'unknown'
     manifest.preflight = JSON.parse(serializeArtifact(config)) as unknown
     startTrialJournal(manifest, dirname(outputPath))
-    if (!verbose) {
-      silenceConsole()
-    }
+    silenceConsole()
     initLayout(
       scenarios,
       scenarioParallel,

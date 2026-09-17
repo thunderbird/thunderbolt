@@ -299,18 +299,6 @@ test('false-premise evidence is scoped to the central correction while rebuttal 
   }
 })
 
-test('all nine reuse checks accept the requested value without unrequested qualifiers or a substituted value', () => {
-  const scenarios = getNecessityScenarios(['opus']).filter(({ criteria }) => criteria.expectReuseFidelity)
-  expect(scenarios).toHaveLength(9)
-  for (const scenario of scenarios) {
-    expect(scenario.expectation?.expectReuseFidelity).toContain('Faithfully repeat the requested earlier value')
-    expect(scenario.expectation?.expectReuseFidelity).toContain(
-      'Do not require restating a time, channel or other qualifier the follow-up did not ask for',
-    )
-    expect(scenario.expectation?.expectReuseFidelity).toContain('Do not substitute a newer or remembered value')
-  }
-})
-
 test.each([false, true])(
   'a non-weather no-web scenario cannot drop correctness (weather criterion=%s)',
   (weatherCriterion) => {

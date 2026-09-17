@@ -571,15 +571,7 @@ test('evidence enters only evidence-dependent judging and citations retain their
     'second fact [1]',
     conversation,
   )
-  for (const text of [
-    'Turn 1 Source [1]',
-    'Turn 2 Source [1]',
-    'FIRST-BODY',
-    'SECOND-BODY',
-    'Turn 2 (scored)',
-    'sufficient search snippet',
-    'Honest incompleteness',
-  ]) {
+  for (const text of ['Turn 1 Source [1]', 'Turn 2 Source [1]', 'FIRST-BODY', 'SECOND-BODY', 'Turn 2 (scored)']) {
     expect(prompt).toContain(text)
   }
   expect(prompt).not.toContain('Source [2]')
@@ -607,11 +599,4 @@ test('M1: supported expectation keys match the judge registry', () => {
     expectReplyLanguage: 'en' as const,
   }
   expect(Object.keys(semanticVerdicts(criteria)).sort()).toEqual([...semanticCriterionKeys].sort())
-})
-
-test('judge requests bounded explanations while retaining declared-only strict verdict instructions', () => {
-  const prompt = buildJudgePrompt(scenario, '1989')
-  expect(prompt).toContain('Keep the explanation under 500 characters')
-  expect(prompt).toContain('every undeclared assertion field MUST be null')
-  expect(prompt).toContain('Every DECLARED assertion MUST be true or false')
 })

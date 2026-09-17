@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createPrompt } from '@/ai/prompt'
 import { createWebToolBudget, resolveWebToolIntent, webToolCaps } from '@/ai/web-tool-budget'
-import { getSettings } from '@/dal'
 import { getModel } from '@/dal/models'
 import { getSkillByName } from '@/dal/skills'
 import { getModelProfile } from '@/dal/model-profiles'
 import { getDb } from '@/db/database'
-import { getActiveLocale } from '@/i18n/active-locale'
 import type { HttpClient } from '@/lib/http'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { isSsoMode } from '@/lib/auth-mode'
@@ -21,11 +18,10 @@ import { v7 as uuidv7 } from 'uuid'
 import type { AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
 import { evaluateWithJudge, judgeScenario, requiresJudge, semanticVerdicts, type JudgeVerdict } from './judge'
-import { verbose } from './options'
 import { getModelId } from './scenarios'
 import { getWebToolCalls, scoreResult } from './scoring'
 import { getScenarioTurns } from './turns'
-import { positiveFinite, serializeArtifact } from './stats'
+import { positiveFinite } from './stats'
 import { printResult, startSpinner, stopSpinner } from './ui'
 import { describeExecutionError, parseStream } from './stream-parser'
 import type {
@@ -45,11 +41,6 @@ const getEvalHttpClient = () =>
   (evalHttpClient ??= createAuthenticatedClient(getLocalSetting('cloudUrl'), getAuthToken, {
     credentials: isSsoMode() ? 'include' : undefined,
   }))
-
-const dim = '\x1b[2m'
-const cyan = '\x1b[36m'
-const yellow = '\x1b[33m'
-const reset = '\x1b[0m'
 
 type EvalAdapterContextOptions = {
   threadId: string
@@ -123,55 +114,6 @@ export const fetchAndParseTurn = async (
     progress.settled = true
     controller.abort()
   }
-}
-
-const logVerbosePrompt = async (scenario: EvalScenario, skillToken: string) => {
-  if (!verbose) {
-    return
-  }
-
-  const db = getDb()
-  const modelId = getModelId(scenario.modelName)
-  const [model, profile] = await Promise.all([getModel(db, modelId), getModelProfile(db, modelId)])
-  const settings = await getSettings(db, {
-    preferred_name: '',
-    location_name: '',
-    location_lat: '',
-    location_lng: '',
-    distance_unit: 'imperial',
-    temperature_unit: 'f',
-    time_format: '12h',
-    currency: 'USD',
-    integrations_do_not_ask_again: false,
-  })
-
-  const systemPrompt = createPrompt({
-    modelName: model?.name ?? scenario.modelName,
-    profile,
-    preferredName: settings.preferredName,
-    location: {
-      name: settings.locationName || undefined,
-      lat: settings.locationLat ? parseFloat(settings.locationLat) : undefined,
-      lng: settings.locationLng ? parseFloat(settings.locationLng) : undefined,
-    },
-    localization: {
-      distanceUnit: settings.distanceUnit,
-      temperatureUnit: settings.temperatureUnit,
-      timeFormat: settings.timeFormat,
-      currency: settings.currency,
-    },
-    integrationStatus: 'READY',
-    hasWebTools: true,
-    // Mirror the send path, or this log misreports the fallback reply language.
-    appLanguage: getActiveLocale(),
-  })
-
-  console.log(`\n${cyan}--- SYSTEM PROMPT (${scenario.id}) ---${reset}`)
-  console.log(`${dim}${systemPrompt}${reset}`)
-  console.log(`${cyan}--- USER PROMPT ---${reset}`)
-  // Include the skill token so the log shows the message exactly as sent.
-  console.log(`${dim}${skillToken}${scenario.prompt}${reset}`)
-  console.log(`${cyan}--- END PROMPT ---${reset}\n`)
 }
 
 const emptyStream = (): ParsedStream => ({
@@ -384,7 +326,6 @@ export const runScenario = async (
   const explicitResearch = scenario.modeName === 'research' && researchSkill?.enabled === 1
   const threadId = uuidv7()
   const skillToken = scenario.modeName === 'chat' ? '' : `/${scenario.modeName} `
-  await logVerbosePrompt(scenario, skillToken)
   const httpClient = getEvalHttpClient()
   const proxyFetch = createProxyFetch({ cloudUrl: getLocalSetting('cloudUrl'), getProxyAuthToken: getAuthToken })
   const history: ThunderboltUIMessage[] = []
@@ -538,11 +479,6 @@ export const runScenario = async (
     attempted: instrumentation.researchSkill.attempted || researchObservation.attempted,
   }
   instrumentation.emitted = streams.reduce((sum, stream) => sum + getWebToolCalls(stream.toolCalls).length, 0)
-  if (verbose) {
-    console.log(`\n${yellow}--- RESPONSE (${scenario.id}) ---${reset}`)
-    console.log(`${dim}${JSON.parse(serializeArtifact(parsed.text || '(empty response)'))}${reset}`)
-    console.log(`${yellow}--- END RESPONSE ---${reset}\n`)
-  }
   const judgeDurationMs = state.judgeDurationMs
   return structuredClone({
     threadId,

@@ -164,7 +164,7 @@ export type EvalResult = {
 
 export type Verdict = 'pass' | 'fail' | 'unknown'
 export type ExecutionStatus = 'completed' | 'timeout' | 'infra_error' | 'judge_error'
-export type CategoryState = 'not_applicable' | 'unmeasured' | 'pass' | 'fail'
+type CategoryState = 'not_applicable' | 'unmeasured' | 'pass' | 'fail'
 
 export type JudgeAttempt = {
   status: 'completed' | 'judge_error'

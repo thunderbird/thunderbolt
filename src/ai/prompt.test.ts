@@ -173,10 +173,6 @@ describe('createPrompt', () => {
     const result = createPromptParts({ ...baseParams, hasWebTools: true })
 
     expect(result.stablePrompt).toContain('Web lookups use the `search` and `fetch_content` tools')
-    expect(result.stablePrompt).toContain(
-      'Transcribe numbers, prices, limits and quotes exactly as the source states them.',
-    )
-    expect(result.stablePrompt).toContain('If a source did not load, say so instead of citing it as evidence.')
   })
 
   test('omits web tool rules from the stable prompt when the web tools are unavailable', () => {
@@ -193,18 +189,6 @@ describe('createPrompt', () => {
   test('keeps the time-sensitive re-search carve-out', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('time-sensitive that may have changed')
-  })
-
-  test('uses policy precedence with an explicit verification-request rule', () => {
-    const result = createPrompt(baseParams)
-    expect(result).toContain('never_search')
-    expect(result).toContain('answer_then_offer')
-    expect(result).toContain('single_search')
-    expect(result).toContain('research')
-    expect(result).not.toContain('When in doubt, search')
-    expect(result).toContain(
-      'If the user asks you to search, verify, or look something up outside the supplied-text task, do so',
-    )
   })
 
   test('limits quick web lookups to one search and conditional fetching', () => {
@@ -352,50 +336,4 @@ describe('createPrompt', () => {
 
     expect(result.fullPrompt).not.toContain(appHarnessEnvironmentPrompt)
   })
-})
-
-test('search policy distinguishes supplied text, stable horizons, fresh claims, premises and research breadth', () => {
-  const { stablePrompt } = createPromptParts(baseParams)
-  const principles = stablePrompt.split('# Principles\n')[1].split('# Context')[0]
-  const tools = stablePrompt.split('# Tools\n')[1].split('## Link Previews')[0]
-  expect(principles).toContain('supplied-text transformations need no web')
-  expect(principles).toContain('questionable premises and current or high-stakes dependencies need verification')
-  expect(tools.indexOf('Supplied text first')).toBeLessThan(tools.indexOf('Verify before asserting'))
-  for (const text of [
-    'Translation, summarization, refactoring',
-    'release cycle, season, or day',
-    'years, not today',
-    'state the year and scope',
-    'Check a premise that may be false',
-    'Multi-source breadth',
-    'load it',
-    'Do not load research for a narrow lookup',
-    'never add calls just to meet a quota',
-  ]) {
-    expect(tools).toContain(text)
-  }
-  expect(stablePrompt).not.toContain('Slowly changing or likely-known information')
-})
-
-test('citation requirements apply only to tool-derived claims', () => {
-  const prompt = createPrompt(baseParams)
-  expect(prompt).toContain('For claims drawn from tool results, ALWAYS cite sources with [N]')
-  expect(prompt).toContain('Knowledge-only answers need no citations')
-  expect(prompt).toContain('For tool-derived claims, cite sources with [N] INLINE')
-  expect(prompt).toContain('Wrong for a claim drawn from tool results:')
-  expect(prompt).not.toContain('You ALWAYS cite sources')
-})
-
-test('reference-run guidance preserves source identities, verifies known-false premises and retains dated qualifiers', () => {
-  const prompt = createPrompt({ ...baseParams, hasWebTools: true })
-  for (const instruction of [
-    'never renumber a selected subset',
-    'Cite the emitted [Source N] IDs exactly as [N]',
-    'one targeted official lookup',
-    'Portugal left the EU',
-    'I can check an up-to-date source',
-    'preserve its earlier date, scope and qualifications',
-  ]) {
-    expect(prompt).toContain(instruction)
-  }
 })

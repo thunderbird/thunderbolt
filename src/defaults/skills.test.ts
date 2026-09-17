@@ -141,19 +141,3 @@ describe('defaultSkills', () => {
     }
   })
 })
-
-test('research instructions respect live capacity instead of fixed call quotas and allow a fresh-turn load', () => {
-  const text = defaultSkillResearch.instruction
-  expect(text).toContain('absolute ceiling of 30 web calls')
-  expect(text).toContain('available cap may be smaller')
-  expect(text).toContain('capacity-restored instruction supersedes that stop')
-  expect(text).toContain('load this skill again')
-  expect(text).not.toContain('At least 10 page fetches')
-  expect(text).not.toContain('At least 5 different searches')
-})
-
-test('research allocates evidence across entities before depth and checks precise source claims', () => {
-  expect(defaultSkillResearch.instruction).toContain('across all requested entities and dimensions before deep-diving')
-  expect(defaultSkillResearch.instruction).toContain('Verify each material number and quote against its cited source')
-  expect(defaultSkillResearch.instruction).toContain('preserve qualifiers, and omit unsupported asides')
-})

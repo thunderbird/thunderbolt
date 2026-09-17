@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { webToolCaps } from '../web-tool-budget'
 import { evalModels } from './scenarios'
 import type { EvalCriteria, EvalExpectation, EvalScenario, NecessityCategory } from './types'
 
@@ -38,7 +39,7 @@ const answerThenOffer: EvalCriteria = { ...noSearchCorrect, expectSearchOffer: t
 const searchOnce: EvalCriteria = {
   mustProduceOutput: true,
   minToolCalls: 1,
-  maxToolCalls: 2,
+  maxToolCalls: webToolCaps.auto,
   noDuplicateToolCalls: true,
   expectResearchSkill: false,
 }
@@ -71,7 +72,7 @@ const verifyPremise: EvalCriteria = { ...evidenceLookup, maxToolCalls: 3, expect
 
 const unverifiable: EvalCriteria = {
   mustProduceOutput: true,
-  maxToolCalls: 2,
+  maxToolCalls: webToolCaps.auto,
   expectVerificationDisclaimer: true,
   expectResearchSkill: false,
 }

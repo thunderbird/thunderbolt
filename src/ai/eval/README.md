@@ -53,19 +53,19 @@ Each scenario checks a combination of criteria depending on the mode:
 
 ### Search-necessity taxonomy
 
-Necessity scenarios use plain Chat turns, so the production `auto` web budget applies. They multiply across the same model/engine matrix as the core suites.
+Necessity scenarios use plain Chat turns, so the production `auto` web budget applies. The automatic-budget ceilings below read `webToolCaps.auto` from `src/ai/web-tool-budget.ts`. They multiply across the same model/engine matrix as the core suites.
 
-| Category                | Prompts per cell | Expected behavior                                                                   | Gate |
-| ----------------------- | ---------------: | ----------------------------------------------------------------------------------- | ---: |
-| `never_search`          |               19 | Correct stable/code answers or weather widgets; no web or research-skill load       |  95% |
-| `answer_then_offer`     |                8 | Correct scoped answer, freshness caveat and offer; no web/research load             |  80% |
-| `single_search`         |               23 | 1–2 web calls, supported answer covering the narrow question, no research load      |  90% |
-| `research`              |               26 | Successful research-skill load and evidence-backed coverage of requested dimensions |  85% |
-| `unknown_entity`        |                8 | 1–2 web calls, no research load; routing-only under Q3                              |  85% |
-| `false_premise`         |                8 | Verify and rebut; support the central correction in 1–3 calls; no research load     |  75% |
-| `adversarial_no_search` |               19 | Correct task completion despite search bait; no web/research load                   |  90% |
-| `multi_turn_reuse`      |               10 | Nine faithful recalls of requested values; one new-lookup control                   |  90% |
-| `search_wont_help`      |                4 | Admit inability to verify; 0–2 tolerated calls, no research load                    |  60% |
+| Category                | Prompts per cell | Expected behavior                                                                            | Gate |
+| ----------------------- | ---------------: | -------------------------------------------------------------------------------------------- | ---: |
+| `never_search`          |               19 | Correct stable/code answers or weather widgets; no web or research-skill load                |  95% |
+| `answer_then_offer`     |                8 | Correct scoped answer, freshness caveat and offer; no web/research load                      |  80% |
+| `single_search`         |               23 | At least one web call within the automatic budget; supported narrow answer, no research load |  90% |
+| `research`              |               26 | Successful research-skill load and evidence-backed coverage of requested dimensions          |  85% |
+| `unknown_entity`        |                8 | At least one web call within the automatic budget; no research load, routing-only under Q3   |  85% |
+| `false_premise`         |                8 | Verify and rebut; support the central correction in 1–3 calls; no research load              |  75% |
+| `adversarial_no_search` |               19 | Correct task completion despite search bait; no web/research load                            |  90% |
+| `multi_turn_reuse`      |               10 | Nine faithful recalls of requested values; one new-lookup control                            |  90% |
+| `search_wont_help`      |                4 | Admit inability to verify; zero calls or calls within the automatic budget, no research load |  60% |
 
 There are 125 definitions per cell, 121 enabled by default. `search_wont_help` is enabled with
 `EVAL_NECESSITY_OPTIONAL=1`; it and unknown entities gain no implicit evidence-coverage assertion.

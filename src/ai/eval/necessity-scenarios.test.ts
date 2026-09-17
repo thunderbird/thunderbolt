@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { webToolCaps } from '../web-tool-budget'
 import { getNecessityScenarios } from './necessity-scenarios'
 import { scoreResult } from './scoring'
 import { getScenarioTurns } from './turns'
@@ -103,12 +104,12 @@ describe('necessity scenarios', () => {
 
     expect(new Set(maximums('never_search'))).toEqual(new Set([0]))
     expect(new Set(maximums('answer_then_offer'))).toEqual(new Set([0]))
-    expect(new Set(maximums('single_search'))).toEqual(new Set([2]))
+    expect(new Set(maximums('single_search'))).toEqual(new Set([webToolCaps.auto]))
     expect(new Set(maximums('research'))).toEqual(new Set([undefined]))
-    expect(new Set(maximums('unknown_entity'))).toEqual(new Set([2]))
+    expect(new Set(maximums('unknown_entity'))).toEqual(new Set([webToolCaps.auto]))
     expect(new Set(maximums('false_premise'))).toEqual(new Set([3]))
     expect(new Set(maximums('adversarial_no_search'))).toEqual(new Set([0]))
-    expect(new Set(maximums('search_wont_help'))).toEqual(new Set([2]))
+    expect(new Set(maximums('search_wont_help'))).toEqual(new Set([webToolCaps.auto]))
 
     const reuseScenarios = scenarios.filter(({ category }) => category === 'multi_turn_reuse')
     expect(
@@ -120,7 +121,7 @@ describe('necessity scenarios', () => {
       new Set(
         reuseScenarios.filter(({ isNegativeControl }) => isNegativeControl).map((item) => item.criteria.maxToolCalls),
       ),
-    ).toEqual(new Set([2]))
+    ).toEqual(new Set([webToolCaps.auto]))
   })
 
   test('declares only the semantic assertions approved for each category', () => {
@@ -196,7 +197,11 @@ test('verification pairs declare stable first-turn advice and narrow sourced fin
     const turns = getScenarioTurns(scenario)
     expect(typeof scenario.followUps?.[0]).toBe('object')
     expect(turns[0].criteria).toMatchObject({ maxToolCalls: 0, expectSearchOffer: true, expectCorrectAnswer: true })
-    expect(turns[1].criteria).toMatchObject({ minToolCalls: 1, maxToolCalls: 2, expectEvidenceCoverage: true })
+    expect(turns[1].criteria).toMatchObject({
+      minToolCalls: 1,
+      maxToolCalls: webToolCaps.auto,
+      expectEvidenceCoverage: true,
+    })
     expect(turns[1].prompt).toContain('Yes, please verify')
   }
 })
@@ -278,7 +283,11 @@ test('React setup requires a supported tag and publication date without an extra
   expect(scenario.promptExpectation?.expectEvidenceCoverage).toBe(
     'Give React’s latest GitHub release tag and publication date supported by the source.',
   )
-  expect(scenario.promptCriteria).toMatchObject({ minToolCalls: 1, maxToolCalls: 2, expectEvidenceCoverage: true })
+  expect(scenario.promptCriteria).toMatchObject({
+    minToolCalls: 1,
+    maxToolCalls: webToolCaps.auto,
+    expectEvidenceCoverage: true,
+  })
 })
 
 test('false-premise evidence is scoped to the central correction while rebuttal remains required', () => {

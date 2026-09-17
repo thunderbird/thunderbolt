@@ -4,6 +4,7 @@
 
 import { getActiveLocale } from '@/i18n/active-locale'
 import type { AppLocale } from '@shared/i18n/locales'
+import { webToolCaps } from '../web-tool-budget'
 import { evalModels } from './scenarios'
 import type { EvalScenario } from './types'
 
@@ -34,7 +35,7 @@ type LanguagePrompt = Pick<
   expectReplyLanguage?: AppLocale
   /** Set where the turn must actually reach the web, so English sources are in play. */
   minToolCalls?: number
-  /** Guards against a prompt that spends Chat's two-call budget on searches. */
+  /** Keeps web calls within Chat's automatic budget. */
   maxToolCalls?: number
   isNegativeControl?: boolean
 }
@@ -70,14 +71,14 @@ const prompts: LanguagePrompt[] = [
   },
   {
     // English search results are the other way a non-English thread flips. Kept to a
-    // single-fact question on purpose: Chat's `auto` web budget is two calls, and a
-    // multi-angle prompt ("what's new in X") spends it on searches and ends the turn
-    // with no prose at all — which measures the budget rather than the language.
+    // single-fact question on purpose: a multi-angle prompt ("what's new in X") can
+    // exhaust Chat's automatic web budget and leave no prose to judge, measuring
+    // the budget rather than the language.
     id: 'language-sticky-search-01',
     prompt: 'Qual é a cotação atual do Bitcoin?',
     expectReplyLanguage: 'pt-BR',
     minToolCalls: 1,
-    maxToolCalls: 2,
+    maxToolCalls: webToolCaps.auto,
   },
   {
     id: 'language-explicit-switch-01',

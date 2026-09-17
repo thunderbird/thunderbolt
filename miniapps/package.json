@@ -1,0 +1,22 @@
+{
+  "name": "@thunderbolt/miniapps",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "description": "Thunderbolt Mini App SDK, starter template, and samples",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\"",
+    "format-check": "prettier --check \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.5.0",
+    "prettier": "^3.6.2"
+  }
+}

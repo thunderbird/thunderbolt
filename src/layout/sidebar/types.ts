@@ -18,6 +18,8 @@ export type ChatThread = {
   /** Owning project, or null. Needed so a drag knows whether "Remove from
    *  project" applies to this chat. */
   projectId: string | null
+  /** Mini App the chat came from, or null. Drives the row's app icon. */
+  miniAppId: string | null
 }
 
 export type DeleteChatMutationType = UseMutationResult<void, Error, { id: string }, unknown>
@@ -45,7 +47,7 @@ export type ChatListProps = {
   threadIdRef: RefObject<string | null>
   mobileNavToggle: ReactNode
   mobileSecondaryNavigation: ReactNode
-  onChatClick: (threadId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   /** Open the project picker for a chat. The sidebar owns the dialog. */
   onMoveToProject: (threadId: string, currentProjectId: string | null) => void
@@ -60,7 +62,7 @@ export type ChatListItemProps = {
   deleteChatMutation: DeleteChatMutationType
   threadIdRef: RefObject<string | null>
   deleteChatDialogRef: RefObject<DeleteChatDialogRef | null>
-  onChatClick: (threadId: string) => void
+  onChatClick: (threadId: string, miniAppId: string | null) => void
   onRename: (threadId: string, title: string) => void
   onMoveToProject: (threadId: string, currentProjectId: string | null) => void
 }

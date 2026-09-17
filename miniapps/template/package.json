@@ -1,0 +1,26 @@
+{
+  "name": "thunderbolt-miniapp-template",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MPL-2.0",
+  "description": "Starter for a Thunderbolt Mini App",
+  "scripts": {
+    "dev": "next dev -p 5174",
+    "build": "next build",
+    "start": "next start -p 5174",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@thunderbolt/miniapp-sdk": "file:../sdk",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
+  }
+}

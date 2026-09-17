@@ -30,6 +30,7 @@ jobs:
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
       localization: ${{ steps.filter.outputs.localization }}
+      miniapps: ${{ steps.filter.outputs.miniapps }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +54,9 @@ jobs:
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'
+              - '.github/workflows/ci.yml'
+            miniapps:
+              - 'miniapps/**'
               - '.github/workflows/ci.yml'
             cli:
               - 'cli/**'
@@ -299,6 +303,51 @@ jobs:
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`
   # path filter — same detect-changes mechanism as the `rust` and `agent-core` jobs.
+  miniapps:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.miniapps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies (miniapps)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            miniapps/node_modules
+            miniapps/sdk/node_modules
+            miniapps/template/node_modules
+            miniapps/samples/finance/node_modules
+          key: miniapps-bun-${{ hashFiles('miniapps/**/bun.lock') }}
+          restore-keys: |
+            miniapps-bun-
+
+      # Lint and format live at miniapps/; each package installs and typechecks on
+      # its own, matching how cli/ and backend/ are set up. Without this job the
+      # root `eslint src shared` never sees these files and nothing enforces them.
+      - name: Install miniapps tooling
+        run: cd miniapps && bun install --frozen-lockfile
+
+      - name: Lint miniapps
+        run: cd miniapps && bun run lint
+
+      - name: Check miniapps formatting
+        run: cd miniapps && bun run format-check
+
+      - name: Type check each package
+        run: |
+          for pkg in sdk template samples/finance; do
+            echo "== $pkg"
+            (cd "miniapps/$pkg" && bun install --frozen-lockfile && bunx tsc --noEmit)
+          done
+
   cli:
     needs: detect-changes
     if: needs.detect-changes.outputs.cli == 'true'

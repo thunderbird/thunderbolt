@@ -91,6 +91,7 @@ const routeChunkLoaders = {
   tasks: () => import('@/tasks'),
   // Secondary feature, off the chat/landing critical path — lazy per CLAUDE.md.
   projects: () => import('@/projects'),
+  miniApp: () => import('@/mini-apps/mini-app-page'),
   settings: () => import('@/settings/index'),
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
@@ -105,6 +106,7 @@ const routeChunkLoaders = {
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
 const ProjectsPage = lazy(routeChunkLoaders.projects)
+const MiniAppPage = lazy(routeChunkLoaders.miniApp)
 const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
@@ -260,6 +262,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
                   is one place a project is edited. */}
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:projectId" element={<ProjectsPage />} />
+              <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
 

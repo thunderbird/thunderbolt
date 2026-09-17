@@ -3,10 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import ChatUI from '@/components/chat/chat-ui'
+import { MiniAppChatBanner } from '@/mini-apps/mini-app-chat-banner'
+import { useChatDestination } from '@/mini-apps/use-chat-destination'
+import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { useCurrentChatSession } from './chat-store'
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { type PropsWithChildren, useEffect, useState } from 'react'
 import { SavePartialAssistantMessagesHandler } from './save-partial-assistant-messages-handler'
-import { useParams, useSearchParams } from 'react-router'
+import { Navigate, useParams, useSearchParams } from 'react-router'
 import { v7 as uuidv7 } from 'uuid'
 import { useHandleIntegrationCompletion } from '@/hooks/use-handle-integration-completion'
 import { loadChatMessageList } from '@/components/chat/chat-messages-loader'
@@ -23,9 +27,32 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
    * two are the same id anyway.
    */
   newChatId: string
+  /** Mini App this chat starts from. New chats only; set by the app page. */
+  miniAppId?: string | null
+  /**
+   * Called with the thread id once the first send persists it.
+   *
+   * Supplying it also suppresses the route's default navigation to
+   * `/chats/<id>`, which is what an embedded host needs — navigating would
+   * unmount the surface the chat is sitting in.
+   */
+  onCreated?: (chatThreadId: string) => void
 }>
 
-const ChatHydrateHandler = ({ children, existingId, projectId, newChatId }: ChatHydrateHandlerProps) => {
+/**
+ * Exported so surfaces other than the `/chats/:id` route can host a real chat
+ * session — `ChatUI` takes no props and reads `useCurrentChatSession()`, so it
+ * only works inside this handler. The Mini Apps side panel
+ * (`src/mini-apps/mini-app-page.tsx`) is the current second caller.
+ */
+export const ChatHydrateHandler = ({
+  children,
+  existingId,
+  projectId,
+  newChatId,
+  miniAppId = null,
+  onCreated,
+}: ChatHydrateHandlerProps) => {
   const isNew = existingId === null
   // Held in `useState` rather than read from props each render: `useState`'s
   // initializer is a guarantee where a `useMemo` is only a hint, and the id must
@@ -37,6 +64,8 @@ const ChatHydrateHandler = ({ children, existingId, projectId, newChatId }: Chat
     id,
     isNew,
     projectId,
+    miniAppId,
+    onCreated,
   })
 
   useHandleIntegrationCompletion({ saveMessages })
@@ -98,6 +127,63 @@ export const useNewChatId = (isNew: boolean, projectId: string | null): string =
   return minted
 }
 
+/**
+ * The chat, plus a note about where it came from.
+ *
+ * Inside the handler because the origin lives on the hydrated session, and only
+ * on this route: beside the app itself the provenance is the screen.
+ */
+const ChatWithOrigin = ({ chatThreadId }: { chatThreadId: string }) => {
+  const { miniAppId } = useCurrentChatSession()
+  const { loading, failed } = useMiniApps()
+  const chatDestination = useChatDestination()
+
+  if (!miniAppId) {
+    return <ChatUI />
+  }
+
+  /*
+   * Decide nothing until the registry has answered.
+   *
+   * `useChatDestination` resolves against the app list, and an unanswered
+   * registry looks exactly like a deregistered app — so a cold deep link used to
+   * mount and hydrate the chat here, then redirect into `/apps/:id` the moment
+   * the list landed, tearing the session down and rebuilding it. The banner and
+   * `MiniAppPage` both wait on this for the same reason.
+   *
+   * A *failed* registry falls through deliberately: it may never answer, and the
+   * conversation is more useful than a spinner. The banner stays quiet in that
+   * state rather than claiming the app is gone.
+   */
+  if (loading && !failed) {
+    return <ChatUI />
+  }
+
+  /*
+   * A chat that came from an app opens inside it. The sidebar already routes
+   * there directly, so this catches the ways in that don't: a deep link, the
+   * search palette, a shared URL. `replace` because `/chats/:id` was never a
+   * place the user meant to be — Back should return where they came from.
+   *
+   * When the app route can't host it (a phone, an app that is no longer
+   * registered) `useChatDestination` hands back this same URL, and the banner
+   * below says where the conversation started instead.
+   */
+  const destination = chatDestination(chatThreadId, miniAppId)
+  if (destination !== `/chats/${chatThreadId}`) {
+    return <Navigate to={destination} replace />
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <MiniAppChatBanner appId={miniAppId} chatThreadId={chatThreadId} />
+      <div className="min-h-0 flex-1">
+        <ChatUI />
+      </div>
+    </div>
+  )
+}
+
 export default function ChatDetailPage() {
   const params = useParams()
   const [searchParams] = useSearchParams()
@@ -137,7 +223,7 @@ export default function ChatDetailPage() {
       newChatId={newChatId}
       projectId={projectId}
     >
-      <ChatUI />
+      <ChatWithOrigin chatThreadId={chatThreadId} />
     </ChatHydrateHandler>
   )
 }

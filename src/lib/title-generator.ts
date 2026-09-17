@@ -5,7 +5,32 @@
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { graphemeSegmenter, wordSegmenterFor } from '@/lib/segmenter'
+import { getQuotes } from '@/lib/quotes'
+import type { ThunderboltUIMessage } from '@/types'
 import { defaultChatTitle } from './constants'
+
+/**
+ * The text a thread's title should be derived from, taken from its first user
+ * message.
+ *
+ * Typed text and quoted passages both count. Quotes are their own part type
+ * rather than text, so a message that is *only* a quoted selection used to
+ * yield nothing and leave the thread called "New Chat" permanently. That was an
+ * edge case until "Ask about this" existed on artifacts and Mini Apps, where
+ * quoting *is* how a conversation starts.
+ *
+ * The raw passage, not a rendered blockquote: the `> ` markers that help a
+ * model read quoted context are noise in a title.
+ */
+export const titleSourceText = (message: ThunderboltUIMessage): string => {
+  // `flatMap` rather than filter-then-map: the map had to re-test `type` purely
+  // to narrow, leaving an `''` arm that could never be reached.
+  const typed = message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join(' ')
+  const quoted = getQuotes(message)
+    .map((quote) => quote.text)
+    .join(' ')
+  return [typed, quoted].filter(Boolean).join(' ').trim()
+}
 
 /**
  * Character budget for a generated title — roughly eight words of Latin text,

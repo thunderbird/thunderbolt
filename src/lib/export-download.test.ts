@@ -61,9 +61,20 @@ describe('downloadJson', () => {
     expect(revokeSpy).not.toHaveBeenCalled()
   })
 
-  it('revokes the blob URL on the next macrotask', async () => {
+  /**
+   * Deferred, not next-macrotask. `downloadJson` delegates to `downloadFile`
+   * now, and the shared implementation waits far longer before revoking: a
+   * macrotask is enough for WebKit to have *started* reading the blob, but a
+   * large export is still streaming to disk well after it, and revoking mid-
+   * stream cancels the download.
+   */
+  it('revokes the blob URL only once the download has had time to finish', async () => {
     downloadJson('export.json', { hello: 'world' })
+
     await getClock().tickAsync(0)
+    expect(revokeSpy).not.toHaveBeenCalled()
+
+    await getClock().tickAsync(10_000)
     expect(revokeSpy).toHaveBeenCalledTimes(1)
     expect(revokeSpy).toHaveBeenCalledWith('blob:test/abc-123')
   })

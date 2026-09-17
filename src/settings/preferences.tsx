@@ -510,7 +510,7 @@ export default function PreferencesSettingsPage() {
         id: userId,
         email: session.user.email ?? null,
       })
-      downloadJson(exportFilenameFor(new Date()), payload)
+      await downloadJson(exportFilenameFor(new Date()), payload)
       trackEvent('settings_data_export')
     } catch (error) {
       console.error('Failed to export data:', error)

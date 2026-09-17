@@ -38,6 +38,7 @@ import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
+import { createMiniAppRoutes } from '@/api/mini-apps'
 import { createPowerSyncRoutes } from '@/api/powersync'
 import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
 import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
@@ -197,6 +198,7 @@ export const createApp = async (deps?: AppDeps) => {
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))
+      .use(createMiniAppRoutes(auth, settings))
       .use(createEncryptionRoutes(auth, database))
       .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))

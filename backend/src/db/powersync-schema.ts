@@ -56,6 +56,11 @@ export const chatThreadsTable = powersyncSchema.table(
     // project is soft-deleted and its chats are orphaned (project_id set to
     // null) rather than cascaded, so the rows must survive independently.
     projectId: text('project_id'),
+    // Mini App this chat was started from, or null for an ordinary chat. Not a
+    // FK for the same reason project_id isn't, and more so: the Mini App
+    // registry is deployment config, so an app can disappear between releases.
+    // The chat outlives it and degrades to showing the app is unavailable.
+    miniAppId: text('mini_app_id'),
     deletedAt: timestamp('deleted_at'),
     userId: text('user_id')
       .notNull()

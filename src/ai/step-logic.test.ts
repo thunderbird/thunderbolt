@@ -393,7 +393,7 @@ describe('buildStepOverrides', () => {
     }
     expect(budget.probe.isExhausted).toBe(true)
     expect(budget.probe.exhaustedAttempts).toBe(1)
-    budget.promoteToResearch()
+    budget.promote('research')
     expect(
       buildStepOverrides({ ...baseParams, steps: toolCallSteps(2), messages: [], webBudgetProbe: budget.probe }),
     ).toBeUndefined()

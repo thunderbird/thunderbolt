@@ -76,6 +76,36 @@ describe('createEvalAdapterContext', () => {
     expect(research.webToolBudget?.intent).toBe('research')
     expect(chat.webToolBudget?.intent).toBe('auto')
   })
+
+  test('preserves explicit caps and exhaustion guidance with promotion disabled', async () => {
+    const prior = process.env.WEB_BUDGET_PROMOTION
+    try {
+      process.env.WEB_BUDGET_PROMOTION = 'off'
+      for (const [text, intent, cap] of [
+        ['/research latest', 'research', 30],
+        ['/search latest', 'search', 12],
+        ['An ordinary question', 'auto', 5],
+      ] as const) {
+        const budget = contextFor([userMessage(text)]).webToolBudget!
+        budget.promote('research')
+        expect(budget).toMatchObject({ intent, initialCap: cap, cap, promoted: false })
+        for (let call = 0; call < cap; call++) {
+          await budget.execute('search', { query: String(call) }, async () => call)
+        }
+        expect(await budget.execute('search', { query: 'denied' }, async () => 'must not execute')).toEqual({
+          status: 'budget_exhausted',
+          message:
+            'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+        })
+      }
+    } finally {
+      if (prior === undefined) {
+        delete process.env.WEB_BUDGET_PROMOTION
+      } else {
+        process.env.WEB_BUDGET_PROMOTION = prior
+      }
+    }
+  })
 })
 
 describe('fetchAndParseTurn', () => {
@@ -792,7 +822,7 @@ describe('runner integration with an injected offline adapter', () => {
 
   test('records the promoted live cap from the scored turn budget', async () => {
     const adapter = adapterWithFetch(async (_init, context) => {
-      context.webToolBudget!.promoteToResearch()
+      context.webToolBudget!.promote('research')
       return new Response('data: {"type":"text-delta","delta":"answer"}\n')
     })
     const attempt = await runScenario(fixtureScenario(), adapter)

@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { resolveSkillTokenInstructions } from './resolve-skill-system-messages'
@@ -73,35 +72,35 @@ describe('createSkillTool', () => {
   })
 })
 
-it('promotes only a successful resolved research load, including a slash-prefixed name', async () => {
-  const budget = createWebToolBudget('auto', true)
+it('notifies synchronously with the resolved name only after a successful load', async () => {
+  const loaded: string[] = []
   const skills = selectEnabledSkillDefinitions([
     ...storedSkills,
     { name: 'research', description: 'Research', instruction: 'Research instructions', enabled: 1 },
   ])
-  const skill = createSkillTool(skills, budget)
-  await skill.execute!({ name: 'daily-brief' }, toolCallOptions)
-  expect(budget.cap).toBe(webToolCaps.auto)
+  const skill = createSkillTool(skills, (name) => loaded.push(name))
+  const first = skill.execute!({ name: 'daily-brief' }, toolCallOptions)
+  expect(loaded).toEqual(['daily-brief'])
+  await first
   await expect(skill.execute!({ name: 'missing' }, toolCallOptions)).rejects.toThrow('not found')
-  expect(budget.cap).toBe(webToolCaps.auto)
-  expect(await skill.execute!({ name: ' /research ' }, toolCallOptions)).toBe('Research instructions')
-  expect(budget.cap).toBe(30)
-  await skill.execute!({ name: 'research' }, toolCallOptions)
-  expect(budget.cap).toBe(30)
+  expect(loaded).toEqual(['daily-brief'])
+  const research = skill.execute!({ name: ' /research ' }, toolCallOptions)
+  expect(loaded).toEqual(['daily-brief', 'research'])
+  expect(await research).toBe('Research instructions')
 })
 
-it('does not promote disabled or empty research instructions', async () => {
+it.each(['', '   '])('does not notify for disabled or empty instructions (%j)', async (instruction) => {
   for (const enabled of [0, 1]) {
-    const budget = createWebToolBudget('auto', true)
+    const loaded: string[] = []
     const skill = createSkillTool(
-      selectEnabledSkillDefinitions([{ name: 'research', description: 'Research', instruction: '   ', enabled }]),
-      budget,
+      selectEnabledSkillDefinitions([{ name: 'research', description: 'Research', instruction, enabled }]),
+      (name) => loaded.push(name),
     )
     if (enabled) {
-      await skill.execute!({ name: 'research' }, toolCallOptions)
+      expect(await skill.execute!({ name: 'research' }, toolCallOptions)).toBe(instruction)
     } else {
       await expect(skill.execute!({ name: 'research' }, toolCallOptions)).rejects.toThrow('disabled')
     }
-    expect(budget.cap).toBe(webToolCaps.auto)
+    expect(loaded).toEqual([])
   }
 })

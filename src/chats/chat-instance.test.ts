@@ -200,6 +200,47 @@ describe('createAgentRoutingFetch — connection status', () => {
     resetStore()
   })
 
+  it.each([
+    ['/research latest', 'research', 30],
+    ['/search latest', 'search', 12],
+    ['An ordinary question', 'auto', 5],
+  ] as const)('sets the turn budget and preserves exhaustion guidance for %s', async (text, intent, cap) => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        const budget = context.webToolBudget!
+        for (let call = 0; call < cap; call++) {
+          await budget.execute('search', { query: String(call) }, async () => call)
+        }
+        const denial = await budget.execute('search', { query: 'denied' }, async () => 'must not execute')
+        return Response.json({
+          intent: budget.intent,
+          initialCap: budget.initialCap,
+          cap: budget.cap,
+          promoted: budget.promoted,
+          denial,
+        })
+      },
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getOrConnectAdapter: async () => adapter,
+    })
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+    expect(await response.json()).toEqual({
+      intent,
+      initialCap: cap,
+      cap,
+      promoted: false,
+      denial: {
+        status: 'budget_exhausted',
+        message:
+          'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+      },
+    })
+  })
+
   it('transitions connecting → ready when connectToAgent resolves', async () => {
     const observed: string[] = []
     const connectToAgent = mock(async (agent: Agent) => {
@@ -1331,7 +1372,7 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
       attempts.push(budget)
       if (attempts.length === 1) {
         if (promote) {
-          budget.promoteToResearch()
+          budget.promote('research')
         }
         for (let call = 0; call < webCalls; call++) {
           await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))

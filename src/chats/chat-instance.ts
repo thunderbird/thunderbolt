@@ -15,7 +15,8 @@ import {
   type TurnBudget,
 } from '@/ai/retry-budget'
 import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry } from '@/ai/turn-telemetry'
-import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
+import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -264,7 +265,11 @@ export const createAgentRoutingFetch = (
     if (routingState.webToolBudgetState?.key === key) {
       return routingState.webToolBudgetState.budget
     }
-    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
+    const budget = createWebToolBudget(
+      resolveWebToolIntent(extractLastUserText(messages)),
+      undefined,
+      webBudgetExhaustedMessage,
+    )
     routingState.webToolBudgetState = { key, budget }
     return budget
   }

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { resolveSkill, type SkillDefinition } from '@shared/agent-core/skills'
 import { tool, type Tool } from 'ai'
 import { z } from 'zod'
@@ -26,11 +25,12 @@ export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefini
  * Create AI SDK tool that loads one enabled skill's full instructions.
  *
  * @param skills - enabled skills available for this request
+ * @param onSkillLoaded - synchronous notification after resolving non-empty instructions
  * @returns skill lookup tool shared by classic and Pi request paths
  */
 export const createSkillTool = (
   skills: readonly SkillDefinition[],
-  webToolBudget?: Pick<WebToolBudget, 'promoteToResearch'>,
+  onSkillLoaded?: (name: string) => void,
 ): Tool<{ name: string }, string> =>
   tool({
     description:
@@ -44,8 +44,8 @@ export const createSkillTool = (
         throw new Error(`Skill "${name}" was not found or is disabled.`)
       }
       const instruction = skill.instruction
-      if (skill.name === 'research' && instruction.trim()) {
-        webToolBudget?.promoteToResearch()
+      if (instruction.trim()) {
+        onSkillLoaded?.(skill.name)
       }
       return instruction
     },

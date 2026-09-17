@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { createWebToolBudget, resolveWebToolIntent, webToolCaps } from '@/ai/web-tool-budget'
+import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
+import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { getModel } from '@/dal/models'
 import { getSkillByName } from '@/dal/skills'
 import { getModelProfile } from '@/dal/model-profiles'
@@ -67,7 +68,11 @@ export const createEvalAdapterContext = ({
   reconnectClient: async () => null,
   httpClient,
   getProxyFetch,
-  webToolBudget: createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages))),
+  webToolBudget: createWebToolBudget(
+    resolveWebToolIntent(extractLastUserText(messages)),
+    undefined,
+    webBudgetExhaustedMessage,
+  ),
   onAcpSessionId: async () => {},
 })
 

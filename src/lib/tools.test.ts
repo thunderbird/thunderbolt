@@ -301,7 +301,7 @@ test('web results expose live remaining calls through the real Pi bridge without
   const cached = await web.execute('cache', { query: 'one' })
   expect(cached.content).toEqual(last.content)
   expect(calls).toHaveLength(webToolCaps.auto)
-  budget.promoteToResearch()
+  budget.promote('research')
   const promoted = await web.execute('promoted-cache', { query: 'one' })
   expect(promoted.content).toContainEqual({
     type: 'text',

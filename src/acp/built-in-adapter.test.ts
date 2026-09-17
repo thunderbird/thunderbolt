@@ -15,10 +15,13 @@ import '@/testing-library'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
+import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
+import { updateSkill } from '@/dal/skills'
 import { updateSettings } from '@/dal/settings'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { defaultSkillResearch } from '@/defaults/skills'
 import * as realAgentCore from '@shared/agent-core'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -30,7 +33,7 @@ import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
-import type { Model } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
@@ -1224,6 +1227,32 @@ describe('real Pi web-budget payload', () => {
       run.adapter.disconnect()
     }
   })
+})
+
+it('injects explicit research before the Pi turn without loading a skill tool or promoting', async () => {
+  await setupTestDatabase()
+  const run = createBudgetAdapter(['Done.'], prepareAiRequestConfig)
+  try {
+    await insertModel(getDb(), { ...run.context.selectedModel, enabled: 1 })
+    await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+    await updateSkill(getDb(), defaultSkillResearch.id, { enabled: 1, instruction: 'EXPLICIT_RESEARCH_BODY' })
+    const messages: ThunderboltUIMessage[] = [
+      { id: 'research-user', role: 'user', parts: [{ type: 'text', text: '/research a topic' }] },
+    ]
+    const context = createEvalAdapterContext({ ...run.context, messages })
+    const response = await run.adapter.fetch({ body: JSON.stringify({ messages }) }, context)
+    const output = await response.text()
+    expect(output).not.toContain('"type":"error"')
+    expect(output).not.toContain('tool-input-available')
+    expect(run.requests).toHaveLength(1)
+    expect(JSON.stringify(run.requests[0].messages.filter(({ role }) => role === 'user'))).toContain(
+      'EXPLICIT_RESEARCH_BODY',
+    )
+    expect(context.webToolBudget).toMatchObject({ intent: 'research', initialCap: 30, cap: 30, promoted: false })
+  } finally {
+    run.adapter.disconnect()
+    await teardownTestDatabase()
+  }
 })
 
 it('keeps real adapter citation metadata across a below-cap harness rebuild', async () => {

@@ -9,6 +9,7 @@ import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveSkillWebToolIntent } from '@/ai/turn-web-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -447,7 +448,9 @@ export const addSkillTool = (
   webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills, webToolBudget)
+    toolset.skill = createSkillTool(skills, (name) => {
+      webToolBudget?.promote(resolveSkillWebToolIntent(name))
+    })
   }
   return toolset
 }

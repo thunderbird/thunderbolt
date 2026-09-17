@@ -9,47 +9,40 @@
  * absorbed, never-rotating legacy `"v1"` key.**
  *
  * The client used to store the server-supplied `primary_key_id` verbatim
- * (`applyKeyring` → `storePrimaryKeyId`, src/services/encryption.ts:464-472),
- * and `codec.encode` used whatever came back (src/db/encryption/codec.ts:
- * 262-275). On a migrated account the keyring carries a `"v1"` slot — the
- * absorbed legacy CK, decrypt-only by design: it never rotates, revocation
- * never re-wraps it, and any holder of a v1-era phrase or device opens it (the
- * v1 mnemonic WAS the raw CK). So a malicious server reporting
- * `primary_key_id:"v1"` got every new write sealed under it: correctly formatted
- * and AAD-bound (`__enc:v2:v1:…`), but outside the key hierarchy revocation
- * controls. Chained with THU-877 the server also CHOOSES that key, so it needs
- * no second party and reads the plaintext itself.
+ * (`applyKeyring` → `storePrimaryKeyId`) and `codec.encode` used whatever came
+ * back. On a migrated account the keyring carries a `"v1"` slot — the absorbed
+ * legacy CK, decrypt-only by design: it never rotates, revocation never re-wraps
+ * it, and any holder of a v1-era phrase or device opens it (the v1 mnemonic WAS
+ * the raw CK). So a malicious server reporting `primary_key_id:"v1"` got every
+ * new write sealed under it: correctly formatted and AAD-bound (`__enc:v2:v1:…`),
+ * but outside the key hierarchy revocation controls. Chained with THU-877 the
+ * server also CHOOSES that key, so it needs no second party and reads the
+ * plaintext itself.
+ *
+ * **THU-890 closed this at the source.** The served `metadata.primary_key_id`
+ * (delivered on `GET /encryption/canary`) is now *advisory and never stored*:
+ * the pointer's only trusted source is the sealed AK envelope, whose pointer
+ * shares the AK's auth tag (`adoptEnvelopeAK`, `encryption.ts:697-712`). On the
+ * fast path — the stored AK still opens the keyring, i.e. same epoch, which is
+ * the case here — `stageKeyring` never consults the metadata pointer at all
+ * (`encryption.ts:807-818`). So a `primary_key_id:"v1"` steer is not even
+ * refused; it is simply *ignored*, and the primary already in force survives.
+ * (The non-mintable refusal at `applyKeyring` still guards a pointer that
+ * arrives sealed into a JUST-ADOPTED envelope — `encryption.ts:767-772` — but
+ * that path is not reachable from a metadata field.)
  *
  * Capability audit: the only attacker power exercised is A2 rewriting one field
- * of the metadata response. The v1 seed + migration is test setup that
- * reproduces a realistic migrated account, not an attacker privilege.
+ * of the canary response. The v1 seed + migration is test setup that reproduces
+ * a realistic migrated account, not an attacker privilege.
  *
- * Nuance: the steer is not instantaneous within a session. `applyKeyring`
- * persists the pointer while `invalidateKeyringCache` KEEPS the in-memory one,
- * so a context that already cached the real primary keeps using it and the
- * poison bites on the next FRESH context — a reload or a new tab, which a real
- * user hits constantly. That durability is the attack: it outlives the response
- * that delivered it.
- *
- * The fix refuses any pointer outside the mint grammar (`isMintableKeyId`,
- * THU-871 — `legacyKeyId` is deliberately outside it) at three points: the door
- * (`applyKeyring` skips it and keeps the primary already in force; the upload
- * path defers instead), the drawer (`storePrimaryKeyId` refuses to persist it),
- * and the point of use (`codec.encode` fails closed on a pointer written around
- * that API, which is what stops a transient in-origin compromise from becoming
- * a permanent steer). The server-side half was already closed by THU-871: the
- * only route that writes this column validates the id against `keyIdPattern`.
- *
- * Polarity: asserts the SECURE behavior. Authored as an Option C
- * expected-failure while the vuln was open; the `test.fail()` tag was retired
- * once the fix landed. **Assertion 1 is the non-vacuity anchor** — it proves the
- * poisoned response really was processed and refused, rather than the write
- * simply never seeing it. The original setup step (poll IndexedDB until it holds
- * `"v1"`) is unreachable post-fix by construction, which is exactly the point,
- * so it is replaced by the refusal signal; that couples this spec to a log
- * substring on purpose. Assertions 3-4 then pin that the write was ROUTED, not
- * stalled: a spec that only checked `keyId !== "v1"` would also pass if uploads
- * had quietly stopped.
+ * Polarity: asserts the SECURE behavior, green under THU-890. **Assertion 1 is
+ * the non-vacuity anchor** — it reads the served canary and proves the poison
+ * really is being handed to the client, so a silent containment below cannot be
+ * "the steer was never delivered". Assertion 2 pins the *mechanism*: the pointer
+ * is IGNORED (stored pointer untouched, and the refusal log does NOT fire — that
+ * would mean an adopted-envelope pointer, a different path). Assertions 3-4 pin
+ * that the write was ROUTED under the real primary, not stalled: a spec that
+ * only checked `keyId !== "v1"` would also pass if uploads had quietly stopped.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/primary-keyid-steering.spec.ts
@@ -69,6 +62,7 @@ import {
   createE2eeEmail,
   createTask,
   enableTasks,
+  encryptionApiRequest,
   loginViaConsumerOtp,
   overrideEncryptionMetadata,
   registerDeviceOnly,
@@ -94,7 +88,7 @@ const readPersistedPrimaryKeyId = (page: Page): Promise<string | null> =>
   )
 
 test.describe.serial('THU-876 — primary_key_id steering', () => {
-  test('a server-reported primary_key_id:v1 is refused, and writes stay on the real primary', async ({ page }) => {
+  test('an advisory primary_key_id:v1 is ignored, and writes stay on the real primary', async ({ page }) => {
     const email = createE2eeEmail()
     const marker = `steered-${crypto.randomUUID()}`
 
@@ -110,8 +104,8 @@ test.describe.serial('THU-876 — primary_key_id steering', () => {
     await waitForSchemeV2(userId, ['0', legacyKeyId])
     await enableTasks(page)
 
-    // Collect the client's own report of what it refused. Attached before the
-    // reload below, and kept across navigations for this page.
+    // Under THU-890 the steer is not REFUSED, it is IGNORED, so the old refusal
+    // log must NOT appear — assertion 2 pins that mechanism.
     const consoleErrors: string[] = []
     page.on('console', (message) => {
       if (message.type() === 'error') {
@@ -120,21 +114,22 @@ test.describe.serial('THU-876 — primary_key_id steering', () => {
     })
 
     // A2 reports the legacy slot as the primary. Reload so `prime` →
-    // `stageKeyring` → `applyKeyring` processes the poisoned response.
+    // `stageKeyring` processes the poisoned canary.
     await overrideEncryptionMetadata(page.context(), { primary_key_id: legacyKeyId })
     await page.goto('/tasks')
     await expect(page.getByRole('button', { name: 'New Task' })).toBeVisible()
 
-    // 1. Non-vacuity anchor: the steer was seen and rejected, not missed.
-    await expect
-      .poll(() => consoleErrors.some((line) => line.includes('refused a non-mintable primary key_id')), {
-        timeout: 30_000,
-      })
-      .toBe(true)
+    // 1. Non-vacuity anchor: the poison really is being served and consumed —
+    //    the canary the client reads for its pointer carries "v1".
+    const served = await encryptionApiRequest(page, '/encryption/canary')
+    expect((served.body as { primary_key_id?: string }).primary_key_id).toBe(legacyKeyId)
 
-    // 2. Nothing hostile became durable local state — the primary already in
-    //    force survived, so the next fresh context reads a legitimate pointer.
+    // 2. THU-890 closure: the advisory pointer is IGNORED. The stored pointer is
+    //    untouched (still the real primary), and the non-mintable refusal never
+    //    fires — that guard is for a pointer sealed into an adopted envelope, a
+    //    path a metadata field cannot reach.
     expect(await readPersistedPrimaryKeyId(page)).toBe(initialKeyId)
+    expect(consoleErrors.some((line) => line.includes('refused a non-mintable primary key_id'))).toBe(false)
 
     // 3. The write is ROUTED, not stalled: it lands under the real primary.
     const before = await getTaskIds(userId)
@@ -145,7 +140,7 @@ test.describe.serial('THU-876 — primary_key_id steering', () => {
     expect(parsed!.keyId).not.toBe(legacyKeyId)
     expect(parsed!.keyId).toBe(initialKeyId)
 
-    // 4. And it round-trips, so the refusal cost the user nothing.
+    // 4. And it round-trips, so ignoring the steer cost the user nothing.
     await expect(page.getByText(marker, { exact: true })).toBeVisible({ timeout: 30_000 })
   })
 })

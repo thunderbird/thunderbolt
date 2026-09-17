@@ -92,8 +92,10 @@ test.describe.serial('THU-875 — silent recovery-slot takeover', () => {
       const rotateRefused = attackerPage.waitForResponse(
         (res) => res.url().includes('/v1/encryption/rotate') && res.request().method() === 'POST',
       )
+      // Filling the code auto-submits via the dialog's `onComplete`; the wrong
+      // code is refused (403), which clears the OTP and disables the button, so
+      // an explicit click here would wait forever on a disabled control.
       await codeDialog.locator('[data-slot="input-otp"]').fill('00000000')
-      await codeDialog.getByRole('button', { name: 'Generate new phrase' }).click()
 
       // SECURE assertion 1: the rotate is refused at the step-up gate.
       expect((await rotateRefused).status()).toBe(403)

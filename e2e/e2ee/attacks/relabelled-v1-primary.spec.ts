@@ -14,41 +14,44 @@
  * `primary_key_id: "1"`. Every label-based gate passes — the blob is
  * authentically wrapped under the real AK, the AK itself is untouched so
  * THU-869's DEK-0 witness never fires, and `"1"` is inside the mint grammar so
- * all three THU-876 pointer gates pass. Under the old AES-KW wrapping (which
- * binds no key_id into the blob) the relabelled row unwrapped fine, and every
- * new write became a well-formed `__enc:v2:1:…` sealed under the legacy CK: the
- * one key that never rotates, that revocation exempts, and that every v1-era
- * device and pre-migration recovery phrase can open (the v1 mnemonic WAS that
- * key).
+ * every THU-876 pointer gate passes. Under the old AES-KW wrapping (which binds
+ * no key_id into the blob) the relabelled row unwrapped fine, and every new
+ * write became a well-formed `__enc:v2:1:…` sealed under the legacy CK: the one
+ * key that never rotates, that revocation exempts, and that every v1-era device
+ * and pre-migration recovery phrase can open (the v1 mnemonic WAS that key).
  *
- * The fix is cryptographic, not a gate: `wrapDEK` binds the key_id into the
- * wrapped blob as AAD (`dekWrapAAD`, shared/e2ee-types.ts), and `unwrapDEK`
- * builds the AAD from the key_id the client is RESOLVING. A blob created as
- * `"v1"` therefore fails the auth tag under any other label, on every device,
- * with no local state and nothing for the server to withhold. (An earlier
- * client-side fix compared the primary DEK's material against the legacy CK; it
- * needed an anchor to compare against, and A2 disarmed it on post-migration
- * devices by simply withholding the `"v1"` slot. The AAD binding has no such
- * anchor and closes the withholding variant with the same stroke.)
+ * Two independent defenses now stand between A2 and the payoff, and this spec
+ * exercises the outer one:
  *
- * What the fix deliberately does NOT do: refuse the pointer at adoption. The
- * pointer is grammar-valid, so `applyKeyring` adopts it and the failure lands at
- * the point of use — `codec.encode` fails CLOSED and the upload retries. Under
- * an actively hostile A2 that is a write outage, which is accepted: A2 can
- * always cause one (serve any garbage blob), and refusing to move off a stale
- * key instead would hand back exactly the key a revoked device copied (C5).
- * Assertion 1 pins the adoption on purpose: it proves every label gate passed
- * and ONLY the cryptography stood between the attacker and the payoff.
+ *   - **THU-890 (outer, what this spec witnesses).** The pointer's only trusted
+ *     source is the sealed AK envelope; the served `metadata.primary_key_id` is
+ *     advisory and never stored. On the fast path (the stored AK still opens the
+ *     keyring — same epoch, the case here) `stageKeyring` never consults the
+ *     metadata pointer (`encryption.ts:807-818`). So `primary_key_id:"1"` is
+ *     IGNORED: the primary stays `"0"`, and no write is ever sealed under the
+ *     relabelled slot. The steer simply does not land.
+ *   - **The AAD binding (inner, distinct).** `wrapDEK` binds the key_id into the
+ *     wrapped blob as AAD (`dekWrapAAD`, shared/e2ee-types.ts), so a blob created
+ *     as `"v1"` fails the auth tag under any other label. This is the defense of
+ *     record for a relabel that DOES reach the codec (e.g. sealed into an adopted
+ *     envelope across a rotation), and it is witnessed at the unit level
+ *     (`src/crypto/primitives.test.ts` "refuses to unwrap a blob under a
+ *     different key_id"). Under THU-890 this metadata vector no longer reaches
+ *     it, so the e2e assertion below is the 890 closure, not the AAD refusal.
  *
- * Residual (THU-890, distinct): A2 serving a genuinely OLD row under its own
- * honest label — a pointer rollback, not a relabel. No AAD can catch it because
- * nothing is mislabelled; it needs the signed pointer attestation.
+ * Overlap with THU-876 is deliberate: both now witness the same THU-890 mechanism
+ * (advisory pointer ignored on the fast path). The distinct setup here is a
+ * relabelled *genuine* blob under a mintable id, versus 876's direct `"v1"`
+ * pointer — the two label-shapes A2 can try, both inert.
  *
- * Polarity: asserts the SECURE behavior, green from birth — the AAD wrapping
- * ships in the same change as this spec. Flippability was proven at the unit
- * level (`src/crypto/primitives.test.ts` "refuses to unwrap a blob under a
- * different key_id"): reverting `wrapDEK` to AES-KW fails that test and flips
- * assertions 3–4 here.
+ * Residual (THU-890, still distinct): A2 serving a genuinely OLD row under its
+ * own honest label — a pointer rollback across a real rotation. That needs the
+ * signed pointer attestation the AK envelope provides, which is exactly what
+ * THU-890 installs.
+ *
+ * Polarity: asserts the SECURE behavior, green under THU-890. Assertion 1 is the
+ * non-vacuity anchor (the relabelled pointer really is served); the positive
+ * control proves the pipeline was live before the plant.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/relabelled-v1-primary.spec.ts
@@ -69,6 +72,7 @@ import {
   createE2eeEmail,
   createTask,
   enableTasks,
+  encryptionApiRequest,
   loginViaConsumerOtp,
   overrideEncryptionMetadata,
   registerDeviceOnly,
@@ -94,7 +98,7 @@ const readPersistedPrimaryKeyId = (page: Page): Promise<string | null> =>
   )
 
 test.describe.serial('THU-893 — relabelled "v1" blob as the primary', () => {
-  test('a "v1" blob served under key_id "1" cannot become a working primary', async ({ page }) => {
+  test('a "v1" blob relabelled under key_id "1" cannot steer the primary', async ({ page }) => {
     const email = createE2eeEmail()
     const controlMarker = `pre-plant-${crypto.randomUUID()}`
     const attackMarker = `relabelled-${crypto.randomUUID()}`
@@ -111,7 +115,7 @@ test.describe.serial('THU-893 — relabelled "v1" blob as the primary', () => {
     await enableTasks(page)
 
     // Positive control: the pipeline routes and uploads before the plant, so a
-    // silent containment below cannot be "sync was never working".
+    // steer that fails below cannot be "sync was never working".
     const baselineBefore = await getTaskIds(userId)
     await createTask(page, controlMarker)
     const [controlRow] = await waitForNewEncryptedTasks(userId, baselineBefore)
@@ -125,40 +129,27 @@ test.describe.serial('THU-893 — relabelled "v1" blob as the primary', () => {
     await plantWrappedKey(userId, '1', genuineV1Blob)
     await overrideEncryptionMetadata(page.context(), { primary_key_id: '1' })
 
-    const consoleErrors: string[] = []
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        consoleErrors.push(message.text())
-      }
-    })
-
-    // Fresh boot processes the poisoned keyring (prime → stageKeyring →
-    // applyKeyring).
+    // Fresh boot processes the poisoned keyring (prime → stageKeyring).
     await page.goto('/tasks')
     await expect(page.getByRole('button', { name: 'New Task' })).toBeVisible()
 
-    // 1. The poison is fully ADOPTED — every label-based gate passed (grammar,
-    //    AK witness, honest blob). This is the non-vacuity anchor: only the wrap
-    //    AAD stands between the attacker and the payoff from here on.
-    await expect.poll(() => readPersistedPrimaryKeyId(page), { timeout: 30_000 }).toBe('1')
+    // 1. Non-vacuity anchor: the relabelled pointer really is served — the
+    //    canary the client reads for its pointer carries "1".
+    const served = await encryptionApiRequest(page, '/encryption/canary')
+    expect((served.body as { primary_key_id?: string }).primary_key_id).toBe('1')
 
-    // 2. The write is attempted (renders locally — PowerSync is local-first).
-    const baseline = await getTaskIds(userId)
+    // 2. THU-890 closure: the advisory pointer is IGNORED. Despite every
+    //    label-based gate passing (grammar, AK witness, honest blob), the stored
+    //    primary is untouched — it never moved off "0" onto the relabelled slot.
+    expect(await readPersistedPrimaryKeyId(page)).toBe(initialKeyId)
+
+    // 3. The write lands under the real primary and round-trips: the steer did
+    //    not land, and the user is unaffected. (Nothing is ever sealed under the
+    //    relabelled "1", so a legacy-CK holder gains nothing.)
+    const before = await getTaskIds(userId)
     await createTask(page, attackMarker)
+    const [attackRow] = await waitForNewEncryptedTasks(userId, before)
+    expect(parseWireValue(attackRow.item)?.keyId).toBe(initialKeyId)
     await expect(page.getByText(attackMarker, { exact: true })).toBeVisible({ timeout: 30_000 })
-
-    // 3. The codec refuses the relabelled DEK at the point of use: the blob was
-    //    wrapped as "v1" and fails the auth tag under "1", so encode fails
-    //    CLOSED and the upload retries instead of shipping anything.
-    await expect
-      .poll(() => consoleErrors.some((line) => line.includes('refusing to upload plaintext')), { timeout: 30_000 })
-      .toBe(true)
-
-    // 4. Containment: nothing new reaches the server — most importantly nothing
-    //    a legacy-CK holder could open. The window is bounded and starts only
-    //    after the refusal in (3) was observed, so it is not racing the upload.
-    await page.waitForTimeout(5_000)
-    const afterIds = await getTaskIds(userId)
-    expect([...afterIds].filter((id) => !baseline.has(id))).toEqual([])
   })
 })

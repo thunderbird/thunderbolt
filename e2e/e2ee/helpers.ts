@@ -634,13 +634,18 @@ export const runSeamlessMigration = async (page: Page): Promise<string> => {
  * Complete the step-up code dialog (THU-875) by reading the emailed code where
  * the inbox would be — the verification table. Simulates a user with inbox
  * access; an attacker without it stalls exactly here.
+ *
+ * Filling the code auto-submits: the dialog's `InputOTP` fires `onComplete` at
+ * full length, which is the same submit the "Generate new phrase" button calls.
+ * So the button relabels to "Generating…" the instant the rotation starts — an
+ * explicit click on it would never resolve. Fill and let `onComplete` drive it,
+ * exactly like the sign-in code entry in `loginViaConsumerOtp`.
  */
 export const completeStepUpCode = async (page: Page, email: string): Promise<void> => {
   const codeDialog = page.getByRole('alertdialog')
   await expect(codeDialog.getByText('Enter your verification code')).toBeVisible({ timeout: 15_000 })
   const otp = await waitForStepUpOtp(email)
   await codeDialog.locator('[data-slot="input-otp"]').fill(otp)
-  await codeDialog.getByRole('button', { name: 'Generate new phrase' }).click()
 }
 
 // =============================================================================

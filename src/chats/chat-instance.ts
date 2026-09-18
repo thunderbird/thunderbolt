@@ -15,7 +15,8 @@ import {
   type TurnBudget,
 } from '@/ai/retry-budget'
 import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry } from '@/ai/turn-telemetry'
-import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
+import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -264,7 +265,11 @@ export const createAgentRoutingFetch = (
     if (routingState.webToolBudgetState?.key === key) {
       return routingState.webToolBudgetState.budget
     }
-    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
+    const budget = createWebToolBudget(
+      resolveWebToolIntent(extractLastUserText(messages)),
+      undefined,
+      webBudgetExhaustedMessage,
+    )
     routingState.webToolBudgetState = { key, budget }
     return budget
   }
@@ -331,8 +336,7 @@ export const createAgentRoutingFetch = (
         provider: selectedModel.provider,
       })
 
-      // Save the user message before invoking the adapter. This serves three
-      // purposes that previously only the built-in pipeline got for free:
+      // Save the user message before invoking the adapter. This:
       //   1. Creates the `chat_threads` row on the first message (so the
       //      thread is persisted regardless of agent type).
       //   2. Lets `updateThreadTitle` see the first user message and replace
@@ -818,8 +822,7 @@ export const createChatInstance = (
     // automations). The SDK evaluates this after every turn and gates it on
     // `isError` only — not on `isAbort` — so a stopped turn whose assistant
     // message never materialized (Stop pressed while `submitted`) leaves the
-    // user message trailing and gets re-sent on the spot. That is THU-791's
-    // "Stop does nothing": the turn restarted faster than the UI could settle.
+    // user message trailing. The stopRequested guard prevents resending it.
     sendAutomaticallyWhen: ({ messages }) =>
       !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
@@ -832,7 +835,7 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Settle the aborted turn so no spinner survives the stop (THU-791),
+        // Settle the aborted turn so no spinner survives the stop,
         // keyed off the trailing assistant message.
         const lastIndex = instance.messages.length - 1
         const lastMessage = instance.messages[lastIndex]
@@ -1114,7 +1117,7 @@ export const createChatInstance = (
   const originalStop = instance.stop.bind(instance)
 
   /**
-   * Stop the active turn and settle to idle (THU-791). In-flight aborts let
+   * Stop the active turn and settle to idle. In-flight aborts let
    * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
    * would swap `currentTurn` out from under it. Backoff/recovery fires no
    * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.

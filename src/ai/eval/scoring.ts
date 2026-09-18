@@ -154,7 +154,6 @@ export const scoreResult = (scenario: EvalScenario, parsed: ParsedStream, durati
     reviewSiteUrls,
     toolCallCount: webToolCalls.length,
     duplicateToolCallCount,
-    retryCount: parsed.retryCount,
     durationMs: Math.round(durationMs),
     error: parsed.error,
   }
@@ -210,6 +209,15 @@ const checkCriteria = (
 
   if (criteria.maxToolCalls !== undefined && webToolCallCount > criteria.maxToolCalls) {
     failures.push(`Too many web tool calls: ${webToolCallCount} (max: ${criteria.maxToolCalls})`)
+  }
+
+  if (
+    criteria.expectResearchSkill !== undefined &&
+    (parsed.researchSkillLoaded ?? false) !== criteria.expectResearchSkill
+  ) {
+    failures.push(
+      criteria.expectResearchSkill ? 'Research skill was not loaded' : 'Research skill was loaded when forbidden',
+    )
   }
 
   if (criteria.noDuplicateToolCalls && duplicateToolCallCount > 0) {

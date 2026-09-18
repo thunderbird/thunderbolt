@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { webToolNames } from '@/lib/tools'
+import { fixtureScenario } from './test-fixtures'
 import { countDuplicateToolCalls, scoreResult } from './scoring'
 import type { EvalScenario, ParsedStream, ToolCallInfo } from './types'
 
@@ -185,4 +186,14 @@ describe('scoreResult — widget criteria', () => {
 
     expect(result.passed).toBe(true)
   })
+})
+
+test.each([
+  [true, true, true],
+  [true, false, false],
+  [false, true, false],
+  [false, false, true],
+] as const)('research skill criterion expected=%s observed=%s passes=%s', (expected, loaded, passed) => {
+  const scenario = { ...fixtureScenario(), criteria: { mustProduceOutput: true, expectResearchSkill: expected } }
+  expect(scoreResult(scenario, makeParsed({ researchSkillLoaded: loaded }), 0).passed).toBe(passed)
 })

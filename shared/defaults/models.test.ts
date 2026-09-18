@@ -24,7 +24,7 @@ import {
  *   2. Update `expected` below to match the actual values from the failure.
  *
  * The version is the ordering signal reconcile uses to decide who owns the
- * newest defaults across devices (THU-637). Changing defaults without bumping
+ * newest defaults across devices. Changing defaults without bumping
  * the version breaks that ordering silently.
  */
 const computeSnapshotHash = () =>
@@ -38,7 +38,7 @@ const computeMetadataHash = () =>
   defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
 
 const expected = {
-  version: 6,
+  version: 7,
   hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:n56kdk|1:01a06dd7-67ee-75be-b957-2b746271c49d:-n92e4|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
   metadataHash: '0:vzhyk4|1:d17qpa|2:-cajkcl',
 }

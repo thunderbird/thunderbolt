@@ -4,12 +4,11 @@
 
 import type { SourceMetadata } from '@/types/source'
 import { toolCallKey } from '@/lib/stable-stringify'
-import { skillTokenRegex } from '@/skills/parse-skill-tokens'
 
 export type WebToolIntent = 'auto' | 'search' | 'research'
 
 export const webToolCaps: Record<WebToolIntent, number> = {
-  auto: 2,
+  auto: 5,
   search: 12,
   research: 30,
 }
@@ -20,6 +19,11 @@ export type WebToolBudgetProbe = {
 }
 
 export type WebToolBudget = {
+  readonly initialCap: number
+  readonly cap: number
+  readonly consumed: number
+  readonly promoted: boolean
+  promote: (intent: WebToolIntent) => void
   execute: (toolName: string, input: unknown, run: () => Promise<unknown>) => Promise<unknown>
   probe: WebToolBudgetProbe
   intent: WebToolIntent
@@ -32,18 +36,23 @@ export type BudgetExhaustedResult = {
   message: string
 }
 
-/** Resolve the web-tool budget intent from explicit slash-command slugs. */
-export const resolveWebToolIntent = (lastUserText: string): WebToolIntent => {
-  const slugs = [...lastUserText.matchAll(skillTokenRegex)].map((match) => match[1])
-  if (slugs.includes('research')) {
-    return 'research'
+/** Resolve the run/lab option once per budget; browsers have no such environment setting. */
+export const resolveWebBudgetPromotion = (value: string | undefined): boolean => {
+  if (value !== undefined && !['on', 'off'].includes(value)) {
+    throw new Error('WEB_BUDGET_PROMOTION must be on or off')
   }
-  return slugs.includes('search') ? 'search' : 'auto'
+  return value !== 'off'
 }
 
 /** Create one combined per-turn budget for search and page-fetch calls. */
-export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
-  const cap = webToolCaps[intent]
+export const createWebToolBudget = (
+  intent: WebToolIntent,
+  promotionEnabled = resolveWebBudgetPromotion(
+    typeof process === 'undefined' ? undefined : process.env.WEB_BUDGET_PROMOTION,
+  ),
+  exhaustedMessage?: string,
+): WebToolBudget => {
+  let cap = webToolCaps[intent]
   let consumed = 0
   let exhaustedAttempts = 0
   const dedupe = new Map<string, Promise<unknown>>()
@@ -59,6 +68,21 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
 
   return {
     intent,
+    initialCap: webToolCaps[intent],
+    get cap() {
+      return cap
+    },
+    get consumed() {
+      return consumed
+    },
+    get promoted() {
+      return cap !== webToolCaps[intent]
+    },
+    promote: (nextIntent) => {
+      if (promotionEnabled && intent === 'auto' && nextIntent === 'research') {
+        cap = webToolCaps[nextIntent]
+      }
+    },
     sourceCollector: [],
     execute: (toolName, input, run) => {
       const key = normalizeWebToolKey(toolName, input)
@@ -67,7 +91,7 @@ export const createWebToolBudget = (intent: WebToolIntent): WebToolBudget => {
         return cached
       }
       if (!tryConsume()) {
-        return Promise.resolve(budgetExhaustedResult())
+        return Promise.resolve(budgetExhaustedResult(exhaustedMessage))
       }
       const result = run()
       dedupe.set(key, result)
@@ -108,8 +132,9 @@ export const normalizeWebToolKey = (toolName: string, input: unknown): string =>
 }
 
 /** Return the structured result used when a turn's web-tool budget is spent. */
-export const budgetExhaustedResult = (): BudgetExhaustedResult => ({
+export const budgetExhaustedResult = (
+  message = 'Per-turn web tool budget reached. Answer now from the results already gathered.',
+): BudgetExhaustedResult => ({
   status: 'budget_exhausted',
-  message:
-    'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+  message,
 })

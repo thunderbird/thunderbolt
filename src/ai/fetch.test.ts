@@ -147,11 +147,42 @@ describe('addSkillTool', () => {
       description: 'Use for weather forecasts.',
       instruction: 'Emit the weather widget contract.',
     },
+    { name: 'search', description: 'Search', instruction: 'Search instructions' },
+    { name: 'research', description: 'Research', instruction: 'Research instructions' },
   ]
 
   it('registers the skill tool only for tool-capable models', () => {
     expect(Object.keys(addSkillTool({}, skills, true))).toEqual(['skill'])
     expect(addSkillTool({}, skills, false)).toEqual({})
+  })
+
+  it.each([
+    ['auto', true, 30],
+    ['auto', false, 5],
+    ['search', true, 12],
+    ['research', true, 30],
+  ] as const)('promotes only permitted research loads (%s, enabled=%s)', async (intent, enabled, finalCap) => {
+    const budget = createWebToolBudget(intent, enabled)
+    const tools = addSkillTool({}, skills, true, budget)
+    const options = { toolCallId: 'load', messages: [] }
+    for (const name of ['weather', 'search']) {
+      await tools.skill.execute!({ name }, options)
+      expect(budget.cap).toBe(budget.initialCap)
+      expect(budget.promoted).toBe(false)
+    }
+    const result = tools.skill.execute!({ name: ' /research ' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(await result).toBe('Research instructions')
+    await tools.skill.execute!({ name: 'research' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(budget.intent).toBe(intent)
+  })
+
+  it('loads skills without a web budget', async () => {
+    const tools = addSkillTool({}, skills, true)
+    expect(await tools.skill.execute!({ name: 'research' }, { toolCallId: 'load', messages: [] })).toBe(
+      'Research instructions',
+    )
   })
 })
 

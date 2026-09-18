@@ -9,6 +9,7 @@ import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveSkillWebToolIntent } from '@/ai/turn-web-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -300,7 +301,7 @@ export const resolveOpenAiCompatConnection = (
       // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
       // mDNS `.local`, public endpoints — stays on the proxy path (browser
       // blocks non-loopback http from https origins as mixed content, and
-      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      // public Custom endpoints rely on the proxy for CORS bypass).
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
       const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
@@ -444,9 +445,12 @@ export const addSkillTool = (
   toolset: Record<string, Tool>,
   skills: readonly SkillDefinition[],
   supportsTools: boolean,
+  webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills)
+    toolset.skill = createSkillTool(skills, (name) => {
+      webToolBudget?.promote(resolveSkillWebToolIntent(name))
+    })
   }
   return toolset
 }
@@ -503,7 +507,12 @@ export const prepareAiRequestConfig = async ({
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
-  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache, webToolBudget), skills, supportsTools)
+  const appToolset = addSkillTool(
+    createToolset(availableTools, toolCallCache, webToolBudget),
+    skills,
+    supportsTools,
+    webToolBudget,
+  )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
   // is actually something to search.

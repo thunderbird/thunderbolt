@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_MODE?: 'thunderbolt' | 'sso'
   readonly VITE_AUTH_ENABLE_ANONYMOUS?: 'true' | 'false'
   readonly VITE_APP_VERSION?: string
+  /** Operator key-escrow public key (THU-804): base64 raw uncompressed P-256 point. Unset = no escrow. */
+  readonly VITE_ORG_ESCROW_PUBLIC_KEY?: string
 }
 
 // .po catalogs are compiled to JS message objects by @lingui/vite-plugin.

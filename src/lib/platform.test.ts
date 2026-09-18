@@ -129,7 +129,16 @@ describe('isIndexedDbAvailable', () => {
 
   it('resolves false when the factory is missing', async () => {
     expect(await isIndexedDbAvailable(null)).toBe(false)
-    expect(await isIndexedDbAvailable(undefined)).toBe(false)
+    // The undefined path falls back to globalThis.indexedDB; other test files
+    // import 'fake-indexeddb/auto' which installs it globally and never removes
+    // it, so pin the global to absent for this assertion.
+    const originalIdb = globalThis.indexedDB
+    Reflect.deleteProperty(globalThis, 'indexedDB')
+    try {
+      expect(await isIndexedDbAvailable(undefined)).toBe(false)
+    } finally {
+      globalThis.indexedDB = originalIdb
+    }
   })
 
   it('resolves false when open() never settles (timeout guard)', async () => {

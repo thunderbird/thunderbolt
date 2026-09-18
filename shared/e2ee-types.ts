@@ -1,0 +1,671 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * E2EE v2 shared contracts — the single source of truth for every byte-level
+ * contract that crosses the frontend/backend boundary (Track 0 of the
+ * consolidated plan, docs/architecture/e2ee-v2-plan.md).
+ *
+ * Imported by BOTH the frontend (`@shared/e2ee-types`) and the backend
+ * (`@shared/e2ee-types`, wired into backend/tsconfig.json `include`). Keep this
+ * file runtime-agnostic: only TextEncoder + plain types, no WebCrypto, no DOM,
+ * no Bun APIs.
+ *
+ * Spec: https://github.com/thunderbird/thunderbolt-spec/blob/spec/e2ee-v2/specs/e2ee-v2.md
+ */
+
+// =============================================================================
+// Wire format — v2: __enc:v2:<key_id>:<iv-base64>:<ct-base64>
+//                v1 (legacy, read-only): __enc:<iv-base64>:<ct-base64>
+// =============================================================================
+
+/** Prefix shared by every encrypted value (v1 and v2). Detection only — never trust beyond parsing. */
+export const encPrefix = '__enc:'
+
+/** Version tag for the v2 wire format. Codec dispatches on this segment. */
+export const wireVersionV2 = 'v2'
+
+/** Full prefix of a v2 encrypted value. Absence of this after `encPrefix` classifies a value as legacy v1. */
+export const encV2Prefix = `${encPrefix}${wireVersionV2}:`
+
+/**
+ * Identifies one DEK version in the keyring: "0", "1", … MUST never contain ':'
+ * — it is a wire-format segment. Every mintable id matches `keyIdPattern`;
+ * `legacyKeyId` is the one reserved id outside that grammar.
+ */
+export type KeyId = string
+
+/**
+ * The grammar every MINTABLE key_id must match: an unpadded decimal counter,
+ * bounded to 15 digits (THU-871). Every clause is load-bearing:
+ *
+ * - **≤ 15 digits** keeps the id below 2^53, so it survives a round trip through
+ *   a JS number exactly and `String()` never emits exponent notation. Unbounded
+ *   ids are what made allocation exploitable: 17+ digits makes `max + 1 === max`
+ *   and 1e21+ stringifies to `"1e+21"`, so a planted row could alias the id a
+ *   mint was about to claim — and a colliding mint was silently discarded by the
+ *   server while the primary pointer moved onto the planted row (permanent
+ *   account-wide write lockout).
+ * - **unpadded** (no `"01"`) makes string↔number a bijection, so
+ *   `String(Number(id)) === id` for every id in the grammar, and a canonical
+ *   candidate can never alias a non-canonical row.
+ *
+ * The allocator additionally picks the smallest UNUSED counter rather than
+ * highest-plus-one, so non-collision no longer rests on arithmetic at all — see
+ * `nextPrimaryKeyId`. This grammar is what keeps ids short on the wire (every
+ * encrypted cell carries one), canonical, and tightly validatable server-side.
+ * `legacyKeyId` ("v1") is deliberately excluded: it is written only by the v1→v2
+ * upgrade path.
+ */
+export const keyIdPattern = '^(0|[1-9][0-9]{0,14})$'
+
+/** Whether `keyId` is a well-formed mintable key_id (see `keyIdPattern`). */
+export const isMintableKeyId = (keyId: string): boolean => new RegExp(keyIdPattern).test(keyId)
+
+/**
+ * The key_id minted at first-device setup and the default primary.
+ *
+ * LOAD-BEARING INVARIANT: DEK `"0"`'s KEY MATERIAL never changes for the life of
+ * a v2 account. Bootstrap and the v1→v2 upgrade each mint it exactly once; every
+ * AK rotation RE-WRAPS the same key (`rewrapKeyring`); set-equality coverage
+ * means the row can never be dropped; and the allocator never re-mints `"0"`
+ * because it claims the smallest UNUSED counter.
+ *
+ * Clients depend on this to authenticate an inbound Account Key: each device
+ * keeps a local ciphertext witness under DEK `"0"` and refuses an AK that cannot
+ * reproduce it (THU-869, `src/crypto/keyring-anchor.ts`). It is why the witness
+ * survives legitimate rotations — and it means anything that gives DEK `"0"`
+ * NEW material makes every established device on that account refuse every
+ * future AK, permanently.
+ *
+ * NOTHING ENFORCES THIS. The server validates key_id SETS, not key material
+ * (see `assertRotateKeyCoverage`) — it holds no AK, so it cannot. A keyring
+ * compaction that drops `"0"`, a v3 scheme that re-mints it, or a re-key /
+ * crypto-shred feature must each delete the local witness as part of the same
+ * change. Read the note on `dbVersion` in `src/crypto/key-storage.ts` first.
+ */
+export const initialKeyId: KeyId = '0'
+
+/**
+ * Reserved read-only slot holding the absorbed legacy v1 CK (dual-read model,
+ * plan §2.3). A migrated account carries this alongside a real primary DEK; it
+ * decrypts legacy `__enc:<iv>:<ct>` values (with NO AAD) and is NEVER used to
+ * encrypt. Retained permanently — Decision (d).
+ */
+export const legacyKeyId: KeyId = 'v1'
+
+/** One wrapped DEK as stored server-side and staged into IndexedDB for the worker. */
+export type WrappedKeyEntry = {
+  keyId: KeyId
+  /** Base64(`iv ‖ AES-GCM(DEK)`) under the current AK, `dekWrapAAD(keyId)` bound as AAD. */
+  wrappedKey: string
+}
+
+/**
+ * Single source of truth for encrypted tables and their columns, keyed by DB
+ * (snake_case) names — the same names PowerSync sync data and CRUD upload
+ * operations use.
+ *
+ * Shared because it is a wire contract, not a client detail: the frontend uses
+ * it to decide what to encrypt on upload, and the backend uses it to reject
+ * plaintext in those columns once an account is on the v2 keyring. A per-layer
+ * copy would drift, and drift here means silent plaintext.
+ *
+ * Adding a table here automatically enables:
+ * - Download decryption via EncryptionMiddleware (sync pipeline)
+ * - Upload encryption via encodeForUpload (connector)
+ * - Server-side plaintext rejection on upload
+ */
+export const encryptedColumnsMap: Readonly<Record<string, readonly string[]>> = {
+  settings: ['value'],
+  chat_threads: ['title'],
+  chat_messages: ['content', 'parts', 'cache', 'metadata'],
+  tasks: ['item'],
+  models: ['name', 'model', 'url', 'vendor', 'description'],
+  prompts: ['title', 'prompt'],
+  triggers: ['trigger_time'],
+  model_profiles: [
+    'tools_override',
+    'link_previews_override',
+    'chat_mode_addendum',
+    'search_mode_addendum',
+    'research_mode_addendum',
+    'citation_reinforcement_prompt',
+    'nudge_final_step',
+    'nudge_preventive',
+    'nudge_retry',
+    'nudge_search_final_step',
+    'nudge_search_preventive',
+    'nudge_search_retry',
+    'provider_options',
+  ],
+  // Upload-encoding only in practice: the row is INSERTED by the backend at
+  // registration with the plaintext name a keyless device sent, so the download
+  // quarantine exempts `devices` (see EncryptionMiddleware). A rename through
+  // the UI still encrypts.
+  devices: ['name'],
+  skills: ['name', 'label', 'description', 'instruction'],
+  // `icon` (a single emoji chosen from a fixed set) and `pinned_order` stay
+  // plaintext — neither carries user-authored content.
+  projects: ['name', 'description', 'instructions'],
+  // THU-870. `url` is the routing field for BOTH transports — iroh carries its
+  // NodeId/ticket in it too (`src/acp/transports/index.ts`) — so encrypting it
+  // is what stops a server choosing where an agent connects. `type`,
+  // `transport` and `enabled` stay plaintext: they are closed enums/flags that
+  // carry no user-authored content and are inert without `url`. `icon` matches
+  // the `skills` rule above.
+  //
+  // Rows written before this entry existed synced as cleartext; the
+  // `reencrypt-agents` data migration (THU-874) re-saves them through the
+  // encrypting upload path, because the download quarantine would otherwise
+  // refuse them on every newly-enrolled device. RULE: adding a column or table
+  // to this map while plaintext rows for it already exist server-side requires
+  // the same kind of migration in the same change — see C1 in
+  // docs/architecture/e2ee-threat-model.md. NOTE `name` and `url` are the first
+  // mapped columns that are NOT NULL in Postgres
+  // (`backend/src/db/powersync-schema.ts`), which is why the quarantine
+  // suppresses whole sync ops (op → MOVE) rather than nulling columns — a
+  // nulled cell riding a later upload would wedge the CRUD queue.
+  agents: ['name', 'url', 'description'],
+}
+
+// =============================================================================
+// AAD — table ‖ column ‖ row_id ‖ key_id (never stored on the wire)
+// =============================================================================
+
+/**
+ * Row context threaded into encode/decode so AAD can be (re)built.
+ * `table`/`column` are snake_case DB names (they must match
+ * `encryptedColumnsMap` and the OplogEntry's `object_type`).
+ */
+export type EncryptionContext = {
+  table: string
+  column: string
+  rowId: string
+}
+
+/**
+ * Codec contract shared by the upload encoder (main thread) and the sync
+ * middleware (SharedWorker). `ctx` is optional so the two existing one-arg call
+ * sites (`upload-encoder.ts`, `EncryptionMiddleware.ts`) still typecheck when
+ * Track 0 lands; v2 encode/decode of configured columns requires it (AAD).
+ */
+export type EncryptionCodec = {
+  encode: (plaintext: string, ctx?: EncryptionContext) => Promise<string>
+  decode: (encoded: string, ctx?: EncryptionContext) => Promise<string>
+}
+
+/**
+ * Codec runtime-control surface — FROZEN NAMES (plan §3.4, finding S7).
+ *
+ * The v1 codec exported `invalidateCKCache`/`resetCodecState`, consumed by
+ * `src/services/encryption.ts` (Track E). Track C's C1 replaces the single-CK
+ * cache with a key_id-indexed cache; to keep the "communication only through
+ * Track 0 contracts" invariant, the v2 names are frozen HERE and Track E imports
+ * only these. Track C owns the bodies in `codec.ts` (these are frontend-only,
+ * BroadcastChannel-backed, so they are NOT re-exported from this shared file):
+ *   - `resetCodecState(): void`        — full cache clear (sign-out / account switch)
+ *   - `invalidateKeyringCache(): void` — drop staged DEKs, keep the primary pointer
+ */
+
+/**
+ * Separator byte between AAD/challenge-payload segments. U+001F (unit
+ * separator) cannot appear in table/column names, UUIDs, key_ids, base64
+ * nonces, or device ids, so the encoding is unambiguous (no length prefixes
+ * needed).
+ */
+export const payloadSeparator = '\u001f'
+
+const utf8 = new TextEncoder()
+
+/**
+ * Canonical AAD byte layout bound to every v2 AES-GCM encrypt/decrypt:
+ * UTF-8(`table ‖ column ‖ rowId ‖ keyId`). Both the upload encoder and the
+ * sync-decode path MUST build AAD through this helper — never inline.
+ *
+ * DELIBERATELY NO ACCOUNT COMPONENT, and adding one was considered and rejected
+ * (THU-891, cancelled — see claim C3 in `docs/architecture/e2ee-threat-model.md`).
+ * An AAD component only buys separation between two contexts that resolve the
+ * SAME key material, and two accounts never do: `decrypt` fails on the auth tag
+ * long before the AAD is consulted. Note this is load-bearing for the reconciled
+ * defaults, whose row ids are hardcoded and so byte-identical across accounts.
+ *
+ * THE PRECONDITION: no DEK material is ever shared between two accounts. It holds
+ * structurally today — `keyIdPattern` forecloses shared/workspace DEKs, and a
+ * server never holds another account's AK in openable form. A design that breaks
+ * either (a workspace/shared DEK, any cross-account key delivery) makes
+ * cross-account relocation a real disclosure on fixed-id rows and MUST bind the
+ * account here. Such a design changes the wire format anyway, so the binding
+ * rides along at that point rather than costing a v3 tag of its own.
+ */
+export const encodeAAD = (table: string, column: string, rowId: string, keyId: KeyId): Uint8Array =>
+  utf8.encode([table, column, rowId, keyId].join(payloadSeparator))
+
+/**
+ * Canary AAD — Decision (c). The canary is a synthetic v2 value not tied to any
+ * real table row, so it binds a FIXED tuple: table `__meta`, column `canary`,
+ * rowId = the account's userId, and the primary DEK's keyId. Single source of
+ * truth — `createCanary`/`verifyCanary` (Track B) MUST build canary AAD through
+ * this helper, never inline, or verification silently fails across devices.
+ */
+export const canaryAAD = (userId: string, keyId: KeyId): Uint8Array => encodeAAD('__meta', 'canary', userId, keyId)
+
+/**
+ * The canary's AAD anchor tag (THU-872): the canary seed is wrapped under the
+ * ACCOUNT KEY, not under any DEK, so its AAD names this reserved tag instead of
+ * a key_id. Outside `keyIdPattern` by construction, so no mintable key_id can
+ * ever collide with it, and disjoint from the v1-era `'0'` anchor — an old
+ * DEK-anchored canary can never be replayed as an AK-anchored one.
+ *
+ * WHY THE AK: the AK is replaced on every rotation and is never delivered to a
+ * revoked device, so anchoring the seed here is what makes the signing identity
+ * epoch-fresh — a revoked device's retained DEK "0" no longer derives the
+ * current signing key.
+ */
+export const akCanaryAnchor = '__ak' as const
+
+/**
+ * AAD binding a wrapped DEK to its `key_id` (THU-893). A keyring row's blob is
+ * AES-GCM-wrapped under the AK with this AAD, so the label the key was CREATED
+ * under and the label it is USED as must agree — enforced by the cipher, on
+ * every device, with no local state. Without it (the old AES-KW wrapping carried
+ * no AAD) a malicious server could serve the account's own genuine `"v1"` blob a
+ * second time under a mintable key_id and point `primary_key_id` at the copy:
+ * every gate passed, and new writes were sealed under the legacy v1 CK — the one
+ * key that never rotates, that revocation exempts, and that every v1-era device
+ * and pre-migration recovery phrase can open.
+ *
+ * THE ONE RULE THAT MAKES IT WORK: the unwrap-side AAD must be built from the
+ * key_id the CLIENT is resolving (the row label it trusts), never from any
+ * separately server-supplied field — otherwise the server supplies the matching
+ * AAD and the binding is void. The context prefix keeps this AAD disjoint from
+ * every `encodeAAD` value (those never start with `__kw`).
+ */
+export const dekWrapAAD = (keyId: KeyId): Uint8Array => utf8.encode(`__kw${payloadSeparator}${keyId}`)
+
+// =============================================================================
+// Challenge-response — ECDSA P-256 over nonce ‖ operation ‖ device_id
+// =============================================================================
+
+/**
+ * Operations gated by a challenge proof. Stored on the nonce row and bound into
+ * the signature. `upgrade` is present only to type its replay nonce — it is the
+ * BOOTSTRAP op and is NOT signature-verified (the signing key is null pre-flip);
+ * `/upgrade` is gated solely by the D1 canary-possession proof (plan §2.4).
+ */
+export const challengeOperations = ['approve', 'deny', 'revoke', 'rotate', 'recover', 'upgrade'] as const
+
+export type ChallengeOperation = (typeof challengeOperations)[number]
+
+/**
+ * Canonical challenge payload byte layout signed by the client and verified by
+ * the backend: UTF-8(`nonce ␟ operation ␟ deviceId`). Both sides MUST use this
+ * helper — a divergent encoding fails silently.
+ */
+export const encodeChallengePayload = (nonce: string, operation: ChallengeOperation, deviceId: string): Uint8Array =>
+  utf8.encode([nonce, operation, deviceId].join(payloadSeparator))
+
+// =============================================================================
+// Recovery-slot attestation (THU-865) — ECDSA P-256 over the recovery anchor
+// =============================================================================
+
+/**
+ * Domain-separation tag, and the FIRST field of every attestation payload.
+ *
+ * Load-bearing, not decorative: the challenge payload below is
+ * `nonce ␟ operation ␟ deviceId` and the nonce is SERVER-chosen, so without a
+ * distinct leading field a malicious server could try to steer one protocol's
+ * signature into validating in the other. The tag plus the differing field
+ * count closes that — provided verification always RECONSTRUCTS these bytes
+ * from known values and never parses a received payload. Do not add a parser.
+ */
+const recoveryAttestationDomain = 'thunderbolt-recovery-attestation-v1'
+
+/**
+ * Canonical recovery-attestation byte layout (THU-865):
+ * UTF-8(`domain ␟ userId ␟ kdfSalt ␟ recoveryEcdhPublicKey ␟ recoveryMlkemPublicKey`).
+ *
+ * Signed with the epoch's canary-derived signing key on every write of the
+ * recovery slot, and verified before a phrase-preserving rotation wraps the new
+ * AK to those public keys. `kdfSalt` is bound in because the salt is half of
+ * what re-derives the keypair from a phrase — substituting it alone would be
+ * enough to hijack the slot.
+ *
+ * No epoch/version field is needed: the signing key is re-derived from a fresh
+ * canary secret on every AK rotation, so an attestation from an earlier epoch
+ * cannot verify against the current key.
+ */
+export const encodeRecoveryAttestationPayload = (
+  userId: string,
+  kdfSalt: string,
+  recoveryEcdhPublicKey: string,
+  recoveryMlkemPublicKey: string,
+): Uint8Array =>
+  utf8.encode(
+    [recoveryAttestationDomain, userId, kdfSalt, recoveryEcdhPublicKey, recoveryMlkemPublicKey].join(payloadSeparator),
+  )
+
+/** ECDSA key algorithm — used by importKey/generateKey on both sides. */
+export const ecdsaKeyAlgorithm = { name: 'ECDSA', namedCurve: 'P-256' } as const
+
+/** ECDSA sign/verify algorithm — used by crypto.subtle.sign/verify on both sides. */
+export const ecdsaSignAlgorithm = { name: 'ECDSA', hash: 'SHA-256' } as const
+
+/** Export/import format for the signing PUBLIC key (base64-encoded for transport/storage). */
+export const signingPublicKeyFormat = 'spki' as const
+
+/**
+ * ECDH key algorithm — used by importKey/generateKey on both sides. Device
+ * public keys are stored and transported as base64 `raw` (uncompressed P-256
+ * point), which is what `exportPublicKey` produces.
+ */
+export const ecdhKeyAlgorithm = { name: 'ECDH', namedCurve: 'P-256' } as const
+
+/** Challenge nonce TTL (~5 min) — enforced server-side, informational client-side. */
+export const challengeNonceTtlMs = 5 * 60 * 1000
+
+/** Issued by GET /v1/encryption/challenge. */
+export type ChallengeResponse = {
+  nonce: string
+  /** ISO-8601 expiry. */
+  expires_at: string
+}
+
+/**
+ * Proof-of-key-possession request body — replaces every v1 `canarySecret`
+ * body field. `signature` is base64 ECDSA over `encodeChallengePayload(...)`.
+ */
+export type ChallengeProof = {
+  signature: string
+  nonce: string
+  operation: ChallengeOperation
+  deviceId: string
+}
+
+// =============================================================================
+// Device–session binding (THU-873) — ECDH-sealed nonce
+// =============================================================================
+
+/**
+ * The trust routes resolve their caller from `session.deviceId`, never from the
+ * client-set `X-Device-ID` header, so a session must first PROVE it belongs to
+ * the device it claims. Every account-wide secret (AK, DEK "0", the
+ * canary-derived signing key) is retained by a revoked device, so none of them
+ * can authenticate a *device*; the only per-device secret is the device's ECDH
+ * private key, whose public half the server already stores.
+ *
+ * So the server SEALS a random nonce to that public key and only the device
+ * holding the private key can open it and echo it back. This binds the session.
+ *
+ * `bind` is deliberately NOT a member of `challengeOperations`: that list gates
+ * `GET /encryption/challenge`, which returns nonces in CLEARTEXT, and it types
+ * `ChallengeProof`. Keeping the two disjoint means a bind nonce can never be
+ * minted in the clear, and can never be replayed as a signature proof.
+ */
+export const bindOperation = 'bind' as const
+
+/** Nonce operations the server may store — the signable ones plus `bind`. */
+export type NonceOperation = ChallengeOperation | typeof bindOperation
+
+/** HKDF `info` for the bind-nonce sealing key. Domain-separates it from every other derivation. */
+export const deviceBindHkdfInfo = 'thunderbolt-device-bind-v1'
+
+/**
+ * A bind nonce sealed to one device's ECDH public key. All three fields are
+ * base64. The ephemeral public key is `raw` P-256 (matching how device public
+ * keys are stored) and doubles as the HKDF salt, binding the derivation to this
+ * exchange.
+ */
+export type SealedBindNonce = {
+  ephemeral_public_key: string
+  iv: string
+  ciphertext: string
+}
+
+/** Issued by GET /v1/devices/me/bind-challenge. */
+export type BindChallengeResponse = {
+  sealed: SealedBindNonce
+  /** ISO-8601 expiry. */
+  expires_at: string
+}
+
+// =============================================================================
+// KDF — recovery seed → recovery keypair (THU-414)
+// =============================================================================
+
+/**
+ * PBKDF2-SHA512 parameters for deriving the recovery hybrid keypair from the
+ * 24-word recovery seed. The phrase is a VIRTUAL DEVICE: it derives a keypair,
+ * not the AK itself, so the AK can rotate without invalidating the phrase.
+ */
+export const kdfAlgorithm = 'PBKDF2' as const
+export const kdfHash = 'SHA-512' as const
+export const kdfIterations = 600_000
+/** Random per-account salt length in bytes; stored server-side as `kdf_salt` (base64). */
+export const kdfSaltLength = 32
+
+// =============================================================================
+// Org escrow (THU-804 POC) — operator-controlled AK recipient
+// =============================================================================
+
+/**
+ * Org-escrow envelope layout (base64 end to end):
+ * `[version 1B = 0x01][ephemeral ECDH-P256 pubkey raw, 65B][AES-KW-wrapped AK, 40B]`.
+ *
+ * Deliberately ECDH-only — no ML-KEM hybrid for this one recipient (disclosed
+ * downgrade; the operator key is a plain P-256 keypair generated offline).
+ * Derivation: ECDH deriveBits (256) → HKDF-SHA256 with `orgEscrowHkdfInfo` and
+ * `salt = ephPubRaw` → AES-KW-256 → wrap the raw AK.
+ */
+export const orgEnvelopeVersion = 0x01
+
+/**
+ * HKDF info string for the org-escrow AK wrap. Distinct from the device
+ * envelope's `thunderbolt-hybrid-ck-wrap-v1` — the two derivations must never
+ * collide. Shared by the frontend wrap path and the offline decrypt tool.
+ */
+export const orgEscrowHkdfInfo = 'thunderbolt-org-escrow-ak-wrap-v1'
+
+/** Byte length of a raw uncompressed P-256 point (the operator public key and the ephemeral key). */
+export const p256RawPublicKeyLength = 65
+
+// =============================================================================
+// Migration — scheme_version (plan §6.1, Decision D2)
+// =============================================================================
+
+/** Encryption scheme version for an account: 1 = legacy CK, 2 = AK/DEK keyring. */
+export type SchemeVersion = 1 | 2
+
+// =============================================================================
+// API DTOs (snake_case field names are authoritative)
+// =============================================================================
+
+/**
+ * GET /v1/encryption/canary — extended v2 metadata response. Piggybacks
+ * `key_version`/`primary_key_id`/`scheme_version` polling on the fetch clients
+ * already do at unlock (plan §2.4 transport).
+ *
+ * Nullable fields represent the pre-v2 (or not-yet-set-up) state: a v1 account
+ * has a canary but no `signing_public_key`/`kdf_salt` until it upgrades; an
+ * account with no encryption row at all has null canary fields.
+ */
+export type EncryptionMetadataResponse = {
+  canary_iv: string | null
+  canary_ctext: string | null
+  /** Base64 random salt for the recovery-seed KDF (null pre-flip). */
+  kdf_salt: string | null
+  /** Base64 SPKI ECDSA P-256 public key for challenge-response verification (null pre-flip). */
+  signing_public_key: string | null
+  /** Base64 raw SEC1 ECDH P-256 public key of the phrase-derived recovery keypair (null pre-flip). */
+  recovery_ecdh_public_key: string | null
+  /** Base64 raw ML-KEM-768 public key of the phrase-derived recovery keypair (null pre-flip). */
+  recovery_mlkem_public_key: string | null
+  /**
+   * The AK wrapped to the recovery keypair (null pre-flip). Inert without the
+   * phrase-derived private keys, so serving it to any authenticated caller is safe.
+   */
+  recovery_wrapped_ak: string | null
+  /**
+   * Signature over the recovery anchor, made with the epoch's canary-derived
+   * signing key (THU-865). A rotating device MUST verify this before wrapping a
+   * new AK to the public keys above. Null pre-flip, and on v2 rows written
+   * before the column existed — those fail closed on their next rotation.
+   */
+  recovery_attestation: string | null
+  /** Bumped on every AK rotation — a bump tells devices to refresh their AK envelope. */
+  key_version: number
+  /** The key_id all new writes must encrypt under. */
+  primary_key_id: KeyId
+  /** 1 = legacy CK (upgrade eligible), 2 = migrated to the AK/DEK keyring. */
+  scheme_version: SchemeVersion
+}
+
+/** One row of GET /v1/encryption/keys[/:keyId]. */
+export type WrappedKeyResponse = {
+  key_id: KeyId
+  wrapped_key: string
+}
+
+/** GET /v1/encryption/keys — the full keyring for staging (`stageKeyring`). */
+export type WrappedKeysListResponse = {
+  keys: WrappedKeyResponse[]
+}
+
+/**
+ * GET /v1/encryption/envelope-targets — the devices an AK rotation / upgrade must
+ * cover, with the hybrid public keys needed to wrap an envelope for each. Every
+ * entry is envelope-capable by construction (trusted, non-revoked, both keys
+ * present), so both fields are non-null.
+ */
+export type EnvelopeTargetsResponse = {
+  devices: Array<{
+    device_id: string
+    public_key: string
+    mlkem_public_key: string
+  }>
+}
+
+/**
+ * GET /v1/encryption/lockout-pending — revoked devices whose AK rotation never
+ * landed (THU-887), so the AK they still hold is the account's live one.
+ *
+ * Server-derived from `devices.revoked_at` against the keyring's last write, so
+ * it is authoritative for the whole account rather than remembered by whichever
+ * device happened to fail: any device can read this and finish the rotation.
+ * Empty on a healthy account, and on any account with no keyring at all.
+ */
+export type LockoutPendingResponse = {
+  device_ids: string[]
+}
+
+/**
+ * The recovery slot every v2 write path must supply as a complete triple: the
+ * phrase-derived hybrid PUBLIC keys plus the AK wrapped to them. A silent
+ * rotation resubmits the STORED public keys (the phrase keeps working); an
+ * explicit phrase change submits freshly derived ones.
+ */
+export type RecoverySlotRequest = {
+  /** Base64 raw SEC1 ECDH P-256 public key of the phrase-derived recovery keypair. */
+  recoveryEcdhPublicKey: string
+  /** Base64 raw ML-KEM-768 public key of the phrase-derived recovery keypair. */
+  recoveryMlkemPublicKey: string
+  /** The AK hybrid-wrapped to the recovery public keys. */
+  recoveryWrappedAK: string
+  /**
+   * Base64 ECDSA signature over `encodeRecoveryAttestationPayload(...)`, made
+   * with the signing key derived from THIS write's canary secret (THU-865).
+   * Required on every v2 recovery-slot write — it is what lets a later rotating
+   * device authenticate the served public keys against its own key material
+   * instead of trusting the server.
+   */
+  recoveryAttestation: string
+}
+
+/**
+ * POST /v1/encryption/rotate request body (atomic AK rotation). Request bodies
+ * are camelCase (matching existing routes); responses use the snake_case DTOs
+ * above. The FULL keyring is re-wrapped under the new AK — every existing
+ * key_id, including the `"v1"` slot when present (coverage validation, Risk 1).
+ */
+export type RotateRequest = RecoverySlotRequest & {
+  /** Challenge proof with operation 'rotate'. */
+  proof: ChallengeProof
+  /**
+   * Step-up verification code (THU-875): the server refuses a rotation whose
+   * recovery slot re-anchors to DIFFERENT recovery keys than the stored ones (a
+   * phrase change) unless this carries a valid emailed code. Same-key rotations
+   * (revocation's silent re-anchor) never need it.
+   */
+  stepUpOtp?: string
+  /** The new AK wrapped per trusted device (`wrappedCK` historically named — it carries the AK). */
+  envelopes: Array<{ deviceId: string; wrappedCK: string }>
+  /** The FULL keyring re-wrapped under the new AK — every existing key_id, no exceptions. */
+  wrappedKeys: WrappedKeyEntry[]
+  /**
+   * One freshly minted DEK, already wrapped under the NEW AK, which becomes the
+   * primary (THU-871). Present when the rotation is also a DEK rotation — that
+   * is, device revocation, which needs both. Omitted by a phrase change, which
+   * rotates only the AK.
+   *
+   * This is the ONLY way a key_id enters an established keyring. `keyId` must
+   * match `keyIdPattern` and must not already exist; the server mints it in the
+   * same transaction as the rotation, so a failed rotation adds nothing.
+   */
+  newPrimaryKey?: WrappedKeyEntry
+  canaryIv: string
+  canaryCtext: string
+  /** Base64 SPKI ECDSA P-256 public key derived from the NEW canary secret. */
+  signingPublicKey: string
+  /** Base64 random salt for the NEW recovery-seed KDF. */
+  kdfSalt: string
+  /**
+   * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+   * server when org escrow is enabled; ignored (never persisted) when disabled.
+   */
+  orgEnvelope?: string
+}
+
+/** POST /v1/encryption/rotate response. */
+export type RotateResponse = {
+  key_version: number
+}
+
+/**
+ * POST /v1/encryption/upgrade request body (v1→v2 migration, atomic CAS
+ * scheme_version 1→2). The migrator absorbs the legacy CK into the keyring as
+ * the `"v1"` slot AND mints a fresh primary DEK `"0"` (finding B2), so
+ * `wrappedKeys` MUST contain both. Gated by `possessionProof` (D1): the
+ * `canarySecret` recovered by a v1-style CK decrypt of the stored canary (NO
+ * AAD) — NOT a challenge signature (the signing key does not exist pre-flip).
+ */
+export type UpgradeRequest = RecoverySlotRequest & {
+  /** Replay nonce with operation 'upgrade' (bootstrap op — not signature-verified). */
+  nonce: string
+  /** D1 CK-possession proof: the canarySecret recovered by CK-decrypting canary_ctext (no AAD). */
+  possessionProof: string
+  /** The new AK wrapped per trusted device. */
+  envelopes: Array<{ deviceId: string; wrappedCK: string }>
+  /** The new keyring: MUST include a fresh primary DEK "0" AND the absorbed "v1" slot. */
+  wrappedKeys: WrappedKeyEntry[]
+  /** The new primary — "0" for a freshly migrated account. */
+  primaryKeyId: KeyId
+  /** Canary re-encrypted under the new primary DEK (v2, with canaryAAD). */
+  canaryIv: string
+  canaryCtext: string
+  /** Base64 SPKI ECDSA P-256 public key derived from the new canary secret. */
+  signingPublicKey: string
+  /** Base64 random salt for the new recovery-seed KDF. */
+  kdfSalt: string
+  /**
+   * The NEW AK wrapped to the operator escrow key (THU-804). REQUIRED by the
+   * server when org escrow is enabled; ignored (never persisted) when disabled.
+   */
+  orgEnvelope?: string
+}
+
+/** POST /v1/encryption/upgrade response. */
+export type UpgradeResponse = {
+  key_version: number
+  scheme_version: SchemeVersion
+}

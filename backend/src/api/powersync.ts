@@ -10,9 +10,11 @@ import {
   cliDeviceIdPrefix,
   getActivePersistedSession,
   getDeviceById,
+  getEncryptionMetadata,
   getUserById,
   upsertDevice,
 } from '@/dal'
+import { findPlaintextViolation } from '@/lib/encrypted-payload'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
 import type { User } from '@shared/types/auth'
@@ -23,33 +25,41 @@ import { Elysia, t } from 'elysia'
 type DeviceValidationResult =
   | { ok: true }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
- * Validates that the device belongs to the user, is not revoked, and (when E2EE is enabled) is trusted.
- * When E2EE is disabled, the trust check is skipped — devices don't go through the envelope flow.
+ * Validates that the device belongs to the user, is not revoked, and is trusted.
+ * The device must already exist (registered via the envelope/trust flow) — a device
+ * that doesn't exist yet is always rejected.
  *
- * @param allowNewDevice When true and E2EE is off, a device that doesn't exist yet is allowed
- *   through (the caller is expected to create it via upsertDevice). Only the token endpoint sets
- *   this — upload always requires the device to already exist.
+ * THU-873: `X-Device-ID` is client-set, so it must match `boundDeviceId` — the
+ * device this session proved possession of. Without that, a session could name
+ * any trusted sibling and keep syncing, which is how a revoked device with a
+ * surviving unlinked session retained read access to the stream.
+ *
+ * `DEVICE_NOT_BOUND` is deliberately its own code: the client maps it to NO
+ * credentials-invalid reason, so an unbound session defers sync and retries once
+ * the bind handshake completes, instead of tripping the revoked-device reset.
  */
 const validateDeviceForSync = async (
   userId: string,
   request: Request,
   database: typeof DbType,
-  { e2eeEnabled }: Pick<Settings, 'e2eeEnabled'>,
-  { allowNewDevice = false } = {},
+  boundDeviceId: string | null,
 ): Promise<DeviceValidationResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
     return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+  }
+  if (!boundDeviceId || boundDeviceId !== deviceId) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_BOUND' } }
   }
 
   if (deviceId.startsWith(cliDeviceIdPrefix)) {
@@ -59,11 +69,6 @@ const validateDeviceForSync = async (
   const deviceRow = await getDeviceById(database, deviceId)
 
   if (!deviceRow) {
-    // When E2EE is disabled, the FE never calls POST /devices to register, so the device
-    // may not exist yet. Allow it through only for the token path — upsertDevice will create it.
-    if (!e2eeEnabled && allowNewDevice) {
-      return { ok: true }
-    }
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -73,7 +78,7 @@ const validateDeviceForSync = async (
   if (deviceRow.revokedAt != null) {
     return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
   }
-  if (e2eeEnabled && !deviceRow.trusted) {
+  if (!deviceRow.trusted) {
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -103,8 +108,9 @@ const issuePowerSyncToken = async (
   powersyncJwt: { sign: (payload: { sub: string; user_id: string }) => Promise<string> },
   settings: Settings,
   database: typeof DbType,
+  boundDeviceId: string | null,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const validation = await validateDeviceForSync(userId, request, database, settings, { allowNewDevice: true })
+  const validation = await validateDeviceForSync(userId, request, database, boundDeviceId)
   if (!validation.ok) {
     return validation
   }
@@ -126,7 +132,6 @@ const issuePowerSyncToken = async (
     name: deviceName,
     lastSeen: now,
     createdAt: now,
-    ...(!settings.e2eeEnabled ? { trusted: true } : {}),
     ...(appVersion ? { appVersion } : {}),
   })
 
@@ -175,9 +180,12 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
       // so `user.isAnonymous` is available here without an extra DB lookup.
       const sessionUser = session?.user as User | undefined
-      return { user: sessionUser ?? null }
+      // `session.deviceId` is the server-set device binding (THU-873) — the only
+      // trustworthy answer to "which device is asking".
+      const boundDeviceId = (session?.session as { deviceId?: string | null } | undefined)?.deviceId ?? null
+      return { user: sessionUser ?? null, boundDeviceId }
     })
-    .get('/token', async ({ powersyncJwt, request, set, user }) => {
+    .get('/token', async ({ powersyncJwt, request, set, user, boundDeviceId }) => {
       if (!validateOrigin(request, settings)) {
         set.status = 403
         return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
@@ -195,7 +203,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
+        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database, boundDeviceId)
         if (!result.ok) {
           set.status = result.status
           return result.body
@@ -239,7 +247,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       const userId = sessionRow.userId
-      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database)
+      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database, sessionRow.deviceId)
       if (!result.ok) {
         set.status = result.status
         return result.body
@@ -248,7 +256,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     })
     .put(
       '/upload',
-      async ({ body, request, set, user }) => {
+      async ({ body, request, set, user, boundDeviceId }) => {
         if (!validateOrigin(request, settings)) {
           set.status = 403
           return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
@@ -265,13 +273,33 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const validation = await validateDeviceForSync(user.id, request, database, settings)
+        const validation = await validateDeviceForSync(user.id, request, database, boundDeviceId)
         if (!validation.ok) {
           set.status = validation.status
           return validation.body
         }
 
         const operations = body.operations
+
+        // Defence in depth for the v2 keyring invariant: once an account is
+        // migrated, every write to an encrypted column must be v2 ciphertext.
+        // The client enforces this already, but plaintext committed here cannot
+        // be un-leaked — so reject the batch rather than trust the client. A
+        // rejected batch is retried (nothing is lost) and shows up loudly.
+        const encryptionMetadata = await getEncryptionMetadata(database, user.id)
+        if (encryptionMetadata?.schemeVersion === 2) {
+          const violation = findPlaintextViolation(operations)
+          if (violation) {
+            set.status = 400
+            return {
+              error: 'Encrypted column carried a non-encrypted value',
+              code: 'PLAINTEXT_UPLOAD_REJECTED',
+              table: violation.table,
+              id: violation.id,
+              column: violation.column,
+            }
+          }
+        }
 
         // Process operations sequentially to maintain order.
         // If any operation fails, return 4xx so the client does not call transaction.complete()

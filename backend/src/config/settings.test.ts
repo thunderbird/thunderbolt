@@ -444,42 +444,6 @@ describe('Config Settings', () => {
     })
   })
 
-  describe('E2EE settings', () => {
-    let savedEnv: string | undefined
-
-    beforeEach(() => {
-      clearSettingsCache()
-      savedEnv = process.env.E2EE_ENABLED
-    })
-
-    afterEach(() => {
-      if (savedEnv !== undefined) {
-        process.env.E2EE_ENABLED = savedEnv
-      } else {
-        delete process.env.E2EE_ENABLED
-      }
-      clearSettingsCache()
-    })
-
-    it('should default e2eeEnabled to false when env var is unset', () => {
-      delete process.env.E2EE_ENABLED
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
-    })
-
-    it('should enable E2EE when E2EE_ENABLED is "true"', () => {
-      process.env.E2EE_ENABLED = 'true'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(true)
-    })
-
-    it('should keep E2EE disabled for any value other than "true"', () => {
-      process.env.E2EE_ENABLED = 'false'
-      const settings = getSettings()
-      expect(settings.e2eeEnabled).toBe(false)
-    })
-  })
-
   describe('minAppVersion settings', () => {
     let savedEnv: string | undefined
 
@@ -530,6 +494,47 @@ describe('Config Settings', () => {
     it('rejects malformed numeric values like "0,2,0"', () => {
       process.env.MIN_APP_VERSION = '0,2,0'
       expect(() => getSettings()).toThrow(/MIN_APP_VERSION must be empty or a semver string/)
+    })
+  })
+
+  describe('org escrow settings', () => {
+    const savedEnv: Record<string, string | undefined> = {}
+    const envKeys = ['ORG_ESCROW_ENABLED']
+
+    beforeEach(() => {
+      clearSettingsCache()
+      for (const key of envKeys) {
+        savedEnv[key] = process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      for (const key of envKeys) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key]
+        } else {
+          delete process.env[key]
+        }
+      }
+      clearSettingsCache()
+    })
+
+    it('defaults to disabled', () => {
+      delete process.env.ORG_ESCROW_ENABLED
+      expect(getSettings().orgEscrowEnabled).toBe(false)
+    })
+
+    it('enables escrow when the flag is set', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      expect(getSettings().orgEscrowEnabled).toBe(true)
+    })
+
+    // THU-866: the server holds no escrow key material, so there is no key env var
+    // to validate at boot and none to get wrong. The wrap target lives only in the
+    // client build; a malformed pin fails there, at the first AK mint.
+    it('boots with escrow enabled and no escrow key configured', () => {
+      process.env.ORG_ESCROW_ENABLED = 'true'
+      expect(() => getSettings()).not.toThrow()
     })
   })
 

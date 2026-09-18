@@ -316,6 +316,10 @@ msgstr "動物と自然"
 msgid "Anonymous Usage Data"
 msgstr "匿名の利用データ"
 
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr "回答"
@@ -541,6 +545,10 @@ msgstr "摂氏"
 #: src/settings/preferences.tsx
 msgid "Change Language?"
 msgstr "言語を変更しますか？"
+
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
+msgstr ""
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
@@ -1702,6 +1710,14 @@ msgstr "連携を更新できませんでした"
 msgid "Failed to update MCP server"
 msgstr "MCP サーバーを更新できませんでした"
 
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr "最初のデバイスのセットアップ"
@@ -2728,6 +2744,14 @@ msgstr "復元に失敗しました"
 msgid "Recovery phrase"
 msgstr "リカバリーフレーズ"
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "このデバイスを登録し、アカウントの状態を確認しています。"
@@ -3022,6 +3046,10 @@ msgstr "「{query}」を検索中…"
 #: src/lib/tool-metadata.ts
 msgid "Searching…"
 msgstr "検索中…"
+
+#: src/settings/devices.tsx
+msgid "Securing…"
+msgstr ""
 
 #: src/voice/speakable.ts
 msgid "See the document on screen."
@@ -3510,8 +3538,12 @@ msgid "The CLI will be signed out and must sign in again before it can use your 
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-msgstr "デバイスはサインアウトされ、次回の同期時にローカルデータが消去されます。同期を利用するには、このデバイスで再度サインインする必要があります。"
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr "デバイスはサインアウトされ、次回の同期時にローカルデータが消去されます。同期を利用するには、このデバイスで再度サインインする必要があります。"
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+msgstr ""
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -3595,6 +3627,10 @@ msgstr "このデバイスはリモートからサインアウトされました
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "このデバイスはまだ承認されていません。先に信頼済みのデバイスから承認してください。"
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "このファイルは Thunderbolt のエクスポートではないようです。"
@@ -3638,6 +3674,10 @@ msgstr "このプロジェクト"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr "Thunderbolt から接続を削除するだけです。リモートサーバー側には何も変更されません。"
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."

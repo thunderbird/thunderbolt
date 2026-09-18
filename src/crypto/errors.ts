@@ -33,3 +33,11 @@ export class ValidationError extends Error {
     this.name = 'ValidationError'
   }
 }
+
+/** Thrown when key derivation (KDF / HKDF) fails. */
+export class KeyDerivationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'KeyDerivationError'
+  }
+}

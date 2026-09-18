@@ -340,6 +340,10 @@ msgstr "Animaux et nature"
 msgid "Anonymous Usage Data"
 msgstr "Données d'utilisation anonymes"
 
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr "Réponse"
@@ -565,6 +569,10 @@ msgstr "Celsius"
 #: src/settings/preferences.tsx
 msgid "Change Language?"
 msgstr "Changer de langue ?"
+
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
+msgstr ""
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
@@ -1726,6 +1734,14 @@ msgstr "Impossible de mettre à jour l'intégration"
 msgid "Failed to update MCP server"
 msgstr "Impossible de mettre à jour le serveur MCP"
 
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr "Configuration du premier appareil"
@@ -2752,6 +2768,14 @@ msgstr "Échec de la récupération"
 msgid "Recovery phrase"
 msgstr "Phrase de récupération"
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Enregistrement de cet appareil et détection de l'état de votre compte."
@@ -3046,6 +3070,10 @@ msgstr "Recherche de « {query} »…"
 #: src/lib/tool-metadata.ts
 msgid "Searching…"
 msgstr "Recherche…"
+
+#: src/settings/devices.tsx
+msgid "Securing…"
+msgstr ""
 
 #: src/voice/speakable.ts
 msgid "See the document on screen."
@@ -3534,8 +3562,12 @@ msgid "The CLI will be signed out and must sign in again before it can use your 
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-msgstr "L'appareil sera déconnecté et ses données locales seront effacées à la prochaine synchronisation. Cet appareil devra se reconnecter pour utiliser la synchronisation."
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr "L'appareil sera déconnecté et ses données locales seront effacées à la prochaine synchronisation. Cet appareil devra se reconnecter pour utiliser la synchronisation."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+msgstr ""
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -3619,6 +3651,10 @@ msgstr "Cet appareil a été déconnecté à distance. Choisissez ce qu'il faut 
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "Cet appareil n'a pas encore été approuvé. Veuillez d'abord l'approuver depuis un appareil de confiance."
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "Ce fichier ne semble pas être un export Thunderbolt."
@@ -3662,6 +3698,10 @@ msgstr "ce projet"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr "Cela supprime la connexion uniquement dans Thunderbolt. Rien n'est modifié sur le serveur distant."
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."

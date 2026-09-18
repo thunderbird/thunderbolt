@@ -101,5 +101,23 @@ export default [
     },
     rules: sharedRules,
   },
+  {
+    // Playwright specs and their harness. Node-side test code that also runs
+    // browser snippets inside `page.evaluate`, so both global sets apply.
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: sharedParserOptions,
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: sharedRules,
+  },
   ...storybook.configs['flat/recommended'],
 ]

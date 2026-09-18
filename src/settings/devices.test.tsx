@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
+import { clearAllKeys } from '@/crypto'
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import type { Device } from '@/dal'
@@ -105,13 +107,19 @@ describe('DevicesSettingsPage reactivity', () => {
 
   beforeEach(async () => {
     await resetTestDatabase()
+    // The revoke flow branches on isE2eeReady() (an IndexedDB AK read). Clear the
+    // keyring so it is deterministically "not ready" here — otherwise a keyring
+    // another test file left staged flips revocation onto the rotation path and
+    // the expected non-E2EE revoke requests never fire (bun shares one process).
+    await clearAllKeys()
     localStorage.setItem(deviceIdKey, deviceId1)
     localStorage.setItem(authTokenKey, 'test-token')
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
+    await clearAllKeys()
     cleanup()
   })
 
@@ -384,9 +392,12 @@ describe('DevicesSettingsPage reactivity', () => {
       await getClock().runAllAsync()
     })
 
-    expect(requests).toHaveLength(1)
-    expect(requests[0]?.method).toBe('DELETE')
-    expect(new URL(requests[0]!.url).pathname).toBe(`/v1/devices/${revokedBridgeId}`)
+    // Filtered rather than counted: the page also reads the owed-lockout set
+    // (THU-887), and this test's subject is which request removes the bridge,
+    // not how many the page makes in total.
+    const removals = requests.filter((request) => request.method === 'DELETE')
+    expect(removals).toHaveLength(1)
+    expect(new URL(removals[0]!.url).pathname).toBe(`/v1/devices/${revokedBridgeId}`)
     expect(screen.queryByText('Remove this bridge?')).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })

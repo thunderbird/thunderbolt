@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it } from 'bun:test'
 
 import {
   clearAllKeys,
@@ -113,6 +113,15 @@ beforeEach(async () => {
   fakeChannel = installFakeChannel()
   resetCodecState()
   fakeChannel.posted.length = 0
+})
+
+// The beforeEach cleans on ENTRY, so the file's last test would otherwise leave
+// its staged keyring behind — and bun shares one process across test files, so a
+// later file consulting the real gate (hasStagedAK) would read as armed.
+afterAll(async () => {
+  await deleteDatabase()
+  await clearAllKeys()
+  resetCodecState()
 })
 
 describe('encode', () => {

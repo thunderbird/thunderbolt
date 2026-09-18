@@ -24,7 +24,11 @@ const fakeCodec: EncryptionCodec = {
   decode: async (val) => (!ckAvailable || !val.startsWith('__enc:') ? val : `decrypted(${val})`),
 }
 
-const encryptionMiddleware = createEncryptionMiddleware(fakeCodec)
+// Disarmed gate injected explicitly — NEVER the hasStagedAK default. bun runs
+// all test files in one process, so any earlier file that staged an AK (e.g.
+// codec.test.ts via fake-indexeddb) would arm the real gate here and quarantine
+// this suite's plaintext fixtures, turning these tests order-dependent.
+const encryptionMiddleware = createEncryptionMiddleware(fakeCodec, async () => false)
 
 afterEach(() => {
   ckAvailable = true
@@ -209,9 +213,9 @@ describe('encryptionMiddleware', () => {
   })
 
   describe('plaintext quarantine (THU-874)', () => {
-    // Armed = the device holds an AK, injected explicitly. The default gate
-    // (hasStagedAK) reads as disarmed in this suite — no IndexedDB here — which
-    // is what keeps the passthrough tests above meaningful as the pre-E2EE case.
+    // Armed = the device holds an AK, injected explicitly — the counterpart of
+    // the disarmed middleware above, so both gate states are pinned rather than
+    // read from whatever keyring earlier test files left staged.
     const armed = createEncryptionMiddleware(fakeCodec, async () => true)
 
     const withSilencedConsoleError = async (run: () => Promise<void>) => {

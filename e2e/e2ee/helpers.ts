@@ -597,35 +597,52 @@ export const registerDeviceOnly = async (page: Page): Promise<void> => {
  *  - the sync-setup wizard, when the user's Continue lands first, and
  *  - the global migration dialog, when `runEncryptionInit`'s headless check
  *    (fire-and-forget at every boot) gets there first — at which point the
- *    wizard yields and completes itself.
+ *    wizard yields and completes itself, or never opens at all.
  *
- * Init usually wins: it starts during boot, while the wizard cannot start before
- * the user reaches the switch. So Continue is best-effort, and the phrase is read
- * from whichever dialog ends up holding it. Both outcomes are the same product
- * behaviour — one phrase, shown once, sync on — and the spec asserts the
- * "migrated, not reset" invariant against the server keyring rather than the UI.
+ * Init usually wins, and on a warm harness it can win OUTRIGHT: its phrase
+ * modal is already up before the settings page is interactable, which renders
+ * the page behind it inert — the sync switch is out of the accessibility tree,
+ * so waiting on the switch alone deadlocks. The helper therefore anchors on
+ * whichever surface renders first, treats the whole wizard interaction as
+ * best-effort, and reads the phrase from whichever dialog ends up holding it.
+ * When init won outright the switch was never clicked and headless init
+ * deliberately does not opt the device into syncing, so sync is enabled
+ * afterwards (no wizard opens then — the keyring is already staged, same as
+ * `enableSyncWithoutWizard`). Every order is the same product behaviour — one
+ * phrase, shown once, sync on — and the spec asserts the "migrated, not reset"
+ * invariant against the server keyring rather than the UI.
  */
 export const runSeamlessMigration = async (page: Page): Promise<string> => {
   await page.goto('/settings/preferences')
   const syncSwitch = page.getByRole('switch', { name: 'Sync This Device With Cloud' })
-  await expect(syncSwitch).toBeVisible()
-  await syncSwitch.click()
-
-  const wizard = page.getByRole('dialog')
-  await expect(wizard.getByText('Set up sync', { exact: true })).toBeVisible()
-  await wizard
-    .getByRole('button', { name: 'Continue' })
-    .click({ timeout: 15_000 })
-    // The wizard can be torn down mid-click when init wins the race.
-    .catch(() => {})
-
   const phraseDialog = recoveryPhraseDialog(page)
+
+  await expect(syncSwitch.or(phraseDialog).first()).toBeVisible()
+
+  if (!(await phraseDialog.isVisible())) {
+    // The switch rendered first — open the wizard. Both steps are best-effort:
+    // init can finish (tearing the wizard down and opening the phrase dialog
+    // over it) at any point between them.
+    await syncSwitch.click({ timeout: 15_000 }).catch(() => {})
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Continue' })
+      .click({ timeout: 15_000 })
+      .catch(() => {})
+  }
+
   await expect(phraseDialog).toBeVisible({ timeout: 30_000 })
   // A seamless upgrade never routes through first-device bootstrap — that step
   // is the reset path, which would abandon the legacy CK instead of absorbing it.
   await expect(page.getByText('First device setup', { exact: true })).toBeHidden()
 
   const recoveryPhrase = await acknowledgeRecoveryPhrase(phraseDialog)
+
+  // Init-won-outright path: the switch was never clicked, so sync is still off.
+  await expect(syncSwitch).toBeVisible()
+  if (!(await syncSwitch.isChecked())) {
+    await syncSwitch.click()
+  }
   await expect(syncSwitch).toBeChecked()
   return recoveryPhrase
 }

@@ -12,12 +12,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import {
-  attachPermissionGate,
-  cyclePermissionMode,
-  readOnlyBlockReason,
-  type PermissionMode,
-} from './permissions.ts'
+import { attachPermissionGate, cyclePermissionMode, readOnlyBlockReason, type PermissionMode } from './permissions.ts'
 import type { HarnessRuntime } from '../provider-runtime/types.ts'
 import type { PermissionDecision, PermissionPrompt, PermissionRequest } from './types.ts'
 

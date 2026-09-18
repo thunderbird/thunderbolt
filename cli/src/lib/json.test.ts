@@ -3,13 +3,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { hasExactKeys, isNonblankString } from './json.ts'
+import { hasExactKeys, hasOnlyKeys, isNonblankString } from './json.ts'
 
 describe('JSON validators', () => {
   test('accepts only objects with the requested own enumerable keys', () => {
     expect(hasExactKeys({ id: 'one', label: 'One' }, ['id', 'label'])).toBe(true)
     expect(hasExactKeys({ id: 'one' }, ['id', 'label'])).toBe(false)
     expect(hasExactKeys({ id: 'one', label: 'One', extra: true }, ['id', 'label'])).toBe(false)
+  })
+
+  test('tolerates a missing optional key but not an unrecognised one', () => {
+    expect(hasOnlyKeys({ id: 'one' }, ['id', 'label'])).toBe(true)
+    expect(hasOnlyKeys({}, ['id', 'label'])).toBe(true)
+    expect(hasOnlyKeys({ id: 'one', extra: true }, ['id', 'label'])).toBe(false)
   })
 
   test('accepts strings containing non-whitespace content', () => {

@@ -26,6 +26,7 @@
     "@earendil-works/pi-ai": "0.80.7",
     "@earendil-works/pi-coding-agent": "0.80.7",
     "@earendil-works/pi-tui": "0.80.7",
+    "@modelcontextprotocol/sdk": "1.25.2",
     "@number0/iroh": "1.0.0",
     "qrcode-terminal": "0.12.0",
     "tinfoil": "1.2.1"

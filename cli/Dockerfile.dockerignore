@@ -1,0 +1,23 @@
+# Ignore rules for cli/Dockerfile only.
+#
+# The build context is the repo root, so a plain `.dockerignore` there would
+# apply to every Dockerfile in the tree (deploy/docker/*, .thunderbot). BuildKit
+# reads `<dockerfile>.dockerignore` in preference to the context's, which scopes
+# these rules to this image.
+#
+# Without this, `COPY cli/ ./cli/` overlays the host's `cli/node_modules` on top
+# of the frozen install from the layer above. Several dependencies ship
+# platform-specific binaries, so a macOS tree landing in a linux image is a
+# broken agent that built cleanly.
+**/node_modules
+
+# Never let a local credential or build output into an image layer.
+**/.env
+**/.env.*
+**/auth.json
+**/*.key
+dist
+dist-ssr
+dist-isolation
+target
+.git

@@ -328,6 +328,10 @@ msgstr "Animals & nature"
 msgid "Anonymous Usage Data"
 msgstr "Anonymous Usage Data"
 
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr "Answer"
@@ -553,6 +557,10 @@ msgstr "Celsius"
 #: src/settings/preferences.tsx
 msgid "Change Language?"
 msgstr "Change Language?"
+
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
+msgstr "Change recovery phrase"
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
@@ -1714,6 +1722,14 @@ msgstr "Failed to update integration"
 msgid "Failed to update MCP server"
 msgstr "Failed to update MCP server"
 
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr "Finish securing"
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr "Finish securing after revoking {deviceName}"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr "First device setup"
@@ -2740,6 +2756,14 @@ msgstr "Recovery failed"
 msgid "Recovery phrase"
 msgstr "Recovery phrase"
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr "Refresh keys and retry"
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr "Refreshing keys…"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Registering this device and detecting your account status."
@@ -3034,6 +3058,10 @@ msgstr "Searching for \"{query}\"…"
 #: src/lib/tool-metadata.ts
 msgid "Searching…"
 msgstr "Searching…"
+
+#: src/settings/devices.tsx
+msgid "Securing…"
+msgstr "Securing…"
 
 #: src/voice/speakable.ts
 msgid "See the document on screen."
@@ -3522,8 +3550,12 @@ msgid "The CLI will be signed out and must sign in again before it can use your 
 msgstr "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -3607,6 +3639,10 @@ msgstr "This device has been signed out remotely. Choose what to do with your lo
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "This device has not been approved yet. Please approve it from a trusted device first."
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "This file doesn't look like a Thunderbolt export."
@@ -3650,6 +3686,10 @@ msgstr "this project"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."

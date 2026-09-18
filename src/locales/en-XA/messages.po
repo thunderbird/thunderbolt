@@ -328,6 +328,10 @@ msgstr ""
 msgid "Anonymous Usage Data"
 msgstr ""
 
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr ""
@@ -552,6 +556,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Change Language?"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
 msgstr ""
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
@@ -1714,6 +1722,14 @@ msgstr ""
 msgid "Failed to update MCP server"
 msgstr ""
 
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
 msgstr ""
@@ -2740,6 +2756,14 @@ msgstr ""
 msgid "Recovery phrase"
 msgstr ""
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr ""
@@ -3033,6 +3057,10 @@ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Searching…"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Securing…"
 msgstr ""
 
 #: src/voice/speakable.ts
@@ -3522,7 +3550,11 @@ msgid "The CLI will be signed out and must sign in again before it can use your 
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 msgstr ""
 
 #: src/widgets/map/widget.tsx
@@ -3607,6 +3639,10 @@ msgstr ""
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr ""
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr ""
@@ -3649,6 +3685,10 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx

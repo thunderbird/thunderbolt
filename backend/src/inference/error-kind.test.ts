@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { APIConnectionError as AnthropicConnectionError, APIError as AnthropicError } from '@anthropic-ai/sdk'
 import { describe, expect, it } from 'bun:test'
 import { APIConnectionError, APIError } from 'openai'
 import { classifyInferenceError, errorKindFromStatus, type InferenceErrorKind } from './error-kind'
@@ -26,6 +27,11 @@ describe('classifyInferenceError', () => {
     { expected: 'auth', error: createApiError(400, 'invalid_api_key') },
     { expected: 'bad_request', error: createApiError(400, undefined, 'invalid_request_error') },
     { expected: 'connection', error: new APIConnectionError({ message: 'provider unavailable' }) },
+    { expected: 'connection', error: new AnthropicConnectionError({ message: 'provider unavailable' }) },
+    {
+      expected: 'rate_limit',
+      error: new AnthropicError(429, { type: 'rate_limit_error' }, 'rate limited', new Headers(), 'rate_limit_error'),
+    },
     { expected: 'upstream_error', error: createApiError(503) },
     { expected: 'unknown', error: new Error('provider returned an unexpected response') },
   ]

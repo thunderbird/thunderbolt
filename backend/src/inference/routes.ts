@@ -402,7 +402,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           messages: body.messages,
           max_tokens: body.max_tokens,
           stream: true,
-          // Pi's explicit breakpoints can coexist with automatic caching.
+          // Anthropic's request-level automatic caching: the API moves this breakpoint to the
+          // last cacheable block each turn. It coexists with Pi's explicit per-block breakpoints.
           cache_control: { type: 'ephemeral' },
           system: body.system,
           tools: body.tools,
@@ -410,6 +411,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           output_config: body.output_config,
           tool_choice: body.tool_choice,
           stop_sequences: body.stop_sequences,
+          // The schema passes the Anthropic-shaped fields through as `unknown`; the SDK validates them.
         } as MessageCreateParamsStreaming
         const upstream = await runWithInferenceAttemptTracking(attemptTracker, () =>
           getMessagesClient().messages.create(upstreamBody),

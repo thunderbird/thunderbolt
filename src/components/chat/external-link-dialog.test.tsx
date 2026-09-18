@@ -5,6 +5,7 @@
 import '@/testing-library'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, mock } from 'bun:test'
+import { openFailedMessage, unsafeUrlMessage } from '@/hooks/use-external-link-dialog'
 import { ExternalLinkDialog } from './external-link-dialog'
 
 describe('ExternalLinkDialog', () => {
@@ -45,10 +46,25 @@ describe('ExternalLinkDialog', () => {
       expect(screen.getByRole('button', { name: 'Open Link' })).toBeInTheDocument()
     })
 
-    it('should display openError when provided', () => {
-      render(<ExternalLinkDialog {...defaultProps} openError="Could not open link." />)
+    it('should resolve and display openError when provided', () => {
+      render(<ExternalLinkDialog {...defaultProps} openError={openFailedMessage} />)
 
-      expect(screen.getByText('Could not open link.')).toBeInTheDocument()
+      expect(screen.getByText('Could not open link. Please try again or copy the URL.')).toBeInTheDocument()
+    })
+
+    it('should render openError through i18n rather than as a raw value', () => {
+      // A real descriptor, not the identity-macro string the test preload substitutes
+      // for `msg` — so this fails if the dialog ever renders `openError` directly.
+      render(<ExternalLinkDialog {...defaultProps} openError={{ id: 'sQaX8n', message: 'Localized failure' }} />)
+
+      expect(screen.getByText('Localized failure')).toBeInTheDocument()
+    })
+
+    it('should display the unsafe-URL error, which is distinct from the retryable one', () => {
+      render(<ExternalLinkDialog {...defaultProps} openError={unsafeUrlMessage} />)
+
+      expect(screen.getByText('This link uses an address the app cannot open.')).toBeInTheDocument()
+      expect(screen.queryByText(/Please try again/)).not.toBeInTheDocument()
     })
 
     it('should show Opening… and disable Open button when isOpening', () => {

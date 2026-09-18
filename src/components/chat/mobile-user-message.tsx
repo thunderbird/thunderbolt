@@ -7,16 +7,18 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useLongPress } from '@/hooks/use-long-press'
 import { extractTextFromParts } from '@/lib/message-utils'
 import type { UIMessage } from 'ai'
+import { Trans } from '@lingui/react/macro'
 import { Copy } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { MessageBubbles, type ResendAttachmentHandler } from './message-bubbles'
 
 type MobileUserMessageProps = {
   message: UIMessage
+  lastMessageAction?: ReactNode
   onResendAttachment?: ResendAttachmentHandler
 }
 
-export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMessageProps) => {
+export const MobileUserMessage = ({ message, lastMessageAction, onResendAttachment }: MobileUserMessageProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isPressing, setIsPressing] = useState(false)
   const copyText = useMemo(() => extractTextFromParts(message.parts), [message.parts])
@@ -54,12 +56,13 @@ export const MobileUserMessage = ({ message, onResendAttachment }: MobileUserMes
                 className="flex items-center gap-3 px-3 py-2 text-sm w-full active:bg-accent"
               >
                 <Copy className="size-4 text-muted-foreground" />
-                Copy
+                <Trans>Copy</Trans>
               </button>
             </div>
           </div>
         )}
       </div>
+      {lastMessageAction && <div className="mt-1 flex justify-end">{lastMessageAction}</div>}
       {isMenuOpen && (
         <MobileBlurBackdrop
           // Same 40% black in both modes — the dark: entry overrides the

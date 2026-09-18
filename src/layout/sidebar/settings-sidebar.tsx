@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/sidebar'
 import { useSettings } from '@/hooks/use-settings'
 import { cn } from '@/lib/utils'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
@@ -25,31 +28,36 @@ import type { SidebarSection } from './types'
 
 type NavItem = {
   path: string
-  label: string
+  label: MessageDescriptor
   icon: LucideIcon
   /** Match sub-routes too (e.g. /settings/models/:id). Default: exact match. */
   matchPrefix?: boolean
 }
 
-const navGroups: { label: string; items: NavItem[] }[] = [
+/** `id` carries the React key, since the label is now a descriptor rather than
+ *  a string the reconciler can compare. */
+const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = [
   {
-    label: 'Agents',
-    items: [{ path: '/settings/agents', label: 'All agents', icon: Bot }],
+    id: 'agents',
+    label: msg`Agents`,
+    items: [{ path: '/settings/agents', label: msg`All agents`, icon: Bot }],
   },
   {
-    label: 'What agents use',
+    id: 'what-agents-use',
+    label: msg`What agents use`,
     items: [
-      { path: '/settings/skills', label: 'Skills', icon: Zap },
-      { path: '/settings/connections', label: 'Connections', icon: Plug },
-      { path: '/settings/models', label: 'Models', icon: Cpu, matchPrefix: true },
-      { path: '/settings/voice', label: 'Voice', icon: AudioLines },
+      { path: '/settings/skills', label: msg`Skills`, icon: Zap },
+      { path: '/settings/connections', label: msg`Connections`, icon: Plug },
+      { path: '/settings/models', label: msg`Models`, icon: Cpu, matchPrefix: true },
+      { path: '/settings/voice', label: msg`Voice`, icon: AudioLines },
     ],
   },
   {
-    label: 'Settings',
+    id: 'settings',
+    label: msg`Settings`,
     items: [
-      { path: '/settings/preferences', label: 'Preferences', icon: SlidersHorizontal },
-      { path: '/settings/devices', label: 'Devices', icon: Smartphone },
+      { path: '/settings/preferences', label: msg`Preferences`, icon: SlidersHorizontal },
+      { path: '/settings/devices', label: msg`Devices`, icon: Smartphone },
     ],
   },
 ]
@@ -65,6 +73,7 @@ export const SettingsSidebarContent = ({
   onSectionChange,
   onSettingsNavigate,
 }: SettingsSidebarContentProps) => {
+  const { i18n } = useLingui()
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
   const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
@@ -97,7 +106,7 @@ export const SettingsSidebarContent = ({
       )}
 
       {groups.map((group, index) => (
-        <Fragment key={group.label}>
+        <Fragment key={group.id}>
           {/* Collapsed rail: the group labels are hidden, so a hairline
               divider takes over as the section boundary. */}
           {index > 0 && isCollapsed && <RailDivider />}
@@ -116,7 +125,7 @@ export const SettingsSidebarContent = ({
               </div>
             )}
             <SidebarGroupLabel className={isMobile && index === 0 ? 'mt-1' : undefined}>
-              {group.label}
+              {i18n._(group.label)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -124,12 +133,12 @@ export const SettingsSidebarContent = ({
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       onClick={() => onSettingsNavigate(item.path)}
-                      tooltip={item.label}
+                      tooltip={i18n._(item.label)}
                       className="cursor-pointer"
                       isActive={isItemActive(item)}
                     >
                       <item.icon className="size-4" />
-                      <span>{item.label}</span>
+                      <span>{i18n._(item.label)}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

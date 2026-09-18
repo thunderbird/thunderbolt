@@ -4,8 +4,8 @@
 
 import { isPiModelCandidate } from '@/acp/built-in-adapter'
 import {
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
+  defaultModelGlm53Flash,
+  defaultModelGlm53,
   defaultModelOpus5,
   defaultModels,
   type SharedModel,
@@ -20,8 +20,8 @@ export type EvalModel = {
 
 export const evalModelSlugs: Readonly<Record<string, string>> = {
   [defaultModelOpus5.id]: 'opus',
-  [defaultModelDeepseekV4Flash.id]: 'flash',
-  [defaultModelGlm52.id]: 'glm',
+  [defaultModelGlm53Flash.id]: 'flash',
+  [defaultModelGlm53.id]: 'glm',
 }
 
 /** Build the eval matrix from shipped defaults, requiring a stable CLI slug for every model. */
@@ -220,7 +220,7 @@ const researchPrompts = [
 
 // ──────────────────────────────────────────────
 // Validation Set — different prompts, same criteria philosophy
-// Used to verify 100% is real, not overfit to the original prompts
+// Checks generalization beyond the core prompts
 // ──────────────────────────────────────────────
 
 const validationChatPrompts = [
@@ -395,7 +395,10 @@ const widgetSearchPrompts: PromptDef[] = [
 // Scenario Generation
 // ──────────────────────────────────────────────
 
-type PromptDef = { id: string; prompt: string; followUps?: string[]; criteria?: EvalCriteria }
+type PromptDef = Pick<
+  EvalScenario,
+  'id' | 'prompt' | 'followUps' | 'expectation' | 'promptCriteria' | 'promptExpectation'
+> & { criteria?: EvalCriteria }
 
 const buildScenarios = (
   prompts: PromptDef[],
@@ -410,6 +413,9 @@ const buildScenarios = (
       modeName,
       prompt: p.prompt,
       followUps: p.followUps,
+      expectation: p.expectation,
+      promptCriteria: p.promptCriteria,
+      promptExpectation: p.promptExpectation,
       criteria: p.criteria ?? defaultCriteria,
     })),
   )

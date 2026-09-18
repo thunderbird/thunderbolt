@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -73,12 +74,16 @@ export const ModificationIndicator = ({
   as: Component = 'span',
   className = '',
   id,
-  customMessage = "You've customized this setting.",
-  confirmMessage = 'Are you sure? You will lose any changes that you made.',
-  ariaLabel = 'Modified item',
+  customMessage: customMessageProp,
+  confirmMessage: confirmMessageProp,
+  ariaLabel: ariaLabelProp,
   requireConfirmation = false,
 }: ModificationIndicatorProps) => {
+  const { t } = useLingui()
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
+  const customMessage = customMessageProp ?? t`You've customized this setting.`
+  const confirmMessage = confirmMessageProp ?? t`Are you sure? You will lose any changes that you made.`
+  const ariaLabel = ariaLabelProp ?? t`Modified item`
   const [showConfirmation, setShowConfirmation] = useState(false)
 
   const handleResetClick = () => {
@@ -113,7 +118,7 @@ export const ModificationIndicator = ({
     // Show transparent underline for unmodified state (non-interactive)
     // Maintains consistent vertical text position
     return (
-      <Component className={className} aria-label="Default setting">
+      <Component className={className} aria-label={t`Default setting`}>
         <span id={id} className={cn(underlineClasses, 'border-transparent')}>
           {children}
         </span>
@@ -153,11 +158,11 @@ export const ModificationIndicator = ({
           <div className="p-3 pt-2">
             {!showConfirmation ? (
               <Button size="sm" onClick={handleResetClick} className="w-full">
-                Reset to Default
+                <Trans>Reset to Default</Trans>
               </Button>
             ) : (
               <Button size="sm" onClick={handleResetConfirm} className="w-full">
-                Confirm
+                <Trans>Confirm</Trans>
               </Button>
             )}
           </div>

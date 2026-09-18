@@ -6,6 +6,9 @@ import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { useDesktopUpdate, type UpdateStatus } from '@/hooks/use-desktop-update'
 import { isDesktop } from '@/lib/platform'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 
 type UpgradeRequiredProps = {
   currentVersion: string
@@ -13,15 +16,17 @@ type UpgradeRequiredProps = {
 }
 
 /** Desktop button label per update status — mirrors the primary action of the
- *  `UpdateNotification` popover, extended to the states the popover hides. */
-const desktopActionLabel: Record<UpdateStatus, string> = {
-  initial: 'Check for updates',
-  idle: 'Check for updates',
-  checking: 'Checking…',
-  available: 'Download update',
-  downloading: 'Downloading…',
-  ready: 'Restart to update',
-  error: 'Retry',
+ *  `UpdateNotification` popover, extended to the states the popover hides.
+ *  Descriptors, not strings: this table lives at module scope, so `t` would
+ *  freeze the locale at import time (see docs in CLAUDE.md). */
+const desktopActionLabel: Record<UpdateStatus, MessageDescriptor> = {
+  initial: msg`Check for updates`,
+  idle: msg`Check for updates`,
+  checking: msg`Checking…`,
+  available: msg`Download update`,
+  downloading: msg`Downloading…`,
+  ready: msg`Restart to update`,
+  error: msg`Retry`,
 }
 
 /**
@@ -31,11 +36,12 @@ const desktopActionLabel: Record<UpdateStatus, string> = {
  */
 const UpgradeAction = () => {
   const { status, primaryAction } = useDesktopUpdate()
+  const { i18n } = useLingui()
 
   if (!isDesktop()) {
     return (
       <Button variant="secondary" onClick={() => window.location.reload()}>
-        Reload
+        <Trans>Reload</Trans>
       </Button>
     )
   }
@@ -44,7 +50,7 @@ const UpgradeAction = () => {
 
   return (
     <Button variant="secondary" onClick={primaryAction} disabled={busy}>
-      {desktopActionLabel[status]}
+      {i18n._(desktopActionLabel[status])}
     </Button>
   )
 }
@@ -58,12 +64,18 @@ export const UpgradeRequired = ({ currentVersion, minVersion }: UpgradeRequiredP
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">Update required</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">
+          <Trans>Update required</Trans>
+        </h1>
         <p className="text-muted-foreground max-w-md">
-          This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing.
+          <Trans>
+            This version of Thunderbolt is no longer supported. Update the app to keep chatting and syncing.
+          </Trans>
         </p>
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          Installed: {currentVersion} · Minimum required: {minVersion}
+          <Trans>
+            Installed: {currentVersion} · Minimum required: {minVersion}
+          </Trans>
         </p>
       </div>
 

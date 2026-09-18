@@ -28,7 +28,7 @@ const mockPostHogConfig = {
 // happydom has no IndexedDB, so the boot pipeline's storage pre-flight
 // (isIndexedDbAvailable) would short-circuit to STORAGE_UNAVAILABLE. Stub a
 // working factory so the success path is exercised, mirroring a real browser.
-const realIndexedDb = globalThis.indexedDB
+const realIndexedDb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB')
 
 const stubWorkingIndexedDb = (): void => {
   const factory = {
@@ -56,7 +56,11 @@ describe('useAppInitialization', () => {
 
   afterAll(async () => {
     await teardownTestDatabase()
-    Object.defineProperty(globalThis, 'indexedDB', { value: realIndexedDb, configurable: true, writable: true })
+    if (!realIndexedDb) {
+      Reflect.deleteProperty(globalThis, 'indexedDB')
+      return
+    }
+    Object.defineProperty(globalThis, 'indexedDB', realIndexedDb)
   })
 
   it('provides correct hook interface', async () => {

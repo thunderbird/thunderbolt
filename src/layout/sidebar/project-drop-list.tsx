@@ -13,6 +13,7 @@
  * `visibleProjects` — so the list's height never changes mid-gesture.
  */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useDroppable } from '@dnd-kit/core'
 import { Ellipsis, FolderMinus } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
@@ -38,6 +39,7 @@ type DropRowProps = {
 }
 
 const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick }: DropRowProps) => {
+  const { t } = useLingui()
   const { setNodeRef, isOver } = useDroppable({ id: dropId, disabled: isCurrent })
 
   return (
@@ -45,7 +47,7 @@ const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick
       <SidebarMenuButton
         onClick={onClick}
         isActive={isActive}
-        tooltip={isCurrent ? `${label} — already in this project` : label}
+        tooltip={isCurrent ? t`${label} — already in this project` : label}
         className={cn(
           'cursor-pointer transition-all duration-150',
           // A ring, not a fill: the row can also be the active route, and the two
@@ -58,7 +60,7 @@ const DropRow = ({ dropId, label, icon, isDragging, isCurrent, isActive, onClick
         <span className="truncate">{label}</span>
         {isDragging && !isCurrent && (
           <span className="ml-auto text-[length:var(--font-size-xs)] text-muted-foreground">
-            {isOver ? 'Drop' : ''}
+            {isOver ? t`Drop` : ''}
           </span>
         )}
       </SidebarMenuButton>
@@ -109,6 +111,7 @@ const visibleProjects = <T extends { id: string }>(projects: readonly T[], activ
 
 /** The rows themselves, given a project list. */
 export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }: ProjectDropRowsProps) => {
+  const { t } = useLingui()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -135,7 +138,9 @@ export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }:
           two groups read as siblings rather than one labelled and one loose. A
           drag swaps the label for the drop-zone instruction — the rows mean
           something different for the duration of the gesture. */}
-      <SidebarGroupLabel>{isDragging ? 'Move to project' : 'Recent Projects'}</SidebarGroupLabel>
+      <SidebarGroupLabel>
+        {isDragging ? <Trans>Move to project</Trans> : <Trans>Recent Projects</Trans>}
+      </SidebarGroupLabel>
       <SidebarMenu>
         {visible.map((project) => (
           <DropRow
@@ -155,7 +160,7 @@ export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }:
               onClick={() => navigate('/projects')}
               // Deliberately never active: it's a shortcut to the projects page,
               // which the "Projects" item above already indicates.
-              tooltip="All projects"
+              tooltip={t`All projects`}
               className="cursor-pointer text-muted-foreground"
             >
               <Ellipsis className="size-[var(--icon-size-default)]" aria-hidden="true" />
@@ -167,7 +172,7 @@ export const ProjectDropRows = ({ projects, isDragging, draggingFromProjectId }:
         {isDragging && draggingFromProjectId !== null && (
           <DropRow
             dropId={unassignDropId}
-            label="Remove from project"
+            label={t`Remove from project`}
             icon={<FolderMinus className="size-[var(--icon-size-default)] text-muted-foreground" aria-hidden="true" />}
             isDragging
           />

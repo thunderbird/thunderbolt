@@ -12,7 +12,7 @@ import {
   resetStore,
 } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
-import type { Model } from '@/types'
+import type { Model, ThunderboltUIMessage } from '@/types'
 import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement, createRef, type ReactNode } from 'react'
@@ -67,9 +67,12 @@ const TestWrapper = ({ children }: { children: ReactNode }) => {
 }
 
 /** Hydrate the chat store with sensible defaults for testing */
-const setupStore = () => {
+const setupStore = (
+  status: 'ready' | 'submitted' | 'streaming' | 'error' = 'ready',
+  messages: ThunderboltUIMessage[] = [],
+) => {
   const mockModel = createMockModel()
-  const mockChatInstance = createMockChatInstance([], 'ready')
+  const mockChatInstance = createMockChatInstance(messages, status)
   const mockUseChat = createMockUseChat(mockChatInstance)
 
   hydrateStore({
@@ -112,7 +115,111 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('Ask me anything…')).toBeInTheDocument()
+    })
+  })
+
+  describe('stop button', () => {
+    it('shows the Stop button while the model is thinking (submitted)', () => {
+      const { mockUseChat } = setupStore('submitted')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Send message')).toBeNull()
+    })
+
+    it('shows the Stop button while streaming', () => {
+      const { mockUseChat } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    // Empty assistant turn sitting with status `ready` and retryCount 0 while the
+    // thread shows a recovery spinner — the Stop button must still be present.
+    it('shows the Stop button during empty-turn recovery (status ready, retryCount 0)', () => {
+      const messages: ThunderboltUIMessage[] = [
+        { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you doing?' }] },
+        { id: 'a1', role: 'assistant', parts: [] },
+      ]
+      const { mockUseChat } = setupStore('ready', messages)
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('shows the Stop button during an auto-retry backoff (status ready)', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 1, retriesExhausted: false })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.getByLabelText('Stop generating')).toBeInTheDocument()
+    })
+
+    it('hides the Stop button once retries are exhausted', () => {
+      const { mockUseChat } = setupStore('ready')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { retryCount: 3, retriesExhausted: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      expect(screen.queryByLabelText('Stop generating')).toBeNull()
+    })
+
+    it('calls stop on click', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stop generating') as HTMLButtonElement
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
+      // The mock `stop` doesn't flip the session's `stopping` flag, so the button
+      // still shows its pre-stop state here; the stopping state is covered below.
+      expect(stopButton.querySelector('.animate-spin')).toBeNull()
+    })
+
+    it('shows the stopping spinner and stays pressable while the turn unwinds', () => {
+      const { mockUseChat, mockChatInstance } = setupStore('streaming')
+      act(() => {
+        useChatStore.getState().updateSession('thread-1', { stopping: true })
+      })
+
+      render(<ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} />, {
+        wrapper: TestWrapper,
+      })
+
+      const stopButton = screen.getByLabelText('Stopping') as HTMLButtonElement
+      expect(stopButton.querySelector('.animate-spin')).not.toBeNull()
+      // Stays pressable: stop is idempotent, and disabling it would leave no
+      // escape hatch if the teardown stalls.
+      expect(stopButton.disabled).toBe(false)
+      act(() => {
+        fireEvent.click(stopButton)
+      })
+      expect(mockChatInstance.stop).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -183,7 +290,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const focusSpy = mock(() => {})
       const setSelectionRangeSpy = mock(() => {})
       textarea.focus = focusSpy
@@ -209,7 +316,7 @@ describe('ChatPromptInput', () => {
         ref.current?.setInput('Test input')
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       expect(textarea.value).toBe('Test input')
     })
   })
@@ -246,7 +353,7 @@ describe('ChatPromptInput', () => {
         />,
         { wrapper: TestWrapper },
       )
-      const textarea = screen.getByPlaceholderText('Ask me anything...')
+      const textarea = screen.getByPlaceholderText('Ask me anything…')
 
       fireEvent.change(textarea, { target: { value: 'too long' } })
       await act(async () => {
@@ -312,7 +419,7 @@ describe('ChatPromptInput', () => {
       act(() => {
         ref.current?.setInput(tokenText)
       })
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       textarea.setSelectionRange(caret, caret)
       return textarea
     }
@@ -373,7 +480,7 @@ describe('ChatPromptInput', () => {
         { wrapper: TestWrapper },
       )
 
-      expect(screen.queryByPlaceholderText('Ask me anything...')).toBeNull()
+      expect(screen.queryByPlaceholderText('Ask me anything…')).toBeNull()
       expect(screen.getByRole('status').textContent ?? '').toMatch(/not available on this platform/)
     })
   })
@@ -461,7 +568,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], 'shot.png', { type: 'image/png' })
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -476,7 +583,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['data'], '', { type: 'image/png' })
       pasteItems(textarea, [{ kind: 'file', type: 'image/png', getAsFile: () => file }])
       await flushAttachments()
@@ -490,7 +597,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const preventDefaultSpy = pasteItems(textarea, [{ kind: 'string', type: 'text/plain', getAsFile: () => null }])
 
       expect(preventDefaultSpy).not.toHaveBeenCalled()
@@ -502,7 +609,7 @@ describe('ChatPromptInput', () => {
         wrapper: TestWrapper,
       })
 
-      const textarea = screen.getByPlaceholderText('Ask me anything...') as HTMLTextAreaElement
+      const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
       const file = new File(['<html>'], 'page.html', { type: 'text/html' })
       pasteItems(textarea, [{ kind: 'file', type: 'text/html', getAsFile: () => file }])
       await flushAttachments()

@@ -288,13 +288,13 @@ export const devicesTable = sqliteTable('devices', {
   lastSeen: text('last_seen'),
   createdAt: text('created_at'),
   revokedAt: text('revoked_at'),
-  // Discriminates a normal device from an iroh bridge device (ACP/MCP). Mirrors the backend
-  // `device_type` enum ('normal' | 'bridge', default 'normal'). Nullable here: this is the
+  // Discriminates normal devices, iroh bridge devices (ACP/MCP), and CLI account clients. Mirrors the backend
+  // `device_type` enum ('normal' | 'bridge' | 'cli', default 'normal'). Nullable here: this is the
   // frontend half of the two-PR synced-column deploy — the `SELECT *` devices sync rule only
   // replicates it once the backend migration that adds this column deploys and the PowerSync
   // Cloud rules refresh. Until then it stays null cross-device and reads as a normal device,
   // never errors.
-  deviceType: text('device_type', { enum: ['normal', 'bridge'] }),
+  deviceType: text('device_type', { enum: ['normal', 'bridge', 'cli'] }),
   // iroh P2P endpoint identity. Set via the backend node-id routes (self-enroll or the
   // canary-gated attestation), then synced down.
   // Deploy ordering: this is the frontend half of the two-PR synced-column deploy — the

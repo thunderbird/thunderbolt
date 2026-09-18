@@ -11,18 +11,8 @@
  * are imported directly from `@earendil-works/pi-agent-core` where needed.
  */
 
-import type { AgentHarness } from '@earendil-works/pi-agent-core'
 import type { SkillDefinition } from '../../../shared/agent-core/skills.ts'
-
-/**
- * A constructed harness paired with a teardown function. `buildHarness`
- * returns this so callers release the underlying execution environment
- * (temp dirs, shell) without reaching into Pi internals.
- */
-export type HarnessBundle = {
-  readonly harness: AgentHarness
-  readonly dispose: () => Promise<void>
-}
+import type { InvocationSelection } from '../provider-runtime/types.ts'
 
 /** Reasoning depth passed to the Pi harness (`thinkingLevel`). */
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -45,18 +35,15 @@ export const builtinProviders = [
   'fireworks',
 ] as const
 
+/** Whether a provider ID names one of Pi's built-in providers. */
+export const isBuiltinProvider = (value: string): value is BuiltinProvider =>
+  (builtinProviders as readonly string[]).includes(value)
+
 /** Built-in Pi provider exposed by thunderbolt. */
 export type BuiltinProvider = (typeof builtinProviders)[number]
 
-/** All model backends accepted by `--provider`. */
-export const modelProviders = [...builtinProviders, 'openai-compat'] as const
-
 /** Model backend selected for a harness. */
-export type ModelProvider = (typeof modelProviders)[number]
-
-/** Narrows an unknown value to a supported {@link ModelProvider}. */
-export const isProvider = (value: unknown): value is ModelProvider =>
-  typeof value === 'string' && (modelProviders as readonly string[]).includes(value)
+export type ModelProvider = BuiltinProvider | 'openai-compat'
 
 /** Wire protocol whose local stdio process the bridge exposes over the network.
  *  Drives only logging — the stdio↔transport pump is byte-identical for both. */
@@ -68,7 +55,7 @@ export type BridgeTransport = 'wss' | 'iroh'
 
 /**
  * Fully-resolved configuration for an `acp`/`mcp` bridge invocation, produced by
- * {@link parseArgs} and consumed by the bridge runner.
+ * {@link parseCommandSyntax} and consumed by the bridge runner.
  */
 export type BridgeConfig = {
   /** Which protocol's stdio process is being bridged. */
@@ -104,28 +91,15 @@ export type IrohAdminAction =
 
 /**
  * Settings a single harness needs to be assembled, shared by every entry point
- * (oneshot run, REPL, and the ACP server's per-session harness). `buildHarness`
- * consumes exactly this; the run/serve configs extend it with their own fields.
+ * (oneshot run, REPL, and the ACP server's per-session harness).
  */
 export type HarnessConfig = {
-  /** Pi catalog model id for built-in providers, or upstream model id for
-   *  `openai-compat`. */
-  readonly model: string
   /** Working directory the agent's bash/fs tools are bound to. */
   readonly cwd: string
   /** Trusted filesystem root for ACP path-tool confinement. Omitted by local CLI modes. */
   readonly workspaceRoot?: string
-  /** When true, auto-approve every tool call (no interactive gate). */
-  readonly yolo: boolean
   /** Reasoning depth for the harness. */
   readonly thinking: ThinkingLevel
-  /** Model backend to use (defaults to `anthropic`). */
-  readonly provider?: ModelProvider
-  /** OpenAI-compatible base URL — required when `provider` is `openai-compat`. */
-  readonly baseUrl?: string
-  /** Explicit provider api key. Built-in providers otherwise resolve their own
-   *  environment variable; openai-compat uses its dedicated CLI env fallback. */
-  readonly apiKey?: string
   /** When true, the system prompt names the underlying model so an exposed ACP
    *  agent can self-identify. The standalone CLI leaves this off. */
   readonly announceModel?: boolean
@@ -133,37 +107,29 @@ export type HarnessConfig = {
   readonly skills?: readonly SkillDefinition[]
 }
 
-/**
- * Configuration for an `acp serve` invocation: run THIS coding agent as a stdio
- * ACP JSON-RPC server. `cwd` is trusted launch directory and cannot be overridden
- * by client session requests.
- */
-export type ServeConfig = HarnessConfig
+type CommandExecutionConfig = Pick<HarnessConfig, 'cwd' | 'thinking'> & {
+  readonly yolo: boolean
+  readonly selection: InvocationSelection
+}
 
-/**
- * Fully-resolved configuration for a single CLI invocation, produced by
- * {@link parseArgs} and consumed by the agent runner. The discriminated `mode`
- * makes `prompt` present exactly when (and only when) it's a oneshot run.
- */
-export type RunConfig =
-  | (HarnessConfig & { readonly mode: 'oneshot'; readonly prompt: string })
-  | (HarnessConfig & {
-      readonly mode: 'repl'
-      /** Force the plain readline REPL, never the interactive TUI (`--no-tui`).
-       *  The TUI is otherwise the default when stdout is a TTY. */
-      readonly noTui: boolean
-    })
+/** Canonical syntactic configuration for an `acp serve` invocation. */
+export type CommandSyntaxServeConfig = CommandExecutionConfig
 
-/** Result of parsing argv: a run, config setup, bridge, connect, ACP server,
- *  iroh admin action, login, or terminal info action. */
-export type ParsedArgs =
-  | { readonly kind: 'run'; readonly config: RunConfig }
+/** Canonical syntactic configuration for a direct CLI invocation. */
+export type CommandSyntaxRunConfig = CommandExecutionConfig &
+  { readonly fullscreen: boolean } &
+  ({ readonly mode: 'oneshot'; readonly prompt: string } | { readonly mode: 'repl'; readonly noTui: boolean })
+
+/** Canonical result of syntactically parsing command-line arguments. */
+export type ParsedCommandSyntax =
+  | { readonly kind: 'run'; readonly config: CommandSyntaxRunConfig }
   | { readonly kind: 'config' }
   | { readonly kind: 'bridge'; readonly config: BridgeConfig }
   | { readonly kind: 'connect'; readonly config: ConnectConfig }
-  | { readonly kind: 'acp-serve'; readonly config: ServeConfig }
+  | { readonly kind: 'acp-serve'; readonly config: CommandSyntaxServeConfig }
   | { readonly kind: 'iroh-admin'; readonly action: IrohAdminAction }
   | { readonly kind: 'login' }
+  | { readonly kind: 'logout' }
   | { readonly kind: 'help' }
   | { readonly kind: 'version' }
   | { readonly kind: 'error'; readonly message: string }
@@ -183,17 +149,3 @@ export type PermissionRequest = {
 
 /** Asks the user to approve a gated tool call. Injected into the gate. */
 export type PermissionPrompt = (request: PermissionRequest) => Promise<PermissionDecision>
-
-/**
- * Interactive terminal I/O over a single shared readline interface — used both
- * for the REPL input loop and for permission prompts so they don't fight over
- * stdin.
- */
-export type TerminalIO = {
-  /** Read one line of input for the given prompt label; `null` at EOF (Ctrl-D). */
-  readonly readLine: (prompt: string) => Promise<string | null>
-  /** Ask the user to approve a tool call. */
-  readonly ask: PermissionPrompt
-  /** Tear down the readline interface. */
-  readonly close: () => void
-}

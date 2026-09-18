@@ -49,12 +49,12 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
               index: sourceIndex,
               url: result.pageUrl,
               title: result.title,
-              description: undefined,
+              description: result.snippet,
               image: result.previewImageUrl,
               favicon: result.faviconUrl,
               siteName: deriveSiteName(result.pageUrl),
               author: null,
-              publishedDate: null,
+              publishedDate: result.publishedDate ?? null,
               toolName: 'search',
             })
             nextIndex++
@@ -103,7 +103,7 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
             favicon: result.favicon,
             siteName: ogSiteName || deriveSiteName(result.url),
             author: result.author,
-            publishedDate: result.published_date,
+            publishedDate: result.publishedDate,
             toolName: 'fetch_content',
           })
           nextIndex++
@@ -127,8 +127,8 @@ export const createConfigs = (httpClient: HttpClient, sourceCollector?: SourceMe
           if (result.author) {
             existingSource.author = result.author
           }
-          if (result.published_date) {
-            existingSource.publishedDate = result.published_date
+          if (result.publishedDate) {
+            existingSource.publishedDate = result.publishedDate
           }
         } else {
           if (sourceCollector && sourceCollector.length >= sourceRegistryCap) {

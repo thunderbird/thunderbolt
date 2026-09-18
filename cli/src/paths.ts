@@ -17,3 +17,7 @@ export const thunderboltHomeDir = (
 /** Resolves persisted CLI config path. */
 export const configPath = (env: Readonly<Record<string, string | undefined>> = process.env): string =>
   join(thunderboltHomeDir(env), 'config.json')
+
+/** Resolves persisted CLI account installation path. */
+export const authConfigPath = (env: Readonly<Record<string, string | undefined>> = process.env): string =>
+  join(thunderboltHomeDir(env), 'auth.json')

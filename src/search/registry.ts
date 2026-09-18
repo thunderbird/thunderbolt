@@ -129,6 +129,7 @@ export const searchEntities: SearchEntityConfig[] = [
  * Monotonic schema version for the search index. Bump whenever the registry or
  * FTS schema changes so consumers rebuild the index instead of reading a stale
  * one. (Started at 1; bumped to 2 for the soft-delete guard + the snake_case
- * message-parent fix, which changed the triggers and backfill; 3 adds projects.)
+ * message-parent fix, which changed the triggers and backfill; 3 adds projects;
+ * 4 changes the tokenizer to `unicode61 remove_diacritics 2` and drops porter.)
  */
-export const searchIndexVersion = 3
+export const searchIndexVersion = 4

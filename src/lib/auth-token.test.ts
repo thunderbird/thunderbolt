@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { setActiveLocale } from '@/i18n/active-locale'
 import {
   clearAuthToken,
   clearDeviceId,
@@ -58,6 +59,8 @@ afterEach(() => {
   clearAuthToken()
   clearDeviceId()
   clearUserCacheSecret()
+  setActiveLocale('en')
+  localStorage.removeItem('thunderbolt_locale')
 })
 
 describe('auth-token', () => {
@@ -175,6 +178,14 @@ describe('auth-token', () => {
         env.VITE_APP_VERSION = undefined
         expect(getAuthenticatedHeaders()['X-App-Version']).toBeUndefined()
       })
+    })
+
+    // The PowerSync connector cannot use the HTTP client, so this is the only
+    // path carrying X-App-Language on token and CRUD-upload requests.
+    it('returns X-App-Language from the active locale', () => {
+      setActiveLocale('ja')
+
+      expect(getAuthenticatedHeaders()['X-App-Language']).toBe('ja')
     })
   })
 })

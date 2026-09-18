@@ -3,11 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type OnboardingFeatureCardProps = {
   icon: LucideIcon
-  title: string
-  description: string
+  // ReactNode, like OnboardingStepHeader, so callers pass <Trans> rather than
+  // needing useLingui() to produce a string.
+  title: ReactNode
+  description: ReactNode
 }
 
 export const OnboardingFeatureCard = ({ icon: Icon, title, description }: OnboardingFeatureCardProps) => {

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Check, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useReducer, useRef } from 'react'
 
@@ -98,6 +99,7 @@ export const Ask = ({
   initialSubmitted,
   onSubmit,
 }: AskProps) => {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(askUiReducer, undefined, () => ({
     selected: new Set(initialSelectedIds),
     submitted: initialSubmitted ?? false,
@@ -137,7 +139,7 @@ export const Ask = ({
     dispatch({ type: 'OPTION_TOGGLED', id, isMultiple })
   }
 
-  const label = isMultiple ? 'Select all that apply' : isGraded ? 'Choose one' : 'Your call'
+  const label = isMultiple ? t`Select all that apply` : isGraded ? t`Choose one` : t`Your call`
 
   return (
     <div className="my-4 w-full">
@@ -202,7 +204,7 @@ export const Ask = ({
               onClick={() => commit(state.selected)}
               className="w-full md:w-auto md:self-end"
             >
-              Submit
+              <Trans>Submit</Trans>
             </Button>
           )}
 
@@ -210,7 +212,9 @@ export const Ask = ({
             <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 p-3 text-[length:var(--font-size-sm)]">
               <Lightbulb className="mt-0.5 size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" />
               <div className="flex flex-col gap-1">
-                <span className="font-medium">Answer</span>
+                <span className="font-medium">
+                  <Trans>Answer</Trans>
+                </span>
                 <span className="text-foreground/80">{explanation}</span>
               </div>
             </div>
@@ -219,7 +223,9 @@ export const Ask = ({
           {state.submitted && !isGraded && (
             <div className="flex items-center gap-2 text-[length:var(--font-size-sm)] text-muted-foreground">
               <Lightbulb className="size-[var(--icon-size-sm)] shrink-0" />
-              <span>Got it, working on that next.</span>
+              <span>
+                <Trans>Got it, working on that next.</Trans>
+              </span>
             </div>
           )}
         </div>

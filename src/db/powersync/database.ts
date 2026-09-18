@@ -90,16 +90,16 @@ export const getPowerSyncOptions = (
   }
 
   /**
-   * Safari (web) + Tauri (iOS/Desktop): Full WASQLiteOpenFactory required.
-   * OPFSCoopSyncVFS — synchronous OPFS handles. Avoids IDBBatchAtomicVFS + Asyncify
-   * (causes "Maximum call stack size exceeded" on Safari/iOS; JSC has smaller stack than V8)
-   * and SharedArrayBuffer + SharedWorker (exceeds iOS WKWebView memory, black-screen crash).
-   * Explicit UMD worker paths — bypasses import.meta.url which fails under tauri://.
-   * enableMultiTabs: false — dedicated worker, not SharedWorker (fails under tauri://).
+   * Safari (web) + Tauri (iOS/Desktop): full WASQLiteOpenFactory required.
+   * OPFSCoopSyncVFS avoids IDBBatchAtomicVFS + Asyncify ("Maximum call stack size exceeded"
+   * on Safari/iOS) and SharedArrayBuffer + SharedWorker (iOS WKWebView black-screen crash).
+   * Falls back to IDBBatchAtomicVFS when OPFS is unavailable (e.g. WebKitGTK on Tauri Linux).
+   * The DB runs in a dedicated Worker via an explicit UMD path (import.meta.url fails under
+   * tauri:// for node_modules workers).
    *
-   * Falls back to IDBBatchAtomicVFS (IndexedDB-backed, no OPFS dependency) when OPFS itself
-   * is unavailable — e.g. WebKitGTK (Tauri on Linux) doesn't implement `navigator.storage.getDirectory`,
-   * so OPFSCoopSyncVFS's worker throws on init instead of ever reaching this Asyncify tradeoff.
+   * Sync runs in a dedicated Worker too: the PowerSyncDatabase-level
+   * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the
+   * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker.
    *
    * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
    */
@@ -111,10 +111,28 @@ export const getPowerSyncOptions = (
       flags: { enableMultiTabs: false },
     }),
     schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-    flags: { enableMultiTabs: false },
-    sync: { worker: '/@powersync/worker/SharedSyncImplementation.umd.js' },
+    flags: { enableMultiTabs: true },
+    sync: { worker: () => createDedicatedSyncWorker(dbFilename) },
     transformers: [encryptionMiddleware],
   }
+}
+
+/**
+ * Builds the dedicated Worker that hosts the sync stream on iOS/Safari.
+ *
+ * SharedWebStreamingSyncImplementation reads `.port` off this factory's result and drives it
+ * over Comlink; on dispose it calls `.close()`. A dedicated Worker is a valid Comlink endpoint
+ * but exposes `.terminate()` rather than `.close()`, so map one to the other. The result is
+ * shaped as a SharedWorker to satisfy PowerSync's factory type — only `.port` is read at runtime.
+ */
+const createDedicatedSyncWorker = (dbFilename: string): SharedWorker => {
+  const worker = new Worker(new URL('./worker/ThunderboltDedicatedSyncImplementation.worker.ts', import.meta.url), {
+    type: 'module',
+    name: `dedicated-sync-${dbFilename}`,
+  })
+  const port = worker as unknown as MessagePort
+  port.close = () => worker.terminate()
+  return { port } as unknown as SharedWorker
 }
 
 /**

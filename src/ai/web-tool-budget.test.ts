@@ -7,28 +7,16 @@ import {
   budgetExhaustedResult,
   createWebToolBudget,
   normalizeWebToolKey,
-  resolveWebToolIntent,
+  resolveWebBudgetPromotion,
   webToolCaps,
   type WebToolIntent,
 } from './web-tool-budget'
 
-describe('resolveWebToolIntent', () => {
-  it('resolves explicit search and research slugs without sniffing prose', () => {
-    expect(resolveWebToolIntent('/search latest releases')).toBe('search')
-    expect(resolveWebToolIntent('compare these /research sources')).toBe('research')
-    expect(resolveWebToolIntent('please search for this')).toBe('auto')
-  })
-
-  it('gives research precedence when both slugs appear', () => {
-    expect(resolveWebToolIntent('/search then /research')).toBe('research')
-  })
-})
-
 describe('createWebToolBudget', () => {
-  for (const intent of Object.keys(webToolCaps) as WebToolIntent[]) {
+  for (const [intent, cap] of Object.entries({ auto: 5, search: 12, research: 30 }) as [WebToolIntent, number][]) {
     it(`enforces the ${intent} cap`, async () => {
       const budget = createWebToolBudget(intent)
-      for (let call = 0; call < webToolCaps[intent]; call++) {
+      for (let call = 0; call < cap; call++) {
         await expect(budget.execute('search', { query: `query ${call}` }, async () => ({ call }))).resolves.toEqual({
           call,
         })
@@ -43,6 +31,18 @@ describe('createWebToolBudget', () => {
 
   it('allows /search to fetch each homepage needed for ten target previews', () => {
     expect(webToolCaps.search).toBeGreaterThanOrEqual(11)
+  })
+
+  it('returns the supplied exhaustion message without executing a denied call', async () => {
+    const budget = createWebToolBudget('auto', true, 'custom denial')
+    for (let call = 0; call < 5; call++) {
+      await budget.execute('search', { query: String(call) }, async () => call)
+    }
+    expect(
+      await budget.execute('search', { query: 'denied' }, async () => {
+        throw new Error('A denied call must not execute')
+      }),
+    ).toEqual({ status: 'budget_exhausted', message: 'custom denial' })
   })
 })
 
@@ -76,4 +76,109 @@ it('returns a non-empty structured exhaustion result', () => {
   const result = budgetExhaustedResult()
   expect(result.status).toBe('budget_exhausted')
   expect(result.message.length).toBeGreaterThan(0)
+})
+
+describe('research promotion state table', () => {
+  it('ignores search promotion and preserves the initial intent after research promotion', () => {
+    const budget = createWebToolBudget('auto', true)
+    budget.promote('search')
+    expect(budget.cap).toBe(5)
+    expect(budget.promoted).toBe(false)
+    budget.promote('research')
+    budget.promote('auto')
+    budget.promote('search')
+    expect(budget.cap).toBe(30)
+    expect(budget.intent).toBe('auto')
+    expect(budget.initialCap).toBe(5)
+  })
+
+  it('promotes auto to an absolute cap of 30 without resetting consumption, cache or sources', async () => {
+    const budget = createWebToolBudget('auto', true)
+    const pending = Promise.withResolvers<unknown>()
+    const first = budget.execute('search', { query: 'first' }, () => pending.promise)
+    const sources = budget.sourceCollector
+    sources.push({ index: 1, url: 'https://source.test', title: 'Source', toolName: 'search' })
+    budget.promote('research')
+    budget.promote('research')
+    expect(budget.cap).toBe(30)
+    expect(budget.initialCap).toBe(webToolCaps.auto)
+    expect(budget.promoted).toBe(true)
+    expect(budget.consumed).toBe(1)
+    expect(budget.execute('search', { query: 'first' }, async () => 'must stay cached')).toBe(first)
+    expect(budget.sourceCollector).toBe(sources)
+    pending.resolve('source')
+    await first
+    for (let index = 1; index < 30; index++) {
+      await budget.execute('search', { query: String(index) }, async () => 'source')
+    }
+    expect(budget.probe.isExhausted).toBe(true)
+    expect(await budget.execute('search', { query: 'denied' }, async () => 'bad')).toEqual(budgetExhaustedResult())
+    expect(budget.consumed).toBe(30)
+  })
+
+  it.each(['search', 'research'] as const)('keeps explicit %s caps after repeated research loads', (intent) => {
+    const budget = createWebToolBudget(intent, true)
+    budget.promote('research')
+    budget.promote('research')
+    budget.promote('auto')
+    budget.promote('search')
+    expect(budget.cap).toBe(webToolCaps[intent])
+    expect(budget.promoted).toBe(false)
+  })
+
+  it('never promotes from exhaustion alone; a later permitted load reopens live capacity', async () => {
+    const budget = createWebToolBudget('auto', true)
+    for (let call = 0; call <= webToolCaps.auto; call++) {
+      await budget.execute('search', { query: String(call) }, async () => call)
+    }
+    expect(budget.cap).toBe(webToolCaps.auto)
+    expect(budget.probe.isExhausted).toBe(true)
+    budget.promote('research')
+    expect(budget.cap).toBe(30)
+    expect(budget.consumed).toBe(webToolCaps.auto)
+    expect(budget.probe.exhaustedAttempts).toBe(1)
+    expect(budget.probe.isExhausted).toBe(false)
+  })
+
+  it('keeps the original cap when promotion is off and starts fresh on a new budget', () => {
+    const disabled = createWebToolBudget('auto', false)
+    disabled.promote('research')
+    expect(disabled.cap).toBe(webToolCaps.auto)
+    const promoted = createWebToolBudget('auto', true)
+    promoted.promote('research')
+    const fresh = createWebToolBudget('auto', true)
+    expect(fresh.cap).toBe(webToolCaps.auto)
+    expect(fresh.promoted).toBe(false)
+  })
+
+  it('accepts only on/off, with unset defaulting on', () => {
+    expect(resolveWebBudgetPromotion(undefined)).toBe(true)
+    expect(resolveWebBudgetPromotion('on')).toBe(true)
+    expect(resolveWebBudgetPromotion('off')).toBe(false)
+    for (const value of ['', '0', '1', 'true', 'ON', 'offf']) {
+      expect(() => resolveWebBudgetPromotion(value)).toThrow('WEB_BUDGET_PROMOTION')
+    }
+  })
+})
+
+it('reads the run option at construction and rejects invalid values before execution', () => {
+  const prior = process.env.WEB_BUDGET_PROMOTION
+  try {
+    process.env.WEB_BUDGET_PROMOTION = 'on'
+    const enabled = createWebToolBudget('auto')
+    process.env.WEB_BUDGET_PROMOTION = 'off'
+    enabled.promote('research')
+    expect(enabled.cap).toBe(30)
+    const disabled = createWebToolBudget('auto')
+    disabled.promote('research')
+    expect(disabled.cap).toBe(webToolCaps.auto)
+    process.env.WEB_BUDGET_PROMOTION = 'invalid'
+    expect(() => createWebToolBudget('auto')).toThrow('WEB_BUDGET_PROMOTION')
+  } finally {
+    if (prior === undefined) {
+      delete process.env.WEB_BUDGET_PROMOTION
+    } else {
+      process.env.WEB_BUDGET_PROMOTION = prior
+    }
+  }
 })

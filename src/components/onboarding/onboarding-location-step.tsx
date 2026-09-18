@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
-import type { LocationData } from '@/hooks/use-location-search'
+import type { LocationData } from '@/lib/locations'
 import type { OnboardingState } from '@/hooks/use-onboarding-state'
 import { zodResolver } from '@hookform/resolvers/zod'
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { MapPin } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -13,26 +16,38 @@ import { z } from 'zod'
 import { LocationSearchCombobox } from '../location-search-combobox'
 import { OnboardingStepHeader } from './onboarding-step-header'
 
-const locationFormSchema = z
-  .object({
-    locationName: z.string().min(1, { message: 'Location is required.' }),
-    locationLat: z.number().optional(),
-    locationLng: z.number().optional(),
-  })
-  .refine(
-    (data) => {
-      if (data.locationName && data.locationName.length > 0) {
-        return data.locationLat !== undefined && data.locationLng !== undefined
-      }
-      return true
-    },
-    {
-      message: 'Please select a location from the dropdown to get coordinates.',
-      path: ['locationName'],
-    },
-  )
+const locationRequired = msg`Location is required.`
+const coordinatesRequired = msg`Please select a location from the dropdown to get coordinates.`
 
-type LocationFormData = z.infer<typeof locationFormSchema>
+/** Built per render so the messages resolve against the active catalog — see the
+ *  "Localization" section in AGENTS.md. */
+const createLocationFormSchema = (i18n: I18n) =>
+  z
+    .object({
+      locationName: z.string().min(1, { message: i18n._(locationRequired) }),
+      locationLat: z.number().optional(),
+      locationLng: z.number().optional(),
+      // Not user-editable and never rendered: the combobox writes it so the
+      // submit handler has the region without re-parsing `locationName`.
+      locationCountryCode: z.string(),
+      // Likewise. `locationName` here is the localized display string the user
+      // clicked; the id is what recovers the English name the model needs.
+      locationId: z.number().optional(),
+    })
+    .refine(
+      (data) => {
+        if (data.locationName && data.locationName.length > 0) {
+          return data.locationLat !== undefined && data.locationLng !== undefined
+        }
+        return true
+      },
+      {
+        message: i18n._(coordinatesRequired),
+        path: ['locationName'],
+      },
+    )
+
+type LocationFormData = z.infer<ReturnType<typeof createLocationFormSchema>>
 
 type OnboardingLocationStepProps = {
   state: OnboardingState
@@ -40,7 +55,13 @@ type OnboardingLocationStepProps = {
     setLocationValue: (value: string) => void
     setLocationValid: (valid: boolean) => void
     setSubmittingLocation: (submitting: boolean) => void
-    submitLocation: (locationData: { locationName: string; locationLat: number; locationLng: number }) => Promise<void>
+    submitLocation: (locationData: {
+      locationName: string
+      locationId: number
+      locationLat: number
+      locationLng: number
+      locationCountryCode: string
+    }) => Promise<void>
     nextStep: () => Promise<void>
     prevStep: () => Promise<void>
     skipStep: () => Promise<void>
@@ -49,7 +70,9 @@ type OnboardingLocationStepProps = {
 }
 
 export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: OnboardingLocationStepProps) => {
+  const { i18n } = useLingui()
   const [isInitialized, setIsInitialized] = useState(false)
+  const locationFormSchema = createLocationFormSchema(i18n)
 
   const form = useForm<LocationFormData>({
     resolver: zodResolver(locationFormSchema),
@@ -57,6 +80,8 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
       locationName: '',
       locationLat: undefined,
       locationLng: undefined,
+      locationCountryCode: '',
+      locationId: undefined,
     },
   })
 
@@ -64,13 +89,17 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     form.setValue('locationName', location.name, { shouldDirty: true })
     form.setValue('locationLat', location.coordinates.lat, { shouldDirty: true })
     form.setValue('locationLng', location.coordinates.lng, { shouldDirty: true })
+    form.setValue('locationCountryCode', location.countryCode, { shouldDirty: true })
+    form.setValue('locationId', location.id, { shouldDirty: true })
     form.trigger()
 
     try {
       await actions.submitLocation({
         locationName: location.name,
+        locationId: location.id,
         locationLat: location.coordinates.lat,
         locationLng: location.coordinates.lng,
+        locationCountryCode: location.countryCode,
       })
     } catch (error) {
       console.error('Failed to save location:', error)
@@ -117,8 +146,10 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     try {
       await actions.submitLocation({
         locationName: values.locationName,
+        locationId: values.locationId!,
         locationLat: values.locationLat!,
         locationLng: values.locationLng!,
+        locationCountryCode: values.locationCountryCode,
       })
       actions.nextStep()
     } catch (error) {
@@ -130,8 +161,8 @@ export const OnboardingLocationStep = ({ actions, onFormDirtyChange }: Onboardin
     <div className="flex w-full flex-1 flex-col justify-center">
       <OnboardingStepHeader
         icon={<MapPin className="size-10 text-primary" />}
-        title="Where are you located?"
-        description="This helps us personalize your experience with local settings and features."
+        title={<Trans>Where are you located?</Trans>}
+        description={<Trans>This helps us personalize your experience with local settings and features.</Trans>}
       />
 
       <Form {...form}>

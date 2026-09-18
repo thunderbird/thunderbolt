@@ -12,6 +12,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -165,6 +166,8 @@ export type AutomationRun = {
 
 export type UIMessageMetadata = {
   modelId?: string
+  /** Correlates a persisted turn with its richer session-scoped debug capture. */
+  debugTranscript?: DebugTranscriptMessageMetadataV1
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
   reasoningTime?: Record<string, number>
@@ -240,20 +243,3 @@ export type AuthProviderBackendConfig = {
 }
 
 // Re-export types from schemas to maintain backward compatibility
-export type { CountryUnitsData, Currency, DateFormat, TemperatureUnit, UnitsOptionsData } from './schemas/api'
-
-export type PreferencesSettings = {
-  locationName: string
-  locationLat: string
-  locationLng: string
-  preferredName: string
-  dataCollection: boolean
-  experimentalFeatureTasks: boolean
-  experimentalFeatureVoice: boolean
-  distanceUnit: string
-  temperatureUnit: string
-  dateFormat: string
-  timeFormat: string
-  currency: string
-  countryName: string | null
-}

@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
+import type { I18n } from '@lingui/core'
+import { customProviderLabel } from './model-presentation'
 import { useCallback, useEffect, useReducer } from 'react'
 
 import type { ComboboxItem } from '@/components/ui/combobox'
@@ -58,7 +61,7 @@ export const modelCatalogReducer = (state: ModelCatalogState, action: ModelCatal
 
 /** The sentinel combobox entry that switches the form into free-text model entry.
  *  Shared by the add and edit forms so the `'custom'` id has one source. */
-export const customModelItem: ComboboxItem = { id: 'custom', label: 'Custom' }
+export const customModelItem = (i18n: I18n): ComboboxItem => ({ id: 'custom', label: i18n._(customProviderLabel) })
 
 /** Maps catalog entries to combobox items (name falls back to the raw id). */
 export const catalogToComboboxItems = (models: AvailableModel[]): ComboboxItem[] =>
@@ -70,18 +73,22 @@ export const catalogToComboboxItems = (models: AvailableModel[]): ComboboxItem[]
 
 /** Provider catalog fetching shared by the add-model and edit-model forms. */
 export const useModelCatalog = () => {
+  const { i18n } = useLingui()
   const [state, dispatch] = useReducer(modelCatalogReducer, initialModelCatalogState)
 
-  const fetchCatalog = useCallback(async (request: CatalogRequest) => {
-    const requestKey = catalogRequestKey(request)
-    dispatch({ type: 'CATALOG_REQUESTED', requestKey })
-    try {
-      dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request) })
-    } catch (error) {
-      console.error('Failed to fetch models:', error)
-      dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(error) })
-    }
-  }, [])
+  const fetchCatalog = useCallback(
+    async (request: CatalogRequest) => {
+      const requestKey = catalogRequestKey(request)
+      dispatch({ type: 'CATALOG_REQUESTED', requestKey })
+      try {
+        dispatch({ type: 'CATALOG_LOADED', requestKey, models: await fetchModelsForProvider(request) })
+      } catch (error) {
+        console.error('Failed to fetch models:', error)
+        dispatch({ type: 'CATALOG_FAILED', requestKey, error: describeModelFetchError(i18n, error) })
+      }
+    },
+    [i18n],
+  )
   const invalidateCatalog = useCallback(() => dispatch({ type: 'CATALOG_INVALIDATED' }), [])
 
   return {

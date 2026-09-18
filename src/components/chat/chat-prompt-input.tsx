@@ -28,7 +28,11 @@ import {
 } from '@/skills/use-skills'
 import { type AttachmentData, type Model, type Skill } from '@/types'
 import { useChat as useChat_default } from '@ai-sdk/react'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { messageBookkeepingThrottleMs } from '@/chats/chat-throttle'
+import { getTurnActivity } from '@/chats/turn-activity'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, X } from 'lucide-react'
@@ -116,27 +120,33 @@ const withClipboardFilename = (file: File, index: number): File => {
   return new File([file], `pasted-image-${Date.now()}-${index}.${ext}`, { type: file.type })
 }
 
+const connectionFailed = msg`Connection failed`
+
+/** Wraps a server-supplied string as a descriptor with no catalog entry, so the
+ *  caller has one type to resolve: `i18n._` returns it verbatim on a miss. */
+const asDescriptor = (message: string): MessageDescriptor => ({ id: message, message })
+
 /**
  * Extract a human-readable display string from a connection error.
  * Handles JSON-RPC error messages (which have nested data.message),
  * plain strings, and generic Error objects.
  */
-const extractErrorDisplay = (error: Error | null | undefined): string => {
+const extractErrorDisplay = (error: Error | null | undefined): MessageDescriptor => {
   if (!error?.message) {
-    return 'Connection failed'
+    return connectionFailed
   }
 
   try {
     const parsed = JSON.parse(error.message)
     const message = parsed?.data?.message ?? parsed?.data?.details ?? parsed?.message
     if (typeof message === 'string') {
-      return message
+      return asDescriptor(message)
     }
   } catch {
     // Not JSON — use the raw message
   }
 
-  return error.message
+  return asDescriptor(error.message)
 }
 
 export type ChatPromptInputRef = {
@@ -172,6 +182,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     },
     ref,
   ) => {
+    const { i18n, t } = useLingui()
     const navigate = useNavigate()
     const location = useLocation()
     const { openCreateItem } = useCreateItem()
@@ -186,11 +197,23 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       connectionStatus,
       connectionError,
       id: chatThreadId,
+      retryCount,
+      retriesExhausted,
+      stopping,
       selectedAgent,
       selectedModel,
     } = useCurrentChatSession()
+    // Bound to a local so the catalog placeholder is named `{agentName}` — a
+    // member expression inside a macro extracts as positional `{0}`.
+    const agentName = selectedAgent.name
 
-    const { messages, status, stop, sendMessage } = useChat({
+    const {
+      messages,
+      status,
+      stop,
+      sendMessage,
+      error: chatError,
+    } = useChat({
       chat: chatInstance,
       experimental_throttle: messageBookkeepingThrottleMs,
     })
@@ -234,7 +257,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       [skillBySlug, isEnabled, agentCommandNames],
     )
 
-    const isStreaming = status === 'streaming'
+    // Show the Stop button whenever the thread is busy — the same signal
+    // `ChatMessages` uses for its loading spinner, so the two stay in sync.
+    const { isActive: isBusy, isStopping } = getTurnActivity({
+      status,
+      lastMessage: messages[messages.length - 1],
+      hasChatError: chatError != null,
+      retriesExhausted,
+      retryCount,
+      stopRequested: stopping,
+    })
     const isConnecting = connectionStatus === 'connecting'
     const isConnectionError = connectionStatus === 'error' && connectionError != null
 
@@ -445,11 +477,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         let count = attachments.length
         for (const file of files) {
           if (count >= maxAttachmentCount) {
-            setAttachError(`You can attach up to ${maxAttachmentCount} files.`)
+            setAttachError(t`You can attach up to ${maxAttachmentCount} files.`)
             break
           }
           if (!isAcceptedAttachment(file)) {
-            setAttachError(`"${file.name}" isn't a supported file type.`)
+            const filename = file.name
+            setAttachError(t`"${filename}" isn't a supported file type.`)
             continue
           }
           // Shrink large images/PDFs before the cap check, so a compressible
@@ -457,7 +490,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           // (THU-671). Falls back to the original when it can't help.
           const prepared = await maybeCompressAttachment(file)
           if (prepared.size > maxAttachmentBytes) {
-            setAttachError(`"${prepared.name}" is too large (max ${maxAttachmentBytes / 1024 / 1024}MB).`)
+            const maxMegabytes = maxAttachmentBytes / 1024 / 1024
+            const filename = prepared.name
+            setAttachError(t`"${filename}" is too large (max ${maxMegabytes}MB).`)
             continue
           }
           const localFileId = crypto.randomUUID()
@@ -476,7 +511,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // promise reject silently — otherwise no chip appears and no banner
             // shows. Stop here: subsequent writes would hit the same failure.
             console.error('Failed to store attachment locally:', error)
-            setAttachError(`Couldn't attach "${prepared.name}" — your browser's storage is full or unavailable.`)
+            const filename = prepared.name
+            setAttachError(t`Couldn't attach "${filename}" — your browser's storage is full or unavailable.`)
             break
           }
           setAttachments((prev) => [
@@ -486,7 +522,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           count++
         }
       },
-      [attachments.length],
+      [attachments.length, t],
     )
 
     // Intercept clipboard paste (Cmd/Ctrl+V) so copied files and pasted images
@@ -515,9 +551,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
 
     const handleSubmit = async () => {
       try {
-        // Prevent submitting while streaming, or with no text, attachments, or quotes.
+        // Prevent submitting while a turn is in flight, or with no text, attachments, or quotes.
         const textToSend = normalizedInput.trim()
-        if (isStreaming || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
+        if (isBusy || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -601,7 +637,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-muted-foreground text-[length:var(--font-size-body)]"
           >
             <Loader2 className="size-[var(--icon-size-default)] shrink-0 animate-spin" />
-            <span>Connecting to {selectedAgent.name}...</span>
+            <span>
+              <Trans>Connecting to {agentName}…</Trans>
+            </span>
           </div>
         ) : isConnectionError ? (
           <div
@@ -609,8 +647,8 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             className="flex items-center gap-2 px-3 h-[var(--touch-height-sm)] text-destructive text-[length:var(--font-size-body)]"
           >
             <AlertCircle className="size-[var(--icon-size-default)] shrink-0" />
-            <span className="truncate" title={extractErrorDisplay(connectionError)}>
-              Failed to connect to {selectedAgent.name}
+            <span className="truncate" title={i18n._(extractErrorDisplay(connectionError))}>
+              <Trans>Failed to connect to {agentName}</Trans>
             </span>
           </div>
         ) : null}
@@ -675,7 +713,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           role="status"
           className="flex items-center justify-center px-4 py-3 text-muted-foreground text-[length:var(--font-size-sm)]"
         >
-          <span>This chat uses {selectedAgent.name}, which is not available on this platform.</span>
+          <span>
+            <Trans>This chat uses {agentName}, which is not available on this platform.</Trans>
+          </span>
         </div>
       )
     }
@@ -698,7 +738,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           {isDragging && (
             <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-ring bg-muted/80 backdrop-blur-sm">
               <span className="text-[length:var(--font-size-sm)] font-medium text-muted-foreground">
-                Drop file to attach
+                <Trans>Drop file to attach</Trans>
               </span>
             </div>
           )}
@@ -752,7 +792,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                     <button
                       type="button"
                       onClick={() => setAttachError(null)}
-                      aria-label="Dismiss"
+                      aria-label={t`Dismiss`}
                       className="shrink-0 cursor-pointer rounded p-0.5 hover:bg-destructive/15"
                     >
                       <X className="size-3.5" />
@@ -801,13 +841,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
               }
               setInput(value)
             }}
-            placeholder="Ask me anything..."
+            placeholder={t`Ask me anything…`}
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
             canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
-            isLoading={isStreaming || isConnecting}
-            isStreaming={isStreaming}
+            isLoading={isBusy || isConnecting}
+            isStreaming={isBusy}
+            isStopping={isStopping}
             onStop={stop}
             // Desktop always autofocuses. The native mobile app autofocuses on a
             // fresh chat (opening the app should land ready to type, keyboard up —
@@ -816,7 +857,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             // history the user came to read would be hostile. Mobile web keeps no
             // autofocus: browsers won't show the keyboard for it anyway.
             autoFocus={!isMobile || (isPlatformMobile() && isNewChat)}
-            submitOnEnter={!isStreaming && !shouldInsertNewlineOnEnter}
+            submitOnEnter={!isBusy && !shouldInsertNewlineOnEnter}
             // Voice mode covers the composer with an overlay; make the underlying
             // input non-interactive so Tab/Enter can't reach the hidden textarea.
             inert={voice.active}

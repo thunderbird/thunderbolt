@@ -14,8 +14,10 @@ import {
   validateOtpChallenge,
 } from '@/dal'
 import type { db as DbType } from '@/db/client'
+import { cliRegistrationPendingDeviceId } from '@/dal/sessions'
 import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
+import { resolveEmailLocale } from '@/emails/i18n'
 import { getSettings } from '@/config/settings'
 import { getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
@@ -214,6 +216,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           }),
         },
       },
+      session: {
+        create: {
+          before: async (sessionData, context) =>
+            context?.path === deviceTokenPath
+              ? { data: { ...sessionData, deviceId: cliRegistrationPendingDeviceId } }
+              : undefined,
+        },
+      },
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -323,7 +333,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // code requests + session binding (challenge token) make brute-force infeasible.
         // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
-        async sendVerificationOTP({ email, otp, type }) {
+        async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)
           if (type !== 'sign-in') {
             console.warn(`Unexpected OTP type requested: ${type}`)
@@ -331,6 +341,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           }
 
           const normalizedEmail = normalizeEmail(email)
+          // Better Auth hands this callback the endpoint context, so the
+          // recipient's own `X-App-Language` is still in reach even though the
+          // send happens below the route handler. `getHeader` reads better-call's
+          // normalized view, which covers both the `headers` and `request` call
+          // shapes. Server-side callers (`auth.api.sendVerificationOTP`) must
+          // pass the header explicitly or this falls back to English — see
+          // `@/waitlist/routes`.
+          const locale = resolveEmailLocale(ctx?.getHeader('X-App-Language'))
 
           // Existing users bypass waitlist entirely
           const existingUser = await getUserByEmail(database, normalizedEmail)
@@ -346,7 +364,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
                 status: autoApproved ? 'approved' : 'pending',
               })
               if (!autoApproved) {
-                await sendWaitlistJoinedEmail({ email: normalizedEmail })
+                await sendWaitlistJoinedEmail({ email: normalizedEmail, locale })
                 await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
@@ -355,7 +373,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
                 await approveWaitlistEntry(database, waitlistEntry.id)
               } else {
                 console.info('Handling sign-in for non-approved email (sending waitlist email)')
-                await sendWaitlistNotReadyEmail({ email: normalizedEmail })
+                await sendWaitlistNotReadyEmail({ email: normalizedEmail, locale })
                 await deletePersistedSignInOtp(database, normalizedEmail)
                 return
               }
@@ -372,7 +390,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           })
           const verifyUrl = buildVerifyUrl(settings.appUrl, normalizedEmail, otp, challengeToken)
 
-          await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl })
+          await sendSignInEmail({ email: normalizedEmail, otp, verifyUrl, locale })
         },
       }),
       // Device Authorization Grant (RFC 8628) — lets the headless `thunderbolt` CLI log in:

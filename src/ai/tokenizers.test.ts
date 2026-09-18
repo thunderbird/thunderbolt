@@ -4,7 +4,7 @@
 
 import type { ThunderboltUIMessage } from '@/types'
 import { describe, expect, it } from 'vitest'
-import { estimateTokensForMessages, estimateTokensForText, formatTokenCount } from './tokenizers'
+import { estimateTokensForMessages, estimateTokensForText } from './tokenizers'
 
 describe('tokenizers', () => {
   describe('estimateTokensForText', () => {
@@ -130,24 +130,6 @@ describe('tokenizers', () => {
       const count1 = estimateTokensForMessages(messages)
       const count2 = estimateTokensForMessages(messages)
       expect(count1).toBe(count2)
-    })
-  })
-
-  describe('formatTokenCount', () => {
-    it('should format used/max token counts', () => {
-      expect(formatTokenCount(1000, 256000)).toBe('1K / 256K')
-      expect(formatTokenCount(50000, 1000000)).toBe('50K / 1M')
-      expect(formatTokenCount(750, 2000)).toBe('750 / 2K')
-    })
-
-    it('should handle undefined max tokens', () => {
-      expect(formatTokenCount(1000)).toBe('1K / unknown')
-      expect(formatTokenCount(50000, undefined)).toBe('50K / unknown')
-    })
-
-    it('should handle zero values', () => {
-      expect(formatTokenCount(0, 256000)).toBe('0 / 256K')
-      expect(formatTokenCount(1000, 0)).toBe('1K / 0')
     })
   })
 })

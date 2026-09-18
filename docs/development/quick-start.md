@@ -8,7 +8,7 @@ After cloning, run **`make doctor`** — it inspects your machine and prints exa
 
 - **[Bun](https://bun.sh/)** 1.2+
 - **Rust toolchain** — for Tauri desktop and mobile builds (install via [rustup](https://rustup.rs/))
-- **sccache** — speeds up Rust rebuilds (`cargo install sccache`)
+- **sccache** — optional; `make setup` installs it when Cargo is available to speed up Rust rebuilds
 - **Docker** — PowerSync and PostgreSQL run in containers during local dev
 
 You'll also need at least one AI provider API key — Anthropic, OpenAI, Mistral, Fireworks, or any OpenAI-compatible endpoint (Ollama and llama.cpp are recommended for local inference).
@@ -19,7 +19,7 @@ Tauri needs GTK/WebKit dev libraries. On Debian/Ubuntu:
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
-  build-essential curl wget file libxdo-dev libssl-dev \
+  build-essential curl wget file pkg-config libxdo-dev libssl-dev \
   libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 ```
 
@@ -36,7 +36,7 @@ For other distributions, use the upstream
    make setup
    ```
 
-   `make setup` installs frontend and backend dependencies and wires up the Claude Code agent symlinks.
+   `make setup` installs frontend and backend dependencies, optionally installs `sccache`, and wires up the Claude Code agent symlinks.
 
 2. **Create `.env` files.**
 
@@ -80,6 +80,7 @@ For other distributions, use the upstream
 - **`make up` fails with a Postgres data-format error** — the Postgres image was bumped to v18, which changed its on-disk layout. If your local volume was created with an older version, run `make nuke` to wipe it and re-init (you'll lose any local DB state).
 - **Backend errors with `BETTER_AUTH_SECRET`** — run `make doctor`; it generates one for you. Or set it manually with `openssl rand -base64 32`.
 - **`powersyncJwtSecret must be at least 32 characters`** — set `POWERSYNC_JWT_SECRET` in `backend/.env` to match the one baked into `powersync-service/config/config.yaml`.
+- **Playwright on Ubuntu 26.04 ARM64** — `make setup` automatically uses Playwright's Ubuntu 24.04 ARM64 browser build until Playwright supports 26.04 directly.
 - **Tests behave weirdly** — fake timers are globally installed; see [testing.md](./testing.md).
 
 ## Helpful Makefile Targets

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase } from '@/db/client'
 import {
   challengeNoncesTable,
   encryptionMetadataTable,
@@ -18,7 +18,7 @@ import { and, eq, gt, lte, or, sql } from 'drizzle-orm'
 // old Content Key. The column/field name is kept to avoid migration churn.
 
 /** Get an envelope by device ID and user ID. `wrappedCk` carries the AK (v2). */
-export const getEnvelopeByDeviceId = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const getEnvelopeByDeviceId = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database
     .select({ wrappedCk: envelopesTable.wrappedCk })
     .from(envelopesTable)
@@ -27,7 +27,7 @@ export const getEnvelopeByDeviceId = async (database: typeof DbType, deviceId: s
     .then((rows) => rows[0] ?? null)
 
 /** Check if any envelopes exist for a user. */
-export const hasEnvelopesForUser = async (database: typeof DbType, userId: string) =>
+export const hasEnvelopesForUser = async (database: QueryableDatabase, userId: string) =>
   database
     .select({ deviceId: envelopesTable.deviceId })
     .from(envelopesTable)
@@ -37,7 +37,7 @@ export const hasEnvelopesForUser = async (database: typeof DbType, userId: strin
 
 /** Upsert an envelope for a device. Only updates if userId matches (defense-in-depth). */
 export const upsertEnvelope = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   envelope: { deviceId: string; userId: string; wrappedCk: string },
 ) =>
   database
@@ -54,13 +54,13 @@ export const upsertEnvelope = async (
     })
 
 /** Delete an envelope for a device. Scoped by userId to prevent cross-user deletion. */
-export const deleteEnvelope = async (database: typeof DbType, deviceId: string, userId: string) =>
+export const deleteEnvelope = async (database: QueryableDatabase, deviceId: string, userId: string) =>
   database.delete(envelopesTable).where(and(eq(envelopesTable.deviceId, deviceId), eq(envelopesTable.userId, userId)))
 
 // ─── Org-escrow envelopes (THU-804) ───────────────────────────────────
 
 /** Get the org-escrow envelope for a user (the AK wrapped to the operator escrow key). */
-export const getOrgEnvelope = async (database: typeof DbType, userId: string) =>
+export const getOrgEnvelope = async (database: QueryableDatabase, userId: string) =>
   database
     .select({ wrappedAk: orgEnvelopesTable.wrappedAk })
     .from(orgEnvelopesTable)
@@ -72,7 +72,7 @@ export const getOrgEnvelope = async (database: typeof DbType, userId: string) =>
  * Upsert the org-escrow envelope for a user. One row per user — every AK
  * change (setup / rotate / upgrade) replaces it inside the same transaction.
  */
-export const upsertOrgEnvelope = async (database: typeof DbType, envelope: { userId: string; wrappedAk: string }) =>
+export const upsertOrgEnvelope = async (database: QueryableDatabase, envelope: { userId: string; wrappedAk: string }) =>
   database
     .insert(orgEnvelopesTable)
     .values(envelope)
@@ -107,7 +107,7 @@ export type RecoverySlot = {
  * pointers (`keyVersion`/`primaryKeyId`/`schemeVersion`). `canarySecretHash` is
  * RETAINED as the v1 CK-possession anchor consumed by `/upgrade` (Decision B).
  */
-export const getEncryptionMetadata = async (database: typeof DbType, userId: string) =>
+export const getEncryptionMetadata = async (database: QueryableDatabase, userId: string) =>
   database
     .select({
       canaryIv: encryptionMetadataTable.canaryIv,
@@ -136,7 +136,7 @@ export const getEncryptionMetadata = async (database: typeof DbType, userId: str
  * for v2.
  */
 export const insertEncryptionMetadataIfNotExists = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   metadata: RecoverySlot & {
     userId: string
     canaryIv: string
@@ -171,7 +171,7 @@ export const insertEncryptionMetadataIfNotExists = async (
  * `bumpKeyVersion` in the same transaction.
  */
 export const replaceEncryptionMetadata = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   metadata: RecoverySlot & {
     userId: string
     canaryIv: string
@@ -205,7 +205,7 @@ export const replaceEncryptionMetadata = async (
  * and roll back).
  */
 export const flipSchemeToV2 = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   metadata: RecoverySlot & {
     userId: string
     canaryIv: string
@@ -235,7 +235,7 @@ export const flipSchemeToV2 = async (
     .then((rows) => rows[0] ?? null)
 
 /** Increment key_version (signals devices to refresh their AK envelope). Returns the new version. */
-export const bumpKeyVersion = async (database: typeof DbType, userId: string) =>
+export const bumpKeyVersion = async (database: QueryableDatabase, userId: string) =>
   database
     .update(encryptionMetadataTable)
     .set({ keyVersion: sql`${encryptionMetadataTable.keyVersion} + 1` })
@@ -256,7 +256,7 @@ export const bumpKeyVersion = async (database: typeof DbType, userId: string) =>
  * v1-era phrase opens (THU-876) — a future caller must trip here, in tests,
  * rather than ship that.
  */
-export const setPrimaryKeyId = async (database: typeof DbType, userId: string, keyId: KeyId) => {
+export const setPrimaryKeyId = async (database: QueryableDatabase, userId: string, keyId: KeyId) => {
   if (!isMintableKeyId(keyId)) {
     throw new Error(`Refusing to set a non-mintable primary key_id: '${keyId}'`)
   }
@@ -269,7 +269,7 @@ export const setPrimaryKeyId = async (database: typeof DbType, userId: string, k
 // ─── Wrapped keys (versioned DEK keyring) ─────────────────────────────
 
 /** Get one wrapped DEK by (userId, keyId). */
-export const getWrappedKey = async (database: typeof DbType, userId: string, keyId: KeyId) =>
+export const getWrappedKey = async (database: QueryableDatabase, userId: string, keyId: KeyId) =>
   database
     .select({ keyId: wrappedKeysTable.keyId, wrappedKey: wrappedKeysTable.wrappedKey })
     .from(wrappedKeysTable)
@@ -278,7 +278,7 @@ export const getWrappedKey = async (database: typeof DbType, userId: string, key
     .then((rows) => rows[0] ?? null)
 
 /** List the full wrapped-DEK keyring for a user. */
-export const listWrappedKeys = async (database: typeof DbType, userId: string) =>
+export const listWrappedKeys = async (database: QueryableDatabase, userId: string) =>
   database
     .select({ keyId: wrappedKeysTable.keyId, wrappedKey: wrappedKeysTable.wrappedKey })
     .from(wrappedKeysTable)
@@ -301,7 +301,7 @@ export const listWrappedKeys = async (database: typeof DbType, userId: string) =
  * strand devices once the old AK is discarded. Use `updateWrappedKey` instead.
  */
 export const insertWrappedKey = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   entry: { userId: string; keyId: KeyId; wrappedKey: string },
 ) =>
   database
@@ -315,7 +315,7 @@ export const insertWrappedKey = async (
  * UPDATE — returns the updated rows so callers can detect a missing key_id
  * (0 rows) and abort the rotation transaction.
  */
-export const updateWrappedKey = async (database: typeof DbType, userId: string, keyId: KeyId, wrappedKey: string) =>
+export const updateWrappedKey = async (database: QueryableDatabase, userId: string, keyId: KeyId, wrappedKey: string) =>
   database
     .update(wrappedKeysTable)
     .set({ wrappedKey, updatedAt: new Date() })
@@ -342,7 +342,7 @@ const generateNonce = () => {
  * a bind nonce cannot be minted in cleartext through that route.
  */
 export const issueChallengeNonce = async (
-  database: typeof DbType,
+  database: QueryableDatabase,
   params: { userId: string; operation: NonceOperation; deviceId: string; ttlMs: number },
 ) => {
   const nonce = generateNonce()
@@ -364,7 +364,7 @@ export const issueChallengeNonce = async (
  * Returns the nonce binding for the caller to verify, or null when
  * unknown/replayed/expired.
  */
-export const consumeChallengeNonce = async (database: typeof DbType, nonce: string) =>
+export const consumeChallengeNonce = async (database: QueryableDatabase, nonce: string) =>
   database
     .update(challengeNoncesTable)
     .set({ consumed: true })
@@ -381,7 +381,7 @@ export const consumeChallengeNonce = async (database: typeof DbType, nonce: stri
     )
 
 /** Sweep expired or already-consumed nonces (startup + interval, plan Track A A7). */
-export const deleteExpiredOrConsumedNonces = async (database: typeof DbType) =>
+export const deleteExpiredOrConsumedNonces = async (database: QueryableDatabase) =>
   database
     .delete(challengeNoncesTable)
     .where(or(eq(challengeNoncesTable.consumed, true), lte(challengeNoncesTable.expiresAt, new Date())))

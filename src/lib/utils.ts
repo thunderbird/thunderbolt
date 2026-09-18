@@ -5,7 +5,6 @@
 import type { ChatMessage, UIMessageMetadata } from '@/types'
 import type { UIMessage } from 'ai'
 import { clsx, type ClassValue } from 'clsx'
-import dayjs from 'dayjs'
 import { getTableConfig, type SQLiteColumn, type SQLiteTableWithColumns } from 'drizzle-orm/sqlite-core'
 import { twMerge } from 'tailwind-merge'
 import {
@@ -177,38 +176,6 @@ export const camelCasedPropertiesDeep = <T extends Record<string, any>>(obj: T):
 export const nowIso = (): string => new Date().toISOString()
 
 /**
- * Format a date for display. Accepts Unix ms, or ISO 8601 datetime string.
- */
-export const formatDate = (value: number | string): string => {
-  const d = dayjs(value)
-  const now = dayjs()
-
-  if (d.isSame(now, 'day')) {
-    return d.format('HH:mm')
-  }
-
-  if (d.isSame(now, 'year')) {
-    return d.format('MMM D')
-  }
-
-  return d.format('MMM D, YYYY')
-}
-
-/**
- * Format large numbers with k/M/B abbreviations using Intl.NumberFormat
- * @param num The number to format
- * @returns Formatted string like "256K" or "1.2M"
- */
-export const formatNumber = (num: number): string => {
-  const formatter = new Intl.NumberFormat('en', {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  })
-
-  return formatter.format(num)
-}
-
-/**
  * Split UI part types like "tool-read_file" into [type, name]
  */
 export const splitPartType = (type: string): [string, string] => {
@@ -235,14 +202,6 @@ export const formatToolOutput = (output: unknown): string => {
     return output
   }
   return JSON.stringify(output, null, 2)
-}
-
-export const formatDuration = (ms: number): string => {
-  const seconds = ms / 1000
-  if (seconds < 1) {
-    return `${Math.round(ms)}ms`
-  }
-  return `${seconds.toFixed(1)}s`
 }
 
 /**

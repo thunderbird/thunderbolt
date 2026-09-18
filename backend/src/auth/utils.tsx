@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { AppLocale } from '@shared/i18n/locales'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
-import { MagicLinkEmail } from '@/emails/magic-link'
+import { getEmailI18n } from '@/emails/i18n'
+import { MagicLinkEmail, magicLinkSubject } from '@/emails/magic-link'
 
 /** Tauri app origin - always included for mobile/desktop app support */
 const tauriOrigin = 'tauri://localhost'
@@ -47,20 +49,22 @@ type SendSignInEmailParams = {
   email: string
   otp: string
   verifyUrl: string
+  locale: AppLocale
 }
 
 /** Send sign-in email with both OTP code and a clickable link. */
-export const sendSignInEmail = async ({ email, otp, verifyUrl }: SendSignInEmailParams): Promise<void> => {
+export const sendSignInEmail = async ({ email, otp, verifyUrl, locale }: SendSignInEmailParams): Promise<void> => {
   if (shouldSkipEmail()) {
     console.info(`🔗 [DEV] Verify URL (no email sent): ${verifyUrl}`)
     console.info(`🔢 [DEV] OTP code: ${otp}`)
     return
   }
 
+  const i18n = getEmailI18n(locale)
   const data = await sendEmail({
     to: email,
-    subject: 'Your Thunderbolt verification code',
-    react: <MagicLinkEmail code={otp} magicLinkUrl={verifyUrl} />,
+    subject: magicLinkSubject(i18n),
+    react: <MagicLinkEmail i18n={i18n} code={otp} magicLinkUrl={verifyUrl} />,
   })
 
   console.info(`✅ Sign-in email sent successfully. ID: ${data?.id}`)

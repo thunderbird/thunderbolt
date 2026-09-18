@@ -15,7 +15,8 @@ import {
   type TurnBudget,
 } from '@/ai/retry-budget'
 import { createTurnTelemetry as defaultCreateTurnTelemetry, type TurnTelemetry } from '@/ai/turn-telemetry'
-import { createWebToolBudget, resolveWebToolIntent, type WebToolBudget } from '@/ai/web-tool-budget'
+import { createWebToolBudget, type WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveWebToolIntent, webBudgetExhaustedMessage } from '@/ai/turn-web-budget'
 import { updateChatThread as defaultUpdateChatThread } from '@/dal/chat-threads'
 import { getAllSkills as defaultGetAllSkills } from '@/dal'
 import { isBuiltInAgent } from '@/defaults/agents'
@@ -23,6 +24,19 @@ import { loadProjectContextForThread as defaultLoadProjectContext } from '@/proj
 import { buildProjectPromptSection } from '@/projects/project-prompt'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getDb as defaultGetDb } from '@/db/database'
+import {
+  beginDebugTranscriptTurn,
+  finishDebugTranscriptTurn,
+  isDebugTranscriptCaptureEnabled,
+  recordDebugTranscriptFailure,
+  recordDebugTranscriptRetry,
+} from '@/debug-transcript/recorder'
+import { attemptsMadeFromCompletedRetries, emptyResponseRetryReason } from '@/debug-transcript/retry-metadata'
+import type {
+  DebugTranscriptEngine,
+  DebugTranscriptMessageMetadataV1,
+  DebugTranscriptTurnOutcome,
+} from '@/debug-transcript/types'
 import {
   getChatErrorKind,
   getErrorName,
@@ -40,6 +54,7 @@ import { Chat } from '@ai-sdk/react'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
+import { z } from 'zod'
 import { deriveToolKey, findAllowOption, useChatStore } from './chat-store'
 
 export const maxRetries = 3
@@ -52,18 +67,11 @@ const emptyTurnRetryDelayMs = 250
  */
 const getRetryDelay = (attempt: number) => baseRetryDelayMs * 2 ** (attempt - 1) * (0.5 + Math.random())
 
-/** Report whether one AI SDK stream payload contains generated content. */
-const isGeneratedContentPayload = (value: unknown): boolean => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const payload = value as Record<string, unknown>
-  return (
-    (payload.type === 'text-delta' || payload.type === 'reasoning-delta') &&
-    typeof payload.delta === 'string' &&
-    payload.delta.length > 0
-  )
-}
+const generatedContentPayloadSchema = z.object({
+  type: z.enum(['text-delta', 'reasoning-delta']),
+  delta: z.string().min(1),
+})
+const toolDurationSchema = z.number()
 
 /** Observe complete SSE data lines without changing or delaying stream chunks.
  *  Reports whether the line carried generated content (the first-token signal). */
@@ -76,7 +84,7 @@ const observeSseLine = (line: string, telemetry: TurnTelemetry): boolean => {
     return false
   }
   try {
-    if (isGeneratedContentPayload(JSON.parse(data))) {
+    if (generatedContentPayloadSchema.safeParse(JSON.parse(data)).success) {
       telemetry.markFirstToken()
       return true
     }
@@ -199,8 +207,10 @@ export type CreateChatInstanceDeps = {
 export type AgentRoutingState = {
   regenerationRevision?: number
   webToolBudgetRevision?: number
+  webToolBudgetState?: { key: string; budget: WebToolBudget }
   getTurnBudget?: () => TurnBudget
   getTurnTelemetry?: () => TurnTelemetry | undefined
+  getDebugTranscriptTraceId?: () => string | undefined
   getAttempt?: () => number
 }
 
@@ -245,7 +255,6 @@ export const createAgentRoutingFetch = (
     })()
 
   let routedAgentId: string | null = null
-  let webToolBudgetState: { key: string; budget: WebToolBudget } | undefined
 
   const getWebToolBudget = (messages: ThunderboltUIMessage[]): WebToolBudget | undefined => {
     const lastUserMessage = messages.findLast((message) => message.role === 'user')
@@ -253,11 +262,15 @@ export const createAgentRoutingFetch = (
       return undefined
     }
     const key = `${lastUserMessage.id}#${routingState.webToolBudgetRevision ?? 0}`
-    if (webToolBudgetState?.key === key) {
-      return webToolBudgetState.budget
+    if (routingState.webToolBudgetState?.key === key) {
+      return routingState.webToolBudgetState.budget
     }
-    const budget = createWebToolBudget(resolveWebToolIntent(extractLastUserText(messages)))
-    webToolBudgetState = { key, budget }
+    const budget = createWebToolBudget(
+      resolveWebToolIntent(extractLastUserText(messages)),
+      undefined,
+      webBudgetExhaustedMessage,
+    )
+    routingState.webToolBudgetState = { key, budget }
     return budget
   }
 
@@ -323,8 +336,7 @@ export const createAgentRoutingFetch = (
         provider: selectedModel.provider,
       })
 
-      // Save the user message before invoking the adapter. This serves three
-      // purposes that previously only the built-in pipeline got for free:
+      // Save the user message before invoking the adapter. This:
       //   1. Creates the `chat_threads` row on the first message (so the
       //      thread is persisted regardless of agent type).
       //   2. Lets `updateThreadTitle` see the first user message and replace
@@ -335,6 +347,22 @@ export const createAgentRoutingFetch = (
       //      before the assistant stream starts.
       const requestBody = JSON.parse(init.body as string) as { messages?: ThunderboltUIMessage[] }
       const requestMessages = requestBody.messages ?? []
+      const debugTranscriptTraceId = routingState.getDebugTranscriptTraceId?.()
+      if (debugTranscriptTraceId) {
+        const lastUserMessage = requestMessages.findLast((message) => message.role === 'user')
+        beginDebugTranscriptTurn({
+          threadId: id,
+          traceId: debugTranscriptTraceId,
+          engine: isBuiltInAgent(selectedAgent) ? (telemetry?.getEngine() ?? 'legacy') : 'acp',
+          model: {
+            id: selectedModel.id,
+            name: selectedModel.model,
+            provider: selectedModel.provider,
+          },
+          agentId: selectedAgent.id,
+          userMessageId: lastUserMessage?.id,
+        })
+      }
       telemetry?.startPhase('persist_user_message')
       await saveMessages({ id, messages: requestMessages })
       telemetry?.endPhase('persist_user_message')
@@ -397,6 +425,14 @@ export const createAgentRoutingFetch = (
           reason: 'request_budget_exhausted',
           attempt: routingState.getAttempt?.() ?? 1,
         })
+        if (debugTranscriptTraceId) {
+          recordDebugTranscriptRetry(
+            id,
+            debugTranscriptTraceId,
+            'request_budget_exhausted',
+            routingState.getAttempt?.() ?? 1,
+          )
+        }
         throw createTurnBudgetExhaustedError()
       }
 
@@ -412,6 +448,7 @@ export const createAgentRoutingFetch = (
         getProxyFetch,
         turnBudget,
         telemetry,
+        debugTranscriptTraceId,
         webToolBudget: getWebToolBudget(requestMessages),
         regenerationRevision: routingState.regenerationRevision ?? 0,
         skillInstructions,
@@ -435,37 +472,60 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
       telemetry.recordStep()
       continue
     }
-    if (!('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+    if (!('toolCallId' in part)) {
       continue
     }
     const toolName = part.type === 'dynamic-tool' ? 'mcp' : part.type.replace(/^tool-/, '')
-    const durationMs = reasoningTime[part.toolCallId]
-    if (typeof durationMs === 'number') {
-      telemetry.recordTool(toolName, durationMs)
+    const duration = toolDurationSchema.safeParse(reasoningTime[part.toolCallId])
+    if (duration.success) {
+      telemetry.recordTool(toolName, duration.data)
     }
   }
 }
 
+const isEmptyAssistantMessage = (message: ThunderboltUIMessage | undefined): boolean =>
+  message?.role === 'assistant' && !message.parts?.length
+
+/** A reasoning part still mid-stream keeps its spinner running (reasoning-group.tsx)
+ *  even after the turn settles — true when an aborted turn stopped during thinking. */
+const hasStreamingReasoning = (message: ThunderboltUIMessage | undefined): boolean =>
+  !!message?.parts?.some((part) => part.type === 'reasoning' && part.state === 'streaming')
+
+/** Mark every still-streaming reasoning part `done` so its spinner stops. */
+const finalizeReasoning = (message: ThunderboltUIMessage): ThunderboltUIMessage => ({
+  ...message,
+  parts: message.parts.map((part) =>
+    part.type === 'reasoning' && part.state === 'streaming' ? { ...part, state: 'done' as const } : part,
+  ),
+})
+
 type ChatMessageInput = Parameters<Chat<ThunderboltUIMessage>['sendMessage']>[0]
 
-/** Count user-authored text across both AI SDK message input shapes. */
-const getPromptLength = (message: ChatMessageInput): number => {
+/** Extract user-authored text across both AI SDK message input shapes. */
+const getPromptText = (message: ChatMessageInput): string => {
   if (!message) {
-    return 0
+    return ''
   }
   if ('parts' in message && message.parts) {
-    return message.parts.reduce((length, part) => length + (part.type === 'text' ? part.text.length : 0), 0)
+    return message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('')
   }
-  if ('text' in message && typeof message.text === 'string') {
-    return message.text.length
+  if ('text' in message) {
+    return message.text ?? ''
   }
-  return 0
+  return ''
 }
 
-type InFlightTurnMarker = {
-  traceId: string
-  startedAt: number
-}
+/** Count user-authored text across both AI SDK message input shapes. */
+const getPromptLength = (message: ChatMessageInput): number => getPromptText(message).length
+
+const inFlightTurnMarkersSchema = z.array(
+  z.object({
+    traceId: z.string().min(1),
+    startedAt: z.number().finite(),
+  }),
+)
+
+type InFlightTurnMarker = z.infer<typeof inFlightTurnMarkersSchema>[number]
 
 type InFlightTurnStorage = {
   clear: (traceId: string) => void
@@ -479,28 +539,15 @@ type InFlightTurnStorage = {
  */
 const createInFlightTurnStorage = (chatId: string): InFlightTurnStorage => {
   const storageKey = `thunderbolt_chat_turn_in_flight:${chatId}`
-  const isMarker = (value: unknown): value is InFlightTurnMarker => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return false
-    }
-    return (
-      'traceId' in value &&
-      typeof value.traceId === 'string' &&
-      value.traceId.length > 0 &&
-      'startedAt' in value &&
-      typeof value.startedAt === 'number' &&
-      Number.isFinite(value.startedAt)
-    )
-  }
   const read = (): InFlightTurnMarker[] => {
     try {
       const raw = sessionStorage.getItem(storageKey)
       if (!raw) {
         return []
       }
-      const parsed: unknown = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.every(isMarker)) {
-        return parsed
+      const parsed = inFlightTurnMarkersSchema.safeParse(JSON.parse(raw))
+      if (parsed.success) {
+        return parsed.data
       }
       sessionStorage.removeItem(storageKey)
       return []
@@ -557,6 +604,9 @@ type TurnModelProperties = { model_id: string; model_name: string; provider: str
 type TurnState = {
   telemetry: TurnTelemetry | undefined
   modelProperties: TurnModelProperties | undefined
+  traceId: string | undefined
+  engine: DebugTranscriptEngine | undefined
+  agentId: string | undefined
   completed: boolean
 }
 
@@ -564,6 +614,9 @@ type TurnState = {
 const createTurnState = (): TurnState => ({
   telemetry: undefined,
   modelProperties: undefined,
+  traceId: undefined,
+  engine: undefined,
+  agentId: undefined,
   completed: false,
 })
 
@@ -611,10 +664,15 @@ export const createChatInstance = (
       model_name: session.selectedModel.model,
       provider: session.selectedModel.provider,
     }
+    turn.agentId = session.selectedAgent.id
     if (!isBuiltInAgent(session.selectedAgent)) {
+      turn.engine = 'acp'
+      turn.traceId = uuidv7()
       return
     }
     turn.telemetry = createTurnTelemetry()
+    turn.engine = 'legacy'
+    turn.traceId = turn.telemetry.traceId
     turn.telemetry.setDimensions({
       modelId: session.selectedModel.id,
       modelName: session.selectedModel.model,
@@ -632,19 +690,71 @@ export const createChatInstance = (
     }
     return telemetry
   }
+  /** Lazily initialize the correlated trace for built-in and ACP turns. */
+  const getOrCreateDebugTranscriptTraceId = (): string | undefined => {
+    if (!currentTurn.modelProperties) {
+      initializeTurnForCurrentSession(currentTurn)
+    }
+    return currentTurn.traceId
+  }
+  let retryCount = 0
+  let retryTimeout: ReturnType<typeof setTimeout> | null = null
+  let lastError: Error | null = null
+  const getAttemptsMade = (): number => attemptsMadeFromCompletedRetries(retryCount)
   const routingState: AgentRoutingState = {
     regenerationRevision: 0,
     webToolBudgetRevision: 0,
     getTurnBudget: () => turnBudget,
     getTurnTelemetry: getOrCreateTurnTelemetry,
-    getAttempt: () => retryCount + 1,
+    getDebugTranscriptTraceId: getOrCreateDebugTranscriptTraceId,
+    getAttempt: getAttemptsMade,
   }
   const customFetch = createAgentRoutingFetch(id, saveMessages, httpClient, getProxyFetch, deps, routingState)
   const createChat = deps.createChat ?? ((init: ChatInit<ThunderboltUIMessage>) => new Chat(init))
 
-  let retryCount = 0
-  let retryTimeout: ReturnType<typeof setTimeout> | null = null
-  let lastError: Error | null = null
+  const debugMetadataForTurn = (turn: TurnState): DebugTranscriptMessageMetadataV1 | null => {
+    const { traceId, modelProperties, agentId } = turn
+    const engine = turn.telemetry?.getEngine() ?? turn.engine
+    if (!traceId || !modelProperties || !agentId || !engine) {
+      return null
+    }
+    return {
+      traceId,
+      engine,
+      modelId: modelProperties.model_id,
+      modelName: modelProperties.model_name,
+      provider: modelProperties.provider,
+      agentId,
+    }
+  }
+
+  const withDebugMetadata = (turn: TurnState, message: ThunderboltUIMessage): ThunderboltUIMessage => {
+    if (!isDebugTranscriptCaptureEnabled()) {
+      return message
+    }
+    const debugTranscript = debugMetadataForTurn(turn)
+    if (!debugTranscript) {
+      return message
+    }
+    return {
+      ...message,
+      metadata: {
+        ...message.metadata,
+        debugTranscript,
+      },
+    }
+  }
+
+  const finishRecordedTurn = (turn: TurnState, outcome: DebugTranscriptTurnOutcome): void => {
+    const metadata = debugMetadataForTurn(turn)
+    if (metadata?.engine) {
+      finishDebugTranscriptTurn(id, metadata.traceId, outcome, metadata.engine)
+    }
+  }
+
+  /** Set by `stop`, cleared when the user starts the next turn. Suppresses the
+   *  SDK's automatic re-send — see `sendAutomaticallyWhen` below. */
+  let stopRequested = false
 
   const emitTurnCompleted = (
     turn: TurnState,
@@ -656,14 +766,14 @@ export const createChatInstance = (
     }
     turn.completed = true
     const { telemetry } = turn
-    if (!telemetry) {
-      return
+    if (telemetry) {
+      if (message) {
+        recordMessageTelemetry(telemetry, message)
+      }
+      trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
+      inFlightTurns.clear(telemetry.traceId)
     }
-    if (message) {
-      recordMessageTelemetry(telemetry, message)
-    }
-    trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
-    inFlightTurns.clear(telemetry.traceId)
+    finishRecordedTurn(turn, outcome)
   }
 
   /** Clear retry state and replace the completed turn's request budget. */
@@ -674,6 +784,7 @@ export const createChatInstance = (
     }
     turnBudget = createTurnBudget()
     routingState.webToolBudgetRevision = (routingState.webToolBudgetRevision ?? 0) + 1
+    routingState.webToolBudgetState = undefined
     retryCount = 0
     lastError = null
     currentTurn = createTurnState()
@@ -682,6 +793,12 @@ export const createChatInstance = (
 
   const startNewTurn = () => {
     resetRetryStateForNewTurn()
+    // Only an explicit send/regenerate lifts the Stop suppression — `onFinish`
+    // runs `resetRetryStateForNewTurn` on the aborted turn itself, and clearing
+    // the flags there would re-open the auto-sends they exist to block (the
+    // SDK's `sendAutomaticallyWhen` and `useChatAutomation`'s auto-run).
+    stopRequested = false
+    useChatStore.getState().updateSession(id, { stopping: false })
     initializeTurnForCurrentSession(currentTurn)
   }
 
@@ -701,8 +818,13 @@ export const createChatInstance = (
     messages,
     transport: new DefaultChatTransport({ fetch: customFetch }),
     generateId: uuidv7,
-    // Automatically send messages when the last one is a user message (used for automations)
-    sendAutomaticallyWhen: ({ messages }) => messages.length > 0 && messages[messages.length - 1].role === 'user',
+    // Automatically send messages when the last one is a user message (used for
+    // automations). The SDK evaluates this after every turn and gates it on
+    // `isError` only — not on `isAbort` — so a stopped turn whose assistant
+    // message never materialized (Stop pressed while `submitted`) leaves the
+    // user message trailing. The stopRequested guard prevents resending it.
+    sendAutomaticallyWhen: ({ messages }) =>
+      !stopRequested && messages.length > 0 && messages[messages.length - 1].role === 'user',
     onFinish: async ({ message, isError, isAbort }) => {
       const finishedTurn = currentTurn
       const resetRetryStateIfUnswapped = () => {
@@ -713,24 +835,50 @@ export const createChatInstance = (
       }
 
       if (isAbort) {
-        // Persist whatever streamed before the user hit Stop. Streaming partial
-        // saves are throttled and their pending trailing write is cancelled the
-        // moment streaming stops (see SavePartialAssistantMessagesHandler), so
-        // onFinish is the authoritative final save on abort just as it is on
-        // success — without this, the last streamed chunk of an aborted turn
-        // would be lost on reload.
-        if (message?.parts?.length) {
+        // Settle the aborted turn so no spinner survives the stop,
+        // keyed off the trailing assistant message.
+        const lastIndex = instance.messages.length - 1
+        const lastMessage = instance.messages[lastIndex]
+        const completedMessage = message ? withDebugMetadata(finishedTurn, message) : undefined
+
+        if (isEmptyAssistantMessage(lastMessage)) {
+          // Stopped after the turn opened but before it produced anything (the
+          // model's first turn hadn't begun). The shell renders as an empty-turn
+          // recovery spinner that nothing will ever recover, so drop it.
+          //
+          // Load-bearing: this is only safe because `stopRequested` gates
+          // `sendAutomaticallyWhen`. Dropping the shell leaves the user message
+          // trailing, and the SDK re-checks that predicate the moment this
+          // request unwinds — ungated, the stopped turn re-sends itself.
+          instance.messages = instance.messages.slice(0, -1)
+        } else if (hasStreamingReasoning(lastMessage)) {
+          // Stopped mid-reasoning: the reasoning part is left `streaming`, so its
+          // spinner never stops. Finalize it in the live list and the saved copy.
+          const finalized = withDebugMetadata(finishedTurn, finalizeReasoning(lastMessage!))
+          const next = instance.messages.slice()
+          next[lastIndex] = finalized
+          instance.messages = next
           finishedTurn.telemetry?.startPhase('final_save')
-          await saveMessages({ id, messages: [message] })
+          await saveMessages({ id, messages: [finalized] })
+          finishedTurn.telemetry?.endPhase('final_save')
+        } else if (completedMessage?.parts?.length) {
+          // Stopped mid-answer: persist the partial. Streaming partial saves are
+          // throttled and their pending trailing write is cancelled the moment
+          // streaming stops (see SavePartialAssistantMessagesHandler), so onFinish
+          // is the authoritative final save on abort — without this the last
+          // streamed chunk would be lost on reload.
+          finishedTurn.telemetry?.startPhase('final_save')
+          await saveMessages({ id, messages: [completedMessage] })
           finishedTurn.telemetry?.endPhase('final_save')
         }
-        emitTurnCompleted(finishedTurn, 'abort', message)
+        emitTurnCompleted(finishedTurn, 'abort', completedMessage)
         resetRetryStateIfUnswapped()
         return
       }
 
       // Handle successful responses: message exists, no error, and has parts
       if (!isError && message && message.parts?.length) {
+        const completedMessage = withDebugMetadata(finishedTurn, message)
         if (retryCount > 0) {
           trackEvent('chat_retry_success', {
             attempts: retryCount + 1,
@@ -747,17 +895,17 @@ export const createChatInstance = (
         }
 
         finishedTurn.telemetry?.startPhase('final_save')
-        await saveMessages({ id, messages: [message] })
+        await saveMessages({ id, messages: [completedMessage] })
         finishedTurn.telemetry?.endPhase('final_save')
 
         trackEvent('chat_receive_reply', {
           ...finishedTurn.modelProperties,
-          length: message.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
+          length: completedMessage.parts.reduce((acc, part) => acc + (part.type === 'text' ? part.text.length : 0), 0),
           reply_number: instance.messages.length + 1,
           ...getTraceProperties(finishedTurn.telemetry),
         })
 
-        emitTurnCompleted(finishedTurn, 'success', message)
+        emitTurnCompleted(finishedTurn, 'success', completedMessage)
         resetRetryStateIfUnswapped()
         return
       }
@@ -797,16 +945,27 @@ export const createChatInstance = (
         return
       }
 
+      // Regeneration discards this attempt's research history. Once its web
+      // budget is spent, keep the partial response and let the user choose Retry.
+      if (routingState.webToolBudgetState?.budget.probe.isExhausted) {
+        markRetriesExhausted(finishedTurn, 'web_budget_exhausted')
+        return
+      }
+
       const isEmptyTurn = !isError && !lastError && !message?.parts?.length
-      const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? 'empty-response' : 'unknown')
+      const retryReason = getChatErrorKind(lastError) ?? (isEmptyTurn ? emptyResponseRetryReason : 'unknown')
 
       if (retryCount < maxRetries) {
+        const attemptsMade = getAttemptsMade()
         if (turnBudget.probe.isExhausted) {
           finishedTurn.telemetry?.recordRetry({
             layer: 'turn_budget',
             reason: 'request_budget_exhausted',
             attempt: retryCount + 1,
           })
+          if (finishedTurn.traceId) {
+            recordDebugTranscriptRetry(id, finishedTurn.traceId, 'request_budget_exhausted', attemptsMade)
+          }
           markRetriesExhausted(finishedTurn, retryReason)
           return
         }
@@ -828,6 +987,9 @@ export const createChatInstance = (
           reason: retryReason,
           attempt: retryCount + 1,
         })
+        if (finishedTurn.traceId) {
+          recordDebugTranscriptRetry(id, finishedTurn.traceId, retryReason, attemptsMade)
+        }
 
         retryTimeout = setTimeout(() => {
           retryTimeout = null
@@ -835,6 +997,7 @@ export const createChatInstance = (
           // Only retry if the session still exists AND is still the current active session.
           // This prevents retries from executing when the user has switched to a different thread.
           if (!sessions.has(id) || currentSessionId !== id) {
+            finishRecordedTurn(finishedTurn, 'abort')
             resetRetryStateForNewTurn()
             useChatStore.getState().updateSession(id, { retriesExhausted: true })
             return
@@ -860,6 +1023,12 @@ export const createChatInstance = (
       console.error('Chat error:', error)
       lastError = error instanceof Error ? error : new Error(String(error))
       currentTurn.telemetry?.recordError(getChatErrorKind(lastError) ?? lastError.name)
+      if (currentTurn.traceId) {
+        recordDebugTranscriptFailure(id, currentTurn.traceId, {
+          errorClass: lastError.name,
+          message: lastError.message,
+        })
+      }
       trackEvent('chat_turn_error', {
         kind: getChatErrorKind(lastError) ?? 'unknown',
         error_name: getErrorName(lastError),
@@ -918,6 +1087,15 @@ export const createChatInstance = (
     }
 
     const telemetry = getOrCreateTurnTelemetry()
+    getOrCreateDebugTranscriptTraceId()
+    const debugTranscript = isDebugTranscriptCaptureEnabled() ? debugMetadataForTurn(currentTurn) : null
+    const messageMetadata: NonNullable<ThunderboltUIMessage['metadata']> = {
+      ...message?.metadata,
+      modelId: selectedModel.id,
+    }
+    if (debugTranscript) {
+      messageMetadata.debugTranscript = { ...debugTranscript, engine: null }
+    }
     trackEvent('chat_send_prompt', {
       model_id: selectedModel.id,
       model_name: selectedModel.model,
@@ -930,13 +1108,53 @@ export const createChatInstance = (
     return originalSendMessage(
       {
         ...message,
-        metadata: {
-          ...message?.metadata,
-          modelId: selectedModel.id,
-        },
+        metadata: messageMetadata,
       } as ThunderboltUIMessage,
       options,
     )
+  }
+
+  const originalStop = instance.stop.bind(instance)
+
+  /**
+   * Stop the active turn and settle to idle. In-flight aborts let
+   * `onFinish({ isAbort })` settle on the correct turn — emitting/resetting here
+   * would swap `currentTurn` out from under it. Backoff/recovery fires no
+   * `onFinish`, so cancel the retry, drop a trailing empty shell, and settle here.
+   *
+   * `stopRequested` outlives this call: the SDK re-checks `sendAutomaticallyWhen`
+   * once the aborted request unwinds, and only an explicit send lifts it again.
+   * The session's `stopping` flag mirrors it with the same lifetime, so
+   * `useChatAutomation` sees the suppression too — dropping the aborted shell
+   * leaves the user message trailing, exactly the shape that hook auto-runs.
+   */
+  instance.stop = async function () {
+    stopRequested = true
+    // Mirrored into the store for the two reactive consumers: the composer's
+    // stopping spinner (masked with a live request in `getTurnActivity`, so
+    // lingering past settle is harmless) and `useChatAutomation`'s auto-run gate.
+    useChatStore.getState().updateSession(id, { stopping: true })
+    if (retryTimeout) {
+      clearTimeout(retryTimeout)
+      retryTimeout = null
+    }
+    // A turn stopped while its tool-permission dialog is open would leave the
+    // dialog on screen awaiting an answer the cancelled turn will never use.
+    // No-ops when nothing is pending.
+    useChatStore.getState().resolvePendingPermission(id, { outcome: { outcome: 'cancelled' } })
+    if (instance.status === 'streaming' || instance.status === 'submitted') {
+      // Tearing the turn down is asynchronous — an ACP `session/cancel` is a
+      // round-trip, and the in-browser harness has to unwind its loop — so the
+      // `stopping` flag also tells the composer about the wait instead of
+      // leaving the button looking inert.
+      void originalStop()
+      return
+    }
+    if (isEmptyAssistantMessage(instance.messages[instance.messages.length - 1])) {
+      instance.messages = instance.messages.slice(0, -1)
+    }
+    emitTurnCompleted(currentTurn, 'abort')
+    resetRetryStateForNewTurn()
   }
 
   return instance

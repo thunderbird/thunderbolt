@@ -13,6 +13,9 @@
  * positions itself against the pane, so both misplace themselves in a plain div.
  */
 
+import { Trans } from '@lingui/react/macro'
+import { plural } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { FolderOpen, Plus } from 'lucide-react'
 import { useReducer } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -47,6 +50,7 @@ import { initialViewState, projectsViewReducer } from './projects-view-state'
 import { ProjectIcon } from './project-icon'
 
 const ProjectsPage = () => {
+  const { i18n, t } = useLingui()
   const db = useDatabase()
   const navigate = useNavigate()
   const projects = useProjects()
@@ -94,7 +98,9 @@ const ProjectsPage = () => {
 
   const countLabel = (id: string): string => {
     const count = chatCounts[id] ?? 0
-    return count === 1 ? '1 chat' : `${count} chats`
+    // Native plural (not a ternary) so the extracted .po carries
+    // msgid/msgid_plural and each locale supplies its own forms.
+    return t`${plural(count, { one: '# chat', other: '# chats' })}`
   }
 
   return (
@@ -107,19 +113,19 @@ const ProjectsPage = () => {
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane>
           <PageSearch onSearch={(value) => dispatch({ type: 'SEARCH_CHANGED', value })}>
-            <PageHeader title="Projects">
+            <PageHeader title={t`Projects`}>
               {/* Nothing to search or sit beside yet, and the empty state carries
                   its own call to action — same as the tasks page. */}
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
-                  <PageCreateAction label="New project" onClick={startCreate} />
+                  <PageCreateAction label={t`New project`} onClick={startCreate} />
                 </>
               )}
             </PageHeader>
 
             <PageSearch.Input
-              placeholder="Search projects"
+              placeholder={t`Search projects`}
               onSearch={(value) => dispatch({ type: 'SEARCH_CHANGED', value })}
             />
           </PageSearch>
@@ -128,17 +134,17 @@ const ProjectsPage = () => {
             {visible.length === 0 ? (
               <EmptyState
                 icon={FolderOpen}
-                title={term ? 'No matching projects' : 'No projects yet'}
+                title={term ? t`No matching projects` : t`No projects yet`}
                 description={
                   term
                     ? undefined
-                    : 'A project keeps your instructions in one place, so every chat inside it starts with the same context.'
+                    : t`A project keeps your instructions in one place, so every chat inside it starts with the same context.`
                 }
                 action={
                   term ? undefined : (
                     <Button variant="outline" onClick={startCreate} className="gap-2">
                       <Plus className="size-[var(--icon-size-sm)]" aria-hidden="true" />
-                      Create your first project
+                      <Trans>Create your first project</Trans>
                     </Button>
                   )
                 }
@@ -181,7 +187,7 @@ const ProjectsPage = () => {
         ) : selected && overlay === 'edit' ? (
           // Keyed on the project so switching rows mid-edit can't carry one
           // project's typing into another's form.
-          <DetailPanel title="Edit project" onClose={() => dispatch({ type: 'OVERLAY_CLOSED' })}>
+          <DetailPanel title={t`Edit project`} onClose={() => dispatch({ type: 'OVERLAY_CLOSED' })}>
             <ProjectForm
               key={selected.id}
               mode="edit"
@@ -220,7 +226,9 @@ const ProjectsPage = () => {
       {selected && isDeleteRequested && (
         <ConfirmActionDialog
           open
-          {...deleteProjectPrompt}
+          title={i18n._(deleteProjectPrompt.title)}
+          description={i18n._(deleteProjectPrompt.description)}
+          confirmLabel={i18n._(deleteProjectPrompt.confirmLabel)}
           onConfirm={async () => {
             closePanel()
             await softDeleteProject(db, selected.id)

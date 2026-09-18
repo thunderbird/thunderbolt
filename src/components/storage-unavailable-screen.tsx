@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { AppLogo } from '@/components/app-logo'
 import { Button } from '@/components/ui/button'
 import { isIosPlatform } from '@/lib/platform'
@@ -17,17 +18,27 @@ export const StorageUnavailableScreen = () => {
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          <h1 className="text-4xl font-semibold tracking-tight">Storage is disabled</h1>
+          <h1 className="text-4xl font-semibold tracking-tight">
+            <Trans>Storage is disabled</Trans>
+          </h1>
           <p className="text-muted-foreground">
-            Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled.{' '}
-            {lockdownHint
-              ? 'If you are using iOS Lockdown Mode, exclude Thunderbolt from the "Configure Web Browsing" setting, then reopen the app.'
-              : 'This can happen in private windows or when site data is blocked. Enable storage for this site and reload.'}
+            <Trans>Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled.</Trans>{' '}
+            {lockdownHint ? (
+              <Trans>
+                If you are using iOS Lockdown Mode, exclude Thunderbolt from the "Configure Web Browsing" setting, then
+                reopen the app.
+              </Trans>
+            ) : (
+              <Trans>
+                This can happen in private windows or when site data is blocked. Enable storage for this site and
+                reload.
+              </Trans>
+            )}
           </p>
         </div>
 
         <Button variant="secondary" onClick={() => window.location.reload()}>
-          Reload
+          <Trans>Reload</Trans>
         </Button>
       </div>
     </div>

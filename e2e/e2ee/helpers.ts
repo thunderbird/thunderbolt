@@ -370,7 +370,7 @@ export const createTask = async (page: Page, taskText: string): Promise<void> =>
   await page.goto('/tasks')
   await expect(page.getByRole('button', { name: 'New Task' })).toBeVisible()
   await page.getByRole('button', { name: 'New Task' }).click()
-  const taskInput = page.getByPlaceholder('Add a new task...')
+  const taskInput = page.getByPlaceholder('Add a new task…')
   await taskInput.fill(taskText)
   await taskInput.press('Enter')
   await expect(page.getByText(taskText, { exact: true })).toBeVisible()

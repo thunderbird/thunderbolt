@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { openExternalUrl } from './open-external-url'
 import { isTauri } from './platform'
 import { isSafeUrl } from './url-utils'
 
@@ -23,18 +24,17 @@ const handler = async (event: MouseEvent) => {
     return
   }
 
-  if (isTauri()) {
-    // Use Tauri's openUrl in Tauri environment
-    try {
-      const { openUrl } = await import('@tauri-apps/plugin-opener')
-      await openUrl(anchor.href)
-    } catch (error) {
-      console.error('Failed to open URL with Tauri:', error)
-      // Fallback to window.open
+  try {
+    await openExternalUrl(anchor.href)
+  } catch (error) {
+    console.error('Failed to open URL externally:', error)
+    // There is no dialog to surface an error here, so retry in the app's own
+    // webview — but only under Tauri, where the failure came from the OS opener.
+    // On web openExternalUrl already called window.open, so retrying it would
+    // just repeat the call that threw.
+    if (isTauri()) {
       window.open(anchor.href, '_blank', 'noopener,noreferrer')
     }
-  } else {
-    window.open(anchor.href, '_blank', 'noopener,noreferrer')
   }
 }
 

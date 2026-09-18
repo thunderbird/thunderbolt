@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { plural } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { type ToolOrDynamicToolUIPart } from '@/lib/assistant-message'
 import { getMcpToolDisplay } from '@/lib/mcp-tool-display'
+import type { I18n } from '@lingui/core'
 import { getToolMetadataSync } from '@/lib/tool-metadata'
-import { formatDuration } from '@/lib/utils'
+import { useFormatters } from '@/i18n/use-formatters'
 import type { UIMessageMetadata } from '@/types'
 import { getToolName } from 'ai'
 import { AnimatePresence, m } from 'framer-motion'
@@ -22,19 +25,29 @@ type ReasoningGroupTitleProps = {
  * `<server> · <tool>` (no curated loading verb); built-ins use their metadata
  * loading message.
  */
-const activeToolLabel = (tool: ToolOrDynamicToolUIPart, mcpTools?: UIMessageMetadata['mcpTools']): string => {
+// `i18n` is injected rather than reached for: the descriptor has to resolve at
+// render so the label follows a language change (see AGENTS.md).
+const activeToolLabel = (
+  i18n: I18n,
+  tool: ToolOrDynamicToolUIPart,
+  mcpTools?: UIMessageMetadata['mcpTools'],
+): string => {
   const toolName = getToolName(tool)
   if (tool.type === 'dynamic-tool') {
     const { displayName, serverName } = getMcpToolDisplay(toolName, mcpTools, tool.title)
     return serverName ? `${serverName} · ${displayName}` : displayName
   }
-  return getToolMetadataSync(toolName, tool.input).loadingMessage
+  return i18n._(getToolMetadataSync(toolName, tool.input).loadingMessage)
 }
 
 export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mcpTools }: ReasoningGroupTitleProps) => {
+  const { i18n, t } = useLingui()
+  const formatters = useFormatters()
+  const duration = formatters.duration(totalDuration)
+  const stepCount = tools.length
   const activeIndex = tools.length - 1
   const activeTool = tools[activeIndex]
-  const loadingLabel = activeTool ? activeToolLabel(activeTool, mcpTools) : null
+  const loadingLabel = activeTool ? activeToolLabel(i18n, activeTool, mcpTools) : null
 
   return (
     <div className="relative">
@@ -66,9 +79,12 @@ export const ReasoningGroupTitle = ({ totalDuration, isGroupReasoning, tools, mc
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="w-full"
           >
-            {tools.length > 0
-              ? `Completed ${tools.length} steps in ${formatDuration(totalDuration)}`
-              : `Thought for ${formatDuration(totalDuration)}`}
+            {stepCount > 0
+              ? plural(stepCount, {
+                  one: `Completed # step in ${duration}`,
+                  other: `Completed # steps in ${duration}`,
+                })
+              : t`Thought for ${duration}`}
           </m.div>
         )}
       </AnimatePresence>

@@ -4,6 +4,7 @@
 
 import { Section, Text } from 'react-email'
 import { EmailLayout } from './email-layout'
+import { getEmailI18n } from './i18n'
 
 type SecurityCodeEmailProps = {
   code: string
@@ -14,9 +15,13 @@ type SecurityCodeEmailProps = {
  * Step-up verification code (THU-875): sent when a device asks to change the
  * account's recovery phrase. The code is the proof-of-inbox the rotate route
  * requires before it accepts a recovery re-anchor.
+ *
+ * Content is English-only for now; the layout chrome still needs an `i18n` for
+ * `<Html lang>` and header/footer, so the source-locale catalog is passed. Add
+ * locale threading through `SecurityNotifications` when these get localized.
  */
 export const SecurityCodeEmail = ({ code, deviceName }: SecurityCodeEmailProps) => (
-  <EmailLayout preview="Confirm your recovery phrase change">
+  <EmailLayout i18n={getEmailI18n('en')} preview="Confirm your recovery phrase change">
     <Section className="bg-white border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
       <Text className="text-sm text-tb-text m-0 mb-6">
         A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue.

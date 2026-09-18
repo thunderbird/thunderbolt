@@ -249,7 +249,7 @@ describe('SignInModal', () => {
         await getClock().tickAsync(0)
       })
 
-      expect(screen.getByText('Sending...')).toBeInTheDocument()
+      expect(screen.getByText('Sending…')).toBeInTheDocument()
       expect(input).toBeDisabled()
 
       // Resolve to clean up

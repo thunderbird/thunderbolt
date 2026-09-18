@@ -13,7 +13,8 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth'
+type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth' | 'debug-transcript' | 'debug-transcript-intake'
+export type UserRateLimitTier = Exclude<RateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
   max: number
@@ -29,12 +30,14 @@ export type IpRateLimitSettings = RateLimitSettings & {
 }
 
 /** Hardcoded per-tier limits. */
-const tierConfigs: Record<RateLimitTier, RateLimitTierConfig> = {
+const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
   receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
   auth: { max: 10, durationSecs: 60 },
-}
+  'debug-transcript': { max: 10, durationSecs: 60 * 60 },
+  'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
+} satisfies Record<RateLimitTier, RateLimitTierConfig>
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
 const createLimiter = (database: typeof DbType, tier: RateLimitTier) => {
@@ -105,6 +108,18 @@ const createUserRateLimitMiddleware = (limiter: RateLimiterDrizzle) =>
     })
     .as('scoped')
 
+/** Create user-keyed middleware for one configured rate-limit tier. */
+export const createUserTierRateLimit = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  tier: UserRateLimitTier,
+) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  return createUserRateLimitMiddleware(createLimiter(database, tier))
+}
+
 /**
  * Build an IP-based rate limit middleware for unauthenticated routes.
  * Uses `extractClientIp` to resolve the real client IP behind a trusted proxy,
@@ -132,38 +147,32 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
     })
     .as('scoped')
 
-/** Create rate limit middleware for inference routes (keyed by user). */
-export const createInferenceRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
+/** IP-keyed middleware for one configured tier; fails closed like createAuthIpRateLimit. */
+export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, tier: RateLimitTier) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  const limiter = createLimiter(database, 'inference')
-  return createUserRateLimitMiddleware(limiter)
-}
-
-/** Create rate limit middleware for inference receipt routes (keyed by user). */
-export const createInferenceReceiptRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  const limiter = createLimiter(database, 'receipt')
-  return createUserRateLimitMiddleware(limiter)
-}
-
-/** Create rate limit middleware for pro tool routes (keyed by user). */
-export const createProRateLimit = (database: typeof DbType, settings: RateLimitSettings) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  const limiter = createLimiter(database, 'pro')
-  return createUserRateLimitMiddleware(limiter)
+  return createIpRateLimitMiddleware(createLimiter(database, tier), settings.trustedProxy)
 }
 
 /** Create IP-based rate limit middleware for auth and unauthenticated routes. */
-export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) => {
+export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) =>
+  createIpTierRateLimit(database, settings, 'auth')
+
+type RateLimitSet = Parameters<typeof consumeOrReject>[2]
+
+/** Consume one point for `key`; resolves to the 429 body when the limit is hit. */
+export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ error: string } | undefined>
+
+/** Rate limiting for routes whose key is not the session user (e.g. an intake client). */
+export const createRateLimitConsumer = (
+  database: typeof DbType,
+  settings: RateLimitSettings,
+  tier: RateLimitTier,
+): RateLimitConsumer | null => {
   if (!settings.enabled) {
-    return new Elysia()
+    return null
   }
-  const limiter = createLimiter(database, 'auth')
-  return createIpRateLimitMiddleware(limiter, settings.trustedProxy)
+  const limiter = createLimiter(database, tier)
+  return (key, set) => consumeOrReject(limiter, key, set)
 }

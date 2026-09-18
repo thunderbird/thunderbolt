@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { i18n } from '@/i18n'
 import { buildCreateCommands } from './create-commands'
 import type { PaletteCommand } from './types'
 
@@ -17,7 +18,7 @@ const navOf = (command: PaletteCommand | undefined) => {
 
 describe('buildCreateCommands', () => {
   it('emits a create command per create-supporting entity, all in the create section', () => {
-    const commands = buildCreateCommands()
+    const commands = buildCreateCommands(i18n)
     const ids = commands.map((command) => command.id)
 
     expect(ids).toEqual(['create-model', 'create-skill', 'create-agent'])
@@ -25,22 +26,22 @@ describe('buildCreateCommands', () => {
   })
 
   it('carries the settings-page `to` and a one-shot create intent in `state`', () => {
-    const model = navOf(byId(buildCreateCommands(), 'create-model'))
+    const model = navOf(byId(buildCreateCommands(i18n), 'create-model'))
     expect(model.to).toBe('/settings/models')
     expect(model.state).toEqual({ modelsAction: JSON.stringify({ type: 'create' }) })
 
-    const skill = navOf(byId(buildCreateCommands(), 'create-skill'))
+    const skill = navOf(byId(buildCreateCommands(i18n), 'create-skill'))
     expect(skill.to).toBe('/settings/skills')
     expect(skill.state).toEqual({ skillsAction: JSON.stringify({ type: 'create' }) })
 
-    const agent = navOf(byId(buildCreateCommands(), 'create-agent'))
+    const agent = navOf(byId(buildCreateCommands(i18n), 'create-agent'))
     expect(agent.to).toBe('/settings/agents')
     expect(agent.state).toEqual({ agentsAction: JSON.stringify({ type: 'create' }) })
   })
 
   it('titles each command "Create <Entity>"', () => {
-    expect(byId(buildCreateCommands(), 'create-model')?.title).toBe('Create Model')
-    expect(byId(buildCreateCommands(), 'create-skill')?.title).toBe('Create Skill')
-    expect(byId(buildCreateCommands(), 'create-agent')?.title).toBe('Create Agent')
+    expect(byId(buildCreateCommands(i18n), 'create-model')?.title).toBe('Create Model')
+    expect(byId(buildCreateCommands(i18n), 'create-skill')?.title).toBe('Create Skill')
+    expect(byId(buildCreateCommands(i18n), 'create-agent')?.title).toBe('Create Agent')
   })
 })

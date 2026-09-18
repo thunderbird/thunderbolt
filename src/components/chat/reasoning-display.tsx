@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useSmoothText } from '@/hooks/use-smooth-text'
 import { useAutoScroll } from '@/hooks/use-auto-scroll'
 import { AnimatePresence, m } from 'framer-motion'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
@@ -9,7 +10,6 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 type ReasoningDisplayProps = {
   text?: string
   isStreaming: boolean
-  instanceKey: string // Unique key to identify different reasoning instances
 }
 
 /**
@@ -19,25 +19,14 @@ type ReasoningDisplayProps = {
  * - Instantly replaced by the next reasoning step if it appears before fade-out
  * - Cleans up timers properly
  */
-export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDisplayProps) => {
+export const ReasoningDisplay = ({ text, isStreaming }: ReasoningDisplayProps) => {
+  const displayedText = useSmoothText(text ?? '', isStreaming)
   const [shouldShow, setShouldShow] = useState(isStreaming)
   const displayStartTimeRef = useRef(Date.now())
   const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const prevInstanceKeyRef = useRef(instanceKey)
   const prevIsStreamingRef = useRef(isStreaming)
 
   const hasText = Boolean(text && text.trim())
-
-  // Reset when instanceKey changes (new reasoning instance)
-  if (instanceKey !== prevInstanceKeyRef.current) {
-    prevInstanceKeyRef.current = instanceKey
-    setShouldShow(true)
-    displayStartTimeRef.current = Date.now()
-    if (fadeTimeoutRef.current) {
-      clearTimeout(fadeTimeoutRef.current)
-      fadeTimeoutRef.current = null
-    }
-  }
 
   // Reset shouldShow when streaming starts again
   if (isStreaming && !prevIsStreamingRef.current && !shouldShow) {
@@ -80,22 +69,23 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
         fadeTimeoutRef.current = null
       }
     }
-  }, [isStreaming, onScheduleFade])
+  }, [isStreaming])
 
   const { scrollContainerRef, scrollTargetRef } = useAutoScroll({
-    dependencies: [text?.length],
+    dependencies: [displayedText.length],
     smooth: true,
     isStreaming: false,
     rootMargin: '0px',
   })
 
-  // Always render the container with min-height, but only show content when there's text
+  // Reserve height only while the ephemeral reasoning is shown, so it collapses
+  // once faded. A stopped reasoning-only turn never gets a text part to unmount
+  // this display, so an unconditional reserve would leave a permanent blank gap.
   return (
-    <div className="relative mt-1 min-h-[200px]">
+    <div className={`relative mt-1${shouldShow ? ' min-h-[200px]' : ''}`}>
       <AnimatePresence mode="wait">
         {shouldShow && hasText && (
           <m.div
-            key={instanceKey}
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -105,7 +95,7 @@ export const ReasoningDisplay = ({ text, isStreaming, instanceKey }: ReasoningDi
           >
             <div className="absolute top-0 w-full h-6 bg-gradient-to-b from-background to-transparent" />
             <div className="max-h-[200px] px-4 hide-scrollbar py-3">
-              {text}
+              {displayedText}
               <div ref={scrollTargetRef} />
             </div>
             <div className="absolute bottom-0 w-full h-6 bg-gradient-to-b from-transparent to-background" />

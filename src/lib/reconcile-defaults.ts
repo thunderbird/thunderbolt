@@ -16,7 +16,7 @@ import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from 
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
 import { restampWidgetSkillDefaultHashes } from './data-migrations/restamp-widget-skill-default-hashes'
-import { normalizeOpusDefault, upgradeOpusDefault } from './data-migrations/upgrade-opus-default'
+import { normalizeModelDefault, upgradeModelDefaults } from './data-migrations/upgrade-model-defaults'
 import { nowIso } from './utils'
 
 const bundledModelsDefaults: ModelsDefaults = { version: defaultModelsVersion, data: defaultModels }
@@ -454,7 +454,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
   const pickedModelsSource = overrides?.models ?? bundledModelsDefaults
   const modelsSource = {
     ...pickedModelsSource,
-    data: pickedModelsSource.data.map(normalizeOpusDefault),
+    data: pickedModelsSource.data.map(normalizeModelDefault),
   }
   const initialSyncCompleted = overrides?.initialSyncCompleted ?? true
 
@@ -533,7 +533,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       frozenFields: ['isConfidential', 'provider'],
       metadataFields: ['description', 'vendor'],
     })
-    await upgradeOpusDefault(tx)
+    await upgradeModelDefaults(tx)
 
     // Model profiles ship 1:1 with models and mutate together in practice, so
     // they ride the same authority gate as models — otherwise an older-bundle

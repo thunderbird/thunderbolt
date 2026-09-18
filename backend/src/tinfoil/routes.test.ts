@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings } from '@/config/settings'
+import { clearSettingsCache, getSettings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import type { InferenceLogger } from '@/inference/client'
@@ -11,7 +11,7 @@ import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -136,6 +136,7 @@ describe('createTinfoilRoutes', () => {
       upstreamIdleTimeoutMs?: number
       upstreamOriginStore?: TinfoilUpstreamOriginStore
       captureInferenceErrorFn?: Parameters<typeof createTinfoilRoutes>[0]['captureInferenceErrorFn']
+      rateLimit?: Parameters<typeof createTinfoilRoutes>[0]['rateLimit']
     } = {},
   ) =>
     new Elysia().use(
@@ -151,7 +152,8 @@ describe('createTinfoilRoutes', () => {
         upstreamHeadersTimeoutMs: overrides.upstreamHeadersTimeoutMs,
         upstreamIdleTimeoutMs: overrides.upstreamIdleTimeoutMs,
         upstreamOriginStore: overrides.upstreamOriginStore,
-        captureInferenceErrorFn: overrides.captureInferenceErrorFn,
+        captureInferenceErrorFn: overrides.captureInferenceErrorFn ?? (() => {}),
+        rateLimit: overrides.rateLimit,
       }),
     )
 
@@ -183,6 +185,63 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('header handling', () => {
+    it('rejects an authenticated x-api-key before rate limiting, admission, or upstream forwarding', async () => {
+      let policySelectCalls = 0
+      const rateLimitCalls = mock(() => {})
+      const countingDatabase: InferenceDatabase = {
+        insert: database.insert,
+        select: ((fields) => {
+          policySelectCalls += 1
+          return database.select(fields)
+        }) as InferenceDatabase['select'],
+      }
+      const rejectingRateLimit = new Elysia()
+        .onBeforeHandle(({ set }) => {
+          rateLimitCalls()
+          set.status = 429
+          return { error: 'Too many requests' }
+        })
+        .as('scoped')
+      const app = buildApp({ database: countingDatabase, rateLimit: rejectingRateLimit })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'x-api-key': 'valid-personal-access-token' },
+          body: 'opaque-bytes',
+        }),
+      )
+      const body = await response.text()
+
+      expect(response.status).toBe(403)
+      expect(JSON.parse(body)).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
+      expect(rateLimitCalls).not.toHaveBeenCalled()
+      expect(policySelectCalls).toBe(0)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('forwards an authenticated x-api-key when confidential API keys are enabled', async () => {
+      process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
+      clearSettingsCache()
+      try {
+        const app = buildApp()
+
+        const response = await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'x-api-key': 'valid-personal-access-token' },
+            body: 'opaque-bytes',
+          }),
+        )
+
+        expect(response.status).toBe(200)
+        expect(mockFetch).toHaveBeenCalled()
+      } finally {
+        delete process.env.CONFIDENTIAL_API_KEYS_ENABLED
+        clearSettingsCache()
+      }
+    })
+
     it('strips inbound Authorization and injects the server bearer key', async () => {
       const app = buildApp()
       await drain(
@@ -214,6 +273,7 @@ describe('createTinfoilRoutes', () => {
             headers: {
               cookie: 'session=abc',
               connection: 'keep-alive',
+              host: 'client-supplied.example',
             },
             body: 'opaque-bytes',
           }),
@@ -224,6 +284,7 @@ describe('createTinfoilRoutes', () => {
       const sent = init.headers as Headers
       expect(sent.get('cookie')).toBeNull()
       expect(sent.get('connection')).toBeNull()
+      expect(sent.get('host')).toBeNull()
       expect(sent.get('x-tinfoil-request-usage-metrics')).toBeNull()
       expect(sent.get('te')).toBeNull()
       expect(sent.get('trailer')).toBeNull()
@@ -244,6 +305,31 @@ describe('createTinfoilRoutes', () => {
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
       const sent = init.headers as Headers
       expect(sent.get('x-tinfoil-enclave-url')).toBeNull()
+    })
+
+    it('does not forward Thunderbolt client identity headers upstream', async () => {
+      const app = buildApp()
+      await drain(
+        await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'X-App-Version': '1.2.3',
+              'X-App-Language': 'de',
+              'X-Device-ID': 'cli-device-id',
+              'X-Device-Name': 'Workstation',
+            },
+            body: 'opaque-bytes',
+          }),
+        ),
+      )
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      const sent = init.headers as Headers
+      expect(sent.get('x-app-version')).toBeNull()
+      expect(sent.get('x-app-language')).toBeNull()
+      expect(sent.get('x-device-id')).toBeNull()
+      expect(sent.get('x-device-name')).toBeNull()
     })
 
     it('strips response hop-by-hop headers while preserving content encoding', async () => {
@@ -381,7 +467,62 @@ describe('createTinfoilRoutes', () => {
     })
   })
 
-  describe('managed GLM usage policy', () => {
+  describe('confidential managed usage policy', () => {
+    it.each(['unknown', 'opus-5', 'constructor', '__proto__', ''])(
+      'rejects invalid model header %s before forwarding',
+      async (model) => {
+        const response = await buildApp().handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
+        expect(response.status).toBe(400)
+        expect(await response.text()).toContain(inferenceModelHeader)
+        expect(mockFetch).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each([
+      ['glm-5-3', '1500', '5250'],
+      ['glm-5-3-flash', '300', '700'],
+      ['glm-5-2', '1500', '5250'],
+      ['deepseek-v4-flash', '300', '700'],
+    ])(
+      'uses the catalog price and receipt identity for %s without forwarding the model header',
+      async (model, inputRate, outputRate) => {
+        const entries: Parameters<InferenceLogger['info']>[0][] = []
+        const response = await buildApp({
+          usageLogger: {
+            info: (entry) => {
+              entries.push(entry)
+            },
+          },
+        }).handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
+        expect(response.status).toBe(200)
+        const receipt = response.headers.get(inferenceUsageReceiptHeader)!
+        expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
+          provider: 'tinfoil',
+          model,
+          inputNanoUsdPerToken: inputRate,
+          outputNanoUsdPerToken: outputRate,
+        })
+        const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+        expect(new Headers(init.headers).has(inferenceModelHeader)).toBe(false)
+        expect(entries).toEqual([
+          expect.objectContaining({ event: 'inference_usage_receipt_issued', provider: 'tinfoil', model }),
+        ])
+        await response.arrayBuffer()
+      },
+    )
+
     it.each([
       [
         'prefixed base',
@@ -435,7 +576,7 @@ describe('createTinfoilRoutes', () => {
         expect(claims).toMatchObject({
           userId,
           provider: 'tinfoil',
-          model: 'glm-5-2',
+          model: 'glm-5-3',
           inputNanoUsdPerToken: '1500',
           outputNanoUsdPerToken: '5250',
         })
@@ -447,7 +588,7 @@ describe('createTinfoilRoutes', () => {
             context: {
               event: 'inference_usage_receipt_issued',
               provider: 'tinfoil',
-              model: 'glm-5-2',
+              model: 'glm-5-3',
               eventId: claims.eventId,
               route: '/tinfoil' + path.split('?')[0],
             },
@@ -511,24 +652,28 @@ describe('createTinfoilRoutes', () => {
       await response.arrayBuffer()
     })
 
-    it('returns the shared minimal 503 before fetch when the canonical price is missing', async () => {
-      await database
-        .delete(inferencePrices)
-        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-2')))
-      const app = buildApp()
+    it.each([undefined, 'glm-5-3', 'glm-5-3-flash', 'glm-5-2', 'deepseek-v4-flash'])(
+      'rejects before fetch when the price for header %s is missing',
+      async (model) => {
+        await database
+          .delete(inferencePrices)
+          .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, model ?? 'glm-5-3')))
+        const app = buildApp()
 
-      const response = await app.handle(
-        new Request('http://localhost/tinfoil/v1/chat/completions', {
-          method: 'POST',
-          body: 'opaque-bytes',
-        }),
-      )
+        const response = await app.handle(
+          new Request('http://localhost/tinfoil/v1/chat/completions', {
+            method: 'POST',
+            headers: model === undefined ? {} : { [inferenceModelHeader]: model },
+            body: 'opaque-bytes',
+          }),
+        )
 
-      expect(response.status).toBe(503)
-      expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
-      expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
-      expect(mockFetch).not.toHaveBeenCalled()
-    })
+        expect(response.status).toBe(503)
+        expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
+        expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
+        expect(mockFetch).not.toHaveBeenCalled()
+      },
+    )
 
     it.each([
       ['anonymous', true, '5h', 10, 0],
@@ -674,7 +819,7 @@ describe('createTinfoilRoutes', () => {
       expect(verifyInferenceUsageReceipt(receipt, receiptSecret, Math.floor(Date.now() / 1_000))).toMatchObject({
         userId: 'test-user',
         provider: 'tinfoil',
-        model: 'glm-5-2',
+        model: 'glm-5-3',
         inputNanoUsdPerToken: '1500',
         outputNanoUsdPerToken: '5250',
       })
@@ -701,7 +846,7 @@ describe('createTinfoilRoutes', () => {
       await database
         .update(inferencePrices)
         .set({ inputNanoUsdPerToken: 9_999n, outputNanoUsdPerToken: 8_888n })
-        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-2')))
+        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-3')))
       upstreamResponse.resolve(makeOkResponse())
 
       const response = await responsePromise

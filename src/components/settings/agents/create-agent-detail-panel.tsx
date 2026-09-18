@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { v7 as uuidv7 } from 'uuid'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -24,6 +25,7 @@ type CreateAgentDetailPanelProps = {
 
 /** Shared custom-agent creation controller used in settings and quick create. */
 export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: CreateAgentDetailPanelProps) => {
+  const { i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const authClient = useAuth()
@@ -56,7 +58,7 @@ export const CreateAgentDetailPanel = ({ onClose, loadAppNodeId, enrollIroh }: C
   }
 
   return (
-    <DetailPanel title={createItemTitles.agent} onClose={onClose}>
+    <DetailPanel title={i18n._(createItemTitles.agent)} onClose={onClose}>
       <AddCustomAgentForm
         onClose={onClose}
         onSubmit={handleAdd}

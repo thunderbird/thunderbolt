@@ -59,6 +59,8 @@ const skipPathPatterns: RegExp[] = [
   /(^|\/)node_modules\//,
   // Generated wasm-bindgen glue for the iroh ACP client (build artifact).
   /(^|\/)src\/acp\/iroh\/pkg\//,
+  // Lingui-generated email catalogs (`bun run i18n:extract` owns these).
+  /(^|\/)backend\/src\/emails\/locales\//,
   /(^|\/)crates\/[^/]+\/target\//,
   /\.gen\.[a-z]+$/i,
 ]

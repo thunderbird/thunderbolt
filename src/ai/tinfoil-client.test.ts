@@ -299,7 +299,7 @@ describe('Tinfoil client lifecycle', () => {
     await lifecycle.getSystemTinfoilClient()
     await lifecycle.getSystemTinfoilClient({
       trace_id: 'trace-1',
-      engine: 'legacy',
+      engine: 'pi',
       provider: 'tinfoil',
       model_id: 'model-1',
     })
@@ -309,7 +309,7 @@ describe('Tinfoil client lifecycle', () => {
       duration_ms: 0,
       client: 'system',
       trace_id: 'trace-1',
-      engine: 'legacy',
+      engine: 'pi',
       provider: 'tinfoil',
       model_id: 'model-1',
     })

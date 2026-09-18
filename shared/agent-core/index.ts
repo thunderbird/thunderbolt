@@ -19,7 +19,25 @@ export {
   type AgentFetch,
   type BuildAnthropicModelOptions,
 } from './anthropic-model.ts'
-export { buildOpenAiCompatModel, type BuildOpenAiCompatModelOptions } from './openai-compat-model.ts'
+export {
+  buildConfidentialModel,
+  createReceiptLifecycle,
+  isConfidentialModelError,
+  isNonnegativeSafeInteger,
+  resolveConfidentialModelCompatibility,
+  type BuildConfidentialModelOptions,
+  type CompletedProviderStep,
+  type ConfidentialModelError,
+  type ConfidentialModelErrorCode,
+  type CreateReceiptLifecycleOptions,
+  type ReceiptCapture,
+  type ReceiptLifecycle,
+} from './confidential-model.ts'
+export {
+  buildOpenAiCompatModel,
+  type BuildOpenAiCompatModelOptions,
+  type OpenAiCompatFetch,
+} from './openai-compat-model.ts'
 export {
   buildAppHarness,
   workspaceDirFor,

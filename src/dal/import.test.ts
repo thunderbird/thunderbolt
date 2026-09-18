@@ -411,7 +411,10 @@ describe('Import DAL', () => {
 
     it('formats exportedAt to a locale date and returns null on garbage', () => {
       const summary = summarizeExportEnvelope(envelope({}))
-      expect(summary?.exportedAtLabel).toBe(new Date('2026-06-16T00:00:00.000Z').toLocaleDateString())
+      // A literal rather than a second call to the formatter, so the assertion
+      // pins the format: an unambiguous medium-style date, not a locale-ordered
+      // numeric one. `bun test` runs in UTC, so the day doesn't drift.
+      expect(summary?.exportedAtLabel).toBe('Jun 16, 2026')
 
       const bad = summarizeExportEnvelope({
         format: exportFormat,

@@ -208,8 +208,22 @@
     {
       "idx": 29,
       "version": "7",
-      "when": 1789645576066,
-      "tag": "0029_e2ee_v2",
+      "when": 1788715305638,
+      "tag": "0029_seed-glm-5-3-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789155227424,
+      "tag": "0030_debug_transcripts",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789756474964,
+      "tag": "0031_e2ee_v2",
       "breakpoints": true
     }
   ]

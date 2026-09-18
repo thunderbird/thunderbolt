@@ -191,6 +191,7 @@ export const hydrateStore = (state: {
       pendingPermission: null,
       retryCount: 0,
       retriesExhausted: false,
+      stopping: false,
       selectedAgent: builtInAgent,
       selectedModel: state.selectedModel ?? defaultTestModel,
       // Mirrors production: a chat's project comes from its persisted thread.

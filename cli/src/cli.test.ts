@@ -2,489 +2,671 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * Branch + edge-case coverage for `parseArgs` — the pure argv → ParsedArgs
- * folder. Focus areas: the openai-compat api-key precedence (flag wins over
- * `THUNDERBOLT_OPENAI_COMPAT_KEY`, and the key never bleeds into the prompt),
- * the value-validating flags, and the bridge/serve/connect subcommand routing.
- */
+/** Contract tests for the pure argv parser and the production help surface. */
 
 import { describe, expect, spyOn, test } from 'bun:test'
 import packageJson from '../package.json' with { type: 'json' }
 import rootPackageJson from '../../package.json' with { type: 'json' }
-import { parseArgs, cliVersion } from './cli.ts'
-import type { ParseArgsDependencies } from './cli.ts'
-import { builtinProviders } from './agent/types.ts'
-import type { CliConfig } from './config/config.ts'
-
-const openaiCompatKeyEnvVar = 'THUNDERBOLT_OPENAI_COMPAT_KEY'
+import { cliVersion, helpText, parseCommandSyntax } from './cli.ts'
+import { runCli, type RunCliDependencies } from './index.ts'
+import type { CommandSyntaxRunConfig, CommandSyntaxServeConfig } from './agent/types.ts'
+import { providerRuntimeError } from './provider-runtime/types.ts'
+import type { CommandOutcome, ProviderManagerIO, ProviderRuntime } from './provider-runtime/types.ts'
+import type { Api, Model } from '@earendil-works/pi-ai'
 
 test('cliVersion and the CLI package match the released app version', () => {
   expect(cliVersion).toBe(packageJson.version)
   expect(packageJson.version).toBe(rootPackageJson.version)
 })
 
-/** Narrow a ParsedArgs to a `run` config or fail loudly. */
-const runConfig = (argv: string[], dependencies?: ParseArgsDependencies) => {
-  const parsed = parseArgs(argv, dependencies)
+type DispatchProbe = {
+  readonly dependencies: RunCliDependencies
+  readonly runtimeCreations: () => number
+  readonly runConfigurations: readonly CommandSyntaxRunConfig[]
+  readonly serveConfigurations: readonly CommandSyntaxServeConfig[]
+  readonly managerModes: readonly string[]
+  readonly managerIOs: readonly ProviderManagerIO[]
+  readonly persistedCommands: readonly Parameters<ProviderRuntime['manage']>[0][]
+  readonly preparedSelections: readonly Parameters<ProviderRuntime['prepare']>[0][]
+  readonly bindingDisposals: () => number
+  readonly errors: readonly string[]
+  readonly exitCodes: readonly number[]
+  readonly bridgeCalls: () => number
+  readonly irohBridgeConfigurations: readonly Parameters<RunCliDependencies['runIrohBridge']>[0][]
+  readonly connectConfigurations: readonly Parameters<RunCliDependencies['runIrohConnect']>[0][]
+  readonly irohAdminActions: readonly Parameters<RunCliDependencies['runIrohAdmin']>[0][]
+}
+
+/** Builds an isolated entrypoint seam so dispatch tests never open a terminal or network connection. */
+const dispatchProbe = (outcome: CommandOutcome = { kind: 'handled' }): DispatchProbe => {
+  let runtimeCreations = 0
+  let bridgeCalls = 0
+  const runConfigurations: CommandSyntaxRunConfig[] = []
+  const serveConfigurations: CommandSyntaxServeConfig[] = []
+  const managerModes: string[] = []
+  const managerIOs: ProviderManagerIO[] = []
+  const persistedCommands: Parameters<ProviderRuntime['manage']>[0][] = []
+  const preparedSelections: Parameters<ProviderRuntime['prepare']>[0][] = []
+  let bindingDisposals = 0
+  const errors: string[] = []
+  const exitCodes: number[] = []
+  const irohBridgeConfigurations: Parameters<RunCliDependencies['runIrohBridge']>[0][] = []
+  const connectConfigurations: Parameters<RunCliDependencies['runIrohConnect']>[0][] = []
+  const irohAdminActions: Parameters<RunCliDependencies['runIrohAdmin']>[0][] = []
+  const snapshot: ProviderRuntime['snapshot'] = () => ({
+    revision: 0,
+    activeProviderId: null,
+    thunderbolt: { status: 'not authenticated', defaultModelId: 'managed-default' },
+    providers: [],
+  })
+  const runtime: ProviderRuntime = {
+    snapshot,
+    manage: async (command) => {
+      persistedCommands.push(command)
+      return snapshot()
+    },
+    prepare: async (selection) => {
+      preparedSelections.push(selection)
+      return {
+        providerId: selection.providerId ?? 'thunderbolt',
+        wireModel: selection.model ?? 'model',
+        persistsCredentialStatus: true,
+        piModel: { provider: selection.providerId ?? 'thunderbolt', id: selection.model ?? 'model' } as Model<Api>,
+        install: () => {},
+        attach: () => () => {},
+        observePromptError: async () => {},
+        dispose: async () => {
+          bindingDisposals += 1
+        },
+      }
+    },
+  }
+  const managerIO: ProviderManagerIO = {
+    choose: async () => null,
+    readText: async () => null,
+    readSecret: async () => null,
+    write: () => {},
+    showVerification: () => {},
+    showStatus: () => {},
+  }
+
+  const dependencies: RunCliDependencies = {
+    parseCommandSyntax: (argv) => parseCommandSyntax(argv, '/repo'),
+    createProviderRuntime: async () => {
+      runtimeCreations += 1
+      return runtime
+    },
+    runAgent: async (config, suppliedRuntime) => {
+      expect(suppliedRuntime).toBe(runtime)
+      runConfigurations.push(config)
+    },
+    runAcpServe: async (config, suppliedRuntime) => {
+      expect(suppliedRuntime).toBe(runtime)
+      serveConfigurations.push(config)
+    },
+    runBridge: async () => {
+      bridgeCalls += 1
+    },
+    runIrohBridge: async (config) => {
+      irohBridgeConfigurations.push(config)
+    },
+    runIrohConnect: async (config) => {
+      connectConfigurations.push(config)
+    },
+    runIrohAdmin: async (action) => {
+      irohAdminActions.push(action)
+    },
+    createTerminalIO: () => ({
+      isTTY: false,
+      readLine: async () => null,
+      readSecret: async () => null,
+      write: () => {},
+      ask: async () => 'deny',
+      close: () => {},
+      signal: new AbortController().signal,
+    }),
+    createPlainProviderManagerIO: () => managerIO,
+    runProviderManager: async (io, suppliedRuntime, mode) => {
+      expect(suppliedRuntime).toBe(runtime)
+      managerIOs.push(io)
+      managerModes.push(mode)
+      return outcome
+    },
+    log: () => {},
+    writeError: (text) => errors.push(text),
+    setExitCode: (code) => exitCodes.push(code),
+  }
+
+  return {
+    dependencies,
+    runtimeCreations: () => runtimeCreations,
+    runConfigurations,
+    serveConfigurations,
+    managerModes,
+    managerIOs,
+    persistedCommands,
+    preparedSelections,
+    bindingDisposals: () => bindingDisposals,
+    errors,
+    exitCodes,
+    bridgeCalls: () => bridgeCalls,
+    irohBridgeConfigurations,
+    connectConfigurations,
+    irohAdminActions,
+  }
+}
+
+describe('runCli provider-runtime dispatch', () => {
+  test('creates one runtime and passes it to the syntactic direct run', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['summarize', 'the', 'diff'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.runConfigurations).toEqual([
+      {
+        cwd: '/repo',
+        yolo: false,
+        fullscreen: false,
+        thinking: 'medium',
+        selection: {},
+        mode: 'oneshot',
+        prompt: 'summarize the diff',
+      },
+    ])
+  })
+
+  test('creates one runtime and passes it to ACP serve', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['acp', 'serve', '--provider', 'work', '--model', 'custom'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.serveConfigurations).toEqual([
+      {
+        cwd: '/repo',
+        yolo: false,
+        thinking: 'medium',
+        selection: { providerId: 'work', model: 'custom' },
+      },
+    ])
+  })
+
+  test('routes standalone login through plain provider management and persists its deferred switch once', async () => {
+    const persist = { type: 'use' as const, providerId: 'thunderbolt' }
+    const probe = dispatchProbe({
+      kind: 'switch',
+      selection: { providerId: 'thunderbolt' },
+      persist,
+      forceReplace: true,
+    })
+
+    await runCli(['login'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.managerModes).toEqual(['login'])
+    expect(probe.managerIOs).toHaveLength(1)
+    expect(probe.persistedCommands).toEqual([persist])
+    expect(probe.preparedSelections).toEqual([{ providerId: 'thunderbolt' }])
+    expect(probe.bindingDisposals()).toBe(1)
+  })
+
+  test('routes standalone logout through plain provider management and persists deactivation once', async () => {
+    const persist = { type: 'clear-active' as const }
+    const probe = dispatchProbe({ kind: 'deactivate', persist })
+
+    await runCli(['logout'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.managerModes).toEqual(['logout'])
+    expect(probe.managerIOs).toHaveLength(1)
+    expect(probe.persistedCommands).toEqual([persist])
+    expect(probe.preparedSelections).toEqual([])
+    expect(probe.bindingDisposals()).toBe(0)
+  })
+
+  test('standalone logout persists deactivation then exits nonzero for confirmed remote logout persistence failure', async () => {
+    const failure = Object.assign(providerRuntimeError('persistence-failed', 'local auth clear failed'), {
+      remoteLogoutConfirmed: true as const,
+    })
+    const persist = { type: 'clear-active' as const }
+    const probe = dispatchProbe({ kind: 'deactivate', persist, failure })
+
+    await runCli(['logout'], probe.dependencies)
+
+    expect(probe.persistedCommands).toEqual([persist])
+    expect(probe.errors).toEqual(['thunderbolt: local auth clear failed\n'])
+    expect(probe.exitCodes).toEqual([1])
+  })
+
+  test('routes config through the plain provider manager and applies its deferred switch once', async () => {
+    const outcome = {
+      kind: 'switch' as const,
+      selection: { providerId: 'thunderbolt' },
+      persist: { type: 'use' as const, providerId: 'thunderbolt' },
+      forceReplace: false,
+    }
+    const probe = dispatchProbe(outcome)
+
+    await runCli(['config'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.managerModes).toEqual(['providers'])
+    expect(probe.managerIOs).toHaveLength(1)
+    expect(probe.persistedCommands).toEqual([outcome.persist])
+    expect(probe.preparedSelections).toEqual([outcome.selection])
+    expect(probe.bindingDisposals()).toBe(1)
+    expect(probe.runConfigurations).toEqual([])
+    expect(probe.serveConfigurations).toEqual([])
+  })
+
+  test('routes config through the plain provider manager and applies its deferred deactivation once', async () => {
+    const outcome = { kind: 'deactivate' as const, persist: { type: 'clear-active' as const } }
+    const probe = dispatchProbe(outcome)
+
+    await runCli(['config'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(1)
+    expect(probe.managerModes).toEqual(['providers'])
+    expect(probe.managerIOs).toHaveLength(1)
+    expect(probe.persistedCommands).toEqual([outcome.persist])
+    expect(probe.preparedSelections).toEqual([])
+    expect(probe.runConfigurations).toEqual([])
+    expect(probe.serveConfigurations).toEqual([])
+  })
+
+  test('leaves bridge dispatch outside provider runtime creation', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['acp', '--transport', 'wss', '--', 'agent'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(0)
+    expect(probe.bridgeCalls()).toBe(1)
+  })
+
+  test('leaves Iroh bridge dispatch outside provider runtime creation', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['acp', '--transport', 'iroh', '--', 'agent'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(0)
+    expect(probe.irohBridgeConfigurations).toEqual([
+      { protocol: 'acp', transport: 'iroh', port: 8839, command: ['agent'] },
+    ])
+  })
+
+  test('leaves connect dispatch outside provider runtime creation', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['acp', 'connect', 'ticket123', '--', 'local', 'client'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(0)
+    expect(probe.connectConfigurations).toEqual([
+      { protocol: 'acp', target: 'ticket123', command: ['local', 'client'] },
+    ])
+  })
+
+  test('leaves Iroh admin dispatch outside provider runtime creation', async () => {
+    const probe = dispatchProbe()
+
+    await runCli(['iroh', 'allow', 'node-xyz'], probe.dependencies)
+
+    expect(probe.runtimeCreations()).toBe(0)
+    expect(probe.irohAdminActions).toEqual([{ kind: 'allow', nodeId: 'node-xyz' }])
+  })
+})
+
+describe('help contract', () => {
+  test('lists the compatibility key flag without putting a key on a command line example', () => {
+    expect(helpText).toContain('--api-key <key>')
+    const examples = helpText.slice(helpText.indexOf('EXAMPLES'))
+    expect(examples).not.toContain('--api-key')
+    expect(examples).not.toMatch(/(?:sk-|AIza)[A-Za-z0-9…-]*/)
+  })
+
+})
+
+/** Narrow canonical syntax to a `run` config or fail loudly. */
+const syntaxRunConfig = (argv: string[], cwd?: string) => {
+  const parsed = parseCommandSyntax(argv, cwd)
   if (parsed.kind !== 'run') throw new Error(`expected run, got ${parsed.kind}: ${JSON.stringify(parsed)}`)
   return parsed.config
 }
 
-describe('parseArgs — resolveApiKey precedence (security)', () => {
-  test('--api-key flag wins over the env var', () => {
-    const config = runConfig(
-      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--api-key', 'flag-key', 'hi'],
-      { env: { [openaiCompatKeyEnvVar]: 'env-key' } },
-    )
-    expect(config.apiKey).toBe('flag-key')
-  })
+describe('parseCommandSyntax — canonical provider inputs', () => {
+  test('omitted run provider inputs stay absent from the canonical config', () => {
+    const parsed = parseCommandSyntax([], '/repo')
+    if (parsed.kind !== 'run') throw new Error(`expected run, got ${parsed.kind}`)
 
-  test('falls back to the env var when no flag is given', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
-      env: { [openaiCompatKeyEnvVar]: 'env-key' },
-    })
-    expect(config.apiKey).toBe('env-key')
-  })
-
-  test('is undefined when neither flag nor env is set', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
-      env: {},
-    })
-    expect(config.apiKey).toBeUndefined()
-  })
-
-  test('does not auto-forward a standard OPENAI_API_KEY (dedicated var only)', () => {
-    const config = runConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', 'hi'], {
-      env: { OPENAI_API_KEY: 'sk-real-openai' },
-    })
-    expect(config.apiKey).toBeUndefined()
-  })
-
-  test('does not forward the openai-compat env key to a built-in provider', () => {
-    expect(
-      runConfig(['--provider', 'openai', 'hi'], { env: { [openaiCompatKeyEnvVar]: 'custom-host-key' } }).apiKey,
-    ).toBeUndefined()
-  })
-
-  test('the api key never leaks into the prompt positionals', () => {
-    const config = runConfig(['--api-key', 'super-secret', 'fix', 'the', 'bug'], { env: {} })
-    if (config.mode !== 'oneshot') throw new Error('expected oneshot')
-    expect(config.prompt).toBe('fix the bug')
-    expect(config.prompt).not.toContain('super-secret')
-    expect(config.apiKey).toBe('super-secret')
-  })
-
-  test('an --api-key consumed at the end of argv does not become a positional prompt', () => {
-    const config = runConfig(['hello', '--api-key', 'k'], { env: {} })
-    if (config.mode !== 'oneshot') throw new Error('expected oneshot')
-    expect(config.prompt).toBe('hello')
-  })
-})
-
-describe('parseArgs — flag validation', () => {
-  test('rejects an unknown --provider value', () => {
-    const parsed = parseArgs(['--provider', 'gemini'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("invalid --provider 'gemini'") })
-  })
-
-  test('rejects a --provider with no following value', () => {
-    expect(parseArgs(['--provider'])).toEqual({ kind: 'error', message: 'thunderbolt: --provider requires a value' })
-  })
-
-  test('rejects an invalid --thinking level', () => {
-    const parsed = parseArgs(['--thinking', 'ultra'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("invalid --thinking level 'ultra'") })
-  })
-
-  test('reports the specific missing-value message for each value-taking flag', () => {
-    expect(parseArgs(['--model'])).toEqual({ kind: 'error', message: 'thunderbolt: --model requires a value' })
-    expect(parseArgs(['--base-url'])).toEqual({ kind: 'error', message: 'thunderbolt: --base-url requires a value' })
-    expect(parseArgs(['--api-key'])).toEqual({ kind: 'error', message: 'thunderbolt: --api-key requires a value' })
-    expect(parseArgs(['--thinking'])).toEqual({ kind: 'error', message: 'thunderbolt: --thinking requires a value' })
-  })
-
-  test('accepts a valid provider/thinking and threads them into the config', () => {
-    const config = runConfig(
-      ['--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--thinking', 'high', 'go'],
-      { env: {}, config: null },
-    )
-    expect(config.provider).toBe('openai-compat')
-    expect(config.thinking).toBe('high')
-    expect(config.baseUrl).toBe('https://h/v1')
-  })
-
-  test('accepts every curated built-in provider', () => {
-    for (const provider of builtinProviders) {
-      expect(runConfig(['--provider', provider], { env: {}, config: null }).provider).toBe(provider)
-    }
-  })
-
-  test('openai-compat with no --model and no saved model is a clear error', () => {
-    const parsed = parseArgs(['--provider', 'openai-compat', '--base-url', 'https://h/v1', 'hi'], {
-      env: {},
-      config: null,
-    })
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining('--model is required') })
-  })
-
-  test('the -m alias sets the model just like --model', () => {
-    expect(runConfig(['-m', 'claude-x', 'go']).model).toBe('claude-x')
-  })
-})
-
-describe('parseArgs — defaults', () => {
-  // Hermetic: pin env/config so a developer's real ~/.thunderbolt/config.json
-  // or provider env vars never leak into these assertions.
-  const hermetic = { env: {}, config: null } as const
-
-  test('an empty argv yields the documented default config', () => {
-    const config = runConfig([], hermetic)
-    expect(config.mode).toBe('repl')
-    expect(config.model).toBe('claude-opus-4-8')
-    expect(config.provider).toBe('anthropic')
-    expect(config.thinking).toBe('medium')
-    expect(config.yolo).toBe(false)
-    expect(config.baseUrl).toBeUndefined()
-  })
-
-  test('uses provider-specific default models when --model is omitted', () => {
-    // Intentionally restated inline (not imported from defaults.ts) so a
-    // default-model change fails here and forces a deliberate double-check.
-    const expected = {
-      anthropic: 'claude-opus-4-8',
-      openai: 'gpt-5.6-sol',
-      google: 'gemini-3.1-pro-preview',
-      xai: 'grok-build-0.1',
-      deepseek: 'deepseek-v4-pro',
-      zai: 'glm-5.2',
-      mistral: 'devstral-medium-latest',
-      groq: 'openai/gpt-oss-120b',
-      openrouter: 'anthropic/claude-opus-4.8',
-      moonshotai: 'kimi-k2.7-code',
-      minimax: 'MiniMax-M3',
-      cerebras: 'gpt-oss-120b',
-      together: 'moonshotai/Kimi-K2.7-Code',
-      fireworks: 'accounts/fireworks/models/kimi-k2p7-code',
-    } as const
-
-    for (const provider of builtinProviders) {
-      expect(runConfig(['--provider', provider], hermetic).model).toBe(expected[provider])
-    }
-  })
-
-  test('an explicit --model wins over the provider default', () => {
-    expect(runConfig(['--provider', 'google', '--model', 'gemini-custom'], hermetic).model).toBe('gemini-custom')
-  })
-})
-
-describe('parseArgs — persisted config precedence', () => {
-  const stored: CliConfig = {
-    provider: 'openai-compat',
-    model: 'saved-model',
-    apiKey: 'saved-key',
-    baseUrl: 'https://saved.example/v1',
-  }
-
-  test('uses saved provider, model, key, and base URL when flags and env are silent', () => {
-    const config = runConfig([], { config: stored, env: {}, cwd: '/repo' })
-
-    expect(config).toEqual({
+    expect(parsed.config).toEqual({
+      cwd: '/repo',
+      yolo: false,
+      fullscreen: false,
+      thinking: 'medium',
+      selection: {},
       mode: 'repl',
       noTui: false,
-      model: 'saved-model',
+    })
+    expect(parsed.config).not.toHaveProperty('provider')
+    expect(parsed.config).not.toHaveProperty('model')
+    expect(parsed.config).not.toHaveProperty('apiKey')
+    expect(parsed.config).not.toHaveProperty('baseUrl')
+  })
+
+  test('explicit run provider inputs exist only in InvocationSelection', () => {
+    const parsed = parseCommandSyntax(
+      [
+        '--provider',
+        'work-openai',
+        '--model',
+        'gpt-custom',
+        '--api-key',
+        'flag-secret',
+        '--base-url',
+        'https://models.example/v1',
+        '--thinking',
+        'high',
+        '--yolo',
+        'review',
+        'this',
+      ],
+      '/repo',
+    )
+    if (parsed.kind !== 'run') throw new Error(`expected run, got ${parsed.kind}`)
+
+    expect(parsed.config).toEqual({
+      cwd: '/repo',
+      yolo: true,
+      fullscreen: false,
+      thinking: 'high',
+      selection: {
+        providerId: 'work-openai',
+        model: 'gpt-custom',
+        apiKey: 'flag-secret',
+        baseUrl: 'https://models.example/v1',
+      },
+      mode: 'oneshot',
+      prompt: 'review this',
+    })
+  })
+
+  test('omitted serve provider inputs stay absent from the canonical config', () => {
+    const parsed = parseCommandSyntax(['acp', 'serve'], '/repo')
+    if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
+
+    expect(parsed.config).toEqual({ cwd: '/repo', yolo: false, thinking: 'medium', selection: {} })
+    expect(parsed.config).not.toHaveProperty('provider')
+    expect(parsed.config).not.toHaveProperty('model')
+    expect(parsed.config).not.toHaveProperty('apiKey')
+    expect(parsed.config).not.toHaveProperty('baseUrl')
+  })
+
+  test('explicit serve provider inputs exist only in InvocationSelection', () => {
+    const parsed = parseCommandSyntax(
+      [
+        'acp',
+        'serve',
+        '--provider',
+        'team-anthropic',
+        '--model',
+        'claude-custom',
+        '--api-key',
+        'flag-secret',
+        '--base-url',
+        'https://models.example/v1',
+      ],
+      '/repo',
+    )
+    if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
+
+    expect(parsed.config).toEqual({
       cwd: '/repo',
       yolo: false,
       thinking: 'medium',
-      provider: 'openai-compat',
-      apiKey: 'saved-key',
-      baseUrl: 'https://saved.example/v1',
+      selection: {
+        providerId: 'team-anthropic',
+        model: 'claude-custom',
+        apiKey: 'flag-secret',
+        baseUrl: 'https://models.example/v1',
+      },
     })
-  })
-
-  test('explicit flags override every saved field', () => {
-    const config = runConfig(
-      [
-        '--provider',
-        'anthropic',
-        '--model',
-        'flag-model',
-        '--api-key',
-        'flag-key',
-        '--base-url',
-        'https://flag.example/v1',
-      ],
-      { config: stored, env: {}, cwd: '/repo' },
-    )
-
-    expect(config.provider).toBe('anthropic')
-    expect(config.model).toBe('flag-model')
-    expect(config.apiKey).toBe('flag-key')
-    expect(config.baseUrl).toBe('https://flag.example/v1')
-  })
-
-  test('matching built-in provider env suppresses saved-key injection so Pi owns env auth', () => {
-    const config = runConfig([], {
-      config: { provider: 'openai', model: 'gpt-5.6-sol', apiKey: 'saved-key' },
-      env: { OPENAI_API_KEY: 'env-key' },
-    })
-
-    expect(config.apiKey).toBeUndefined()
-  })
-
-  test('dedicated openai-compat env key wins over saved key', () => {
-    const config = runConfig([], {
-      config: stored,
-      env: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'env-key' },
-    })
-
-    expect(config.apiKey).toBe('env-key')
-  })
-
-  test('an empty dedicated env key is silent and falls back to saved key', () => {
-    const config = runConfig([], {
-      config: stored,
-      env: { THUNDERBOLT_OPENAI_COMPAT_KEY: '' },
-    })
-
-    expect(config.apiKey).toBe('saved-key')
-  })
-
-  test('saved openai-compat key is not forwarded when --base-url targets a different endpoint', () => {
-    const config = runConfig(['--base-url', 'https://other.example/v1'], { config: stored, env: {} })
-
-    expect(config.baseUrl).toBe('https://other.example/v1')
-    expect(config.apiKey).toBeUndefined()
-  })
-
-  test('saved openai-compat key is used when effective base URL matches saved endpoint', () => {
-    const config = runConfig(['--base-url', 'https://saved.example/v1'], { config: stored, env: {} })
-
-    expect(config.baseUrl).toBe('https://saved.example/v1')
-    expect(config.apiKey).toBe('saved-key')
-  })
-
-  test('--api-key remains explicit opt-in when --base-url targets a different endpoint', () => {
-    const config = runConfig(['--base-url', 'https://other.example/v1', '--api-key', 'flag-key'], {
-      config: stored,
-      env: {},
-    })
-
-    expect(config.apiKey).toBe('flag-key')
-  })
-
-  test('dedicated env key remains explicit opt-in when --base-url targets a different endpoint', () => {
-    const config = runConfig(['--base-url', 'https://other.example/v1'], {
-      config: stored,
-      env: { THUNDERBOLT_OPENAI_COMPAT_KEY: 'env-key' },
-    })
-
-    expect(config.apiKey).toBe('env-key')
-  })
-
-  test('saved key and base URL do not cross provider boundaries', () => {
-    const config = runConfig(['--provider', 'anthropic'], { config: stored, env: {} })
-
-    expect(config.model).toBe('claude-opus-4-8')
-    expect(config.apiKey).toBeUndefined()
-    expect(config.baseUrl).toBeUndefined()
-  })
-
-  test('generic OpenAI env key never forwards to a saved custom endpoint', () => {
-    const config = runConfig([], { config: stored, env: { OPENAI_API_KEY: 'real-openai-key' } })
-
-    expect(config.apiKey).toBe('saved-key')
   })
 })
 
-describe('parseArgs — config subcommand', () => {
-  test('routes thunderbolt config to interactive setup', () => {
-    expect(parseArgs(['config'])).toEqual({ kind: 'config' })
+describe('parseCommandSyntax — syntactic invocation selection', () => {
+  test('does not leak the api key into the prompt', () => {
+    const config = syntaxRunConfig(['fix', '--api-key', 'super-secret', 'the', 'bug'])
+    if (config.mode !== 'oneshot') throw new Error('expected oneshot')
+
+    expect(config.prompt).toBe('fix the bug')
+    expect(config.selection.apiKey).toBe('super-secret')
   })
 
-  test('rejects arguments after config', () => {
-    expect(parseArgs(['config', 'extra'])).toEqual({
+  test('accepts openai-compatible selection without eagerly requiring a model', () => {
+    expect(syntaxRunConfig(['--provider', 'openai-compat', '--base-url', 'https://h/v1']).selection).toEqual({
+      providerId: 'openai-compat',
+      baseUrl: 'https://h/v1',
+    })
+  })
+
+  test('the -m alias stores the same model override as --model', () => {
+    expect(syntaxRunConfig(['-m', 'custom-model']).selection).toEqual({ model: 'custom-model' })
+  })
+})
+
+describe('parseCommandSyntax — validation and local run flags', () => {
+  test('reports the specific missing-value message for every value-taking flag', () => {
+    expect(parseCommandSyntax(['--provider'])).toEqual({
+      kind: 'error',
+      message: 'thunderbolt: --provider requires a value',
+    })
+    expect(parseCommandSyntax(['--model'])).toEqual({
+      kind: 'error',
+      message: 'thunderbolt: --model requires a value',
+    })
+    expect(parseCommandSyntax(['--base-url'])).toEqual({
+      kind: 'error',
+      message: 'thunderbolt: --base-url requires a value',
+    })
+    expect(parseCommandSyntax(['--api-key'])).toEqual({
+      kind: 'error',
+      message: 'thunderbolt: --api-key requires a value',
+    })
+    expect(parseCommandSyntax(['--thinking'])).toEqual({
+      kind: 'error',
+      message: 'thunderbolt: --thinking requires a value',
+    })
+  })
+
+  test('rejects an invalid thinking level', () => {
+    expect(parseCommandSyntax(['--thinking', 'ultra'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining("invalid --thinking level 'ultra'"),
+    })
+  })
+
+  test('threads local harness flags through without putting them in selection', () => {
+    const config = syntaxRunConfig(['--thinking', 'high', '--yolo', '--no-tui', '--fullscreen'])
+
+    expect(config.thinking).toBe('high')
+    expect(config.yolo).toBe(true)
+    expect(config).toHaveProperty('fullscreen', true)
+    expect(config.selection).toEqual({})
+    if (config.mode !== 'repl') throw new Error('expected repl')
+    expect(config.noTui).toBe(true)
+  })
+
+  test('preserves every yolo alias', () => {
+    expect(syntaxRunConfig(['-y']).yolo).toBe(true)
+    expect(syntaxRunConfig(['--yolo']).yolo).toBe(true)
+    expect(syntaxRunConfig(['--dangerously-skip-permissions']).yolo).toBe(true)
+    expect(syntaxRunConfig([]).yolo).toBe(false)
+  })
+
+  test('no-tui defaults to false for a repl', () => {
+    const config = syntaxRunConfig([])
+    if (config.mode !== 'repl') throw new Error('expected repl')
+    expect(config.noTui).toBe(false)
+    expect(config).toHaveProperty('fullscreen', false)
+  })
+
+  test('--help and --version short-circuit over a run', () => {
+    expect(parseCommandSyntax(['--help', 'ignored']).kind).toBe('help')
+    expect(parseCommandSyntax(['-h']).kind).toBe('help')
+    expect(parseCommandSyntax(['--version']).kind).toBe('version')
+    expect(parseCommandSyntax(['-v']).kind).toBe('version')
+  })
+})
+
+describe('parseCommandSyntax — primary command and agent alias', () => {
+  test('a prompt on the primary command is a one-shot run', () => {
+    const config = syntaxRunConfig(['do', 'it'])
+    if (config.mode !== 'oneshot') throw new Error('expected oneshot')
+    expect(config.prompt).toBe('do it')
+  })
+
+  test('agent is an exact compatibility alias for the primary command', () => {
+    const args = ['--provider', 'profile-id', '--model', 'model-id', 'do', 'it']
+    expect(parseCommandSyntax(['agent', ...args])).toEqual(parseCommandSyntax(args))
+  })
+})
+
+describe('parseCommandSyntax — account and config subcommands', () => {
+  test('routes login and logout actions', () => {
+    expect(parseCommandSyntax(['login'])).toEqual({ kind: 'login' })
+    expect(parseCommandSyntax(['logout'])).toEqual({ kind: 'logout' })
+  })
+
+  test('login and logout help short-circuit and stray arguments fail', () => {
+    expect(parseCommandSyntax(['login', '--help']).kind).toBe('help')
+    expect(parseCommandSyntax(['logout', '-h']).kind).toBe('help')
+    expect(parseCommandSyntax(['login', 'extra'])).toEqual({
+      kind: 'error',
+      message: "thunderbolt login: unexpected argument 'extra'",
+    })
+    expect(parseCommandSyntax(['logout', 'extra'])).toEqual({
+      kind: 'error',
+      message: "thunderbolt logout: unexpected argument 'extra'",
+    })
+  })
+
+  test('account actions do not resolve the current working directory', () => {
+    const cwd = spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('cwd is unavailable')
+    })
+    try {
+      expect(parseCommandSyntax(['login'])).toEqual({ kind: 'login' })
+      expect(parseCommandSyntax(['logout'])).toEqual({ kind: 'logout' })
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+
+  test('routes config and rejects extra arguments', () => {
+    expect(parseCommandSyntax(['config'])).toEqual({ kind: 'config' })
+    expect(parseCommandSyntax(['config', 'extra'])).toEqual({
       kind: 'error',
       message: "thunderbolt config: unexpected argument 'extra'",
     })
   })
 })
 
-describe('parseArgs — run mode + yolo aliases', () => {
-  test('no prompt yields repl mode; a prompt yields oneshot', () => {
-    expect(parseArgs([]).kind).toBe('run')
-    const repl = runConfig([])
-    expect(repl.mode).toBe('repl')
-    expect(runConfig(['do', 'it']).mode).toBe('oneshot')
-  })
-
-  test('strips a leading `agent` subcommand before scanning flags', () => {
-    const config = runConfig(['agent', '--model', 'x', 'prompt'])
-    expect(config.model).toBe('x')
-    if (config.mode !== 'oneshot') throw new Error('expected oneshot')
-    expect(config.prompt).toBe('prompt')
-  })
-
-  test('all three yolo spellings set the flag', () => {
-    expect(runConfig(['-y', 'p']).yolo).toBe(true)
-    expect(runConfig(['--yolo', 'p']).yolo).toBe(true)
-    expect(runConfig(['--dangerously-skip-permissions', 'p']).yolo).toBe(true)
-    expect(runConfig(['p']).yolo).toBe(false)
-  })
-
-  test('--no-tui sets noTui on a repl config; it defaults to false', () => {
-    const off = runConfig(['--no-tui'])
-    if (off.mode !== 'repl') throw new Error('expected repl')
-    expect(off.noTui).toBe(true)
-    const on = runConfig([])
-    if (on.mode !== 'repl') throw new Error('expected repl')
-    expect(on.noTui).toBe(false)
-  })
-
-  test('--help / --version short-circuit over a run', () => {
-    expect(parseArgs(['--help', 'ignored']).kind).toBe('help')
-    expect(parseArgs(['-h']).kind).toBe('help')
-    expect(parseArgs(['--version']).kind).toBe('version')
-    expect(parseArgs(['-v']).kind).toBe('version')
-  })
-})
-
-describe('parseArgs — bridge subcommands (acp / mcp)', () => {
-  test('parses a wss bridge with an explicit port and the post-`--` command', () => {
-    const parsed = parseArgs(['acp', '--transport', 'wss', '--port', '9001', '--', 'npx', 'agent'])
-    expect(parsed).toEqual({
+describe('parseCommandSyntax — external bridge compatibility', () => {
+  test('keeps wss bridge parsing unchanged', () => {
+    expect(parseCommandSyntax(['acp', '--transport', 'wss', '--port', '9001', '--', 'npx', 'agent'])).toEqual({
       kind: 'bridge',
       config: { protocol: 'acp', transport: 'wss', port: 9001, command: ['npx', 'agent'] },
     })
   })
 
-  test('defaults the port per protocol when omitted', () => {
-    const acp = parseArgs(['acp', '--', 'cmd'])
-    const mcp = parseArgs(['mcp', '--', 'cmd'])
+  test('keeps iroh bridge parsing unchanged', () => {
+    expect(parseCommandSyntax(['mcp', '--transport', 'iroh', '--', 'bunx', 'server'])).toEqual({
+      kind: 'bridge',
+      config: { protocol: 'mcp', transport: 'iroh', port: 8840, command: ['bunx', 'server'] },
+    })
+  })
+
+  test('keeps protocol-specific default ports unchanged', () => {
+    const acp = parseCommandSyntax(['acp', '--', 'cmd'])
+    const mcp = parseCommandSyntax(['mcp', '--', 'cmd'])
     if (acp.kind !== 'bridge' || mcp.kind !== 'bridge') throw new Error('expected bridge')
+
     expect(acp.config.port).toBe(8839)
     expect(mcp.config.port).toBe(8840)
   })
 
-  test('rejects an unknown --transport', () => {
-    const parsed = parseArgs(['acp', '--transport', 'tcp', '--', 'cmd'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("invalid --transport 'tcp'") })
-  })
-
-  test('rejects a non-numeric or out-of-range --port', () => {
-    expect(parseArgs(['acp', '--port', '0x10', '--', 'cmd']).kind).toBe('error')
-    expect(parseArgs(['acp', '--port', '70000', '--', 'cmd']).kind).toBe('error')
-    expect(parseArgs(['acp', '--port', '1e3', '--', 'cmd']).kind).toBe('error')
-  })
-
-  test('treats an unrecognized pre-`--` token as a forgotten separator', () => {
-    const parsed = parseArgs(['acp', 'npx', 'agent'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("forget '--'") })
-  })
-
-  test('requires a command after the `--` separator', () => {
-    const parsed = parseArgs(['mcp', '--transport', 'wss', '--'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining('missing agent command') })
-  })
-
-  test('missing separator entirely is a missing-command error', () => {
-    expect(parseArgs(['acp']).kind).toBe('error')
-  })
-})
-
-describe('parseArgs — acp serve', () => {
-  test('resolves the same flag set as a run, including api-key precedence', () => {
-    const parsed = parseArgs(
-      ['acp', 'serve', '--provider', 'openai-compat', '--base-url', 'https://h/v1', '-m', 'llama3.3', '--api-key', 'flag-key'],
-      { env: { [openaiCompatKeyEnvVar]: 'env-key' } },
-    )
-    if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
-    expect(parsed.config.apiKey).toBe('flag-key')
-    expect(parsed.config.provider).toBe('openai-compat')
-  })
-
-  test('rejects a stray positional (serve takes no prompt)', () => {
-    const parsed = parseArgs(['acp', 'serve', 'unexpected'], { env: {} })
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("unexpected argument 'unexpected'") })
-  })
-
-  test('uses the same provider-specific model default as agent runs', () => {
-    const parsed = parseArgs(['acp', 'serve', '--provider', 'google'], { env: {} })
-    if (parsed.kind !== 'acp-serve') throw new Error(`expected acp-serve, got ${parsed.kind}`)
-    expect(parsed.config.model).toBe('gemini-3.1-pro-preview')
-    expect(parsed.config.provider).toBe('google')
-  })
-})
-
-describe('parseArgs — connect + iroh admin', () => {
-  test('connect parses the dial target and post-`--` client command', () => {
-    const parsed = parseArgs(['acp', 'connect', 'ticket123', '--', 'local', 'client'])
-    expect(parsed).toEqual({
+  test('keeps connect parsing unchanged', () => {
+    expect(parseCommandSyntax(['acp', 'connect', 'ticket123', '--', 'local', 'client'])).toEqual({
       kind: 'connect',
       config: { protocol: 'acp', target: 'ticket123', command: ['local', 'client'] },
     })
-  })
-
-  test('connect with only a target (no local command) yields an empty command', () => {
-    expect(parseArgs(['mcp', 'connect', 'node-abc'])).toEqual({
+    expect(parseCommandSyntax(['mcp', 'connect', 'node-abc'])).toEqual({
       kind: 'connect',
       config: { protocol: 'mcp', target: 'node-abc', command: [] },
     })
   })
 
-  test('connect passes --help through to the client command after the separator', () => {
-    expect(parseArgs(['acp', 'connect', 'ticket123', '--', 'client', '--help'])).toEqual({
+  test('keeps help in the post-separator connect command', () => {
+    expect(parseCommandSyntax(['acp', 'connect', 'ticket123', '--', 'client', '--help'])).toEqual({
       kind: 'connect',
       config: { protocol: 'acp', target: 'ticket123', command: ['client', '--help'] },
     })
   })
 
-  test('connect without a target is an error', () => {
-    expect(parseArgs(['mcp', 'connect']).kind).toBe('error')
-  })
-
-  test('connect rejects a second bare token before `--`', () => {
-    const parsed = parseArgs(['acp', 'connect', 'ticket', 'stray'])
-    expect(parsed).toEqual({ kind: 'error', message: expect.stringContaining("unexpected argument 'stray'") })
-  })
-
-  test('iroh allow requires a nodeid; id/pair route to admin actions', () => {
-    expect(parseArgs(['iroh', 'id'])).toEqual({ kind: 'iroh-admin', action: { kind: 'id' } })
-    expect(parseArgs(['iroh', 'pair'])).toEqual({ kind: 'iroh-admin', action: { kind: 'pair' } })
-    expect(parseArgs(['iroh', 'allow', 'node-xyz'])).toEqual({
-      kind: 'iroh-admin',
-      action: { kind: 'allow', nodeId: 'node-xyz' },
+  test('preserves bridge validation', () => {
+    expect(parseCommandSyntax(['acp', '--transport', 'tcp', '--', 'cmd'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining("invalid --transport 'tcp'"),
     })
-    expect(parseArgs(['iroh', 'allow']).kind).toBe('error')
-    expect(parseArgs(['iroh', 'bogus']).kind).toBe('error')
+    expect(parseCommandSyntax(['acp', '--port', '70000', '--', 'cmd']).kind).toBe('error')
+    expect(parseCommandSyntax(['acp', '--port', '0x10', '--', 'cmd']).kind).toBe('error')
+    expect(parseCommandSyntax(['acp', '--port', '1e3', '--', 'cmd']).kind).toBe('error')
+    expect(parseCommandSyntax(['acp', 'npx', 'agent'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining("forget '--'"),
+    })
+    expect(parseCommandSyntax(['mcp', '--transport', 'wss', '--'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining('missing agent command'),
+    })
+    expect(parseCommandSyntax(['acp']).kind).toBe('error')
+  })
+
+  test('preserves connect validation', () => {
+    expect(parseCommandSyntax(['mcp', 'connect']).kind).toBe('error')
+    expect(parseCommandSyntax(['acp', 'connect', 'ticket', 'stray'])).toEqual({
+      kind: 'error',
+      message: expect.stringContaining("unexpected argument 'stray'"),
+    })
   })
 })
 
-describe('parseArgs — login', () => {
-  test('bare `login` routes to the login action', () => {
-    expect(parseArgs(['login'])).toEqual({ kind: 'login' })
+describe('parseCommandSyntax — acp serve', () => {
+  test('version aliases short-circuit', () => {
+    expect(parseCommandSyntax(['acp', 'serve', '--version'])).toEqual({ kind: 'version' })
+    expect(parseCommandSyntax(['acp', 'serve', '-v'])).toEqual({ kind: 'version' })
   })
 
-  test('login --help / -h short-circuits to help', () => {
-    expect(parseArgs(['login', '--help']).kind).toBe('help')
-    expect(parseArgs(['login', '-h']).kind).toBe('help')
-  })
-
-  test('login rejects a stray positional (it takes no arguments)', () => {
-    expect(parseArgs(['login', 'extra'])).toEqual({
+  test('rejects a positional prompt', () => {
+    expect(parseCommandSyntax(['acp', 'serve', 'unexpected'])).toEqual({
       kind: 'error',
-      message: expect.stringContaining("unexpected argument 'extra'"),
+      message: "thunderbolt acp serve: unexpected argument 'unexpected'",
+    })
+  })
+})
+
+describe('parseCommandSyntax — iroh admin', () => {
+  test('routes id, pair, and allow without changing their shapes', () => {
+    expect(parseCommandSyntax(['iroh', 'id'])).toEqual({ kind: 'iroh-admin', action: { kind: 'id' } })
+    expect(parseCommandSyntax(['iroh', 'pair'])).toEqual({ kind: 'iroh-admin', action: { kind: 'pair' } })
+    expect(parseCommandSyntax(['iroh', 'allow', 'node-xyz'])).toEqual({
+      kind: 'iroh-admin',
+      action: { kind: 'allow', nodeId: 'node-xyz' },
     })
   })
 
-  test('login does not resolve the current working directory', () => {
-    const cwd = spyOn(process, 'cwd').mockImplementation(() => {
-      throw new Error('cwd is unavailable')
-    })
-    try {
-      expect(parseArgs(['login'])).toEqual({ kind: 'login' })
-    } finally {
-      cwd.mockRestore()
-    }
+  test('preserves iroh admin validation', () => {
+    expect(parseCommandSyntax(['iroh', 'allow']).kind).toBe('error')
+    expect(parseCommandSyntax(['iroh', 'bogus']).kind).toBe('error')
   })
 })

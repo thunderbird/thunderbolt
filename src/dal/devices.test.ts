@@ -5,7 +5,7 @@
 import { getDb } from '@/db/database'
 import { devicesTable } from '@/db/tables'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { getAllDevices, getDevice } from './devices'
+import { getAllDevices, getDevice, getPendingDevices, type Device } from './devices'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 
 beforeAll(async () => {
@@ -112,6 +112,36 @@ describe('Devices DAL', () => {
       expect(devices[0]?.id).toBe('device-new')
       expect(devices[1]?.id).toBe('device-mid')
       expect(devices[2]?.id).toBe('device-old')
+    })
+  })
+
+  describe('getPendingDevices', () => {
+    it('returns only untrusted, non-revoked devices awaiting approval', async () => {
+      const db = getDb()
+      const pendingDevice = {
+        userId: 'user-1',
+        lastSeen: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        trusted: 0,
+        approvalPending: 1,
+      }
+
+      await db.insert(devicesTable).values([
+        { ...pendingDevice, id: 'pending-normal', name: 'Normal', deviceType: 'normal' },
+        { ...pendingDevice, id: 'pending-legacy', name: 'Legacy' },
+        {
+          ...pendingDevice,
+          id: 'pending-future',
+          name: 'Future',
+          deviceType: 'future-device' as Device['deviceType'],
+        },
+        { ...pendingDevice, id: 'not-pending', name: 'Not pending', approvalPending: 0 },
+        { ...pendingDevice, id: 'revoked-pending', name: 'Revoked', revokedAt: new Date().toISOString() },
+      ])
+
+      const devices = await getPendingDevices(db)
+
+      expect(devices.map(({ id }) => id).sort()).toEqual(['pending-legacy', 'pending-normal'])
     })
   })
 })

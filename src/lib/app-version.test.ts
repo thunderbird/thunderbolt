@@ -9,6 +9,15 @@ import { handleAppVersionUnsupported, resetAppVersionBlockedForTesting } from '.
 
 const env = import.meta.env as Record<string, unknown>
 
+/** Restore a Bun-backed import.meta.env key without stringifying undefined. */
+const restoreAppVersion = (saved: unknown): void => {
+  if (saved === undefined) {
+    delete env.VITE_APP_VERSION
+    return
+  }
+  env.VITE_APP_VERSION = saved
+}
+
 describe('appVersionHeader', () => {
   let saved: unknown
 
@@ -17,7 +26,7 @@ describe('appVersionHeader', () => {
   })
 
   afterEach(() => {
-    env.VITE_APP_VERSION = saved
+    restoreAppVersion(saved)
   })
 
   it('returns the X-App-Version header when VITE_APP_VERSION is set', () => {
@@ -26,12 +35,17 @@ describe('appVersionHeader', () => {
   })
 
   it('returns an empty object when VITE_APP_VERSION is unset', () => {
-    env.VITE_APP_VERSION = undefined
+    delete env.VITE_APP_VERSION
     expect(appVersionHeader()).toEqual({})
   })
 
   it('returns an empty object for an empty-string version', () => {
     env.VITE_APP_VERSION = ''
+    expect(appVersionHeader()).toEqual({})
+  })
+
+  it("treats Bun's stringified undefined as an unset version", () => {
+    env.VITE_APP_VERSION = 'undefined'
     expect(appVersionHeader()).toEqual({})
   })
 })
@@ -68,7 +82,7 @@ describe('isAppVersionUnsupported', () => {
   })
 
   afterEach(() => {
-    env.VITE_APP_VERSION = saved
+    restoreAppVersion(saved)
     resetAppVersionBlockedForTesting()
     useConfigStore.setState({ config: savedConfig })
   })

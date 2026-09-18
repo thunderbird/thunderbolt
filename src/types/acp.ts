@@ -78,6 +78,9 @@ export type AgentAdapterContext = {
   getProxyFetch: () => FetchFn
   turnBudget?: TurnBudgetConsumer
   telemetry?: TurnTelemetry
+  /** Session-scoped full-transcript trace. Built-in turns reuse telemetry's id;
+   *  ACP turns receive an equivalent id without emitting turn telemetry. */
+  debugTranscriptTraceId?: string
   webToolBudget?: WebToolBudget
   /** Increments only when the current assistant response is regenerated. Built-in
    *  persistent harnesses use it to rebuild from the edited transcript without

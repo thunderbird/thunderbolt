@@ -4,6 +4,8 @@
 
 import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
 import { challengeTokenHeader, otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
@@ -12,6 +14,10 @@ import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
+
+const sendFailed = msg`Failed to send verification code. Please check your connection.`
+const resendFailed = msg`Failed to resend verification code. Please check your connection.`
+const verifyFailed = msg`Verification failed. Please try again.`
 
 /** Extract a user-facing error message from an HttpError response body, or return the fallback. */
 const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
@@ -217,10 +223,7 @@ export const useSignInFormState = ({
       dispatch({ type: 'SEND_SUCCESS', payload: challengeToken ?? '' })
     } catch (error) {
       console.error('Failed to send verification OTP:', error)
-      const message = await getServerErrorMessage(
-        error,
-        'Failed to send verification code. Please check your connection.',
-      )
+      const message = await getServerErrorMessage(error, i18n._(sendFailed))
       dispatch({ type: 'SEND_ERROR', payload: message })
       return
     }
@@ -251,7 +254,7 @@ export const useSignInFormState = ({
       })
 
       if (result.error) {
-        dispatch({ type: 'VERIFY_ERROR', payload: getOtpErrorMessage(result.error, 'code') })
+        dispatch({ type: 'VERIFY_ERROR', payload: i18n._(getOtpErrorMessage(result.error, 'code')) })
         return
       }
 
@@ -265,7 +268,7 @@ export const useSignInFormState = ({
       dispatch({ type: 'VERIFY_SUCCESS' })
     } catch (error) {
       console.error('OTP verification error:', error)
-      dispatch({ type: 'VERIFY_ERROR', payload: 'Verification failed. Please try again.' })
+      dispatch({ type: 'VERIFY_ERROR', payload: i18n._(verifyFailed) })
     }
   }
 
@@ -294,10 +297,7 @@ export const useSignInFormState = ({
       return true
     } catch (error) {
       console.error('Failed to resend verification OTP:', error)
-      const message = await getServerErrorMessage(
-        error,
-        'Failed to resend verification code. Please check your connection.',
-      )
+      const message = await getServerErrorMessage(error, i18n._(resendFailed))
       dispatch({ type: 'SET_ERROR', payload: message })
       return false
     }

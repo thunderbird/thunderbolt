@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Plural, Trans } from '@lingui/react/macro'
 import { Check, Square } from 'lucide-react'
 import type { FC } from 'react'
 
@@ -50,9 +51,11 @@ export const AvailableTools: FC<AvailableToolsProps> = ({ tools, className }) =>
         <AccordionItem value="tools" className="border-none">
           <AccordionTrigger className="cursor-pointer py-3 hover:no-underline">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-medium text-foreground">Available Tools</div>
+              <div className="text-sm font-medium text-foreground">
+                <Trans>Available Tools</Trans>
+              </div>
               <div className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                {tools.length} tool{tools.length !== 1 ? 's' : ''}
+                <Plural value={tools.length} one="# tool" other="# tools" />
               </div>
             </div>
           </AccordionTrigger>

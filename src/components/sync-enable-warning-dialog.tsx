@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,16 +28,22 @@ export const SyncEnableWarningDialog = ({ open, onOpenChange, onConfirm }: SyncE
   <AlertDialog open={open} onOpenChange={onOpenChange}>
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Enable sync?</AlertDialogTitle>
+        <AlertDialogTitle>
+          <Trans>Enable sync?</Trans>
+        </AlertDialogTitle>
         <AlertDialogDescription>
-          At this time, synced data is not encrypted. Enabling sync will store your data on our servers without
-          encryption. Do you want to continue?
+          <Trans>
+            At this time, synced data is not encrypted. Enabling sync will store your data on our servers without
+            encryption. Do you want to continue?
+          </Trans>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogCancel>
+          <Trans>Cancel</Trans>
+        </AlertDialogCancel>
         <AlertDialogAction onClick={onConfirm} variant="destructive">
-          Enable sync without encryption
+          <Trans>Enable sync without encryption</Trans>
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

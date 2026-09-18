@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { useLingui } from '@lingui/react/macro'
 import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -10,7 +12,7 @@ import { createItemTitles, type CreateItemRequest } from './context'
 
 type CreateItemPanelShellProps = {
   kind: CreateItemRequest['kind']
-  title?: string
+  title?: MessageDescriptor
   open: boolean
   onClose: () => void
   onCloseComplete: () => void
@@ -29,13 +31,17 @@ export const CreateItemPanelShell = ({
   onClose,
   onCloseComplete,
   children,
-}: CreateItemPanelShellProps) => (
-  <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
-    <DetailPanel title={title} onClose={onClose}>
-      {children}
-    </DetailPanel>
-  </DetailPanelSurface>
-)
+}: CreateItemPanelShellProps) => {
+  const { i18n } = useLingui()
+
+  return (
+    <DetailPanelSurface open={open} onClose={onClose} onCloseComplete={onCloseComplete} topInset>
+      <DetailPanel title={i18n._(title)} onClose={onClose}>
+        {children}
+      </DetailPanel>
+    </DetailPanelSurface>
+  )
+}
 
 /**
  * The shell with a centered spinner body — shared by the host's Suspense

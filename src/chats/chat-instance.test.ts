@@ -9,24 +9,26 @@
  */
 
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
-import { createTurnTelemetry } from '@/ai/turn-telemetry'
+import { webToolCaps } from '@/ai/web-tool-budget'
+import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
+import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import type { EventType } from '@/lib/posthog'
 import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
-import type { Agent, AgentAdapter } from '@/types/acp'
-import type { Chat } from '@ai-sdk/react'
+import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
+import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useChatStore } from './chat-store'
-import { createAgentRoutingFetch, createChatInstance } from './chat-instance'
+import { createAgentRoutingFetch, createChatInstance, type CreateChatInstanceDeps } from './chat-instance'
+import { getTurnActivity } from './turn-activity'
 
 const sessionId = 'sess-1'
 const httpClient: HttpClient = {} as HttpClient
-const getProxyFetch: () => FetchFn = () => (async () => new Response('ok')) as unknown as FetchFn
+const getProxyFetch = (): FetchFn => Object.assign(async () => new Response('ok'), { preconnect: async () => false })
 
 const makeAdapter = (agent: Agent): AgentAdapter => ({
   agent,
@@ -49,12 +51,14 @@ const hydrate = () => {
 /** Build a chat instance whose retry callbacks and original methods are observable. */
 const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}) => {
   const regenerate = mock(async () => {})
-  const sendMessage = mock(async () => {})
+  const sendMessage = mock(async (_message: ThunderboltUIMessage) => {})
   const budgets: TurnBudget[] = []
   let onFinish: ChatOnFinishCallback<ThunderboltUIMessage> | undefined
   let onError: ((error: Error) => void) | undefined
+  let sendAutomaticallyWhen: ChatInit<ThunderboltUIMessage>['sendAutomaticallyWhen']
   const wakeAdapterReconnect = mock(() => {})
-  const trackEvent = mock((_eventName: EventType, _properties?: Record<string, unknown>) => {})
+  const trackEventImplementation: NonNullable<CreateChatInstanceDeps['trackEvent']> = () => {}
+  const trackEvent = mock(trackEventImplementation)
 
   const createTrackedTurnBudget = () => {
     const budget = createTurnBudget()
@@ -65,12 +69,15 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
   const createChat = (init: ChatInit<ThunderboltUIMessage>) => {
     onFinish = init.onFinish
     onError = init.onError
+    sendAutomaticallyWhen = init.sendAutomaticallyWhen
     return {
       id: init.id ?? sessionId,
       messages: init.messages ?? [],
+      status: 'ready',
       regenerate,
       sendMessage,
-    } as unknown as Chat<ThunderboltUIMessage>
+      stop: mock(() => Promise.resolve()),
+    } as never
   }
 
   const instance = createChatInstance(sessionId, [], saveMessages, httpClient, getProxyFetch, {
@@ -134,11 +141,24 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
       isError: false,
     })
 
+  const finishAbortedEmpty = () =>
+    onFinish!({
+      message: { id: 'aborted-empty', role: 'assistant', parts: [] },
+      messages: [],
+      isAbort: true,
+      isDisconnect: false,
+      isError: false,
+    })
+
   const getTurnBudget = () => budgets.at(-1)!
+
+  /** Ask the SDK's auto-send predicate what it would do with the current messages. */
+  const wouldAutoSend = () => sendAutomaticallyWhen!({ messages: instance.messages })
 
   return {
     finishSuccessfully,
     finishAborted,
+    finishAbortedEmpty,
     finishWithError,
     getTurnBudget,
     instance,
@@ -146,6 +166,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     sendMessage,
     trackEvent,
     wakeAdapterReconnect,
+    wouldAutoSend,
   }
 }
 
@@ -177,6 +198,47 @@ describe('createAgentRoutingFetch — connection status', () => {
 
   afterEach(() => {
     resetStore()
+  })
+
+  it.each([
+    ['/research latest', 'research', 30],
+    ['/search latest', 'search', 12],
+    ['An ordinary question', 'auto', 5],
+  ] as const)('sets the turn budget and preserves exhaustion guidance for %s', async (text, intent, cap) => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        const budget = context.webToolBudget!
+        for (let call = 0; call < cap; call++) {
+          await budget.execute('search', { query: String(call) }, async () => call)
+        }
+        const denial = await budget.execute('search', { query: 'denied' }, async () => 'must not execute')
+        return Response.json({
+          intent: budget.intent,
+          initialCap: budget.initialCap,
+          cap: budget.cap,
+          promoted: budget.promoted,
+          denial,
+        })
+      },
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getOrConnectAdapter: async () => adapter,
+    })
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+    expect(await response.json()).toEqual({
+      intent,
+      initialCap: cap,
+      cap,
+      promoted: false,
+      denial: {
+        status: 'budget_exhausted',
+        message:
+          'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+      },
+    })
   })
 
   it('transitions connecting → ready when connectToAgent resolves', async () => {
@@ -323,6 +385,11 @@ describe('createAgentRoutingFetch — connection status', () => {
     await reader.read()
     expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
 
+    time.current = 15
+    stream.controller!.enqueue(encoder.encode('data: {"type":"text-delta","id":"text-1","delta":""}\n\n'))
+    await reader.read()
+    expect(telemetry.buildPayload('success')).not.toHaveProperty('ttft_ms')
+
     time.current = 20
     stream.controller!.enqueue(encoder.encode('data: {"type":"text-d'))
     await reader.read()
@@ -407,6 +474,7 @@ describe('createChatInstance — retry policy', () => {
   })
 
   afterEach(() => {
+    setDebugTranscriptCaptureEnabled(false)
     resetStore()
     sessionStorage.clear()
   })
@@ -444,6 +512,184 @@ describe('createChatInstance — retry policy', () => {
     const autoRetry = trackEvent.mock.calls.find(([event]) => event === 'chat_auto_retry')?.[1]
     expect(autoRetry?.reason).toBe('empty-response')
     expect(autoRetry?.attempt).toBe(1)
+  })
+
+  it('drops the empty shell of an aborted loader turn without re-sending it', async () => {
+    const { instance, finishAbortedEmpty, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Two halves of one invariant, asserted together because each masks the
+    // other's regression: kept, the shell renders an empty-turn recovery spinner
+    // nothing will recover; dropped without the `stopRequested` gate, the now
+    // trailing user message makes the SDK re-send the stopped turn.
+    expect(instance.messages).toHaveLength(1)
+    expect(instance.messages[0]!.role).toBe('user')
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('settles the composer to idle after an aborted loader turn', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    const activity = getTurnActivity({
+      status: 'ready',
+      lastMessage: instance.messages[instance.messages.length - 1],
+      hasChatError: false,
+      retriesExhausted: session?.retriesExhausted ?? false,
+      retryCount: session?.retryCount ?? 0,
+      stopRequested: session?.stopping ?? false,
+    })
+    expect(activity.isActive).toBe(false)
+  })
+
+  it('suppresses the SDK auto-send after a stop, so the turn cannot restart itself', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    // Stop pressed while the model was still thinking: nothing streamed, so no
+    // assistant message was ever pushed and the user message is trailing.
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    expect(wouldAutoSend()).toBe(true)
+
+    await instance.stop()
+
+    expect(wouldAutoSend()).toBe(false)
+  })
+
+  it('lifts the auto-send suppression on the next explicit send', async () => {
+    const { instance, wouldAutoSend } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }] as never
+
+    await instance.stop()
+    await instance.sendMessage({ text: 'again' })
+
+    expect(wouldAutoSend()).toBe(true)
+  })
+
+  it('stop() flags the session as stopping while the abort unwinds', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+
+    await instance.stop()
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+  })
+
+  it('keeps the session stopping after the aborted turn settles, until the next explicit send', async () => {
+    const { instance, finishAbortedEmpty } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'submitted'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a-empty', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+    await finishAbortedEmpty()
+
+    // Dropping the shell leaves the user message trailing — the exact shape
+    // useChatAutomation auto-runs. The flag must survive the turn settling
+    // so Stop cannot restart the turn it cancelled.
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
+
+    await instance.sendMessage({ text: 'again' })
+
+    expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(false)
+  })
+
+  it('resolves an open tool-permission dialog when the turn is stopped', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    const resolve = mock((_response: RequestPermissionResponse) => {})
+    useChatStore.getState().setPendingPermission(sessionId, {
+      agentId: 'agent-1',
+      requestId: 'req-1',
+      request: {} as never,
+      resolve,
+    })
+
+    await instance.stop()
+
+    // Left pending, the dialog stays on screen awaiting an answer the cancelled
+    // turn will never consume.
+    expect(resolve).toHaveBeenCalledWith({ outcome: { outcome: 'cancelled' } })
+    expect(useChatStore.getState().sessions.get(sessionId)?.pendingPermission).toBeNull()
+  })
+
+  it('finalizes a reasoning part left streaming when a turn is aborted mid-thinking', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'List things' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'reasoning', text: 'The user is asking…', state: 'streaming' }] },
+    ] as never
+
+    await finishAborted()
+
+    // Left streaming, the reasoning part keeps its spinner running after the stop
+    // (reasoning-group.tsx) even though the turn has settled.
+    const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
+    expect(last.parts[0]!.state).toBe('done')
+  })
+
+  it('keeps a partial assistant message when an aborted turn had content', async () => {
+    const { instance, finishAborted } = createRetryHarness()
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'How are you' }] },
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Partial' }] },
+    ] as never
+
+    await finishAborted()
+
+    expect(instance.messages).toHaveLength(2)
+    expect(instance.messages[1]!.role).toBe('assistant')
+  })
+
+  it('stop() delegates an in-flight abort to onFinish (no drop/reset in the handler)', async () => {
+    const { instance } = createRetryHarness()
+    ;(instance as unknown as { status: string }).status = 'streaming'
+    instance.messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      { id: 'a1', role: 'assistant', parts: [] },
+    ] as never
+
+    await instance.stop()
+
+    // The abort's onFinish settles the turn on the correct `currentTurn`; the
+    // handler must not swap it out early, so it neither drops the shell nor resets.
+    expect(instance.messages).toHaveLength(2)
+  })
+
+  it('stop() cancels a pending auto-retry and settles the session to idle', async () => {
+    const { finishWithError, regenerate, instance } = createRetryHarness()
+
+    await finishWithError()
+    // A retry is scheduled and the store reflects the in-flight recovery.
+    expect(useChatStore.getState().sessions.get(sessionId)?.retryCount).toBe(1)
+
+    await instance.stop()
+
+    // The scheduled retry is cancelled — advancing past every backoff never fires.
+    await getClock().tickAsync(30_000)
+    expect(regenerate).not.toHaveBeenCalled()
+
+    const session = useChatStore.getState().sessions.get(sessionId)
+    expect(session?.retryCount).toBe(0)
+    expect(session?.retriesExhausted).toBe(false)
   })
 
   it('keeps exponential backoff for empty-turn retries after the first', async () => {
@@ -634,6 +880,64 @@ describe('createChatInstance — retry policy', () => {
     expect(sendProperties).toEqual(expect.objectContaining({ length: prompt.length }))
   })
 
+  it('omits transcript correlation from persisted user and assistant messages when capture is disabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(false)
+
+    await instance.sendMessage({ text: 'disabled turn' })
+    await finishSuccessfully()
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(savedMessage?.metadata ?? {}, 'debugTranscript')).toBe(false)
+  })
+
+  it('stamps transcript correlation when capture is enabled', async () => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance, sendMessage } = createRetryHarness(saveMessages)
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'route this turn' })
+    await finishSuccessfully()
+
+    const sentMessage = sendMessage.mock.calls[0]?.[0]
+    const savedMessage = saveMessages.mock.calls[0]?.[0].messages[0]
+    expect(sentMessage.metadata?.debugTranscript?.engine).toBeNull()
+    expect(Object.hasOwn(sentMessage.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(savedMessage?.metadata?.debugTranscript?.engine).toBe('legacy')
+  })
+
+  it('starts stamping only new messages after capture is enabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(false)
+
+    await instance.sendMessage({ text: 'before enable' })
+    const beforeEnable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'after enable' })
+    const afterEnable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeEnable.metadata ?? {}, 'debugTranscript')).toBe(false)
+    expect(Object.hasOwn(afterEnable.metadata ?? {}, 'debugTranscript')).toBe(true)
+  })
+
+  it('stops stamping only new messages after capture is disabled mid-session', async () => {
+    const { instance, sendMessage } = createRetryHarness()
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'before disable' })
+    const beforeDisable = sendMessage.mock.calls[0]?.[0]
+    setDebugTranscriptCaptureEnabled(false)
+    await instance.sendMessage({ text: 'after disable' })
+    const afterDisable = sendMessage.mock.calls[1]?.[0]
+
+    expect(Object.hasOwn(beforeDisable.metadata ?? {}, 'debugTranscript')).toBe(true)
+    expect(Object.hasOwn(afterDisable.metadata ?? {}, 'debugTranscript')).toBe(false)
+  })
+
   it('tracks scalar model identifiers and one correlated success summary', async () => {
     const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
 
@@ -643,9 +947,9 @@ describe('createChatInstance — retry policy', () => {
     const sendCall = trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')!
     const receiveCall = trackEvent.mock.calls.find(([event]) => event === 'chat_receive_reply')!
     const summaryCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
-    const sendProperties = sendCall[1] as Record<string, unknown>
-    const receiveProperties = receiveCall[1] as Record<string, unknown>
-    const summaryProperties = summaryCalls[0]![1] as Record<string, unknown>
+    const sendProperties = sendCall[1] as TurnTelemetryPayload
+    const receiveProperties = receiveCall[1] as TurnTelemetryPayload
+    const summaryProperties = summaryCalls[0]![1] as TurnTelemetryPayload
 
     expect(sendProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
     expect(receiveProperties).toMatchObject({ model_id: 'm1', model_name: 'claude-opus', provider: 'anthropic' })
@@ -731,7 +1035,7 @@ describe('createChatInstance — retry policy', () => {
     await firstBoot.instance.sendMessage({ text: 'stream until reload' })
     const traceId = (
       firstBoot.trackEvent.mock.calls.find(([event]) => event === 'chat_send_prompt')?.[1] as
-        | Record<string, unknown>
+        | TurnTelemetryPayload
         | undefined
     )?.trace_id
 
@@ -777,7 +1081,7 @@ describe('createChatInstance — retry policy', () => {
       expect(autoRetry).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(retrySuccess).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(successSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect((autoRetry as Record<string, unknown>).trace_id).toBe((successSummary as Record<string, unknown>).trace_id)
+      expect((autoRetry as TurnTelemetryPayload).trace_id).toBe((successSummary as TurnTelemetryPayload).trace_id)
 
       const exhaustedHarness = createRetryHarness()
       await exhaustedHarness.instance.sendMessage({ text: 'failed turn' })
@@ -799,9 +1103,7 @@ describe('createChatInstance — retry policy', () => {
       )?.[1]
       expect(retriesExhausted).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
       expect(errorSummary).toEqual(expect.objectContaining({ model_id: 'm1', provider: 'anthropic' }))
-      expect((retriesExhausted as Record<string, unknown>).trace_id).toBe(
-        (errorSummary as Record<string, unknown>).trace_id,
-      )
+      expect((retriesExhausted as TurnTelemetryPayload).trace_id).toBe((errorSummary as TurnTelemetryPayload).trace_id)
     } finally {
       random.mockRestore()
     }
@@ -838,6 +1140,55 @@ describe('createChatInstance — retry policy', () => {
       }),
     )
     expect(JSON.stringify(summary)).not.toContain('private_customer_server')
+  })
+
+  it('ignores malformed persisted tool durations', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+
+    await instance.sendMessage({ text: 'use a tool' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'lookup',
+          toolCallId: 'call-1',
+          state: 'output-available',
+          input: {},
+          output: {},
+        },
+      ],
+      metadata: {
+        reasoningTime: { 'call-1': '12' as never },
+      },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    expect(summary).toEqual(expect.objectContaining({ tool_count: 0, tools: [] }))
+  })
+
+  it('emits terminal telemetry before transcript-only message processing', async () => {
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness()
+    const parts: ThunderboltUIMessage['parts'] = [{ type: 'text', text: 'Done' }]
+    Object.defineProperty(parts, 'flatMap', {
+      value: () => {
+        throw new Error('transcript extraction failed')
+      },
+    })
+
+    await instance.sendMessage({ text: 'new turn' })
+    await expect(
+      finishSuccessfully({
+        id: 'successful-assistant',
+        role: 'assistant',
+        parts,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]).toEqual(
+      expect.objectContaining({ outcome: 'success' }),
+    )
   })
 
   it('preserves built-in tool names in turn telemetry', async () => {
@@ -902,8 +1253,8 @@ describe('createChatInstance — retry policy', () => {
     await firstFinish
 
     const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
-    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
-    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
     const summaries = trackEvent.mock.calls.filter(([event]) => event === 'chat_turn_completed')
 
     expect(firstTrace).toBeDefined()
@@ -984,8 +1335,8 @@ describe('createChatInstance — retry policy', () => {
     await finish
 
     const sendCalls = trackEvent.mock.calls.filter(([event]) => event === 'chat_send_prompt')
-    const firstTrace = (sendCalls[0]![1] as Record<string, unknown>).trace_id
-    const secondTrace = (sendCalls[1]![1] as Record<string, unknown>).trace_id
+    const firstTrace = (sendCalls[0]![1] as TurnTelemetryPayload).trace_id
+    const secondTrace = (sendCalls[1]![1] as TurnTelemetryPayload).trace_id
     expect(firstTrace).toBeDefined()
     expect(secondTrace).toBeDefined()
     expect(firstTrace).not.toBe(secondTrace)
@@ -1008,5 +1359,138 @@ describe('createChatInstance — retry policy', () => {
     await secondFinish
     expect(summaryCalls()).toHaveLength(2)
     expect(summaryCalls()[1]![1]).toEqual(expect.objectContaining({ outcome: 'success', trace_id: secondTrace }))
+  })
+})
+
+/** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
+const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
+  const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
+  const adapter: AgentAdapter = {
+    ...makeAdapter(builtInAgent),
+    fetch: async (_init, context) => {
+      const budget = context.webToolBudget!
+      attempts.push(budget)
+      if (attempts.length === 1) {
+        if (promote) {
+          budget.promote('research')
+        }
+        for (let call = 0; call < webCalls; call++) {
+          await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))
+        }
+      }
+      const chunks = [
+        { type: 'start', messageId: `attempt-${attempts.length}` },
+        { type: 'text-start', id: 'text' },
+        { type: 'text-delta', id: 'text', delta: attempts.length === 1 ? 'Research already gathered' : 'Completed' },
+        { type: 'text-end', id: 'text' },
+        ...(attempts.length === 1 ? [{ type: 'error', errorText }] : []),
+        { type: 'finish' },
+      ]
+      return new Response(chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    },
+  }
+  const instance = createChatInstance(sessionId, [], async () => {}, httpClient, getProxyFetch, {
+    getOrConnectAdapter: async () => adapter,
+    trackEvent: () => {},
+  })
+  hydrateStore({
+    chatInstance: instance,
+    chatThread: null,
+    id: sessionId,
+    selectedModel: { id: 'm1', isConfidential: 0 } as never,
+    triggerData: null,
+  })
+  return { instance, attempts }
+}
+
+describe('logical-turn web retry state through the SDK', () => {
+  beforeEach(() => resetStore())
+  afterEach(() => resetStore())
+
+  it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(webToolCaps.auto)
+      await instance.sendMessage({ text: 'Research a topic' })
+      const partial = [...instance.messages]
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+      expect(instance.messages).toEqual(partial)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({
+        type: 'text',
+        text: 'Research already gathered',
+        state: 'done',
+      })
+      expect(useChatStore.getState().sessions.get(sessionId)?.retriesExhausted).toBe(true)
+      await instance.regenerate()
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).not.toBe(attempts[0])
+      expect(attempts[1]!.probe.isExhausted).toBe(false)
+      expect(instance.messages.at(-1)?.parts).toContainEqual({ type: 'text', text: 'Completed', state: 'done' })
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('retains the web budget on a below-cap transient retry after tool execution', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      for (let call = 1; call < webToolCaps.auto; call++) {
+        await attempts[1]!.execute('search', { query: `remaining ${call}` }, async () => 'source')
+      }
+      expect(attempts[1]!.probe.isExhausted).toBe(true)
+      await instance.sendMessage({ text: 'A new question' })
+      expect(attempts[2]).not.toBe(attempts[0])
+      expect(attempts[2]!.probe.isExhausted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('preserves promotion, consumed calls and cache on automatic retry but starts a new turn at auto', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1, '503: temporarily unavailable', true)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      expect(attempts[1].cap).toBe(30)
+      expect(attempts[1].consumed).toBe(1)
+      expect(
+        await attempts[1].execute('search', { query: 'query 0' }, async () => {
+          throw new Error('must be cached')
+        }),
+      ).toEqual({ title: 'source 0' })
+      expect(attempts[1].consumed).toBe(1)
+      await instance.sendMessage({ text: 'A new ordinary question' })
+      expect(attempts[2].cap).toBe(webToolCaps.auto)
+      expect(attempts[2].consumed).toBe(0)
+      expect(attempts[2].promoted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('does not automatically replay the exact tools-schema 400 after research', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(
+        1,
+        '400: {"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}',
+      )
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(1)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 })

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { scrollToMessageStateKey } from '@/chats/scroll-to-message-intent'
 import { DeleteAllChatsDialog, type DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import { LogoutModal } from '@/components/logout-modal'
@@ -18,6 +19,7 @@ import { useNavigate } from 'react-router'
 import { buildActionNav } from '../actions/entity-actions'
 import type { PaletteCommand } from '../commands/types'
 import { useCommands as useCommandsImpl } from '../commands/use-commands'
+import { foldForMatch } from '../fold'
 import { searchEntities } from '../registry'
 import type { SearchEntityType, SearchResult } from '../types'
 import { useSearch as useSearchImpl } from '../use-search'
@@ -39,15 +41,18 @@ const groupByEntity = (results: SearchResult[]) =>
 
 /**
  * Matches a static command against the query: every whitespace token must
- * appear (case-insensitive) in the command's title or keywords. cmdk's built-in
- * filter is disabled on the palette (it would also re-filter — and wrongly hide
- * — the already-FTS-filtered result rows), so we filter the command list here.
+ * appear in the command's title or keywords. cmdk's built-in filter is disabled
+ * on the palette (it would also re-filter — and wrongly hide — the
+ * already-FTS-filtered result rows), so we filter the command list here.
+ *
+ * Commands never enter the FTS index — their titles are locale-resolved at
+ * render time — but they are folded with the same {@link foldForMatch} the index
+ * uses, so `parametres` finds `Paramètres` and `gerate` finds `Geräte`.
  */
 const commandMatchesQuery = (command: PaletteCommand, query: string): boolean => {
-  const haystack = `${command.title} ${command.keywords?.join(' ') ?? ''}`.toLowerCase()
-  return query
-    .toLowerCase()
-    .split(/\s+/)
+  const haystack = foldForMatch(`${command.title} ${command.keywords?.join(' ') ?? ''}`).folded
+  return foldForMatch(query)
+    .folded.split(/\s+/)
     .filter((token) => token.length > 0)
     .every((token) => haystack.includes(token))
 }
@@ -77,6 +82,7 @@ export const SearchPalette = ({
   useSearch = useSearchImpl,
   trackEvent = trackEventImpl,
 }: SearchPaletteProps) => {
+  const { i18n, t } = useLingui()
   const navigate = useNavigate()
   const db = useDatabase()
   // No-op on desktop / when the drawer is closed; on mobile it dismisses the
@@ -100,6 +106,20 @@ export const SearchPalette = ({
     const visible = experimentalFeatureTasks.value ? results : results.filter((result) => result.entityType !== 'task')
     return groupByEntity(visible)
   }, [hasQuery, results, experimentalFeatureTasks.value])
+
+  // Results and the command list share one scroll container, so a query change
+  // swaps the content underneath a scroll offset that belonged to the old set:
+  // clearing a scrolled-down result list used to land you partway down the
+  // commands. Reset from the keystroke rather than an effect — that is the cause,
+  // and 0 stays valid once the debounced content catches up, since the list is
+  // only ever replaced or shortened.
+  const listRef = useRef<HTMLDivElement>(null)
+  const handleQueryChange = useCallback((next: string) => {
+    setQuery(next)
+    if (listRef.current) {
+      listRef.current.scrollTop = 0
+    }
+  }, [])
 
   const [logoutOpen, setLogoutOpen] = useState(false)
   const deleteAllChatsDialogRef = useRef<DeleteAllChatsDialogRef>(null)
@@ -180,21 +200,21 @@ export const SearchPalette = ({
   const commandSections = (
     <>
       {createCommands.length > 0 ? (
-        <CommandGroup heading="Create">
+        <CommandGroup heading={t`Create`}>
           {createCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
         </CommandGroup>
       ) : null}
       {navCommands.length > 0 ? (
-        <CommandGroup heading="Go to">
+        <CommandGroup heading={t`Go to`}>
           {navCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
         </CommandGroup>
       ) : null}
       {actionCommands.length > 0 ? (
-        <CommandGroup heading="Actions">
+        <CommandGroup heading={t`Actions`}>
           {actionCommands.map((command) => (
             <CommandActionItem key={command.id} command={command} onSelect={handleCommand} />
           ))}
@@ -208,23 +228,29 @@ export const SearchPalette = ({
       <CommandDialog
         open={open}
         onOpenChange={handleOpenChange}
-        title="Search"
-        description="Search across chats, models, skills, agents, and more"
+        title={t`Search`}
+        description={t`Search across chats, models, skills, agents, and more`}
         className="rounded-2xl"
         // FTS already filters result rows and we filter commands manually; cmdk's
-        // fuzzy filter would otherwise hide valid stemmed/prefixed FTS matches.
+        // fuzzy filter would otherwise hide valid prefix and substring FTS matches.
         shouldFilter={false}
       >
-        <CommandInput placeholder="Search chats, models, skills, agents…" value={query} onValueChange={setQuery} />
-        <CommandList>
+        <CommandInput
+          placeholder={t`Search chats, models, skills, agents…`}
+          value={query}
+          onValueChange={handleQueryChange}
+        />
+        <CommandList ref={listRef}>
           {!hasQuery ? (
             commandSections
           ) : (
             <>
-              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandEmpty>
+                <Trans>No results found.</Trans>
+              </CommandEmpty>
               {commandSections}
               {groups.map(({ entity, hits }) => (
-                <CommandGroup key={entity.type} heading={entityLabels[entity.type]}>
+                <CommandGroup key={entity.type} heading={i18n._(entityLabels[entity.type])}>
                   {hits.map((result) => (
                     <SearchResultItem
                       key={`${result.entityType}-${result.id}`}

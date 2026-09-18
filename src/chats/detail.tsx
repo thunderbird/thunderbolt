@@ -17,16 +17,21 @@ type ChatHydrateHandlerProps = PropsWithChildren<{
   existingId: string | null
   /** Project this chat starts in, from `?projectId=`. New chats only. */
   projectId: string | null
+  /**
+   * The id a new chat will be saved under, minted by the route so it can key on
+   * it (see {@link useNewChatId}). Ignored once `existingId` is set — by then the
+   * two are the same id anyway.
+   */
+  newChatId: string
 }>
 
-const ChatHydrateHandler = ({ children, existingId, projectId }: ChatHydrateHandlerProps) => {
+const ChatHydrateHandler = ({ children, existingId, projectId, newChatId }: ChatHydrateHandlerProps) => {
   const isNew = existingId === null
-  // A new chat's id is minted here, once per mount: `useState`'s initializer is a
-  // guarantee, where a `useMemo` is only a hint. React is free to drop a memo
-  // cache and recompute, which would mint a second id for the same chat and
-  // remount the thread the user is mid-way through composing. The mount itself is
-  // keyed by the route below, so a genuinely different chat gets a fresh id.
-  const [id] = useState(() => existingId ?? uuidv7())
+  // Held in `useState` rather than read from props each render: `useState`'s
+  // initializer is a guarantee where a `useMemo` is only a hint, and the id must
+  // not change under a chat the user is mid-way through composing. A genuinely
+  // different chat arrives as a different key and remounts this.
+  const [id] = useState(() => existingId ?? newChatId)
 
   const { hydrateChatStore, isReady, saveMessages, saveStreamingMessage } = useHydrateChatStore({
     id,
@@ -57,6 +62,42 @@ const ChatHydrateHandler = ({ children, existingId, projectId }: ChatHydrateHand
   )
 }
 
+/**
+ * A stable id for the chat being composed at `/chats/new`.
+ *
+ * Minted once per visit and handed to the handler as `newChatId`, so that when
+ * the first send persists the thread and navigates to `/chats/<that id>`, the
+ * route key is *already* that id — the subtree re-renders instead of remounting.
+ *
+ * That remount is what broke voice mode (THU-854): the session lives in a ref
+ * inside the composer, so unmounting it tore down the mic mid-turn and the first
+ * spoken reply never arrived. Typed chat never noticed, because its `Chat`
+ * instance lives in the chat store and `hydrateChatStore` early-returns for an
+ * id it already has — the remount was pure waste even before it caused a bug.
+ *
+ * Re-minting happens during render rather than in an effect: the fresh id has to
+ * be on the very render that enters the new-chat state, or the key would point
+ * at the previous chat for a frame.
+ */
+export const useNewChatId = (isNew: boolean, projectId: string | null): string => {
+  const [minted, setMinted] = useState(() => uuidv7())
+  // Which new-chat visit `minted` belongs to. Null while a persisted thread is
+  // open, so returning to /chats/new always reads as a new visit.
+  const visit = isNew ? (projectId ?? '') : null
+  const [mintedFor, setMintedFor] = useState<string | null>(visit)
+
+  if (visit !== mintedFor) {
+    setMintedFor(visit)
+    // Leaving /chats/new keeps the id: the navigation the first send triggers
+    // goes to exactly this id, and re-minting there would defeat the whole point.
+    if (visit !== null) {
+      setMinted(uuidv7())
+    }
+  }
+
+  return minted
+}
+
 export default function ChatDetailPage() {
   const params = useParams()
   const [searchParams] = useSearchParams()
@@ -70,6 +111,7 @@ export default function ChatDetailPage() {
   // remount, no re-hydration, and the session kept project X — silently filing
   // the first message under a project the user had just left.
   const projectId = isNew ? searchParams.get('projectId') : null
+  const newChatId = useNewChatId(isNew, projectId)
 
   // Warm the lazily-split message subtree for new chats as well as existing
   // ones: the first send swaps the empty state for the message list mid-
@@ -85,12 +127,14 @@ export default function ChatDetailPage() {
   }
 
   return (
-    // Keyed on the chat's identity rather than its id: the route's thread, or "a
-    // new chat in this project". Navigating between two of those remounts the
-    // handler, which is what re-hydrates the store and re-mints a new chat's id.
+    // Keyed on the chat's own id in both states — the id minted for this visit to
+    // /chats/new, then the same id once the first send navigates to it. Switching
+    // to a different thread, or starting another new chat, still changes the key
+    // and remounts; only the new→persisted step of one chat is now continuous.
     <ChatHydrateHandler
-      key={isNew ? `new:${projectId ?? ''}` : chatThreadId}
+      key={isNew ? newChatId : chatThreadId}
       existingId={isNew ? null : chatThreadId}
+      newChatId={newChatId}
       projectId={projectId}
     >
       <ChatUI />

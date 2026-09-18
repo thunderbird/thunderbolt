@@ -2,120 +2,48 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { createModel as insertModel } from '@/dal/models'
+import { updateSettings } from '@/dal/settings'
+import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { createClient } from '@/lib/http'
+
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
-import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
-import { defaultModelGlm52 } from '@shared/defaults/models'
 import { fetch as baseFetch } from '@/lib/fetch'
-import { createAuthenticatedClient } from '@/lib/http'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import type { Model, Skill } from '@/types'
-import { getClock } from '@/testing-library'
-import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
-import { setupConsoleSpy, type ConsoleSpies } from '@/test-utils/console-spies'
 import type { Tool } from 'ai'
-import * as tinfoilClient from './tinfoil-client'
+import { createMCPClient } from '@ai-sdk/mcp'
+import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { ErrorEvent } from 'eventsource'
+import { SSEClientTransport, SseError } from '@modelcontextprotocol/sdk/client/sse.js'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
+import {
+  beginDebugTranscriptTurn,
+  clearDebugTranscriptRecorder,
+  getDebugTranscriptNotes,
+  recordDebugTranscriptSystemPrompts,
+  setDebugTranscriptCaptureEnabled,
+} from '@/debug-transcript/recorder'
 import {
   addSkillTool,
   buildVolatileSystemNotes,
   createModel,
   mergeMcpTools,
+  prepareAiRequestConfig,
+  recordLegacyEmptyResponseRetry,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
-  aiFetchStreamingResponse,
   withAppVersionHeader,
 } from './fetch'
-
-const usageSse = (...counts: Array<readonly [number, number, number]>): string =>
-  `${counts
-    .map(
-      ([promptTokens, completionTokens, totalTokens]) =>
-        `data: ${JSON.stringify({
-          id: 'response-id',
-          choices: [],
-          usage: {
-            prompt_tokens: promptTokens,
-            completion_tokens: completionTokens,
-            total_tokens: totalTokens,
-          },
-        })}`,
-    )
-    .join('\n\n')}\n\ndata: [DONE]\n\n`
-
-const createTinfoilFetchClient = () => {
-  const requestBodies: string[] = []
-  const client = {
-    getBaseURL: () => 'https://enclave.example.com/v1',
-    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
-      requestBodies.push(String(init?.body))
-      return new Response(usageSse([4, 0, 4], [8, 1, 9], [12, 1, 13], [16, 2, 18]), {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'x-inference-usage-receipt': 'iu1.payload.signature',
-        },
-      })
-    },
-  }
-  return { client, requestBodies }
-}
-
-type CapturedOpenAiBody = {
-  stream_options?: { include_usage?: boolean }
-}
-
-const completedSse = (receipt: string): Response =>
-  new Response(
-    `${[
-      {
-        id: 'response-id',
-        choices: [{ delta: { content: 'Completed response' }, finish_reason: null }],
-        usage: { prompt_tokens: 8, completion_tokens: 1, total_tokens: 9 },
-      },
-      {
-        id: 'response-id',
-        choices: [{ delta: {}, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 16, completion_tokens: 2, total_tokens: 18 },
-      },
-    ]
-      .map((chunk) => `data: ${JSON.stringify(chunk)}`)
-      .join('\n\n')}\n\ndata: [DONE]\n\n`,
-    {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'x-inference-usage-receipt': receipt,
-      },
-    },
-  )
-
-const pumpClockUntil = async (predicate: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    await Promise.resolve()
-    await getClock().runAllAsync()
-    if (predicate()) {
-      return
-    }
-  }
-  throw new Error('Timed out while draining the AI response')
-}
-
-const pumpShortClockUntil = async (predicate: () => boolean): Promise<void> => {
-  for (let elapsedMs = 0; elapsedMs < 250; elapsedMs++) {
-    await getClock().tickAsync(1)
-    if (predicate()) {
-      return
-    }
-  }
-  throw new Error('Timed out before the short test deadline')
-}
-
-const serializeConsoleCalls = ({ log, info, error, warn }: ConsoleSpies): string =>
-  JSON.stringify([...log.mock.calls, ...info.mock.calls, ...error.mock.calls, ...warn.mock.calls])
 
 /** Capturing fetch (same shape as `stubProxyFetch`): records the last
  *  (input, init) and returns an empty 200 so the wrapped fetch can be driven
@@ -131,6 +59,45 @@ const capturingFetch = () => {
   )
   return { fn, received: () => received }
 }
+
+describe('legacy empty-response retry capture', () => {
+  it('records the completed attempt and advances prompt capture to the next attempt', () => {
+    clearDebugTranscriptRecorder()
+    setDebugTranscriptCaptureEnabled(true)
+    beginDebugTranscriptTurn({
+      threadId: 'thread-retry',
+      traceId: 'trace-retry',
+      engine: 'legacy',
+      model: { id: 'model-1', name: 'Test model', provider: 'test' },
+      agentId: 'built-in',
+    })
+
+    try {
+      recordLegacyEmptyResponseRetry(undefined, { threadId: 'thread-retry', traceId: 'trace-retry' }, 1)
+      recordDebugTranscriptSystemPrompts('thread-retry', 'trace-retry', ['Retry system prompt'])
+
+      expect(getDebugTranscriptNotes('thread-retry')[0]).toMatchObject({
+        failures: [{ attempt: 1, retryReasons: ['empty-response'] }],
+        systemPrompts: [{ text: 'Retry system prompt', attempt: 2 }],
+      })
+    } finally {
+      setDebugTranscriptCaptureEnabled(false)
+      clearDebugTranscriptRecorder()
+    }
+  })
+
+  it('keeps the PostHog empty-response vocabulary unchanged', () => {
+    const recordRetry = mock(() => {})
+
+    recordLegacyEmptyResponseRetry({ recordRetry }, undefined, 1)
+
+    expect(recordRetry).toHaveBeenCalledWith({
+      layer: 'empty_response',
+      reason: 'empty_response',
+      attempt: 2,
+    })
+  })
+})
 
 /** Mirror the `MCPClientError` the SDK throws after a transport drop. The
  *  runtime instance `name` is `'MCPClientError'` (the `AI_MCPClientError`
@@ -180,11 +147,42 @@ describe('addSkillTool', () => {
       description: 'Use for weather forecasts.',
       instruction: 'Emit the weather widget contract.',
     },
+    { name: 'search', description: 'Search', instruction: 'Search instructions' },
+    { name: 'research', description: 'Research', instruction: 'Research instructions' },
   ]
 
   it('registers the skill tool only for tool-capable models', () => {
     expect(Object.keys(addSkillTool({}, skills, true))).toEqual(['skill'])
     expect(addSkillTool({}, skills, false)).toEqual({})
+  })
+
+  it.each([
+    ['auto', true, 30],
+    ['auto', false, 5],
+    ['search', true, 12],
+    ['research', true, 30],
+  ] as const)('promotes only permitted research loads (%s, enabled=%s)', async (intent, enabled, finalCap) => {
+    const budget = createWebToolBudget(intent, enabled)
+    const tools = addSkillTool({}, skills, true, budget)
+    const options = { toolCallId: 'load', messages: [] }
+    for (const name of ['weather', 'search']) {
+      await tools.skill.execute!({ name }, options)
+      expect(budget.cap).toBe(budget.initialCap)
+      expect(budget.promoted).toBe(false)
+    }
+    const result = tools.skill.execute!({ name: ' /research ' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(await result).toBe('Research instructions')
+    await tools.skill.execute!({ name: 'research' }, options)
+    expect(budget.cap).toBe(finalCap)
+    expect(budget.intent).toBe(intent)
+  })
+
+  it('loads skills without a web budget', async () => {
+    const tools = addSkillTool({}, skills, true)
+    expect(await tools.skill.execute!({ name: 'research' }, { toolCallId: 'load', messages: [] })).toBe(
+      'Research instructions',
+    )
   })
 })
 
@@ -211,7 +209,6 @@ describe('selectPromptSkillDefinitions', () => {
       localization: {
         distanceUnit: 'imperial',
         temperatureUnit: 'f',
-        dateFormat: 'MM/DD/YYYY',
         timeFormat: '12h',
         currency: 'USD',
       },
@@ -292,6 +289,13 @@ describe('buildVolatileSystemNotes', () => {
 })
 
 describe('mergeMcpTools', () => {
+  beforeEach(() => {
+    spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    mock.restore()
+  })
+
   it('prefixes each tool with its sanitized server name', async () => {
     const render = named('render', async () => ({ list_services: tool('ls'), get_service: tool('gs') }))
 
@@ -358,66 +362,161 @@ describe('mergeMcpTools', () => {
     expect(summary).toBe('- render (1 tool)')
   })
 
-  it('reconnects once and retries when tools() throws a closed-connection error', async () => {
-    let calls = 0
+  it.each([
+    closedError(),
+    closedError('Attempted to send a request from a closed client'),
+    new StreamableHTTPError(404, 'Error POSTing to endpoint: expired session'),
+    closedError('MCP SSE Transport Error: 404 Not Found'),
+    new SseError(503, 'Service unavailable', new ErrorEvent('error', { code: 503 })),
+    new StreamableHTTPError(401, 'Error POSTing to endpoint: expired token'),
+    new UnauthorizedError(),
+    Object.assign(new Error('Unauthorized'), { name: 'UnauthorizedError' }),
+    Object.assign(new Error('Expired token'), { code: 401 }),
+    new TypeError('Failed to fetch'),
+    new TypeError('Load failed'),
+    new TypeError('NetworkError when attempting to fetch resource.'),
+  ])('skips discovery failure %p, preserves other tools, and recovers for the next send', async (error) => {
     const dropped = named('render', async () => {
-      calls++
-      throw closedError()
+      throw error
     })
-    const fresh = { tools: async () => ({ alpha: tool('fresh') }), close: () => {} } as unknown as MCPClient
-    const reconnect = mock(async () => fresh)
-
-    const { toolset } = await mergeMcpTools({}, [dropped], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(reconnect).toHaveBeenCalledWith(dropped.client)
-    expect(calls).toBe(1)
-    expect(toolset.render_alpha).toEqual(tool('fresh'))
-  })
-
-  it('skips the dropped server but still merges the others when reconnect fails (non-blocking)', async () => {
-    const dropped = named('render', async () => {
-      throw closedError('Attempted to send a request from a closed client')
-    })
+    const fresh = named('render', async () => ({ alpha: tool('fresh') }))
     const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => null)
+    const reconnect = mock(async () => fresh.client)
+    const builtIn = tool('app')
 
-    const { toolset, summary } = await mergeMcpTools({}, [dropped, healthy], reconnect)
+    const result = await mergeMcpTools({ app: builtIn }, [dropped, healthy], reconnect)
 
+    expect(result.toolset).toEqual({ app: builtIn, github_beta: tool('b') })
+    expect(result.summary).toBe('- github (1 tool)')
+    expect(Object.keys(result.mcpTools!)).toEqual(['github_beta'])
     expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
-    // The dropped server contributes nothing to the summary.
-    expect(summary).toBe('- github (1 tool)')
+    expect(reconnect).toHaveBeenCalledWith(dropped.client, error)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), error)
+
+    const next = await mergeMcpTools({}, [fresh, healthy], reconnect)
+    expect(next.toolset).toEqual({ render_alpha: tool('fresh'), github_beta: tool('b') })
   })
 
-  it('skips the server when the fresh client also fails after reconnect', async () => {
+  it.each([
+    { type: 'sse', body: 'Expired session', status: 404, errorName: 'Error' },
+    { type: 'http', body: '{', status: 200, errorName: 'SyntaxError' },
+    { type: 'http', body: '{"unexpected":true}', status: 200, errorName: 'ZodError' },
+  ])('skips real $type transport failure ($errorName)', async ({ type, body, status, errorName }) => {
+    const options = {
+      fetch: async () => new Response(body, { status, headers: { 'content-type': 'application/json' } }),
+    }
+    const transport =
+      type === 'sse'
+        ? new SSEClientTransport(new URL('https://mcp.test/sse'), {
+            ...options,
+            eventSourceInit: {
+              fetch: async () =>
+                new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(new TextEncoder().encode('event: endpoint\ndata: /messages\n\n'))
+                    },
+                  }),
+                  { headers: { 'content-type': 'text/event-stream' } },
+                ),
+            },
+          })
+        : new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), options)
+    const errors: Error[] = []
+    transport.onerror = (error) => {
+      errors.push(error)
+    }
+    await transport.start()
     const dropped = named('render', async () => {
-      throw closedError()
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+      return {}
     })
-    const stillBroken = {
-      tools: async () => {
-        throw closedError()
+    const reconnect = mock(async () => null)
+    try {
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [dropped, named('github', async () => ({ beta: tool('b') }))],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(errors[0].name).toBe(errorName)
+      expect(reconnect).toHaveBeenCalledWith(dropped.client, errors[0])
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('render'), errors[0])
+    } finally {
+      await transport.close()
+    }
+  })
+
+  it('finishes the send while real SDK recovery waits for an initialization response after HTTP 202', async () => {
+    const accepted = Promise.withResolvers<void>()
+    const transport = new StreamableHTTPClientTransport(new URL('https://mcp.test/mcp'), {
+      fetch: async () => {
+        accepted.resolve()
+        return new Response(null, { status: 202 })
       },
-      close: () => {},
-    } as unknown as MCPClient
-    const healthy = named('github', async () => ({ beta: tool('b') }))
-    const reconnect = mock(async () => stillBroken)
-
-    const { toolset } = await mergeMcpTools({}, [dropped, healthy], reconnect)
-
-    expect(reconnect).toHaveBeenCalledTimes(1)
-    expect(Object.keys(toolset)).toEqual(['github_beta'])
+    })
+    const recovery = createMCPClient({ transport })
+    // Closing the transport in cleanup rejects the still-pending initialization.
+    const settledRecovery = recovery.catch((error: unknown) => {
+      expect(error).toMatchObject({ name: 'MCPClientError' })
+      return null
+    })
+    const reconnect = mock(() => settledRecovery)
+    try {
+      await accepted.promise
+      const result = await mergeMcpTools(
+        { app: tool('app') },
+        [
+          named('render', async () => {
+            throw closedError()
+          }),
+          named('github', async () => ({ beta: tool('b') })),
+        ],
+        reconnect,
+      )
+      expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+      expect(reconnect).toHaveBeenCalledTimes(1)
+    } finally {
+      await transport.close()
+      await settledRecovery
+    }
   })
 
-  it('does not reconnect and propagates non-closed errors', async () => {
-    const boom = new Error('boom — capability missing')
-    const broken = named('render', async () => {
-      throw boom
+  it('keeps app and other server tools when recovery fails', async () => {
+    const dropped = named('render', async () => {
+      throw closedError()
     })
+    const healthy = named('github', async () => ({ beta: tool('b') }))
     const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({ app: tool('app') }, [dropped, healthy], reconnect)
+    expect(result.toolset).toEqual({ app: tool('app'), github_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledTimes(1)
+  })
 
-    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toThrow('boom — capability missing')
+  it.each([new Error('boom — capability missing'), new TypeError('Cannot read properties of undefined'), null])(
+    'propagates programming errors %p without reconnecting',
+    async (boom) => {
+      const broken = named('render', async () => {
+        throw boom
+      })
+      const reconnect = mock(async () => null)
+
+      await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(boom)
+      expect(reconnect).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not treat application tool merging errors as discovery failures', async () => {
+    const error = new SyntaxError('Application processing failed')
+    const broken = named('render', async () => ({
+      get alpha(): Tool {
+        throw error
+      },
+    }))
+    const reconnect = mock(async () => null)
+    await expect(mergeMcpTools({}, [broken], reconnect)).rejects.toBe(error)
     expect(reconnect).not.toHaveBeenCalled()
+    expect(console.warn).not.toHaveBeenCalled()
   })
 
   it('returns an undefined summary when no MCP tools were added', async () => {
@@ -543,535 +642,16 @@ describe('resolveOpenAiCompatConnection (custom)', () => {
   })
 })
 
-describe('createModel (managed Tinfoil usage)', () => {
-  it('forces encrypted streaming usage on for the system provider and exposes normalized receipt headers', async () => {
-    const { client, requestBodies } = createTinfoilFetchClient()
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(client as never)
+describe('createModel', () => {
+  it('has no legacy Tinfoil provider path', async () => {
+    const model = { provider: 'tinfoil' } as Model
 
-    try {
-      const model = await createModel({ ...defaultModelGlm52, apiKey: null }, () => stubProxyFetch)
-      const result = await model.doStream({
-        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
-        providerOptions: { tinfoil: { stream_options: { include_usage: false } } },
-      })
-      const parts = await Array.fromAsync(result.stream)
-      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
-      const finish = parts.find((part) => part.type === 'finish')
-
-      expect(body.stream_options).toEqual({ include_usage: true })
-      expect(result.response?.headers?.['x-inference-usage-receipt']).toBe('iu1.payload.signature')
-      expect(finish).toMatchObject({
-        type: 'finish',
-        usage: {
-          inputTokens: { total: 16 },
-          outputTokens: { total: 2 },
-        },
-      })
-    } finally {
-      getSystemClient.mockRestore()
-    }
-  })
-
-  it('does not request streaming usage for a user-added Tinfoil model', async () => {
-    const { client, requestBodies } = createTinfoilFetchClient()
-    const getUserClient = spyOn(tinfoilClient, 'getTinfoilClient').mockResolvedValue(client as never)
-
-    try {
-      const model = await createModel(
-        { ...defaultModelGlm52, id: 'user-glm', isSystem: 0, apiKey: 'user-key' },
-        () => stubProxyFetch,
-      )
-      const result = await model.doStream({
-        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
-      })
-      await Array.fromAsync(result.stream)
-      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
-
-      expect(body.stream_options).toBeUndefined()
-    } finally {
-      getUserClient.mockRestore()
-    }
-  })
-
-  it('does not request streaming usage for a non-GLM system Tinfoil model', async () => {
-    const { client, requestBodies } = createTinfoilFetchClient()
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(client as never)
-
-    try {
-      const model = await createModel(
-        { ...defaultModelGlm52, id: 'future-system-tinfoil', model: 'future-system-model', apiKey: null },
-        () => stubProxyFetch,
-      )
-      const result = await model.doStream({
-        prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello' }] }],
-      })
-      await Array.fromAsync(result.stream)
-      const body = JSON.parse(requestBodies[0]) as CapturedOpenAiBody
-
-      expect(body.stream_options).toBeUndefined()
-    } finally {
-      getSystemClient.mockRestore()
-    }
+    await expect(createModel(model, () => stubProxyFetch)).rejects.toThrow('Unsupported provider: tinfoil')
   })
 })
 
-describe('aiFetchStreamingResponse (managed Tinfoil receipt callback)', () => {
-  beforeAll(async () => {
-    await setupTestDatabase()
-  })
-
-  afterAll(async () => {
-    await teardownTestDatabase()
-  })
-
-  const init: RequestInit = {
-    body: JSON.stringify({
-      id: 'thread-id',
-      messages: [{ id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }],
-    }),
-  }
-
-  it('awaits the authenticated receipt POST before the final chat stream settles', async () => {
-    const receipt = 'iu1.awaited.signature'
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async () => completedSse(receipt),
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const requests: Request[] = []
-    let resolveReceiptResponse: ((response: Response) => void) | undefined
-    const receiptResponse = new Promise<Response>((resolve) => {
-      resolveReceiptResponse = resolve
-    })
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async (input) => {
-        requests.push(input as Request)
-        return receiptResponse
-      },
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init,
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-      })
-      const responseState = { settled: false }
-      const responseBody = response.text().finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpShortClockUntil(() => requests.length === 1)
-
-      expect(responseState.settled).toBeFalse()
-      expect(requests[0].url).toBe('https://app.example.com/v1/inference-usage/receipts')
-      expect(requests[0].headers.get('authorization')).toBe('Bearer session-token')
-      expect(await requests[0].json()).toEqual({
-        receipt,
-        promptTokens: 16,
-        completionTokens: 2,
-        totalTokens: 18,
-      })
-
-      resolveReceiptResponse?.(new Response(null, { status: 204 }))
-      await pumpClockUntil(() => responseState.settled)
-      expect(await responseBody).toContain('finish')
-    } finally {
-      getSystemClient.mockRestore()
-    }
-  })
-
-  it('continues the chat when the awaited receipt POST returns an error status', async () => {
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async () => completedSse('iu1.failed.signature'),
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const requests: Request[] = []
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async (input) => {
-        requests.push(input as Request)
-        return new Response(null, { status: 503 })
-      },
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init,
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-      })
-      const responseState = { settled: false }
-      const responseBody = response.text().finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpClockUntil(() => responseState.settled)
-
-      expect(requests).toHaveLength(1)
-      expect(await responseBody).toContain('finish')
-    } finally {
-      getSystemClient.mockRestore()
-    }
-  })
-
-  it('waits for a hanging tool-loop receipt timeout before starting the next upstream step', async () => {
-    const upstreamRequests: string[] = []
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async (_input: RequestInfo | URL, upstreamInit?: RequestInit) => {
-        const stepNumber = upstreamRequests.length + 1
-        upstreamRequests.push(String(upstreamInit?.body))
-        if (stepNumber === 1) {
-          return new Response(
-            `${[
-              {
-                id: 'tool-step',
-                choices: [
-                  {
-                    delta: {
-                      tool_calls: [
-                        {
-                          index: 0,
-                          id: 'skill-call',
-                          function: { name: 'skill', arguments: '{"name":"weather"}' },
-                        },
-                      ],
-                    },
-                    finish_reason: null,
-                  },
-                ],
-                usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
-              },
-              {
-                id: 'tool-step',
-                choices: [{ delta: {}, finish_reason: 'tool_calls' }],
-                usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
-              },
-            ]
-              .map((chunk) => `data: ${JSON.stringify(chunk)}`)
-              .join('\n\n')}\n\ndata: [DONE]\n\n`,
-            {
-              headers: {
-                'Content-Type': 'text/event-stream',
-                'x-inference-usage-receipt': 'iu1.first.signature',
-              },
-            },
-          )
-        }
-        return new Response(
-          `${[
-            {
-              id: 'final-step',
-              choices: [{ delta: { content: 'Tool result used' }, finish_reason: null }],
-              usage: { prompt_tokens: 20, completion_tokens: 4, total_tokens: 24 },
-            },
-            {
-              id: 'final-step',
-              choices: [{ delta: {}, finish_reason: 'stop' }],
-              usage: { prompt_tokens: 24, completion_tokens: 7, total_tokens: 31 },
-            },
-          ]
-            .map((chunk) => `data: ${JSON.stringify(chunk)}`)
-            .join('\n\n')}\n\ndata: [DONE]\n\n`,
-          {
-            headers: {
-              'Content-Type': 'text/event-stream',
-              'x-inference-usage-receipt': 'iu1.second.signature',
-            },
-          },
-        )
-      },
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const receiptRequests: Request[] = []
-    let firstReceiptSignal: AbortSignal | undefined
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async (input) => {
-        const request = input as Request
-        receiptRequests.push(request)
-        if (receiptRequests.length !== 1) {
-          return new Response(null, { status: 204 })
-        }
-        firstReceiptSignal = request.signal
-        return new Promise<Response>((_resolve, reject) => {
-          request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
-        })
-      },
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init,
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-      })
-      const responseState = { settled: false }
-      const responseBody = response.text().finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpShortClockUntil(() => receiptRequests.length === 1)
-
-      expect(upstreamRequests).toHaveLength(1)
-      expect(responseState.settled).toBeFalse()
-      expect(firstReceiptSignal?.aborted).toBeFalse()
-
-      await getClock().tickAsync(2_998)
-      expect(upstreamRequests).toHaveLength(1)
-      expect(firstReceiptSignal?.aborted).toBeFalse()
-      await getClock().tickAsync(2)
-      await pumpClockUntil(() => upstreamRequests.length === 2)
-      await pumpClockUntil(() => receiptRequests.length === 2 && responseState.settled)
-
-      expect(await Promise.all(receiptRequests.map((request) => request.json()))).toEqual([
-        {
-          receipt: 'iu1.first.signature',
-          promptTokens: 10,
-          completionTokens: 3,
-          totalTokens: 13,
-        },
-        {
-          receipt: 'iu1.second.signature',
-          promptTokens: 24,
-          completionTokens: 7,
-          totalTokens: 31,
-        },
-      ])
-      expect(upstreamRequests).toHaveLength(2)
-      expect(receiptRequests).toHaveLength(2)
-      expect(firstReceiptSignal?.aborted).toBeTrue()
-      expect(await responseBody).toContain('finish')
-    } finally {
-      getSystemClient.mockRestore()
-    }
-  })
-
-  it('does not submit a receipt for an aborted partial upstream step', async () => {
-    const abortController = new AbortController()
-    const streamState = { pulls: 0, awaitingMore: false }
-    const encoder = new TextEncoder()
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async (_input: RequestInfo | URL, upstreamInit?: RequestInit) => {
-        const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            upstreamInit?.signal?.addEventListener(
-              'abort',
-              () => controller.error(upstreamInit.signal?.reason ?? new DOMException('Aborted', 'AbortError')),
-              { once: true },
-            )
-          },
-          pull(controller) {
-            streamState.pulls++
-            if (streamState.pulls === 1) {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({
-                    id: 'partial-step',
-                    choices: [{ delta: { content: 'Partial' }, finish_reason: null }],
-                    usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
-                  })}\n\n`,
-                ),
-              )
-              return
-            }
-            streamState.awaitingMore = true
-          },
-        })
-        return new Response(stream, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'x-inference-usage-receipt': 'iu1.partial.signature',
-          },
-        })
-      },
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const receiptRequests: Request[] = []
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async (input) => {
-        receiptRequests.push(input as Request)
-        return new Response(null, { status: 204 })
-      },
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init: { ...init, signal: abortController.signal },
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-      })
-      const responseState = { settled: false }
-      const responseBody = response.text().then(
-        (body) => ({ body }),
-        () => ({ aborted: true }),
-      )
-      responseBody.finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpClockUntil(() => streamState.awaitingMore)
-      abortController.abort(new DOMException('Interrupted', 'AbortError'))
-      await pumpClockUntil(() => responseState.settled)
-
-      expect(receiptRequests).toHaveLength(0)
-      await responseBody
-    } finally {
-      getSystemClient.mockRestore()
-    }
-  })
-
-  it.each([
-    { status: 500, expectedKind: 'provider' },
-    { status: 418, expectedKind: 'unknown' },
-  ] as const)('logs only a stable error kind for managed stream failures', async ({ status, expectedKind }) => {
-    const privateMessage = 'PRIVATE_STREAM_ERROR_MESSAGE'
-    const privateCause = 'PRIVATE_STREAM_ERROR_CAUSE'
-    const privateBody = 'PRIVATE_STREAM_ERROR_BODY'
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async () =>
-        new Response(JSON.stringify({ error: { message: privateMessage, cause: privateCause, body: privateBody } }), {
-          status,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const consoleSpies = setupConsoleSpy()
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async () => new Response(null, { status: 204 }),
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init,
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-      })
-      const responseState = { settled: false }
-      response.text().finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpClockUntil(() => responseState.settled)
-
-      expect(consoleSpies.error.mock.calls).toEqual([['streamText error', { kind: expectedKind }]])
-      const serializedConsoleCalls = serializeConsoleCalls(consoleSpies)
-      expect(serializedConsoleCalls).not.toContain(privateMessage)
-      expect(serializedConsoleCalls).not.toContain(privateCause)
-      expect(serializedConsoleCalls).not.toContain(privateBody)
-    } finally {
-      consoleSpies.restore()
-      getSystemClient.mockRestore()
-    }
-  })
-
-  const toolCallValidationCases = [
-    {
-      toolName: 'PRIVATE_TOOL_NAME_FROM_PROMPT_PRIVATE_VALIDATION_MESSAGE',
-      toolArguments: '{"secret":"PRIVATE_TOOL_ARGUMENTS"}',
-      expectedWarning: 'Tool call references unknown tool, skipping',
-      expectedKind: 'no_such_tool',
-    },
-    {
-      toolName: 'skill',
-      toolArguments: 'PRIVATE_TOOL_ARGUMENTS_PRIVATE_VALIDATION_MESSAGE',
-      expectedWarning: 'Tool call has invalid input, skipping',
-      expectedKind: 'invalid_tool_input',
-    },
-  ]
-
-  it.each(toolCallValidationCases)('classifies $expectedKind without leaking tool call content', async (testCase) => {
-    const { toolName, toolArguments, expectedWarning, expectedKind } = testCase
-    const privateErrorMessage = 'PRIVATE_VALIDATION_MESSAGE'
-    const upstreamState = { requests: 0 }
-    const systemClient = {
-      getBaseURL: () => 'https://enclave.example.com/v1',
-      fetch: async () => {
-        upstreamState.requests++
-        if (upstreamState.requests > 1) {
-          return completedSse('')
-        }
-        return new Response(
-          `${[
-            {
-              id: 'invalid-tool-step',
-              choices: [
-                {
-                  delta: {
-                    tool_calls: [
-                      {
-                        index: 0,
-                        id: 'invalid-skill-call',
-                        function: { name: toolName, arguments: toolArguments },
-                      },
-                    ],
-                  },
-                  finish_reason: null,
-                },
-              ],
-            },
-            {
-              id: 'invalid-tool-step',
-              choices: [{ delta: {}, finish_reason: 'tool_calls' }],
-              usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
-            },
-          ]
-            .map((chunk) => `data: ${JSON.stringify(chunk)}`)
-            .join('\n\n')}\n\ndata: [DONE]\n\n`,
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        )
-      },
-    }
-    const getSystemClient = spyOn(tinfoilClient, 'getSystemTinfoilClient').mockResolvedValue(systemClient as never)
-    const consoleSpies = setupConsoleSpy()
-    const telemetry = createTurnTelemetry({ now: () => 0, generateId: () => 'trace-1' })
-    const httpClient = createAuthenticatedClient('https://app.example.com/v1/', () => 'session-token', {
-      fetch: async () => new Response(null, { status: 204 }),
-    })
-
-    try {
-      const response = await aiFetchStreamingResponse({
-        init,
-        modelId: defaultModelGlm52.id,
-        httpClient,
-        getProxyFetch: () => stubProxyFetch,
-        telemetry,
-      })
-      const responseState = { settled: false }
-      response.text().finally(() => {
-        responseState.settled = true
-      })
-
-      await pumpClockUntil(() => responseState.settled)
-
-      expect(consoleSpies.warn).toHaveBeenCalledWith(expectedWarning)
-      expect(telemetry.buildPayload('success')).toMatchObject({
-        tool_call_validation_failure_count: 1,
-        tool_call_validation_failure_kinds: [expectedKind],
-      })
-      const serializedConsoleCalls = serializeConsoleCalls(consoleSpies)
-      const serializedTelemetry = JSON.stringify(telemetry.buildPayload('success'))
-      for (const privateValue of [toolName, toolArguments, privateErrorMessage]) {
-        expect(serializedConsoleCalls).not.toContain(privateValue)
-        expect(serializedTelemetry).not.toContain(privateValue)
-      }
-    } finally {
-      consoleSpies.restore()
-      getSystemClient.mockRestore()
-    }
-  })
-})
-
-// The `thunderbolt` provider fetch (and, via the same one-liner, the system-tinfoil
-// wrappedFetch) POSTs directly to our backend, bypassing the proxy — so it must
-// self-identify the build. `withAppVersionHeader` is that injection primitive.
+// The `thunderbolt` provider fetch POSTs directly to our backend, bypassing the
+// proxy, so it must self-identify the build.
 describe('withAppVersionHeader', () => {
   const env = import.meta.env as Record<string, unknown>
   let savedVersion: unknown
@@ -1140,5 +720,69 @@ describe('withAppVersionHeader', () => {
 
     expect(events).toHaveLength(0)
     window.removeEventListener(appVersionUnsupported, listener)
+  })
+})
+
+describe('logical-turn citation registry', () => {
+  it('keeps cached source labels and metadata across rebuilt toolsets and starts fresh for a new turn', async () => {
+    await setupTestDatabase()
+    try {
+      await insertModel(getDb(), {
+        id: 'source-model',
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'Test',
+        toolUsage: 1,
+      })
+      await updateSettings(getDb(), { integrations_pro_is_enabled: true })
+      const requests: string[] = []
+      const httpClient = createClient({
+        prefixUrl: 'https://backend.test',
+        fetch: async (input) => {
+          const query = new URL(input instanceof Request ? input.url : String(input)).searchParams.get('q')!
+          requests.push(query)
+          return Response.json({
+            results: [
+              { pageUrl: `https://source.test/${query}`, title: query, faviconUrl: null, previewImageUrl: null },
+            ],
+          })
+        },
+      })
+      const budget = createWebToolBudget('search')
+      const prepare = (webToolBudget = budget) =>
+        prepareAiRequestConfig({ modelId: 'source-model', httpClient, webToolBudget })
+      const first = await prepare()
+      const firstResult = await first.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'first', messages: [] },
+      )
+      const retry = await prepare()
+      const cached = await retry.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'retry', messages: [] },
+      )
+      expect(requests).toEqual(['one'])
+      expect(cached).toEqual(firstResult)
+      expect(retry.sourceCollector).toEqual(first.sourceCollector)
+      const next = await retry.toolset.search!.execute!(
+        { query: 'two', max_results: 10 },
+        { toolCallId: 'next', messages: [] },
+      )
+      expect(next).toMatchObject([{ sourceIndex: 2, pageUrl: 'https://source.test/two' }])
+      expect(retry.sourceCollector).toMatchObject([
+        { index: 1, url: 'https://source.test/one', title: 'one', toolName: 'search' },
+        { index: 2, url: 'https://source.test/two', title: 'two', toolName: 'search' },
+      ])
+      const fresh = await prepare(createWebToolBudget('search'))
+      expect(fresh.sourceCollector).toEqual([])
+      const freshResult = await fresh.toolset.search!.execute!(
+        { query: 'one', max_results: 10 },
+        { toolCallId: 'fresh', messages: [] },
+      )
+      expect(freshResult).toMatchObject([{ sourceIndex: 1 }])
+      expect(requests).toEqual(['one', 'two', 'one'])
+    } finally {
+      await teardownTestDatabase()
+    }
   })
 })

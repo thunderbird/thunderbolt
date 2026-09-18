@@ -7,7 +7,8 @@ import type { Settings } from '@/config/settings'
 import { isOriginAllowed } from '@/config/settings'
 import {
   applyOperation,
-  getActiveSessionByToken,
+  cliDeviceIdPrefix,
+  getActivePersistedSession,
   getDeviceById,
   getEncryptionMetadata,
   getUserById,
@@ -59,6 +60,10 @@ const validateDeviceForSync = async (
   }
   if (!boundDeviceId || boundDeviceId !== deviceId) {
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_BOUND' } }
+  }
+
+  if (deviceId.startsWith(cliDeviceIdPrefix)) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
   const deviceRow = await getDeviceById(database, deviceId)
@@ -223,7 +228,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         return { error: 'Unauthorized' }
       }
 
-      const sessionRow = await getActiveSessionByToken(database, rawToken)
+      const sessionRow = await getActivePersistedSession(database, rawToken)
       if (!sessionRow) {
         set.status = 401
         return { error: 'Unauthorized' }

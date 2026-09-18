@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 
 import { DiscardCreateDialog } from '@/skills/discard-create-dialog'
@@ -68,6 +69,7 @@ type CreateSkillPanelProps = {
 
 /** Creates or edits a skill over the current screen without changing routes. */
 export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, skillId }: CreateSkillPanelProps) => {
+  const { t } = useLingui()
   const createSkillTracked = useCreateSkillTracked()
   const { skills, isLoading, updateSkill } = useLibrarySkills()
   const trackSkillEvent = useSkillTelemetry()
@@ -150,8 +152,8 @@ export const CreateSkillPanel = ({ open, onClose, onCloseComplete, initialName, 
       <DiscardCreateDialog
         open={state.isDiscardOpen}
         onOpenChange={(nextOpen) => !nextOpen && dispatch({ type: 'DISCARD_CLOSED' })}
-        title={isEditing ? 'Leave without saving?' : undefined}
-        description={isEditing ? "Your changes won't be saved." : undefined}
+        title={isEditing ? t`Leave without saving?` : undefined}
+        description={isEditing ? t`Your changes won't be saved.` : undefined}
         onConfirm={() => {
           dispatch({ type: 'DISCARD_CLOSED' })
           onClose()

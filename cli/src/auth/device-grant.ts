@@ -10,17 +10,19 @@
  * `slow_down`, or aborting on denial / expiry.
  */
 
+import { setTimeout as sleep } from 'node:timers/promises'
+
 /** Injected time seam: current epoch millis + an awaitable sleep. Real impl is
  *  {@link systemClock}; tests pass a controllable fake (no real timers). */
 export type Clock = {
   readonly now: () => number
-  readonly sleep: (ms: number) => Promise<void>
+  readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>
 }
 
 /** Wall-clock implementation of {@link Clock} backed by `Date.now` / `setTimeout`. */
 export const systemClock: Clock = {
   now: () => Date.now(),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep: (ms, signal) => sleep(ms, undefined, { signal }),
 }
 
 /** Parsed `/device/code` response (RFC 8628 §3.2), normalized to camelCase. */
@@ -44,8 +46,8 @@ export type TokenPollResult =
 
 /** Network seam for the device grant: request codes, then poll for the token. */
 export type DeviceGrantTransport = {
-  readonly requestCode: () => Promise<DeviceCodeResponse>
-  readonly pollToken: (deviceCode: string) => Promise<TokenPollResult>
+  readonly requestCode: (signal?: AbortSignal) => Promise<DeviceCodeResponse>
+  readonly pollToken: (deviceCode: string, signal?: AbortSignal) => Promise<TokenPollResult>
 }
 
 /** Terminal reasons the grant can fail with, surfaced to the user. */
@@ -83,6 +85,7 @@ export const pollForToken = async (
   code: DeviceCodeResponse,
   transport: DeviceGrantTransport,
   clock: Clock,
+  signal?: AbortSignal,
 ): Promise<string> => {
   const deadlineMs = clock.now() + code.expiresInSeconds * 1000
 
@@ -91,7 +94,7 @@ export const pollForToken = async (
       throw new DeviceGrantError('expired_token', 'the device code expired before it was approved')
     }
 
-    const result = await transport.pollToken(code.deviceCode)
+    const result = await transport.pollToken(code.deviceCode, signal)
     if (result.kind === 'approved') return result.token
     if (result.kind === 'denied') {
       throw new DeviceGrantError('access_denied', 'login was denied on the approval page')
@@ -101,7 +104,7 @@ export const pollForToken = async (
     }
 
     const nextIntervalMs = result.kind === 'slow_down' ? intervalMs + slowDownIncrementMs : intervalMs
-    await clock.sleep(nextIntervalMs)
+    await clock.sleep(nextIntervalMs, signal)
     return poll(nextIntervalMs)
   }
 

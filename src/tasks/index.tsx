@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -92,6 +93,8 @@ type TaskItemProps = {
 }
 
 const TaskItem = memo(({ task, isCompleting, isPending = false, onComplete, onEdit, onDelete }: TaskItemProps) => {
+  const { t } = useLingui()
+  const taskItem = task.item
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.item)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -234,7 +237,7 @@ const TaskItem = memo(({ task, isCompleting, isPending = false, onComplete, onEd
       </div>
 
       <Checkbox
-        aria-label={`Complete ${task.item}`}
+        aria-label={t`Complete ${taskItem}`}
         checked={isCompleting}
         disabled={interactionsDisabled}
         onCheckedChange={(checked) => {
@@ -256,6 +259,7 @@ type NewTaskInputProps = {
 }
 
 const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
+  const { t } = useLingui()
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -296,12 +300,12 @@ const NewTaskInput = ({ onAdd, onCancel }: NewTaskInputProps) => {
           onChange={(e) => setValue(e.target.value)}
           onBlur={handleSubmit}
           onKeyDown={handleKeyDown}
-          placeholder="Add a new task..."
+          placeholder={t`Add a new task…`}
           className="w-full bg-transparent text-sm leading-5 p-0 m-0 focus:outline-none"
           style={{ height: '20px' }}
         />
       </div>
-      <Checkbox aria-label="Complete new task" disabled />
+      <Checkbox aria-label={t`Complete new task`} disabled />
     </div>
   )
 }
@@ -632,6 +636,7 @@ const useTasksPageState = () => {
 
 // Main Tasks Page Component
 const TasksPage = () => {
+  const { t } = useLingui()
   const {
     activeTask,
     cancelAddingTask,
@@ -667,12 +672,12 @@ const TasksPage = () => {
           )}
         >
           <PageSearch onSearch={handleSearch}>
-            <PageHeader title="Tasks">
+            <PageHeader title={t`Tasks`}>
               {!showEmptyState && (
                 <>
                   <PageSearch.Button />
                   <PageCreateAction
-                    label="New Task"
+                    label={t`New Task`}
                     onClick={startAddingTask}
                     disabled={isAddingNew || taskCreationSettling}
                   />
@@ -680,17 +685,17 @@ const TasksPage = () => {
               )}
             </PageHeader>
 
-            <PageSearch.Input placeholder="Search tasks..." onSearch={handleSearch} />
+            <PageSearch.Input placeholder={t`Search tasks…`} onSearch={handleSearch} />
           </PageSearch>
 
           {showEmptyState ? (
             <EmptyState
               icon={CheckCircle2}
-              title="No tasks yet"
+              title={t`No tasks yet`}
               action={
                 <Button variant="outline" onClick={startAddingTask} className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Add Your First Task
+                  <Trans>Add Your First Task</Trans>
                 </Button>
               }
             />
@@ -743,13 +748,13 @@ const TasksPage = () => {
 
                     {visibleTasks.length === 0 && searchQuery && (
                       <div className="text-center py-12 text-muted-foreground">
-                        No tasks found matching "{searchQuery}"
+                        <Trans>No tasks found matching "{searchQuery}"</Trans>
                       </div>
                     )}
 
                     {totalCount > 50 && (
                       <div className="text-center py-4 text-sm text-muted-foreground">
-                        Showing 50 of {totalCount} tasks
+                        <Trans>Showing 50 of {totalCount} tasks</Trans>
                       </div>
                     )}
                   </div>

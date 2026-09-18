@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
 import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
@@ -137,16 +139,23 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 
-/** Maps a catalog-fetch failure to a user-facing message (network, HTTP status, or generic). */
-export const describeModelFetchError = (error: unknown): string => {
+/**
+ * Maps a catalog-fetch failure to a user-facing message (network, HTTP status,
+ * or generic). Takes `i18n` because one branch interpolates the HTTP status, so
+ * the descriptors can't all live at module scope.
+ */
+export const describeModelFetchError = (i18n: I18n, error: unknown): string => {
   if (error instanceof TypeError) {
-    return 'Network request failed (the browser blocked the request or the server is unreachable).'
+    return i18n._(msg`Network request failed (the browser blocked the request or the server is unreachable).`)
   }
   if (typeof error === 'object' && error && 'response' in error) {
     const response = (error as { response?: Response }).response
-    return response
-      ? `Server responded with status ${response.status} ${response.statusText}`
-      : 'Server responded with an unknown error.'
+    if (!response) {
+      return i18n._(msg`Server responded with an unknown error.`)
+    }
+    const status = response.status
+    const statusText = response.statusText
+    return i18n._(msg`Server responded with status ${status} ${statusText}`)
   }
-  return error instanceof Error && error.message ? error.message : 'Failed to load models'
+  return error instanceof Error && error.message ? error.message : i18n._(msg`Failed to load models`)
 }

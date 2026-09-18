@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { hashValues } from '../lib/hash'
-import { managedGlmIdentity } from '../inference-usage'
 
 /**
  * Shape of a shipped model default. Structurally a subset of the frontend
@@ -46,10 +45,11 @@ export type SharedModel = {
  */
 export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
 
-/** Whether a model's vendor is known to accept image input. Unknown/absent
- *  vendors (custom or local endpoints) return false — we don't guess. */
-export const vendorSupportsImages = (vendor: string | null | undefined): boolean =>
-  vendor != null && imageCapableVendors.has(vendor)
+const imageCapableModels = new Set(['glm-5-3-flash'])
+
+/** Whether a model accepts images based on its vendor or known model slug. */
+export const modelSupportsImages = ({ vendor, model }: Pick<SharedModel, 'vendor' | 'model'>): boolean =>
+  (vendor != null && imageCapableVendors.has(vendor)) || imageCapableModels.has(model)
 
 /**
  * Compute hash of user-editable fields for a model.
@@ -102,28 +102,14 @@ export const defaultModelOpus5: SharedModel = {
   userId: null,
 }
 
-/**
- * Flash ships under a fresh id — not the retired V4 Pro id. Reusing Pro's id
- * would flip `isConfidential` 1 → 0 on threads that were created encrypted
- * (`isEncrypted` mirrors the model's `isConfidential` at creation), stranding
- * them because the model picker and send guard both enforce
- * `isEncrypted === isConfidential`. The retired Pro row is instead
- * soft-deleted by `cleanupRemovedDefaults`, so encrypted threads bound to it
- * surface as "model retired" rather than broken chats.
- *
- * The reconciler's `frozenFields: ['isConfidential', 'provider']` guard
- * enforces the same invariant from the OTA side — an OTA payload that ships
- * an existing id with `isConfidential` flipped is silently ignored on those
- * two columns. New values for either field must ship under a fresh id.
- */
-export const defaultModelDeepseekV4Flash: SharedModel = {
-  id: '019f227e-d640-727d-ba12-d51bd7d0a3d6',
-  name: 'DeepSeek V4 Flash',
-  provider: 'thunderbolt',
-  model: 'deepseek-v4-flash',
+export const defaultModelGlm53Flash: SharedModel = {
+  id: '01a06dd7-67ee-75be-b957-2b746271c49d',
+  name: 'GLM 5.3 Flash',
+  provider: 'tinfoil',
+  model: 'glm-5-3-flash',
   isSystem: 1,
   enabled: 1,
-  isConfidential: 0,
+  isConfidential: 1,
   contextWindow: 131072,
   toolUsage: 1,
   startWithReasoning: 0,
@@ -131,17 +117,20 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
   deletedAt: null,
   url: null,
   defaultHash: null,
-  vendor: 'deepseek',
-  description: 'Fast DeepSeek reasoning',
+  vendor: 'zhipu',
+  description: 'Fast, low-cost confidential chat with image support',
   userId: null,
 }
 
-export const defaultModelGlm52: SharedModel = {
+export const defaultModelId = defaultModelGlm53Flash.id
+
+export const defaultModelGlm53: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
-  name: 'GLM 5.2',
+  name: 'GLM 5.3',
   // `provider` is the internal transport. The UI presents system-managed
   // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
-  ...managedGlmIdentity,
+  provider: 'tinfoil',
+  model: 'glm-5-3',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -162,26 +151,25 @@ export const defaultModelGlm52: SharedModel = {
  * "Provided" group of the model picker. Reorder freely — but bump
  * `defaultModelsVersion` when you do.
  *
- * Retired between V1 and V2: `defaultModelDeepseekV4Pro` (superseded by
- * Flash under a fresh id) and `defaultModelKimiK26` (dropped). Their rows are
- * soft-deleted by `cleanupRemovedDefaults` on next reconcile; unedited copies
- * disappear cleanly, user-edited copies survive but point at retired ids and
- * will surface upstream errors when used.
+ * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
+ * from this list. User-edited copies survive but may reference unavailable
+ * upstream models and return errors when used.
+ * The backend accepts `glm-5-2` and `deepseek-v4-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus5,
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
+  defaultModelGlm53Flash,
+  defaultModelGlm53,
 ] as const
 
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`
  * changes in any way. The reconciler uses this as the ordering signal to
- * decide which device's defaults win in a multi-device sync group (THU-637):
+ * decide which device's defaults win in a multi-device sync group:
  * a device only overwrites existing rows when its picked defaults version is
  * strictly newer than the highest ever applied on this account.
  *
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 4
+export const defaultModelsVersion = 7

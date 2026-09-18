@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { isFramelessControlsPlatform } from '@/lib/platform'
 import { Maximize2, Minus, X } from 'lucide-react'
 
@@ -26,6 +27,7 @@ import { Maximize2, Minus, X } from 'lucide-react'
  * window rather than quitting.
  */
 export const WindowControls = () => {
+  const { t } = useLingui()
   if (!isFramelessControlsPlatform()) {
     return null
   }
@@ -49,12 +51,12 @@ export const WindowControls = () => {
     <div
       data-tauri-drag-region="false"
       className="fixed right-0 top-0 z-50 flex h-[var(--touch-height-xl)] w-[var(--window-controls-width)] items-stretch"
-      aria-label="Window controls"
+      aria-label={t`Window controls`}
     >
       <button
         type="button"
         onClick={handleMinimize}
-        aria-label="Minimize"
+        aria-label={t`Minimize`}
         className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
       >
         <Minus className="size-3.5" aria-hidden="true" />
@@ -62,7 +64,7 @@ export const WindowControls = () => {
       <button
         type="button"
         onClick={handleMaximize}
-        aria-label="Maximize"
+        aria-label={t`Maximize`}
         className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground cursor-pointer"
       >
         <Maximize2 className="size-3.5" aria-hidden="true" />
@@ -70,7 +72,7 @@ export const WindowControls = () => {
       <button
         type="button"
         onClick={handleClose}
-        aria-label="Close"
+        aria-label={t`Close`}
         className="flex flex-1 items-center justify-center text-muted-foreground hover:bg-destructive hover:text-white cursor-pointer"
       >
         <X className="size-3.5" aria-hidden="true" />

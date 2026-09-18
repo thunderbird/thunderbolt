@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import '@/lib/dayjs'
+import { I18nProvider } from '@lingui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
+
+import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
 import MagicLinkVerify from '@/components/magic-link-verify'
@@ -31,6 +33,8 @@ import {
   useHttpClient,
 } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
+import { useAppLanguage } from '@/hooks/use-app-language'
+import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
@@ -57,6 +61,7 @@ import { RecoveryKeyDialog } from './components/recovery-key-dialog'
 import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
+import { loadSearchPalette } from '@/search/palette/search-palette-loader'
 import { MCPProvider } from './lib/mcp-provider'
 import { ProxyFetchProvider } from './lib/proxy-fetch-context'
 import { TrayProvider } from './lib/tray'
@@ -163,7 +168,7 @@ const useBootstrapSystemAgents = () => {
       return
     }
     void (async () => {
-      const result = await refreshSystemAgents(db, cloudUrl, httpClient)
+      const result = await refreshSystemAgents(db, httpClient)
       if (!result.refreshed) {
         return
       }
@@ -178,6 +183,8 @@ const AppContent = ({ initData }: { initData: InitData }) => {
   useDeviceSessionBinding()
   useMcpSync()
   useBootstrapSystemAgents()
+  useAppLanguage()
+  useUnitDefaults()
   useKeyboardInset()
   useViewportLock()
   useSafeAreaInset()
@@ -298,6 +305,16 @@ export const App = () => {
   const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
+  // Start the palette's chunk during boot so it is in memory by the time
+  // `SearchPaletteProvider` mounts and asks for it — that provider sits behind
+  // the `sidebarState` gate in `Layout`, so fetching only from there leaves a
+  // window where Cmd+K has nothing to show. ~10KB, for the one surface
+  // reachable by keyboard from anywhere. Unlike `preloadAllRouteChunks` this
+  // runs on web too; that policy is about not warming *every* route.
+  useEffect(() => {
+    void loadSearchPalette()
+  }, [])
+
   // Show the Tauri window after React mounts and CSS is applied.
   // The window starts hidden (tauri.conf.json visible: false) to prevent
   // the WebView's default white background from flashing before the theme loads.
@@ -385,25 +402,29 @@ export const App = () => {
   }
 
   return (
-    <ThemeProvider>
-      <LazyMotion features={loadMotionFeatures} strict>
-        {renderAppContent()}
-        <WindowControls />
-        {/* The upgrade blocker replaces the whole app, so it must win over the
-            revoked-device modal that renders outside renderAppContent. */}
-        <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
-        {/* Seamless v1→v2 migration completed at init — show the new recovery
-            phrase once. Blocked while the upgrade screen owns the viewport; the
-            phrase is not lost in that case, because the mint marked it pending
-            and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
-        <RecoveryKeyDialog
-          open={migrationRecoveryKey != null && !upgradeRequired}
-          recoveryKey={migrationRecoveryKey ?? ''}
-          title="Save your new recovery phrase"
-          description="Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
-          onDone={clearMigrationRecoveryKey}
-        />
-      </LazyMotion>
-    </ThemeProvider>
+    // The source locale is activated synchronously in src/i18n, so the
+    // provider never blocks first paint waiting for a catalog chunk.
+    <I18nProvider i18n={i18n}>
+      <ThemeProvider>
+        <LazyMotion features={loadMotionFeatures} strict>
+          {renderAppContent()}
+          <WindowControls />
+          {/* The upgrade blocker replaces the whole app, so it must win over the
+              revoked-device modal that renders outside renderAppContent. */}
+          <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
+          {/* Seamless v1→v2 migration completed at init — show the new recovery
+              phrase once. Blocked while the upgrade screen owns the viewport; the
+              phrase is not lost in that case, because the mint marked it pending
+              and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
+          <RecoveryKeyDialog
+            open={migrationRecoveryKey != null && !upgradeRequired}
+            recoveryKey={migrationRecoveryKey ?? ''}
+            title="Save your new recovery phrase"
+            description="Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+            onDone={clearMigrationRecoveryKey}
+          />
+        </LazyMotion>
+      </ThemeProvider>
+    </I18nProvider>
   )
 }

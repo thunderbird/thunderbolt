@@ -5,8 +5,10 @@
 import { disposeAllAdapters } from '@/acp/adapter-cache'
 import { clearIrohClientSecret } from '@/acp/iroh/iroh-transport'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
+import { clearActiveLocale } from '@/i18n/active-locale'
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -30,6 +32,8 @@ type ClearLocalDataOptions = {
  */
 export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<void> => {
   const { disableSync = true, clearEncryptionKeys = true, clearDatabase = true, clearAuth = true } = options ?? {}
+
+  clearIdentityScopedMemory()
 
   // Tear down every warm ACP connection first so no agent transport survives
   // across user identities (sign-out, account deletion, device revocation all
@@ -65,6 +69,11 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
 
     // Reset local settings to defaults (previously these lived in the DB and were deleted with it)
     useLocalSettingsStore.setState(initialLocalSettings)
+    // Same reasoning for the locale mirror: it caches the synced `language` row, so
+    // with the database gone it would boot the next identity in this account's
+    // language. Tied to the database rather than to `clearAuth` because a caller
+    // that keeps the database keeps the row the mirror agrees with.
+    clearActiveLocale()
   }
 
   if (clearAuth) {

@@ -2,15 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearSettingsCache } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
-import {
-  inferenceUsageReceiptPath,
-  managedGlmIdentity,
-  type InferenceUsageReceiptRequest,
-} from '@shared/inference-usage'
+import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
@@ -22,7 +19,6 @@ import { maxPostgresInteger, type InferencePrice } from './usage-ledger'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 type TestApp = { handle: Elysia['handle'] }
-type GlmPrice = InferencePrice & { provider: 'tinfoil'; model: 'glm-5-2' }
 type TestReceiptBody = {
   receipt?: string | number | null
   promptTokens?: number | string | boolean | null
@@ -47,8 +43,9 @@ type CapturedLog = {
 const secret = 'receipt-route-secret'
 const nowSeconds = 1_787_616_000
 const keyDomain = 'thunderbolt/inference-usage-receipt/key/v1'
-const glmPrice: GlmPrice = {
-  ...managedGlmIdentity,
+const glmPrice: InferencePrice = {
+  provider: 'tinfoil',
+  model: 'glm-5-2',
   inputNanoUsdPerToken: 1_500n,
   outputNanoUsdPerToken: 5_250n,
 }
@@ -68,7 +65,7 @@ const issueReceipt = (
   options: Readonly<{
     eventId?: string
     userId?: string
-    price?: GlmPrice
+    price?: InferencePrice
     issuedAt?: number
   }> = {},
 ) =>
@@ -87,20 +84,20 @@ const signTestClaims = (claims: TestSignedClaims): string => {
   return `iu1.${payloadSegment}.${signature}`
 }
 
-const postJson = (app: TestApp, body: TestReceiptBody) =>
+const postJson = (app: TestApp, body: TestReceiptBody, headers: Record<string, string> = {}) =>
   app.handle(
     new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
     }),
   )
 
-const postRaw = (app: TestApp, body: string) =>
+const postRaw = (app: TestApp, body: string, headers: Record<string, string> = {}) =>
   app.handle(
     new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body,
     }),
   )
@@ -160,6 +157,51 @@ describe('inference usage receipt routes', () => {
     expect(await response.text()).toBe('Unauthorized')
   })
 
+  it('rejects an authenticated x-api-key before parsing the request body', async () => {
+    const rateLimitCalls = mock(() => {})
+    const rejectingRateLimit = new Elysia()
+      .onBeforeHandle(({ set }) => {
+        rateLimitCalls()
+        set.status = 429
+        return { error: 'Too many requests' }
+      })
+      .as('scoped')
+    const rateLimitedApp = new Elysia().use(
+      createInferenceUsageReceiptRoutes({
+        auth: mockAuth,
+        database,
+        secret,
+        nowSeconds: () => nowSeconds,
+        rateLimit: rejectingRateLimit,
+      }),
+    )
+
+    const response = await postRaw(rateLimitedApp, '{', { 'x-api-key': 'valid-personal-access-token' })
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
+    expect(rateLimitCalls).not.toHaveBeenCalled()
+  })
+
+  it('accepts a personal access token when confidential API keys are enabled', async () => {
+    process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
+    clearSettingsCache()
+    try {
+      // The flag is read when the routes are constructed, so build inside the override.
+      const enabledApp = new Elysia().use(
+        createInferenceUsageReceiptRoutes({ auth: mockAuth, database, secret, nowSeconds: () => nowSeconds }),
+      )
+
+      const response = await postRaw(enabledApp, '{', { 'x-api-key': 'valid-personal-access-token' })
+
+      // Past the guard: a malformed body is now the caller's problem, so the route answers 400.
+      expect(response.status).toBe(400)
+    } finally {
+      delete process.env.CONFIDENTIAL_API_KEYS_ENABLED
+      clearSettingsCache()
+    }
+  })
+
   it('sanitizes an internal authentication error without exposing its raw message', async () => {
     const sensitiveMessage = 'sensitive auth provider internals'
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
@@ -205,9 +247,12 @@ describe('inference usage receipt routes', () => {
     expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))).toHaveLength(1)
   })
 
-  it('stores identity and exact rates from the signed receipt and returns an empty 204', async () => {
+  it.each([
+    glmPrice,
+    { provider: 'tinfoil', model: 'deepseek-v4-flash', inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+  ] satisfies InferencePrice[])('stores signed identity and rates for $model with an empty 204', async (price) => {
     const eventId = crypto.randomUUID()
-    const response = await postJson(app, { receipt: issueReceipt({ eventId }), ...defaultCounts })
+    const response = await postJson(app, { receipt: issueReceipt({ eventId, price }), ...defaultCounts })
 
     await expectEmptyResponse(response, 204)
     const [row] = await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))
@@ -215,18 +260,18 @@ describe('inference usage receipt routes', () => {
       id: eventId,
       userId: 'test-user',
       provider: 'tinfoil',
-      model: 'glm-5-2',
+      model: price.model,
       promptTokens: 10,
       completionTokens: 20,
       totalTokens: 30,
-      costNanoUsd: 120_000n,
+      costNanoUsd: 10n * price.inputNanoUsdPerToken + 20n * price.outputNanoUsdPerToken,
     })
     expect(logs).toEqual([
       {
         context: {
           event: 'inference_usage_inserted',
           provider: 'tinfoil',
-          model: 'glm-5-2',
+          model: price.model,
           eventId,
           outcome: 'inserted',
         },
@@ -279,7 +324,8 @@ describe('inference usage receipt routes', () => {
       version: 1,
       eventId: crypto.randomUUID(),
       userId: 'u'.repeat(4_096),
-      ...managedGlmIdentity,
+      provider: 'tinfoil',
+      model: 'glm-5-2',
       inputNanoUsdPerToken: '1500',
       outputNanoUsdPerToken: '5250',
       issuedAt: nowSeconds,
@@ -365,7 +411,7 @@ describe('inference usage receipt routes', () => {
         eventId: crypto.randomUUID(),
         userId: 'test-user',
         provider: 'tinfoil',
-        model: 'deepseek-v4-flash',
+        model: 'opus-5',
         inputNanoUsdPerToken: '1500',
         outputNanoUsdPerToken: '5250',
         issuedAt: nowSeconds,
@@ -378,7 +424,7 @@ describe('inference usage receipt routes', () => {
 
   it('maps signed cost overflow to an empty 400 without inserting a row', async () => {
     const eventId = crypto.randomUUID()
-    const overflowPrice: GlmPrice = {
+    const overflowPrice: InferencePrice = {
       ...glmPrice,
       inputNanoUsdPerToken: 9_223_372_036_854_775_808n,
       outputNanoUsdPerToken: 0n,

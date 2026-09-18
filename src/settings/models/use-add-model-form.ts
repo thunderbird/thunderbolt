@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useReducer } from 'react'
@@ -18,28 +21,36 @@ import type { Model } from '@/types'
 import type { CatalogRequest } from './model-catalog'
 import { catalogToComboboxItems, customModelItem, useAutoCatalogFetch, useModelCatalog } from './use-model-catalog'
 
-export const addModelFormSchema = z
-  .object({
-    provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
-    name: z.string().min(1, { message: 'Name is required.' }),
-    model: z.string().min(1, { message: 'Model name is required.' }),
-    customModel: z.string().optional(),
-    url: z.string().optional(),
-    apiKey: z.string().optional(),
-  })
-  .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
-    message: 'URL is required for Custom providers',
-    path: ['url'],
-  })
-  .refine(
-    (data) =>
-      data.provider === 'thunderbolt' ||
-      data.provider === 'custom' ||
-      (data.apiKey !== undefined && data.apiKey.length > 0),
-    { message: 'API Key is required for this provider', path: ['apiKey'] },
-  )
+const nameRequired = msg`Name is required.`
+const modelNameRequired = msg`Model name is required.`
+const urlRequiredForCustom = msg`URL is required for Custom providers`
+const apiKeyRequired = msg`API Key is required for this provider`
 
-export type AddModelFormValues = z.infer<typeof addModelFormSchema>
+/** Built per render so the validation copy follows the active catalog — see the
+ *  "Localization" section in AGENTS.md. */
+export const createAddModelFormSchema = (i18n: I18n) =>
+  z
+    .object({
+      provider: z.enum(['thunderbolt', 'anthropic', 'openai', 'custom', 'openrouter', 'tinfoil']),
+      name: z.string().min(1, { message: i18n._(nameRequired) }),
+      model: z.string().min(1, { message: i18n._(modelNameRequired) }),
+      customModel: z.string().optional(),
+      url: z.string().optional(),
+      apiKey: z.string().optional(),
+    })
+    .refine((data) => data.provider !== 'custom' || Boolean(data.url), {
+      message: i18n._(urlRequiredForCustom),
+      path: ['url'],
+    })
+    .refine(
+      (data) =>
+        data.provider === 'thunderbolt' ||
+        data.provider === 'custom' ||
+        (data.apiKey !== undefined && data.apiKey.length > 0),
+      { message: i18n._(apiKeyRequired), path: ['apiKey'] },
+    )
+
+export type AddModelFormValues = z.infer<ReturnType<typeof createAddModelFormSchema>>
 
 type AddModelState = {
   selectedModelId: string
@@ -95,13 +106,14 @@ type UseAddModelFormOptions = {
 
 /** Owns the reusable add-model form, catalog, connection test, and mutation. */
 export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddModelFormOptions) => {
+  const { i18n } = useLingui()
   const db = useDatabase()
   const queryClient = useQueryClient()
   const [state, dispatch] = useReducer(addModelReducer, initialState)
   const { selectedModelId, submitError } = state
   const catalog = useModelCatalog()
   const form = useForm<AddModelFormValues>({
-    resolver: zodResolver(addModelFormSchema),
+    resolver: zodResolver(createAddModelFormSchema(i18n)),
     mode: 'onChange',
     defaultValues: {
       provider: 'thunderbolt',
@@ -216,10 +228,14 @@ export const useAddModelForm = ({ isOpen, onClose, onMutationStart }: UseAddMode
     void revalidateSilently()
   }
 
-  const modelItems = useMemo((): ComboboxItem[] => {
+  // Not memoized: `i18n` is a stable singleton, so a memo keyed on it would
+  // never invalidate and the localized "Custom" entry would keep the outgoing
+  // locale after a language switch. See the Localization section in AGENTS.md.
+  const buildModelItems = (): ComboboxItem[] => {
     const items = catalogToComboboxItems(catalog.models)
-    return provider === 'thunderbolt' ? items : [...items, customModelItem]
-  }, [catalog.models, provider])
+    return provider === 'thunderbolt' ? items : [...items, customModelItem(i18n)]
+  }
+  const modelItems = buildModelItems()
   const supportsTools =
     !selectedModelId ||
     selectedModelId === 'custom' ||

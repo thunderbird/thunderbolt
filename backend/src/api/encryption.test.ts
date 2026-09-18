@@ -87,6 +87,7 @@ describe('Encryption API', () => {
       publicKey?: string
       mlkemPublicKey?: string
       revokedAt?: Date
+      deviceType?: 'normal' | 'bridge' | 'cli'
     } = {},
   ) => {
     const {
@@ -97,6 +98,7 @@ describe('Encryption API', () => {
       publicKey = 'pk-test',
       mlkemPublicKey = 'mlkem-pk-test',
       revokedAt,
+      deviceType = 'normal',
     } = options
     await db.insert(devicesTable).values({
       id,
@@ -106,6 +108,7 @@ describe('Encryption API', () => {
       approvalPending,
       publicKey,
       mlkemPublicKey,
+      deviceType,
       lastSeen: now,
       createdAt: now,
       ...(revokedAt ? { revokedAt } : {}),
@@ -175,6 +178,27 @@ describe('Encryption API', () => {
         }),
       )
       expect(response.status).toBe(401)
+    })
+
+    it('rejects the reserved cli- namespace from normal device registration', async () => {
+      await createUserAndSession(p('u-cli-reg'), p('tok-cli-reg'))
+
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signToken(p('tok-cli-reg'))}`,
+          },
+          body: JSON.stringify({
+            deviceId: 'cli-reserved-normal-route',
+            publicKey: 'pk-cli',
+            mlkemPublicKey: 'mlkem-pk-cli',
+          }),
+        }),
+      )
+
+      expect(response.status).toBe(400)
     })
 
     it('registers new device as untrusted', async () => {

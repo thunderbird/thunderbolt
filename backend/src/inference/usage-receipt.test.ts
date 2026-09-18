@@ -82,6 +82,11 @@ describe('inference usage receipts', () => {
     expect(verifyInferenceUsageReceipt(token, secret, nowSeconds)).toEqual(validClaims)
   })
 
+  it.each(['glm-5-2', 'deepseek-v4-flash'])('verifies a signed receipt carrying legacy slug %s', (model) => {
+    const claims = { ...validClaims, model }
+    expect(verifyInferenceUsageReceipt(signPayload(claims), secret, nowSeconds)).toEqual(claims)
+  })
+
   it.each([
     ['two segments', 'iu1.payload'],
     ['four segments', 'iu1.payload.signature.extra'],
@@ -149,7 +154,7 @@ describe('inference usage receipts', () => {
     ['missing provider', { provider: undefined }],
     ['wrong provider', { provider: 'anthropic' }],
     ['missing model', { model: undefined }],
-    ['wrong model', { model: 'deepseek-v4-flash' }],
+    ['wrong model', { model: 'opus-5' }],
     ['extra claim', { unexpected: true }],
   ])('rejects non-strict claims: %s', (_name, changes) => {
     const claims = { ...validClaims, ...changes }

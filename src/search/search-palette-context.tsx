@@ -2,16 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { ReactNode } from 'react'
-import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType, ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import { trackEvent } from '@/lib/posthog'
+import { loadSearchPalette } from './palette/search-palette-loader'
 
-// Lazy so the search subsystem (cmdk dialog, FTS, registry, icons) stays out of
-// the entry bundle — the palette is only reachable via Cmd/Ctrl+K.
-const SearchPalette = lazy(() =>
-  import('./palette/search-palette').then((module) => ({ default: module.SearchPalette })),
-)
+type PaletteComponent = ComponentType<{ open: boolean; onOpenChange: (open: boolean) => void }>
 
 type SearchPaletteContextValue = {
   open: () => void
@@ -23,7 +20,7 @@ const SearchPaletteContext = createContext<SearchPaletteContextValue>({
 
 /**
  * Provides the command-palette opener, registers the Cmd/Ctrl+K global
- * shortcut, and lazily mounts the palette modal on first open.
+ * shortcut, and mounts the palette modal once its chunk has loaded.
  */
 export const SearchPaletteProvider = ({ children }: { children: ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false)
@@ -53,23 +50,46 @@ export const SearchPaletteProvider = ({ children }: { children: ReactNode }) => 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [setOpen])
 
-  // Mount the lazy modal on first open and keep it mounted thereafter so its
-  // open/close transition animates on later toggles.
-  const hasOpenedRef = useRef(false)
-  if (isOpen) {
-    hasOpenedRef.current = true
-  }
+  /**
+   * The palette component, held in state rather than reached through
+   * `React.lazy` + `Suspense`.
+   *
+   * `lazy` only starts its factory when it first renders, so it suspends on that
+   * render even when the module is already in memory. React commits the fallback,
+   * and from then on the boundary is governed by the reveal throttle it uses to
+   * stop fallbacks flashing — so the content is withheld for ~300ms after the
+   * promise has already resolved. Profiling the first Cmd+K showed exactly that:
+   * a `setTimeout(289ms)` scheduled by react-dom's `performWorkOnRoot`, an
+   * entirely idle main thread across it, then the dialog mounting (THU-846).
+   *
+   * Resolving it ourselves means no boundary, no fallback, and nothing to
+   * throttle. The root kicks the same import off during boot, so by the time
+   * anyone presses Cmd+K this is already set and opening is a state toggle.
+   */
+  const [Palette, setPalette] = useState<PaletteComponent | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void loadSearchPalette().then((module) => {
+      // Set via updater — a component *is* a function, so passing it directly
+      // would have React call it as a lazy initializer.
+      if (!cancelled) {
+        setPalette(() => module.SearchPalette)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const value = useMemo<SearchPaletteContextValue>(() => ({ open: () => setOpen(true) }), [setOpen])
 
   return (
     <SearchPaletteContext.Provider value={value}>
       {children}
-      {hasOpenedRef.current ? (
-        <Suspense fallback={null}>
-          <SearchPalette open={isOpen} onOpenChange={setOpen} />
-        </Suspense>
-      ) : null}
+      {/* Mounted closed once loaded, so the first open costs the same as every
+          one after it. Radix renders nothing for a closed dialog. */}
+      {Palette ? <Palette open={isOpen} onOpenChange={setOpen} /> : null}
     </SearchPaletteContext.Provider>
   )
 }

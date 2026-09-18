@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Check, Loader2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export const ConnectionTestSection = ({
   status,
   error,
 }: ConnectionTestSectionProps) => {
+  const { t } = useLingui()
   const canTest = canTestModelConnection(provider, model, apiKey)
   const showApiKeyHint = !canTest && Boolean(model) && providerRequiresApiKey(provider)
 
@@ -47,30 +49,30 @@ export const ConnectionTestSection = ({
           {isTesting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Testing model…
+              <Trans>Testing model…</Trans>
             </>
           ) : (
-            'Test model'
+            <Trans>Test model</Trans>
           )}
         </Button>
       )}
       {showApiKeyHint && (
         <p className="text-center text-sm text-muted-foreground">
-          Enter an API key to test the connection before saving.
+          <Trans>Enter an API key to test the connection before saving.</Trans>
         </p>
       )}
       {status === 'success' && (
         <StatusCard
           icon={<Check className="h-4 w-4 text-success" />}
-          title="Test successful!"
-          description="Successfully got a response from the model."
+          title={t`Test successful!`}
+          description={t`Successfully got a response from the model.`}
         />
       )}
       {status === 'error' && (
         <StatusCard
           icon={<X className="h-4 w-4 text-destructive" />}
-          title="Test failed"
-          description={error || 'Received an error while testing the model.'}
+          title={t`Test failed`}
+          description={error || t`Received an error while testing the model.`}
         />
       )}
     </>

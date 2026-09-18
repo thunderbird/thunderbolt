@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer, type InputHTMLAttributes, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,7 @@ export const EditableField = ({
   inputProps,
 }: {
   id: string
+  /** Already-translated field name — callers pass `t`Name``. */
   label: string
   value: string
   isEditable: boolean
@@ -70,6 +72,7 @@ export const EditableField = ({
   onSave: (draft: string) => Promise<void> | void
   inputProps?: InputHTMLAttributes<HTMLInputElement>
 }): ReactNode => {
+  const { t } = useLingui()
   const [state, dispatch] = useReducer(editableFieldReducer, { draft: value, prevValue: value, saveError: null })
   // Render-time state adjustment (no effect): re-seed when the stored value
   // changes underneath us.
@@ -93,7 +96,12 @@ export const EditableField = ({
       await onSave(trimmed)
     } catch (saveError) {
       console.error(`Failed to save agent ${label.toLowerCase()}`, saveError)
-      dispatch({ type: 'SAVE_FAILED', message: `Couldn't save the ${label.toLowerCase()}. Please try again.` })
+      // The field name is a translated word dropped into a translated frame,
+      // which reads wrong in languages that inflect it (and `toLowerCase` is
+      // locale-naive). Kept as-is to hold the English output byte-identical;
+      // replacing it with one generic message is a copy change.
+      const fieldName = label.toLowerCase()
+      dispatch({ type: 'SAVE_FAILED', message: t`Couldn't save the ${fieldName}. Please try again.` })
     }
   }
 
@@ -130,10 +138,10 @@ export const EditableField = ({
       {isDirty && (
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => dispatch({ type: 'DISCARDED', value })}>
-            Discard
+            <Trans>Discard</Trans>
           </Button>
           <Button size="sm" disabled={!canSave} onClick={() => void save()}>
-            Save
+            <Trans>Save</Trans>
           </Button>
         </div>
       )}

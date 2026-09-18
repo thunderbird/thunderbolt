@@ -5,6 +5,7 @@
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
+import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, keysSyncChannelName, type KeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
@@ -82,7 +83,9 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   constructor(
     private backendUrl: string,
     private fetchFn: typeof fetch = globalThis.fetch.bind(globalThis),
-  ) {}
+  ) {
+    this.backendUrl = normalizeBackendUrl(this.backendUrl)
+  }
 
   /**
    * Fetch credentials (JWT token) from the backend.

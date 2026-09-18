@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { consumeChallengeNonce, getEncryptionMetadata } from '@/dal'
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase } from '@/db/client'
 import {
   type ChallengeOperation,
   type ChallengeProof,
@@ -56,7 +56,7 @@ const verifyAgainstHash = async (canarySecret: string, storedHash: string): Prom
  * Rejects when no metadata or no stored hash exists.
  */
 export const verifyPossessionProof = async (
-  db: typeof DbType,
+  db: QueryableDatabase,
   userId: string,
   canarySecret: string,
 ): Promise<boolean> => {
@@ -83,7 +83,7 @@ export const verifyPossessionProof = async (
  * Signatures are base64, IEEE P1363 (raw r‖s) as produced by WebCrypto/noble.
  */
 export const verifyChallengeSignature = async (
-  db: typeof DbType,
+  db: QueryableDatabase,
   userId: string,
   proof: ChallengeProof,
   expectedOperation: ChallengeOperation,

@@ -4,6 +4,7 @@
 
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { setActiveLocale } from '@/i18n/active-locale'
 import { resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { clearCachedSession, getCachedSession, setCachedSession } from '@/lib/session-cache'
@@ -49,7 +50,7 @@ describe('authRequestHeaders', () => {
   })
 
   it('carries the app version alongside a per-call header', () => {
-    // Better Auth REPLACES client-level headers with a per-call `headers` object,
+    // better-fetch REPLACES a per-call `headers` object rather than merging it,
     // so a call site that only sets its own header loses X-App-Version and the
     // fail-closed gate answers 426 on a perfectly current build.
     env.VITE_APP_VERSION = '1.2.3'
@@ -61,10 +62,68 @@ describe('authRequestHeaders', () => {
     expect(headers['X-Client-Platform']).toBeTruthy()
   })
 
-  it('matches the client-level headers when no extras are passed', () => {
+  it('matches the headers the client applies when no extras are passed', () => {
     env.VITE_APP_VERSION = '1.2.3'
 
-    expect(authRequestHeaders()).toEqual(buildFetchOptions(getPlatform()).headers)
+    const applied = new Headers()
+    buildFetchOptions(getPlatform()).onRequest({ headers: applied })
+
+    const expected = authRequestHeaders()
+    expect([...applied.keys()]).toHaveLength(Object.keys(expected).length)
+    for (const [key, value] of Object.entries(expected)) {
+      expect(applied.get(key)).toBe(value)
+    }
+  })
+})
+
+describe('buildFetchOptions onRequest', () => {
+  afterEach(() => {
+    setActiveLocale('en')
+    localStorage.removeItem('thunderbolt_locale')
+  })
+
+  const runOnRequest = (existing?: HeadersInit) => {
+    const headers = new Headers(existing)
+    buildFetchOptions('web').onRequest({ headers })
+    return headers
+  }
+
+  it('sets the platform and app language on every request', () => {
+    setActiveLocale('ja')
+
+    const headers = runOnRequest()
+
+    expect(headers.get('X-Client-Platform')).toBe('web')
+    expect(headers.get('X-App-Language')).toBe('ja')
+  })
+
+  // better-fetch merges client and per-call options with a shallow spread, so a
+  // call that passes its own `fetchOptions.headers` (OTP verify, magic-link
+  // verify) would lose anything set via client-level `headers`. Setting them in
+  // `onRequest` is what keeps them alongside the caller's own headers.
+  it('survives alongside per-call headers', () => {
+    setActiveLocale('pt-BR')
+
+    const headers = runOnRequest({ 'X-Challenge-Token': 'challenge' })
+
+    expect(headers.get('X-Challenge-Token')).toBe('challenge')
+    expect(headers.get('X-Client-Platform')).toBe('web')
+    expect(headers.get('X-App-Language')).toBe('pt-BR')
+  })
+
+  it('reads the locale per request rather than at client construction', () => {
+    const options = buildFetchOptions('web')
+
+    setActiveLocale('de')
+    const first = new Headers()
+    options.onRequest({ headers: first })
+
+    setActiveLocale('fr')
+    const second = new Headers()
+    options.onRequest({ headers: second })
+
+    expect(first.get('X-App-Language')).toBe('de')
+    expect(second.get('X-App-Language')).toBe('fr')
   })
 })
 

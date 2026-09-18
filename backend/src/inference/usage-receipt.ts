@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { managedGlmIdentity } from '@shared/inference-usage'
+import { resolveConfidentialManagedModel } from './managed-models'
 import { z } from 'zod'
 import type { InferencePrice } from './usage-ledger'
 
 export type IssueReceiptInput = Readonly<{
   eventId: string
   userId: string
-  price: InferencePrice & typeof managedGlmIdentity
+  price: InferencePrice
   secret: string
   nowSeconds: number
 }>
@@ -27,8 +27,8 @@ const receiptClaimsSchema = z
     version: z.literal(1),
     eventId: z.string().regex(canonicalUuidV4Pattern),
     userId: z.string().min(1),
-    provider: z.literal(managedGlmIdentity.provider),
-    model: z.literal(managedGlmIdentity.model),
+    provider: z.literal('tinfoil'),
+    model: z.string().refine((model) => resolveConfidentialManagedModel(model) !== undefined),
     inputNanoUsdPerToken: z.string().regex(canonicalUnsignedDecimalPattern),
     outputNanoUsdPerToken: z.string().regex(canonicalUnsignedDecimalPattern),
     issuedAt: z.number().int().safe().nonnegative(),
@@ -51,19 +51,20 @@ const encodeReceiptPayload = (claims: InferenceUsageReceiptClaims): string =>
 /** Check the unpadded base64url grammar before decoding a token segment. */
 const isBase64UrlSegment = (segment: string): boolean => base64UrlPattern.test(segment) && segment.length % 4 !== 1
 
-/** Issue a signed receipt for one managed GLM inference event. */
+/** Issue a signed receipt for one confidential managed inference event. */
 export const issueInferenceUsageReceipt = (input: IssueReceiptInput): string => {
-  const claims: InferenceUsageReceiptClaims = {
+  const claims = receiptClaimsSchema.parse({
     purpose: 'inference-usage-receipt',
     version: 1,
     eventId: input.eventId,
     userId: input.userId,
-    ...managedGlmIdentity,
+    provider: input.price.provider,
+    model: input.price.model,
     inputNanoUsdPerToken: input.price.inputNanoUsdPerToken.toString(),
     outputNanoUsdPerToken: input.price.outputNanoUsdPerToken.toString(),
     issuedAt: input.nowSeconds,
     expiresAt: input.nowSeconds + receiptLifetimeSeconds,
-  }
+  })
   const payloadSegment = encodeReceiptPayload(claims)
   const signingInput = `iu1.${payloadSegment}`
   const signatureSegment = signReceiptInput(signingInput, input.secret).toString('base64url')
@@ -71,7 +72,7 @@ export const issueInferenceUsageReceipt = (input: IssueReceiptInput): string => 
   return `${signingInput}.${signatureSegment}`
 }
 
-/** Verify a signed managed GLM usage receipt. */
+/** Verify a signed confidential managed usage receipt. */
 export const verifyInferenceUsageReceipt = (
   token: string,
   secret: string,

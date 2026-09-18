@@ -3,20 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import {
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
-  defaultModelOpus5,
-  defaultModels,
-} from '@shared/defaults/models'
+import { defaultModelGlm53Flash, defaultModelGlm53, defaultModelOpus5, defaultModels } from '@shared/defaults/models'
 import { deriveEvalModelMatrix, evalModelSlugs, evalModels, getScenarios } from './scenarios'
 
 describe('eval model matrix', () => {
   test('tracks every shipped default model with a stable slug and production engine', () => {
     expect(evalModels).toEqual([
       { id: defaultModelOpus5.id, name: 'opus', engineName: 'pi' },
-      { id: defaultModelDeepseekV4Flash.id, name: 'flash', engineName: 'pi' },
-      { id: defaultModelGlm52.id, name: 'glm', engineName: 'legacy' },
+      { id: defaultModelGlm53Flash.id, name: 'flash', engineName: 'pi' },
+      { id: defaultModelGlm53.id, name: 'glm', engineName: 'pi' },
     ])
   })
 
@@ -31,12 +26,12 @@ describe('eval model matrix', () => {
 
 describe('getScenarios', () => {
   test('includes the engine in ids and filters by engine', () => {
-    const scenarios = getScenarios(['glm'], ['search'], ['legacy'])
+    const scenarios = getScenarios(['glm'], ['search'], ['pi'])
 
     expect(scenarios.length).toBeGreaterThan(0)
-    expect(scenarios.every((scenario) => scenario.engineName === 'legacy')).toBe(true)
-    expect(scenarios.every((scenario) => scenario.id.startsWith('glm/legacy/search/'))).toBe(true)
-    expect(getScenarios(['glm'], ['search'], ['pi'])).toEqual([])
+    expect(scenarios.every((scenario) => scenario.engineName === 'pi')).toBe(true)
+    expect(scenarios.every((scenario) => scenario.id.startsWith('glm/pi/search/'))).toBe(true)
+    expect(getScenarios(['glm'], ['search'], ['legacy'])).toEqual([])
   })
 
   test('does not require citations for stable chat prompts', () => {

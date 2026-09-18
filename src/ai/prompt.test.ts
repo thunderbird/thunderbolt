@@ -43,7 +43,6 @@ const baseParams: PromptParams = {
   localization: {
     distanceUnit: 'imperial',
     temperatureUnit: 'f',
-    dateFormat: 'MM/DD/YYYY',
     timeFormat: '12h',
     currency: 'USD',
   },
@@ -182,24 +181,28 @@ describe('createPrompt', () => {
     expect(result.stablePrompt).not.toContain('Web lookups use the `search` and `fetch_content` tools')
   })
 
-  test('includes the reuse-before-search gate', () => {
+  test('keeps the reuse gate while allowing research reloads in a new user turn', () => {
     const result = createPrompt(baseParams)
-    expect(result).toContain("Don't repeat a tool call you already made")
+    expect(result).toContain(
+      'apply only to the turn that produced them; each new user turn starts with a fresh web budget',
+    )
+    expect(result).toContain(
+      'For deeper or continued research needing new sources or dimensions, load the research skill once in the current turn',
+    )
+    expect(result).toContain(
+      'even if its instructions or a previous load remain in history, unless the current user message contains /research',
+    )
+    expect(result).toContain(
+      'This does not apply to acknowledgments, summaries, translations, repeated data, narrow checks, or deeper explanations needing no external sources',
+    )
+    expect(result).toContain(
+      "Except for the research skill reload required above, don't repeat a tool call you already made this conversation with the same inputs—reuse sufficient earlier results",
+    )
   })
 
   test('keeps the time-sensitive re-search carve-out', () => {
     const result = createPrompt(baseParams)
     expect(result).toContain('time-sensitive that may have changed')
-  })
-
-  test('uses the four-bucket search policy with an explicit search-request escape hatch', () => {
-    const result = createPrompt(baseParams)
-    expect(result).toContain('never_search')
-    expect(result).toContain('answer_then_offer')
-    expect(result).toContain('single_search')
-    expect(result).toContain('research')
-    expect(result).not.toContain('When in doubt, search')
-    expect(result).toContain('If the user asks you to search, verify, or look something up, always do it')
   })
 
   test('limits quick web lookups to one search and conditional fetching', () => {
@@ -296,6 +299,50 @@ describe('createPrompt', () => {
     expect(first.volatilePrompt).toBe(sameMinute.volatilePrompt)
     expect(first.volatilePrompt).not.toBe(nextMinute.volatilePrompt)
     expect(first.fullPrompt).toBe(`${first.stablePrompt}\n\n${first.volatilePrompt}`)
+  })
+
+  test('names the app language as the fallback reply language', () => {
+    expect(createPrompt(baseParams)).toContain('or use English if the conversation has none yet')
+    expect(createPrompt({ ...baseParams, appLanguage: 'ja' })).toContain(
+      'or use Japanese if the conversation has none yet',
+    )
+    // CLDR words this one as either "Brazilian Portuguese" or "Portuguese (Brazil)"
+    // depending on the ICU build, so match the language rather than the phrasing.
+    expect(createPrompt({ ...baseParams, appLanguage: 'pt-BR' })).toMatch(/or use [^\n]*Portuguese[^\n]*if the/)
+  })
+
+  test('makes the reply language sticky against foreign-language content in the thread', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result).toContain('Reply in the language of the conversation.')
+    expect(result).toContain('a search result in another language does not change it')
+    expect(result).toContain('Summarize tool and search results in the reply language')
+    expect(result).toContain('Switch only on a clear signal')
+  })
+
+  test('places the language directive with the other output rules', () => {
+    const result = createPrompt(baseParams)
+
+    expect(result.indexOf('# Output Format')).toBeLessThan(result.indexOf('# Language'))
+    expect(result.indexOf('# Language')).toBeLessThan(result.indexOf('# Conversation Style'))
+  })
+
+  test('carries the language directive into the legacy engine assembly', () => {
+    const { stablePrompt, volatilePrompt } = createPromptParts({ ...baseParams, appLanguage: 'ja' })
+    const { system } = assembleBuiltInModelInput(stablePrompt, [], [volatilePrompt])
+
+    expect(system).toContain('# Language')
+    expect(system).toContain('or use Japanese if the conversation has none yet')
+    expect(system.indexOf('# Language')).toBeLessThan(system.indexOf('Current date/time'))
+  })
+
+  test('keeps the injected date in the source locale whatever the app language', () => {
+    const sent = new Date('2026-07-10T12:00:00Z')
+    const english = createPromptParts(baseParams, sent)
+    const japanese = createPromptParts({ ...baseParams, appLanguage: 'ja' }, sent)
+
+    expect(english.volatilePrompt).toContain('July 10, 2026')
+    expect(japanese.volatilePrompt).toBe(english.volatilePrompt)
   })
 
   test('does not include the Pi app harness environment', () => {

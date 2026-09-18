@@ -25,9 +25,13 @@ export const selectEnabledSkillDefinitions = (skills: readonly StoredSkillDefini
  * Create AI SDK tool that loads one enabled skill's full instructions.
  *
  * @param skills - enabled skills available for this request
+ * @param onSkillLoaded - synchronous notification after resolving non-empty instructions
  * @returns skill lookup tool shared by classic and Pi request paths
  */
-export const createSkillTool = (skills: readonly SkillDefinition[]): Tool<{ name: string }, string> =>
+export const createSkillTool = (
+  skills: readonly SkillDefinition[],
+  onSkillLoaded?: (name: string) => void,
+): Tool<{ name: string }, string> =>
   tool({
     description:
       'Load full instructions for an enabled skill. Use the exact skill name from the system prompt skill list.',
@@ -39,6 +43,10 @@ export const createSkillTool = (skills: readonly SkillDefinition[]): Tool<{ name
       if (!skill) {
         throw new Error(`Skill "${name}" was not found or is disabled.`)
       }
-      return skill.instruction
+      const instruction = skill.instruction
+      if (instruction.trim()) {
+        onSkillLoaded?.(skill.name)
+      }
+      return instruction
     },
   })

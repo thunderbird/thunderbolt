@@ -6,6 +6,7 @@ import type { CitationSource } from '@/types/citation'
 import { SourceCard } from './source-card'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
+import { Trans } from '@lingui/react/macro'
 
 type SourceListProps = {
   sources: CitationSource[]
@@ -20,7 +21,11 @@ type SourceListProps = {
  */
 export const SourceList = ({ sources, className, onSelect }: SourceListProps) => {
   if (sources.length === 0) {
-    return <div className="text-muted-foreground text-sm text-center py-4">No sources available</div>
+    return (
+      <div className="text-muted-foreground text-sm text-center py-4">
+        <Trans>No sources available</Trans>
+      </div>
+    )
   }
 
   // Sort: primary source first, then others in original order

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { useState } from 'react'
 
 import { testAcpConnection } from '@/acp'
@@ -38,6 +39,7 @@ type AgentsSettingsPageProps = {
  * is "+" → the Add Custom Agent panel.
  */
 const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPageProps = {}) => {
+  const { t } = useLingui()
   const db = useDatabase()
   const agents = useAllAgents()
   const authClient = useAuth()
@@ -119,9 +121,9 @@ const AgentsSettingsPage = ({ loadAppNodeId, enrollIroh }: AgentsSettingsPagePro
             under the panel (the column's overflow-hidden clips it at the
             panel edge). */}
         <SettingsListPane className="gap-6">
-          <PageHeader title="Agents">
+          <PageHeader title={t`Agents`}>
             {allowCustomAgents && (
-              <PageCreateAction label="New Agent" onClick={openAddPanel} disabled={!currentUserId} />
+              <PageCreateAction label={t`New Agent`} onClick={openAddPanel} disabled={!currentUserId} />
             )}
           </PageHeader>
 

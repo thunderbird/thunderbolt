@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createTestSettings } from '@/test-utils/settings'
-import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { createConfigRoutes } from './config'
 
 const fetchConfig = async (settings: Parameters<typeof createConfigRoutes>[0]) => {
@@ -27,6 +27,14 @@ describe('Config Routes', () => {
 
       const enabled = await fetchConfig(createTestSettings({ orgEscrowEnabled: true }))
       expect(enabled.body.orgEscrowEnabled).toBe(true)
+    })
+
+    it('reflects debugTranscriptsEnabled', async () => {
+      const disabled = await fetchConfig(createTestSettings({ debugTranscriptsEnabled: false }))
+      expect(disabled.body.debugTranscriptsEnabled).toBe(false)
+
+      const enabled = await fetchConfig(createTestSettings({ debugTranscriptsEnabled: true }))
+      expect(enabled.body.debugTranscriptsEnabled).toBe(true)
     })
 
     it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {
@@ -64,6 +72,16 @@ describe('Config Routes', () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.defaults.models.version).toBe(defaultModelsVersion)
       expect(body.defaults.models.data).toEqual(defaultModels)
+    })
+
+    it('publishes the default model id without private runtime fields', async () => {
+      const { body } = await fetchConfig(createTestSettings())
+
+      expect(body.defaults.models.defaultModelId).toBe(defaultModelId)
+      expect(body.defaults.models.data.some(({ id }: { id: string }) => id === defaultModelId)).toBe(true)
+      const serialized = JSON.stringify(body.defaults.models)
+      expect(serialized).not.toContain('"internalName"')
+      expect(serialized).not.toContain('"price"')
     })
   })
 })

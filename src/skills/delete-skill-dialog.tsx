@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 
 export const DeleteSkillDialog = ({
@@ -15,13 +16,17 @@ export const DeleteSkillDialog = ({
   onConfirm: () => void
   /** Human display name of the skill being deleted. */
   skillName: string
-}) => (
-  <ConfirmActionDialog
-    open={open}
-    title={`Delete ${skillName}?`}
-    description="This will permanently delete the skill. Other skills that reference it may no longer resolve."
-    confirmLabel="Delete skill"
-    onConfirm={onConfirm}
-    onCancel={() => onOpenChange(false)}
-  />
-)
+}) => {
+  const { t } = useLingui()
+
+  return (
+    <ConfirmActionDialog
+      open={open}
+      title={t`Delete ${skillName}?`}
+      description={t`This will permanently delete the skill. Other skills that reference it may no longer resolve.`}
+      confirmLabel={t`Delete skill`}
+      onConfirm={onConfirm}
+      onCancel={() => onOpenChange(false)}
+    />
+  )
+}

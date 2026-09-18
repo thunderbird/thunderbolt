@@ -12,7 +12,7 @@ import {
 import { type PowerSyncTableName, legacyPowerSyncTableNames, powersyncTableNames } from '@shared/powersync-tables'
 import { and, eq } from 'drizzle-orm'
 import type { AnyPgTable } from 'drizzle-orm/pg-core'
-import { bridgeDeviceIdPrefix } from './devices'
+import { bridgeDeviceIdPrefix, cliDeviceIdPrefix } from './devices'
 
 const validTables = new Set<string>(powersyncTableNames)
 const legacyTables = new Set<string>(legacyPowerSyncTableNames)
@@ -42,14 +42,11 @@ const uploadDenyColumns: Partial<Record<PowerSyncTableName, string[]>> = {
 const uploadDenyDelete = new Set<PowerSyncTableName>(['devices'])
 
 /**
- * The `bridge-${sha256(userId:nodeId)}` device id namespace is derived and written exclusively by
- * the server (registerBridgeDevice / POST /devices/bridge). A raw client upload sets `user_id` to
- * itself but `id` freely, so without this guard a client could pre-create a row at a victim's
- * deterministic bridge id and squat it (the victim's later upsert would conflict on a foreign row
- * and fail). Reserving the prefix from all client ops keeps bridge rows server-owned.
+ * Bridge and CLI device IDs are written exclusively by their server routes. Reserving both
+ * prefixes from every upload operation prevents clients from creating or overwriting those rows.
  */
 const isReservedDeviceId = (tableName: PowerSyncTableName, id: string) =>
-  tableName === 'devices' && id.startsWith(bridgeDeviceIdPrefix)
+  tableName === 'devices' && (id.startsWith(bridgeDeviceIdPrefix) || id.startsWith(cliDeviceIdPrefix))
 
 type PowerSyncOperation = {
   op: 'PUT' | 'PATCH' | 'DELETE'

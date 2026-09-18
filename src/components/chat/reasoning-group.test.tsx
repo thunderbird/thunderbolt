@@ -5,7 +5,8 @@
 import { ContentViewProvider } from '@/content-view/context'
 import type { ReasoningGroupItem } from '@/lib/assistant-message'
 import '@testing-library/jest-dom'
-import { render, screen } from '@testing-library/react'
+import { getClock } from '@/testing-library'
+import { act, render, screen } from '@testing-library/react'
 import type { ReasoningUIPart, ToolUIPart } from 'ai'
 import { describe, expect, it } from 'bun:test'
 import { ReasoningGroup } from './reasoning-group'
@@ -251,6 +252,8 @@ describe('ReasoningGroup', () => {
         { wrapper: TestWrapper },
       )
 
+      act(() => getClock().tick(200))
+
       // ReasoningDisplay should render the reasoning text when streaming
       // It might be in a specific container, so check the container
       expect(container.textContent).toContain('Let me think about this...')
@@ -311,6 +314,8 @@ describe('ReasoningGroup', () => {
           wrapper: TestWrapper,
         },
       )
+
+      act(() => getClock().tick(200))
 
       // ReasoningDisplay should render the reasoning text
       expect(screen.getByText('Let me think about this...')).toBeInTheDocument()
@@ -517,6 +522,8 @@ describe('ReasoningGroup', () => {
       // But since isStreaming is true, it might show loading messages
       // At minimum, verify the component renders
       expect(container.textContent).toBeTruthy()
+      act(() => getClock().tick(200))
+
       // ReasoningDisplay should show the reasoning text when streaming
       expect(container.textContent).toContain('Let me think about this...')
     })
@@ -563,10 +570,60 @@ describe('ReasoningGroup', () => {
         { wrapper: TestWrapper },
       )
 
+      act(() => getClock().tick(200))
+
       // Should show the last reasoning part text in ReasoningDisplay (when streaming)
       expect(container.textContent).toContain('Last reasoning')
       // Should not show the first reasoning part text (only the last one is used for ReasoningDisplay)
       expect(container.textContent).not.toContain('First reasoning')
     })
   })
+})
+
+it('keeps the reasoning display mounted across text appends and flushes when the message stops', () => {
+  const props = { isStreaming: true, isLastPartInMessage: true, hasTextPart: false, reasoningTime: {} }
+  const parts = (text: string): ReasoningGroupItem[] => [
+    {
+      type: 'reasoning',
+      id: 'reasoning-stable',
+      content: { type: 'reasoning', text, state: 'streaming' },
+    },
+  ]
+  const { container, rerender } = render(<ReasoningGroup {...props} parts={parts('Thinking')} />, {
+    wrapper: TestWrapper,
+  })
+  act(() => getClock().tick(48))
+  const display = container.querySelector('.hide-scrollbar')!
+  expect(display.textContent).toBe('Thinking')
+  rerender(<ReasoningGroup {...props} parts={parts('Thinking about the answer')} />)
+  expect(container.querySelector('.hide-scrollbar')).toBe(display)
+  expect(display.textContent).toBe('Thinking')
+  rerender(<ReasoningGroup {...props} isStreaming={false} parts={parts('Thinking about the answer')} />)
+  expect(display.textContent).toBe('Thinking about the answer')
+})
+
+it('flushes a completed reasoning part and resets a new part with an identical prefix', () => {
+  const props = { isStreaming: true, isLastPartInMessage: true, hasTextPart: false, reasoningTime: {} }
+  const part = (id: string, state: ReasoningUIPart['state']): ReasoningGroupItem[] => [
+    {
+      type: 'reasoning',
+      id,
+      content: { type: 'reasoning', text: 'Same beginning. '.repeat(100), state },
+    },
+  ]
+  const { container, rerender } = render(<ReasoningGroup {...props} parts={part('first', 'streaming')} />, {
+    wrapper: TestWrapper,
+  })
+  act(() => getClock().tick(48))
+  rerender(<ReasoningGroup {...props} parts={part('first', 'done')} />)
+  const firstDisplay = container.querySelector('.hide-scrollbar')!
+  expect(firstDisplay.textContent).toBe('Same beginning. '.repeat(100))
+  rerender(<ReasoningGroup {...props} parts={part('second', 'streaming')} />)
+  expect(firstDisplay.isConnected).toBe(false)
+  expect(container.querySelectorAll('.hide-scrollbar')).toHaveLength(1)
+  expect(container.querySelector('.hide-scrollbar')!.textContent).toBe('')
+  act(() => getClock().tick(48))
+  const length = container.querySelector('.hide-scrollbar')!.textContent!.length
+  expect(length).toBeGreaterThan(0)
+  expect(length).toBeLessThan(1500)
 })

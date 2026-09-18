@@ -34,16 +34,15 @@ import {
  *   2. Update `expected` below to match the actual values from the failure.
  *
  * The version is the ordering signal reconcile uses to decide who owns the
- * newest defaults across devices (THU-637 pattern extended to skills in
- * THU-677). Changing defaults without bumping the version breaks that
- * ordering silently.
+ * newest defaults across devices. Changing defaults without bumping the
+ * version breaks that ordering silently.
  */
 const computeSnapshotHash = () =>
   defaultSkills.map((skill, index) => `${index}:${skill.id}:${hashSkill(skill)}`).join('|')
 
 const expectedSnapshot = {
-  version: 6,
-  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-cz2tdq|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
+  version: 9,
+  hash: '0:01996330-0000-7000-8000-000000000001:mfmi05|1:01996330-0000-7000-8000-000000000002:-669lkj|2:01996330-0000-7000-8000-000000000003:-30vmih|3:01996330-0000-7000-8000-000000000004:-ypyizk|4:01996330-0000-7000-8000-000000000005:-hc6mv3|5:01996330-0000-7000-8000-000000000006:-o0c0ul|6:01996330-0000-7000-8000-000000000007:atrnpq|7:01996330-0000-7000-8000-000000000008:-ue9tpd|8:01996330-0000-7000-8000-000000000009:o1nire',
 }
 
 describe('defaultSkills version snapshot', () => {

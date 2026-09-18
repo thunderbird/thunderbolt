@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { useCallback, useReducer } from 'react'
 
 import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
@@ -22,6 +23,7 @@ import { useSkillTelemetry } from './telemetry'
 import { useEnabledSkills, useLibrarySkills, usePinnedSkills } from './use-skills'
 
 export const SkillsView = () => {
+  const { t } = useLingui()
   const { skills, updateSkill, softDeleteSkill } = useLibrarySkills()
   const createSkillTracked = useCreateSkillTracked()
   // Pinning is managed entirely from the chat composer; we only read
@@ -214,7 +216,7 @@ export const SkillsView = () => {
 
   const createForm = (
     // The panel's close X behaves as Cancel, including the dirty guard.
-    <DetailPanel title="Create Skill" onClose={sharedFormProps.onCancel}>
+    <DetailPanel title={t`Create Skill`} onClose={sharedFormProps.onCancel}>
       <SkillForm key="create" mode="create" {...sharedFormProps} />
     </DetailPanel>
   )
@@ -240,7 +242,7 @@ export const SkillsView = () => {
       )
     }
     return (
-      <DetailPanel title="Edit Skill" onClose={sharedFormProps.onCancel}>
+      <DetailPanel title={t`Edit Skill`} onClose={sharedFormProps.onCancel}>
         <SkillForm
           key={`edit:${activeSkill.id}`}
           mode="edit"
@@ -326,8 +328,8 @@ export const SkillsView = () => {
           }
         }}
         onConfirm={onConfirmDiscard}
-        title={mode === 'edit' ? 'Leave without saving?' : 'Leave without creating?'}
-        description={mode === 'edit' ? "Your changes won't be saved." : "You'll lose what you've added so far."}
+        title={mode === 'edit' ? t`Leave without saving?` : t`Leave without creating?`}
+        description={mode === 'edit' ? t`Your changes won't be saved.` : t`You'll lose what you've added so far.`}
       />
     </div>
   )

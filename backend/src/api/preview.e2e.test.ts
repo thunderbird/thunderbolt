@@ -127,6 +127,63 @@ describe('GET /v1/preview — e2e', () => {
     expect(res.status).toBe(401)
   })
 
+  it('derives the upstream Accept-Language chain from the app language', async () => {
+    const upstream = createTestUpstream(
+      'preview.test',
+      () =>
+        new Response(buildHtml('<meta property="og:title" content="Olá" />'), {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        }),
+    )
+    handle = await createTestApp({ fetchFn: createUpstreamRouter({ 'preview.test': upstream }) })
+
+    const res = await handle.app.handle(
+      new Request(`http://localhost/v1/preview`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(handle.bearerToken),
+          'Content-Type': 'application/json',
+          'X-App-Language': 'pt-BR',
+        },
+        body: JSON.stringify({ url: 'https://preview.test/artigo' }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(upstream.requests).toHaveLength(1)
+    expect(upstream.requests[0]?.headers.get('accept-language')).toBe('pt-BR,pt;q=0.9,en;q=0.8')
+    // Only the derived chain crosses to the third party — never the client's own header.
+    expect(upstream.requests[0]?.headers.get('x-app-language')).toBeNull()
+    expect(((await res.json()) as Record<string, string | null>).title).toBe('Olá')
+  })
+
+  it('sends the English chain when the app language is absent or not a shipped locale', async () => {
+    const upstream = createTestUpstream(
+      'preview.test',
+      () => new Response(buildHtml(''), { status: 200, headers: { 'content-type': 'text/html' } }),
+    )
+    handle = await createTestApp({ fetchFn: createUpstreamRouter({ 'preview.test': upstream }) })
+
+    const postPreview = async (headers: Record<string, string>) => {
+      const res = await handle.app.handle(
+        new Request(`http://localhost/v1/preview`, {
+          method: 'POST',
+          headers: { ...authHeaders(handle.bearerToken), 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ url: 'https://preview.test/article' }),
+        }),
+      )
+      // Asserted here so a 400/401 fails as itself rather than as an empty
+      // upstream-request list, which reads like the language logic broke.
+      expect(res.status).toBe(200)
+    }
+
+    await postPreview({})
+    // An unshipped tag is not forwarded, so it lands on the same default as no header.
+    await postPreview({ 'X-App-Language': 'zh-CN' })
+
+    expect(upstream.requests.map((r) => r.headers.get('accept-language'))).toEqual(['en-US,en;q=0.9', 'en-US,en;q=0.9'])
+  })
+
   // --- SSRF advisory regression (thunderbolt_SSRF.md) ---
   // The advisory claims a path-style `GET /link-preview/[target_url]` endpoint
   // with no validation. That route does not exist, and the real `POST /v1/preview`

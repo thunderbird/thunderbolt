@@ -4,7 +4,7 @@
 
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { Elysia } from 'elysia'
 
 /**
@@ -29,6 +29,7 @@ export const createConfigRoutes = (settings: Settings) =>
     // shipped always-on E2EE, which 426s every client that still reads this.
     e2eeEnabled: true,
     orgEscrowEnabled: settings.orgEscrowEnabled,
+    debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,
@@ -38,6 +39,7 @@ export const createConfigRoutes = (settings: Settings) =>
     defaults: {
       models: {
         version: defaultModelsVersion,
+        defaultModelId,
         data: defaultModels,
       },
     },

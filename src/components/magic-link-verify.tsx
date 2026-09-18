@@ -12,10 +12,16 @@ import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
+import { i18n } from '@/i18n'
+import { msg } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
+
+const invalidLink = msg`Invalid verification link. Please request a new one.`
+const genericFailure = msg`Something went wrong. Please try again.`
 
 /**
  * Magic link verification page
@@ -52,7 +58,7 @@ export const MagicLinkVerify = () => {
 
     const verify = async () => {
       if (!email || !otp) {
-        setState({ status: 'error', message: 'Invalid verification link. Please request a new one.' })
+        setState({ status: 'error', message: i18n._(invalidLink) })
         return
       }
 
@@ -68,7 +74,7 @@ export const MagicLinkVerify = () => {
         })
 
         if (result.error) {
-          setState({ status: 'error', message: getOtpErrorMessage(result.error, 'link') })
+          setState({ status: 'error', message: i18n._(getOtpErrorMessage(result.error, 'link')) })
           return
         }
 
@@ -78,7 +84,7 @@ export const MagicLinkVerify = () => {
 
         setState({ status: 'success' })
       } catch {
-        setState({ status: 'error', message: 'Something went wrong. Please try again.' })
+        setState({ status: 'error', message: i18n._(genericFailure) })
       }
     }
 
@@ -125,8 +131,12 @@ export const MagicLinkVerify = () => {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
                 <Loader2 className="h-6 w-6 animate-spin text-white" />
               </div>
-              <DialogTitle className="text-center text-xl">Signing you in...</DialogTitle>
-              <DialogDescription className="text-center">Please wait while we verify your link.</DialogDescription>
+              <DialogTitle className="text-center text-xl">
+                <Trans>Signing you in…</Trans>
+              </DialogTitle>
+              <DialogDescription className="text-center">
+                <Trans>Please wait while we verify your link.</Trans>
+              </DialogDescription>
             </DialogHeader>
           </>
         )}
@@ -136,13 +146,15 @@ export const MagicLinkVerify = () => {
             <DialogHeader>
               <GradientCircleCheck className="mx-auto mb-4 h-12 w-12" />
               <DialogTitle className="text-center text-xl">
-                {displayName ? `Welcome, ${displayName}` : 'Welcome!'}
+                {displayName ? <Trans>Welcome, {displayName}</Trans> : <Trans>Welcome!</Trans>}
               </DialogTitle>
-              <DialogDescription className="text-center">You're now signed in.</DialogDescription>
+              <DialogDescription className="text-center">
+                <Trans>You're now signed in.</Trans>
+              </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center py-4">
               <Button onClick={handleContinue} className="w-full">
-                Continue
+                <Trans>Continue</Trans>
               </Button>
             </div>
           </>
@@ -154,12 +166,14 @@ export const MagicLinkVerify = () => {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
                 <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
-              <DialogTitle className="text-center text-xl">Verification Failed</DialogTitle>
+              <DialogTitle className="text-center text-xl">
+                <Trans>Verification Failed</Trans>
+              </DialogTitle>
               <DialogDescription className="text-center">{state.message}</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col items-center py-4">
               <Button variant="outline" onClick={handleClose} className="w-full">
-                Close
+                <Trans>Close</Trans>
               </Button>
             </div>
           </>

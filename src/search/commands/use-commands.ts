@@ -10,6 +10,9 @@ import { getDownloadUrl } from '@/lib/download-links'
 import { getWebOsPlatform, isMacDesktop, isTauri, isWebDesktopPlatform } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
+import type { I18n, MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react/macro'
 import { Download, LogOut, MessageCirclePlus, PanelLeft, Trash2 } from 'lucide-react'
 import { buildCreateCommands } from './create-commands'
 import { navigationCommands, type NavGate } from './navigation'
@@ -24,10 +27,10 @@ const isMacPlatform = () => isMacDesktop() || getWebOsPlatform() === 'macos'
 /** Resolved feature/build gates a navigation command can depend on. */
 export type CommandFlags = { voice: boolean; tasks: boolean; dev: boolean }
 
-const themeOptions: { theme: Theme; title: string }[] = [
-  { theme: 'light', title: 'Set Light' },
-  { theme: 'dark', title: 'Set Dark' },
-  { theme: 'system', title: 'Use System' },
+const themeOptions: { theme: Theme; title: MessageDescriptor }[] = [
+  { theme: 'light', title: msg`Set Light` },
+  { theme: 'dark', title: msg`Set Dark` },
+  { theme: 'system', title: msg`Use System` },
 ]
 
 const gateOpen = (gate: NavGate | undefined, flags: CommandFlags): boolean => (gate === undefined ? true : flags[gate])
@@ -38,6 +41,9 @@ const gateOpen = (gate: NavGate | undefined, flags: CommandFlags): boolean => (g
  * live in the injected handlers, not here.
  */
 export type BuildCommandsDeps = {
+  /** Injected like every other dependency so the assembler stays pure — the
+   *  command titles are module-scope descriptors that need resolving. */
+  i18n: I18n
   flags: CommandFlags
   showDownloadApp: boolean
   isMac: boolean
@@ -56,11 +62,18 @@ export type BuildCommandsDeps = {
 export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
   const navCommands: PaletteCommand[] = navigationCommands
     .filter((command) => gateOpen(command.gate, deps.flags))
-    .map(({ id, title, icon, to, keywords }) => ({ id, title, icon, keywords, section: 'navigation', to }))
+    .map(({ id, title, icon, to, keywords }) => ({
+      id,
+      title: deps.i18n._(title),
+      icon,
+      keywords,
+      section: 'navigation',
+      to,
+    }))
 
   const themeCommands: PaletteCommand[] = themeOptions.map(({ theme, title }) => ({
     id: `theme-${theme}`,
-    title,
+    title: deps.i18n._(title),
     icon: themeIcons[theme],
     section: 'actions',
     keywords: ['theme', 'appearance'],
@@ -71,7 +84,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     ? [
         {
           id: 'download-app',
-          title: 'Download app',
+          title: deps.i18n._(msg`Download app`),
           icon: Download,
           section: 'actions',
           keywords: ['install'],
@@ -86,7 +99,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     ...themeCommands,
     {
       id: 'toggle-sidebar',
-      title: 'Toggle sidebar',
+      title: deps.i18n._(msg`Toggle sidebar`),
       icon: PanelLeft,
       section: 'actions',
       shortcut: deps.isMac ? '⌘B' : 'Ctrl+B',
@@ -95,7 +108,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     ...downloadCommands,
     {
       id: 'sign-out',
-      title: 'Sign out',
+      title: deps.i18n._(msg`Sign out`),
       icon: LogOut,
       section: 'actions',
       keywords: ['logout', 'log out'],
@@ -103,7 +116,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
     },
     {
       id: 'clear-all-chats',
-      title: 'Clear all chats',
+      title: deps.i18n._(msg`Clear all chats`),
       icon: Trash2,
       section: 'actions',
       keywords: ['delete', 'remove'],
@@ -115,14 +128,14 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
   // in the Create group ahead of the entity create commands.
   const newChatCommand: PaletteCommand = {
     id: 'new-chat',
-    title: 'New chat',
+    title: deps.i18n._(msg`New chat`),
     icon: MessageCirclePlus,
     section: 'create',
     keywords: ['new', 'create'],
     run: deps.onNewChat,
   }
 
-  return [...navCommands, newChatCommand, ...buildCreateCommands(), ...actionCommands]
+  return [...navCommands, newChatCommand, ...buildCreateCommands(deps.i18n), ...actionCommands]
 }
 
 /**
@@ -130,6 +143,7 @@ export const buildCommands = (deps: BuildCommandsDeps): PaletteCommand[] => {
  * to the same hook the sidebar uses — nothing here reimplements behaviour.
  */
 export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
+  const { i18n } = useLingui()
   const { experimentalFeatureVoice, experimentalFeatureTasks } = useSettings({
     experimental_feature_voice: false,
     experimental_feature_tasks: false,
@@ -139,6 +153,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   const { toggleSidebar, closeMobileSidebar } = useSidebar()
 
   return buildCommands({
+    i18n,
     flags: {
       voice: experimentalFeatureVoice.value,
       tasks: experimentalFeatureTasks.value,

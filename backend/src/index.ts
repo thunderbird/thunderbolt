@@ -19,9 +19,9 @@ import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import {
   createAuthIpRateLimit,
-  createInferenceRateLimit,
-  createInferenceReceiptRateLimit,
-  createProRateLimit,
+  createIpTierRateLimit,
+  createUserTierRateLimit,
+  createRateLimitConsumer,
 } from '@/middleware/rate-limit'
 import { createUniversalProxyRoutes } from '@/proxy/routes'
 import { createUniversalProxyWsRoutes } from '@/proxy/ws'
@@ -39,6 +39,8 @@ import { createHaystackRoutes } from '@/haystack'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
+import { createDebugTranscriptsIntakeRoutes, ensureSelfDebugTranscriptClient } from '@/api/debug-transcripts-intake'
+import { createDebugTranscriptsRoutes } from '@/api/debug-transcripts'
 import type { AppDeps } from '@/types'
 import { Elysia } from 'elysia'
 
@@ -56,6 +58,8 @@ export const createApp = async (deps?: AppDeps) => {
     const { db } = await import('@/db/client')
     database = db
   }
+
+  await ensureSelfDebugTranscriptClient(database, settings)
 
   const app = new Elysia({
     prefix: '/v1',
@@ -82,7 +86,7 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  const proRateLimit = createProRateLimit(database, rateLimitSettings)
+  const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
@@ -143,7 +147,7 @@ export const createApp = async (deps?: AppDeps) => {
           database,
           secret: settings.betterAuthSecret,
           logger: appLogger,
-          rateLimit: createInferenceReceiptRateLimit(database, rateLimitSettings),
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'receipt'),
         }),
       )
       .use(
@@ -162,10 +166,26 @@ export const createApp = async (deps?: AppDeps) => {
           database,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
-          rateLimit: createInferenceRateLimit(database, rateLimitSettings),
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
         }),
       )
       .use(createConfigRoutes(settings))
+      .use(
+        createDebugTranscriptsRoutes({
+          auth,
+          fetchFn,
+          settings,
+          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'debug-transcript'),
+        }),
+      )
+      .use(
+        createDebugTranscriptsIntakeRoutes({
+          database,
+          settings,
+          rateLimit: createRateLimitConsumer(database, rateLimitSettings, 'debug-transcript-intake'),
+          ipRateLimit: createIpTierRateLimit(database, ipRateLimitSettings, 'debug-transcript-intake'),
+        }),
+      )
       .use(createPostHogRoutes(fetchFn))
       .use(
         createWaitlistRoutes({
@@ -178,7 +198,7 @@ export const createApp = async (deps?: AppDeps) => {
       )
       .use(createPowerSyncRoutes(auth, settings, database))
       .use(createEncryptionRoutes(auth, database, settings))
-      .use(createAccountRoutes(auth, database))
+      .use(createAccountRoutes(auth, settings, database))
       .use(createAgentsRoutes(auth))
       .use(createHaystackRoutes(settings, auth, { fetchFn }))
   )

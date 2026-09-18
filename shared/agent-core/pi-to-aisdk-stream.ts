@@ -25,9 +25,10 @@
  *
  * Reasoning boundaries are synthesized from deltas, not from Pi's explicit
  * `thinking_start`/`text_start` content events: reasoning opens on the first
- * `thinking_delta` and closes the moment the first `text_delta` arrives. This
- * mirrors the app's "reasoning duration ends when text begins" semantic and
- * keeps the translator robust to providers that omit the explicit boundaries.
+ * `thinking_delta`. The first `text_delta` marks reasoning for closure on the
+ * next event, allowing an immediately following tail with the same Pi content
+ * index to join the original part. Duration stops at that transition, excluding
+ * the wait for the next answer fragment. Explicit block ends are also honored.
  *
  * Durations are emitted as `message-metadata` `reasoningTime` entries keyed to
  * match `groupMessageParts`: reasoning by its 0-based ordinal (`reasoning-<n>`)
@@ -38,7 +39,6 @@
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
 
 const encoder = new TextEncoder()
-const now = Date.now
 
 /** The `assistantMessageEvent` carried by a Pi `message_update` event. */
 type AssistantInnerEvent = Extract<AgentEvent, { type: 'message_update' }>['assistantMessageEvent']
@@ -69,7 +69,7 @@ export type AiSdkChunk =
 
 /** Open reasoning part: its stream `id`, the `reasoningTime` key the UI expects,
  *  and the start timestamp used to compute its duration. */
-type ReasoningPart = { id: string; durationKey: string; startedAt: number }
+type ReasoningPart = { id: string; contentIndex: number; durationKey: string; startedAt: number; endedAt?: number }
 
 const encodeChunk = (chunk: AiSdkChunk): Uint8Array => encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)
 const encodeDone = (): Uint8Array => encoder.encode('data: [DONE]\n\n')
@@ -111,6 +111,8 @@ type PiTranslator = {
   /** Close any open parts and emit the terminal `finish`. With `errorText`,
    *  an `error` chunk is emitted first. Idempotent once the stream has finished. */
   finish: (errorText?: string) => void
+  /** Whether the run has opened an assistant message (emitted `start`). */
+  hasStarted: () => boolean
 }
 
 export type PiStreamMetadata = {
@@ -130,13 +132,17 @@ export type PiStreamMetadata = {
  * @param emit - sink invoked once per produced chunk
  * @returns the translator's `handle`/`finish` surface
  */
-const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStreamMetadata): PiTranslator => {
+const createPiTranslator = (
+  emit: (chunk: AiSdkChunk) => void,
+  metadata: PiStreamMetadata,
+  now: () => number,
+): PiTranslator => {
   let started = false
   let initialMetadataEmitted = false
   let stepOpen = false
   let finished = false
   let reasoning: ReasoningPart | null = null
-  let text: { id: string } | null = null
+  let text: { id: string; contentIndex: number } | null = null
   // Run-global ordinals: part ids must be unique across the whole run, and the
   // reasoning ordinal must match `groupMessageParts`' per-message counter.
   let reasoningOrdinal = 0
@@ -166,7 +172,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStrea
       return
     }
     emit({ type: 'reasoning-end', id: reasoning.id })
-    emitDuration(reasoning.durationKey, now() - reasoning.startedAt)
+    emitDuration(reasoning.durationKey, (reasoning.endedAt ?? now()) - reasoning.startedAt)
     reasoning = null
   }
 
@@ -183,36 +189,52 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStrea
     closeText()
   }
 
-  const ensureReasoningOpen = (): string => {
-    if (reasoning) {
+  const ensureReasoningOpen = (contentIndex: number): string => {
+    if (reasoning?.contentIndex === contentIndex) {
       return reasoning.id
     }
-    // A new reasoning block means any prior text block has ended; keep parts
-    // non-overlapping so the chat store assembles them cleanly.
+    closeReasoning()
     closeText()
     const ordinal = reasoningOrdinal++
-    reasoning = { id: `pi-reasoning-${ordinal}`, durationKey: `reasoning-${ordinal}`, startedAt: now() }
+    reasoning = { id: `pi-reasoning-${ordinal}`, contentIndex, durationKey: `reasoning-${ordinal}`, startedAt: now() }
     emit({ type: 'reasoning-start', id: reasoning.id })
     return reasoning.id
   }
 
-  const ensureTextOpen = (): string => {
-    if (text) {
+  const ensureTextOpen = (contentIndex: number): string => {
+    if (text?.contentIndex === contentIndex) {
       return text.id
     }
-    text = { id: `pi-text-${textOrdinal++}` }
+    closeText()
+    text = { id: `pi-text-${textOrdinal++}`, contentIndex }
     emit({ type: 'text-start', id: text.id })
     return text.id
   }
 
   const handleInner = (inner: AssistantInnerEvent): void => {
+    const isReasoningTail = inner.type === 'thinking_delta' && inner.contentIndex === reasoning?.contentIndex
+    if (reasoning?.endedAt !== undefined && !isReasoningTail) {
+      closeReasoning()
+    }
     if (inner.type === 'thinking_delta') {
-      emit({ type: 'reasoning-delta', id: ensureReasoningOpen(), delta: inner.delta })
+      emit({ type: 'reasoning-delta', id: ensureReasoningOpen(inner.contentIndex), delta: inner.delta })
+      if (reasoning?.endedAt !== undefined) {
+        reasoning.endedAt = now()
+      }
       return
     }
     if (inner.type === 'text_delta') {
+      if (reasoning) {
+        reasoning.endedAt = now()
+      }
+      emit({ type: 'text-delta', id: ensureTextOpen(inner.contentIndex), delta: inner.delta })
+      return
+    }
+    if (inner.type === 'thinking_end' && inner.contentIndex === reasoning?.contentIndex) {
       closeReasoning()
-      emit({ type: 'text-delta', id: ensureTextOpen(), delta: inner.delta })
+    }
+    if (inner.type === 'text_end' && inner.contentIndex === text?.contentIndex) {
+      closeText()
     }
   }
 
@@ -241,6 +263,9 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStrea
   }
 
   const handle = (event: AgentHarnessEvent): void => {
+    if (event.type !== 'message_update' && reasoning?.endedAt !== undefined) {
+      closeReasoning()
+    }
     switch (event.type) {
       case 'agent_start': {
         if (!started) {
@@ -319,7 +344,7 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStrea
     }
   }
 
-  return { handle, finish }
+  return { handle, finish, hasStarted: () => started }
 }
 
 /**
@@ -340,29 +365,53 @@ const createPiTranslator = (emit: (chunk: AiSdkChunk) => void, metadata: PiStrea
  * ```
  *
  * The stream is purely streaming — chunks are enqueued as events arrive, never
- * buffered for the whole run. Cancelling the consumer (e.g. the user stops
- * generation) aborts the harness and unsubscribes.
+ * buffered for the whole run. Cancelling the consumer aborts the harness and
+ * unsubscribes; so does aborting `signal`, which is how Stop reaches the run.
  *
  * @param harness - the harness whose run should be streamed
  * @param runPrompt - thunk that starts the run and resolves once it settles
+ * @param metadata - initial, tool, and settled message metadata
+ * @param signal - the request's abort signal; aborting it stops the run (Stop)
+ * @param now - millisecond clock used for reasoning and tool durations
  * @returns a `ReadableStream` of SSE-encoded AI SDK chunks for the `Response` body
  */
 export const piHarnessToUiMessageStream = (
-  harness: AgentHarness,
+  harness: Pick<AgentHarness, 'subscribe' | 'abort'>,
   runPrompt: () => Promise<unknown>,
   metadata: PiStreamMetadata = {},
+  signal?: AbortSignal,
+  now: () => number = Date.now,
 ): ReadableStream<Uint8Array> => {
   let unsubscribe: (() => void) | null = null
+  let detachSignal: (() => void) | null = null
   let closed = false
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      const translator = createPiTranslator((chunk) => {
-        if (!closed) {
-          controller.enqueue(encodeChunk(chunk))
-        }
-      }, metadata)
+      const translator = createPiTranslator(
+        (chunk) => {
+          if (!closed) {
+            controller.enqueue(encodeChunk(chunk))
+          }
+        },
+        metadata,
+        now,
+      )
       unsubscribe = harness.subscribe((event) => translator.handle(event))
+
+      /** Drop both subscriptions so no further event or abort reaches a closed stream. */
+      const detach = (): void => {
+        detachSignal?.()
+        detachSignal = null
+        unsubscribe?.()
+        unsubscribe = null
+      }
+
+      const close = (): void => {
+        closed = true
+        controller.enqueue(encodeDone())
+        controller.close()
+      }
 
       const finalize = (errorText?: string): void => {
         if (closed) {
@@ -371,12 +420,46 @@ export const piHarnessToUiMessageStream = (
         // Unsubscribe first so no further harness event races the terminal
         // sequence, let `finish` emit its chunks while the gate is still open,
         // and only then close the gate against any straggler from `cancel`.
-        unsubscribe?.()
-        unsubscribe = null
+        detach()
         translator.finish(errorText)
-        closed = true
-        controller.enqueue(encodeDone())
-        controller.close()
+        close()
+      }
+
+      /**
+       * Stop. The AI SDK only aborts the signal — it never cancels the response
+       * body — so without this the harness keeps looping (more model calls, more
+       * tool executions) long after the user pressed the button.
+       *
+       * The stream closes immediately rather than awaiting the teardown:
+       * `harness.abort()` awaits `waitForIdle()`, so awaiting it here would hang
+       * Stop behind any tool that doesn't honor the run's signal.
+       */
+      const onAbort = (): void => {
+        if (!closed) {
+          // Nothing has been emitted yet, so there is no assistant message to
+          // settle. Closing silently leaves none behind — a synthetic
+          // start/finish pair would read as an empty turn, and the chat
+          // auto-retries those, restarting the turn the user just cancelled.
+          if (translator.hasStarted()) {
+            finalize()
+          } else {
+            detach()
+            close()
+          }
+        }
+        void harness.abort().catch(() => {})
+      }
+
+      if (signal?.aborted) {
+        // Stopped while the harness was still being built: close without ever
+        // starting the run.
+        detach()
+        close()
+        return
+      }
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true })
+        detachSignal = () => signal.removeEventListener('abort', onAbort)
       }
 
       // Drive the run off this start callback. A failed turn resolves with a
@@ -393,6 +476,8 @@ export const piHarnessToUiMessageStream = (
     },
     async cancel() {
       closed = true
+      detachSignal?.()
+      detachSignal = null
       unsubscribe?.()
       unsubscribe = null
       await harness.abort()

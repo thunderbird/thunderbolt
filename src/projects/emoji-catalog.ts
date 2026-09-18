@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+
 /**
  * The full Unicode emoji set, loaded on demand.
  *
@@ -35,20 +38,23 @@ export type EmojiEntry = {
 
 export type EmojiCategory = {
   id: string
-  label: string
+  /** Descriptor, not a string: the built catalog is cached for the process
+   *  lifetime, so a resolved heading would freeze at whatever locale was active
+   *  the first time the picker opened. Resolved at render instead. */
+  label: MessageDescriptor
   emoji: EmojiEntry[]
 }
 
 /** Human headings for emoji-mart's category ids. */
-const categoryLabels: Record<string, string> = {
-  people: 'Smileys & people',
-  nature: 'Animals & nature',
-  foods: 'Food & drink',
-  activity: 'Activity',
-  places: 'Travel & places',
-  objects: 'Objects',
-  symbols: 'Symbols',
-  flags: 'Flags',
+const categoryLabels: Record<string, MessageDescriptor> = {
+  people: msg`Smileys & people`,
+  nature: msg`Animals & nature`,
+  foods: msg`Food & drink`,
+  activity: msg`Activity`,
+  places: msg`Travel & places`,
+  objects: msg`Objects`,
+  symbols: msg`Symbols`,
+  flags: msg`Flags`,
 }
 
 /**
@@ -105,7 +111,9 @@ export const buildCatalog = (data: EmojiMartData): EmojiCategory[] =>
   data.categories
     .map((category) => ({
       id: category.id,
-      label: categoryLabels[category.id] ?? category.id,
+      // Unknown ids fall back to the raw id as an untranslatable descriptor, so
+      // callers have one type to resolve.
+      label: categoryLabels[category.id] ?? { id: category.id, message: category.id },
       emoji: category.emojis.flatMap((id) => {
         const record = data.emojis[id]
         const native = record?.skins?.[0]?.native

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import type { ReactNode } from 'react'
 
 import { AgentSelector } from '@/components/ui/agent-selector'
@@ -146,7 +147,9 @@ const HistoryNavButtons = () => {
         onClick={() => void navigate(-1)}
       >
         <ArrowLeft className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">Go back</span>
+        <span className="sr-only">
+          <Trans>Go back</Trans>
+        </span>
       </Button>
       <Button
         variant="ghost"
@@ -156,7 +159,9 @@ const HistoryNavButtons = () => {
         onClick={() => void navigate(1)}
       >
         <ArrowRight className="size-[var(--icon-size-default)]" />
-        <span className="sr-only">Go forward</span>
+        <span className="sr-only">
+          <Trans>Go forward</Trans>
+        </span>
       </Button>
     </div>
   )
@@ -255,7 +260,9 @@ export const Header = () => {
             onClick={toggleSidebar}
           >
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Toggle Sidebar</span>
+            <span className="sr-only">
+              <Trans>Toggle Sidebar</Trans>
+            </span>
           </Button>
         </div>
 
@@ -289,7 +296,9 @@ export const Header = () => {
         {showSidebarToggle && (
           <Button variant="ghost" size="icon" className={headerIconButtonClass} onClick={toggleSidebar}>
             <PanelLeftRounded className="size-[var(--icon-size-default)]" />
-            <span className="sr-only">Expand Sidebar</span>
+            <span className="sr-only">
+              <Trans>Expand Sidebar</Trans>
+            </span>
           </Button>
         )}
         {isTauriDesktop() && <HistoryNavButtons />}

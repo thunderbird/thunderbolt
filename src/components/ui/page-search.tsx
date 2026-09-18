@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { useLingui } from '@lingui/react/macro'
 import { createContext, useContext, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { Search } from 'lucide-react'
@@ -42,7 +43,7 @@ type PageSearchProps = {
  * Usage:
  *   <PageSearch onSearch={handleSearch}>
  *     <PageSearch.Button />
- *     <PageSearch.Input placeholder="Search..." />
+ *     <PageSearch.Input placeholder="Search…" />
  *   </PageSearch>
  */
 export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
@@ -70,6 +71,7 @@ export const PageSearch = ({ onSearch, children }: PageSearchProps) => {
 }
 
 const PageSearchButton = () => {
+  const { t } = useLingui()
   const { open, toggle } = usePageSearchContext()
   const { isMobile } = useIsMobile()
   const portalTarget = useMobileForegroundPortalTarget()
@@ -85,7 +87,7 @@ const PageSearchButton = () => {
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Search"
+        aria-label={t`Search`}
         className={cn(
           mutedIconButtonClass,
           mobileHeaderControlFillClass,
@@ -105,7 +107,7 @@ const PageSearchButton = () => {
     <Button
       variant="ghost"
       size="icon"
-      aria-label="Search"
+      aria-label={t`Search`}
       className={cn('rounded-lg hover:bg-accent', open && 'bg-accent')}
       onClick={toggle}
     >

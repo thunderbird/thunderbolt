@@ -11,6 +11,7 @@
  * affordance (close behaves as Cancel).
  */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,7 @@ type ProjectFormProps = {
 }
 
 export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: ProjectFormProps) => {
+  const { t } = useLingui()
   const [{ icon, name, description, instructions, isPending, submitError }, dispatch] = useReducer(projectFormReducer, {
     ...(initialValues ?? emptyValues),
     isPending: false,
@@ -76,7 +78,7 @@ export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: Project
     try {
       await onSubmit({ icon, name, description, instructions })
     } catch (error) {
-      const fallback = mode === 'create' ? 'Could not create the project.' : 'Could not save the project.'
+      const fallback = mode === 'create' ? t`Could not create the project.` : t`Could not save the project.`
       dispatch({ type: 'SUBMIT_FAILED', message: error instanceof Error ? error.message : fallback })
     }
   }
@@ -87,19 +89,19 @@ export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: Project
     <section className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-col gap-2">
         <label className="text-[length:var(--font-size-sm)] font-medium" htmlFor={fieldId('name')}>
-          Name
+          <Trans>Name</Trans>
         </label>
         <div className="flex items-center gap-2">
           <EmojiPicker
             value={icon}
-            label={name || 'this project'}
+            label={name || t`this project`}
             onChange={(next) => dispatch({ type: 'ICON_CHANGED', icon: next })}
           />
           <Input
             id={fieldId('name')}
             autoFocus={mode === 'create'}
             maxLength={maxProjectNameLength}
-            placeholder="Q3 planning"
+            placeholder={t`Q3 planning`}
             value={name}
             onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'name', value: event.target.value })}
             className="flex-1"
@@ -109,11 +111,11 @@ export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: Project
 
       <div className="flex flex-col gap-2">
         <label className="text-[length:var(--font-size-sm)] font-medium" htmlFor={fieldId('description')}>
-          Description
+          <Trans>Description</Trans>
         </label>
         <Input
           id={fieldId('description')}
-          placeholder="Optional — what this project is for"
+          placeholder={t`Optional — what this project is for`}
           value={description}
           onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'description', value: event.target.value })}
         />
@@ -121,15 +123,15 @@ export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: Project
 
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         <label className="text-[length:var(--font-size-sm)] font-medium" htmlFor={fieldId('instructions')}>
-          Instructions
+          <Trans>Instructions</Trans>
         </label>
         <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-          Applied to every chat in this project.
+          <Trans>Applied to every chat in this project.</Trans>
         </p>
         <Textarea
           id={fieldId('instructions')}
           maxLength={maxProjectInstructionsLength}
-          placeholder="Reply in British English. Prefer bullet points over prose."
+          placeholder={t`Reply in British English. Prefer bullet points over prose.`}
           value={instructions}
           onChange={(event) => dispatch({ type: 'FIELD_CHANGED', field: 'instructions', value: event.target.value })}
           className="min-h-32 resize-y md:min-h-0 md:flex-1 md:resize-none"
@@ -145,11 +147,11 @@ export const ProjectForm = ({ mode, initialValues, onCancel, onSubmit }: Project
         <ResponsiveModalCancel onClick={onCancel} className="dark:hover:bg-accent" />
         <Button
           isLoading={isPending}
-          loadingLabel={mode === 'create' ? 'Creating…' : 'Saving…'}
+          loadingLabel={mode === 'create' ? t`Creating…` : t`Saving…`}
           disabled={!canSave}
           onClick={handleSubmit}
         >
-          {mode === 'create' ? 'Create' : 'Save changes'}
+          {mode === 'create' ? <Trans>Create</Trans> : <Trans>Save changes</Trans>}
         </Button>
       </FormFooter>
     </section>

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { i18n } from '@lingui/core'
 import { convertTemperature, getWeatherMetadata } from './lib'
 
 describe('convertTemperature', () => {
@@ -73,12 +74,12 @@ describe('getWeatherMetadata', () => {
 
   it('returns correct description for known weather code', () => {
     const result = getWeatherMetadata(0, '2024-06-15')
-    expect(result.description).toBe('Clear sky')
+    expect(i18n._(result.description)).toBe('Clear sky')
   })
 
   it('returns unknown description for unrecognized weather code', () => {
     const result = getWeatherMetadata(999, '2024-06-15')
-    expect(result.description).toBe('Unknown (code 999)')
+    expect(i18n._(result.description)).toBe('Unknown (code 999)')
   })
 
   it('returns day icon for unknown code with date-only string', () => {

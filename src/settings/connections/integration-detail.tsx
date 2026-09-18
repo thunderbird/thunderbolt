@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { DetailDivider, DetailPanel, DetailSectionTitle } from '@/components/detail-panel'
 import { AvailableTools, type ToolItem } from '@/components/available-tools'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -35,6 +36,8 @@ export const IntegrationDetail = ({
   onError: (error: Error) => void
   onClose: () => void
 }) => {
+  const { t } = useLingui()
+  const integrationName = integration.name
   const isPro = integration.provider === 'thunderbolt-pro'
 
   return (
@@ -45,15 +48,17 @@ export const IntegrationDetail = ({
       onClose={onClose}
     >
       <div className="flex shrink-0 flex-col gap-2">
-        <DetailSectionTitle>Account</DetailSectionTitle>
+        <DetailSectionTitle>
+          <Trans>Account</Trans>
+        </DetailSectionTitle>
         {integration.isConnected ? (
           <div className="flex items-center justify-between gap-3">
             <p className="min-w-0 truncate text-base text-foreground">
-              {integration.userEmail ?? `Connected to ${integration.name}`}
+              {integration.userEmail ?? t`Connected to ${integrationName}`}
             </p>
             {!isPro && (
               <Button variant="outline" size="sm" onClick={onDisconnect}>
-                Disconnect
+                <Trans>Disconnect</Trans>
               </Button>
             )}
           </div>
@@ -85,7 +90,7 @@ export const IntegrationDetail = ({
         <AvailableTools tools={tools} />
         {!integration.isConnected && (
           <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
-            Connect your account to make these tools available to agents.
+            <Trans>Connect your account to make these tools available to agents.</Trans>
           </p>
         )}
       </div>

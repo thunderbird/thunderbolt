@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
@@ -115,10 +116,10 @@ describe('starting a chat from the panel', () => {
 describe('deleteProjectPrompt', () => {
   it('tells the user their chats survive', () => {
     // The one non-obvious consequence: chats are orphaned, not removed.
-    expect(deleteProjectPrompt.description).toContain('Chats in the project are kept')
+    expect(i18n._(deleteProjectPrompt.description)).toContain('Chats in the project are kept')
   })
 
   it('names the action on its confirm button', () => {
-    expect(deleteProjectPrompt.confirmLabel).toBe('Delete project')
+    expect(i18n._(deleteProjectPrompt.confirmLabel)).toBe('Delete project')
   })
 })

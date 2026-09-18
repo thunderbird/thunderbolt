@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import {
   AudioLines,
   Bot,
@@ -24,7 +26,9 @@ export type NavGate = 'voice' | 'tasks' | 'dev'
 /** A route the Cmd+K palette can jump to. Pure data — no React, no hooks. */
 export type NavigationCommand = {
   id: string
-  title: string
+  /** Descriptor, not a string: this manifest is module-scope data, so a resolved
+   *  string would freeze at the boot locale. `useCommands` resolves it. */
+  title: MessageDescriptor
   icon: LucideIcon
   to: string
   keywords?: string[]
@@ -41,19 +45,19 @@ export type NavigationCommand = {
  * same navigation surface.
  */
 export const navigationCommands: NavigationCommand[] = [
-  { id: 'agents', title: 'All agents', icon: Bot, to: '/settings/agents', keywords: ['agents'] },
-  { id: 'skills', title: 'Skills', icon: Zap, to: '/settings/skills' },
+  { id: 'agents', title: msg`All agents`, icon: Bot, to: '/settings/agents', keywords: ['agents'] },
+  { id: 'skills', title: msg`Skills`, icon: Zap, to: '/settings/skills' },
   {
     id: 'connections',
-    title: 'Connections',
+    title: msg`Connections`,
     icon: Plug,
     to: '/settings/connections',
     keywords: ['mcp', 'servers', 'integrations', 'plugins'],
   },
-  { id: 'models', title: 'Models', icon: Cpu, to: '/settings/models', keywords: ['llm'] },
+  { id: 'models', title: msg`Models`, icon: Cpu, to: '/settings/models', keywords: ['llm'] },
   {
     id: 'voice',
-    title: 'Voice',
+    title: msg`Voice`,
     icon: AudioLines,
     to: '/settings/voice',
     keywords: ['audio', 'speech', 'tts'],
@@ -61,13 +65,13 @@ export const navigationCommands: NavigationCommand[] = [
   },
   {
     id: 'preferences',
-    title: 'Preferences',
+    title: msg`Preferences`,
     icon: SlidersHorizontal,
     to: '/settings/preferences',
     keywords: ['theme', 'appearance'],
   },
-  { id: 'devices', title: 'Devices', icon: Smartphone, to: '/settings/devices', keywords: ['sync'] },
-  { id: 'tasks', title: 'Tasks', icon: CheckSquare, to: '/tasks', keywords: ['todo'], gate: 'tasks' },
-  { id: 'dev-settings', title: 'Dev Settings', icon: Terminal, to: '/settings/dev-settings', gate: 'dev' },
-  { id: 'message-simulator', title: 'Message Simulator', icon: Terminal, to: '/message-simulator', gate: 'dev' },
+  { id: 'devices', title: msg`Devices`, icon: Smartphone, to: '/settings/devices', keywords: ['sync'] },
+  { id: 'tasks', title: msg`Tasks`, icon: CheckSquare, to: '/tasks', keywords: ['todo'], gate: 'tasks' },
+  { id: 'dev-settings', title: msg`Dev Settings`, icon: Terminal, to: '/settings/dev-settings', gate: 'dev' },
+  { id: 'message-simulator', title: msg`Message Simulator`, icon: Terminal, to: '/message-simulator', gate: 'dev' },
 ]

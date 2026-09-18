@@ -11,8 +11,8 @@
  * bridged session. Stored one NodeId per line at `~/.thunderbolt/iroh/allowlist`.
  */
 
-import { irohDir, allowlistPath } from './paths.ts'
 import { readFileOrNull, writeSecureFile } from '../lib/secure-fs.ts'
+import { allowlistPath } from './paths.ts'
 
 /**
  * The current allowlist as an ordered, de-duplicated list of NodeId strings.
@@ -45,6 +45,6 @@ export const add = async (nodeId: string): Promise<boolean> => {
   const id = nodeId.trim()
   const ids = await list()
   if (ids.includes(id)) return false
-  await writeSecureFile(irohDir(), allowlistPath(), [...ids, id].join('\n') + '\n')
+  await writeSecureFile(allowlistPath(), [...ids, id].join('\n') + '\n')
   return true
 }

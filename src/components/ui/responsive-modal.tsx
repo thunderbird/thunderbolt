@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
@@ -135,7 +136,9 @@ const ResponsiveModalDialogContent = ({
               }}
             >
               <XIcon className="size-[var(--icon-size-default)]" />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">
+                <Trans>Close</Trans>
+              </span>
             </DialogClose>
           )}
         </DialogPrimitive.Content>
@@ -301,19 +304,23 @@ export const ResponsiveModalContent = ({ className, centered, ...props }: Respon
 
 /** Standard secondary action for dismissing a responsive modal form. */
 export const ResponsiveModalCancel = ({
-  children = 'Cancel',
+  children,
   className,
   ...props
-}: Omit<ComponentProps<typeof Button>, 'type' | 'variant'>) => (
-  <Button
-    type="button"
-    variant="outline"
-    className={cn('max-md:bg-background/80 max-md:backdrop-blur-md max-md:dark:bg-card/80', className)}
-    {...props}
-  >
-    {children}
-  </Button>
-)
+}: Omit<ComponentProps<typeof Button>, 'type' | 'variant'>) => {
+  const { t } = useLingui()
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className={cn('max-md:bg-background/80 max-md:backdrop-blur-md max-md:dark:bg-card/80', className)}
+      {...props}
+    >
+      {children ?? t`Cancel`}
+    </Button>
+  )
+}
 
 // =============================================================================
 // Composable pattern exports (for trigger-based modals)

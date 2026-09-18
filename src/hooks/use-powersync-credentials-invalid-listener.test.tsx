@@ -25,7 +25,6 @@ import { getDb } from '@/db/database'
 const deviceId = 'test-device-id'
 const authToken = 'test-auth-token'
 
-const mockReplace = mock()
 const mockClearLocalData = mock(() => Promise.resolve())
 
 // Partial mock: spread the REAL module so every other export (getPowerSyncInstance,
@@ -41,11 +40,15 @@ mock.module('@/db/powersync/sync-state', () => ({
 }))
 
 describe('usePowerSyncCredentialsInvalidListener', () => {
+  let mockReplace: ReturnType<typeof spyOn>
+
   beforeAll(async () => {
     await setupTestDatabase()
+    mockReplace = spyOn(window.location, 'replace').mockImplementation(() => undefined)
   })
 
   afterAll(async () => {
+    mockReplace.mockRestore()
     await teardownTestDatabase()
   })
 
@@ -53,10 +56,6 @@ describe('usePowerSyncCredentialsInvalidListener', () => {
     await resetTestDatabase()
     mockReplace.mockClear()
     mockClearLocalData.mockClear()
-    Object.defineProperty(window, 'location', {
-      value: { replace: mockReplace },
-      writable: true,
-    })
     localStorage.clear()
   })
 

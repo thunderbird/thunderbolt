@@ -15,7 +15,7 @@
  * raw `access_token` body value is a bare session token and is deliberately not used.
  */
 
-import { cliClientId } from './config.ts'
+import { backendHeaders, cliClientId } from './config.ts'
 import type { DeviceCodeResponse, DeviceGrantTransport, TokenPollResult } from './device-grant.ts'
 
 /** RFC 8628 grant type for the token exchange. */
@@ -56,11 +56,13 @@ export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
  * @param fetchFn - HTTP fetch (defaults to the global `fetch`)
  */
 export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetch): DeviceGrantTransport => ({
-  requestCode: async () => {
+  requestCode: async (signal) => {
     const res = await fetchFn(`${authBaseUrl}/device/code`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: backendHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({ client_id: cliClientId }),
+      redirect: 'error',
+      signal,
     })
     if (!res.ok) {
       throw new Error(`device authorization request failed (${res.status} ${res.statusText})`)
@@ -76,15 +78,17 @@ export const createHttpTransport = (authBaseUrl: string, fetchFn: FetchFn = fetc
     } satisfies DeviceCodeResponse
   },
 
-  pollToken: async (deviceCode) => {
+  pollToken: async (deviceCode, signal) => {
     const res = await fetchFn(`${authBaseUrl}/device/token`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: backendHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({
         grant_type: deviceCodeGrantType,
         device_code: deviceCode,
         client_id: cliClientId,
       }),
+      redirect: 'error',
+      signal,
     })
     if (res.ok) {
       const signedToken = res.headers.get('set-auth-token')

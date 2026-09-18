@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { i18n } from '@/i18n'
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import type { AuthClient } from '@/contexts'
 
 /**
@@ -21,10 +24,10 @@ export type VerifyResult = { ok: true; status: DeviceCodeStatus } | ({ ok: false
 
 export type ActionResult = { ok: true } | ({ ok: false } & DeviceGrantFailure)
 
-const failureMessages: Record<DeviceGrantFailure['reason'], string> = {
-  expired: 'This sign-in request has expired. Start a new one from your terminal.',
-  invalid: "That code isn't valid or has already been used. Check your terminal and try again.",
-  unavailable: 'The sign-in service is unavailable right now. Check your connection and try again.',
+const failureMessages: Record<DeviceGrantFailure['reason'], MessageDescriptor> = {
+  expired: msg`This sign-in request has expired. Start a new one from your terminal.`,
+  invalid: msg`That code isn't valid or has already been used. Check your terminal and try again.`,
+  unavailable: msg`The sign-in service is unavailable right now. Check your connection and try again.`,
 }
 
 /**
@@ -38,12 +41,12 @@ const toFailure = (error: unknown): DeviceGrantFailure => {
   if (isUnavailable) {
     const underlyingError = details?.error instanceof Error ? details.error : error
     console.error('Device grant request failed', underlyingError)
-    return { reason: 'unavailable', message: failureMessages.unavailable }
+    return { reason: 'unavailable', message: i18n._(failureMessages.unavailable) }
   }
 
   const code = details?.error
   const reason = code === 'expired_token' ? 'expired' : 'invalid'
-  return { reason, message: failureMessages[reason] }
+  return { reason, message: i18n._(failureMessages[reason]) }
 }
 
 /**

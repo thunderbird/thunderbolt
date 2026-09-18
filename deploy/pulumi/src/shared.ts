@@ -43,7 +43,6 @@ export type SharedStackArgs = {
   aiSecrets: {
     anthropicApiKey: pulumi.Output<string>
     fireworksApiKey: pulumi.Output<string>
-    mistralApiKey: pulumi.Output<string>
     thunderboltInferenceApiKey: pulumi.Output<string>
     exaApiKey: pulumi.Output<string>
     tinfoilApiKey: pulumi.Output<string>
@@ -131,7 +130,6 @@ export type SharedStackOutputs = {
   // -- Shared AI provider secrets (same values across all per-PR stacks) --
   anthropicApiKeySecretArn: pulumi.Output<string>
   fireworksApiKeySecretArn: pulumi.Output<string>
-  mistralApiKeySecretArn: pulumi.Output<string>
   thunderboltInferenceApiKeySecretArn: pulumi.Output<string>
   exaApiKeySecretArn: pulumi.Output<string>
   tinfoilApiKeySecretArn: pulumi.Output<string>
@@ -371,7 +369,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
   const aiSecretSpecs: Array<[keyof SharedStackArgs['aiSecrets'], string]> = [
     ['anthropicApiKey', `${name}-anthropic-api-key`],
     ['fireworksApiKey', `${name}-fireworks-api-key`],
-    ['mistralApiKey', `${name}-mistral-api-key`],
     ['thunderboltInferenceApiKey', `${name}-tb-inference-api-key`],
     ['exaApiKey', `${name}-exa-api-key`],
     ['tinfoilApiKey', `${name}-tinfoil-api-key`],
@@ -605,7 +602,6 @@ export const createSharedStack = (args: SharedStackArgs): SharedStackOutputs => 
 
     anthropicApiKeySecretArn: aiSecretArns.anthropicApiKey,
     fireworksApiKeySecretArn: aiSecretArns.fireworksApiKey,
-    mistralApiKeySecretArn: aiSecretArns.mistralApiKey,
     thunderboltInferenceApiKeySecretArn: aiSecretArns.thunderboltInferenceApiKey,
     exaApiKeySecretArn: aiSecretArns.exaApiKey,
     tinfoilApiKeySecretArn: aiSecretArns.tinfoilApiKey,
@@ -652,7 +648,6 @@ export const loadSharedStackOutputs = (ref: pulumi.StackReference): SharedStackO
     keycloakAdminPassword: get<string>('keycloakAdminPassword'),
     anthropicApiKeySecretArn: get<string>('anthropicApiKeySecretArn'),
     fireworksApiKeySecretArn: get<string>('fireworksApiKeySecretArn'),
-    mistralApiKeySecretArn: get<string>('mistralApiKeySecretArn'),
     thunderboltInferenceApiKeySecretArn: get<string>('thunderboltInferenceApiKeySecretArn'),
     exaApiKeySecretArn: get<string>('exaApiKeySecretArn'),
     tinfoilApiKeySecretArn: get<string>('tinfoilApiKeySecretArn'),

@@ -6,6 +6,9 @@ import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
   bridgeDeviceId,
+  cliDeviceIdPrefix,
+  isTrustedAppDevice,
+  maxActiveDevicesPerUser,
   countActiveDevices,
   getDeviceById,
   linkSessionToDevice,
@@ -57,8 +60,6 @@ import {
 } from '@shared/e2ee-types'
 import { eq, sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
-
-const maxDevicesPerUser = 10
 
 /**
  * Upper bound on keyring rows carried in one request. The keyring grows by one
@@ -457,6 +458,12 @@ export const createEncryptionRoutes = (
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
+        // CLI devices register through the dedicated account flow, never here.
+        if (deviceId.startsWith(cliDeviceIdPrefix)) {
+          set.status = 400
+          return { error: 'CLI device IDs must use account registration' }
+        }
+
         // Check if device already exists (fast-path before transaction)
         const existingDevice = await getDeviceById(database, deviceId)
 
@@ -507,9 +514,22 @@ export const createEncryptionRoutes = (
           const freshDevice = await getDeviceById(txDb, deviceId)
           if (!freshDevice) {
             const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= maxDevicesPerUser) {
+            if (activeCount >= maxActiveDevicesPerUser) {
               return { limitReached: true as const }
             }
+          }
+
+          // Bind the session to this device BEFORE creating the row, so a session
+          // already bound to a different device (e.g. a CLI device-grant session)
+          // is rejected without leaving an orphan pending row. The bind is
+          // conflict-aware: it only takes when the session is unbound or already
+          // points here (THU-873 pins the caller to `session.deviceId`).
+          const binding = await linkSessionToDevice(txDb, session.id, deviceId, userId)
+          if (binding.status === 'conflict') {
+            return { bindingConflict: true as const }
+          }
+          if (binding.status === 'invalid-session') {
+            return { invalidSession: true as const }
           }
 
           const registered = await registerDevice(txDb, {
@@ -538,7 +558,16 @@ export const createEncryptionRoutes = (
           return { error: 'Device ID already taken' }
         }
 
-        await linkSessionToDevice(database, session.id, deviceId, userId)
+        if ('bindingConflict' in result) {
+          set.status = 409
+          return { code: 'SESSION_DEVICE_MISMATCH' }
+        }
+
+        if ('invalidSession' in result) {
+          set.status = 401
+          return { error: 'Unauthorized' }
+        }
+
         // `pendingSince` identifies THIS registration. The client echoes it back
         // on cancel so a cancel that was issued for an earlier attempt cannot
         // clear a newer one (see `denyDevice`).
@@ -590,8 +619,10 @@ export const createEncryptionRoutes = (
         } = body
 
         // Pre-transaction fast-path rejection; re-checked inside tx to close race window.
+        // CLI devices never carry E2EE envelopes — they are excluded here so a CLI
+        // row can neither bootstrap, self-recover, nor be approved.
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId) {
+        if (!device || device.userId !== userId || device.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -706,13 +737,15 @@ export const createEncryptionRoutes = (
               }
 
               if (callerDeviceId !== deviceId) {
-                // Approving another device — caller-trust check (defense-in-depth)
+                // Approving another device — caller-trust check (defense-in-depth).
+                // A CLI device is never a valid approver even when trusted.
                 const callerDevice = await getDeviceById(txDb, callerDeviceId)
-                if (!callerDevice || callerDevice.userId !== userId) {
-                  throw new ForbiddenError('Caller device not found')
-                }
-                if (!callerDevice.trusted) {
-                  throw new ForbiddenError('Only trusted devices can store envelopes')
+                if (!isTrustedAppDevice(callerDevice, userId)) {
+                  const callerBelongsToApp =
+                    callerDevice !== null && callerDevice.userId === userId && callerDevice.deviceType !== 'cli'
+                  throw new ForbiddenError(
+                    callerBelongsToApp ? 'Only trusted devices can store envelopes' : 'Caller device not found',
+                  )
                 }
               }
               // caller==target: self-recovery / envelope re-key — the proof is the gate.
@@ -720,7 +753,7 @@ export const createEncryptionRoutes = (
 
             // Re-check target device inside transaction to close race window
             const targetDevice = await getDeviceById(txDb, deviceId)
-            if (!targetDevice || targetDevice.revokedAt != null) {
+            if (!targetDevice || targetDevice.deviceType === 'cli' || targetDevice.revokedAt != null) {
               throw new ForbiddenError('Device has been revoked')
             }
 
@@ -732,7 +765,7 @@ export const createEncryptionRoutes = (
             // envelopes), the upsertEnvelope above is the only state change needed.
             if (!targetDevice.trusted) {
               const activeCount = await countActiveDevices(txDb, userId)
-              if (activeCount >= maxDevicesPerUser) {
+              if (activeCount >= maxActiveDevicesPerUser) {
                 throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
               // Check rows returned to detect a concurrent revoke between the in-tx read and this UPDATE.
@@ -1197,7 +1230,7 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           proof: proofSchema,
-          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxDevicesPerUser }),
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
           wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: maxKeyringKeys }),
           newPrimaryKey: t.Optional(newPrimaryKeySchema),
           stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })),
@@ -1321,7 +1354,7 @@ export const createEncryptionRoutes = (
         body: t.Object({
           nonce: t.String({ maxLength: 128 }),
           possessionProof: t.String({ maxLength: 500 }),
-          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxDevicesPerUser }),
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
           wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 2, maxItems: maxKeyringKeys }),
           primaryKeyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
           canaryIv: t.String({ maxLength: 500 }),
@@ -1361,16 +1394,16 @@ export const createEncryptionRoutes = (
           return { error: 'Invalid challenge proof' }
         }
 
-        // Caller must be a trusted device (defense-in-depth)
+        // Caller must be a trusted app device (defense-in-depth; never a CLI device)
         const callerDevice = await getDeviceById(database, callerDeviceId)
-        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+        if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
           return { error: 'Only trusted devices can deny pending devices' }
         }
 
         // Target must be a pending device belonging to the same user
         const targetDevice = await getDeviceById(database, params.deviceId)
-        if (!targetDevice || targetDevice.userId !== userId) {
+        if (!targetDevice || targetDevice.userId !== userId || targetDevice.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -1420,10 +1453,10 @@ export const createEncryptionRoutes = (
           return { error: 'Invalid challenge proof' }
         }
 
-        // Caller must be a trusted device (defense-in-depth: only a trusted app
-        // device may attest another device's P2P identity).
+        // Caller must be a trusted app device (defense-in-depth: only a trusted app
+        // device may attest another device's P2P identity; never a CLI device).
         const callerDevice = await getDeviceById(database, callerDeviceId)
-        if (!callerDevice || callerDevice.userId !== userId || !callerDevice.trusted) {
+        if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
           return { error: 'Only trusted devices can set a device node ID' }
         }
@@ -1517,7 +1550,7 @@ export const createEncryptionRoutes = (
           const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
           if (!existingBridge) {
             const activeCount = await countActiveDevices(tx, userId)
-            if (activeCount >= maxDevicesPerUser) {
+            if (activeCount >= maxActiveDevicesPerUser) {
               return { limitReached: true as const }
             }
           }

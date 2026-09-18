@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { chatTitleLabel } from '@/lib/title-generator'
+
+import { Trans, useLingui } from '@lingui/react/macro'
 import type { DeleteAllChatsDialogRef } from '@/components/delete-all-chats-dialog'
 import type { DeleteChatDialogRef } from '@/components/delete-chat-dialog'
 import { SidebarFooter } from '@/components/sidebar-footer'
@@ -67,23 +70,35 @@ type TasksMenuItemProps = {
   onClick: () => void
 }
 
-const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => (
-  <SidebarMenuItem>
-    <SidebarMenuButton onClick={onClick} tooltip="Tasks" className="cursor-pointer" isActive={isActive}>
-      <CheckSquare className="size-[var(--icon-size-default)]" />
-      <span>Tasks</span>
-    </SidebarMenuButton>
-  </SidebarMenuItem>
-)
+const TasksMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
+  const { t } = useLingui()
 
-const ProjectsMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => (
-  <SidebarMenuItem>
-    <SidebarMenuButton onClick={onClick} tooltip="Projects" className="cursor-pointer" isActive={isActive}>
-      <FolderOpen className="size-[var(--icon-size-default)]" />
-      <span>Projects</span>
-    </SidebarMenuButton>
-  </SidebarMenuItem>
-)
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick} tooltip={t`Tasks`} className="cursor-pointer" isActive={isActive}>
+        <CheckSquare className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Tasks</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
+
+const ProjectsMenuItem = ({ isActive, onClick }: TasksMenuItemProps) => {
+  const { t } = useLingui()
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick} tooltip={t`Projects`} className="cursor-pointer" isActive={isActive}>
+        <FolderOpen className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Projects</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
 
 export const ChatSidebarContent = ({
   isMobile,
@@ -105,6 +120,7 @@ export const ChatSidebarContent = ({
   onRename,
   onSearchClick,
 }: ChatSidebarContentProps) => {
+  const { i18n, t } = useLingui()
   const { toggleSidebar } = useSidebar()
   const location = useLocation()
   const moveChatToProject = useMoveChatToProject()
@@ -182,12 +198,14 @@ export const ChatSidebarContent = ({
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     onClick={onCreateNewChat}
-                    tooltip="New Chat"
+                    tooltip={t`New Chat`}
                     className="cursor-pointer"
                     isActive={location.pathname === '/chats/new'}
                   >
                     <MessageCirclePlus className="size-[var(--icon-size-default)]" />
-                    <span>New Chat</span>
+                    <span>
+                      <Trans>New Chat</Trans>
+                    </span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <ProjectsMenuItem isActive={location.pathname === '/projects'} onClick={onProjectsClick} />
@@ -236,7 +254,9 @@ export const ChatSidebarContent = ({
         {draggingChat && (
           <div className="pointer-events-none flex max-w-[15rem] items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-lg">
             <MessageCircle className="size-[var(--icon-size-sm)] shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="truncate text-[length:var(--font-size-sm)]">{draggingChat.title ?? 'Untitled chat'}</span>
+            <span className="truncate text-[length:var(--font-size-sm)]">
+              {chatTitleLabel(i18n, draggingChat.title)}
+            </span>
           </div>
         )}
       </DragOverlay>

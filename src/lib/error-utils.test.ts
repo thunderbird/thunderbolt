@@ -490,6 +490,35 @@ describe('getErrorStatusCode', () => {
 })
 
 describe('isContentRejectionError', () => {
+  const toolErrorBody =
+    '{"message":"tools must not be an empty array","type":"BadRequestError","param":"tools","code":400}'
+
+  it.each([
+    `400: ${toolErrorBody}`,
+    `400 ${toolErrorBody}`,
+    `openai (400): ${toolErrorBody}`,
+    `400: {"error":${toolErrorBody}}`,
+    JSON.stringify({ error: toolErrorBody, status: 400 }),
+    JSON.stringify({ error: JSON.stringify({ error: JSON.parse(toolErrorBody) }), statusCode: 400 }),
+  ])('keeps structured tool validation out of remediation and retries: %s', (message) => {
+    const error = new Error(message)
+
+    expect(isContentRejectionError(error)).toBe(false)
+    expect(getErrorRetryable(error)).toBe(false)
+    expect(getChatErrorKind(error)).toBe('provider')
+  })
+
+  it.each([
+    '400: {"message":"invalid file content","param":"messages"}',
+    '400: {"message":"file called tools is invalid"}',
+    '400: {"message":"file rejected; \\"param\\":\\"tools\\" appeared in its text"}',
+    '400: {"param":"tools",invalid json}',
+    '400: {"param":["tools"]}',
+    '400: null',
+  ])('does not infer a tool validation failure from file text or malformed fields: %s', (message) => {
+    expect(isContentRejectionError(new Error(message))).toBe(true)
+  })
+
   it('detects the file-part rejection 400 (e.g. content.str)', () => {
     expect(isContentRejectionError(new Error(JSON.stringify({ error: 'Bad Request', status: 400 })))).toBe(true)
   })

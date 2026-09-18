@@ -40,8 +40,9 @@ export type MCPServerConnection = MCPServer & {
 
 /** Reconnect a dropped MCP client at the `tools()` boundary. Looks up the
  *  server behind `client` and returns a freshly connected client, or null when
- *  the server is gone/disabled or the reconnect failed. */
-type ReconnectClient = (client: MCPClient) => Promise<MCPClient | null>
+ *  the server is gone/disabled or the reconnect failed. A discovery error is
+ *  surfaced while recovery runs and cleared when the connection succeeds. */
+type ReconnectClient = (client: MCPClient, error?: Error) => Promise<MCPClient | null>
 
 /** An enabled, connected client paired with its server identity. `name` is the
  *  tool-namespacing prefix consumed by `mergeMcpTools` so different servers'
@@ -380,10 +381,15 @@ export const MCPProvider = ({ children, createClient: injectedCreateClient }: MC
     })
   }
 
-  const reconnectClient: ReconnectClient = (client) => {
+  const reconnectClient: ReconnectClient = (client, error) => {
     const serverId = clientToServerId.current.get(client)
     if (!serverId) {
       return Promise.resolve(null)
+    }
+    if (error) {
+      commitServers((prev) =>
+        prev.map((s) => (s.id === serverId ? { ...s, client: null, isConnected: false, error } : s)),
+      )
     }
     return reconnectServer(serverId)
   }

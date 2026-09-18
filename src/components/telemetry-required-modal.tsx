@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { Trans } from '@lingui/react/macro'
 import { forwardRef, useImperativeHandle, useState } from 'react'
 import {
   AlertDialog,
@@ -52,14 +53,22 @@ export const TelemetryRequiredModal = forwardRef<TelemetryRequiredModalRef, Tele
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Telemetry Required</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Telemetry Required</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              In order to use preview features, we ask that you help us improve the product by sharing telemetry data.
+              <Trans>
+                In order to use preview features, we ask that you help us improve the product by sharing telemetry data.
+              </Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleEnableTelemetry}>Enable Telemetry</AlertDialogAction>
+            <AlertDialogCancel onClick={handleClose}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleEnableTelemetry}>
+              <Trans>Enable Telemetry</Trans>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { AppLocale } from '@shared/i18n/locales'
 import { sendEmail, shouldSkipEmail } from '@/lib/resend'
-import { WaitlistJoinedEmail } from '@/emails/waitlist-joined'
-import { WaitlistReminderEmail } from '@/emails/waitlist-reminder'
-import { WaitlistNotReadyEmail } from '@/emails/waitlist-not-ready'
+import { getEmailI18n } from '@/emails/i18n'
+import { WaitlistJoinedEmail, waitlistJoinedSubject } from '@/emails/waitlist-joined'
+import { WaitlistReminderEmail, waitlistReminderSubject } from '@/emails/waitlist-reminder'
+import { WaitlistNotReadyEmail, waitlistNotReadySubject } from '@/emails/waitlist-not-ready'
 import { getWaitlistAutoApproveDomains, getSettings } from '@/config/settings'
 
 /**
@@ -18,12 +20,13 @@ export const isAutoApprovedDomain = (email: string): boolean => {
 
 type SendWaitlistEmailParams = {
   email: string
+  locale: AppLocale
 }
 
 /**
  * Send email when user joins the waitlist.
  */
-export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
+export const sendWaitlistJoinedEmail = async ({ email, locale }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending joined waitlist email')
 
   if (shouldSkipEmail()) {
@@ -31,10 +34,11 @@ export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams
     return
   }
 
+  const i18n = getEmailI18n(locale)
   const data = await sendEmail({
     to: email,
-    subject: "You're on the Thunderbolt waitlist!",
-    react: <WaitlistJoinedEmail />,
+    subject: waitlistJoinedSubject(i18n),
+    react: <WaitlistJoinedEmail i18n={i18n} />,
   })
   console.info(`✅ Joined waitlist email sent successfully. ID: ${data?.id}`)
 }
@@ -42,7 +46,7 @@ export const sendWaitlistJoinedEmail = async ({ email }: SendWaitlistEmailParams
 /**
  * Send waitlist reminder email for users already on the waitlist.
  */
-export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
+export const sendWaitlistReminderEmail = async ({ email, locale }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending waitlist reminder email')
 
   if (shouldSkipEmail()) {
@@ -50,10 +54,11 @@ export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailPara
     return
   }
 
+  const i18n = getEmailI18n(locale)
   const data = await sendEmail({
     to: email,
-    subject: "You're already on the waitlist!",
-    react: <WaitlistReminderEmail />,
+    subject: waitlistReminderSubject(i18n),
+    react: <WaitlistReminderEmail i18n={i18n} />,
   })
   console.info(`✅ Waitlist reminder sent successfully. ID: ${data?.id}`)
 }
@@ -61,7 +66,7 @@ export const sendWaitlistReminderEmail = async ({ email }: SendWaitlistEmailPara
 /**
  * Send "not ready yet" email when a pending waitlist user tries to sign in.
  */
-export const sendWaitlistNotReadyEmail = async ({ email }: SendWaitlistEmailParams): Promise<void> => {
+export const sendWaitlistNotReadyEmail = async ({ email, locale }: SendWaitlistEmailParams): Promise<void> => {
   console.info('📧 Sending waitlist not-ready email')
 
   if (shouldSkipEmail()) {
@@ -69,10 +74,11 @@ export const sendWaitlistNotReadyEmail = async ({ email }: SendWaitlistEmailPara
     return
   }
 
+  const i18n = getEmailI18n(locale)
   const data = await sendEmail({
     to: email,
-    subject: "You're on the Thunderbolt waitlist!",
-    react: <WaitlistNotReadyEmail />,
+    subject: waitlistNotReadySubject(i18n),
+    react: <WaitlistNotReadyEmail i18n={i18n} />,
   })
   console.info(`✅ Waitlist not-ready email sent successfully. ID: ${data?.id}`)
 }

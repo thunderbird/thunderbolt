@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { i18n } from '@lingui/core'
 import { categorizeModels } from './model-selector'
 import { needsApiKey } from '@/settings/models/model-policy'
 import type { Model } from '@/types'
@@ -40,7 +41,7 @@ const groupById = (groups: ReturnType<typeof categorizeModels>, id: string) => {
 
 describe('categorizeModels', () => {
   test('no chat thread: all models are available in one group, no disabled sections', () => {
-    const groups = categorizeModels([confidentialModel, standardModel, customModel], null)
+    const groups = categorizeModels([confidentialModel, standardModel, customModel], null, i18n)
 
     expect(groups).toHaveLength(1)
     expect(groups[0].id).toBe('available')
@@ -49,7 +50,7 @@ describe('categorizeModels', () => {
   })
 
   test('encrypted chat: standard models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], confidentialChat)
+    const groups = categorizeModels([confidentialModel, standardModel], confidentialChat, i18n)
 
     const available = groupById(groups, 'available')
     expect(available.items).toHaveLength(1)
@@ -65,7 +66,7 @@ describe('categorizeModels', () => {
   })
 
   test('standard chat: encrypted models in disabled section', () => {
-    const groups = categorizeModels([confidentialModel, standardModel], standardChat)
+    const groups = categorizeModels([confidentialModel, standardModel], standardChat, i18n)
 
     const available = groupById(groups, 'available')
     expect(available.items).toHaveLength(1)
@@ -80,14 +81,14 @@ describe('categorizeModels', () => {
   })
 
   test('custom models merge into the same group as built-in models', () => {
-    const groups = categorizeModels([standardModel, customModel], null)
+    const groups = categorizeModels([standardModel, customModel], null, i18n)
 
     expect(groups).toHaveLength(1)
     expect(groups[0].items.map((i) => i.id)).toEqual(['std-1', 'custom-1'])
   })
 
   test('disabled custom models go to the disabled section', () => {
-    const groups = categorizeModels([confidentialModel, customModel], confidentialChat)
+    const groups = categorizeModels([confidentialModel, customModel], confidentialChat, i18n)
 
     const disabled = groupById(groups, 'standard-disabled')
     expect(disabled.items).toHaveLength(1)
@@ -95,7 +96,7 @@ describe('categorizeModels', () => {
   })
 
   test('empty models returns empty groups', () => {
-    const groups = categorizeModels([], null)
+    const groups = categorizeModels([], null, i18n)
     expect(groups).toHaveLength(0)
   })
 })

@@ -8,6 +8,7 @@ import { getClock } from '@/testing-library'
 import type { ThunderboltUIMessage } from '@/types'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { useChatStore } from './chat-store'
 import { useChatAutomation } from './use-chat-automation'
 
 describe('useChatAutomation', () => {
@@ -60,6 +61,45 @@ describe('useChatAutomation', () => {
     })
 
     expect(mockChatInstance.regenerate).toHaveBeenCalled()
+  })
+
+  // THU-791 regression: Stop drops the aborted turn's empty shell, leaving the
+  // user message trailing — the exact shape this hook auto-runs. The session's
+  // `stopping` flag (lifted only by the next explicit send) must suppress it,
+  // or Stop restarts the very turn it cancelled.
+  it('should not auto-run a stopped turn (trailing user message with the session stopping)', async () => {
+    const messages: ThunderboltUIMessage[] = [
+      {
+        id: 'msg-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Hello' }],
+      },
+    ]
+    const mockChatInstance = createMockChatInstance(messages, 'ready')
+    const mockUseChat = createMockUseChat(mockChatInstance)
+
+    hydrateStore({
+      chatInstance: mockChatInstance,
+      chatThread: null,
+      id: 'thread-1',
+      mcpClients: [],
+      models: [],
+      selectedModel: null,
+      triggerData: null,
+    })
+    act(() => {
+      useChatStore.getState().updateSession('thread-1', { stopping: true })
+    })
+
+    renderHook(() => useChatAutomation({ useChat: mockUseChat }), {
+      wrapper: createQueryTestWrapper(),
+    })
+
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    expect(mockChatInstance.regenerate).not.toHaveBeenCalled()
   })
 
   it('should not trigger if status is not ready', async () => {

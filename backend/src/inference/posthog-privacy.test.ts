@@ -5,15 +5,16 @@
 import { clearSettingsCache } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
-import { clearPostHogClient, isPostHogConfigured, shutdownPostHog } from '@/posthog/client'
+import { clearPostHogClient, getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { createTestDb } from '@/test-utils/db'
 import { mockAuth } from '@/test-utils/mock-auth'
 import { isPosthogRequest } from '@/test-utils/posthog'
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
-import { afterEach, beforeEach, describe, expect, it, jest, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import type { PostHog } from 'posthog-node'
 import { clearInferenceClientCache, getInferenceClient } from './client'
 import { createInferenceRoutes } from './routes'
 
@@ -60,14 +61,22 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   let capturedFetches: FetchCall[] = []
   let mockFetch: typeof fetch
   let originalEnv: Record<string, string | undefined>
+  const posthogClients = new Set<PostHog>()
+
+  /** Own each analytics client together with its injected transport until test cleanup. */
+  const createTestPostHogClient = (fetchFn: typeof fetch): PostHog => {
+    const client = getPostHogClient(fetchFn)
+    posthogClients.add(client)
+    return client
+  }
 
   beforeEach(() => {
     // Save original env vars
     originalEnv = {
       POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
       POSTHOG_HOST: process.env.POSTHOG_HOST,
-      TINFOIL_API_KEY: process.env.TINFOIL_API_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      FIREWORKS_API_KEY: process.env.FIREWORKS_API_KEY,
     }
 
     capturedFetches = []
@@ -89,7 +98,6 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         })
       }
 
-      // Mock Tinfoil completion response
       return new Response(
         JSON.stringify({
           id: 'chatcmpl-test',
@@ -121,27 +129,22 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   afterEach(async () => {
-    // Clear inference client cache for test isolation
-    clearInferenceClientCache()
-
-    // Clear settings and PostHog caches
-    clearSettingsCache()
-
-    // Shutdown PostHog with a short timeout (100ms) since we're using mocked fetch
-    await shutdownPostHog(100)
-
-    // Clear the PostHog client cache
-    clearPostHogClient()
-
-    // Restore original env vars
-    for (const [key, value] of Object.entries(originalEnv)) {
-      if (value === undefined) {
-        delete process.env[key]
-      } else {
-        process.env[key] = value
+    try {
+      await Promise.all([...posthogClients].map((client) => client.shutdown(100)))
+    } finally {
+      posthogClients.clear()
+      clearInferenceClientCache()
+      clearPostHogClient()
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
       }
+      clearSettingsCache()
+      capturedFetches = []
     }
-    capturedFetches = []
   })
 
   describe('PostHog client privacy_mode property', () => {
@@ -157,9 +160,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       const configured = isPostHogConfigured()
       expect(configured).toBe(true)
 
-      // Import and check the client
-      const { getPostHogClient } = require('@/posthog/client')
-      const client = getPostHogClient(mockFetch)
+      const client = createTestPostHogClient(mockFetch)
 
       // Verify our workaround is in place
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -169,16 +170,37 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   describe('Inference client with PostHog wrapper', () => {
+    it.each([
+      ['anthropic', 'ANTHROPIC_API_KEY'],
+      ['fireworks', 'FIREWORKS_API_KEY'],
+    ] as const)('keeps an owned PostHog client out of the %s provider cache', (provider, apiKeyName) => {
+      process.env[apiKeyName] = 'test-provider-key'
+      delete process.env.POSTHOG_API_KEY
+      clearSettingsCache()
+      clearInferenceClientCache()
+      const cachedClient = getInferenceClient(provider).client
+
+      process.env.POSTHOG_API_KEY = 'test-key'
+      clearSettingsCache()
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const injectedClient = getInferenceClient(provider, { posthogClient }).client
+
+      expect(injectedClient.constructor.name).toBe('PostHogOpenAI')
+      expect(injectedClient).not.toBe(cachedClient)
+      expect(getInferenceClient(provider).client).toBe(cachedClient)
+    })
+
     it('should create PostHogOpenAI client when PostHog is configured', () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Verify it's a PostHog-wrapped client
       expect(client.constructor.name).toBe('PostHogOpenAI')
@@ -188,14 +210,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       // Note: In this test environment, PostHog might be cached from previous tests
       // The important thing is that the client is created successfully
       delete process.env.POSTHOG_API_KEY
-      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch })
 
       // Verify client exists and is functional
       expect(client).toBeDefined()
@@ -265,10 +287,13 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         },
         { preconnect: () => undefined },
       )
-      const globalFetchSpy = spyOn(globalThis, 'fetch').mockImplementation(routeFetch)
+      const posthogClient = createTestPostHogClient(routeFetch)
+      const inferenceClient = getInferenceClient('anthropic', { fetchFn: routeFetch, posthogClient })
 
       try {
-        const app = new Elysia().use(createInferenceRoutes({ auth: mockAuth, database: testDb.db }))
+        const app = new Elysia().use(
+          createInferenceRoutes({ auth: mockAuth, database: testDb.db, getClient: () => inferenceClient }),
+        )
         const response = await app.handle(
           new Request('http://localhost/chat/completions', {
             method: 'POST',
@@ -282,7 +307,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           }),
         )
         const responseText = await response.text()
-        await shutdownPostHog(2_000)
+        await posthogClient.flush()
 
         expect(response.status).toBe(200)
         expect(upstreamRequestBody).toMatchObject({
@@ -330,19 +355,14 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
         expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
       } finally {
-        try {
-          await shutdownPostHog(2_000)
-        } finally {
-          globalFetchSpy.mockRestore()
-          await testDb.cleanup()
-        }
+        await testDb.cleanup()
       }
     })
 
     it('should not send conversation content to PostHog when making completions', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
       process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
-      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
@@ -350,7 +370,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
       clearPostHogClient()
 
       // Get the wrapped client with injected mock fetch
-      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Make a completion with sensitive data
       const completion = await (client as PostHogOpenAI).chat.completions.create({
@@ -363,13 +384,15 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
         ],
         posthogDistinctId: 'test-user',
         posthogProperties: {
-          model_provider: 'tinfoil',
+          model_provider: 'anthropic',
           endpoint: '/chat/completions',
         },
       })
 
       // Verify the completion works
       expect(completion).toBeDefined()
+
+      await posthogClient.flush()
 
       // Find PostHog requests
       const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
@@ -404,14 +427,15 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
 
     it('should verify privacy mode prevents content leakage in batch operations', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.TINFOIL_API_KEY = 'test-tinfoil-key'
+      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
       // Clear caches so new env vars are picked up
       clearSettingsCache()
       clearInferenceClientCache()
       clearPostHogClient()
 
-      const { client } = getInferenceClient('tinfoil', { fetchFn: mockFetch })
+      const posthogClient = createTestPostHogClient(mockFetch)
+      const { client } = getInferenceClient('anthropic', { fetchFn: mockFetch, posthogClient })
 
       // Make multiple completions
       const conversations = [
@@ -427,6 +451,8 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           posthogDistinctId: 'test-user',
         })
       }
+
+      await posthogClient.flush()
 
       // Check ALL captured PostHog requests
       const posthogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))

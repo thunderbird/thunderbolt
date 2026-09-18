@@ -176,7 +176,23 @@ export { builtInAgent } from '../defaults/agents'
 export { refreshSystemAgents, type RefreshSystemAgentsResult } from '../db/seeding/seed-agents'
 
 // Export (user-data backup)
-export { exportFormat, exportSchemaVersion, exportUserData, exportedTableNames, type UserDataExport } from './export'
+export {
+  exportFormat,
+  exportSchemaVersion,
+  exportUserData,
+  exportedTableNames,
+  type ExportOptions,
+  type IncludedTableName,
+  type UserDataExport,
+} from './export'
+export {
+  allExportGroupIds,
+  exportGroups,
+  tablesForGroups,
+  ungroupedTableNames,
+  type ExportGroup,
+  type ExportGroupId,
+} from './export-groups'
 
 // Import (restore exported data)
 export {

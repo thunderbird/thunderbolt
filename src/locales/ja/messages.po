@@ -564,6 +564,10 @@ msgstr "チャット"
 msgid "Chats in a project inherit its instructions."
 msgstr "プロジェクト内のチャットは、そのプロジェクトの指示を継承します。"
 
+#: src/settings/preferences.tsx
+msgid "Chats, projects and prompts"
+msgstr ""
+
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
@@ -1139,6 +1143,10 @@ msgstr "データ"
 msgid "Data is stored securely on your device."
 msgstr "データはお使いのデバイスに安全に保存されます。"
 
+#: src/settings/preferences.tsx
+msgid "Data to include in the export"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
@@ -1602,16 +1610,24 @@ msgid "Expand Sidebar"
 msgstr "サイドバーを展開"
 
 #: src/settings/preferences.tsx
-msgid "Export all of your data as JSON."
-msgstr "すべてのデータを JSON としてエクスポートします。"
+#~ msgid "Export all of your data as JSON."
+#~ msgstr "すべてのデータを JSON としてエクスポートします。"
 
 #: src/settings/preferences.tsx
 msgid "Export My Data"
 msgstr "データをエクスポート"
 
 #: src/settings/preferences.tsx
+msgid "Export Selected"
+msgstr ""
+
+#: src/settings/preferences.tsx
 msgid "Export Your Data"
 msgstr "データをエクスポート"
+
+#: src/settings/preferences.tsx
+msgid "Export your data as JSON. Uncheck anything you do not want included."
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Exporting…"
@@ -1903,6 +1919,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr "バージョンのプレフィックス（例: /v1）を含めてください。その後「モデルを読み込む」を押すと、下の選択肢が設定されます。"
 
+#: src/settings/preferences.tsx
+msgid "includes saved keys"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr "インストール"
@@ -2121,6 +2141,10 @@ msgstr "このブラウザでは WebGL が無効か利用できないため、�
 msgid "Maximize"
 msgstr "最大化"
 
+#: src/settings/preferences.tsx
+msgid "MCP connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
@@ -2168,6 +2192,10 @@ msgstr "モデル名は必須です。"
 #: src/settings/models/index.tsx
 msgid "Models"
 msgstr "モデル"
+
+#: src/settings/preferences.tsx
+msgid "Models and providers"
+msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
 msgid "Moderate drizzle"
@@ -3259,6 +3287,10 @@ msgstr "シンプル"
 msgid "Skills"
 msgstr "スキル"
 
+#: src/settings/preferences.tsx
+msgid "Skills and agents"
+msgstr ""
+
 #: src/skills/skills-list.tsx
 msgid "Skills are reusable instruction templates you summon in chat with <0>/name</0>."
 msgstr "スキルは再利用できる指示のテンプレートで、チャットで <0>/name</0> と入力して呼び出せます。"
@@ -3421,6 +3453,10 @@ msgstr "タップして更新を確認します。"
 #: src/tasks/index.tsx
 msgid "Tasks"
 msgstr "タスク"
+
+#: src/settings/preferences.tsx
+msgid "Tasks and automations"
+msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Telemetry isn't configured for this organization, so no usage data is being collected."

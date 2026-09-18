@@ -65,7 +65,23 @@ export type UserDataExport = {
   schemaVersion: typeof exportSchemaVersion
   exportedAt: string
   user: { id: string; email: string | null }
-  tables: Record<IncludedTableName, unknown[]>
+  /**
+   * Present tables only. A selective export omits the keys it did not walk
+   * rather than writing empty arrays, so a reader cannot tell "you have no
+   * chats" from "chats were not exported" — and the importer already treats a
+   * missing key as "nothing to restore here" (see `src/dal/import.ts`), so an
+   * omitted table is a no-op on any build, including ones predating this.
+   */
+  tables: Partial<Record<IncludedTableName, unknown[]>>
+}
+
+export type ExportOptions = {
+  /**
+   * Restrict the export to these tables. Omitted means every table, which
+   * keeps the whole-account backup byte-equivalent to what it produced before
+   * selection existed.
+   */
+  tables?: readonly IncludedTableName[]
 }
 
 /**
@@ -92,8 +108,12 @@ export const exportedTableNames: readonly IncludedTableName[] = Object.freeze(
 export const exportUserData = async (
   db: AnyDrizzleDatabase,
   attributedTo: { id: string; email: string | null },
+  options: ExportOptions = {},
 ): Promise<UserDataExport> => {
-  const entries = Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>
+  const wanted = options.tables
+  const entries = (Object.entries(includedTables) as Array<[IncludedTableName, SQLiteTable]>).filter(
+    ([name]) => wanted === undefined || wanted.includes(name),
+  )
   const results = await Promise.all(
     entries.map(async ([name, table]) => [name, await db.select().from(table)] as const),
   )
@@ -103,6 +123,6 @@ export const exportUserData = async (
     schemaVersion: exportSchemaVersion,
     exportedAt: new Date().toISOString(),
     user: { id: attributedTo.id, email: attributedTo.email },
-    tables: Object.fromEntries(results) as Record<IncludedTableName, unknown[]>,
+    tables: Object.fromEntries(results) as Partial<Record<IncludedTableName, unknown[]>>,
   }
 }

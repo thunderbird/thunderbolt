@@ -4,6 +4,19 @@ Versioned, table-keyed JSON snapshot produced by **Settings → Preferences → 
 
 The companion import flow (THU-597) consumes the same format and reads `schemaVersion` to branch its restore logic.
 
+## Selective export
+
+The picker offers user-facing groups rather than raw tables — `src/dal/export-groups.ts` owns the mapping. Every group is selected by default, so the plain action stays the whole-account backup it always was; unchecking one drops its tables from the walk.
+
+Two invariants hold the grouping together, both asserted in `export-groups.test.ts` rather than left to review:
+
+- **A credential table never leaves its parent.** `mcp_secrets` without `mcp_servers` restores tokens attached to nothing; `mcp_servers` without `mcp_secrets` restores a connection that cannot authenticate. The same applies to `models`/`models_secrets` and `agents`/`agents_secrets`.
+- **Every exportable table belongs to exactly one group.** `includedTables` is derived from the PowerSync schema, so a table added there joins exports automatically — and would otherwise silently belong to no group and never appear in a selective export.
+
+**A selective export omits keys rather than emptying them.** `tables` is `Partial<Record<…>>`: an absent key means "not exported", which a reader can distinguish from `[]` meaning "exported, and you had none". The importer already iterates the keys present in the file, so a partial envelope restores cleanly on any build, including ones predating this feature.
+
+Because `mcp_secrets`, `models_secrets` and `agents_secrets` are local-only and never upload, a bundle shared between accounts carries its credentials only as far as the importing device — the recipient can substitute their own without touching anyone else's.
+
 ## File format
 
 The download is **gzipped JSON** — `thunderbolt-export-YYYY-MM-DD.json.gz`, `Content-Type: application/gzip`. The envelope inside the archive is the JSON described below. Chat-message JSON compresses to ~10-15% of its original size, which keeps even heavy-user backups well under the importer's 200 MB on-disk cap. To inspect: `gunzip -c thunderbolt-export-…json.gz | jq .`.
@@ -19,22 +32,52 @@ The importer detects gzip by magic bytes (`1f 8b`, RFC 1952), so a hand-decompre
   "exportedAt": "2026-06-16T12:34:56.789Z",
   "user": { "id": "<userId>", "email": "<email-or-null>" },
   "tables": {
-    "settings":        [ /* full rows */ ],
-    "chat_threads":    [ /* full rows */ ],
-    "chat_messages":   [ /* full rows */ ],
-    "tasks":           [ /* full rows */ ],
-    "models":          [ /* full rows */ ],
-    "model_profiles":  [ /* full rows */ ],
-    "projects":        [ /* full rows */ ],
-    "prompts":         [ /* full rows */ ],
-    "skills":          [ /* full rows */ ],
-    "triggers":        [ /* full rows */ ],
-    "agents":          [ /* full rows */ ],
-    "models_secrets":  [ /* full rows */ ],
-    "mcp_servers":     [ /* full rows */ ],
-    "mcp_secrets":     [ /* full rows */ ],
-    "agents_secrets":  [ /* full rows */ ]
-  }
+    "settings": [
+      /* full rows */
+    ],
+    "chat_threads": [
+      /* full rows */
+    ],
+    "chat_messages": [
+      /* full rows */
+    ],
+    "tasks": [
+      /* full rows */
+    ],
+    "models": [
+      /* full rows */
+    ],
+    "model_profiles": [
+      /* full rows */
+    ],
+    "projects": [
+      /* full rows */
+    ],
+    "prompts": [
+      /* full rows */
+    ],
+    "skills": [
+      /* full rows */
+    ],
+    "triggers": [
+      /* full rows */
+    ],
+    "agents": [
+      /* full rows */
+    ],
+    "models_secrets": [
+      /* full rows */
+    ],
+    "mcp_servers": [
+      /* full rows */
+    ],
+    "mcp_secrets": [
+      /* full rows */
+    ],
+    "agents_secrets": [
+      /* full rows */
+    ],
+  },
 }
 ```
 
@@ -42,8 +85,8 @@ Rows are whatever Drizzle's `select()` returns against each table — no field r
 
 ## Schema versions
 
-| `schemaVersion` | Source app state                                 | Notes                                                                                            |
-| --------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `schemaVersion` | Source app state                                 | Notes                                                                                             |
+| --------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `1`             | Pre-Workspaces-v1. Every row is `userId`-scoped. | Rows have no `workspaceId`. Importer (THU-597) assigns rows to a target workspace at import time. |
 
 When Workspaces v1 lands, a `schemaVersion: 2` will be defined with `workspaceId` on each row and a workspace manifest section.
@@ -86,7 +129,7 @@ When E2E encryption is enabled, columns that ride the sync layer arrive in local
 The companion importer (`src/dal/import.ts`, surfaced as **Settings → Preferences → Data → Import Data**) consumes the same envelope.
 
 - **Validation.** The importer rejects anything where `format !== "thunderbolt-export"` or `schemaVersion !== 1` with a `ImportFormatError`. No DB writes happen until validation passes.
-- **Upsert semantics — imported file wins.** Each row is written by checking for an existing PK row first and then either `UPDATE`ing (imported file wins) or `INSERT`ing. Local rows whose PK is *not* in the file are left untouched. We deliberately avoid `INSERT ... ON CONFLICT DO UPDATE`: PowerSync exposes synced tables as SQLite *views*, and SQLite forbids upserts against a view ("cannot UPSERT a view"). The SELECT + UPDATE/INSERT split works on both real tables and PowerSync views. This matches the "restore my backup" intent the user selected; the confirmation dialog spells the destructiveness out.
+- **Upsert semantics — imported file wins.** Each row is written by checking for an existing PK row first and then either `UPDATE`ing (imported file wins) or `INSERT`ing. Local rows whose PK is _not_ in the file are left untouched. We deliberately avoid `INSERT ... ON CONFLICT DO UPDATE`: PowerSync exposes synced tables as SQLite _views_, and SQLite forbids upserts against a view ("cannot UPSERT a view"). The SELECT + UPDATE/INSERT split works on both real tables and PowerSync views. This matches the "restore my backup" intent the user selected; the confirmation dialog spells the destructiveness out.
 - **Cross-device propagation (synced tables only).** Imports write through the same path as any other local change to a synced table: the new rows are queued in PowerSync's CRUD log and uploaded to the backend, which fans them out to every other device the user is signed in to. Restoring an old backup overwrites newer rows everywhere they share an ID, not just on the device running the import. The confirm dialog spells this out. **Local-only tables stay local on import**: `models_secrets`, `mcp_secrets`, and `agents_secrets` write to the device's SQLite file but never upload — synced rows fan out, paired credentials do not. Importing on a different device therefore restores the configs that need keys but expects the user to re-import or re-enter the keys per device.
 - **`userId` re-stamped from the session.** On every synced table the importer overwrites the row's `userId` with the currently signed-in user's id; the value carried in the file is never trusted. Local-only secret tables (`models_secrets`, `mcp_secrets`, `agents_secrets`) have no `user_id` column and are untouched by this rule. The backend's PowerSync upload route enforces the same invariant from the JWT (see `backend/src/dal/powersync.ts`); the FE importer matches that boundary so the local row never carries a foreign id even momentarily.
 - **Soft-deleted rows preserved.** `deletedAt` rides through verbatim — a row in the trash in the file remains in the trash after import.

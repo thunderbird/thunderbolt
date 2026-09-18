@@ -576,6 +576,10 @@ msgstr ""
 msgid "Chats in a project inherit its instructions."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Chats, projects and prompts"
+msgstr ""
+
 #: src/components/upgrade-required.tsx
 #: src/settings/app-version-section.tsx
 msgid "Check for updates"
@@ -1151,6 +1155,10 @@ msgstr ""
 msgid "Data is stored securely on your device."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Data to include in the export"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 msgid "Debug transcript sharing is turned off on this server."
 msgstr ""
@@ -1614,15 +1622,23 @@ msgid "Expand Sidebar"
 msgstr ""
 
 #: src/settings/preferences.tsx
-msgid "Export all of your data as JSON."
-msgstr ""
+#~ msgid "Export all of your data as JSON."
+#~ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Export My Data"
 msgstr ""
 
 #: src/settings/preferences.tsx
+msgid "Export Selected"
+msgstr ""
+
+#: src/settings/preferences.tsx
 msgid "Export Your Data"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Export your data as JSON. Uncheck anything you do not want included."
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -1915,6 +1931,10 @@ msgstr ""
 msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to populate the pickers below."
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "includes saved keys"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
 msgstr ""
@@ -2133,6 +2153,10 @@ msgstr ""
 msgid "Maximize"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "MCP connections"
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
@@ -2179,6 +2203,10 @@ msgstr ""
 #: src/search/palette/entity-meta.ts
 #: src/settings/models/index.tsx
 msgid "Models"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Models and providers"
 msgstr ""
 
 #: src/widgets/weather-forecast/lib.ts
@@ -3271,6 +3299,10 @@ msgstr ""
 msgid "Skills"
 msgstr ""
 
+#: src/settings/preferences.tsx
+msgid "Skills and agents"
+msgstr ""
+
 #: src/skills/skills-list.tsx
 msgid "Skills are reusable instruction templates you summon in chat with <0>/name</0>."
 msgstr ""
@@ -3432,6 +3464,10 @@ msgstr ""
 #: src/settings/preferences.tsx
 #: src/tasks/index.tsx
 msgid "Tasks"
+msgstr ""
+
+#: src/settings/preferences.tsx
+msgid "Tasks and automations"
 msgstr ""
 
 #: src/settings/preferences.tsx

@@ -282,6 +282,45 @@ describe('piHarnessToUiMessageStream metadata', () => {
     expect(output).toContain('"mcpTools":{"search_web":{"name":"Search"}}')
     expect(output).toContain('"sources":[{"id":"source-1"}]')
   })
+
+  it('emits the turn usage as AI SDK usage so the thread context size is persisted', async () => {
+    const { harness, emit } = createHarnessEvents()
+    const message: AssistantMessage = {
+      ...assistantMessage,
+      usage: {
+        input: 100,
+        output: 40,
+        cacheRead: 3_000,
+        cacheWrite: 500,
+        reasoning: 25,
+        totalTokens: 3_640,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+    }
+    const output = await new Response(
+      piHarnessToUiMessageStream(harness, async () => {
+        emit({ type: 'agent_start' })
+        emit({ type: 'turn_start' })
+        emit({ type: 'turn_end', message, toolResults: [] })
+        emit({ type: 'agent_end', messages: [] })
+      }),
+    ).text()
+
+    expect(parseChunks(output).filter((chunk) => chunk.type === 'message-metadata')).toEqual([
+      {
+        type: 'message-metadata',
+        messageMetadata: {
+          usage: {
+            inputTokens: 3_600,
+            outputTokens: 40,
+            totalTokens: 3_640,
+            cachedInputTokens: 3_000,
+            reasoningTokens: 25,
+          },
+        },
+      },
+    ])
+  })
 })
 
 /** Harness fake that records aborts and lets the test drive events by hand. */

@@ -12,6 +12,9 @@ export type InferenceTokenCounts = Readonly<{
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  cacheCreationTokens?: number
+  cacheCreation1hTokens?: number
+  cacheReadTokens?: number
 }>
 export type InferencePrice = ManagedInferenceIdentity &
   Readonly<{
@@ -71,10 +74,21 @@ export const loadInferencePrice = async (
   return price ? { ...identity, ...price } : null
 }
 
-/** Calculate exact usage cost from prompt and completion tokens. */
+/** Calculate usage cost, applying Anthropic's 5-minute cache write/read multipliers. */
 export const calculateInferenceCost = (counts: InferenceTokenCounts, price: InferencePrice): bigint => {
+  const cacheCreationTokens = price.provider === 'anthropic' ? (counts.cacheCreationTokens ?? 0) : 0
+  const cacheCreation1hTokens = price.provider === 'anthropic' ? (counts.cacheCreation1hTokens ?? 0) : 0
+  const cacheReadTokens = price.provider === 'anthropic' ? (counts.cacheReadTokens ?? 0) : 0
+  const uncachedPromptTokens = counts.promptTokens - cacheCreationTokens - cacheReadTokens
+  const cacheCreation5mTokens = cacheCreationTokens - cacheCreation1hTokens
+  if (uncachedPromptTokens < 0 || cacheCreation5mTokens < 0) {
+    throw new InferenceTokenCountOutOfRangeError()
+  }
   const cost =
-    BigInt(counts.promptTokens) * price.inputNanoUsdPerToken +
+    BigInt(uncachedPromptTokens) * price.inputNanoUsdPerToken +
+    (BigInt(cacheCreation5mTokens) * price.inputNanoUsdPerToken * 5n) / 4n +
+    BigInt(cacheCreation1hTokens) * price.inputNanoUsdPerToken * 2n +
+    (BigInt(cacheReadTokens) * price.inputNanoUsdPerToken) / 10n +
     BigInt(counts.completionTokens) * price.outputNanoUsdPerToken
   if (cost > postgresBigintMax) {
     throw new InferenceCostOverflowError()

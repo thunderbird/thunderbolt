@@ -75,8 +75,12 @@ export const workspaceDirFor = (threadId: string): string => {
 export type PiModelDescriptor =
   | {
       readonly kind: 'anthropic'
-      /** Anthropic model id to resolve from Pi's catalog, e.g. `claude-opus-4-8`. */
+      /** Model id sent on the wire. */
       readonly modelId: string
+      readonly catalogModelId?: string
+      /** Optional Messages API base URL for a managed Anthropic proxy. */
+      readonly baseURL?: string
+      readonly contextWindow?: number
       /** Anthropic API key (HTTP still flows through `fetch`). */
       readonly apiKey: string
       /** Fetch every request is routed through — the app's proxy fetch. */
@@ -134,6 +138,14 @@ export type BuildAppHarnessOptions = {
   readonly history?: readonly SeedTurn[]
 }
 
+/** Remove the isolated browser workspace owned by a thread. */
+export const removeAgentWorkspace = async (threadId: string): Promise<void> => {
+  await mountAgentFs()
+  const workspaceDir = workspaceDirFor(threadId)
+  const env = new BrowserExecutionEnv({ cwd: workspaceDir })
+  await env.remove(workspaceDir, { recursive: true, force: true })
+}
+
 /**
  * Build a ready-to-run app harness for a thread. Mounts the ZenFS singleton
  * (once), carves the thread's isolated workspace under {@link workspaceRoot},
@@ -159,6 +171,9 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
     options.model.kind === 'anthropic'
       ? buildAnthropicModel({
           apiKey: options.model.apiKey,
+          baseURL: options.model.baseURL,
+          catalogModelId: options.model.catalogModelId,
+          contextWindow: options.model.contextWindow,
           fetch: options.model.fetch,
           modelId: options.model.modelId,
         })
@@ -178,7 +193,6 @@ export const buildAppHarness = async (options: BuildAppHarnessOptions): Promise<
   const tools: AgentTool[] = [...createBrowserCodingTools(env, { cwd: workspaceDir }), ...(options.tools ?? [])]
 
   const harness = new AgentHarness({
-    env,
     session,
     models,
     model,

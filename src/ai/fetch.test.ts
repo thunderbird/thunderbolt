@@ -12,6 +12,7 @@ import { createClient } from '@/lib/http'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { assembleBuiltInModelInput, createPrompt } from '@/ai/prompt'
 import { defaultSkillResearch, defaultSkillWeather } from '@/defaults/skills'
+import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
@@ -39,6 +40,7 @@ import {
   mergeMcpTools,
   prepareAiRequestConfig,
   recordLegacyEmptyResponseRetry,
+  resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
@@ -648,6 +650,46 @@ describe('createModel', () => {
 
     await expect(createModel(model, () => stubProxyFetch)).rejects.toThrow('Unsupported provider: tinfoil')
   })
+})
+
+describe('resolveManagedAnthropicConnection', () => {
+  it.each(['anthropic-sdk', 'ai-sdk'] as const)(
+    'targets the native backend route for %s and replaces the SDK key with app authentication',
+    async (client) => {
+      const originalFetch = globalThis.fetch
+      const originalToken = getAuthToken()
+      let headers = new Headers()
+      globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        headers = new Headers(init?.headers)
+        return new Response()
+      }) as unknown as typeof globalThis.fetch
+      setAuthToken('session-token')
+
+      try {
+        const model = { provider: 'thunderbolt' } as Model
+        const connection = resolveManagedAnthropicConnection(model, () => stubProxyFetch, client)
+        const requestUrl = client === 'ai-sdk' ? `${connection.baseURL}/messages` : `${connection.baseURL}/v1/messages`
+        await connection.fetch(requestUrl, {
+          headers: {
+            'x-api-key': connection.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        })
+
+        expect(new URL(requestUrl).pathname).toBe('/v1/chat/v1/messages')
+        expect(headers.get('x-api-key')).toBeNull()
+        expect(headers.get('authorization')).toBe('Bearer session-token')
+        expect(headers.get('anthropic-version')).toBe('2023-06-01')
+      } finally {
+        globalThis.fetch = originalFetch
+        if (originalToken) {
+          setAuthToken(originalToken)
+        } else {
+          clearAuthToken()
+        }
+      }
+    },
+  )
 })
 
 // The `thunderbolt` provider fetch POSTs directly to our backend, bypassing the

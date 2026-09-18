@@ -67,6 +67,22 @@ describe('xlsxToText', () => {
     })
   })
 
+  test('skips rows where every cell is empty', async () => {
+    readXlsxFile.mockImplementationOnce(async () => [
+      {
+        sheet: 'Sheet1',
+        data: [
+          ['Name', 'Age'],
+          [null, null],
+          ['', null],
+          ['Ada', 30],
+        ],
+      },
+    ])
+
+    expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nName, Age\nAda, 30' })
+  })
+
   // `bun test` runs in UTC, which hides timezone bugs: read-excel-file hands back
   // spreadsheet dates as UTC midnight, so formatting them in local time shifts the
   // day for anyone west of Greenwich. Pin a western zone for these cases.
@@ -88,7 +104,7 @@ describe('xlsxToText', () => {
         { sheet: 'Sheet1', data: [['Shipped', new Date(Date.UTC(2026, 7, 1))]] },
       ])
 
-      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nShipped, 8/1/2026' })
+      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nShipped, 2026-08-01' })
     })
 
     test('keeps the time of day when the cell has one', async () => {
@@ -96,8 +112,7 @@ describe('xlsxToText', () => {
         { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30))]] },
       ])
 
-      const { text } = await xlsxToText(asFile())
-      expect(text).toMatch(/^## Sheet: Sheet1\nLogged, "9\/1\/2026, 2:30\sPM"$/u)
+      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nLogged, 2026-09-01 14:30' })
     })
 
     test('includes seconds only when they are not zero', async () => {
@@ -105,8 +120,16 @@ describe('xlsxToText', () => {
         { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 30, 15))]] },
       ])
 
-      const { text } = await xlsxToText(asFile())
-      expect(text).toMatch(/"9\/1\/2026, 2:30:15\sPM"$/u)
+      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nLogged, 2026-09-01 14:30:15' })
+    })
+
+    test('rounds away the float error read-excel-file leaves in times', async () => {
+      // read-excel-file floors the Excel serial, so 14:30 comes back as 14:29:59.999.
+      readXlsxFile.mockImplementationOnce(async () => [
+        { sheet: 'Sheet1', data: [['Logged', new Date(Date.UTC(2026, 8, 1, 14, 29, 59, 999))]] },
+      ])
+
+      expect(await xlsxToText(asFile())).toEqual({ text: '## Sheet: Sheet1\nLogged, 2026-09-01 14:30' })
     })
   })
 })

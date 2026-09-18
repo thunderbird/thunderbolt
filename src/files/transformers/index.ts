@@ -77,11 +77,13 @@ export const resolveTextMimeType = (filename: string, declaredType: string): str
 /**
  * Default delivery mode for an attachment given its MIME type, when no explicit
  * {@link import('@/types').AttachmentData.deliverAs} override is set. Plain-text
- * files go out as text (lossless and universally accepted); everything else
- * defaults to native bytes (`undefined`).
+ * files go out as text (lossless and universally accepted), and so do
+ * spreadsheets: no provider accepts xlsx as a native file part, so native-first
+ * would only buy a guaranteed rejection and a retry. Everything else defaults to
+ * native bytes (`undefined`).
  */
 export const defaultDeliveryMode = (mime: string): TransformTarget | undefined =>
-  isPlainTextMime(mime) ? 'text' : undefined
+  isPlainTextMime(mime) || mime === xlsxMime ? 'text' : undefined
 
 /**
  * Lazy loaders keyed by `"<source-mime>-><target>"`. Adding a transformer is a

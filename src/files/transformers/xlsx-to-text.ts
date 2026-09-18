@@ -3,30 +3,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { StoredFile } from '@/lib/file-blob-storage'
-import { sourceLocale } from '@shared/i18n/locales'
 import type { CellValue } from 'read-excel-file/browser'
 
 /**
- * Renders a spreadsheet date as the calendar date (and time, when it has one)
- * written in the cell. Spreadsheets store dates without a timezone and
- * read-excel-file represents them as UTC, so formatting in UTC reproduces the
- * cell exactly; formatting in local time would shift the day for anyone west of
- * Greenwich. Uses the model-facing English locale (see `src/ai/prompt.ts`).
+ * Renders a spreadsheet date as ISO 8601: `2026-09-01`, or `2026-09-01 14:30`
+ * when the cell has a time, with seconds only when they aren't zero. ISO reads
+ * the same for any model regardless of locale (`8/1/2026` is ambiguous).
+ *
+ * Spreadsheets store dates without a timezone and read-excel-file represents them
+ * as UTC, so reading the UTC fields reproduces the cell for every user; local
+ * time would shift the day for anyone west of Greenwich. read-excel-file also
+ * floors the Excel serial, leaving float error like 14:29:59.999 for 14:30, so
+ * round to the nearest second first.
  */
 const formatSpreadsheetDate = (value: Date): string => {
-  const hasTime = value.getUTCHours() !== 0 || value.getUTCMinutes() !== 0 || value.getUTCSeconds() !== 0
-  if (!hasTime) {
-    return value.toLocaleDateString(sourceLocale, { timeZone: 'UTC' })
+  const rounded = new Date(Math.round(value.getTime() / 1000) * 1000)
+  const [date, time] = rounded.toISOString().slice(0, 19).split('T')
+  if (time === '00:00:00') {
+    return date
   }
-  return value.toLocaleString(sourceLocale, {
-    timeZone: 'UTC',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    ...(value.getUTCSeconds() !== 0 && { second: '2-digit' }),
-  })
+  return `${date} ${time.endsWith(':00') ? time.slice(0, 5) : time}`
 }
 
 /** Renders one cell as plain text. */
@@ -39,6 +35,9 @@ const cellText = (value: CellValue | null): string => {
   }
   return String(value)
 }
+
+/** True when a row has no content, so blank spacer rows don't reach the model as `, , ,`. */
+const isEmptyRow = (row: (CellValue | null)[]): boolean => row.every((cell) => cell === null || cell === '')
 
 /** Quotes a field that contains a separator, quote, or line break, doubling any
  *  embedded quotes, so `Stark, Inc.` stays one cell instead of reading as two. */
@@ -56,7 +55,10 @@ export const xlsxToText = async (file: StoredFile): Promise<{ text: string }> =>
   const sheets = await readXlsxFile(file.blob)
   const text = sheets
     .map(({ sheet, data }) => {
-      const rows = data.map((row) => row.map((cell) => csvField(cellText(cell))).join(', ')).join('\n')
+      const rows = data
+        .filter((row) => !isEmptyRow(row))
+        .map((row) => row.map((cell) => csvField(cellText(cell))).join(', '))
+        .join('\n')
       return `## Sheet: ${sheet}\n${rows}`
     })
     .join('\n\n')

@@ -53,12 +53,12 @@ describe('transformer registry', () => {
     expect(await getTransformer('image/png', 'text')).toBeNull()
   })
 
-  test('defaultDeliveryMode: plain text → text, rich/binary → native (undefined)', () => {
+  test('defaultDeliveryMode: plain text and xlsx → text, other rich/binary → native (undefined)', () => {
     expect(defaultDeliveryMode('text/csv')).toBe('text')
     expect(defaultDeliveryMode('application/json')).toBe('text')
+    expect(defaultDeliveryMode(xlsxMime)).toBe('text')
     expect(defaultDeliveryMode('application/pdf')).toBeUndefined()
     expect(defaultDeliveryMode(docxMime)).toBeUndefined()
-    expect(defaultDeliveryMode(xlsxMime)).toBeUndefined()
     expect(defaultDeliveryMode('image/png')).toBeUndefined()
   })
 

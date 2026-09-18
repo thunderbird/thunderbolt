@@ -345,3 +345,32 @@ bash scripts/run-e2ee-powersync.sh migration.spec.ts     # one spec
 ```
 
 The script boots `powersync-service/docker-compose.yml` on dedicated ports (5434/8081) and runs `playwright.e2ee.config.ts`. `migration.spec.ts` seeds a real legacy v1 account (hybrid CK envelopes + `__enc:<iv>:<ct>` rows) and proves zero data loss across the migrator, a later-joining follower, and a fresh recovery, plus the concurrent-migrator CAS and the below-min 426 guard.
+
+### Running it faster (local)
+
+A cold full run is ~25 min, most of it a `vite build`, the Docker boot, and strictly serial tests. Three levers collapse that — combine them freely:
+
+| Flag / env | What it skips | Notes |
+| --- | --- | --- |
+| `--keep` | Docker boot + teardown on repeat runs | Leaves the harness up under a stable compose project (`thunderbolt-e2ee-keep`) and reuses it; a second run's boot is a no-op. Tear down with the command it prints on exit. |
+| `--skip-build` (`E2EE_SKIP_BUILD=1`) | the cold `vite build` | Reuses the existing `dist/`. Safe for spec/backend-only changes; **do one build after any frontend change** or you test a stale bundle. |
+| `E2EE_WORKERS=N` | serial execution | Parallelizes across spec *files* (`fullyParallel` stays off, so tests within a file still run in order). `N=4` on a 10-core Mac measured ~2.4× faster and stayed green; the suite is load-sensitive, so raise deliberately and drop back if a run flakes. |
+
+```bash
+# once per session (build + boot, kept warm):
+bash scripts/run-e2ee-powersync.sh --keep
+
+# full suite thereafter — no rebuild, warm harness, parallel:
+E2EE_WORKERS=4 bash scripts/run-e2ee-powersync.sh --keep --skip-build
+
+# while iterating — only what changed vs main, or just last failures:
+bash scripts/run-e2ee-powersync.sh --keep --skip-build --only-changed=main
+bash scripts/run-e2ee-powersync.sh --keep --skip-build --last-failed
+
+# when done:
+docker compose -p thunderbolt-e2ee-keep -f powersync-service/docker-compose.yml down --volumes --remove-orphans
+```
+
+### CI (`.github/workflows/e2e.yml`)
+
+The `powersync-e2ee` job is **sharded 4 ways** (`--shard=i/4`), so PR wall-clock is ~9 min rather than ~25. Sharding across runners — not `E2EE_WORKERS` within one — is the right CI lever: the hosted runners are CPU-constrained and this suite throws false failures under load, whereas each shard gets its own runner and its own harness. `--skip-build` is deliberately **not** used in CI: each shard is a fresh parallel runner, so a per-shard build overlaps rather than stacks, and reusing a build would only add a serial gate.

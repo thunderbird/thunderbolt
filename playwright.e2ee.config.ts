@@ -15,6 +15,18 @@ import { defineConfig, devices } from '@playwright/test'
 import { testOrgEscrowPublicKey } from './e2e/e2ee/org-escrow-key'
 
 const isCI = !!process.env.CI
+// Opt-in local speedups (see scripts/run-e2ee-powersync.sh):
+//   E2EE_SKIP_BUILD=1 — reuse the existing dist/ instead of a cold prod build.
+//     A spec-only or backend-only change does not touch the frontend bundle, so
+//     the multi-minute `vite build` is pure waste on repeat runs. Requires a
+//     dist/ from a prior full run; `vite preview` fails loudly without one.
+//   E2EE_WORKERS=N — parallelize across spec FILES (fullyParallel stays off, so
+//     tests within a file still run in order). Each test uses a unique account,
+//     so data is isolated; the ceiling is CPU/RAM — several wa-sqlite contexts
+//     thrash a constrained runner and produce FALSE failures, so raise this
+//     deliberately (2–3 on a capable box) and keep it at 1 on CI. Default: 1.
+const skipBuild = !!process.env.E2EE_SKIP_BUILD
+const workers = process.env.E2EE_WORKERS ? Number(process.env.E2EE_WORKERS) : 1
 const frontendPort = 1423
 const backendPort = 8004
 // A second, GATED backend sharing the same Postgres + secrets, with
@@ -64,7 +76,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: 1,
+  workers,
   reporter: isCI ? 'blob' : 'list',
   // These are heavy multi-device flows (build + several OTP logins with cooldowns
   // + cross-device sync waits) run serially on a constrained CI runner; 120s per
@@ -89,7 +101,10 @@ export default defineConfig({
       // dbReadyTimeout, which surfaced as "Failed to initialize app". A prebuilt
       // bundle serves those assets statically so DB init is fast and
       // deterministic (and the whole suite runs faster).
-      command: `bun run build && bun run preview -- --port ${frontendPort} --strictPort`,
+      // E2EE_SKIP_BUILD reuses the dist/ from a prior run — the build is the
+      // single largest fixed cost and a spec/backend-only change never
+      // invalidates it.
+      command: `${skipBuild ? '' : 'bun run build && '}bun run preview -- --port ${frontendPort} --strictPort`,
       url: `http://localhost:${frontendPort}`,
       reuseExistingServer: false,
       // Covers the one-time production build + preview startup on a cold runner.

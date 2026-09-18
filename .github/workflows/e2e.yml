@@ -82,7 +82,15 @@ jobs:
   # harness on dedicated ports (5434/8081), then runs playwright.e2ee.config.ts.
   powersync-e2ee:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Each shard boots its own harness (~4 min fixed) + its slice of the suite.
+    # Sharding cuts wall-clock ~linearly; per-shard build/boot is parallelized
+    # across runners, so build-once would only save billing minutes, not latency.
+    # 15 min leaves headroom over a healthy ~9 min shard while failing a stuck one fast.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -110,14 +118,14 @@ jobs:
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
 
-      - name: Run PowerSync E2EE suite
-        run: bash scripts/run-e2ee-powersync.sh
+      - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
+        run: bash scripts/run-e2ee-powersync.sh --shard=${{ matrix.shard }}
 
       - name: Upload PowerSync E2EE blob report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: powersync-e2ee-blob-report
+          name: powersync-e2ee-blob-report-${{ strategy.job-index }}
           path: blob-report/
           retention-days: 7
 

@@ -61,8 +61,8 @@ const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) deliver as text;
- *  docx (and a native file a model rejects) auto-remediate to text/images. */
+ *  capable models; plain-text types (txt / md / csv / json) and xlsx deliver as
+ *  text; docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
@@ -70,6 +70,7 @@ const acceptedAttachmentMimeTypes = new Set([
   'image/webp',
   'image/gif',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/markdown',
   'text/plain',
   'text/csv',
@@ -86,6 +87,7 @@ const acceptedAttachmentExtensions = [
   '.webp',
   '.gif',
   '.docx',
+  '.xlsx',
   '.md',
   '.markdown',
   '.txt',

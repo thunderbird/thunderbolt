@@ -193,4 +193,55 @@ describe('POST /chat/v1/messages', () => {
       }),
     )
   })
+
+  it('keeps structured error telemetry for failures raised mid-stream', async () => {
+    const captureInferenceErrorFn = mock(() => {})
+    const error = new AnthropicAPIError(
+      529,
+      { type: 'overloaded_error' },
+      'overloaded',
+      new Headers({ 'request-id': 'req_456' }),
+      'overloaded_error',
+    )
+    const failingStream = {
+      controller: new AbortController(),
+      [Symbol.asyncIterator]: async function* () {
+        yield nativeEvents[0]
+        throw error
+      },
+    }
+    const app = new Elysia().use(
+      createInferenceRoutes({
+        auth: mockAuth,
+        database,
+        captureInferenceErrorFn,
+        getMessagesClient: () => ({ messages: { create: async () => failingStream } }) as never,
+      }),
+    )
+
+    const response = await app.handle(
+      new Request('http://localhost/chat/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'opus-5',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: 'Hello' }],
+          stream: true,
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.text()).rejects.toBe(error)
+    expect(captureInferenceErrorFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'stream',
+        status: 529,
+        errorKind: 'upstream_error',
+        errorType: 'overloaded_error',
+        requestId: 'req_456',
+      }),
+    )
+  })
 })

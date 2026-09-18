@@ -25,6 +25,7 @@ import {
   getInferenceClient,
   logInferenceSafely,
   runWithInferenceAttemptTracking,
+  type InferenceAttemptTracker,
   type InferenceClient,
   type InferenceLogger,
   type InferenceProvider,
@@ -83,6 +84,57 @@ export type CreateInferenceRoutesOptions = {
 /** Format inference phases using Server-Timing header syntax. */
 const formatServerTiming = (preMs: number, upstreamMs: number, totalMs: number): string =>
   `pre;dur=${preMs}, upstream;dur=${upstreamMs}, total;dur=${totalMs}`
+
+type LatencyRecorderOptions = {
+  attemptTracker: InferenceAttemptTracker
+  handlerStartedAt: number
+  headers: Record<string, string | number>
+  logger?: InferenceLogger
+  model: string
+  provider: InferenceProvider
+  requestStartedAt: number
+  route: string
+}
+
+type LatencyRecorder = ReturnType<typeof createLatencyRecorder>
+
+/** Emit route phase telemetry in structured logs and response headers. */
+const createLatencyRecorder = ({
+  attemptTracker,
+  handlerStartedAt,
+  headers,
+  logger,
+  model,
+  provider,
+  requestStartedAt,
+  route,
+}: LatencyRecorderOptions) => {
+  const preMs = elapsedMs(requestStartedAt, handlerStartedAt)
+  return (
+    status: number,
+    completedAt: number,
+    upstreamMs: number | null = elapsedMs(handlerStartedAt, completedAt),
+  ) => {
+    const totalMs = elapsedMs(requestStartedAt, completedAt)
+    const { attempts } = attemptTracker
+    const latency: InferenceProxyLatencyLog = {
+      event: 'inference_proxy_latency',
+      route,
+      provider,
+      model,
+      status,
+      preMs,
+      upstreamMs,
+      totalMs,
+      attempts,
+    }
+    if (upstreamMs !== null) {
+      headers[inferenceProxyTimingHeader] = `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attempts}`
+      headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
+    }
+    logInferenceSafely(logger, latency, 'Inference proxy latency')
+  }
+}
 
 const getApiErrorMetadata = (error: unknown) => {
   const openAiError = error instanceof APIError ? error : undefined
@@ -168,6 +220,30 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     options.getClient ??
     ((provider: ManagedDirectRuntime['provider']) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const getMessagesClient = options.getMessagesClient ?? (() => getAnthropicMessagesClient({ fetchFn, logger, nowFn }))
+
+  /** Gate a managed request on price and quota; a returned Response is the rejection to send. */
+  const admitManagedRequest = async (
+    { provider, internalName }: ManagedDirectRuntime,
+    user: { id: string; isAnonymous?: boolean | null },
+    recordLatency: LatencyRecorder,
+  ): Promise<{ price: InferencePrice } | Response> => {
+    const admission = await checkManagedInferenceAdmission(
+      database,
+      { provider, model: internalName },
+      user.id,
+      getInferenceQuotaLimits(settings, user.isAnonymous === true),
+    )
+    if (admission.outcome === 'price-unavailable') {
+      recordLatency(503, nowFn(), null)
+      return createPriceUnavailableResponse()
+    }
+    if (admission.outcome === 'quota-exceeded') {
+      recordLatency(429, nowFn(), null)
+      return createQuotaExceededResponse(admission.decision)
+    }
+    return admission
+  }
+
   const app = new Elysia({
     prefix: '/chat',
   })
@@ -191,7 +267,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
     guardedApp.post('/completions', async (ctx) => {
       const handlerStartedAt = nowFn()
-      const preMs = elapsedMs(ctx.inferenceRequestStartedAt, handlerStartedAt)
       const body = await ctx.request.json()
 
       if (!body.stream) {
@@ -206,46 +281,20 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       const { provider, internalName, supportsStreamUsage, omitTemperature } = modelConfig
       const route = new URL(ctx.request.url).pathname
       const attemptTracker = createInferenceAttemptTracker()
-      /** Emit route phase telemetry in structured logs and response headers. */
-      const recordLatency = (
-        status: number,
-        completedAt: number,
-        upstreamMs: number | null = elapsedMs(handlerStartedAt, completedAt),
-      ) => {
-        const totalMs = elapsedMs(ctx.inferenceRequestStartedAt, completedAt)
-        const latency: InferenceProxyLatencyLog = {
-          event: 'inference_proxy_latency',
-          route,
-          provider,
-          model: body.model,
-          status,
-          preMs,
-          upstreamMs,
-          totalMs,
-          attempts: attemptTracker.attempts,
-        }
+      const recordLatency = createLatencyRecorder({
+        attemptTracker,
+        handlerStartedAt,
+        headers: ctx.set.headers,
+        logger,
+        model: body.model,
+        provider,
+        requestStartedAt: ctx.inferenceRequestStartedAt,
+        route,
+      })
 
-        if (upstreamMs !== null) {
-          ctx.set.headers[inferenceProxyTimingHeader] =
-            `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attemptTracker.attempts}`
-          ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
-        }
-        logInferenceSafely(logger, latency, 'Inference proxy latency')
-      }
-
-      const admission = await checkManagedInferenceAdmission(
-        database,
-        { provider, model: internalName },
-        ctx.user.id,
-        getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
-      )
-      if (admission.outcome === 'price-unavailable') {
-        recordLatency(503, nowFn(), null)
-        return createPriceUnavailableResponse()
-      }
-      if (admission.outcome === 'quota-exceeded') {
-        recordLatency(429, nowFn(), null)
-        return createQuotaExceededResponse(admission.decision)
+      const admission = await admitManagedRequest(modelConfig, ctx.user, recordLatency)
+      if (admission instanceof Response) {
+        return admission
       }
       const { price } = admission
 
@@ -338,7 +387,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
     guardedApp.post('/v1/messages', async (ctx) => {
       const handlerStartedAt = nowFn()
-      const preMs = elapsedMs(ctx.inferenceRequestStartedAt, handlerStartedAt)
       const requestBody = await ctx.request.json().catch(() => null)
       const parsedBody = anthropicMessagesRequestSchema.safeParse(requestBody)
       if (!parsedBody.success) {
@@ -354,44 +402,20 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       const { provider, internalName } = modelConfig
       const route = new URL(ctx.request.url).pathname
       const attemptTracker = createInferenceAttemptTracker()
-      const recordLatency = (
-        status: number,
-        completedAt: number,
-        upstreamMs: number | null = elapsedMs(handlerStartedAt, completedAt),
-      ) => {
-        const totalMs = elapsedMs(ctx.inferenceRequestStartedAt, completedAt)
-        const latency: InferenceProxyLatencyLog = {
-          event: 'inference_proxy_latency',
-          route,
-          provider,
-          model: body.model,
-          status,
-          preMs,
-          upstreamMs,
-          totalMs,
-          attempts: attemptTracker.attempts,
-        }
-        if (upstreamMs !== null) {
-          ctx.set.headers[inferenceProxyTimingHeader] =
-            `pre=${preMs};upstream=${upstreamMs};total=${totalMs};attempts=${attemptTracker.attempts}`
-          ctx.set.headers[serverTimingHeader] = formatServerTiming(preMs, upstreamMs, totalMs)
-        }
-        logInferenceSafely(logger, latency, 'Inference proxy latency')
-      }
+      const recordLatency = createLatencyRecorder({
+        attemptTracker,
+        handlerStartedAt,
+        headers: ctx.set.headers,
+        logger,
+        model: body.model,
+        provider,
+        requestStartedAt: ctx.inferenceRequestStartedAt,
+        route,
+      })
 
-      const admission = await checkManagedInferenceAdmission(
-        database,
-        { provider, model: internalName },
-        ctx.user.id,
-        getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
-      )
-      if (admission.outcome === 'price-unavailable') {
-        recordLatency(503, nowFn(), null)
-        return createPriceUnavailableResponse()
-      }
-      if (admission.outcome === 'quota-exceeded') {
-        recordLatency(429, nowFn(), null)
-        return createQuotaExceededResponse(admission.decision)
+      const admission = await admitManagedRequest(modelConfig, ctx.user, recordLatency)
+      if (admission instanceof Response) {
+        return admission
       }
       const { price } = admission
       const usageEventId = crypto.randomUUID()
@@ -436,6 +460,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
               status: getErrorStatus(error),
               model: body.model,
               errorKind: classifyInferenceError(error),
+              ...getApiErrorMetadata(error),
               distinctId: ctx.user.id,
               phase: 'stream',
             })

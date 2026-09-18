@@ -259,3 +259,53 @@ describe('hostForUrl', () => {
     expect(hostForUrl('[::1]')).toBe('[::1]')
   })
 })
+
+describe('public bind relaxes the origin allowlist but never the token', () => {
+  // The app's own universal WS proxy dials with `new WebSocket(url, protocols)`
+  // and sends no Origin, so a hosted agent was unreachable from the web app:
+  // the browser cannot connect direct (it is forced through the proxy) and the
+  // proxy cannot satisfy an origin check. Verified against a live bridge before
+  // changing this — no-Origin closed 1002, allowlisted Origin opened.
+  const upgrade = (headers: Record<string, string>, query = `?token=${token}`) =>
+    new Request(`http://127.0.0.1:8839/${query}`, { headers })
+
+  test('accepts a proxy-shaped connection with no Origin', () => {
+    expect(authorizeUpgrade(upgrade({}), token, origins, true)).toEqual({ ok: true })
+  })
+
+  test('accepts an Origin that is not on the allowlist', () => {
+    // Not a loosening worth mourning: anything reaching a public bind is a
+    // server, and a server sets whatever Origin it likes.
+    expect(authorizeUpgrade(upgrade({ Origin: 'https://anything.example' }), token, origins, true)).toEqual({
+      ok: true,
+    })
+  })
+
+  test('still rejects a missing or wrong token', () => {
+    expect(authorizeUpgrade(upgrade({}, ''), token, origins, true)).toEqual({
+      ok: false,
+      status: 401,
+      reason: 'missing or invalid token',
+    })
+    expect(authorizeUpgrade(upgrade({}, '?token=nope'), token, origins, true)).toEqual({
+      ok: false,
+      status: 401,
+      reason: 'missing or invalid token',
+    })
+  })
+
+  test('still rejects a path other than /', () => {
+    const req = new Request(`http://127.0.0.1:8839/elsewhere?token=${token}`)
+    expect(authorizeUpgrade(req, token, origins, true).ok).toBe(false)
+  })
+
+  test('loopback still demands an allowlisted Origin', () => {
+    // The default path, unchanged: a drive-by page in the user's own browser is
+    // the threat the allowlist exists for.
+    expect(authorizeUpgrade(upgrade({}), token, origins, false)).toEqual({
+      ok: false,
+      status: 403,
+      reason: "forbidden origin '(none)'",
+    })
+  })
+})

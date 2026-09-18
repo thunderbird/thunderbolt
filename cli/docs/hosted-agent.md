@@ -83,26 +83,62 @@ personal skill keeps working alongside the team's.
 ## Exposing it
 
 The app reaches a remote ACP agent over WebSocket, so the bridge has to be
-reachable. Three environment variables opt into that:
+reachable. Two environment variables opt into that:
 
 | Variable                   | Purpose                                                                                          |
 | -------------------------- | ------------------------------------------------------------------------------------------------ |
 | `THUNDERBOLT_BRIDGE_HOST`  | `0.0.0.0` to bind beyond loopback. Unset means loopback, as before.                              |
 | `THUNDERBOLT_BRIDGE_TOKEN` | Stable secret, ≥32 chars. Without it the token changes on every restart and every client breaks. |
-| `THUNDERBOLT_APP_ORIGIN`   | Your app origin, so the upgrade's `Origin` check passes.                                         |
 
 **Setting the first without the second is a startup error.** A bind beyond
 loopback with no stable token would serve behind a secret that changes every
 restart and was only ever printed to the process's stdout — plausibly nowhere a
-platform keeps. The origin is not enforced the same way because omitting it
-announces itself: every browser upgrade is refused with a 403 naming the origin
-it saw, and the built-in Tauri origins are the right ones when the app and the
-bridge are simply on different machines on a LAN.
+platform keeps.
 
-Once the socket is public, the origin allowlist and the token are the entire
-boundary between the internet and a process that spawns agents. Terminate TLS in
-front of it, and treat the token as a credential: it is in every client's
-configuration, so rotating it means reconfiguring all of them.
+`THUNDERBOLT_APP_ORIGIN` is not needed for a public bind, and the next section
+explains why.
+
+### Which clients can reach which bridge
+
+This is the part that is easy to get wrong, because the failure looks like a
+working agent:
+
+|                     | Loopback bridge | Public bridge |
+| ------------------- | --------------- | ------------- |
+| Desktop app (Tauri) | ✅ direct       | ✅            |
+| Web app (browser)   | ❌              | ✅            |
+
+A browser cannot reach a loopback bridge, and **no bridge configuration changes
+that**. `src/acp/transports/index.ts` routes a remote ACP agent through the app's
+universal WebSocket proxy unless it is running standalone under Tauri, and that
+proxy enforces two rules of its own (`backend/src/proxy/ws.ts`): the target must
+be `wss:`, and it must not be a private address. So from a browser the bridge has
+to be a public TLS host — which a deployed agent is, and a local one never is.
+Relaxing the origin check on a public bind is what makes the deployed case work;
+it does nothing for a local one.
+
+**Test Connection will still pass**, because `src/acp/connection-test.ts`
+deliberately dials direct and skips the proxy. A green check there does not mean
+chat will work. For local development against a loopback bridge, use the desktop
+app.
+
+### Why a public bind drops the origin check
+
+The origin allowlist defends a _loopback_ bridge: the socket is on the user's own
+machine, a WebSocket upgrade bypasses CORS, and so any page they visit could
+otherwise drive their agent. Requiring a browser origin is the control there.
+
+A public bind has a different threat model, and the check stops being a control:
+
+- Connections arrive from servers, not browsers. The app's proxy dials with
+  `new WebSocket(url, protocols)` and sends no `Origin` at all, so requiring one
+  made a hosted agent unreachable from the web app.
+- Anything that _is_ a server can set whatever `Origin` it likes.
+
+So on a public bind the token is the entire gate, which is why a public bind
+refuses to start without a stable one. Terminate TLS in front of it, and treat
+the token as a credential: it is in every client's configuration, so rotating it
+means reconfiguring all of them.
 
 ```sh
 cd /srv/workspace

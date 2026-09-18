@@ -303,13 +303,32 @@ export type UpgradeDecision =
  * can neither guess the token nor forge an allowlisted `Origin`, so it never
  * reaches `srv.upgrade`.
  */
-export const authorizeUpgrade = (req: Request, token: string, allowedOrigins: ReadonlySet<string>): UpgradeDecision => {
+export const authorizeUpgrade = (
+  req: Request,
+  token: string,
+  allowedOrigins: ReadonlySet<string>,
+  publicBind = false,
+): UpgradeDecision => {
   const url = new URL(req.url)
   if (url.pathname !== '/') return { ok: false, status: 404, reason: 'unknown path (only / is bridged)' }
 
-  const origin = req.headers.get('origin')
-  if (!origin || !allowedOrigins.has(origin)) {
-    return { ok: false, status: 403, reason: `forbidden origin '${origin ?? '(none)'}'` }
+  // The origin allowlist defends a *loopback* bridge: the socket sits on the
+  // user's own machine, so any page they visit can reach it, and a WebSocket
+  // upgrade bypasses CORS. Requiring a browser origin is what stops a drive-by
+  // page driving their agent.
+  //
+  // A public bind has a different threat model, and the check stops being a
+  // control there. Connections arrive from servers rather than browsers — the
+  // app's own universal WS proxy dials with `new WebSocket(url, protocols)` and
+  // sends no Origin at all, so the web app could never reach a hosted agent —
+  // and anything that *is* a server can set whatever Origin it likes. The token
+  // is the real gate, which is why a public bind refuses to start without a
+  // stable one (see `resolveBridgeHost`).
+  if (!publicBind) {
+    const origin = req.headers.get('origin')
+    if (!origin || !allowedOrigins.has(origin)) {
+      return { ok: false, status: 403, reason: `forbidden origin '${origin ?? '(none)'}'` }
+    }
   }
 
   const presented = url.searchParams.get('token')
@@ -346,7 +365,7 @@ export const runBridge = async (config: BridgeConfig): Promise<void> => {
       // Loopback alone is not a security boundary: WebSocket upgrades bypass CORS,
       // so any page the user visits can reach this port. Gate every upgrade on an
       // allowlisted Origin + the unguessable per-run token before spawning an agent.
-      const decision = authorizeUpgrade(req, token, allowedOrigins)
+      const decision = authorizeUpgrade(req, token, allowedOrigins, !isLoopbackHost(host))
       if (!decision.ok) return new Response(`thunderbolt bridge: ${decision.reason}\n`, { status: decision.status })
       if (srv.upgrade(req, { data: { proc: null } })) return undefined
       return new Response('thunderbolt bridge: WebSocket endpoint only\n', { status: 426 })

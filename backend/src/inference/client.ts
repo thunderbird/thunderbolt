@@ -5,6 +5,7 @@
 import { getSettings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { elapsedMs } from '@/utils/timing'
+import Anthropic from '@anthropic-ai/sdk'
 import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
@@ -207,6 +208,7 @@ let fireworksClient: OpenAI | PostHogOpenAI | null = null
  * Lazily initialized Anthropic client
  */
 let anthropicClient: OpenAI | PostHogOpenAI | null = null
+let anthropicMessagesClient: Anthropic | null = null
 
 /**
  * Get the Fireworks AI client
@@ -280,6 +282,31 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
 }
 
 /**
+ * Get the native Anthropic Messages client used by cache-enabled managed models.
+ */
+export const getAnthropicMessagesClient = (options: InferenceClientOptions = {}): Anthropic => {
+  const { fetchFn, logger, nowFn } = options
+  if (anthropicMessagesClient && !fetchFn) {
+    return anthropicMessagesClient
+  }
+
+  const settings = getSettings()
+  if (!settings.anthropicApiKey) {
+    throw new Error('Anthropic API key not configured')
+  }
+
+  const client = new Anthropic({
+    apiKey: settings.anthropicApiKey,
+    fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
+  })
+
+  if (!fetchFn) {
+    anthropicMessagesClient = client
+  }
+  return client
+}
+
+/**
  * Get the appropriate inference client based on provider
  * Clients are lazily initialized and reused across requests
  */
@@ -307,6 +334,7 @@ export const getInferenceClient = (
 export const clearInferenceClientCache = () => {
   fireworksClient = null
   anthropicClient = null
+  anthropicMessagesClient = null
 }
 
 /**

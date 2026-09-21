@@ -53,6 +53,7 @@ Please follow these guidelines for unit tests:
     ```
 
   - This also speeds up tests that use HTTP libraries with retry logic (like `ky`)
+
 - **Suppress expected console errors in tests** - use `spyOn(console, 'error').mockImplementation(() => {})` in `beforeAll` for tests that intentionally trigger errors
 - Always write unit tests for logic, code branching, and algorithms - these should be thoroughly covered. Unit tests for component user interactions (such as clicking or typing) are optional and might be better covered by higher-level tests (e.g., with Cypress).
 - Keep display logic separate from side effects and state in React components by extracting hooks. If a component has many useStates, bundle them into one state hook—this makes logic easy to test and leaves snapshot tests for checking output changes.
@@ -166,43 +167,90 @@ mock.module('@/components/ui/dialog', () => ({
 
 ## End-to-End Tests
 
-The Playwright suite in [`e2e/`](../e2e) covers the OIDC sign-in and session flows — the parts of the app that are hardest to exercise from a unit test (browser storage, redirects, Better Auth callbacks).
+The Playwright suite in [`e2e/`](../../e2e) covers OIDC and SAML sign-in and session flows, consumer email-code sign-in, chat streaming, and settings persistence — the parts of the app that are hardest to exercise from a unit test (browser storage, redirects, Better Auth callbacks).
 
 ### What the Config Spins Up
 
-[`playwright.config.ts`](../playwright.config.ts) boots three things before any spec runs:
+[`playwright.config.ts`](../../playwright.config.ts) starts these services before any spec runs. Ports below are the defaults; each pair lists frontend / backend ports.
 
-| Component        | Port   | How                                                              |
-| ---------------- | ------ | ---------------------------------------------------------------- |
-| Mock OIDC server | `9876` | [`oauth2-mock-server`](https://www.npmjs.com/package/oauth2-mock-server), started by `e2e/global-setup.ts`; every issued token is signed for `sub=e2e-test-user` / `email=e2e@thunderbolt.test` |
-| Vite frontend    | `1421` | `bun run dev -- --port 1421` with `VITE_AUTH_MODE=sso` and `VITE_SKIP_ONBOARDING=true` |
-| Backend API      | `8000` | `cd backend && bun run dev` with `OIDC_ISSUER` pointed at the mock server, rate limiting disabled |
+| Component             | Port            | Mode / purpose                                            |
+| --------------------- | --------------- | --------------------------------------------------------- |
+| Mock OIDC server      | `9876`          | Auto-approves sign-in as `e2e@thunderbolt.test`           |
+| Mock SAML IdP         | `9877`          | Issues SAML responses for sign-in                         |
+| Fake provider         | `9878`          | Streams a scripted chat reply                             |
+| OIDC pair             | `1421` / `8002` | SSO frontend, OIDC backend                                |
+| SAML pair             | `1422` / `8003` | SSO frontend, SAML backend                                |
+| Min-version gate pair | `1423` / `8004` | SSO frontend, OIDC backend with `MIN_APP_VERSION=99.0.0`  |
+| Consumer pair         | `1424` / `8005` | Email-code sign-in, consumer backend with `NODE_ENV=test` |
 
-Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. A clean shutdown of the mock OIDC server happens in `e2e/global-teardown.ts`.
+Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. `e2e/global-setup.ts` starts the mock IdPs and fake provider; `e2e/global-teardown.ts` stops them.
+
+### Fake provider
+
+The fake provider in [`e2e/fake-provider.ts`](../../e2e/fake-provider.ts) is a local server that returns OpenAI-style `chat.completion.chunk` SSE events, token usage, and a final `[DONE]` event. Change its exported `fakeProviderReply` to change the scripted reply. `e2e/consumer-fake-provider.spec.ts` checks the stream directly.
+
+The consumer backend sets `ANTHROPIC_BASE_URL=http://localhost:9878/v1/` to reach it. See the [self-hosting configuration](../self-hosting/configuration.md) for the override. The fake provider sits behind the real backend, so chat tests exercise quota admission, usage logging, and stream re-emission.
+
+### Consumer-mode pair and the fixed sign-in code
+
+The consumer backend runs with `NODE_ENV=test`. Only in that environment does the OTP generator issue the fixed `testSignInOtp` value `12345678`, defined in `backend/src/auth/otp-constants.ts`. Other environments keep the normal random generator.
+
+`WAITLIST_AUTO_APPROVE_DOMAINS=thunderbolt.test` approves the test email domain. This is necessary because pending waitlist users have their sign-in codes deleted. `loginViaEmailCode(page)` generates and returns a unique `@thunderbolt.test` address per call to avoid the per-email OTP cooldown, and enters the fixed code `12345678` to complete the flow.
 
 ### Helpers
 
 `e2e/helpers.ts` keeps specs short:
 
-- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /sso-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type. E2E tests use OIDC mode with the mock server; SAML E2E testing requires a real IdP (e.g. Keycloak).
+- **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /sso-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
+- **`loginViaSaml(page)`** — follows the SAML redirect through the mock IdP and waits for the chat textarea.
+- **`loginViaEmailCode(page)`** — requests a sign-in code for a unique test email, enters the fixed code, waits for the chat textarea, and returns the email.
 - **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
 
 ### Current Specs
 
-| Spec                           | What it verifies                                                                   |
-| ------------------------------ | ---------------------------------------------------------------------------------- |
-| [`oidc-login.spec.ts`](../e2e/oidc-login.spec.ts)     | Anonymous user completes the full OIDC redirect loop and lands in the chat UI      |
-| [`oidc-logout.spec.ts`](../e2e/oidc-logout.spec.ts)   | OIDC user can sign out and is redirected to the signed-out page                    |
-| [`oidc-session.spec.ts`](../e2e/oidc-session.spec.ts) | Session survives a hard reload and the authenticated user stays signed in          |
-| [`saml-login.spec.ts`](../e2e/saml-login.spec.ts)     | Anonymous user completes the full SAML redirect loop and lands in the chat UI      |
-| [`saml-logout.spec.ts`](../e2e/saml-logout.spec.ts)   | SAML user can sign out and is redirected to the signed-out page                    |
-| [`saml-session.spec.ts`](../e2e/saml-session.spec.ts) | SAML session survives a hard reload and the authenticated user stays signed in     |
+| Spec                                                                                       | What it verifies                                                                                         |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| [`oidc-login.spec.ts`](../../e2e/oidc-login.spec.ts)                                       | Anonymous user completes the full OIDC redirect loop and lands in the chat UI                            |
+| [`oidc-logout.spec.ts`](../../e2e/oidc-logout.spec.ts)                                     | OIDC user can sign out and is redirected to the signed-out page                                          |
+| [`oidc-session.spec.ts`](../../e2e/oidc-session.spec.ts)                                   | Chat, sidebar navigation, and signed-in state work after OIDC login                                      |
+| [`saml-login.spec.ts`](../../e2e/saml-login.spec.ts)                                       | Anonymous user completes the full SAML redirect loop and lands in the chat UI                            |
+| [`saml-logout.spec.ts`](../../e2e/saml-logout.spec.ts)                                     | SAML user can sign out and is redirected to the signed-out page                                          |
+| [`saml-session.spec.ts`](../../e2e/saml-session.spec.ts)                                   | Chat, sidebar navigation, and signed-in state work after SAML login                                      |
+| [`consumer-email-code-login.spec.ts`](../../e2e/consumer-email-code-login.spec.ts)         | Email-code sign-in lands in the chat UI                                                                  |
+| [`consumer-chat-streaming.spec.ts`](../../e2e/consumer-chat-streaming.spec.ts)             | Sending a message streams the fake provider reply into chat                                              |
+| [`consumer-settings-persistence.spec.ts`](../../e2e/consumer-settings-persistence.spec.ts) | A language change persists after reload                                                                  |
+| [`consumer-fake-provider.spec.ts`](../../e2e/consumer-fake-provider.spec.ts)               | The fake provider streams a complete reply and token usage                                               |
+| [`oidc-language-picker.spec.ts`](../../e2e/oidc-language-picker.spec.ts)                   | Language selection updates request headers, survives reload, and resets with a data wipe                 |
+| [`oidc-localization.spec.ts`](../../e2e/oidc-localization.spec.ts)                         | Regional unit defaults and translated labels follow the selected language                                |
+| [`min-version-gate.spec.ts`](../../e2e/min-version-gate.spec.ts)                           | Below-minimum versions are blocked, exempt routes work, and app version headers stay on backend requests |
+| [`acp-built-in.spec.ts`](../../e2e/acp-built-in.spec.ts)                                   | The chat prompt renders without errors after login                                                       |
+| [`acp-add-custom-agent.spec.ts`](../../e2e/acp-add-custom-agent.spec.ts)                   | Adding a custom agent persists it in the list                                                            |
+| [`acp-system-agent-discovery.spec.ts`](../../e2e/acp-system-agent-discovery.spec.ts)       | Discovered system agents appear and cannot be removed                                                    |
+| [`proxy-fetch.spec.ts`](../../e2e/proxy-fetch.spec.ts)                                     | Proxied GET requests carry the target URL and expose passthrough response headers                        |
+| [`proxy-passthrough-headers.spec.ts`](../../e2e/proxy-passthrough-headers.spec.ts)         | Proxied requests forward caller headers and body                                                         |
+| [`proxy-mcp.spec.ts`](../../e2e/proxy-mcp.spec.ts)                                         | MCP traffic uses the proxy with target and passthrough headers                                           |
+| [`proxy-websocket.spec.ts`](../../e2e/proxy-websocket.spec.ts)                             | WebSocket proxy connections carry the target URL                                                         |
+| [`artifact-harness.spec.ts`](../../e2e/artifact-harness.spec.ts)                           | Sandboxed artifacts report readiness, height, and runtime errors                                         |
+| [`preview-smoke.spec.ts`](../../e2e/preview-smoke.spec.ts)                                 | A deployed preview signs in through Keycloak and opens chat                                              |
 
 ### Writing New Specs
 
-- Use `loginViaOidc(page)` or `loginViaSaml(page)` as the first line of any test that needs an authenticated user.
+- Use `loginViaOidc(page)`, `loginViaSaml(page)`, or `loginViaEmailCode(page)` for tests that need an authenticated user.
+- Name each spec to match a project's `testMatch`, such as `consumer-*.spec.ts`, `oidc-*.spec.ts`, or `saml-*.spec.ts`. Run `bun run e2e:check-collected` to verify collection. Its script, `scripts/check-e2e-specs-collected.ts`, checks the union of `playwright.config.ts` and `playwright.preview.config.ts`; CI runs it in `.github/workflows/e2e.yml` and fails if any spec is uncollected.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
 - Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
+
+### Preview smoke
+
+Preview smoke uses `playwright.preview.config.ts` and `e2e/preview-smoke.spec.ts` against the deployed `app-pr-N` / `api-pr-N` services. It waits for API health, signs in with the Keycloak demo user, and checks that chat opens. The `smoke` job in `.github/workflows/preview-deploy.yml` runs after a successful preview deploy and reports a check on the PR. It is deliberately not a required check, so preview infrastructure failures do not block merges.
+
+To run it locally, replace `N` with the PR number:
+
+```sh
+PREVIEW_APP_URL=https://app-pr-N.preview.thunderbolt.io \
+PREVIEW_API_URL=https://api-pr-N.preview.thunderbolt.io \
+bun run e2e:preview
+```
 
 ### Debugging Mock Leakage
 

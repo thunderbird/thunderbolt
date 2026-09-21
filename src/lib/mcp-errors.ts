@@ -2,30 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/**
- * True when `err` is the `@ai-sdk/mcp` error that fires after the underlying
- * transport has dropped. The SDK rejects subsequent requests with an
- * `MCPClientError` carrying one of two messages — verified against
- * `@ai-sdk/mcp/dist/index.js`:
- *   - "Attempted to send a request from a closed client" (request from a
- *     closed client, index.js:1814-1818)
- *   - "Connection closed" (in-flight handlers rejected on close, index.js:2177-2187)
- *
- * The class constant is `AI_MCPClientError`, but that name is only used for the
- * marker symbol — the constructor defaults the instance `name` to
- * `'MCPClientError'` and never overrides it, so a thrown instance's `err.name`
- * is `'MCPClientError'` at runtime (confirmed by exercising the real SDK).
- * `MCPClientError` is not exported in the package's `.d.ts`, so we match on the
- * name/message rather than an `instanceof` check. This is the reliable drop
- * signal at the `tools()` boundary, so a reconnect can be attempted.
- */
-export const isClosedConnectionError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') {
-    return false
-  }
-  const { name, message } = err as { name?: unknown; message?: unknown }
-  return name === 'MCPClientError' && typeof message === 'string' && /closed client|Connection closed/i.test(message)
-}
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
+import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { SseError } from '@modelcontextprotocol/sdk/client/sse.js'
+import { ZodError } from 'zod/v4'
 
 /**
  * True when connecting to an MCP server failed because the server demands OAuth
@@ -71,5 +51,25 @@ export const isUnauthorizedError = (err: unknown): boolean => {
   return (
     typeof message === 'string' &&
     (/\bHTTP 401\b|\b401 Unauthorized\b/i.test(message) || /"error"\s*:\s*"invalid_token"/i.test(message))
+  )
+}
+
+/** Expected SDK/transport and response-decoding failures. Only use at the
+ * client.tools() IO boundary; keep application tool processing outside its catch. */
+export const isMcpDiscoveryError = (err: unknown): err is Error => {
+  if (!(err instanceof Error)) {
+    return false
+  }
+  return (
+    err instanceof UnauthorizedError ||
+    err instanceof StreamableHTTPError ||
+    err instanceof SseError ||
+    err instanceof SyntaxError ||
+    err instanceof ZodError ||
+    /^Error POSTing to endpoint \(HTTP \d{3}\):/.test(err.message) ||
+    err.name === 'MCPClientError' ||
+    isUnauthorizedError(err) ||
+    (err instanceof TypeError &&
+      /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.)$/i.test(err.message))
   )
 }

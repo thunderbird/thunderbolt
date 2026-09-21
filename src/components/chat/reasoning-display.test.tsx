@@ -25,3 +25,15 @@ it.each([
   act(() => getClock().tick(1))
   expect(container.textContent).toBe('')
 })
+
+it('reserves height while the reasoning is shown (streaming)', () => {
+  const { container } = render(<ReasoningDisplay text="thinking…" isStreaming />)
+  expect((container.firstChild as HTMLElement).className).toContain('min-h-[200px]')
+})
+
+// A stopped reasoning-only turn never gets a text part to unmount this display,
+// so an unconditional reserve leaves a permanent blank gap below "Thought for…".
+it('does not reserve height once the reasoning has settled', () => {
+  const { container } = render(<ReasoningDisplay text="thinking…" isStreaming={false} />)
+  expect((container.firstChild as HTMLElement).className).not.toContain('min-h-[200px]')
+})

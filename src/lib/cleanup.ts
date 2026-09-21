@@ -8,6 +8,7 @@ import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { clearActiveLocale } from '@/i18n/active-locale'
 import { clearAuthToken, clearDeviceId, clearUserCacheSecret } from '@/lib/auth-token'
 import { resetAppDir } from '@/lib/fs'
+import { clearIdentityScopedMemory } from '@/lib/identity-memory'
 import { clearCachedSession } from '@/lib/session-cache'
 import { handleFullWipe } from '@/services/encryption'
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
@@ -31,6 +32,8 @@ type ClearLocalDataOptions = {
  */
 export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<void> => {
   const { disableSync = true, clearEncryptionKeys = true, clearDatabase = true, clearAuth = true } = options ?? {}
+
+  clearIdentityScopedMemory()
 
   // Tear down every warm ACP connection first so no agent transport survives
   // across user identities (sign-out, account deletion, device revocation all

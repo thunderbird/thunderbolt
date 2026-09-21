@@ -115,6 +115,12 @@ describe('app-version gate', () => {
   })
 
   describe('exempt prefixes bypass the gate', () => {
+    it('allows headerless intake requests while keeping the relay gated', async () => {
+      const app = createTestApp('9.9.9')
+      expect((await app.handle(request('/v1/debug-transcripts/intake'))).status).toBe(200)
+      expect((await app.handle(request('/v1/debug-transcripts'))).status).toBe(426)
+    })
+
     it('lets each exempt prefix through even below the minimum', async () => {
       const app = createTestApp('9.9.9')
 

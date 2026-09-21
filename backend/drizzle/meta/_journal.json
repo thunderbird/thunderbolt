@@ -204,6 +204,20 @@
       "when": 1787672371406,
       "tag": "0028_seed-inference-prices",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788715305638,
+      "tag": "0029_seed-glm-5-3-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789155227424,
+      "tag": "0030_debug_transcripts",
+      "breakpoints": true
     }
   ]
 }

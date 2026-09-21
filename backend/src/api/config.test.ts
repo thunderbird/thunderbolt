@@ -24,6 +24,14 @@ describe('Config Routes', () => {
       expect(enabled.body.e2eeEnabled).toBe(true)
     })
 
+    it('reflects debugTranscriptsEnabled', async () => {
+      const disabled = await fetchConfig(createTestSettings({ debugTranscriptsEnabled: false }))
+      expect(disabled.body.debugTranscriptsEnabled).toBe(false)
+
+      const enabled = await fetchConfig(createTestSettings({ debugTranscriptsEnabled: true }))
+      expect(enabled.body.debugTranscriptsEnabled).toBe(true)
+    })
+
     it('exposes builtInAgentEnabled: true by default and false when disabled', async () => {
       const onByDefault = await fetchConfig(createTestSettings())
       expect(onByDefault.body.builtInAgentEnabled).toBe(true)

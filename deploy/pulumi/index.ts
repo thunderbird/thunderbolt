@@ -22,6 +22,7 @@ const platform = config.get('platform') || 'fargate'
 const version = config.require('version')
 const minAppVersion = config.get('minAppVersion') ?? ''
 const cliDeviceRegistrationEnabled = config.getBoolean('cliDeviceRegistrationEnabled') ?? false
+const confidentialApiKeysEnabled = config.getBoolean('confidentialApiKeysEnabled') ?? false
 
 // --- Shared-stack architecture (Phase 1 scaffolding) ---
 //
@@ -133,6 +134,7 @@ if (isSharedStack) {
     tinfoilEnclaveUrl: config.get('tinfoilEnclaveUrl'),
     minAppVersion,
     cliDeviceRegistrationEnabled,
+    confidentialApiKeysEnabled,
   })
 
   module.exports = {
@@ -335,6 +337,7 @@ if (isSharedStack) {
       tinfoilEnclaveUrl,
       minAppVersion,
       cliDeviceRegistrationEnabled,
+      confidentialApiKeysEnabled,
       behindCloudflareProxy: hasSubdomainRouting,
       albListener: listener,
       targetGroups: {

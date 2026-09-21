@@ -8,7 +8,7 @@ import { type ChatThread } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
 import type { Model } from '@/types'
 import { useLingui } from '@lingui/react/macro'
-import { ArrowUp, Square } from 'lucide-react'
+import { ArrowUp, Loader2, Square } from 'lucide-react'
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -41,6 +41,10 @@ type PromptInputProps = {
    *  while voice mode covers it with an overlay. */
   inert?: boolean
   isStreaming?: boolean
+  /** Stop was pressed and the turn is still unwinding. Swaps the stop icon for a
+   *  spinner. The button stays pressable — stop is idempotent, and disabling it
+   *  would remove the only escape hatch if the teardown stalls. */
+  isStopping?: boolean
   onStop?: () => void
   footerStartElements?: ReactNode
   /** Rendered in the footer's right cluster, just before the submit button. */
@@ -99,6 +103,7 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
       noForm = false,
       inert = false,
       isStreaming = false,
+      isStopping = false,
       onStop,
       footerStartElements,
       footerEndElements,
@@ -162,11 +167,15 @@ export const PromptInput = forwardRef<HTMLFormElement, PromptInputProps>(
         <Button
           type="button"
           variant="default"
-          aria-label={t`Stop generating`}
+          aria-label={isStopping ? t`Stopping` : t`Stop generating`}
           className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] flex items-center justify-center flex-shrink-0"
           onClick={onStop}
         >
-          <Square className="size-[var(--icon-size-default)]" />
+          {isStopping ? (
+            <Loader2 className="size-[var(--icon-size-default)] animate-spin" />
+          ) : (
+            <Square className="size-[var(--icon-size-default)]" />
+          )}
         </Button>
       ) : !submittable && emptyStateAction ? (
         emptyStateAction

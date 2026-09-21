@@ -123,24 +123,29 @@ const collectEvents = async (
 
 describe('buildConfidentialModel compatibility', () => {
   it.each([
-    ['zhipu GLM', 'glm-5-2', 'zhipu', { type: 'enabled', clear_thinking: false }],
-    ['DeepSeek V4 Flash', 'deepseek-v4-flash', 'deepseek', { type: 'enabled' }],
-  ] as const)('uses catalog-driven Pi thinking metadata for %s', async (_name, modelId, vendor, thinking) => {
-    const payloads: Array<{ readonly thinking?: unknown; readonly reasoning_effort?: unknown }> = []
-    const built = build({
-      modelId,
-      vendor,
-      fetch: async (_input, init) => {
-        payloads.push((await new Response(init?.body).json()) as (typeof payloads)[number])
-        return sseResponse(modelId)
-      },
-    })
+    ['zhipu GLM', 'glm-5-2', 'zhipu', { type: 'enabled', clear_thinking: false }, 'high'],
+    ['GLM 5.3', 'glm-5-3', 'zhipu', { type: 'enabled', clear_thinking: false }, 'max'],
+    ['GLM 5.3 Flash', 'glm-5-3-flash', 'zhipu', { type: 'enabled', clear_thinking: false }, 'low'],
+    ['DeepSeek V4 Flash', 'deepseek-v4-flash', 'deepseek', { type: 'enabled' }, 'high'],
+  ] as const)(
+    'uses catalog-driven Pi thinking metadata for %s',
+    async (_name, modelId, vendor, thinking, reasoning) => {
+      const payloads: Array<{ readonly thinking?: unknown; readonly reasoning_effort?: unknown }> = []
+      const built = build({
+        modelId,
+        vendor,
+        fetch: async (_input, init) => {
+          payloads.push((await new Response(init?.body).json()) as (typeof payloads)[number])
+          return sseResponse(modelId)
+        },
+      })
 
-    await collectEvents(built)
+      await providerFor(built).streamSimple(built.model, context, { reasoning }).result()
 
-    expect(payloads).toHaveLength(1)
-    expect(payloads[0]).toMatchObject({ thinking, reasoning_effort: 'high' })
-  })
+      expect(payloads).toHaveLength(1)
+      expect(payloads[0]).toMatchObject({ model: modelId, thinking, reasoning_effort: reasoning })
+    },
+  )
 
   it.each([
     ['unknown vendor', 'unknown'],

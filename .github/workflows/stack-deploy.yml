@@ -46,6 +46,11 @@ on:
         description: 'Thunderbolt inference gateway URL (non-secret; passed as plain config).'
         type: string
         required: false
+      confidential_api_keys_enabled:
+        description: 'Let a personal access token reach the confidential (Tinfoil) routes on this stack. Off unless explicitly set.'
+        type: boolean
+        default: false
+        required: false
       shared_stack_name:
         description: 'When set, switches per-PR deploys into shared-stack mode (THU-495) — backend/frontend/marketing only, with VPC/ALB/postgres/keycloak/powersync read from the named shared stack via Pulumi StackReference. Leave empty for legacy monolithic deploys.'
         type: string
@@ -186,6 +191,7 @@ jobs:
           INPUT_CLOUDFLARE_ZONE_ID: ${{ inputs.cloudflare_zone_id }}
           INPUT_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           INPUT_THUNDERBOLT_INFERENCE_URL: ${{ inputs.thunderbolt_inference_url }}
+          INPUT_CONFIDENTIAL_API_KEYS_ENABLED: ${{ inputs.confidential_api_keys_enabled }}
           INPUT_SHARED_STACK_NAME: ${{ inputs.shared_stack_name }}
           INPUT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           INPUT_FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
@@ -226,6 +232,9 @@ jobs:
           # so they propagate into AWS Secrets Manager via services.ts. Only set when
           # non-empty — lets enterprise stacks skip these entirely.
           [ -n "$INPUT_THUNDERBOLT_INFERENCE_URL" ] && pulumi config set thunderboltInferenceUrl "$INPUT_THUNDERBOLT_INFERENCE_URL" -s "$INPUT_STACK_NAME" --non-interactive
+          # Set unconditionally, unlike the values above: this one is a gate, so an
+          # explicit `false` must be able to turn a previously-enabled stack back off.
+          pulumi config set confidentialApiKeysEnabled "${INPUT_CONFIDENTIAL_API_KEYS_ENABLED:-false}" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_TINFOIL_ENCLAVE_URL" ] && pulumi config set tinfoilEnclaveUrl "$INPUT_TINFOIL_ENCLAVE_URL" -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_ANTHROPIC_API_KEY" ]             && pulumi config set --secret anthropicApiKey             "$INPUT_ANTHROPIC_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive
           [ -n "$INPUT_FIREWORKS_API_KEY" ]             && pulumi config set --secret fireworksApiKey             "$INPUT_FIREWORKS_API_KEY"             -s "$INPUT_STACK_NAME" --non-interactive

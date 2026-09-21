@@ -3,20 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import {
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
-  defaultModelOpus5,
-  defaultModels,
-} from '@shared/defaults/models'
+import { defaultModelGlm53Flash, defaultModelGlm53, defaultModelOpus5, defaultModels } from '@shared/defaults/models'
 import { deriveEvalModelMatrix, evalModelSlugs, evalModels, getScenarios } from './scenarios'
 
 describe('eval model matrix', () => {
   test('tracks every shipped default model with a stable slug and production engine', () => {
     expect(evalModels).toEqual([
       { id: defaultModelOpus5.id, name: 'opus', engineName: 'pi' },
-      { id: defaultModelDeepseekV4Flash.id, name: 'flash', engineName: 'pi' },
-      { id: defaultModelGlm52.id, name: 'glm', engineName: 'pi' },
+      { id: defaultModelGlm53Flash.id, name: 'flash', engineName: 'pi' },
+      { id: defaultModelGlm53.id, name: 'glm', engineName: 'pi' },
     ])
   })
 

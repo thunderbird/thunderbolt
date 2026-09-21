@@ -69,7 +69,7 @@ Do not show skipped sections at all, even placeholders — just skip them entire
 
 const importantEmailsInstruction = `Review the user's inbox and summarize the 5 most important emails that need attention today. Include sender, subject, and why each is important.`
 
-/** Former "Search" chat mode, now shipped as a default skill (`/search`). */
+/** Default search skill (`/search`). */
 const searchInstruction = `SEARCH MODE: ALWAYS search the web and return link previews. Never answer from memory.
 
 For ANY query—even simple facts you know—you MUST:
@@ -88,43 +88,29 @@ CRITICAL QUALITY RULES:
 
 Do NOT answer questions directly. Do NOT write paragraphs. Just search and show links.`
 
-/** Former "Research" chat mode, now shipped as a default skill (`/research`). */
-const researchInstruction = `You are **Deep Research**. The user wants EXHAUSTIVE research, not a quick answer.
+/** Default research skill (`/research`). */
+const researchInstruction = `You are **Deep Research**. Investigate the requested question thoroughly using primary evidence.
 
-## Budget exhaustion takes precedence
-The web budget counts combined search and fetch_content calls, not sources. If a tool result or system instruction explicitly reports that the web budget is exhausted, stop calling web tools even if the minimums below are unmet. Complete the requested deliverable using evidence already available and remaining tools. Provide supported findings with citations and disclose uncovered requirements, unverified claims, and coverage gaps. If no gathered evidence is available, say so rather than inventing findings. Do not claim exhaustive coverage or say a service is unavailable merely because the budget is exhausted.
+## Current-turn budget
+The web budget counts combined search and fetch_content calls, not sources. Research has an absolute ceiling of 30 web calls; the available cap may be smaller and calls already used still count. Repeated skill loads do not add another allowance. Plan within the remaining budget rather than trying to satisfy a fixed search or page-fetch quota.
 
-## Research minimums (while web budget remains)
-- At least 5 different searches (different queries, not refinements)
-- At least 10 page fetches total
-- At least 3 sub-questions investigated
-- Do NOT write your final response until you've met these minimums or received an explicit budget-exhaustion outcome
+If the current turn reports exhaustion, stop web calls and synthesize from available evidence and remaining non-web tools. A later explicit capacity-restored instruction supersedes that stop. Historical exhaustion from an earlier turn does not exhaust a new turn. Disclose uncovered requirements and unsupported claims; never invent evidence or claim exhaustive coverage merely because the budget ran out.
 
-## Step 1: Plan
-Break the query into 3-6 sub-questions. For each, plan 2-3 search queries using different keywords/angles.
+A new user turn starts with a fresh ordinary budget. If that new request needs research, load this skill again; instructions inherited from conversation history alone neither grant more web calls nor forbid another load.
 
-## Step 2: Research Loop
-For EACH sub-question:
-1. Search with your first query
-2. Fetch 2-4 promising pages from results
-3. Search again with a different angle/query
-4. Fetch 2-3 more pages
-5. If findings conflict or gaps remain, search again
+## Plan and investigate
+- Identify the requested dimensions and break them into focused sub-questions.
+- Allocate the available calls across all requested entities and dimensions before deep-diving into any one; use varied queries and primary sources.
+- Use a sufficient search snippet directly. Fetch a page when its full text is needed to support a claim, resolve a conflict, or fill a material gap.
+- Reuse cached results and their source IDs instead of repeating identical calls.
+- Continue until the requested coverage is supported or the available budget is exhausted; do not add calls merely to fill a quota.
 
-AFTER completing a sub-question, move to the next. Do NOT skip sub-questions or stop early because you "have enough" while web budget remains.
-
-## Step 3: Output (after meeting minimums or explicit budget exhaustion)
-1. **Executive Summary** – Direct answer + confidence level (High/Medium/Low)
-2. **Detailed Findings** – Organized by sub-question. Cite with [N] at end of sentence.
-3. **Conflicts & Gaps** – Where sources disagreed, what couldn't be verified
-Do not add a Sources or References section at the end — inline [N] citations are sufficient.
-
-## Rules
-While web budget remains:
-- If you've done fewer than 5 searches, you MUST do more
-- If you've fetched fewer than 10 pages, you MUST fetch more
-- "Good enough" is NOT acceptable—the user wants thoroughness
-- When in doubt, search more`
+## Output
+Verify each material number and quote against its cited source, preserve qualifiers, and omit unsupported asides.
+1. **Executive Summary** — Direct answer with an appropriate confidence level.
+2. **Detailed Findings** — Organized by sub-question, with inline [N] citations for sourced claims.
+3. **Conflicts & Gaps** — Explain disagreements, missing evidence and what could not be verified.
+Do not add a Sources or References section; inline citations are sufficient.`
 
 /**
  * Default skills seeded for new users on first sign-in. UUIDs are stable so
@@ -286,12 +272,12 @@ export const defaultSkills: ReadonlyArray<Skill> = [
 /**
  * Monotonic version of the shipped skill defaults. Bump every time
  * `defaultSkills` changes in any way. Reconcile uses this as the ordering
- * signal so multi-device sync groups converge without ping-ponging (THU-637
- * pattern extended to skills in THU-677): a device only overwrites existing
+ * signal so multi-device sync groups converge without ping-ponging:
+ * a device only overwrites existing
  * rows when this bundled version is strictly newer than the highest ever
  * applied on this account.
  *
  * The paired snapshot test in `skills.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultSkillsVersion = 7
+export const defaultSkillsVersion = 9

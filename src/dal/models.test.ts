@@ -15,7 +15,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelOpus5, hashModel } from '@shared/defaults/models'
+import { defaultModelGlm53Flash, defaultModelOpus5, defaultModels, hashModel } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
@@ -185,6 +185,23 @@ describe('Models DAL', () => {
   })
 
   describe('getSelectedModelQuery', () => {
+    it('prefers Flash when all defaults exist and no model is selected', async () => {
+      await getDb()
+        .insert(modelsTable)
+        .values([...defaultModels])
+
+      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelGlm53Flash.id)
+    })
+
+    it('keeps an explicit selection ahead of the default Flash model', async () => {
+      await getDb()
+        .insert(modelsTable)
+        .values([...defaultModels])
+      await updateSettings(getDb(), { selected_model: defaultModelOpus5.id })
+
+      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelOpus5.id)
+    })
+
     it('should return same result as getSelectedModel', async () => {
       const db = getDb()
 

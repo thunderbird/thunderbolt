@@ -5,7 +5,7 @@
 import { and, desc, eq, getTableColumns, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { modelsSecretsTable, modelsTable, settingsTable } from '../db/tables'
-import { hashModel, type SharedModel } from '@shared/defaults/models'
+import { defaultModelId, hashModel, type SharedModel } from '@shared/defaults/models'
 import { clearNullableColumns, nowIso } from '../lib/utils'
 import type { DrizzleQueryWithPromise, Model } from '@/types'
 import { getLastMessage } from './chat-messages'
@@ -66,7 +66,11 @@ export const getSelectedModelQuery = (db: AnyDrizzleDatabase) => {
       and(eq(settingsTable.key, 'selected_model'), eq(settingsTable.value, modelsTable.id), eq(modelsTable.enabled, 1)),
     )
     .where(and(isNull(modelsTable.deletedAt), or(eq(modelsTable.isSystem, 1), isNotNull(settingsTable.value))))
-    .orderBy(sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`, modelsTable.name)
+    .orderBy(
+      sql`CASE WHEN ${settingsTable.value} IS NOT NULL THEN 0 ELSE 1 END`,
+      desc(eq(modelsTable.id, defaultModelId)),
+      modelsTable.name,
+    )
     .limit(1)
 
   return query as typeof query & DrizzleQueryWithPromise<Model>

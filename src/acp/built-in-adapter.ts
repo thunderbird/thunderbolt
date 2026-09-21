@@ -50,21 +50,23 @@ import {
 } from '@/ai/fetch'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
 import { webToolNames } from '@/lib/tools'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
 import { appVersionHeader } from '@/lib/app-version'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
-import type { Model, ModelProfile, ThunderboltUIMessage } from '@/types'
+import type { Model, ModelProfile, ThunderboltUIMessage, UIMessageMetadata } from '@/types'
 import { extractLastUserText, resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { getPlatform } from '@/lib/platform'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
-import { vendorSupportsImages } from '@shared/defaults/models'
+import { modelSupportsImages } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import { z } from 'zod'
 import type { SecureClient } from 'tinfoil'
 import {
   evictSystemTinfoilClient,
@@ -162,8 +164,24 @@ const piProviders = new Set<Model['provider']>([
 export const isPiModelCandidate = (model: Pick<Model, 'provider' | 'toolUsage'>): boolean =>
   piProviders.has(model.provider) && (model.provider === 'tinfoil' || model.toolUsage !== 0)
 
-/** Valid Pi thinking levels, used to validate a profile-supplied effort string. */
-const piThinkingLevels = new Set<ThinkingLevel>(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const piThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+const profileThinkingOptionsSchema = z
+  .object({
+    reasoningEffort: z.string().optional().catch(undefined),
+    reasoning_effort: z.string().optional().catch(undefined),
+    reasoning: z
+      .object({ effort: z.string().optional().catch(undefined) })
+      .optional()
+      .catch(undefined),
+    thinking: z
+      .object({
+        type: z.string().optional().catch(undefined),
+        budgetTokens: z.number().optional().catch(undefined),
+      })
+      .optional()
+      .catch(undefined),
+  })
+  .passthrough()
 
 /** Reasoning depth used when a model carries no explicit profile config. Mirrors
  *  the adaptive default the anthropic path has always used, so deriving the level
@@ -191,14 +209,15 @@ const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
 /** Coerce a profile effort string to a Pi level. Maps the explicit "off" signals
  *  ('off'/'none') to `off`, accepts the Pi levels verbatim, and rejects anything
  *  else (returning null so the caller can keep looking / fall back). */
-const effortToThinkingLevel = (value: unknown): ThinkingLevel | null => {
-  if (typeof value !== 'string') {
+const effortToThinkingLevel = (value: string | undefined): ThinkingLevel | null => {
+  if (value === undefined) {
     return null
   }
   if (value === 'none') {
     return 'off'
   }
-  return piThinkingLevels.has(value as ThinkingLevel) ? (value as ThinkingLevel) : null
+  const parsed = piThinkingLevelSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
 }
 
 /** Pull a Pi thinking level out of a profile's `providerOptions`, the only
@@ -207,31 +226,35 @@ const effortToThinkingLevel = (value: unknown): ThinkingLevel | null => {
  *  a nested `reasoning.effort`, and the Anthropic-style `thinking` object
  *  (`{ type: 'disabled' }` → off; `{ budgetTokens }` → bucketed level). Returns
  *  null when no reasoning config is present. */
-const readProfileThinkingLevel = (
-  providerOptions: Record<string, unknown> | null | undefined,
+export const readProfileThinkingLevel = (
+  providerOptions: ModelProfile['providerOptions'] | undefined,
 ): ThinkingLevel | null => {
   if (!providerOptions) {
     return null
   }
-  const direct =
-    effortToThinkingLevel(providerOptions.reasoningEffort) ?? effortToThinkingLevel(providerOptions.reasoning_effort)
+  const parsed = profileThinkingOptionsSchema.safeParse(providerOptions)
+  if (!parsed.success) {
+    return null
+  }
+  const options = parsed.data
+  const direct = effortToThinkingLevel(options.reasoningEffort) ?? effortToThinkingLevel(options.reasoning_effort)
   if (direct) {
     return direct
   }
-  const reasoning = providerOptions.reasoning
-  if (reasoning && typeof reasoning === 'object') {
-    const nested = effortToThinkingLevel((reasoning as { effort?: unknown }).effort)
+  const reasoning = options.reasoning
+  if (reasoning) {
+    const nested = effortToThinkingLevel(reasoning.effort)
     if (nested) {
       return nested
     }
   }
-  const thinking = providerOptions.thinking
-  if (thinking && typeof thinking === 'object') {
-    const { type, budgetTokens } = thinking as { type?: unknown; budgetTokens?: unknown }
+  const thinking = options.thinking
+  if (thinking) {
+    const { type, budgetTokens } = thinking
     if (type === 'disabled') {
       return 'off'
     }
-    if (typeof budgetTokens === 'number') {
+    if (budgetTokens !== undefined) {
       return budgetToThinkingLevel(budgetTokens)
     }
   }
@@ -256,10 +279,11 @@ const hasExplicitReasoning = (profile: ModelProfile | null): boolean => {
 
 /** Parse the AI SDK request transcript for Pi-specific content preparation. */
 const parseMessages = (init: RequestInit): ThunderboltUIMessage[] => {
-  if (typeof init.body !== 'string') {
+  const body = z.string().safeParse(init.body)
+  if (!body.success) {
     throw new Error('Built-in adapter expects a string body on init')
   }
-  return (JSON.parse(init.body) as { messages: ThunderboltUIMessage[] }).messages
+  return (JSON.parse(body.data) as { messages: ThunderboltUIMessage[] }).messages
 }
 
 /** A resolved Pi model descriptor plus the thinking level derived from its
@@ -368,7 +392,7 @@ export const resolvePiModel = async (
           receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
-          supportsImages: vendorSupportsImages(model.vendor),
+          supportsImages: modelSupportsImages(model),
         },
         thinkingLevel,
         tinfoilClient: client,
@@ -401,7 +425,7 @@ export const resolvePiModel = async (
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
-        supportsImages: vendorSupportsImages(model.vendor),
+        supportsImages: modelSupportsImages(model),
       },
       thinkingLevel,
       tinfoilClient: client,
@@ -442,7 +466,7 @@ export const resolvePiModel = async (
       // Pi's openai-compat descriptor is text-only by default; without this a
       // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
       // stripped before the wire and only sees the `[Attachment: …]` text label.
-      supportsImages: vendorSupportsImages(model.vendor),
+      supportsImages: modelSupportsImages(model),
     },
     thinkingLevel,
   }
@@ -555,29 +579,66 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
-/** Remove web capabilities and request completion once the live turn first denies a call. */
+/** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
     return () => undefined
   }
-  let notified = false
-  return harness.on('tool_result', async () => {
-    if (notified || !webToolBudget.probe.exhaustedAttempts) {
-      return undefined
+  const eligibleWebTools = harness
+    .getActiveTools()
+    .map(({ name }) => name)
+    .filter((name) => webToolNames.has(name))
+  let floored = false
+  let seenDenials = 0
+  let pending: Promise<undefined> = Promise.resolve(undefined)
+  let steeringMode: ReturnType<AgentHarness['getSteeringMode']> | undefined
+  const restoreSteeringMode = async () => {
+    if (steeringMode !== undefined) {
+      const original = steeringMode
+      steeringMode = undefined
+      await harness.setSteeringMode(original)
     }
-    // Result hooks can overlap for parallel calls; claim notification before yielding.
-    notified = true
-    await harness.setActiveTools(
-      harness
-        .getActiveTools()
-        .map(({ name }) => name)
-        .filter((name) => !webToolNames.has(name)),
-    )
-    await harness.steer(
-      'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
-    )
     return undefined
+  }
+  const removeProviderHook = harness.on('before_provider_request', restoreSteeringMode)
+  const removeResultHook = harness.on('tool_result', () => {
+    const previous = pending
+    pending = (async () => {
+      await previous
+      const active = harness.getActiveTools().map(({ name }) => name)
+      if (!active.length) {
+        return undefined
+      }
+      const { isExhausted, exhaustedAttempts } = webToolBudget.probe
+      if (!isExhausted) {
+        seenDenials = exhaustedAttempts
+      }
+      if (isExhausted && exhaustedAttempts > seenDenials && !floored) {
+        floored = true
+        seenDenials = exhaustedAttempts
+        await harness.setActiveTools(active.filter((name) => !webToolNames.has(name)))
+        await harness.steer(
+          'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
+        )
+      } else if (!isExhausted && floored && eligibleWebTools.length) {
+        floored = false
+        await harness.setActiveTools([...new Set([...active, ...eligibleWebTools])])
+        // Flush a queued old stop together with its correction, preserving other queued input.
+        steeringMode ??= harness.getSteeringMode()
+        await harness.setSteeringMode('all')
+        await harness.steer(
+          'The research skill expanded this turn’s web budget. This supersedes the earlier budget-exhaustion instruction: web tools are available again. Continue the requested research within the remaining budget, then synthesize the results.',
+        )
+      }
+      return undefined
+    })()
+    return pending
   })
+  return () => {
+    removeResultHook()
+    removeProviderHook()
+    void restoreSteeringMode()
+  }
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
@@ -649,6 +710,7 @@ const fetchViaHarness = async (
   prepareConfig: typeof prepareAiRequestConfig,
   tinfoilOptions: TinfoilClientOptions,
 ): Promise<Response> => {
+  const debugTraceId = context.debugTranscriptTraceId
   // Sanctioned route-splitting exception (CLAUDE.md "Route-level Code Splitting").
   // The Pi engine (`pi-*`, `zenfs`, `just-bash`, `@anthropic-ai/sdk`, `openai` —
   // several MB) must NOT sit in the chat entry chunk on the critical landing path.
@@ -683,6 +745,12 @@ const fetchViaHarness = async (
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
   const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
+  if (debugTraceId) {
+    recordDebugTranscriptSystemPrompts(context.threadId, debugTraceId, [
+      composeAppHarnessSystemPrompt(config),
+      ...skillInstructions,
+    ])
+  }
 
   // Build the thread's harness on its first turn (seeding `history`); reuse it on
   // every later turn whose config signature is unchanged, and rebuild it when the
@@ -722,11 +790,18 @@ const fetchViaHarness = async (
             ? { modelId: context.selectedModel.id, mcpTools: { [toolName]: owner } }
             : { modelId: context.selectedModel.id }
         },
-        settled: () => ({
-          modelId: context.selectedModel.id,
-          ...(config.sourceCollector.length > 0 ? { sources: [...config.sourceCollector] } : {}),
-        }),
+        settled: (): UIMessageMetadata => {
+          const messageMetadata: UIMessageMetadata = { modelId: context.selectedModel.id }
+          if (config.sourceCollector.length > 0) {
+            messageMetadata.sources = [...config.sourceCollector]
+          }
+          return messageMetadata
+        },
       },
+      // Stop: the AI SDK aborts this signal and nothing else. The harness runs
+      // in-browser, so unless it sees the signal the loop keeps calling the
+      // model and executing tools after the user pressed the button.
+      init.signal ?? undefined,
     ),
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   )
@@ -764,6 +839,10 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
       turnBudget: context.turnBudget,
       webToolBudget: context.webToolBudget,
       telemetry: context.telemetry,
+      debugTranscript:
+        context.debugTranscriptTraceId === undefined
+          ? undefined
+          : { threadId: context.threadId, traceId: context.debugTranscriptTraceId },
     })
 
   // Route Pi-serviceable models to the in-browser harness. Tinfoil always takes

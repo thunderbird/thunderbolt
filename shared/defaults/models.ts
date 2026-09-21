@@ -45,10 +45,11 @@ export type SharedModel = {
  */
 export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
 
-/** Whether a model's vendor is known to accept image input. Unknown/absent
- *  vendors (custom or local endpoints) return false — we don't guess. */
-export const vendorSupportsImages = (vendor: string | null | undefined): boolean =>
-  vendor != null && imageCapableVendors.has(vendor)
+const imageCapableModels = new Set(['glm-5-3-flash'])
+
+/** Whether a model accepts images based on its vendor or known model slug. */
+export const modelSupportsImages = ({ vendor, model }: Pick<SharedModel, 'vendor' | 'model'>): boolean =>
+  (vendor != null && imageCapableVendors.has(vendor)) || imageCapableModels.has(model)
 
 /**
  * Compute hash of user-editable fields for a model.
@@ -101,18 +102,11 @@ export const defaultModelOpus5: SharedModel = {
   userId: null,
 }
 
-export const defaultModelId = defaultModelOpus5.id
-
-/**
- * Confidential Flash ships under a fresh id because reconciliation freezes
- * `provider` and `isConfidential`. Reusing its direct row would strand existing
- * unencrypted threads, whose send guard enforces `isEncrypted === isConfidential`.
- */
-export const defaultModelDeepseekV4Flash: SharedModel = {
+export const defaultModelGlm53Flash: SharedModel = {
   id: '01a06dd7-67ee-75be-b957-2b746271c49d',
-  name: 'DeepSeek V4 Flash',
+  name: 'GLM 5.3 Flash',
   provider: 'tinfoil',
-  model: 'deepseek-v4-flash',
+  model: 'glm-5-3-flash',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -123,18 +117,20 @@ export const defaultModelDeepseekV4Flash: SharedModel = {
   deletedAt: null,
   url: null,
   defaultHash: null,
-  vendor: 'deepseek',
-  description: 'Confidential DeepSeek reasoning via Thunderbolt',
+  vendor: 'zhipu',
+  description: 'Fast, low-cost confidential chat with image support',
   userId: null,
 }
 
-export const defaultModelGlm52: SharedModel = {
+export const defaultModelId = defaultModelGlm53Flash.id
+
+export const defaultModelGlm53: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
-  name: 'GLM 5.2',
+  name: 'GLM 5.3',
   // `provider` is the internal transport. The UI presents system-managed
   // Tinfoil models as Thunderbolt so infrastructure does not leak into branding.
   provider: 'tinfoil',
-  model: 'glm-5-2',
+  model: 'glm-5-3',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
@@ -155,28 +151,25 @@ export const defaultModelGlm52: SharedModel = {
  * "Provided" group of the model picker. Reorder freely — but bump
  * `defaultModelsVersion` when you do.
  *
- * Retired between V1 and V2: `defaultModelDeepseekV4Pro` (superseded by
- * Flash under a fresh id) and `defaultModelKimiK26` (dropped). Their rows are
- * soft-deleted by `cleanupRemovedDefaults` on next reconcile; unedited copies
- * disappear cleanly, user-edited copies survive but point at retired ids and
- * will surface upstream errors when used.
- * Retired in V5: direct Flash (`019f227e-d640-727d-ba12-d51bd7d0a3d6`),
- * replaced by confidential Flash under a fresh id with the same cleanup policy.
+ * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
+ * from this list. User-edited copies survive but may reference unavailable
+ * upstream models and return errors when used.
+ * The backend accepts `glm-5-2` and `deepseek-v4-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus5,
-  defaultModelDeepseekV4Flash,
-  defaultModelGlm52,
+  defaultModelGlm53Flash,
+  defaultModelGlm53,
 ] as const
 
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`
  * changes in any way. The reconciler uses this as the ordering signal to
- * decide which device's defaults win in a multi-device sync group (THU-637):
+ * decide which device's defaults win in a multi-device sync group:
  * a device only overwrites existing rows when its picked defaults version is
  * strictly newer than the highest ever applied on this account.
  *
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 5
+export const defaultModelsVersion = 7

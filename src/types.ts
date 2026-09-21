@@ -12,6 +12,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
+import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -165,6 +166,8 @@ export type AutomationRun = {
 
 export type UIMessageMetadata = {
   modelId?: string
+  /** Correlates a persisted turn with its richer session-scoped debug capture. */
+  debugTranscript?: DebugTranscriptMessageMetadataV1
   usage?: LanguageModelV2Usage
   oauthRetry?: boolean
   reasoningTime?: Record<string, number>

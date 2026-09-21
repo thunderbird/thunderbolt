@@ -80,6 +80,18 @@ When you add a new custom header to a client request (e.g. `X-Device-ID`), you *
 
 See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
 
+## Debug Transcripts
+
+Users can share a chat's debug transcript with the Thunderbolt team from the chat view. The deployment never stores transcripts; it forwards them to the Thunderbolt intake with a key that identifies your deployment. The button is shown only when the relay is configured.
+
+| Variable                          | Default | Description                                                                           |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty   | Base URL of the Thunderbolt API that receives transcripts. Set together with the key. |
+| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's client key, issued by the Thunderbolt team. Keep it server-side.    |
+| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Mounts the intake endpoint. Only the Thunderbolt-hosted deployment enables this.      |
+
+To obtain a key, contact the Thunderbolt team with a name for your deployment. Transcripts are identified (user id and email as known by your deployment; blank for anonymous users) and are kept by the Thunderbolt team; deleting the submitting account does not remove them.
+
 ## Rate Limiting and Proxy Trust
 
 | Variable             | Default | Description                                                                                               |
@@ -99,10 +111,11 @@ Settings are read once at startup, so **restart the backend** after changing `MI
 
 ## CLI Device Rollout
 
-| Variable                          | Default | Description                                                     |
-| --------------------------------- | ------- | --------------------------------------------------------------- |
-| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking   |
-| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true` |
+| Variable                          | Default | Description                                                                             |
+| --------------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking                           |
+| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration when set to `true`                         |
+| `CONFIDENTIAL_API_KEYS_ENABLED`   | `false` | Lets a personal access token reach the confidential (Tinfoil) routes when set to `true` |
 
 Rollout has three mandatory, old-client-safe stages:
 

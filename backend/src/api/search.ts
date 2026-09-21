@@ -16,6 +16,8 @@ export type SearchResultDto = {
   pageUrl: string
   faviconUrl: string | null
   previewImageUrl: string | null
+  snippet: string
+  publishedDate: string | null
 }
 
 export type SearchResponseDto = {
@@ -65,6 +67,8 @@ export const createSearchRoutes = (auth: Auth, rateLimit?: AnyElysia, deps: Sear
               pageUrl,
               faviconUrl,
               previewImageUrl,
+              snippet: (r.text ?? '').trim().slice(0, 1000),
+              publishedDate: r.publishedDate ?? null,
             })
           }
 

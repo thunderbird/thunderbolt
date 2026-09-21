@@ -3,11 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, test } from 'bun:test'
+import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import type { ToolCallOptions } from 'ai'
 import { z } from 'zod'
 import type { HttpClient } from '@/contexts'
 import type { ToolConfig } from '@/types'
-import { createWebToolBudget } from '@/ai/web-tool-budget'
+import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { createTool, createToolset, getAvailableTools, type ToolAvailabilityContext, type ToolCallCache } from './tools'
 
 const options: ToolCallOptions = { toolCallId: 't1', messages: [] }
@@ -143,10 +144,13 @@ describe('createTool web budget', () => {
     const first = await set.search.execute!({ query: ' Foo  Bar ' }, options)
     const duplicate = await set.search.execute!({ query: 'foo bar' }, options)
     await set.fetch_content.execute!({ url: 'https://example.com/' }, options)
+    for (let call = 2; call < webToolCaps.auto; call++) {
+      await set.search.execute!({ query: `query ${call}` }, options)
+    }
     const exhausted = await set.search.execute!({ query: 'new query' }, options)
 
     expect(duplicate).toEqual(first)
-    expect(searchCalls).toHaveLength(1)
+    expect(searchCalls).toHaveLength(webToolCaps.auto - 1)
     expect(fetchCalls).toHaveLength(1)
     expect(exhausted).toMatchObject({ status: 'budget_exhausted' })
     expect(budget.probe.exhaustedAttempts).toBe(1)
@@ -268,4 +272,41 @@ describe('getAvailableTools (injected context)', () => {
     )
     expect(tools.some((tool) => tool.name === 'search')).toBe(true)
   })
+})
+
+test('web results expose live remaining calls through the real Pi bridge without changing source IDs or cached data', async () => {
+  const budget = createWebToolBudget('auto', true)
+  const { config, calls } = makeConfig({
+    name: 'search',
+    execute: async (input) => {
+      calls.push(input)
+      return [{ sourceIndex: 7, sourceLabel: '[Source 7]', snippet: 'fact' }]
+    },
+  })
+  const [web] = await toPiAgentTools(createToolset([config], undefined, budget))
+  const first = await web.execute('one', { query: 'one' })
+  expect(first.content).toContainEqual({
+    type: 'text',
+    text: `Web calls remaining this turn: ${webToolCaps.auto - 1}.`,
+  })
+  for (let call = 1; call < webToolCaps.auto - 1; call++) {
+    await web.execute(`extra-${call}`, { query: `extra-${call}` })
+  }
+  const last = await web.execute('two', { query: 'two' })
+  expect(last.content).toContainEqual({
+    type: 'text',
+    text: 'Web calls remaining this turn: 0. Synthesize now from the available evidence; do not call web tools again.',
+  })
+  expect(last.details).toEqual(first.details)
+  const cached = await web.execute('cache', { query: 'one' })
+  expect(cached.content).toEqual(last.content)
+  expect(calls).toHaveLength(webToolCaps.auto)
+  budget.promote('research')
+  const promoted = await web.execute('promoted-cache', { query: 'one' })
+  expect(promoted.content).toContainEqual({
+    type: 'text',
+    text: `Web calls remaining this turn: ${webToolCaps.research - webToolCaps.auto}.`,
+  })
+  expect(promoted.details).toEqual(first.details)
+  expect(budget.consumed).toBe(webToolCaps.auto)
 })

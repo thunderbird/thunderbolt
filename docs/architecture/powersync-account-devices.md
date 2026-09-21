@@ -151,9 +151,12 @@ A trusted web device can revoke a CLI device through the regular device list.
 The revoked CLI cannot continue using the bound session and must complete web
 login again. Personal access tokens are separate: `THUNDERBOLT_TOKEN` supports
 headless direct managed inference only, is not device-bound, and must be revoked
-through the PAT lifecycle rather than CLI logout. Confidential models always
-require a web session; a PAT request fails with `WEB_LOGIN_REQUIRED` without
-fallback or replay.
+through the PAT lifecycle rather than CLI logout. Confidential models require a web
+session unless the operator sets `CONFIDENTIAL_API_KEYS_ENABLED=true`; otherwise a
+PAT request fails with `WEB_LOGIN_REQUIRED` without fallback or replay. See
+[backend/docs/pat-lifecycle.md](../../backend/docs/pat-lifecycle.md) for why that
+gate is an authorization choice rather than a property of the confidential
+transport.
 
 ### Auth Token and Device ID
 

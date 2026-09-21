@@ -202,6 +202,43 @@
 }
 
 /* ===========================
+   Software keyboard inset
+
+   `--kb` is the height the software keyboard covers, written to <html> by
+   useKeyboardInset. Registering it as a real <length> is what makes it
+   animatable, and every surface that moves with the keyboard — the chat
+   composer's container, the message list, modal and drawer insets — reads it
+   through var(), so this one transition carries all of them instead of each
+   snapping to the final height in a single frame.
+
+   The keyboard's own curve isn't exposed to the web, so this approximates
+   iOS's ~250ms ease-out. [data-kb-instant] opts a single update out: panning
+   the visual viewport with the keyboard already open re-reports the inset
+   continuously, and easing each of those updates would lag the finger.
+   =========================== */
+@property --kb {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+:root {
+  transition-property: --kb;
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.17, 0.59, 0.4, 1);
+}
+
+:root[data-kb-instant] {
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    transition-duration: 0ms;
+  }
+}
+
+/* ===========================
    Responsive Touch Target System
 
    Desktop-first: the base values below are the desktop sizing; the

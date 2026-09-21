@@ -86,6 +86,31 @@ describe('resolveTextMimeType', () => {
     expect(resolveTextMimeType(filename, declared)).toBe('text/plain')
   })
 
+  it.each([
+    ['book.xlsx', ''],
+    ['book.xlsx', 'application/octet-stream'],
+    ['book.xlsx', 'application/zip'],
+  ])('resolves %s (declared "%s") to the xlsx type', (filename, declared) => {
+    expect(resolveTextMimeType(filename, declared)).toBe(xlsxMime)
+  })
+
+  it.each([
+    ['report.docx', ''],
+    ['report.docx', 'application/octet-stream'],
+  ])('resolves %s (declared "%s") to the docx type', (filename, declared) => {
+    expect(resolveTextMimeType(filename, declared)).toBe(docxMime)
+  })
+
+  it('makes an OS-unnamed office file deliver as text rather than unreadable bytes', () => {
+    // The composer accepts these by extension, so an unresolved type would store
+    // a file no transformer can read — and remediation looks up by that same type.
+    for (const filename of ['book.xlsx', 'report.docx']) {
+      const resolved = resolveTextMimeType(filename, '')
+      expect(hasTransformer(resolved, 'text')).toBe(true)
+    }
+    expect(defaultDeliveryMode(resolveTextMimeType('book.xlsx', ''))).toBe('text')
+  })
+
   it('leaves a genuinely binary type alone', () => {
     expect(resolveTextMimeType('photo.png', 'image/png')).toBe('image/png')
     expect(resolveTextMimeType('archive.zip', '')).toBe('')

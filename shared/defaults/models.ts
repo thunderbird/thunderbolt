@@ -151,15 +151,10 @@ export const defaultModelGlm53: SharedModel = {
  * "Provided" group of the model picker. Reorder freely — but bump
  * `defaultModelsVersion` when you do.
  *
- * Retired between V1 and V2: `defaultModelDeepseekV4Pro` (superseded by
- * Flash under a fresh id) and `defaultModelKimiK26` (dropped). Their rows are
- * soft-deleted by `cleanupRemovedDefaults` on next reconcile; unedited copies
- * disappear cleanly, user-edited copies survive but point at retired ids and
- * will surface upstream errors when used.
- * Retired in V5: direct Flash (`019f227e-d640-727d-ba12-d51bd7d0a3d6`),
- * replaced by confidential Flash under a fresh id with the same cleanup policy.
- * Retired slugs in V6: `glm-5-2` and `deepseek-v4-flash`, upgraded in place.
- * The backend continues accepting both slugs for legacy clients.
+ * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
+ * from this list. User-edited copies survive but may reference unavailable
+ * upstream models and return errors when used.
+ * The backend accepts `glm-5-2` and `deepseek-v4-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus5,
@@ -170,11 +165,11 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`
  * changes in any way. The reconciler uses this as the ordering signal to
- * decide which device's defaults win in a multi-device sync group (THU-637):
+ * decide which device's defaults win in a multi-device sync group:
  * a device only overwrites existing rows when its picked defaults version is
  * strictly newer than the highest ever applied on this account.
  *
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 6
+export const defaultModelsVersion = 7

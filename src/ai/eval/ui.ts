@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import type { EvalResult, EvalScenario } from './types'
+import { serializeArtifact, trialVerdict } from './stats'
+import type { EvalTrial, EvalScenario } from './types'
 
 const write = (text: string) => process.stdout.write(text)
 
@@ -78,8 +79,12 @@ const resultsHeight = () => termRows() - headerLines - fixedBottomLines()
 // ── Layout setup ───────────────────────────────────────────
 
 /** Initialize the terminal layout: fixed header, rolling results, fixed footer */
-export const initLayout = (scenarios: EvalScenario[], concurrency: number) => {
-  totalScenarios = scenarios.length
+export const initLayout = (scenarios: EvalScenario[], concurrency: number, plannedTrials = scenarios.length) => {
+  totalScenarios = plannedTrials
+  completedCount = 0
+  passedCount = 0
+  failedCount = 0
+  resultLines.length = 0
   evalStartTime = performance.now()
   maxSpinners = concurrency
 
@@ -203,9 +208,11 @@ const stopAllSpinners = () => {
   activeSpinners.clear()
 }
 
-export const printResult = (result: EvalResult) => {
+export const printResult = (trial: EvalTrial) => {
+  const result = (JSON.parse(serializeArtifact(trial)) as EvalTrial).attempts.at(-1)!.result
+  const verdict = trialVerdict(trial)
   completedCount++
-  if (result.passed) {
+  if (verdict === 'pass') {
     passedCount++
   } else {
     failedCount++
@@ -215,7 +222,12 @@ export const printResult = (result: EvalResult) => {
   const promptShort = truncate(result.scenario.prompt, promptMaxWidth)
   const time = `${(result.durationMs / 1000).toFixed(1)}s`
 
-  const icon = result.passed ? `${esc.green}✓${esc.reset}` : `${esc.red}✗${esc.reset}`
+  const icon =
+    verdict === 'error'
+      ? `${esc.yellow}?${esc.reset}`
+      : verdict === 'pass'
+        ? `${esc.green}✓${esc.reset}`
+        : `${esc.red}✗${esc.reset}`
 
   const metrics: string[] = []
   if (result.citations.length > 0) {

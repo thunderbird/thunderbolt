@@ -579,29 +579,66 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
-/** Remove web capabilities and request completion once the live turn first denies a call. */
+/** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
     return () => undefined
   }
-  let notified = false
-  return harness.on('tool_result', async () => {
-    if (notified || !webToolBudget.probe.exhaustedAttempts) {
-      return undefined
+  const eligibleWebTools = harness
+    .getActiveTools()
+    .map(({ name }) => name)
+    .filter((name) => webToolNames.has(name))
+  let floored = false
+  let seenDenials = 0
+  let pending: Promise<undefined> = Promise.resolve(undefined)
+  let steeringMode: ReturnType<AgentHarness['getSteeringMode']> | undefined
+  const restoreSteeringMode = async () => {
+    if (steeringMode !== undefined) {
+      const original = steeringMode
+      steeringMode = undefined
+      await harness.setSteeringMode(original)
     }
-    // Result hooks can overlap for parallel calls; claim notification before yielding.
-    notified = true
-    await harness.setActiveTools(
-      harness
-        .getActiveTools()
-        .map(({ name }) => name)
-        .filter((name) => !webToolNames.has(name)),
-    )
-    await harness.steer(
-      'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
-    )
     return undefined
+  }
+  const removeProviderHook = harness.on('before_provider_request', restoreSteeringMode)
+  const removeResultHook = harness.on('tool_result', () => {
+    const previous = pending
+    pending = (async () => {
+      await previous
+      const active = harness.getActiveTools().map(({ name }) => name)
+      if (!active.length) {
+        return undefined
+      }
+      const { isExhausted, exhaustedAttempts } = webToolBudget.probe
+      if (!isExhausted) {
+        seenDenials = exhaustedAttempts
+      }
+      if (isExhausted && exhaustedAttempts > seenDenials && !floored) {
+        floored = true
+        seenDenials = exhaustedAttempts
+        await harness.setActiveTools(active.filter((name) => !webToolNames.has(name)))
+        await harness.steer(
+          'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
+        )
+      } else if (!isExhausted && floored && eligibleWebTools.length) {
+        floored = false
+        await harness.setActiveTools([...new Set([...active, ...eligibleWebTools])])
+        // Flush a queued old stop together with its correction, preserving other queued input.
+        steeringMode ??= harness.getSteeringMode()
+        await harness.setSteeringMode('all')
+        await harness.steer(
+          'The research skill expanded this turn’s web budget. This supersedes the earlier budget-exhaustion instruction: web tools are available again. Continue the requested research within the remaining budget, then synthesize the results.',
+        )
+      }
+      return undefined
+    })()
+    return pending
   })
+  return () => {
+    removeResultHook()
+    removeProviderHook()
+    void restoreSteeringMode()
+  }
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it

@@ -4,246 +4,147 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { wilsonScoreInterval } from './stats'
-import type {
-  EvalMetrics,
-  EvalMetricsGroup,
-  EvalScenarioComparison,
-  EvalScenarioMetrics,
-  NecessityCategory,
-  WilsonInterval,
-} from './types'
-
-type EvalBaselineGroup = Omit<EvalMetricsGroup, 'scenarios'> & {
-  scenarios: Record<string, Omit<EvalScenarioMetrics, 'prompt'> & { prompt?: string }>
-}
+import { acceptEval, serializeArtifact } from './stats'
+import type { EvalManifest, EvalMetrics, EvalMetricsGroup, EvalScenarioComparison } from './types'
 
 export type EvalBaseline = {
-  schemaVersion: 2 | 3
+  schemaVersion: number
   generatedAt: string
   groupKey: string
-  group: EvalBaselineGroup
-}
-
-export type RateComparison = {
-  baselineRate: number | null
-  currentRate: number
-  delta: number | null
-  baselineWilson: WilsonInterval | null
-  currentWilson: WilsonInterval | null
-  significant: boolean
-  direction: 'improved' | 'regressed' | 'unchanged' | 'no-baseline'
-}
-
-export type EvalGroupComparison = {
-  baselineAvailable: boolean
-  gatesPassed: boolean
-  scenarios: Record<string, EvalScenarioComparison>
-  categories: Partial<Record<NecessityCategory, RateComparison>>
-  headline: {
-    unnecessarySearchRate: RateComparison
-    missedSearchRate: RateComparison
-    meanWebCallsNoSearchExpected: {
-      baseline: number | null
-      current: number
-      delta: number | null
-    }
-  }
+  manifest?: EvalManifest
+  group: EvalMetricsGroup
 }
 
 export type EvalMetricsComparison = {
   generatedAt: string
-  groups: Record<string, EvalGroupComparison>
-}
-
-const roundedDelta = (current: number, baseline: number): number => Number((current - baseline).toFixed(6))
-
-const compareRate = (
-  currentRate: number,
-  currentWilson: WilsonInterval | null,
-  baselineRate: number | null,
-  baselineWilson: WilsonInterval | null,
-  favorableDirection: 'higher' | 'lower',
-): RateComparison => {
-  if (baselineRate === null || baselineWilson === null) {
-    return {
-      baselineRate: null,
-      currentRate,
-      delta: null,
-      baselineWilson: null,
-      currentWilson,
-      significant: false,
-      direction: 'no-baseline',
+  acceptance: ReturnType<typeof acceptEval>
+  groups: Record<
+    string,
+    {
+      comparable: boolean
+      reason: string
+      treatment: { baseline: EvalManifest['treatment'] | null; current: EvalManifest['treatment'] }
+      scenarios: Record<string, EvalScenarioComparison>
     }
-  }
-
-  const delta = roundedDelta(currentRate, baselineRate)
-  const direction =
-    delta === 0
-      ? 'unchanged'
-      : (delta > 0 && favorableDirection === 'higher') || (delta < 0 && favorableDirection === 'lower')
-        ? 'improved'
-        : 'regressed'
-
-  return {
-    baselineRate,
-    currentRate,
-    delta,
-    baselineWilson,
-    currentWilson,
-    significant:
-      currentWilson !== null &&
-      (currentWilson.upper < baselineWilson.lower || currentWilson.lower > baselineWilson.upper),
-    direction,
-  }
+  >
 }
 
-/** Write one deterministic baseline file per model and engine cell. */
+const identityFields = [
+  'rubricHash',
+  'judgePromptVersion',
+  'judgeModelId',
+  'samples',
+  'timeout',
+  'judgeTimeout',
+  'providerKind',
+] as const
+
+/** Identify the first incompatible measurement field; treatments are allowed to change. */
+export const baselineDifferences = (current: EvalManifest, baseline: EvalBaseline): string[] => {
+  if (baseline.schemaVersion !== 4 || !baseline.manifest) {
+    return ['schemaVersion']
+  }
+  const previous = baseline.manifest
+  const sortedCells = (manifest: EvalManifest) =>
+    [...manifest.cells].sort((left, right) => left.key.localeCompare(right.key))
+  return [
+    ...identityFields.filter((field) => current[field] !== previous[field]),
+    ...(JSON.stringify(sortedCells(current)) !== JSON.stringify(sortedCells(previous))
+      ? ['cells (aliases / actual model IDs)']
+      : []),
+  ]
+}
+
+/** Write deterministic cell files only from a complete matrix; failing quality is still a valid baseline. */
 export const writeBaselineFiles = (
   metrics: EvalMetrics,
-  outputDirectory: string,
-  expectedGroupKeys: ReadonlyArray<string>,
+  directory: string,
+  expectedGroupKeys: readonly string[],
 ): string[] => {
-  const missingGroupKeys = expectedGroupKeys.filter((groupKey) => !(groupKey in metrics.groups)).sort()
-  if (missingGroupKeys.length > 0) {
+  const missing = expectedGroupKeys.filter(
+    (key) => !metrics.groups[key] || !metrics.manifest.cells.some((cell) => cell.key === key),
+  )
+  if (metrics.schemaVersion !== 4 || metrics.manifest.partial || missing.length || metrics.harnessCrashed) {
     throw new Error(
-      `Cannot regenerate eval baselines from partial metrics. Missing model/engine cells: ${missingGroupKeys.join(', ')}. Baselines are regenerated only from full-matrix eval runs such as the nightly workflow; run "bun run eval" without EVAL_MODELS or EVAL_ENGINES.`,
+      `Cannot regenerate eval baselines from partial metrics. Missing model/engine cells: ${missing.join(', ')}`,
     )
   }
-
-  mkdirSync(outputDirectory, { recursive: true })
-  for (const fileName of readdirSync(outputDirectory).filter((name) => name.endsWith('.json'))) {
-    rmSync(join(outputDirectory, fileName))
+  mkdirSync(directory, { recursive: true })
+  for (const name of readdirSync(directory).filter((name) => name.endsWith('.json'))) {
+    rmSync(join(directory, name))
   }
   return Object.entries(metrics.groups)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([groupKey, group]) => {
-      const outputPath = join(outputDirectory, `${groupKey.replace('/', '--')}.json`)
-      const baseline: EvalBaseline = {
-        schemaVersion: 3,
-        generatedAt: metrics.generatedAt,
-        groupKey,
-        group,
-      }
-      writeFileSync(outputPath, `${JSON.stringify(baseline, null, 2)}\n`, 'utf8')
-      return outputPath
+      const path = join(directory, `${groupKey.replace('/', '--')}.json`)
+      writeFileSync(
+        path,
+        `${serializeArtifact({ schemaVersion: 4, generatedAt: metrics.generatedAt, manifest: metrics.manifest, groupKey, group }, undefined, 2)}\n`,
+      )
+      return path
     })
 }
 
-/** Load all checked-in baseline cells, returning an empty map before the first refresh. */
+/** Keep old schema metadata for an explicit not-comparable verdict, never reinterpret its measurements. */
 export const loadBaselineFiles = (directory: string): Record<string, EvalBaseline> => {
   if (!existsSync(directory)) {
     return {}
   }
   return Object.fromEntries(
     readdirSync(directory)
-      .filter((fileName) => fileName.endsWith('.json'))
+      .filter((name) => name.endsWith('.json'))
       .sort()
-      .map((fileName) => {
-        const baseline = JSON.parse(readFileSync(join(directory, fileName), 'utf8')) as EvalBaseline
+      .map((name) => {
+        const baseline = JSON.parse(readFileSync(join(directory, name), 'utf8')) as EvalBaseline
         return [baseline.groupKey, baseline]
       }),
   )
 }
 
-/** Compare current eval rates with checked-in baselines using both runs' Wilson intervals. */
+/** Paired per-scenario valid-trial deltas, conditional on matching measurement identity. */
 export const compareMetricsToBaselines = (
   metrics: EvalMetrics,
   baselines: Record<string, EvalBaseline>,
 ): EvalMetricsComparison => ({
   generatedAt: metrics.generatedAt,
+  acceptance: acceptEval(metrics),
   groups: Object.fromEntries(
-    Object.entries(metrics.groups).map(([groupKey, current]) => {
-      const baseline = baselines[groupKey]?.group
-      const scenarios: Record<string, EvalScenarioComparison> = Object.fromEntries(
-        Object.entries(current.scenarios).map(([scenarioId, scenario]) => {
-          const baselinePassed = baseline?.scenarios[scenarioId]?.passed ?? null
-          const direction: EvalScenarioComparison['direction'] =
-            baselinePassed === null
-              ? 'no-baseline'
-              : scenario.passed === baselinePassed
-                ? 'unchanged'
-                : scenario.passed
-                  ? 'improved'
-                  : 'regressed'
-          return [
-            scenarioId,
-            {
-              baselinePassed,
-              currentPassed: scenario.passed,
-              direction,
-            },
-          ]
-        }),
-      )
-      const categories = Object.fromEntries(
-        Object.entries(current.categories).map(([category, categoryMetrics]) => {
-          const baselineCategory = baseline?.categories[category as NecessityCategory]
-          return [
-            category,
-            compareRate(
-              categoryMetrics.rate,
-              categoryMetrics.total > 0 ? categoryMetrics.wilson : null,
-              baselineCategory?.rate ?? null,
-              baselineCategory && baselineCategory.total > 0
-                ? wilsonScoreInterval(baselineCategory.passed, baselineCategory.total)
-                : null,
-              'higher',
-            ),
-          ]
-        }),
-      )
-      const baselineUnnecessary = baseline?.headline.unnecessarySearchRate
-      const baselineMissed = baseline?.headline.missedSearchRate
-      const baselineMean = baseline?.headline.meanWebCallsNoSearchExpected ?? null
-      const gatesPassed =
-        Object.values(current.categories).every(({ gatePassed }) => gatePassed) &&
-        current.headline.unnecessarySearchRate.gatePassed &&
-        current.headline.missedSearchRate.gatePassed
-
+    metrics.manifest.cells.map(({ key }) => {
+      const baseline = baselines[key]
+      const differences = baseline ? baselineDifferences(metrics.manifest, baseline) : ['baseline absent']
+      const comparable = differences.length === 0
       return [
-        groupKey,
+        key,
         {
-          baselineAvailable: Boolean(baseline),
-          gatesPassed,
-          scenarios,
-          categories,
-          headline: {
-            unnecessarySearchRate: compareRate(
-              current.headline.unnecessarySearchRate.rate,
-              current.headline.unnecessarySearchRate.total > 0
-                ? wilsonScoreInterval(
-                    current.headline.unnecessarySearchRate.count,
-                    current.headline.unnecessarySearchRate.total,
-                  )
-                : null,
-              baselineUnnecessary?.rate ?? null,
-              baselineUnnecessary && baselineUnnecessary.total > 0
-                ? wilsonScoreInterval(baselineUnnecessary.count, baselineUnnecessary.total)
-                : null,
-              'lower',
-            ),
-            missedSearchRate: compareRate(
-              current.headline.missedSearchRate.rate,
-              current.headline.missedSearchRate.total > 0
-                ? wilsonScoreInterval(current.headline.missedSearchRate.count, current.headline.missedSearchRate.total)
-                : null,
-              baselineMissed?.rate ?? null,
-              baselineMissed && baselineMissed.total > 0
-                ? wilsonScoreInterval(baselineMissed.count, baselineMissed.total)
-                : null,
-              'lower',
-            ),
-            meanWebCallsNoSearchExpected: {
-              baseline: baselineMean,
-              current: current.headline.meanWebCallsNoSearchExpected,
-              delta:
-                baselineMean === null
+          comparable,
+          reason: comparable ? 'comparable' : `not comparable: ${differences.join(', ')}`,
+          treatment: { baseline: baseline?.manifest?.treatment ?? null, current: metrics.manifest.treatment },
+          scenarios: Object.fromEntries(
+            Object.entries(metrics.groups[key]?.scenarios ?? {}).map(([id, scenario]) => {
+              const baselineRate = comparable ? (baseline.group.scenarios[id]?.rate ?? null) : null
+              const delta =
+                baselineRate === null || scenario.rate === null
                   ? null
-                  : roundedDelta(current.headline.meanWebCallsNoSearchExpected, baselineMean),
-            },
-          },
-        } satisfies EvalGroupComparison,
+                  : Number((scenario.rate - baselineRate).toFixed(6))
+              return [
+                id,
+                {
+                  baselineRate,
+                  currentRate: scenario.rate,
+                  delta,
+                  direction:
+                    delta === null
+                      ? 'not comparable'
+                      : delta === 0
+                        ? 'unchanged'
+                        : delta > 0
+                          ? 'improved'
+                          : 'regressed',
+                },
+              ]
+            }),
+          ),
+        },
       ]
     }),
   ),

@@ -258,11 +258,13 @@ export type OpenAiCompatConnection = {
  *
  * @param modelConfig - the model whose connection to resolve
  * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @param backendFetch - transport for authenticated backend requests
  * @returns the connection, or `null` when unsupported/unconfigured
  */
 export const resolveOpenAiCompatConnection = (
   modelConfig: Model,
   getProxyFetch: () => FetchFn,
+  backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection | null => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
@@ -276,12 +278,14 @@ export const resolveOpenAiCompatConnection = (
       const ssoFetch: typeof fetch = Object.assign(
         (input: RequestInfo | URL, init?: RequestInit) => {
           const headers = new Headers(init?.headers)
-          headers.delete('authorization')
-          return fetch(input, { ...init, headers, credentials: 'include' })
+          if (!hasRealToken) {
+            headers.delete('authorization')
+          }
+          return backendFetch(input, { ...init, headers, credentials: 'include' })
         },
-        { preconnect: fetch.preconnect },
+        { preconnect: backendFetch.preconnect },
       )
-      const providerFetch: FetchFn = withAppVersionHeader(sso && !hasRealToken ? ssoFetch : fetch)
+      const providerFetch: FetchFn = withAppVersionHeader(sso ? ssoFetch : backendFetch)
       return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
     }
     case 'openai':
@@ -325,8 +329,9 @@ export const resolveManagedAnthropicConnection = (
   modelConfig: Model,
   getProxyFetch: () => FetchFn,
   client: 'anthropic-sdk' | 'ai-sdk' = 'anthropic-sdk',
+  backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection => {
-  const connection = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+  const connection = resolveOpenAiCompatConnection(modelConfig, getProxyFetch, backendFetch)
   if (!connection) {
     throw new Error('No connection resolved for managed Anthropic model')
   }

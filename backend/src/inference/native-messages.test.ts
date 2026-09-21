@@ -115,6 +115,26 @@ describe('POST /chat/v1/messages', () => {
     })
   })
 
+  it.each(['{', 'null'])('returns 400 for invalid JSON body %s without calling upstream', async (body) => {
+    const fetchFn = Object.assign(
+      mock(async () => {
+        throw new Error('must not reach upstream')
+      }),
+      { preconnect: () => undefined },
+    )
+    const app = new Elysia().use(createInferenceRoutes({ auth: mockAuth, database, fetchFn }))
+    const response = await app.handle(
+      new Request('http://localhost/chat/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body,
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
   it('rejects Anthropic server tools before using the managed API key', async () => {
     const create = mock(() => {
       throw new Error('must not reach Anthropic')

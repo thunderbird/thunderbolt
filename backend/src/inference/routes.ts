@@ -389,7 +389,13 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
     guardedApp.post('/v1/messages', async (ctx) => {
       const handlerStartedAt = nowFn()
-      const requestBody = await ctx.request.json().catch(() => null)
+      let requestBody: unknown
+      try {
+        requestBody = await ctx.request.json()
+      } catch {
+        ctx.set.status = 400
+        return createErrorResponse(getSafeErrorMessage(400))
+      }
       const parsedBody = anthropicMessagesRequestSchema.safeParse(requestBody)
       if (!parsedBody.success) {
         ctx.set.status = 400

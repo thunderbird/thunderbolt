@@ -50,8 +50,10 @@ const storedDEKs = new Map<KeyId, string>()
 let storedPrimaryKeyId: KeyId | null = null
 let storedKeyVersion: number | null = null
 let storedKeyringAnchor: KeyringAnchor | null = null
-/** Simulates an IndexedDB write failure inside `storeAK` (post-commit staging). */
+/** Simulates a persistent IndexedDB write failure inside `storeAK` (post-commit staging). */
 let failStoreAK = false
+/** Simulates a TRANSIENT storeAK failure: the next call throws, the one after succeeds. */
+let failStoreAKOnce = false
 /** The v1 CK a formerly-v1 device kept through the non-destructive db bump (THU-877). */
 let storedLegacyCK: CryptoKey | null = null
 
@@ -76,6 +78,10 @@ mock.module('@/crypto/key-storage', () => ({
   getKeyPair: async () => storedKeyPair,
   storeAK: async (ak: CryptoKey) => {
     if (failStoreAK) {
+      throw new Error('IndexedDB unavailable')
+    }
+    if (failStoreAKOnce) {
+      failStoreAKOnce = false
       throw new Error('IndexedDB unavailable')
     }
     storedAK = ak
@@ -592,11 +598,13 @@ describe('encryption service (v2)', () => {
     storedKeyVersion = null
     storedKeyringAnchor = null
     failStoreAK = false
+    failStoreAKOnce = false
     clearRecoveryPhrasePending()
   })
 
   afterEach(() => {
     failStoreAK = false
+    failStoreAKOnce = false
     clearRecoveryPhrasePending()
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
@@ -1478,6 +1486,9 @@ describe('encryption service (v2)', () => {
         const dek = await unwrapDEK(storedDEKs.get(keyId)!, storedAK!, keyId)
         expect(dek.algorithm.name).toBe('AES-GCM')
       }
+      // The device recorded the committed epoch, so a later app-init epoch check
+      // sees it is current and does not needlessly re-adopt on every launch.
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
       // Revocation is silent: same phrase, same salt, nothing owed to the user.
       expect(server.metadata!.kdfSalt).toBe(fixtureRecoverySalt)
       expect(isRecoveryPhrasePending()).toBe(false)
@@ -1611,6 +1622,38 @@ describe('encryption service (v2)', () => {
       storedDEKs.clear()
       await recoverWithKey(clientFor(server), originalPhrase)
       expect(storedAK).not.toBeNull()
+    })
+
+    it('re-adopts the committed epoch when a transient local write fails post-commit', async () => {
+      // The server commits the rotation, then a local IndexedDB write fails.
+      // Because `storeAK` is the FIRST write, its failure used to leave the device
+      // fully self-consistent on the OLD epoch: old AK, old pointer, the new
+      // primary never staged. It kept writing `__enc:v2:0:` under a DEK the
+      // just-revoked device still holds, and — being internally consistent — no
+      // unwrap ever failed, so the codec's self-heal never fired. Revocation was
+      // silently defeated for this device's writes. The fix re-adopts the
+      // committed epoch from the server instead of swallowing the failure.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('0')
+      // A transient fault — the realistic trigger (quota / eviction / torn write).
+      // The re-adoption retry lands on the second `storeAK`. A PERSISTENT fault
+      // cannot be healed locally and must fail closed at the codec on next use;
+      // surviving a restart under it needs the boot-time epoch check (C7 bundle).
+      failStoreAKOnce = true
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The server advanced to the freshly minted primary, and this device caught
+      // up to it rather than silently staying on the stale primary '0'.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedDEKs.has('1')).toBe(true)
     })
   })
 
@@ -1901,6 +1944,61 @@ describe('encryption service (v2)', () => {
       const result = await ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => null })
       expect(result.outcome).toBe('followed')
       expect(storedAK).not.toBeNull()
+    })
+
+    it('re-adopts at boot when the local AK is behind the committed epoch', async () => {
+      // A PERSISTENT post-commit staging failure (the tail the transient re-adopt
+      // above cannot heal) leaves this device holding a stale AK while the server
+      // advanced — and it never self-heals, because a consistent old-epoch device
+      // trips no unwrap failure. The boot check catches the lagging key_version
+      // and re-adopts, so the device stops encoding under the old primary.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const staleVersion = storedKeyVersion
+
+      // Rotate with a persistent local write fault: the server moves to the new
+      // epoch, but this device's storeAK — and the catch's re-adoption retry —
+      // both fail, so it stays on the old AK, pointer, and version.
+      failStoreAK = true
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      expect(storedPrimaryKeyId).toBe('0')
+      expect(storedKeyVersion).toBe(staleVersion)
+      expect(server.metadata!.keyVersion).toBeGreaterThan(staleVersion!)
+
+      // IndexedDB recovers; the next app-init epoch check re-adopts the committed epoch.
+      failStoreAK = false
+      const result = await ensureV2Encryption(clientFor(server))
+
+      expect(result.outcome).toBe('already-v2')
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedDEKs.has('1')).toBe(true)
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      // The stored AK is genuinely the new one: it opens the server's new primary.
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!, '1')).toBeDefined()
+    })
+
+    it('does not re-adopt when the local AK is already current', async () => {
+      // The boot check must not refresh a device that is already on the committed
+      // epoch — local key_version == server, so nothing to do.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const akBefore = storedAK
+
+      const result = await ensureV2Encryption(clientFor(server))
+
+      expect(result.outcome).toBe('already-v2')
+      // Untouched: a re-adoption would have stored a fresh AK object and moved the
+      // pointer. Same object identity proves refreshAK was never called.
+      expect(storedAK).toBe(akBefore)
+      expect(storedPrimaryKeyId).toBe('0')
     })
   })
 

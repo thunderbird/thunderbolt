@@ -41,6 +41,7 @@ import {
   storePrimaryKeyId,
   getPrimaryKeyId,
   storeKeyVersion,
+  getKeyVersion,
   type OpenedAkEnvelope,
   storeKeyringAnchor,
   getKeyringAnchor,
@@ -1448,8 +1449,9 @@ const runAKRotation = async (
   // misconfiguration and must surface as-is, not masquerade as a stale-rotation 4xx.
   const orgEnvelope = await buildOrgEnvelope(newAK)
 
+  let committedKeyVersion: number
   try {
-    await postRotate(httpClient, {
+    const { key_version: keyVersion } = await postRotate(httpClient, {
       proof,
       envelopes,
       wrappedKeys,
@@ -1462,6 +1464,7 @@ const runAKRotation = async (
       orgEnvelope,
       stepUpOtp: opts.stepUpOtp,
     })
+    committedKeyVersion = keyVersion
   } catch (err) {
     if (err instanceof HttpError && err.response.status === 403) {
       // Step-up refusal (THU-875) is NOT staleness: local state is fine and a
@@ -1487,12 +1490,17 @@ const runAKRotation = async (
   // protects the caller's only copy of the freshly minted phrase: nothing here
   // may throw, or the account is left with a phrase nobody knows. ('keep' mode
   // has no unsaved secret to lose, but the same staging failure must not
-  // surface as a rotation failure either.) Local staging failing is
-  // independently recoverable — the codec's unwrap-failure path calls
-  // `refreshAK` and re-stages on next use — so it is logged, not propagated.
+  // surface as a rotation failure either.) A staging failure is caught below and
+  // re-adopted rather than propagated.
   try {
     await storeAK(await reimportAsNonExtractable(newAK))
     await stageWrappedDEKs(newPrimaryKey ? [...wrappedKeys, newPrimaryKey] : wrappedKeys)
+    // Store the committed epoch so `ensureV2Encryption` can tell a current AK
+    // from a stale one at boot — the signal that lets a device left behind by a
+    // failed adoption re-adopt on next launch instead of encoding under the old
+    // primary forever. A staging failure below skips this, leaving the local
+    // version behind the server's, which is exactly the "re-adopt me" signal.
+    await storeKeyVersion(committedKeyVersion)
     invalidateKeyringCache()
     if (newPrimaryKey) {
       await storePrimaryKeyId(newPrimaryKey.keyId)
@@ -1502,7 +1510,27 @@ const runAKRotation = async (
       resetCodecState()
     }
   } catch (err) {
-    console.error('[e2ee] AK rotation committed but local key staging failed — keys will re-stage on next use:', err)
+    // The server committed the new epoch but this device did not adopt it. It
+    // must NOT be left self-consistent on the OLD epoch: it would keep encoding
+    // under a DEK a just-revoked device still holds, and — being internally
+    // consistent — no unwrap would fail, so the codec's own self-heal never
+    // fires. Re-adopt from the server via the canonical path (the same one the
+    // codec calls on `unwrap-failed`). Best-effort: it must never propagate and
+    // eat the freshly minted phrase the caller is about to return.
+    //
+    // This heals a TRANSIENT local write fault (quota, eviction, a torn write) —
+    // the realistic trigger. A PERSISTENT fault is not fully closed here: the
+    // stale AK is still in IndexedDB, so the codec re-reads it and keeps encoding
+    // under the old primary. Closing that requires a boot-time local-vs-server
+    // epoch check, which is tracked with the recovery-phrase-loss dual it shares
+    // a fix with; it is out of scope for this best-effort retry.
+    console.error('[e2ee] AK rotation committed but local key staging failed — re-adopting from the server:', err)
+    await refreshAK(httpClient).catch((refreshErr) => {
+      console.error(
+        '[e2ee] re-adoption after a staging failure also failed — keys will re-stage on next use:',
+        refreshErr,
+      )
+    })
   }
 
   // Only a freshly minted phrase is owed to the user; a silent rotation must not
@@ -2089,6 +2117,21 @@ export const ensureV2Encryption = async (
   }
 
   if (await getAK()) {
+    // A local AK exists — but is it the CURRENT one? A post-commit staging
+    // failure (see `runAKRotation`) can leave a device holding a stale AK while
+    // the server moved on, and it stays that way: nothing here re-adopts, and a
+    // consistent old-epoch device never trips the codec's unwrap-failure heal.
+    // If the stored epoch is behind the server's, re-adopt before reporting
+    // ready so the device cannot keep encoding under the old primary — the DEK a
+    // just-revoked device still holds. Server-steering-safe: `refreshAK` adopts
+    // from this device's own verified envelope and never trusts a served
+    // pointer, so a server lying about `key_version` can at most force a
+    // re-adoption of the genuine current envelope. A refresh failure surfaces
+    // (init already tolerates throws from the migrate/follow paths below).
+    const localKeyVersion = await getKeyVersion()
+    if (localKeyVersion !== null && localKeyVersion < metadata.key_version) {
+      await refreshAK(httpClient)
+    }
     return { outcome: 'already-v2' }
   }
 

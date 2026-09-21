@@ -19,7 +19,13 @@ const emailTimeoutMs = 10_000
 export type HealthRouteDeps = {
   settings: Pick<
     Settings,
-    'monitoringToken' | 'powersyncUrl' | 'resendApiKey' | 'anthropicApiKey' | 'tinfoilApiKey' | 'tinfoilEnclaveUrl'
+    | 'monitoringToken'
+    | 'powersyncUrl'
+    | 'resendApiKey'
+    | 'anthropicApiKey'
+    | 'anthropicBaseUrl'
+    | 'tinfoilApiKey'
+    | 'tinfoilEnclaveUrl'
   >
   database: Pick<typeof db, 'execute'> & InferenceDatabase
   fetchFn?: typeof fetch

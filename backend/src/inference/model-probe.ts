@@ -8,14 +8,13 @@ import { defaultModels, type SharedModel } from '@shared/defaults/models'
 import { randomBytes } from 'node:crypto'
 import OpenAI from 'openai'
 import { SecureClient } from 'tinfoil'
-import { anthropicCompatBaseUrl } from './client'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
 export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price'
 export type ModelProbeFailure = { model: string; reason: ModelProbeFailureReason }
 export type ModelProbeDeps = {
   database: InferenceDatabase
-  settings: Pick<Settings, 'anthropicApiKey' | 'tinfoilApiKey' | 'tinfoilEnclaveUrl'>
+  settings: Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'tinfoilApiKey' | 'tinfoilEnclaveUrl'>
   /** Transport for the Anthropic OpenAI-compatible client (tests inject a fake). */
   fetchFn: typeof fetch
   /** Attested Tinfoil transport; defaults to a fresh SecureClient per run. */
@@ -62,7 +61,7 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       }
       const client = new OpenAI({
         apiKey: runtime ? settings.anthropicApiKey : settings.tinfoilApiKey,
-        baseURL: runtime ? anthropicCompatBaseUrl : settings.tinfoilEnclaveUrl,
+        baseURL: runtime ? settings.anthropicBaseUrl : settings.tinfoilEnclaveUrl,
         fetch: runtime ? fetchFn : confidentialFetch,
         maxRetries: 0,
       })

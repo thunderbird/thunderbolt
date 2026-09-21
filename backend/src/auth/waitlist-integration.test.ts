@@ -435,6 +435,21 @@ describe('Auth Waitlist Integration', () => {
         }
       }
 
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        }),
+      ).rejects.toMatchObject({ body: { code: 'TOO_MANY_ATTEMPTS' } })
+
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        }),
+      ).rejects.toMatchObject({ body: { code: 'INVALID_OTP' } })
+
+      // NODE_ENV=test fixes the code, so regeneration is observable through the reset attempts, not code rotation.
       // Resend after exhaustion — generates a fresh OTP with counter=0
       mockSendSignInEmail.mockClear()
       await auth.api.sendVerificationOTP({
@@ -443,22 +458,13 @@ describe('Auth Waitlist Integration', () => {
       const secondCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
       const freshOtp = secondCall[0].otp
 
-      // Fresh OTP is different (counter was exhausted, so "reuse" fell through)
-      expect(freshOtp).not.toBe(firstOtp)
-
       // The fresh OTP works — counter was reset to 0.
       const freshChallengeToken = await createTestChallenge(db, email)
-      let signInSucceeded = false
-      try {
-        await auth.api.signInEmailOTP({
-          body: { email, otp: freshOtp },
-          headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
-        })
-        signInSucceeded = true
-      } catch {
-        // Unexpected failure
-      }
-      expect(signInSucceeded).toBe(true)
+      const result = await auth.api.signInEmailOTP({
+        body: { email, otp: freshOtp },
+        headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
+      })
+      expect(result.user.email).toBe(email)
     })
   })
 })

@@ -261,7 +261,7 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
 
   const params = {
     apiKey: settings.anthropicApiKey,
-    baseURL: 'https://api.anthropic.com/v1/',
+    baseURL: settings.anthropicBaseUrl,
     fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
   }
 

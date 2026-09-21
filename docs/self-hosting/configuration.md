@@ -38,13 +38,14 @@ Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by d
 
 Set any subset; the app exposes each provider whose key is present.
 
-| Variable                        | Description                                 |
-| ------------------------------- | ------------------------------------------- |
-| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                          |
-| `FIREWORKS_API_KEY`             | Fireworks                                   |
-| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)     |
-| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint |
-| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint       |
+| Variable                        | Description                                                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                                                                                                                     |
+| `ANTHROPIC_BASE_URL`            | OpenAI-compatible endpoint; override to point the backend at a local fake provider in tests (default: `https://api.anthropic.com/v1/`) |
+| `FIREWORKS_API_KEY`             | Fireworks                                                                                                                              |
+| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)                                                                                                |
+| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint                                                                                            |
+| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint                                                                                                  |
 
 User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
 

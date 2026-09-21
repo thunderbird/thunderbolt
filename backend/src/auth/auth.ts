@@ -32,7 +32,7 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
+import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
 
@@ -44,6 +44,14 @@ export type AuthEmailDeps = {
   sendSignInEmail?: typeof defaultSendSignInEmail
   sendWaitlistJoinedEmail?: typeof defaultSendWaitlistJoinedEmail
   sendWaitlistNotReadyEmail?: typeof defaultSendWaitlistNotReadyEmail
+}
+
+/** Omit the override outside tests so Better Auth retains its random OTP generator. */
+export const getTestSignInOtpOptions = (nodeEnv: string | undefined) => {
+  if (nodeEnv !== 'test') {
+    return {}
+  }
+  return { generateOTP: () => testSignInOtp }
 }
 
 const otpSignInPath = '/sign-in/email-otp'
@@ -325,6 +333,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     plugins: [
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
+        ...getTestSignInOtpOptions(process.env.NODE_ENV),
         otpLength: 8,
         expiresIn: otpExpirySeconds,
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded

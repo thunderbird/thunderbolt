@@ -28,13 +28,19 @@ mock.module('@/waitlist/utils', () => ({
 import { user, verification } from '@/db/auth-schema'
 import { otpChallenge } from '@/db/schema'
 import { waitlist } from '@/db/schema'
-import { challengeTokenHeader } from '@/auth/otp-constants'
-import { createAuth } from '@/auth/auth'
+import { challengeTokenHeader, testSignInOtp } from '@/auth/otp-constants'
+import { createAuth, getTestSignInOtpOptions } from '@/auth/auth'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq, like } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+
+describe('test sign-in OTP options', () => {
+  it.each(['production', 'development', '', undefined])('does not install a generator in %s', (nodeEnv) => {
+    expect(getTestSignInOtpOptions(nodeEnv)).not.toHaveProperty('generateOTP')
+  })
+})
 
 describe('OTP Security Hardening', () => {
   let auth: ReturnType<typeof createAuth>
@@ -112,6 +118,19 @@ describe('OTP Security Hardening', () => {
   // Measure 1: 8-digit OTP
   // ---------------------------------------------------------------------------
   describe('Measure 1: 8-digit OTP', () => {
+    it('emails the fixed test code for an HTTP sign-in request', async () => {
+      const email = 'fixed-test-otp@example.com'
+      await insertApprovedWaitlist(email)
+      const captureEmail = mock((_args: { otp: string }) => Promise.resolve())
+      const testAuth = createAuth(db, { sendSignInEmail: captureEmail })
+      const testApp = await createApp({ database: db, auth: testAuth, otpCooldownMs: 0 })
+
+      const response = await postWaitlistJoin(email, testApp)
+
+      expect(response.status).toBe(200)
+      expect(captureEmail.mock.calls.at(-1)?.[0].otp).toBe(testSignInOtp)
+    })
+
     it('should generate an OTP that is exactly 8 digits', async () => {
       await insertApprovedWaitlist('otp-len@example.com')
       await auth.api.sendVerificationOTP({ body: { email: 'otp-len@example.com', type: 'sign-in' } })
@@ -207,40 +226,28 @@ describe('OTP Security Hardening', () => {
       }
     })
 
-    it('should allow requesting a new code after exhaustion, and old code is invalid', async () => {
+    it('should reject an exhausted code and allow sign-in after requesting another', async () => {
       const email = 'attempts-regen@example.com'
       await insertExistingUser(email)
       await insertApprovedWaitlist(email)
-      const { otp: oldOtp, challengeToken } = await sendOtpWithChallenge(email)
+      const { otp, challengeToken } = await sendOtpWithChallenge(email)
 
-      // Exhaust all 3 attempts
       for (let i = 0; i < 3; i++) {
-        try {
-          await signInWithChallenge(email, '00000000', challengeToken)
-        } catch {
-          // Expected
-        }
+        await expect(signInWithChallenge(email, '00000000', challengeToken)).rejects.toMatchObject({
+          body: { code: 'INVALID_OTP' },
+        })
       }
+      await expect(signInWithChallenge(email, otp, challengeToken)).rejects.toMatchObject({
+        body: { code: 'TOO_MANY_ATTEMPTS' },
+      })
+      await expect(signInWithChallenge(email, otp, challengeToken)).rejects.toMatchObject({
+        body: { code: 'INVALID_OTP' },
+      })
 
-      // Request a new code with a fresh challenge token
-      mockSendSignInEmail.mockClear()
+      // NODE_ENV=test fixes the code, so regeneration is observable through the reset attempts, not code rotation.
+
       const { otp: newOtp, challengeToken: newToken } = await sendOtpWithChallenge(email)
-
-      // New OTP should be different (old one was exhausted, resend generates fresh)
-      expect(newOtp).not.toBe(oldOtp)
-
-      // Old OTP should NOT work
-      let oldWorked = false
-      try {
-        const result = await signInWithChallenge(email, oldOtp, newToken)
-        oldWorked = result.user !== undefined
-      } catch {
-        // Expected
-      }
-      expect(oldWorked).toBe(false)
-
-      const freshToken = await createTestChallenge(db, email)
-      const result = await signInWithChallenge(email, newOtp, freshToken)
+      const result = await signInWithChallenge(email, newOtp, newToken)
       expect(result.user).toBeDefined()
     })
   })

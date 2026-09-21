@@ -1859,8 +1859,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   // misconfiguration and must surface as-is, not be re-classified as a 409 CAS-loss.
   const orgEnvelope = await buildOrgEnvelope(newAK)
 
+  let keyVersion: number
   try {
-    const { key_version: keyVersion } = await postUpgrade(httpClient, {
+    const upgraded = await postUpgrade(httpClient, {
       nonce,
       possessionProof,
       envelopes,
@@ -1876,11 +1877,30 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
       ...recoverySlot,
       orgEnvelope,
     })
+    keyVersion = upgraded.key_version
+  } catch (err) {
+    // CAS-loss: another device migrated first. The candidate AK/phrase were
+    // never committed — re-classify as a follower and surface its ACTUAL outcome
+    // (may be awaiting-approval / not-applicable if this device's envelope isn't
+    // visible yet). Any OTHER error is a genuine pre-commit failure: the flip did
+    // not happen, so the phrase was never anchored and it is safe to surface it.
+    if (err instanceof HttpError && err.response.status === 409) {
+      return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
+    }
+    throw err
+  }
 
-    // Persist ONLY after the server accepted the flip (crash-safe re-entrancy).
-    // Write the keyring + primary + version BEFORE the AK, so a persisted AK
-    // always implies a complete keyring (a crash mid-write leaves no AK → the
-    // device re-runs migration/follow rather than an AK-without-primary state).
+  // PAST THE POINT OF NO RETURN. postUpgrade committed the v2 flip and anchored
+  // recovery to `recovery.recoveryPhrase`, so the old v1 phrase is dead and this
+  // one is the account's ONLY recovery. It must reach the caller even if local
+  // persistence fails — mirror of `runAKRotation`. A staging failure is caught,
+  // not propagated: device access self-heals on the next boot (`ensureV2Encryption`
+  // sees scheme 2 + no local AK and follows), while the phrase is returned now.
+  //
+  // Write the keyring + primary + version BEFORE the AK, so a persisted AK always
+  // implies a complete keyring (a crash mid-write leaves no AK → the device
+  // re-runs migration/follow rather than an AK-without-primary state).
+  try {
     await stageWrappedDEKs([
       { keyId: initialKeyId, wrappedKey: wrappedDek0 },
       { keyId: legacyKeyId, wrappedKey: wrappedV1 },
@@ -1892,22 +1912,15 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     // device just minted, not from whatever a later keyring fetch returns.
     await reconcileKeyringAnchor()
     invalidateKeyringCache()
-
-    markRecoveryPhrasePending()
-
-    return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
   } catch (err) {
-    // CAS-loss: another device migrated first. The candidate AK/phrase were
-    // never persisted — re-classify as a follower and self-serve the winner's
-    // envelope + keyring.
-    if (err instanceof HttpError && err.response.status === 409) {
-      // CAS-loss: another device migrated first. Surface the follower path's
-      // ACTUAL outcome (it may be awaiting-approval / not-applicable if this
-      // device's envelope isn't visible yet) rather than always 'followed'.
-      return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
-    }
-    throw err
+    console.error(
+      '[e2ee] v2 migration committed on the server but local key staging failed — this device will re-follow on next boot; returning the phrase so it is not lost:',
+      err,
+    )
   }
+
+  markRecoveryPhrasePending()
+  return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
 }
 
 // =============================================================================

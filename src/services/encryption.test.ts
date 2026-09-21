@@ -1735,6 +1735,34 @@ describe('encryption service (v2)', () => {
       expect(result.outcome).toBe('followed')
       expect(storedAK).not.toBeNull() // obtained via the follower path
     })
+
+    it('still returns the recovery phrase when post-commit local staging fails', async () => {
+      // The server has already flipped scheme_version to 2 and anchored recovery
+      // to the freshly minted phrase, so the old v1 phrase is dead and this new
+      // one is the account's ONLY recovery. A local IndexedDB write failing after
+      // that commit must not swallow it (and rethrow a "migration failed" that
+      // hides a migration the server actually did): the phrase must reach the
+      // caller. Device access self-heals via followToV2 on the next boot.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      failStoreAK = true
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      if (result.outcome !== 'migrated') {
+        throw new Error('expected migrated')
+      }
+      expect(result.recoveryKey.split(' ')).toHaveLength(24)
+      // Non-vacuous: the server really committed the flip, so the phrase owed to
+      // the user is the one recovery this now-v2 account has.
+      expect(server.metadata?.schemeVersion).toBe(2)
+      expect(isRecoveryPhrasePending()).toBe(true)
+    })
   })
 
   describe('migrateToV2 — forged v1 envelope (THU-877)', () => {

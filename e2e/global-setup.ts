@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { OAuth2Server } from 'oauth2-mock-server'
+import { createFakeProvider } from './fake-provider'
 import { createMockSamlIdp } from './mock-saml-idp'
 
 const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
@@ -20,17 +21,14 @@ const globalSetup = async () => {
     token.email_verified = true
   })
 
-  oidcServer.service.on(
-    'beforeUserinfo',
-    (userInfoResponse: { body: Record<string, unknown>; statusCode: number }) => {
-      userInfoResponse.body = {
-        sub: 'e2e-test-user',
-        email: 'e2e@thunderbolt.test',
-        name: 'E2E Test User',
-        email_verified: true,
-      }
-    },
-  )
+  oidcServer.service.on('beforeUserinfo', (userInfoResponse: { body: Record<string, unknown>; statusCode: number }) => {
+    userInfoResponse.body = {
+      sub: 'e2e-test-user',
+      email: 'e2e@thunderbolt.test',
+      name: 'E2E Test User',
+      email_verified: true,
+    }
+  })
 
   await oidcServer.start(mockOidcPort, 'localhost')
   console.log(`Mock OIDC server started on port ${mockOidcPort}`)
@@ -38,9 +36,12 @@ const globalSetup = async () => {
   // --- Mock SAML IdP ---
   const samlServer = await createMockSamlIdp(mockSamlPort)
 
+  const fakeProvider = await createFakeProvider(Number(process.env.FAKE_PROVIDER_PORT ?? 9878))
+
   // Store references for teardown
   ;(globalThis as Record<string, unknown>).__oidcServer = oidcServer
   ;(globalThis as Record<string, unknown>).__samlServer = samlServer
+  ;(globalThis as Record<string, unknown>).__fakeProvider = fakeProvider
 }
 
 export default globalSetup

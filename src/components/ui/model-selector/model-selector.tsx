@@ -131,6 +131,7 @@ export const ModelSelector = ({
 
   const renderTrigger = (selected: SearchableMenuItem<ModelItemData> | undefined, isOpen: boolean) => (
     <div
+      data-testid="model-selector-trigger"
       className={cn(
         'flex min-w-0 items-center cursor-pointer transition-colors',
         variant === 'composer'

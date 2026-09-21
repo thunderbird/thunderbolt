@@ -4,6 +4,27 @@
 
 import { expect, type Page } from '@playwright/test'
 
+// Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
+const e2eSignInCode = '12345678'
+
+/**
+ * Request an email code through the entry page, complete verification, and
+ * wait for the authenticated chat UI (onboarding is disabled in the e2e config).
+ */
+export const loginViaEmailCode = async (page: Page) => {
+  const email = `e2e-${crypto.randomUUID()}@thunderbolt.test`
+  // Returning users can see this dialog after the chat has already rendered.
+  await page.addLocatorHandler(page.getByRole('dialog', { name: 'Welcome', exact: true }), async (dialog) => {
+    await dialog.getByRole('button', { name: 'Continue', exact: true }).click()
+  })
+  await page.goto('/')
+  await page.getByPlaceholder('Email', { exact: true }).fill(email)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
+  await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
+  return email
+}
+
 /**
  * Navigate to the app root, let the SSO flow complete naturally through
  * the mock identity provider, and wait for the authenticated chat UI to render.

@@ -6,8 +6,8 @@
   "type": "module",
   "license": "MPL-2.0",
   "scripts": {
-    "test": "bun test --cwd=src --timeout 5000 --randomize && bun test shared/*.test.ts shared/defaults/ shared/i18n/ scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/post-eval-results.test.ts ./.github/scripts/review-orchestrator.test.mjs --timeout 5000 --randomize",
-    "test:5x": "bun test --cwd=src --timeout 3600000 --randomize --rerun-each 5 && bun test shared/*.test.ts shared/defaults/ shared/i18n/ scripts/create-release.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/post-eval-results.test.ts ./.github/scripts/review-orchestrator.test.mjs --timeout 3600000 --randomize --rerun-each 5",
+    "test": "bun test --cwd=src --timeout 5000 --randomize && bun test shared/*.test.ts shared/defaults/ shared/i18n/ scripts/create-release.test.ts scripts/check-e2e-specs-collected.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/post-eval-results.test.ts ./.github/scripts/review-orchestrator.test.mjs --timeout 5000 --randomize",
+    "test:5x": "bun test --cwd=src --timeout 3600000 --randomize --rerun-each 5 && bun test shared/*.test.ts shared/defaults/ shared/i18n/ scripts/create-release.test.ts scripts/check-e2e-specs-collected.test.ts ./.github/scripts/post-pr-metrics.test.js ./.github/scripts/post-eval-results.test.ts ./.github/scripts/review-orchestrator.test.mjs --timeout 3600000 --randomize --rerun-each 5",
     "test:agent-core": "bun test --cwd=shared/agent-core --timeout 5000 --randomize",
     "test:agent-core:5x": "bun test --cwd=shared/agent-core --timeout 5000 --randomize --rerun-each 5",
     "test:agent-core:browser": "bun scripts/agent-core-browser-check.ts",
@@ -47,6 +47,7 @@
     "prepare": "husky",
     "size": "size-limit",
     "e2e": "bunx playwright test",
+    "e2e:check-collected": "bun scripts/check-e2e-specs-collected.ts",
     "e2e:preview": "bunx playwright test --config playwright.preview.config.ts",
     "e2e:headed": "bunx playwright test --headed",
     "docker:nuke": "bash scripts/docker-nuke.sh"

@@ -9,7 +9,7 @@ import { Elysia } from 'elysia'
 import type { Settings } from '@/config/settings'
 import type { db } from '@/db/client'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
-import { probeCatalogModels } from '@/inference/model-probe'
+import { probeCatalogModels, type ModelProbeDeps } from '@/inference/model-probe'
 import { safeErrorHandler } from '@/middleware/error-handling'
 
 const databaseTimeoutMs = 5_000
@@ -17,14 +17,12 @@ const powersyncTimeoutMs = 5_000
 const emailTimeoutMs = 10_000
 
 export type HealthRouteDeps = {
-  settings: Pick<
-    Settings,
-    'monitoringToken' | 'powersyncUrl' | 'resendApiKey' | 'anthropicApiKey' | 'tinfoilApiKey' | 'tinfoilEnclaveUrl'
-  >
+  settings: Pick<Settings, 'monitoringToken' | 'powersyncUrl' | 'resendApiKey' | 'anthropicApiKey' | 'tinfoilApiKey'>
   database: Pick<typeof db, 'execute'> & InferenceDatabase
   fetchFn?: typeof fetch
   probeModels?: typeof probeCatalogModels
-  confidentialFetch?: typeof fetch
+  confidentialTransport?: ModelProbeDeps['confidentialTransport']
+  logger?: ModelProbeDeps['logger']
   timeouts?: Partial<Record<'database' | 'powersync' | 'email', number>>
 }
 
@@ -34,7 +32,8 @@ export const createHealthRoutes = ({
   database,
   fetchFn = globalThis.fetch,
   probeModels = probeCatalogModels,
-  confidentialFetch,
+  confidentialTransport,
+  logger,
   timeouts = {},
 }: HealthRouteDeps) =>
   new Elysia({ prefix: '/health' })
@@ -112,7 +111,7 @@ export const createHealthRoutes = ({
       }
     })
     .get('/models', async ({ status }) => {
-      const failures = await probeModels({ database, settings, fetchFn, confidentialFetch })
+      const failures = await probeModels({ database, settings, fetchFn, confidentialTransport, logger })
       if (failures.length) {
         return status(503, { status: 'failed', failures })
       }

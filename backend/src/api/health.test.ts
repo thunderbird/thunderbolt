@@ -24,7 +24,6 @@ const settings = createTestSettings({
   resendApiKey: 'test-resend-key',
   anthropicApiKey: 'anthropic-test-key',
   tinfoilApiKey: 'tinfoil-test-key',
-  tinfoilEnclaveUrl: 'https://inference.test/v1',
 })
 const headers = { Authorization: `Bearer ${settings.monitoringToken}` }
 /** Builds an authorized request to a deep health route. */
@@ -203,9 +202,11 @@ describe('deep health', () => {
         { model: 'model-b', reason: 'timeout' },
         { model: 'model-c', reason: 'upstream-error' },
         { model: 'model-d', reason: 'missing-price' },
+        { model: 'model-e', reason: 'not-configured' },
       ],
     },
   ] satisfies { failures: ModelProbeFailure[] }[])('returns the catalog probe result (%j)', async ({ failures }) => {
+    const logger = { warn: mock(() => {}) }
     const probeModels = mock(async () => failures)
     const fetchFn = async () => new Response()
     const response = await createHealthRoutes({
@@ -213,13 +214,15 @@ describe('deep health', () => {
       database,
       fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
       probeModels,
+      logger,
     }).handle(request('models'))
     expect(response.status).toBe(failures.length ? 503 : 200)
     expect(await response.json()).toEqual(failures.length ? { status: 'failed', failures } : { status: 'ok' })
-    expect(probeModels).toHaveBeenCalledWith({ settings, database, fetchFn, confidentialFetch: undefined })
+    expect(probeModels).toHaveBeenCalledWith({ settings, database, fetchFn, confidentialTransport: undefined, logger })
   })
 
   it.each(['OK', ''])('wires models to the real catalog probe with confidential content %j', async (content) => {
+    const logger = { warn: mock(() => {}) }
     const seen: { model: string; authorization: string | null; transport: string }[] = []
     const fake = (transport: string, text: string) =>
       Object.assign(
@@ -237,8 +240,9 @@ describe('deep health', () => {
     const response = await createHealthRoutes({
       settings,
       database,
+      logger,
       fetchFn: fake('anthropic', 'OK'),
-      confidentialFetch: fake('confidential', content),
+      confidentialTransport: { fetch: fake('confidential', content), baseURL: 'https://attested.test/v1' },
     }).handle(request('models'))
     expect(response.status).toBe(content ? 200 : 503)
     expect(await response.json()).toEqual(
@@ -249,6 +253,7 @@ describe('deep health', () => {
             failures: confidentialModels.map((model) => ({ model, reason: 'no-text' })),
           },
     )
+    expect(logger.warn).toHaveBeenCalledTimes(content ? 0 : confidentialModels.length)
     expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual(
       [
         { model: directWireModel, authorization: `Bearer ${settings.anthropicApiKey}`, transport: 'anthropic' },

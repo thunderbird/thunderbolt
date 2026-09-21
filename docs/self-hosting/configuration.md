@@ -175,7 +175,7 @@ Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 | `/v1/health/email` | Resend's authenticated domains read (10 seconds; sends no email) |
 | `/v1/health/models` | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
 
-Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, or `missing-price`; reasons never contain upstream bodies or credentials.
+Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 
 An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
 

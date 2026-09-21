@@ -180,8 +180,7 @@ export const buildOpenAiCompatModel = (
       id: opts.providerId,
       name: opts.providerId,
       baseUrl: opts.baseURL,
-      // Advisory only: the real credential rides on the per-call options above.
-      // An empty env list makes resolution a graceful no-op in the browser.
+      // Resolve the application-owned key without relying on browser environment variables.
       auth: { apiKey: boundApiKeyAuth(`${opts.providerId} API key`, opts.apiKey) },
       models: [model],
       api,

@@ -468,7 +468,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           output_config: body.output_config,
           tool_choice: body.tool_choice,
           stop_sequences: body.stop_sequences,
-          // The schema passes the Anthropic-shaped fields through as `unknown`; the SDK validates them.
+          // The schema passes the Anthropic-shaped fields through as `unknown`; the upstream API performs the remaining validation.
         } as MessageCreateParamsStreaming
         const upstream = await runWithInferenceAttemptTracking(attemptTracker, () =>
           getMessagesClient().messages.create(upstreamBody),

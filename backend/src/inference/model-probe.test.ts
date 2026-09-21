@@ -5,9 +5,16 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
 import { inferencePrices } from '@/db/schema'
+import { resolveManagedDirectRuntime } from '@/inference/managed-models'
 import { createTestDb } from '@/test-utils/db'
 import { defaultModels } from '@shared/defaults/models'
 import { probeCatalogModels, type ModelProbeDeps } from './model-probe'
+
+const confidentialModels = defaultModels
+  .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
+  .map(({ model }) => model)
+const directModel = defaultModels.find(({ provider }) => provider === 'thunderbolt')!.model
+const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 
 const settings: ModelProbeDeps['settings'] = {
   anthropicApiKey: 'anthropic-test-key',
@@ -53,11 +60,11 @@ describe('probeCatalogModels', () => {
       await probeCatalogModels({
         database: env.db,
         settings,
-        fetchFn: fake(settings.anthropicApiKey, ['claude-opus-5']),
-        confidentialFetch: fake(settings.tinfoilApiKey, ['deepseek-v4-flash', 'glm-5-2']),
+        fetchFn: fake(settings.anthropicApiKey, [directWireModel]),
+        confidentialFetch: fake(settings.tinfoilApiKey, confidentialModels),
       }),
     ).toEqual([])
-    expect(seen.sort()).toEqual(['claude-opus-5', 'deepseek-v4-flash', 'glm-5-2'])
+    expect(seen.sort()).toEqual([directWireModel, ...confidentialModels].sort())
   })
 
   it('sanitises confidential constructor failures while still probing Anthropic', async () => {
@@ -75,11 +82,8 @@ describe('probeCatalogModels', () => {
           settings: { ...settings, tinfoilEnclaveUrl: 'ftp://test-user:test-password@example.test/v1' },
           fetchFn,
         }),
-      ).toEqual([
-        { model: 'deepseek-v4-flash', reason: 'upstream-error' },
-        { model: 'glm-5-2', reason: 'upstream-error' },
-      ])
-      expect(seen).toEqual(['claude-opus-5'])
+      ).toEqual(confidentialModels.map((model) => ({ model, reason: 'upstream-error' })))
+      expect(seen).toEqual([directWireModel])
       expect(errorSpy).not.toHaveBeenCalled()
       expect(warnSpy).not.toHaveBeenCalled()
     } finally {
@@ -170,29 +174,30 @@ describe('probeCatalogModels', () => {
   it('skips Anthropic when its price row is missing', async () => {
     await env.db
       .delete(inferencePrices)
-      .where(and(eq(inferencePrices.provider, 'anthropic'), eq(inferencePrices.model, 'claude-opus-5')))
+      .where(and(eq(inferencePrices.provider, 'anthropic'), eq(inferencePrices.model, directWireModel)))
     const seen: string[] = []
     const fetchFn = transport(async (request) => {
       seen.push((await request.json()).model)
       return completion()
     })
     expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([
-      { model: 'opus-5', reason: 'missing-price' },
+      { model: directModel, reason: 'missing-price' },
     ])
-    expect(seen.sort()).toEqual(['deepseek-v4-flash', 'glm-5-2'])
+    expect(seen.sort()).toEqual([...confidentialModels].sort())
   })
 
   it('skips upstream calls for missing price rows', async () => {
-    await env.db.delete(inferencePrices).where(eq(inferencePrices.model, 'deepseek-v4-flash'))
+    const missingModel = confidentialModels[0]
+    await env.db.delete(inferencePrices).where(eq(inferencePrices.model, missingModel))
     const seen: string[] = []
     const fetchFn = transport(async (request) => {
       seen.push((await request.json()).model)
       return completion()
     })
     expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([
-      { model: 'deepseek-v4-flash', reason: 'missing-price' },
+      { model: missingModel, reason: 'missing-price' },
     ])
-    expect(seen).not.toContain('deepseek-v4-flash')
+    expect(seen).not.toContain(missingModel)
     expect(seen).toHaveLength(defaultModels.length - 1)
   })
 

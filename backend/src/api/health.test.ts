@@ -6,9 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
 import type { ModelProbeFailure } from '@/inference/model-probe'
+import { resolveManagedDirectRuntime } from '@/inference/managed-models'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
+import { defaultModels } from '@shared/defaults/models'
 import { createHealthRoutes } from './health'
+
+const confidentialModels = defaultModels
+  .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
+  .map(({ model }) => model)
+const directModel = defaultModels.find(({ provider }) => provider === 'thunderbolt')!.model
+const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 
 const settings = createTestSettings({
   monitoringToken: 'test-monitoring-token',
@@ -238,17 +246,19 @@ describe('deep health', () => {
         ? { status: 'ok' }
         : {
             status: 'failed',
-            failures: [
-              { model: 'deepseek-v4-flash', reason: 'no-text' },
-              { model: 'glm-5-2', reason: 'no-text' },
-            ],
+            failures: confidentialModels.map((model) => ({ model, reason: 'no-text' })),
           },
     )
-    expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual([
-      { model: 'claude-opus-5', authorization: `Bearer ${settings.anthropicApiKey}`, transport: 'anthropic' },
-      { model: 'deepseek-v4-flash', authorization: `Bearer ${settings.tinfoilApiKey}`, transport: 'confidential' },
-      { model: 'glm-5-2', authorization: `Bearer ${settings.tinfoilApiKey}`, transport: 'confidential' },
-    ])
+    expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual(
+      [
+        { model: directWireModel, authorization: `Bearer ${settings.anthropicApiKey}`, transport: 'anthropic' },
+        ...confidentialModels.map((model) => ({
+          model,
+          authorization: `Bearer ${settings.tinfoilApiKey}`,
+          transport: 'confidential',
+        })),
+      ].sort((a, b) => a.model.localeCompare(b.model)),
+    )
   })
 
   it('mounts deep health under /v1 and preserves unconditional liveness', async () => {

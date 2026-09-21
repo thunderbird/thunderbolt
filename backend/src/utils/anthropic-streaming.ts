@@ -31,7 +31,7 @@ const usageSnapshot = (usage: Usage): InferenceTokenCounts => {
   }
 }
 
-/** Re-encode Anthropic SDK events as SSE while observing final usage and errors. */
+/** Re-encode Anthropic SDK events as SSE while observing the latest reported usage and errors. */
 export const createAnthropicSSEStream = (
   upstream: AnthropicEventStream,
   options: CreateAnthropicSSEStreamOptions = {},
@@ -44,9 +44,6 @@ export const createAnthropicSSEStream = (
       let usage: Usage | undefined
       try {
         for await (const event of upstream) {
-          if (isCancelled) {
-            return
-          }
           if (event.type === 'message_start') {
             usage = event.message.usage
           } else if (event.type === 'message_delta' && usage) {
@@ -58,30 +55,29 @@ export const createAnthropicSSEStream = (
               cache_read_input_tokens: event.usage.cache_read_input_tokens ?? usage.cache_read_input_tokens,
             }
           }
-          controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
-        }
-
-        if (isCancelled) {
-          return
-        }
-
-        if (!usage) {
-          invokeObserverSafely(options.onUsageMissing)
-        } else {
-          try {
-            await options.onUsage?.(usageSnapshot(usage))
-          } catch (error) {
-            invokeObserverSafely(() => options.onUsageError?.(error))
+          if (isCancelled) {
+            break
           }
-        }
-        if (!isCancelled) {
-          controller.close()
+          controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
         }
       } catch (error) {
         if (!isCancelled) {
           invokeObserverSafely(() => options.onError?.(error))
           controller.error(error)
+          return
         }
+      }
+      if (!usage) {
+        invokeObserverSafely(options.onUsageMissing)
+      } else {
+        try {
+          await options.onUsage?.(usageSnapshot(usage))
+        } catch (error) {
+          invokeObserverSafely(() => options.onUsageError?.(error))
+        }
+      }
+      if (!isCancelled) {
+        controller.close()
       }
     },
     cancel() {

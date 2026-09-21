@@ -17,6 +17,8 @@ import { bundledManagedCatalog } from './catalog.ts'
 import type { createManagedDirectBinding } from './direct.ts'
 import type { createTinfoilBinding } from './tinfoil.ts'
 import type { ProviderStageContext, ProviderStageEntry } from './provider-stage.ts'
+import { builtinProviderEnvVars, defaultModels } from '../agent/defaults.ts'
+import { isBuiltinProvider } from '../agent/types.ts'
 import { isProviderRuntimeError, providerRuntimeError } from './types.ts'
 import type {
   AccountActions,
@@ -271,13 +273,57 @@ export const createProviderRuntime = async (dependencies: ProviderRuntimeDepende
     throw providerRuntimeError('provider-not-found', `Provider "${selector}" was not found.`)
   }
 
+  /**
+   * Builds a profile from `THUNDERBOLT_PROVIDER` alone, for an agent deployed
+   * with no interactive `thunderbolt config` step.
+   *
+   * A container has no saved profile and nowhere to run the wizard, so without
+   * this the only way to configure a hosted agent is to hand-write a
+   * `config.json` with a credential in it. The profile is ephemeral and its
+   * `apiKey` stays null — the credential is read from the provider's own
+   * environment variable on each binding, so it is never persisted here.
+   *
+   * Throws rather than returning null once the variable is set: an operator who
+   * named a provider and forgot its key wants to hear about it at startup, not
+   * to fall through to "no active provider".
+   */
+  const environmentProfile = (): ByokProfile | null => {
+    const requested = dependencies.environment.THUNDERBOLT_PROVIDER?.trim()
+    if (!requested) return null
+    if (!isBuiltinProvider(requested)) {
+      throw providerRuntimeError(
+        'provider-not-found',
+        `THUNDERBOLT_PROVIDER="${requested}" is not a built-in provider. ` +
+          `Choose one of: ${Object.keys(builtinProviderEnvVars).sort().join(', ')}.`,
+      )
+    }
+    const names = builtinProviderEnvVars[requested]
+    if (!names.some((name) => dependencies.environment[name]?.trim())) {
+      throw providerRuntimeError(
+        'authentication-required',
+        `THUNDERBOLT_PROVIDER="${requested}" requires a credential in ${names.join(' or ')}.`,
+      )
+    }
+    const shared = {
+      id: `env-${requested}`,
+      label: `${requested} (environment)`,
+      defaultModel: dependencies.environment.THUNDERBOLT_MODEL?.trim() || defaultModels[requested],
+      apiKey: null,
+      credentialStatus: 'authenticated',
+    } as const
+    return { ...shared, provider: requested }
+  }
+
   /** Resolves the selected owner without permitting shorthand in persisted commands. */
   const selectedOwner = (selection: InvocationSelection): SelectedOwner => {
     const selector = selection.providerId ?? currentConfig.activeProviderId
     if (selector === null || selector === undefined) {
+      const fromEnvironment = environmentProfile()
+      if (fromEnvironment) return { profile: fromEnvironment, stage: null }
       throw providerRuntimeError(
         'provider-not-found',
-        'No active provider is configured. Choose a provider before starting inference.',
+        'No active provider is configured. Choose a provider before starting inference, ' +
+          'or set THUNDERBOLT_PROVIDER with that provider\'s credential in the environment.',
       )
     }
     if (selector === 'thunderbolt') return selector

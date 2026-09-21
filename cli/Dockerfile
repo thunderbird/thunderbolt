@@ -21,6 +21,14 @@ ENV NODE_ENV=production \
     THUNDERBOLT_HOME=/state \
     THUNDERBOLT_AGENT_CONFIG=/state/agent.json
 
+# Which model provider to run. There is no interactive `thunderbolt config` in a
+# container, so the provider is named here and its credential is read from the
+# provider's own variable — `THUNDERBOLT_PROVIDER=anthropic` with
+# `ANTHROPIC_API_KEY`. Startup fails if the named provider has no credential, so
+# a half-configured deploy does not serve a bridge whose every session dies on
+# the first prompt. `THUNDERBOLT_MODEL` overrides the provider default.
+ENV THUNDERBOLT_PROVIDER=anthropic
+
 WORKDIR /app
 
 # Dependency layer first so source edits don't reinstall.

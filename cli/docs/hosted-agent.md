@@ -80,6 +80,21 @@ a configured skill by reusing the name would hand that decision to whoever
 connects. Client skills the agent has no opinion about still come through, so a
 personal skill keeps working alongside the team's.
 
+### An MCP server that authenticates headlessly
+
+A hosted agent has no browser and nobody sitting in front of it, so the only
+credential it can use is one you put in its config. That rules out more servers
+than you would expect: Metabase's own first-party MCP server
+(`/api/metabase-mcp`) is OAuth-2.0-only — dynamic client registration, then a
+consent page — and there is no token to paste, so `headers` cannot stand in for
+the flow. Reach for a server that takes an API key.
+
+Secrets live in the config file, not the environment: `env` is a literal string
+map with no interpolation, and the SDK's stdio transport merges what you pass
+over its own safelist rather than forwarding the agent's whole environment. So
+point `THUNDERBOLT_AGENT_CONFIG` at a secret file the platform mounts, and treat
+the config as a secret.
+
 ## Exposing it
 
 The app reaches a remote ACP agent over WebSocket, so the bridge has to be
@@ -97,6 +112,22 @@ platform keeps.
 
 `THUNDERBOLT_APP_ORIGIN` is not needed for a public bind, and the next section
 explains why.
+
+### Credentials for a container
+
+There is no interactive `thunderbolt config` on a deployed host, so the provider
+is named by environment instead of chosen in the wizard:
+
+| Variable               | Purpose                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `THUNDERBOLT_PROVIDER` | Built-in provider to run, e.g. `anthropic`. Ignored if a saved profile is active. |
+| `THUNDERBOLT_MODEL`    | Optional. Overrides that provider's default model.                                |
+
+The credential itself comes from the provider's own variable — `ANTHROPIC_API_KEY`
+for `anthropic` — and is never written to the state directory, so an ephemeral
+filesystem costs nothing. Naming a provider with no credential is a **startup
+error**: the alternative is a bridge that accepts connections and then fails
+every prompt, which looks like a broken agent rather than a missing key.
 
 ### Which clients can reach which bridge
 

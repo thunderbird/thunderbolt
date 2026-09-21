@@ -7,6 +7,7 @@ import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import { describe, expect, spyOn, test } from 'bun:test'
 import type { CliDeviceMetadata } from '../auth/account-client.ts'
 import { createCredentialedFetch, type CredentialResponseObserver } from '../agent/credentialed-fetch.ts'
+import { defaultModels } from '../agent/defaults.ts'
 import { createByokBinding } from './byok.ts'
 import { bundledManagedCatalog } from './catalog.ts'
 import type {
@@ -114,6 +115,7 @@ type RuntimeHarnessOptions = {
     profile: ByokProfile,
     persistsCredentialStatus: boolean,
   ) => PreparedPiBinding | Promise<PreparedPiBinding>
+  readonly environment?: Readonly<Record<string, string | undefined>>
 }
 
 const createRuntimeHarness = async (options: RuntimeHarnessOptions = {}) => {
@@ -186,7 +188,7 @@ const createRuntimeHarness = async (options: RuntimeHarnessOptions = {}) => {
       tinfoilArguments.push(bindingOptions)
       return binding('thunderbolt', bindingOptions.model.id, false)
     },
-    environment: {},
+    environment: options.environment ?? {},
     providerStage,
   }
   const { runtime } = await createTestProviderRuntime(dependencyOverrides)
@@ -1509,5 +1511,82 @@ describe('ProviderRuntime migrated BYOK validation', () => {
       expect(failingRuntime.snapshot().activeProviderId).toBe(migrated.id)
       expect(failingRuntime.snapshot().providers[0]?.status).toBe('authentication required')
     }
+  })
+})
+
+describe('ProviderRuntime environment-selected provider', () => {
+  const anthropicEnvironment = { THUNDERBOLT_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'env-key' }
+
+  test('binds a provider named only by THUNDERBOLT_PROVIDER when nothing is saved', async () => {
+    const { runtime, byokArguments, saved } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: null, providers: [] }),
+      environment: anthropicEnvironment,
+    })
+
+    await runtime.prepare({})
+
+    // `apiKey` stays null so the credential is read from the environment per
+    // binding rather than captured here, and nothing is persisted: a deployed
+    // agent's config directory is usually ephemeral.
+    expect(byokArguments[0]?.profile).toMatchObject({
+      id: 'env-anthropic',
+      provider: 'anthropic',
+      apiKey: null,
+      defaultModel: defaultModels.anthropic,
+    })
+    expect(saved).toHaveLength(0)
+  })
+
+  test('THUNDERBOLT_MODEL overrides the provider default', async () => {
+    const { runtime, byokArguments } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: null, providers: [] }),
+      environment: { ...anthropicEnvironment, THUNDERBOLT_MODEL: 'claude-haiku-4-5-20251001' },
+    })
+
+    await runtime.prepare({})
+
+    expect(byokArguments[0]?.profile.defaultModel).toBe('claude-haiku-4-5-20251001')
+  })
+
+  test('a saved active provider wins over the environment', async () => {
+    const saved = profile({ id: 'work-openai', label: 'Work', provider: 'openai' })
+    const { runtime, byokArguments } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: saved.id, providers: [saved] }),
+      environment: anthropicEnvironment,
+    })
+
+    await runtime.prepare({})
+
+    expect(byokArguments[0]?.profile.id).toBe('work-openai')
+  })
+
+  test('names the missing credential rather than reporting no active provider', async () => {
+    const { runtime } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: null, providers: [] }),
+      environment: { THUNDERBOLT_PROVIDER: 'anthropic' },
+    })
+
+    await expect(runtime.prepare({})).rejects.toMatchObject({
+      code: 'authentication-required',
+      message: expect.stringContaining('ANTHROPIC_OAUTH_TOKEN or ANTHROPIC_API_KEY'),
+    })
+  })
+
+  test('rejects a provider name that is not built in', async () => {
+    const { runtime } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: null, providers: [] }),
+      environment: { THUNDERBOLT_PROVIDER: 'metabase' },
+    })
+
+    await expect(runtime.prepare({})).rejects.toMatchObject({ code: 'provider-not-found' })
+  })
+
+  test('still reports no active provider when the environment names none', async () => {
+    const { runtime } = await createRuntimeHarness({
+      initialConfig: config({ activeProviderId: null, providers: [] }),
+      environment: { ANTHROPIC_API_KEY: 'env-key' },
+    })
+
+    await expect(runtime.prepare({})).rejects.toMatchObject({ code: 'provider-not-found' })
   })
 })

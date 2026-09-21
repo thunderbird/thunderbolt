@@ -30,9 +30,30 @@ export const isRenderHtmlPart = (part: UIMessage['parts'][number]): part is Rend
 export const renderHtmlInput = (part: RenderHtmlPart): Partial<RenderHtmlInput> =>
   (part.input ?? {}) as Partial<RenderHtmlInput>
 
-/** The typed output of a `render_html` part once it has finished (`undefined` before then). */
-export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined =>
-  part.output as RenderHtmlOutput | undefined
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * The typed output of a `render_html` part once it has finished (`undefined`
+ * before then).
+ *
+ * Two shapes reach here. The built-in agent's tool returns `RenderHtmlOutput`
+ * directly. A **remote ACP agent** returns a pi `AgentToolResult`, which the ACP
+ * layer forwards verbatim as `rawOutput` — so the verdict arrives one level
+ * down, under `details`. Reading only the top level would leave every hosted
+ * agent's artifact stuck in the tool group as an ordinary call.
+ */
+export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined => {
+  const output = part.output
+  if (!isRecord(output)) {
+    return undefined
+  }
+  if (typeof output.ok === 'boolean') {
+    return output as RenderHtmlOutput
+  }
+  const details = output.details
+  return isRecord(details) && typeof details.ok === 'boolean' ? (details as RenderHtmlOutput) : undefined
+}
 
 const renderHtmlParameters = z.object({
   html: z

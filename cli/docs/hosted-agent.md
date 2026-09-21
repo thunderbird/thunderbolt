@@ -24,8 +24,8 @@ stdio, `command` on http) fails the file rather than being ignored.
     {
       "id": "docs",
       "transport": "stdio",
-      "command": "uvx",
-      "args": ["mcp-server-fetch"],
+      "command": "bunx",
+      "args": ["some-mcp-server"],
       "trustTools": true
     },
     {
@@ -41,6 +41,13 @@ stdio, `command` on http) fails the file rather than being ignored.
 
 Tools are namespaced `<id>_<tool>`, matching the app's own MCP naming, so two
 servers exposing `search` do not collide.
+
+**A stdio `command` must exist in the image.** `cli/Dockerfile` is built on
+`oven/bun:1.3-slim`, which has `bun` and `bunx` and no Node or Python — so `npx`
+and `uvx` both fail there with
+`mcp: <id> unavailable — Executable not found in $PATH`. `bunx` runs npm-published
+servers and is present both in the image and in a normal dev setup. Anything else
+means adding the runtime to the image.
 
 A missing file means no agent-owned skills or servers. A **present but invalid**
 file is a startup error rather than a silent downgrade — an operator who wrote a

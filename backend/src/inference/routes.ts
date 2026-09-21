@@ -7,9 +7,9 @@ import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { classifyInferenceError } from '@/inference/error-kind'
 import { createErrorResponse, getErrorStatus, getSafeErrorMessage, safeErrorHandler } from '@/middleware/error-handling'
-import { captureInferenceError, isPostHogConfigured } from '@/posthog/client'
+import { captureInferenceError, getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { createAnthropicSSEStream } from '@/utils/anthropic-streaming'
-import { createSSEStreamFromCompletion } from '@/utils/streaming'
+import { createSSEStreamFromCompletion, invokeObserverSafely } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
 import { APIError as AnthropicAPIError } from '@anthropic-ai/sdk'
 import type Anthropic from '@anthropic-ai/sdk'
@@ -19,6 +19,7 @@ import { Elysia, type AnyElysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { z } from 'zod'
+import type { PostHog } from 'posthog-node'
 import {
   createInferenceAttemptTracker,
   getAnthropicMessagesClient,
@@ -75,6 +76,7 @@ export type CreateInferenceRoutesOptions = {
   getClient?: (provider: ManagedDirectRuntime['provider']) => InferenceClient
   getMessagesClient?: () => Anthropic
   isPostHogConfiguredFn?: () => boolean
+  posthogClient?: PostHog
   logger?: InferenceLogger
   /** Monotonic clock used for route latency and upstream-attempt instrumentation. */
   nowFn?: () => number
@@ -419,6 +421,31 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       }
       const { price } = admission
       const usageEventId = crypto.randomUUID()
+      /** Preserve generation telemetry without sending prompt, response, or provider error content. */
+      const captureGeneration = (status: number, counts?: InferenceTokenCounts) => {
+        if (!isPostHogConfiguredFn()) {
+          return
+        }
+        invokeObserverSafely(() =>
+          (options.posthogClient ?? getPostHogClient()).capture({
+            distinctId: ctx.user.id,
+            event: '$ai_generation',
+            properties: {
+              model_provider: provider,
+              model: internalName,
+              endpoint: '/chat/v1/messages',
+              has_tools: !!body.tools,
+              $ai_trace_id: usageEventId,
+              $ai_provider: provider,
+              $ai_model: internalName,
+              $ai_latency: elapsedMs(handlerStartedAt, nowFn()) / 1000,
+              $ai_http_status: status,
+              $ai_is_error: status >= 400,
+              ...(counts && { $ai_input_tokens: counts.promptTokens, $ai_output_tokens: counts.completionTokens }),
+            },
+          }),
+        )
+      }
 
       try {
         const upstreamBody = {
@@ -443,18 +470,24 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
+        const usageCallbacks = createUsageCallbacks({
+          database,
+          eventId: usageEventId,
+          logger,
+          model: internalName,
+          price,
+          provider,
+          route,
+          userId: ctx.user.id,
+        })
         const stream = createAnthropicSSEStream(upstream, {
-          ...createUsageCallbacks({
-            database,
-            eventId: usageEventId,
-            logger,
-            model: internalName,
-            price,
-            provider,
-            route,
-            userId: ctx.user.id,
-          }),
+          ...usageCallbacks,
+          onUsage: async (counts) => {
+            captureGeneration(200, counts)
+            await usageCallbacks.onUsage(counts)
+          },
           onError: (error) => {
+            captureGeneration(getErrorStatus(error))
             captureInferenceErrorFn({
               provider,
               status: getErrorStatus(error),
@@ -469,6 +502,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return new Response(stream, { headers: streamingResponseHeaders(ctx.set.headers) })
       } catch (error) {
         const status = getErrorStatus(error)
+        captureGeneration(status)
         recordLatency(status, nowFn())
         captureInferenceErrorFn({
           provider,

@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import type { PostHog } from 'posthog-node'
-import { clearInferenceClientCache, getInferenceClient } from './client'
+import { clearInferenceClientCache, getAnthropicMessagesClient, getInferenceClient } from './client'
 import { createInferenceRoutes } from './routes'
 
 type PostHogEvent = {
@@ -227,137 +227,212 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
   })
 
   describe('End-to-end privacy verification', () => {
-    it('preserves direct-route usage accounting and privacy with the real PostHog OpenAI wrapper', async () => {
-      const testDb = await createTestDb()
-      await testDb.db.insert(user).values({
-        id: 'test-user',
-        name: 'Test User',
-        email: 'test-user@example.com',
-        emailVerified: true,
-        isAnonymous: false,
-      })
-      process.env.POSTHOG_API_KEY = 'test-key'
-      process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
-      process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
-      clearSettingsCache()
-      clearInferenceClientCache()
-      clearPostHogClient()
-
-      const secretPrompt = 'ROUTE_POSTHOG_SECRET_PROMPT'
-      const usageChunk = Object.freeze({
-        id: 'chatcmpl-usage',
-        object: 'chat.completion.chunk',
-        created: 0,
-        model: 'claude-opus-5',
-        choices: Object.freeze([]),
-        usage: Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 }),
-      })
-      const rawStream =
-        'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
-        `data: ${JSON.stringify(usageChunk)}\n\n` +
-        'data: [DONE]\n\n'
-      let upstreamRequestBody: DirectUpstreamRequestBody | undefined
-      const routeFetch = Object.assign(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = input instanceof Request ? input.url : input.toString()
-          const requestBody = new Response(
-            init?.body ?? (input instanceof Request ? await input.clone().arrayBuffer() : undefined),
-          )
-          const bodyText =
-            new Headers(init?.headers).get('content-encoding') === 'gzip' && requestBody.body
-              ? await new Response(requestBody.body.pipeThrough(new DecompressionStream('gzip'))).text()
-              : await requestBody.text()
-          if (isPosthogRequest(url)) {
-            capturedFetches.push({
-              url,
-              options: init ?? {},
-              body: parsePostHogRequestBody(bodyText),
-            })
-            return new Response(JSON.stringify({ status: 1 }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
-          }
-
-          upstreamRequestBody = JSON.parse(bodyText) as DirectUpstreamRequestBody
-          return new Response(rawStream, {
-            status: 200,
-            headers: { 'Content-Type': 'text/event-stream' },
-          })
-        },
-        { preconnect: () => undefined },
-      )
-      const posthogClient = createTestPostHogClient(routeFetch)
-      const inferenceClient = getInferenceClient('anthropic', { fetchFn: routeFetch, posthogClient })
-
-      try {
-        const app = new Elysia().use(
-          createInferenceRoutes({ auth: mockAuth, database: testDb.db, getClient: () => inferenceClient }),
-        )
-        const response = await app.handle(
-          new Request('http://localhost/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'opus-5',
-              messages: [{ role: 'user', content: secretPrompt }],
-              stream: true,
-              stream_options: { include_usage: false, client_value: 'ignored' },
-            }),
-          }),
-        )
-        const responseText = await response.text()
-        await posthogClient.flush()
-
-        expect(response.status).toBe(200)
-        expect(upstreamRequestBody).toMatchObject({
-          model: 'claude-opus-5',
-          stream_options: { include_usage: true },
+    it.each(['openai', 'anthropic', 'anthropic-error'] as const)(
+      'preserves %s route usage accounting and generation privacy',
+      async (protocol) => {
+        const testDb = await createTestDb()
+        await testDb.db.insert(user).values({
+          id: 'test-user',
+          name: 'Test User',
+          email: 'test-user@example.com',
+          emailVerified: true,
+          isAnonymous: false,
         })
-        expect(upstreamRequestBody?.stream_options).toEqual({ include_usage: true })
-        expect(responseText).toContain(`data: ${JSON.stringify(usageChunk)}\n\n`)
-        expect(usageChunk).toEqual({
+        process.env.POSTHOG_API_KEY = 'test-key'
+        process.env.POSTHOG_HOST = 'https://us.i.posthog.com'
+        process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+        clearSettingsCache()
+        clearInferenceClientCache()
+        clearPostHogClient()
+
+        const secretPrompt = 'ROUTE_POSTHOG_SECRET_PROMPT'
+        const usageChunk = Object.freeze({
           id: 'chatcmpl-usage',
           object: 'chat.completion.chunk',
           created: 0,
           model: 'claude-opus-5',
-          choices: [],
-          usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+          choices: Object.freeze([]),
+          usage: Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 }),
         })
-
-        const rows = await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
-        expect(rows).toHaveLength(1)
-        expect(rows[0]).toMatchObject({
-          userId: 'test-user',
-          provider: 'anthropic',
-          model: 'claude-opus-5',
-          promptTokens: 2,
-          completionTokens: 3,
-          totalTokens: 5,
-        })
-
-        const postHogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
-        const generationEvents = postHogRequests.flatMap((request) => {
-          if (!request.body) {
-            return []
-          }
-          return 'batch' in request.body ? request.body.batch : [request.body]
-        })
-        const generation = generationEvents.find((event) => event.event === '$ai_generation')
-        expect(generation).toMatchObject({
-          distinct_id: 'test-user',
-          properties: {
-            model_provider: 'anthropic',
-            model: 'claude-opus-5',
+        const openAiStream =
+          'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+          `data: ${JSON.stringify(usageChunk)}\n\n` +
+          'data: [DONE]\n\n'
+        const nativeStream = [
+          {
+            type: 'message_start',
+            message: {
+              id: 'msg_1',
+              type: 'message',
+              role: 'assistant',
+              model: 'claude-opus-5',
+              content: [],
+              usage: { input_tokens: 2, output_tokens: 1 },
+            },
           },
-        })
-        expect(generation?.properties?.$ai_input).toBeNullOrUndefined()
-        expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
-        expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
-      } finally {
-        await testDb.cleanup()
-      }
-    })
+          { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+          {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'text_delta', text: 'ROUTE_POSTHOG_SECRET_RESPONSE' },
+          },
+          { type: 'content_block_stop', index: 0 },
+          {
+            type: 'message_delta',
+            delta: { stop_reason: 'end_turn', stop_sequence: null },
+            usage: { output_tokens: 3 },
+          },
+          { type: 'message_stop' },
+        ]
+          .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+          .join('')
+        const rawStream = protocol === 'anthropic' ? nativeStream : openAiStream
+        let upstreamRequestBody: DirectUpstreamRequestBody | undefined
+        const routeFetch = Object.assign(
+          async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = input instanceof Request ? input.url : input.toString()
+            const requestBody = new Response(
+              init?.body ?? (input instanceof Request ? await input.clone().arrayBuffer() : undefined),
+            )
+            const bodyText =
+              new Headers(init?.headers).get('content-encoding') === 'gzip' && requestBody.body
+                ? await new Response(requestBody.body.pipeThrough(new DecompressionStream('gzip'))).text()
+                : await requestBody.text()
+            if (isPosthogRequest(url)) {
+              capturedFetches.push({
+                url,
+                options: init ?? {},
+                body: parsePostHogRequestBody(bodyText),
+              })
+              return new Response(JSON.stringify({ status: 1 }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              })
+            }
+
+            upstreamRequestBody = JSON.parse(bodyText) as DirectUpstreamRequestBody
+            if (protocol === 'anthropic-error') {
+              return new Response(
+                JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: secretPrompt } }),
+                { status: 400, headers: { 'Content-Type': 'application/json' } },
+              )
+            }
+            return new Response(rawStream, {
+              status: 200,
+              headers: { 'Content-Type': 'text/event-stream' },
+            })
+          },
+          { preconnect: () => undefined },
+        )
+        const posthogClient = createTestPostHogClient(routeFetch)
+        const inferenceClient = getInferenceClient('anthropic', { fetchFn: routeFetch, posthogClient })
+        const messagesClient = getAnthropicMessagesClient({ fetchFn: routeFetch })
+
+        try {
+          const app = new Elysia().use(
+            createInferenceRoutes({
+              auth: mockAuth,
+              database: testDb.db,
+              getClient: () => inferenceClient,
+              getMessagesClient: () => messagesClient,
+              captureInferenceErrorFn: () => {},
+              posthogClient,
+            }),
+          )
+          const response = await app.handle(
+            new Request(`http://localhost/chat/${protocol === 'openai' ? 'completions' : 'v1/messages'}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'opus-5',
+                max_tokens: 1024,
+                messages: [{ role: 'user', content: secretPrompt }],
+                stream: true,
+                stream_options: { include_usage: false, client_value: 'ignored' },
+              }),
+            }),
+          )
+          const responseText = await response.text()
+          await posthogClient.flush()
+
+          if (protocol === 'anthropic-error') {
+            const events = capturedFetches.flatMap((call) =>
+              !call.body ? [] : 'batch' in call.body ? call.body.batch : [call.body],
+            )
+            expect(response.status).toBe(400)
+            expect(events.filter((event) => event.event === '$ai_generation')).toEqual([
+              expect.objectContaining({
+                distinct_id: 'test-user',
+                properties: expect.objectContaining({
+                  $ai_is_error: true,
+                  $ai_http_status: 400,
+                  model_provider: 'anthropic',
+                  model: 'claude-opus-5',
+                }),
+              }),
+            ])
+            expect(JSON.stringify(capturedFetches)).not.toContain(secretPrompt)
+            expect(
+              await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user')),
+            ).toHaveLength(0)
+            return
+          }
+          expect(response.status).toBe(200)
+          expect(upstreamRequestBody).toMatchObject({
+            model: 'claude-opus-5',
+          })
+          if (protocol === 'openai') {
+            expect(upstreamRequestBody?.stream_options).toEqual({ include_usage: true })
+            expect(responseText).toContain(`data: ${JSON.stringify(usageChunk)}\n\n`)
+          } else {
+            expect(responseText).toBe(nativeStream)
+          }
+          expect(usageChunk).toEqual({
+            id: 'chatcmpl-usage',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'claude-opus-5',
+            choices: [],
+            usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+          })
+
+          const rows = await testDb.db.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+          expect(rows).toHaveLength(1)
+          expect(rows[0]).toMatchObject({
+            userId: 'test-user',
+            provider: 'anthropic',
+            model: 'claude-opus-5',
+            promptTokens: 2,
+            completionTokens: 3,
+            totalTokens: 5,
+          })
+
+          const postHogRequests = capturedFetches.filter((call) => isPosthogRequest(call.url))
+          const generationEvents = postHogRequests.flatMap((request) => {
+            if (!request.body) {
+              return []
+            }
+            return 'batch' in request.body ? request.body.batch : [request.body]
+          })
+          const generation = generationEvents.find((event) => event.event === '$ai_generation')
+          expect(generation).toMatchObject({
+            distinct_id: 'test-user',
+            properties: {
+              model_provider: 'anthropic',
+              model: 'claude-opus-5',
+            },
+          })
+          expect(generation?.properties).toMatchObject({ $ai_input_tokens: 2, $ai_output_tokens: 3 })
+          expect(generation?.properties?.$ai_input).toBeNullOrUndefined()
+          expect(generation?.properties?.$ai_output_choices).toBeNullOrUndefined()
+          expect(JSON.stringify(postHogRequests)).not.toContain(secretPrompt)
+          expect(JSON.stringify(postHogRequests)).not.toContain('ROUTE_POSTHOG_SECRET_RESPONSE')
+          expect(generationEvents.filter((event) => event.event === '$ai_generation')).toHaveLength(1)
+        } finally {
+          await testDb.cleanup()
+        }
+      },
+    )
 
     it('should not send conversation content to PostHog when making completions', async () => {
       process.env.POSTHOG_API_KEY = 'test-key'

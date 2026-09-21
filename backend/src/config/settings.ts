@@ -91,7 +91,10 @@ const settingsSchema = z
     powersyncUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
-    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us, so a
+    // revoked device keeps reading the sync stream until its current token expires. This value
+    // therefore *is* the post-revocation read window for downloads — keep it short.
+    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(300),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -248,7 +251,7 @@ const parseSettings = (): Settings => {
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
-    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '300',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',

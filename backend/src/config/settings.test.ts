@@ -712,7 +712,8 @@ describe('Config Settings', () => {
       expect(settings.powersyncUrl).toBe('')
       expect(settings.powersyncJwtKid).toBe('')
       expect(settings.powersyncJwtSecret).toBe('')
-      expect(settings.powersyncTokenExpirySeconds).toBe(3600)
+      // The default doubles as the post-revocation read window for the sync stream.
+      expect(settings.powersyncTokenExpirySeconds).toBe(300)
     })
 
     it('should use localhost defaults when NODE_ENV=development', () => {

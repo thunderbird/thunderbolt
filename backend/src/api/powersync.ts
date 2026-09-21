@@ -101,11 +101,15 @@ const validateOrigin = (request: Request, appSettings: Settings): boolean => {
  * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, device upsert.
  * Used by both session-based and bearer-only token paths.
  * Requires x-device-id so revocation can always be enforced; a revoked device cannot bypass by omitting it.
+ *
+ * The JWT carries a `device_id` claim so the token's blast radius is device-scoped. It is trustworthy
+ * because `validateDeviceForSync` has already pinned x-device-id to the session's bound device
+ * (THU-873), so the value is server-asserted, not client-asserted.
  */
 const issuePowerSyncToken = async (
   userId: string,
   request: Request,
-  powersyncJwt: { sign: (payload: { sub: string; user_id: string }) => Promise<string> },
+  powersyncJwt: { sign: (payload: { sub: string; user_id: string; device_id: string }) => Promise<string> },
   settings: Settings,
   database: typeof DbType,
   boundDeviceId: string | null,
@@ -139,7 +143,7 @@ const issuePowerSyncToken = async (
     return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
   }
 
-  const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
+  const token = await powersyncJwt.sign({ sub: userId, user_id: userId, device_id: deviceId })
   const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()
 
   return { ok: true, token, expiresAt, powerSyncUrl: settings.powersyncUrl }

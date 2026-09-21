@@ -727,6 +727,53 @@ describe('PowerSync API', () => {
       expect(data.powerSyncUrl).toBe('https://powersync.example.com')
     })
 
+    it('stamps the bound device_id into the PowerSync JWT', async () => {
+      const userId = 'user-powersync-device-claim'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'PowerSync Claim User',
+        email: 'powersync-claim@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-powersync-claim',
+        expiresAt,
+        token: 'bearer-powersync-claim',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'device-claim',
+      })
+      await insertTrustedDevice('device-claim', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-powersync-claim')}`,
+            'x-device-id': 'device-claim',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+      const { token } = (await response.json()) as { token: string }
+
+      // Decode the JWT payload (middle segment) without verifying the signature — we only
+      // assert the claim was stamped, not that PowerSync would accept it.
+      const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as {
+        sub: string
+        user_id: string
+        device_id: string
+      }
+      expect(claims.device_id).toBe('device-claim')
+      expect(claims.sub).toBe(userId)
+      expect(claims.user_id).toBe(userId)
+    })
+
     it('updates device name when x-device-name is provided on token request', async () => {
       const userId = 'user-device-upsert'
       const now = new Date()

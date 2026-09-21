@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, it, mock } from 'bun:test'
 import { createAnthropicSSEStream } from './anthropic-streaming'
 
@@ -17,6 +18,55 @@ const eventStream = (events: unknown[], error?: Error) =>
   }) as never
 
 describe('createAnthropicSSEStream', () => {
+  it('does not report provisional usage when the SDK ends normally after cancellation', async () => {
+    const aborted = Promise.withResolvers<void>()
+    const fetchFn: typeof fetch = Object.assign(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        init?.signal?.addEventListener('abort', () => aborted.resolve(), { once: true })
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n',
+                ),
+              )
+              init?.signal?.addEventListener(
+                'abort',
+                () => controller.error(new DOMException('Aborted', 'AbortError')),
+                { once: true },
+              )
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        )
+      },
+      { preconnect: () => undefined },
+    )
+    const client = new Anthropic({ apiKey: 'test-key', fetch: fetchFn })
+    const upstream = await client.messages.create({
+      model: 'claude-opus-5',
+      max_tokens: 100,
+      messages: [],
+      stream: true,
+    })
+    const onUsage = mock(async () => {})
+    const onUsageMissing = mock(() => {})
+    const onError = mock(() => {})
+    const reader = createAnthropicSSEStream(upstream, { onUsage, onUsageMissing, onError }).getReader()
+
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('message_start')
+    await reader.cancel()
+    await aborted.promise
+    // Let the SDK's pending read and the consumer's post-loop continuation settle.
+    await Bun.sleep(0)
+
+    expect(upstream.controller.signal.aborted).toBe(true)
+    expect(onUsage).not.toHaveBeenCalled()
+    expect(onUsageMissing).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
   it('encodes native events and reports cache usage', async () => {
     const events = [
       {

@@ -61,6 +61,10 @@ export const createAnthropicSSEStream = (
           controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
         }
 
+        if (isCancelled) {
+          return
+        }
+
         if (!usage) {
           invokeObserverSafely(options.onUsageMissing)
         } else {

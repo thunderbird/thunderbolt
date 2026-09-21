@@ -47,6 +47,7 @@ import type { Session as PiSession, ToolCallResult } from '@earendil-works/pi-ag
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
 import { readWireSkills, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { cliVersion } from '../cli.ts'
+import { renderHtmlToolName } from '../agent/render-html.ts'
 import { cleanupFailure, collectCleanupErrors } from '../agent/cleanup-errors.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { CommandSyntaxServeConfig, HarnessConfig } from '../agent/types.ts'
@@ -62,10 +63,7 @@ import { emptyMcpRuntime, type McpRuntime } from '../agent/mcp.ts'
  * The frozen {@link HarnessRuntime} operations the ACP agent drives. Keeping the
  * surface narrow lets tests exercise the round-trip with no API key.
  */
-export type ServeHarness = Pick<
-  HarnessRuntime,
-  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'
->
+export type ServeHarness = Pick<HarnessRuntime, 'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'>
 
 /** Builds a {@link ServeHarness} for one disk-backed Pi session. */
 export type BuildServeHarness = (
@@ -162,7 +160,10 @@ const attachAcpPermissionGate = (
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    if (toolName === 'webfetch' || toolName === 'skill') return undefined
+    // `render_html` produces nothing on this host — it returns a document to
+    // the client that asked for it, which renders it sandboxed. Gating it would
+    // put a permission prompt in front of every chart the user just requested.
+    if (toolName === 'webfetch' || toolName === 'skill' || toolName === renderHtmlToolName) return undefined
     // Operator-granted trust for a whole MCP server. On a shared agent the
     // prompt lands on whichever teammate is connected, so leaving an untrusted
     // server gated means a write is authorised by someone who chose to be
@@ -278,6 +279,9 @@ export const createHarnessAgent = (
     // so a personal skill keeps working alongside the team's.
     skills: mergeSkills(agentConfig.skills, wireSkills),
     mcpTools: mcp.tools,
+    // An ACP client renders what it is handed, so a served agent can answer with
+    // an artifact instead of a file under a workspace no one can open.
+    artifacts: true,
   })
 
   /** Build the harness on `session`, wire its run events + permission gate to the

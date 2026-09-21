@@ -19,6 +19,7 @@ import { createPiHarnessRuntime, installPreparedBinding } from '../provider-runt
 import type { HarnessRuntime, PreparedPiBinding } from '../provider-runtime/types.ts'
 import { cleanupFailure, collectCleanupErrors } from './cleanup-errors.ts'
 import { configureNativeWebSearch } from './model.ts'
+import { createRenderHtmlTool, renderHtmlToolName } from './render-html.ts'
 import { createSkillTool } from './skill-tool.ts'
 import { buildSystemPrompt } from './system-prompt.ts'
 import type { HarnessConfig } from './types.ts'
@@ -27,16 +28,17 @@ import { createWebFetchTool } from './webfetch.ts'
 
 /** Build complete toolset shared by local CLI and ACP-served harnesses. */
 export const createHarnessTools = (
-  config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills' | 'mcpTools'>,
+  config: Pick<HarnessConfig, 'cwd' | 'workspaceRoot' | 'skills' | 'mcpTools' | 'artifacts'>,
 ): AgentTool[] => {
   const codingTools = config.workspaceRoot
     ? createWorkspaceTools(config.workspaceRoot)
     : [createBashTool(config.cwd), createReadTool(config.cwd), createWriteTool(config.cwd), createEditTool(config.cwd)]
   const skillTools = config.skills?.length ? [createSkillTool(config.skills)] : []
+  const artifactTools = config.artifacts ? [createRenderHtmlTool()] : []
   // MCP tools arrive already connected: their clients are process-scoped and
   // outlive any single harness, and connecting is async while tool assembly is
   // not. See `createMcpRuntime`.
-  return [...codingTools, createWebFetchTool(), ...skillTools, ...(config.mcpTools ?? [])]
+  return [...codingTools, createWebFetchTool(), ...artifactTools, ...skillTools, ...(config.mcpTools ?? [])]
 }
 
 /** Build the sole live runtime from a prepared provider binding. */
@@ -63,6 +65,7 @@ export const createHarnessRuntime = async (
         cwd: config.cwd,
         modelId: config.announceModel ? binding.wireModel : undefined,
         bashEnabled: tools.some((tool) => tool.name === 'bash'),
+        artifacts: tools.some((tool) => tool.name === renderHtmlToolName),
         skills: config.skills,
       }),
     })

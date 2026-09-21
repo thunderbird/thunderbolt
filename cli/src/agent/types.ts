@@ -108,6 +108,10 @@ export type HarnessConfig = {
   readonly skills?: readonly SkillDefinition[]
   /** Tools from already-connected MCP servers, produced by `createMcpRuntime`. */
   readonly mcpTools?: readonly AgentTool[]
+  /** Expose `render_html`, which returns a page the *client* renders. Off for
+   *  the local TUI: a terminal has nothing to display an artifact in, so
+   *  offering the tool there would invite an answer the user cannot see. */
+  readonly artifacts?: boolean
 }
 
 type CommandExecutionConfig = Pick<HarnessConfig, 'cwd' | 'thinking'> & {

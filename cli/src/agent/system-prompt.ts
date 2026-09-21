@@ -10,41 +10,65 @@ type BuildSystemPromptParams = {
   cwd: string
   modelId?: string
   bashEnabled?: boolean
+  artifacts?: boolean
   skills?: readonly SkillDefinition[]
 }
 
+const countWords = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'] as const
+
+/** Spell the tool count from the list itself — a hardcoded number silently
+ *  contradicts the list the moment a tool is added or gated off. */
+const countWord = (total: number): string => countWords[total] ?? String(total)
+
 /** Describe only tools registered on the harness. */
-const toolInstructions = (bashEnabled: boolean, skillEnabled: boolean): string => {
-  const skillInstruction = skillEnabled ? '\n- skill — load full instructions for an available skill' : ''
-  if (!bashEnabled) {
-    return `You have ${skillEnabled ? 'five' : 'four'} tools:
-- read  — read a file
-- write — create or overwrite a file
-- edit  — replace a span within a file
-- webfetch — read a specific HTTP or HTTPS URL${skillInstruction}
+const toolInstructions = (bashEnabled: boolean, skillEnabled: boolean, artifactsEnabled: boolean): string => {
+  const lines = [
+    ...(bashEnabled ? ['- bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)'] : []),
+    '- read  — read a file',
+    '- write — create or overwrite a file',
+    '- edit  — replace a span within a file',
+    '- webfetch — read a specific HTTP or HTTPS URL',
+    ...(artifactsEnabled
+      ? ['- render_html — show the user a self-contained HTML page (charts, diagrams, dashboards)']
+      : []),
+    ...(skillEnabled ? ['- skill — load full instructions for an available skill'] : []),
+  ]
+
+  const artifactGuidance = artifactsEnabled
+    ? `
+
+Showing visual results:
+Files you write are NOT visible to the user — they land in this workspace, which \
+may be a container they cannot open. When the answer is a chart, diagram, or any \
+visual, call render_html so it renders where they are reading. Never point the \
+user at a path as if they could open it.`
+    : ''
+
+  const webAccess = bashEnabled
+    ? `
 
 Web access priority:
 1. Use web_search when available to search for current information and discover URLs.
 2. Use webfetch to read a specific URL.
-Bash is unavailable in this workspace-confined session, so do not try curl.
-
-Use read before edit. Make the smallest change that fully solves the task.`
-  }
-
-  return `You have ${skillEnabled ? 'six' : 'five'} tools:
-- bash  — run shell commands (grep, sed, find, git, language toolchains, tests, …)
-- read  — read a file
-- write — create or overwrite a file
-- edit  — replace a span within a file
-- webfetch — read a specific HTTP or HTTPS URL${skillInstruction}
+3. Use bash with curl only as a last resort because bash requires user permission.`
+    : `
 
 Web access priority:
 1. Use web_search when available to search for current information and discover URLs.
 2. Use webfetch to read a specific URL.
-3. Use bash with curl only as a last resort because bash requires user permission.
+Bash is unavailable in this workspace-confined session, so do not try curl.`
+
+  const closing = bashEnabled
+    ? `
 
 Prefer bash for local exploration (grep/find/ls) and for running builds and tests. Use \
 read before edit. Make the smallest change that fully solves the task.`
+    : `
+
+Use read before edit. Make the smallest change that fully solves the task.`
+
+  return `You have ${countWord(lines.length)} tools:
+${lines.join('\n')}${artifactGuidance}${webAccess}${closing}`
 }
 
 /**
@@ -57,6 +81,8 @@ read before edit. Make the smallest change that fully solves the task.`
  * @param params.modelId - when set, names the underlying model so an exposed ACP
  *   agent can self-identify; omitted for the standalone CLI
  * @param params.bashEnabled - whether the harness exposes shell execution
+ * @param params.artifacts - whether `render_html` is registered, i.e. the client
+ *   can render a page back to the user
  * @param params.skills - wire-delivered skills available through skill tool
  * @returns the system prompt string
  */
@@ -64,6 +90,7 @@ export const buildSystemPrompt = ({
   cwd,
   modelId,
   bashEnabled = true,
+  artifacts = false,
   skills = [],
 }: BuildSystemPromptParams): string => {
   const skillListing = buildSkillListing(skills)
@@ -77,7 +104,7 @@ ${clientIdentity}
 Working directory: ${cwd}
 
 # Tools
-${toolInstructions(bashEnabled, skills.length > 0)}
+${toolInstructions(bashEnabled, skills.length > 0, artifacts)}
 ${skillListing ? `\n${skillListing}\n` : ''}
 
 # How to work

@@ -21,6 +21,7 @@ import { encodeAAD, encPrefix, encV2Prefix, legacyKeyId, type KeyId } from '@sha
 import { formatWireValue, isV2EncryptedValue, parseWireValue } from './wire-format'
 import {
   codec,
+  invalidateAdoptedKeyring,
   invalidateKeyringCache,
   resetCodecState,
   setKeysSyncChannelForTesting,
@@ -314,6 +315,37 @@ describe('keys-sync channel protocol', () => {
     resetCodecState()
     // Full reset drops the primary pointer → re-reads 1 from IndexedDB.
     expect(parseWireValue(await codec.encode('c', ctx))?.keyId).toBe('1')
+  })
+
+  it('invalidateAdoptedKeyring drops the primary pointer and broadcasts primary-adopted', async () => {
+    await setupKeyring(['0', '1'], '0')
+    // Warm the encoder — this is the state a surviving device is in when a
+    // sibling's revocation rotates the primary.
+    expect(parseWireValue(await codec.encode('a', ctx))?.keyId).toBe('0')
+
+    await storePrimaryKeyId('1')
+    invalidateAdoptedKeyring()
+    // Pointer dropped → re-reads 1 from IndexedDB (contrast `invalidateKeyringCache`,
+    // which keeps the warm pointer and would still encode under 0 here).
+    expect(parseWireValue(await codec.encode('b', ctx))?.keyId).toBe('1')
+    expect(fakeChannel.posted).toContainEqual({ type: 'primary-adopted' })
+  })
+
+  it("a 'primary-adopted' message re-reads the pointer without clearing the setup flag", async () => {
+    await setupKeyring(['0', '1'], '0')
+    expect(parseWireValue(await codec.encode('a', ctx))?.keyId).toBe('0')
+
+    // Another context (the main thread that ran `applyKeyring`) persisted the
+    // adopted pointer and broadcast the invalidation.
+    await storePrimaryKeyId('1')
+    fakeChannel.deliver({ type: 'primary-adopted' })
+    expect(parseWireValue(await codec.encode('b', ctx))?.keyId).toBe('1')
+
+    // Unlike 'reset', adoption must not disturb the fail-closed setup latch:
+    // with the keys gone, encode still throws rather than passing plaintext.
+    await clearAllKeys()
+    fakeChannel.deliver({ type: 'primary-adopted' })
+    await expect(codec.encode('c', ctx)).rejects.toThrow('refusing to upload plaintext')
   })
 
   it("a 'reset' message clears the setup flag so encode fails open", async () => {

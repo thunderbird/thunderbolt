@@ -51,6 +51,12 @@ export type KeyRequestReason = 'unknown-key' | 'unwrap-failed'
  *   codec drops that key_id's cache entry and retries.
  * - `ak-refreshed` — posted by the main thread after refreshing the AK; the
  *   codec drops the AK + all DEK caches and retries.
+ * - `primary-adopted` — posted by the main thread after an adopted AK envelope
+ *   moved the primary pointer (`applyKeyring` with an adopted pointer). Drops
+ *   ALL caches including the primary pointer: the sticky pointer that
+ *   `invalidate` deliberately keeps is exactly what would leave a warmed
+ *   surviving device encoding under the pre-rotation primary after a
+ *   revocation. The setup flag is untouched — adoption is not sign-out.
  */
 export type KeysSyncMessage =
   | { type: 'invalidate' }
@@ -58,6 +64,7 @@ export type KeysSyncMessage =
   | { type: 'key-request'; keyId: KeyId; reason: KeyRequestReason }
   | { type: 'key-staged'; keyId: KeyId }
   | { type: 'ak-refreshed' }
+  | { type: 'primary-adopted' }
 
 export type KeysSyncChannel = {
   postMessage: (message: KeysSyncMessage) => void
@@ -161,6 +168,10 @@ const handleKeysSyncMessage = (message: KeysSyncMessage) => {
       dropKeyringCaches()
       settleAllPendingRequests()
       break
+    case 'primary-adopted':
+      dropAllCaches()
+      settleAllPendingRequests()
+      break
     // 'key-request' is answered by the main thread (D2), not by codecs.
   }
 }
@@ -192,6 +203,24 @@ export const setKeysSyncChannelForTesting = (next: KeysSyncChannel | null) => {
 export const invalidateKeyringCache = () => {
   dropKeyringCaches()
   channel?.postMessage({ type: 'invalidate' })
+}
+
+/**
+ * Adoption invalidation: a verified AK envelope just moved the primary pointer,
+ * so the sticky in-memory pointer (`invalidate` keeps it on purpose, to stop a
+ * lying server steering a warmed device onto another key) is now stale in EVERY
+ * context. Without this, a warmed surviving device keeps encoding under the
+ * pre-rotation primary — the DEK the revoked device retains — for the rest of
+ * its session. Drops all caches including the pointer (the next encode re-reads
+ * it from IndexedDB, which only trusted code writes, so this opens no steering
+ * surface), settles pending key requests (the adoption staged fresh keys), and
+ * broadcasts. Unlike `resetCodecState` it leaves the e2ee-setup-complete flag
+ * alone: that flag is a fail-closed latch, and adoption is not sign-out.
+ */
+export const invalidateAdoptedKeyring = () => {
+  dropAllCaches()
+  settleAllPendingRequests()
+  channel?.postMessage({ type: 'primary-adopted' })
 }
 
 /**

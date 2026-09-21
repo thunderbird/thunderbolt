@@ -75,7 +75,13 @@ import {
   type RegisterDeviceResponse,
 } from '@/api/encryption'
 import { getDb } from '@/db/database'
-import { encPrefix, encV2Prefix, invalidateKeyringCache, resetCodecState } from '@/db/encryption'
+import {
+  encPrefix,
+  encV2Prefix,
+  invalidateAdoptedKeyring,
+  invalidateKeyringCache,
+  resetCodecState,
+} from '@/db/encryption'
 import { encryptedColumnsMap } from '@/db/encryption'
 import { sql } from 'drizzle-orm'
 import {
@@ -764,12 +770,11 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   // Refuse it and keep the primary already in force, rather than rejecting the
   // whole keyring: the DEKs above are legitimate and needed for reads, so
   // failing here would turn a steer into a read outage.
-  if (adoptedPrimaryKeyId !== undefined) {
-    if (isMintableKeyId(adoptedPrimaryKeyId)) {
-      await storePrimaryKeyId(adoptedPrimaryKeyId)
-    } else {
-      console.error(`[e2ee] refused a non-mintable primary key_id from the adopted envelope: '${adoptedPrimaryKeyId}'`)
-    }
+  const pointerAdopted = adoptedPrimaryKeyId !== undefined && isMintableKeyId(adoptedPrimaryKeyId)
+  if (pointerAdopted) {
+    await storePrimaryKeyId(adoptedPrimaryKeyId)
+  } else if (adoptedPrimaryKeyId !== undefined) {
+    console.error(`[e2ee] refused a non-mintable primary key_id from the adopted envelope: '${adoptedPrimaryKeyId}'`)
   }
   await storeKeyVersion(keyring.keyVersion)
   // Again, for a device being ESTABLISHED: before the staging above it had no
@@ -783,7 +788,17 @@ const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId
   // holds only blobs the server previously served. See the residuals in
   // `.red-team/thu-869-plan.md`.
   await reconcileKeyringAnchor()
-  invalidateKeyringCache()
+  // The plain invalidation deliberately KEEPS the codec's in-memory primary
+  // pointer, so an adoption that moved it must use the pointer-clearing variant
+  // — in every context, not just this one. The rotating device already does the
+  // equivalent in `runAKRotation`; without this, every warmed SURVIVING device
+  // keeps encoding under the pre-rotation primary — the DEK the revoked device
+  // retains — for the rest of its session.
+  if (pointerAdopted) {
+    invalidateAdoptedKeyring()
+  } else {
+    invalidateKeyringCache()
+  }
 }
 
 /**

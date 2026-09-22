@@ -40,6 +40,7 @@ export {
 } from './openai-compat-model.ts'
 export {
   buildAppHarness,
+  removeAgentWorkspace,
   workspaceDirFor,
   type BuildAppHarnessOptions,
   type PiModelDescriptor,

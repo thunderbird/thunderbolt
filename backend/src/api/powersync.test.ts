@@ -16,6 +16,7 @@ import { createPowerSyncRoutes } from './powersync'
 const powersyncSettings: Settings = {
   fireworksApiKey: '',
   anthropicApiKey: '',
+  resendMonitoringApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',

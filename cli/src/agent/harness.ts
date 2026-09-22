@@ -4,15 +4,14 @@
 
 /**
  * Assembles the Pi `AgentHarness` — the spine that lets the CLI talk to the
- * selected model provider. It binds a Node execution environment (real bash +
- * filesystem) to the working directory, opens an in-memory session, resolves
- * the model, and registers coding tools. Workspace-root harnesses omit bash
- * because arbitrary shell commands cannot be confined to that workspace.
+ * selected model provider. It opens an in-memory session, resolves the model,
+ * and registers coding tools bound to the working directory (real bash +
+ * filesystem). Workspace-root harnesses omit bash because arbitrary shell
+ * commands cannot be confined to that workspace.
  */
 
 import { AgentHarness, InMemorySessionRepo, toError } from '@earendil-works/pi-agent-core'
 import type { AgentTool, Session } from '@earendil-works/pi-agent-core'
-import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
 import { createModels } from '@earendil-works/pi-ai'
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-coding-agent'
 import { createPiHarnessRuntime, installPreparedBinding } from '../provider-runtime/harness-runtime.ts'
@@ -47,14 +46,12 @@ export const createHarnessRuntime = async (
   binding: PreparedPiBinding,
   session?: Session,
 ): Promise<HarnessRuntime> => {
-  const env = new NodeExecutionEnv({ cwd: config.cwd })
   try {
     const activeSession = session ?? (await new InMemorySessionRepo().create({}))
     const models = createModels()
     installPreparedBinding(models, binding)
     const tools = createHarnessTools(config)
     const harness = new AgentHarness({
-      env,
       session: activeSession,
       models,
       model: binding.piModel,
@@ -77,12 +74,12 @@ export const createHarnessRuntime = async (
       models,
       binding,
       cleanupHarness: async () => {
-        const errors = await collectCleanupErrors([unsubscribeWebSearch, () => env.cleanup()])
+        const errors = await collectCleanupErrors([unsubscribeWebSearch])
         if (errors.length > 0) throw cleanupFailure('Harness cleanup failed.', errors)
       },
     })
   } catch (error) {
-    const cleanupErrors = await collectCleanupErrors([() => binding.dispose(), () => env.cleanup()])
+    const cleanupErrors = await collectCleanupErrors([() => binding.dispose()])
     const failure = toError(error)
     if (cleanupErrors.length > 0) throw cleanupFailure(failure.message, [failure, ...cleanupErrors])
     throw error

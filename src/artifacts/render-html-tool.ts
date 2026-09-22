@@ -5,6 +5,7 @@
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
+import { isRecord } from '@shared/lib/is-record'
 import { renderHtmlToolName } from './constants'
 import { verifyArtifactHtml } from './verify-html'
 
@@ -29,9 +30,6 @@ export const isRenderHtmlPart = (part: UIMessage['parts'][number]): part is Rend
 /** The (possibly partial, while streaming) typed input of a `render_html` part. */
 export const renderHtmlInput = (part: RenderHtmlPart): Partial<RenderHtmlInput> =>
   (part.input ?? {}) as Partial<RenderHtmlInput>
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * The typed output of a `render_html` part once it has finished (`undefined`

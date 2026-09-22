@@ -1,6 +1,6 @@
 # Configuration
 
-Thunderbolt's backend is configured through environment variables. The schema lives at [backend/src/config/settings.ts](../backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
+Thunderbolt's backend is configured through environment variables. The schema lives at [backend/src/config/settings.ts](../../backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
 
 Copy the example to a `.env` file and customize:
 
@@ -62,15 +62,15 @@ The JWT secret must match the `k` value the PowerSync service loads at runtime. 
 
 ## CORS
 
-| Variable                 | Default                                                          | Description                                                                        |
-| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                                      |
-| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                                                  |
-| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                                               |
-| `CORS_ALLOW_HEADERS`     | _(see [settings.ts](../backend/src/config/settings.ts))_         | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
-| `CORS_EXPOSE_HEADERS`    | _(see `settings.ts`)_                                            | Response headers exposed to the client                                             |
+| Variable                 | Default                                                          | Description                                                   |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------- |
+| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                 |
+| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                             |
+| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                          |
+| `CORS_ALLOW_HEADERS`     | `""`                                                             | Retained for compatibility; production CORS mounts ignore it. |
+| `CORS_EXPOSE_HEADERS`    | _(see [settings.ts](../../backend/src/config/settings.ts))_      | Response headers readable by cross-origin browser code        |
 
-When you add a new custom header to a client request (e.g. `X-Device-ID`), you **must** add it to `CORS_ALLOW_HEADERS` — otherwise browser preflight fails and the request never reaches your handler.
+Production CORS mounts use `allowedHeaders: true` to echo `Access-Control-Request-Headers`, so new client request headers need no allowlist change. Add response headers to `CORS_EXPOSE_HEADERS` when cross-origin browser code needs to read them.
 
 ## Analytics
 
@@ -79,7 +79,7 @@ When you add a new custom header to a client request (e.g. `X-Device-ID`), you *
 | `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                    |
 | `POSTHOG_API_KEY` | —                          | Leave unset to disable server-side analytics |
 
-See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
+See [TELEMETRY.md](../../TELEMETRY.md) in the repo for the full list of events the client emits.
 
 ## Debug Transcripts
 

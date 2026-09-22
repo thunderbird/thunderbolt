@@ -2,29 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { mock } from 'bun:test'
-import * as authUtils from '@/auth/utils'
-import * as waitlistUtils from '@/waitlist/utils'
 import { clearSettingsCache } from '@/config/settings'
-
-// Mock only the email-sending functions, preserve all other exports
-const mockSendSignInEmail = mock(() => Promise.resolve())
-const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
-const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
-
-mock.module('@/auth/utils', () => ({
-  ...authUtils,
-  sendSignInEmail: mockSendSignInEmail,
-}))
-
-mock.module('@/waitlist/utils', () => ({
-  ...waitlistUtils,
-  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
-  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
-  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
-}))
-
-// Now import the rest
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
@@ -34,7 +12,16 @@ import { createTestDb } from '@/test-utils/db'
 import { createOtpGenerator } from '@/test-utils/otp-generator'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+const mockSendSignInEmail = mock(() => Promise.resolve())
+const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
+const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
+const emailDeps = {
+  sendSignInEmail: mockSendSignInEmail,
+  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
+  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
+}
 
 describe('Auth Waitlist Integration', () => {
   let auth: ReturnType<typeof createAuth>
@@ -49,7 +36,7 @@ describe('Auth Waitlist Integration', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
+    auth = createAuth(db, emailDeps)
   })
 
   afterEach(async () => {
@@ -264,7 +251,7 @@ describe('Auth Waitlist Integration', () => {
   describe('OTP resend strategy (reuse)', () => {
     it('should reuse the same OTP on repeated sends instead of generating a new one', async () => {
       const generateSignInOtp = mock(createOtpGenerator())
-      auth = createAuth(db, { generateSignInOtp, sendSignInEmail: mockSendSignInEmail })
+      auth = createAuth(db, { ...emailDeps, generateSignInOtp })
       const email = 'reuse-test@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -408,7 +395,7 @@ describe('Auth Waitlist Integration', () => {
       // Better Auth falls through to generate a fresh OTP with counter=0.
       // This is mitigated by the 15s cooldown on /waitlist/join and will be
       // further addressed by proof-of-work (THU-113).
-      auth = createAuth(db, { generateSignInOtp: createOtpGenerator(), sendSignInEmail: mockSendSignInEmail })
+      auth = createAuth(db, { ...emailDeps, generateSignInOtp: createOtpGenerator() })
       const email = 'exhausted-resend@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),

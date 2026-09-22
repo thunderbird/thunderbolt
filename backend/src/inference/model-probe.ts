@@ -10,15 +10,16 @@ import OpenAI from 'openai'
 import { SecureClient } from 'tinfoil'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
-export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price'
+export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price' | 'not-configured'
 export type ModelProbeFailure = { model: string; reason: ModelProbeFailureReason }
 export type ModelProbeDeps = {
   database: InferenceDatabase
-  settings: Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'tinfoilApiKey' | 'tinfoilEnclaveUrl'>
+  settings: Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'tinfoilApiKey'>
   /** Transport for the Anthropic OpenAI-compatible client (tests inject a fake). */
   fetchFn: typeof fetch
   /** Attested Tinfoil transport; defaults to a fresh SecureClient per run. */
-  confidentialFetch?: typeof fetch
+  confidentialTransport?: { fetch: typeof fetch; baseURL: string }
+  logger?: { warn: (context: Record<string, string | number>, message: string) => void }
   /** Per-model deadline, default 20_000. */
   timeoutMs?: number
   /** Max models probed at once, default 3. */
@@ -30,11 +31,31 @@ const modelProbeConcurrency = 3
 // A 256-token ceiling leaves room for reasoning models to answer; smaller budgets returned no text live.
 const modelProbeMaxTokens = 256
 
+/** Pair the encrypted transport with the enclave whose key was attested. */
+const createConfidentialTransport = async () => {
+  const secure = new SecureClient({ userCacheSecret: randomBytes(32).toString('hex') })
+  await secure.ready()
+  return { fetch: secure.fetch, baseURL: secure.getBaseURL()! }
+}
+
 /** Probe every shipped catalog model once; returns the failing ones (empty = all healthy). */
 export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelProbeFailure[]> => {
   const { database, settings, fetchFn, timeoutMs = modelProbeTimeoutMs, concurrency = modelProbeConcurrency } = deps
-  let confidentialFetch = deps.confidentialFetch
+  let confidentialTransport: Promise<NonNullable<ModelProbeDeps['confidentialTransport']>> | undefined
   const probe = async (model: SharedModel): Promise<ModelProbeFailure | null> => {
+    const fail = (reason: ModelProbeFailureReason, error?: unknown): ModelProbeFailure => {
+      deps.logger?.warn(
+        {
+          event: 'deep_health_model_probe_failed',
+          model: model.model,
+          reason,
+          ...(error instanceof Error ? { errorName: error.name } : {}),
+          ...(error instanceof OpenAI.APIError && error.status !== undefined ? { status: error.status } : {}),
+        },
+        'Model health probe failed',
+      )
+      return { model: model.model, reason }
+    }
     const signal = AbortSignal.timeout(timeoutMs)
     const deadline = Promise.withResolvers<never>()
     const abort = () => deadline.reject(signal.reason)
@@ -47,22 +68,24 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
           ? resolveConfidentialManagedModel(model.model)
           : undefined
       if (!identity) {
-        return { model: model.model, reason: 'upstream-error' }
+        return fail('upstream-error')
+      }
+      const apiKey = runtime ? settings.anthropicApiKey : settings.tinfoilApiKey
+      if (!apiKey.trim()) {
+        return fail('not-configured')
       }
       if (!(await Promise.race([loadInferencePrice(database, identity), deadline.promise]))) {
-        return { model: model.model, reason: 'missing-price' }
+        return fail('missing-price')
       }
       signal.throwIfAborted()
-      if (!runtime && !confidentialFetch) {
-        confidentialFetch = new SecureClient({
-          baseURL: settings.tinfoilEnclaveUrl,
-          userCacheSecret: randomBytes(32).toString('hex'),
-        }).fetch
-      }
+      const transport = runtime
+        ? { fetch: fetchFn, baseURL: settings.anthropicBaseUrl }
+        : (deps.confidentialTransport ??
+          (await Promise.race([(confidentialTransport ??= createConfidentialTransport()), deadline.promise])))
+      signal.throwIfAborted()
       const client = new OpenAI({
-        apiKey: runtime ? settings.anthropicApiKey : settings.tinfoilApiKey,
-        baseURL: runtime ? settings.anthropicBaseUrl : settings.tinfoilEnclaveUrl,
-        fetch: runtime ? fetchFn : confidentialFetch,
+        apiKey,
+        ...transport,
         maxRetries: 0,
       })
       const request: OpenAI.ChatCompletionCreateParamsNonStreaming & { thinking?: { type: 'disabled' } } = {
@@ -87,9 +110,9 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
             .map((part) => part.text)
             .join('')
         : content
-      return text?.trim() ? null : { model: model.model, reason: 'no-text' }
-    } catch {
-      return { model: model.model, reason: signal.aborted ? 'timeout' : 'upstream-error' }
+      return text?.trim() ? null : fail('no-text')
+    } catch (error) {
+      return fail(signal.aborted ? 'timeout' : 'upstream-error', error)
     } finally {
       signal.removeEventListener('abort', abort)
     }

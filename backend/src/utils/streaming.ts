@@ -40,7 +40,7 @@ const parseCompletionUsage = (usage: ChatCompletionChunk['usage']): CompletionUs
 }
 
 /** Invokes an observer without allowing observability failures to alter the response stream. */
-const invokeObserverSafely = (observer: (() => void) | undefined): void => {
+export const invokeObserverSafely = (observer: (() => void) | undefined): void => {
   try {
     observer?.()
   } catch {

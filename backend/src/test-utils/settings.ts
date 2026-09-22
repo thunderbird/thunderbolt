@@ -13,7 +13,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   fireworksApiKey: '',
   anthropicApiKey: '',
   anthropicBaseUrl: 'https://api.anthropic.com/v1/',
-  resendApiKey: '',
+  resendMonitoringApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',

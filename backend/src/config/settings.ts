@@ -19,7 +19,7 @@ const settingsSchema = z
     fireworksApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
     anthropicBaseUrl: z.string().default('https://api.anthropic.com/v1/'),
-    resendApiKey: z.string().default(''),
+    resendMonitoringApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
@@ -208,7 +208,7 @@ const parseSettings = (): Settings => {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
     anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com/v1/',
-    resendApiKey: process.env.RESEND_API_KEY || '',
+    resendMonitoringApiKey: process.env.RESEND_MONITORING_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',

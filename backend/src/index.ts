@@ -118,7 +118,7 @@ export const createApp = async (deps?: AppDeps) => {
       .use(betterAuthPlugin)
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
-      .use(createHealthRoutes({ settings, database, fetchFn }))
+      .use(createHealthRoutes({ settings, database, fetchFn, logger: appLogger }))
       .use(createGoogleAuthRoutes(auth, fetchFn))
       .use(createMicrosoftAuthRoutes(auth, fetchFn))
       .use(createOidcConfigRoutes())

@@ -164,6 +164,7 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                               |
 | `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
 | `MONITORING_TOKEN` | —                       | Bearer token for deep health routes under `/v1/health/`                |
+| `RESEND_MONITORING_API_KEY` | — | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
 
 ### Deep health
 
@@ -176,11 +177,11 @@ Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 | `/v1/health/email` | Resend's authenticated domains read (10 seconds; sends no email) |
 | `/v1/health/models` | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
 
-Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, or `missing-price`; reasons never contain upstream bodies or credentials.
+Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 
 An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
 
-The email probe requires a Resend `full_access` key in `RESEND_API_KEY`: a `sending_access` key is rejected on read endpoints ("Can only send emails"). Missing email or PowerSync configuration returns `503` with reason `not-configured`.
+The email probe uses a separate Resend Full access key in `RESEND_MONITORING_API_KEY` to read the domain list and requires the sending domain from `emailFrom` to be verified. The sending key `RESEND_API_KEY` may stay sending-only. A missing monitoring key returns `503` with reason `not-configured`; an invalid, sending-only, or forbidden monitoring key returns `rejected` (upstream HTTP 400/401/403); a missing or unverified sending domain, including a malformed response, returns `domain-unverified`. Missing PowerSync configuration also returns `503` with reason `not-configured`.
 
 Each models call costs one tiny completion per catalog model with a price row, without retries. BetterStack polls this route every 15 minutes in production.
 

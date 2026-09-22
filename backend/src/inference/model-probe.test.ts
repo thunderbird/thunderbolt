@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { SecureClient } from 'tinfoil'
 import { and, eq, sql } from 'drizzle-orm'
 import { inferencePrices } from '@/db/schema'
 import { resolveManagedDirectRuntime } from '@/inference/managed-models'
@@ -20,7 +21,6 @@ const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 const settings = createTestSettings({
   anthropicApiKey: 'anthropic-test-key',
   tinfoilApiKey: 'tinfoil-test-key',
-  tinfoilEnclaveUrl: 'https://inference.test/v1',
 })
 /** Build an OpenAI-compatible response without network access. */
 const completion = (content: string | null | { type: string; text?: string }[] = 'OK') =>
@@ -44,6 +44,7 @@ describe('probeCatalogModels', () => {
     const seen: string[] = []
     const fake = (key: string, models: string[]) =>
       transport(async (request) => {
+        expect(new URL(request.url).host).toBe(key === settings.tinfoilApiKey ? 'attested.test' : 'api.anthropic.com')
         const body = await request.json()
         expect(models).toContain(body.model)
         expect(request.headers.get('authorization')).toBe(`Bearer ${key}`)
@@ -62,7 +63,10 @@ describe('probeCatalogModels', () => {
         database: env.db,
         settings,
         fetchFn: fake(settings.anthropicApiKey, [directWireModel]),
-        confidentialFetch: fake(settings.tinfoilApiKey, confidentialModels),
+        confidentialTransport: {
+          fetch: fake(settings.tinfoilApiKey, confidentialModels),
+          baseURL: 'https://attested.test/v1',
+        },
       }),
     ).toEqual([])
     expect(seen.sort()).toEqual([directWireModel, ...confidentialModels].sort())
@@ -78,70 +82,150 @@ describe('probeCatalogModels', () => {
           hosts.push(new URL(request.url).host)
           return completion()
         }),
-        confidentialFetch: transport(async () => completion()),
+        confidentialTransport: { fetch: transport(async () => completion()), baseURL: 'https://attested.test/v1' },
       }),
     ).toEqual([])
     expect(hosts).toEqual(['anthropic.test'])
   })
 
-  it('sanitises confidential constructor failures while still probing Anthropic', async () => {
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+  it.each(['failure', 'timeout'] as const)('bounds shared confidential initialization (%s)', async (kind) => {
+    const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {
+      if (kind === 'failure') {
+        throw new TypeError('secret attestation details')
+      }
+      await new Promise<void>(() => {})
+    })
+    const logger = { warn: mock(() => {}) }
+    const seen: string[] = []
+    const fetchFn = transport(async (request) => {
+      seen.push((await request.json()).model)
+      return completion()
+    })
     try {
-      const seen: string[] = []
-      const fetchFn = transport(async (request) => {
-        seen.push((await request.json()).model)
-        return completion()
-      })
-      expect(
-        await probeCatalogModels({
-          database: env.db,
-          settings: { ...settings, tinfoilEnclaveUrl: 'ftp://test-user:test-password@example.test/v1' },
-          fetchFn,
-        }),
-      ).toEqual(confidentialModels.map((model) => ({ model, reason: 'upstream-error' })))
+      expect(await probeCatalogModels({ database: env.db, settings, fetchFn, logger, timeoutMs: 50 })).toEqual(
+        confidentialModels.map((model) => ({ model, reason: kind === 'failure' ? 'upstream-error' : 'timeout' })),
+      )
+      expect(ready).toHaveBeenCalledTimes(1)
       expect(seen).toEqual([directWireModel])
-      expect(errorSpy).not.toHaveBeenCalled()
-      expect(warnSpy).not.toHaveBeenCalled()
+      expect(logger.warn).toHaveBeenCalledTimes(confidentialModels.length)
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret attestation details')
+      if (kind === 'failure') {
+        expect(logger.warn).toHaveBeenCalledWith(
+          {
+            event: 'deep_health_model_probe_failed',
+            model: confidentialModels[0],
+            reason: 'upstream-error',
+            errorName: 'TypeError',
+          },
+          'Model health probe failed',
+        )
+      }
     } finally {
-      errorSpy.mockRestore()
-      warnSpy.mockRestore()
+      ready.mockRestore()
     }
   })
 
   it.each([404, 500])('sanitises HTTP %i and never retries', async (status) => {
+    const logger = { warn: mock(() => {}) }
     const calls: string[] = []
     const fetchFn = transport(async (request) => {
       calls.push((await request.json()).model)
       return Response.json({ error: { message: 'secret upstream details' } }, { status })
     })
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual(
-      defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })),
-    )
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        logger,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })))
     expect(calls).toHaveLength(defaultModels.length)
+    expect(logger.warn).toHaveBeenCalledTimes(defaultModels.length)
+    for (const { model } of defaultModels) {
+      expect(logger.warn).toHaveBeenCalledWith(
+        { event: 'deep_health_model_probe_failed', model, reason: 'upstream-error', errorName: 'Error', status },
+        'Model health probe failed',
+      )
+    }
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret upstream details')
   })
 
   it('sanitises thrown network errors', async () => {
+    const logger = { warn: mock(() => {}) }
     const fetchFn = transport(async () => {
       throw new Error('secret network details')
     })
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual(
-      defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })),
-    )
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        logger,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })))
+    expect(logger.warn).toHaveBeenCalledTimes(defaultModels.length)
+    for (const { model } of defaultModels) {
+      expect(logger.warn).toHaveBeenCalledWith(
+        { event: 'deep_health_model_probe_failed', model, reason: 'upstream-error', errorName: 'Error' },
+        'Model health probe failed',
+      )
+    }
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret network details')
+  })
+
+  it.each([
+    { key: 'anthropicApiKey', value: '' },
+    { key: 'anthropicApiKey', value: '  ' },
+    { key: 'tinfoilApiKey', value: '' },
+    { key: 'tinfoilApiKey', value: '  ' },
+  ] as const)('skips providers with blank key %j', async ({ key, value }) => {
+    const seen: string[] = []
+    const logger = { warn: mock(() => {}) }
+    const fetchFn = transport(async (request) => {
+      seen.push((await request.json()).model)
+      return completion()
+    })
+    const missing = key === 'anthropicApiKey' ? [directModel] : confidentialModels
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings: { ...settings, [key]: value },
+        logger,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual(missing.map((model) => ({ model, reason: 'not-configured' })))
+    expect(seen.sort()).toEqual((key === 'anthropicApiKey' ? [...confidentialModels] : [directWireModel]).sort())
+    expect(logger.warn).toHaveBeenCalledTimes(missing.length)
   })
 
   it.each(['', '  ', null])('rejects empty text %j', async (content) => {
     const fetchFn = transport(async () => completion(content))
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual(
-      defaultModels.map(({ model }) => ({ model, reason: 'no-text' })),
-    )
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'no-text' })))
   })
 
   it('joins text parts', async () => {
     const fetchFn = transport(async () =>
       completion([{ type: 'text', text: '' }, { type: 'image_url' }, { type: 'text', text: 'OK' }]),
     )
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([])
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual([])
   })
 
   it('rejects all-empty text parts', async () => {
@@ -151,9 +235,14 @@ describe('probeCatalogModels', () => {
         { type: 'text', text: '' },
       ]),
     )
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual(
-      defaultModels.map(({ model }) => ({ model, reason: 'no-text' })),
-    )
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'no-text' })))
   })
 
   it('cancels timed-out upstream requests', async () => {
@@ -175,7 +264,12 @@ describe('probeCatalogModels', () => {
       })
     })
     try {
-      const result = probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })
+      const result = probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      })
       await started.promise
       for (const controller of controllers) {
         controller.abort(new DOMException('deadline', 'TimeoutError'))
@@ -197,9 +291,14 @@ describe('probeCatalogModels', () => {
       seen.push((await request.json()).model)
       return completion()
     })
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([
-      { model: directModel, reason: 'missing-price' },
-    ])
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual([{ model: directModel, reason: 'missing-price' }])
     expect(seen.sort()).toEqual([...confidentialModels].sort())
   })
 
@@ -211,9 +310,14 @@ describe('probeCatalogModels', () => {
       seen.push((await request.json()).model)
       return completion()
     })
-    expect(await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn })).toEqual([
-      { model: missingModel, reason: 'missing-price' },
-    ])
+    expect(
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+      }),
+    ).toEqual([{ model: missingModel, reason: 'missing-price' }])
     expect(seen).not.toContain(missingModel)
     expect(seen).toHaveLength(defaultModels.length - 1)
   })
@@ -221,7 +325,13 @@ describe('probeCatalogModels', () => {
   it('bounds the wait even when attestation ignores cancellation', async () => {
     const fetchFn = transport(async () => new Promise<Response>(() => {}))
     expect(
-      await probeCatalogModels({ database: env.db, settings, fetchFn, confidentialFetch: fetchFn, timeoutMs: 5 }),
+      await probeCatalogModels({
+        database: env.db,
+        settings,
+        fetchFn,
+        confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
+        timeoutMs: 5,
+      }),
     ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'timeout' })))
   })
 
@@ -241,7 +351,7 @@ describe('probeCatalogModels', () => {
       database: env.db,
       settings,
       fetchFn,
-      confidentialFetch: fetchFn,
+      confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       concurrency: 1,
     })
     await started.promise

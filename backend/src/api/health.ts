@@ -6,18 +6,24 @@ import { timingSafeEqual } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import { z } from 'zod'
 import type { Settings } from '@/config/settings'
 import type { db } from '@/db/client'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
 import { probeCatalogModels, type ModelProbeDeps } from '@/inference/model-probe'
+import { emailFrom } from '@/lib/resend'
 import { safeErrorHandler } from '@/middleware/error-handling'
 
 const databaseTimeoutMs = 5_000
 const powersyncTimeoutMs = 5_000
 const emailTimeoutMs = 10_000
+const resendDomainsSchema = z.object({ data: z.array(z.object({ name: z.string(), status: z.string() })) })
 
 export type HealthRouteDeps = {
-  settings: Pick<Settings, 'monitoringToken' | 'powersyncUrl' | 'resendApiKey' | 'anthropicApiKey' | 'tinfoilApiKey'>
+  settings: Pick<
+    Settings,
+    'monitoringToken' | 'powersyncUrl' | 'resendMonitoringApiKey' | 'anthropicApiKey' | 'tinfoilApiKey'
+  >
   database: Pick<typeof db, 'execute'> & InferenceDatabase
   fetchFn?: typeof fetch
   probeModels?: typeof probeCatalogModels
@@ -88,22 +94,34 @@ export const createHealthRoutes = ({
       }
     })
     .get('/email', async ({ status }) => {
-      if (!settings.resendApiKey) {
+      if (!settings.resendMonitoringApiKey) {
         return status(503, { status: 'failed', reason: 'not-configured' })
       }
       try {
         const response = await fetchFn('https://api.resend.com/domains', {
-          headers: { Authorization: `Bearer ${settings.resendApiKey}` },
+          headers: { Authorization: `Bearer ${settings.resendMonitoringApiKey}` },
           signal: AbortSignal.timeout(timeouts.email ?? emailTimeoutMs),
         })
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 400 || response.status === 401 || response.status === 403) {
           return status(503, { status: 'failed', reason: 'rejected' })
         }
         if (!response.ok) {
           return status(503, { status: 'failed', reason: `http-${response.status}` })
         }
+        // Malformed bodies cannot establish domain verification; invalid JSON is handled below.
+        const domains = resendDomainsSchema.safeParse(await response.json())
+        const sendingDomain = emailFrom.split('@')[1]
+        if (
+          !domains.success ||
+          !domains.data.data.some((domain) => domain.name === sendingDomain && domain.status === 'verified')
+        ) {
+          return status(503, { status: 'failed', reason: 'domain-unverified' })
+        }
         return { status: 'ok' }
       } catch (error) {
+        if (error instanceof SyntaxError) {
+          return status(503, { status: 'failed', reason: 'domain-unverified' })
+        }
         return status(503, {
           status: 'failed',
           reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'unreachable',

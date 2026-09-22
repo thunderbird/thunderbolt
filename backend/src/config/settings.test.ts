@@ -202,21 +202,21 @@ describe('Config Settings', () => {
   })
 
   describe('Settings validation and defaults', () => {
-    it('loads the Resend API key and defaults to empty when unset', () => {
-      const originalValue = process.env.RESEND_API_KEY
+    it('loads the Resend monitoring API key and defaults to empty when unset', () => {
+      const originalValue = process.env.RESEND_MONITORING_API_KEY
       try {
-        delete process.env.RESEND_API_KEY
+        delete process.env.RESEND_MONITORING_API_KEY
         clearSettingsCache()
-        expect(getSettings().resendApiKey).toBe('')
+        expect(getSettings().resendMonitoringApiKey).toBe('')
 
-        process.env.RESEND_API_KEY = 'test-resend-key'
+        process.env.RESEND_MONITORING_API_KEY = 'test-resend-monitoring-key'
         clearSettingsCache()
-        expect(getSettings().resendApiKey).toBe('test-resend-key')
+        expect(getSettings().resendMonitoringApiKey).toBe('test-resend-monitoring-key')
       } finally {
         if (originalValue === undefined) {
-          delete process.env.RESEND_API_KEY
+          delete process.env.RESEND_MONITORING_API_KEY
         } else {
-          process.env.RESEND_API_KEY = originalValue
+          process.env.RESEND_MONITORING_API_KEY = originalValue
         }
         clearSettingsCache()
       }

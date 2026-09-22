@@ -7,6 +7,7 @@ import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
 import type { ModelProbeFailure } from '@/inference/model-probe'
 import { resolveManagedDirectRuntime } from '@/inference/managed-models'
+import { emailFrom } from '@/lib/resend'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels } from '@shared/defaults/models'
@@ -21,7 +22,7 @@ const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 const settings = createTestSettings({
   monitoringToken: 'test-monitoring-token',
   powersyncUrl: 'https://sync.example.com',
-  resendApiKey: 'test-resend-key',
+  resendMonitoringApiKey: 'test-resend-monitoring-key',
   anthropicApiKey: 'anthropic-test-key',
   tinfoilApiKey: 'tinfoil-test-key',
 })
@@ -137,9 +138,11 @@ describe('deep health', () => {
         expect(outgoing.url).toBe(
           route === 'email' ? 'https://api.resend.com/domains' : 'https://sync.example.com/probes/liveness',
         )
-        expect(outgoing.headers.get('Authorization')).toBe(route === 'email' ? 'Bearer test-resend-key' : null)
+        expect(outgoing.headers.get('Authorization')).toBe(
+          route === 'email' ? 'Bearer test-resend-monitoring-key' : null,
+        )
         expect(init?.signal).toBeInstanceOf(AbortSignal)
-        return new Response()
+        return Response.json({ data: [{ name: emailFrom.split('@')[1], status: 'verified' }] })
       })
       const response = await createHealthRoutes({
         settings,
@@ -151,8 +154,9 @@ describe('deep health', () => {
       expect(fetchFn).toHaveBeenCalledTimes(1)
     })
 
-    it.each([401, 403, 500])(`${route} reports HTTP %s`, async (status) => {
-      const fetchFn = async () => new Response('secret upstream body', { status })
+    it.each([400, 401, 403, 500])(`${route} reports HTTP %s`, async (status) => {
+      const fetchFn = async () =>
+        Response.json({ name: status === 400 ? 'validation_error' : 'restricted_api_key' }, { status })
       const response = await createHealthRoutes({
         settings,
         database,
@@ -184,7 +188,7 @@ describe('deep health', () => {
     it(`${route} rejects missing configuration without a request`, async () => {
       const fetchFn = mock(async () => new Response())
       const response = await createHealthRoutes({
-        settings: { ...settings, powersyncUrl: '', resendApiKey: '' },
+        settings: { ...settings, powersyncUrl: '', resendMonitoringApiKey: '' },
         database,
         fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
       }).handle(request(route))
@@ -193,6 +197,35 @@ describe('deep health', () => {
       expect(fetchFn).not.toHaveBeenCalled()
     })
   }
+
+  it.each([
+    { data: [{ name: emailFrom.split('@')[1], status: 'pending' }] },
+    { data: [{ name: 'other.example.com', status: 'verified' }] },
+    { data: [] },
+    { data: [{ name: emailFrom.split('@')[1] }] },
+    {},
+    null,
+  ])('email requires a verified sending domain (%j)', async (body) => {
+    const fetchFn = async () => Response.json(body)
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('email'))
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ status: 'failed', reason: 'domain-unverified' })
+  })
+
+  it('email treats invalid JSON as an unverified domain', async () => {
+    const fetchFn = async () => new Response('invalid JSON')
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('email'))
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ status: 'failed', reason: 'domain-unverified' })
+  })
 
   it.each([
     { failures: [] },

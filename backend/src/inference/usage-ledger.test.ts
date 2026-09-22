@@ -274,6 +274,22 @@ describe('inference usage ledger', () => {
       expect(calculateInferenceCost(counts, price)).toBe(2_700n)
     })
 
+    it('applies Anthropic 5-minute, 1-hour, and read cache rates', () => {
+      expect(
+        calculateInferenceCost(
+          {
+            promptTokens: 60,
+            completionTokens: 4,
+            totalTokens: 64,
+            cacheCreationTokens: 20,
+            cacheCreation1hTokens: 5,
+            cacheReadTokens: 30,
+          },
+          { ...opusIdentity, inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
+        ),
+      ).toBe(308_750n)
+    })
+
     it('accepts the signed PostgreSQL bigint maximum and rejects overflow', () => {
       const counts = { promptTokens: 1, completionTokens: 0, totalTokens: 1 }
 

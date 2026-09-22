@@ -31,6 +31,7 @@ import { createConfigs } from '@/integrations/thunderbolt-pro/tools'
 import { createTurnTelemetry } from '@/ai/turn-telemetry'
 import { createWebToolBudget, webToolCaps } from '@/ai/web-tool-budget'
 import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
@@ -247,6 +248,36 @@ describe('resolvePiModel — image capability (vendor-gated)', () => {
   it('does not advertise image support when the vendor is unknown (custom/local)', async () => {
     const resolved = await resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
+  })
+})
+
+describe('resolvePiModel — managed Anthropic', () => {
+  it('routes Thunderbolt Opus through Pi native Messages with its public wire alias', async () => {
+    const isKnownAnthropicModel = mock((modelId: string) => modelId === 'claude-opus-5')
+    const model = {
+      id: 'managed-opus',
+      name: 'Opus 5',
+      provider: 'thunderbolt',
+      model: 'opus-5',
+      vendor: 'anthropic',
+      apiKey: null,
+      toolUsage: 1,
+      contextWindow: 300_000,
+    } as Model
+    const context = { selectedModel: model, getProxyFetch: () => noopFetch } as AgentAdapterContext
+
+    const resolved = await resolvePiModel({ isKnownAnthropicModel } as never, context, null)
+
+    expect(resolved?.descriptor).toMatchObject({
+      kind: 'anthropic',
+      modelId: 'opus-5',
+      catalogModelId: 'claude-opus-5',
+      // Derived from the configured cloud URL so a local `.env` override cannot flip it.
+      baseURL: `${getLocalSetting('cloudUrl')}/chat`,
+      contextWindow: 300_000,
+      apiKey: 'thunderbolt',
+    })
+    expect(isKnownAnthropicModel).toHaveBeenCalledWith('claude-opus-5')
   })
 })
 

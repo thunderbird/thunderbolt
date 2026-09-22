@@ -36,8 +36,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // One worker per shard: each CI runner already hosts 4 servers (2 Vite + 2
-  // backend) on 4 vCPUs, so a second browser worker oversubscribes the box and
+  // One worker per shard: each CI runner hosts 8 app servers (4 frontend/backend pairs), a fake provider and 2 mock IdPs
+  // on 4 vCPUs, so a second browser worker oversubscribes the box and
   // starves the cold first-navigation transpile. Parallelism comes from the 2
   // shards running as separate jobs.
   workers: 1,

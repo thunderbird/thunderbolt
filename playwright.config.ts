@@ -139,7 +139,8 @@ export default defineConfig({
         // Enables the fixed test OTP and leaves development-only PowerSync defaults unset.
         NODE_ENV: 'test',
         ANTHROPIC_API_KEY: 'e2e-fake-provider-key',
-        ANTHROPIC_BASE_URL: `http://localhost:${fakeProviderPort}/v1/`,
+        // The native Messages SDK appends /v1/messages to this API root.
+        ANTHROPIC_BASE_URL: `http://localhost:${fakeProviderPort}`,
         // New email-code users need approval even when WAITLIST_ENABLED is false.
         WAITLIST_AUTO_APPROVE_DOMAINS: 'thunderbolt.test',
         BETTER_AUTH_URL: `http://localhost:${consumerBackendPort}`,

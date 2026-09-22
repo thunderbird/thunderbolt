@@ -187,9 +187,9 @@ Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from
 
 ### Fake provider
 
-The fake provider in [`e2e/fake-provider.ts`](../../e2e/fake-provider.ts) is a local server that returns OpenAI-style `chat.completion.chunk` SSE events, token usage, and a final `[DONE]` event. Change its exported `fakeProviderReply` to change the scripted reply. `e2e/consumer-fake-provider.spec.ts` checks the stream directly.
+The fake provider in [`e2e/fake-provider.ts`](../../e2e/fake-provider.ts) is a local server that serves the Anthropic Messages streaming protocol on `/v1/messages`, with text deltas, token usage, and a final `message_stop` event. Change its exported `fakeProviderReply` to change the scripted reply. `e2e/consumer-fake-provider.spec.ts` checks the stream directly.
 
-The consumer backend sets `ANTHROPIC_BASE_URL=http://localhost:9878/v1/` to reach it. See the [self-hosting configuration](../self-hosting/configuration.md) for the override. The fake provider sits behind the real backend, so chat tests exercise quota admission, usage logging, and stream re-emission.
+The consumer backend sets `ANTHROPIC_BASE_URL=http://localhost:9878` to its API root to reach it. See the [self-hosting configuration](../self-hosting/configuration.md) for the override. The fake provider sits behind the real backend, so chat tests exercise quota admission, usage logging, and stream re-emission.
 
 ### Consumer-mode pair and the fixed sign-in code
 

@@ -29,7 +29,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   })
   const completion = page.waitForResponse(
     (response) =>
-      response.request().method() === 'POST' && /\/chat\/completions$/.test(new URL(response.url()).pathname),
+      response.request().method() === 'POST' && /\/chat\/v1\/messages$/.test(new URL(response.url()).pathname),
   )
   await composer.press('Enter')
 

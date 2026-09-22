@@ -4,45 +4,64 @@
 
 import { createServer, type Server } from 'node:http'
 import { setTimeout } from 'node:timers/promises'
-import type { ChatCompletionChunk } from 'openai/resources/chat/completions'
+import type { RawMessageStreamEvent } from '@anthropic-ai/sdk/resources/messages'
 
 export const fakeProviderReply = 'Hello from the fake provider, one word at a time.'
 
-/** Start a local OpenAI-compatible provider with a deterministic streamed reply. */
+/** Start a local Anthropic Messages provider with a deterministic streamed reply. */
 export const createFakeProvider = async (port: number): Promise<Server> => {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url!, `http://localhost:${port}`)
-    if (req.method !== 'POST' || !url.pathname.endsWith('/chat/completions')) {
+    if (req.method !== 'POST' || !url.pathname.endsWith('/v1/messages')) {
       res.writeHead(404)
       res.end('Not found')
       return
     }
 
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-    const base = {
-      id: `chatcmpl-${crypto.randomUUID()}`,
-      object: 'chat.completion.chunk' as const,
-      created: Math.floor(Date.now() / 1000),
-      model: 'e2e-model',
+    /** Write a native Messages event with its SSE event name. */
+    const writeEvent = (event: RawMessageStreamEvent) => {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
     }
-    /** Write one event using the same completion identity throughout the stream. */
-    const writeChunk = (delta: ChatCompletionChunk.Choice.Delta, finishReason: 'stop' | null = null) => {
-      res.write(
-        `data: ${JSON.stringify({
-          ...base,
-          choices: [{ index: 0, delta, finish_reason: finishReason }],
-          usage: finishReason ? { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 } : undefined,
-        })}\n\n`,
-      )
+    const usage = {
+      input_tokens: 10,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation: null,
+      inference_geo: null,
+      server_tool_use: null,
+      service_tier: null,
     }
-    writeChunk({ role: 'assistant', content: '' })
-    for (const content of fakeProviderReply.match(/\S+\s*/g)!) {
+    writeEvent({
+      type: 'message_start',
+      message: {
+        id: `msg_${crypto.randomUUID()}`,
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-opus-5',
+        content: [],
+        container: null,
+        stop_details: null,
+        stop_reason: null,
+        stop_sequence: null,
+        usage,
+      },
+    })
+    writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
+    for (const text of fakeProviderReply.match(/\S+\s*/g)!) {
       await setTimeout(150)
       if (res.destroyed) return
-      writeChunk({ content })
+      writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })
     }
-    writeChunk({}, 'stop')
-    res.end('data: [DONE]\n\n')
+    writeEvent({ type: 'content_block_stop', index: 0 })
+    writeEvent({
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null, stop_details: null, container: null },
+      usage: { ...usage, output_tokens: 8 },
+    })
+    writeEvent({ type: 'message_stop' })
+    res.end()
   })
 
   await new Promise<void>((resolve, reject) => {

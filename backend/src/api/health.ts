@@ -110,9 +110,10 @@ export const createHealthRoutes = ({
         }
         // Malformed bodies cannot establish domain verification; invalid JSON is handled below.
         const domains = resendDomainsSchema.safeParse(await response.json())
+        const sendingDomain = emailFrom.split('@')[1]
         if (
           !domains.success ||
-          !domains.data.data.some(({ name, status }) => name === emailFrom.split('@')[1] && status === 'verified')
+          !domains.data.data.some((domain) => domain.name === sendingDomain && domain.status === 'verified')
         ) {
           return status(503, { status: 'failed', reason: 'domain-unverified' })
         }

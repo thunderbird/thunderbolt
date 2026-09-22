@@ -151,7 +151,7 @@ describe('deep health', () => {
       expect(fetchFn).toHaveBeenCalledTimes(1)
     })
 
-    it.each([401, 403, 500])(`${route} reports HTTP %s`, async (status) => {
+    it.each([400, 401, 403, 500])(`${route} reports HTTP %s`, async (status) => {
       const fetchFn = async () => new Response('secret upstream body', { status })
       const response = await createHealthRoutes({
         settings,
@@ -193,6 +193,32 @@ describe('deep health', () => {
       expect(fetchFn).not.toHaveBeenCalled()
     })
   }
+
+  it.each([
+    [401, { name: 'restricted_api_key' }, 200],
+    [400, { name: 'validation_error' }, 503],
+    [401, { name: 'invalid_api_key' }, 503],
+    [401, null, 503],
+    [403, { name: 'restricted_api_key' }, 503],
+  ] as const)('email classifies Resend HTTP %s with body %j', async (upstreamStatus, body, expectedStatus) => {
+    const fetchFn = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const outgoing = new Request(input, init)
+      expect(outgoing.method).toBe('GET')
+      expect(outgoing.url).toBe('https://api.resend.com/domains')
+      expect(outgoing.headers.get('Authorization')).toBe('Bearer test-resend-key')
+      return Response.json(body, { status: upstreamStatus })
+    })
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('email'))
+    expect(response.status).toBe(expectedStatus)
+    expect(await response.json()).toEqual(
+      expectedStatus === 200 ? { status: 'ok' } : { status: 'failed', reason: 'rejected' },
+    )
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
 
   it.each([
     { failures: [] },

@@ -179,7 +179,7 @@ Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status"
 
 An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
 
-The email probe requires a Resend `full_access` key in `RESEND_API_KEY`: a `sending_access` key is rejected on read endpoints ("Can only send emails"). Missing email or PowerSync configuration returns `503` with reason `not-configured`.
+The email probe accepts any valid Resend key in `RESEND_API_KEY`: a sending-only (`sending_access`) key returns `401 restricted_api_key` on the domains read, which counts as healthy. An invalid or revoked key returns `503` with reason `rejected`. Missing email or PowerSync configuration returns `503` with reason `not-configured`.
 
 Each models call costs one tiny completion per catalog model with a price row, without retries. BetterStack polls this route every 15 minutes in production.
 

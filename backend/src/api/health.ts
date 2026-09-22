@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import { z } from 'zod'
 import type { Settings } from '@/config/settings'
 import type { db } from '@/db/client'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
@@ -96,7 +97,20 @@ export const createHealthRoutes = ({
           headers: { Authorization: `Bearer ${settings.resendApiKey}` },
           signal: AbortSignal.timeout(timeouts.email ?? emailTimeoutMs),
         })
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
+          try {
+            const body = z.object({ name: z.string() }).safeParse(await response.json())
+            // Sending-only keys are valid but cannot list domains.
+            if (body.success && body.data.name === 'restricted_api_key') {
+              return { status: 'ok' }
+            }
+          } catch (error) {
+            if (!(error instanceof SyntaxError)) {
+              throw error
+            }
+          }
+        }
+        if (response.status === 400 || response.status === 401 || response.status === 403) {
           return status(503, { status: 'failed', reason: 'rejected' })
         }
         if (!response.ok) {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
-import { devicesTable, wrappedKeysTable } from '@/db/schema'
+import { devicesTable, encryptionMetadataTable, wrappedKeysTable } from '@/db/schema'
 import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
 import { and, count, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
@@ -296,17 +296,24 @@ export const listEnvelopeCapableDeviceIds = async (database: QueryableDatabase, 
  * and the second can fail; this is what makes an outstanding rotation an
  * observable account fact rather than an invisible half-state.
  *
- * THE KEYRING IS THE ROTATION CLOCK. Every AK rotation re-wraps EVERY row and
- * `updateWrappedKey` stamps `updated_at`, so `MAX(updated_at)` is the time of
- * the last rotation. `encryption_metadata` carries no `updated_at` at all —
- * only `created_at` — which is why the clock lives here and not on the row that
- * holds `key_version`.
+ * THE PRIMARY-DEK MINT IS THE LOCKOUT CLOCK. Revocation's forward-secrecy bite
+ * is not the AK rotation alone — a revoked device keeps the DEKs it already
+ * cached, so it can still read future writes sealed under the SAME primary DEK.
+ * What actually locks it out is minting a NEW primary DEK it never had. So the
+ * clock is the `created_at` of the CURRENT primary DEK row (the one
+ * `encryption_metadata.primary_key_id` points at): a device revoked before that
+ * mint is still awaiting lockout.
+ *
+ * `MAX(updated_at)` over the keyring was WRONG here: every AK rotation re-wraps
+ * every row and bumps `updated_at`, including a recovery-phrase change, which
+ * rotates the AK but mints NO new primary DEK. That cleared this list while the
+ * revoked device could still read future writes under the unchanged primary —
+ * "Finish securing" reported done when it was not.
  *
  * Returns ids the SERVER derived, so a revocation that failed on one device is
- * visible to every other one, and a later recovery-phrase change clears the
- * list honestly: a phrase change IS an AK rotation, so the device really did
- * get locked out. An account with no keyring (pre-E2EE) yields nothing, since
- * `MAX` over zero rows is NULL and the comparison is then false.
+ * visible to every other one. An account with no keyring / no primary row
+ * (pre-E2EE) yields nothing: the scalar subquery is then NULL and the
+ * comparison is false.
  */
 export const listDevicesAwaitingLockout = async (database: QueryableDatabase, userId: string): Promise<string[]> => {
   const rows = await database
@@ -317,8 +324,11 @@ export const listDevicesAwaitingLockout = async (database: QueryableDatabase, us
         eq(devicesTable.userId, userId),
         isNotNull(devicesTable.revokedAt),
         sql`${devicesTable.revokedAt} > (
-          SELECT MAX(${wrappedKeysTable.updatedAt})
+          SELECT ${wrappedKeysTable.createdAt}
           FROM ${wrappedKeysTable}
+          JOIN ${encryptionMetadataTable}
+            ON ${encryptionMetadataTable.userId} = ${wrappedKeysTable.userId}
+           AND ${encryptionMetadataTable.primaryKeyId} = ${wrappedKeysTable.keyId}
           WHERE ${wrappedKeysTable.userId} = ${userId}
         )`,
       ),

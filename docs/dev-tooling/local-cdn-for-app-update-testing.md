@@ -18,29 +18,33 @@ This creates `~/.tauri/test-update.key` (private) and `~/.tauri/test-update.key.
 
 ## 2. Configure the Old Build to Use Localhost
 
-In the old build's `src-tauri/tauri.conf.json`, point the updater at your local server:
+The updater config lives under `plugins.updater` in `src-tauri/tauri.conf.json`, where it normally points at the CrabNebula CDN. In the old build's checkout, replace those two values in place. Don't add a second block alongside it: Tauri's config struct is deserialized with `deny_unknown_fields`, so a top-level `"updater"` key aborts every `tauri` command with `Additional properties are not allowed ('updater' was unexpected)`.
 
 ```json
-"updater": {
-  "endpoints": [
-    "http://localhost:8888/update/{{target}}-{{arch}}/{{current_version}}"
-  ],
-  "pubkey": "<contents of ~/.tauri/test-update.key.pub>"
+"plugins": {
+  "updater": {
+    "endpoints": [
+      "http://localhost:8888/update/{{target}}-{{arch}}/{{current_version}}"
+    ],
+    "pubkey": "<contents of ~/.tauri/test-update.key.pub>"
+  }
 }
 ```
 
 ## 3. Build the New Version with Test Signing
 
-From your current repo (the version you want to update *to*):
+From your current repo (the version you want to update _to_):
 
 ```bash
-TAURI_PRIVATE_KEY="$(cat ~/.tauri/test-update.key)" TAURI_PRIVATE_KEY_PASSWORD="" bun tauri build
+TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/test-update.key)" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" bun tauri build
 ```
 
-If the build doesn't generate a `.sig` file alongside the bundle, sign it manually:
+The variable names matter: Tauri v2 reads `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `bundle.createUpdaterArtifacts` is `true` in `src-tauri/tauri.conf.json`, so a build with no key fails at the bundling step rather than emitting an unsigned artifact — which is why `.github/workflows/test-build.yml` overrides that flag to `false` for builds that never reach the updater. The same two variables drive real releases in `.github/workflows/desktop-release.yml` — see [Tauri Signing Keys](../features/tauri-signing-keys.md).
+
+To sign an existing bundle without rebuilding:
 
 ```bash
-TAURI_PRIVATE_KEY_PASSWORD="" bun tauri signer sign -f ~/.tauri/test-update.key \
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" bun tauri signer sign -f ~/.tauri/test-update.key \
   src-tauri/target/release/bundle/macos/Thunderbolt.app.tar.gz
 ```
 
@@ -59,6 +63,7 @@ bun run scripts/local-update-server.ts
 ```
 
 This serves on port 8888. When the old build's updater checks for updates, the server:
+
 - Reads the new version from `src-tauri/tauri.conf.json`
 - Returns a 204 (no update) if versions match, or an update manifest pointing at the local bundle
 - Serves the `.tar.gz` bundle and its signature when the updater downloads it
@@ -74,6 +79,6 @@ Don't drag it to `/Applications` — run it directly from the build output. Log 
 ## Troubleshooting
 
 - **No bundles found**: Make sure step 3 completed and `src-tauri/target/release/bundle/macos/` contains a `.tar.gz` file
-- **Signature mismatch**: The pubkey in the old build's `tauri.conf.json` must match the private key used to sign the new build
+- **Signature mismatch**: `plugins.updater.pubkey` in the old build's `tauri.conf.json` must match the private key used to sign the new build
 - **No update offered (204)**: The version in the new build's `tauri.conf.json` must be higher than the old build's version
 - **Server not reachable**: Check that nothing else is using port 8888

@@ -49,6 +49,12 @@ Apply these in **Pass A (Scan)**. Two parts: (1) a fast diff-signal → comment 
 | Hardcoded config (domain/cloudUrl/CORS) where app self-hosts | "should be env-driven" | architecture |
 | Verbose user copy ("This action cannot be undone.") | "trim to minimal clear phrasing" | ux |
 | Same list duplicated in a `.md` doc and source | "don't store twice — link" | docs |
+| New JSX text, or an `aria-label` / `title` / `placeholder` given a bare string literal | "user-facing copy goes through `<Trans>` / `` t`…` ``" | R-I18NMACRO |
+| `` t`…` `` evaluated at module scope (const table, options array, Zod schema) | "module-scope `t` freezes the boot locale — `` msg`…` `` descriptor + `i18n._()` at the point of use" | R-I18NMODSCOPE (blocker) |
+| `new Intl.NumberFormat(`/`new Intl.DateTimeFormat(`/`.toLocaleString(`/`.toLocaleDateString(` outside `src/i18n/format.ts` | "format via `useFormatters()` / `getFormatters()` — an inline `Intl` pins English, `toLocaleString` uses the host locale" | R-I18NFORMAT |
+| `new Date(someString)` for a rendered date | "use `toDate` — a bare `YYYY-MM-DD` is UTC midnight and renders a day early west of Greenwich" | R-I18NDATE |
+| `import … from '@lingui/core/macro'` / `'@lingui/react/macro'` anywhere under `backend/src/` | "no Babel pass on the backend — the macro stub throws in production; use `i18n._({ id })`" | R-I18NEMAIL (blocker) |
+| Existing English source text inside `<Trans>` / `` t`…` `` reworded in a feature diff | "the source text IS the message id — rewording orphans its translations and breaks `e2e/` selectors" | R-I18NFRAGMENT |
 
 ## 2. IF–THEN heuristics by category
 
@@ -58,7 +64,8 @@ Apply these in **Pass A (Scan)**. Two parts: (1) a fast diff-signal → comment 
 - IF DB validation/guard logic (soft-delete, `isSystem`) lives in a bespoke helper THEN move it into the DAL.
 - IF a cross-cutting concern (auth, prompt-injection sanitization) is enforced per-route THEN push it to the single enforcement point.
 - IF a general-purpose function gains feature-specific logic THEN flag the coupling; generalize or move it out.
-- IF new code reimplements an existing primitive (memoize, platform helpers, debounce, `useQuery`, dayjs, a localStorage hook) THEN redirect to the existing one.
+- IF new code reimplements an existing primitive (memoize, platform helpers, debounce, `useQuery`, `useFormatters()`, a localStorage hook) THEN redirect to the existing one.
+- IF a diff adds `dayjs`/`date-fns`, or formats a date, relative time, number or duration inline (an `Intl.*` constructed at the call site, a bare `toLocaleString()`) THEN redirect to `useFormatters()` / `getFormatters(getActiveLocale())` (`src/i18n/format.ts`). The repo deliberately ships no date library — `Intl` carries full CLDR, so a new locale needs no code — and a bare `toLocaleString()` silently uses the *host* locale rather than the app's.
 - IF placeholder/temporary code lands THEN require it be named temporary and point at the eventual home.
 
 ### Abstraction altitude

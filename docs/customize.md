@@ -2,12 +2,14 @@
 
 Most features in Thunderbolt are modular primitives you can extend:
 
-- **Agents** - *Coming Soon* - Connect to any local or remote agent via Agent Client Protocol (ACP).
+- **Agents** - Connect to any local or remote agent via Agent Client Protocol (ACP), over a WebSocket endpoint or a peer-to-peer iroh ticket; the backend can also serve its own managed agents. Settings → Agents. See [ACP Agents](./architecture/acp-agents.md).
 - **Models** - Use any OpenAI-compatible model: on-device, on-prem, or cloud.
-- **Skills** - *Coming Soon* - Reusable automations that follow the industry-standard skills specification.
-- **Widgets** - Interactive UI components that can be embedded inside chat responses.
+- **Skills** - Reusable instruction bundles whose names follow the AgentSkills spec, invoked with `/slug` from the composer or loaded by the model on demand. Settings → Skills.
+- **Projects** - A workspace whose instructions every chat inside it inherits, plus a tool for searching the project's other chats. See [Projects](./architecture/projects.md).
+- **Widgets** - Interactive UI components that can be embedded inside chat responses. See [Widgets](./features/widgets.md).
+- **Artifacts** - Model-authored HTML rendered in a sandboxed iframe that cannot reach the app's DOM, cookies, or storage. See [HTML Artifacts](./architecture/artifacts.md).
 - **MCP Servers** - Add your own MCP servers to extend the agent's context.
-- **Search Providers** - *Coming Soon* - Plug in your own search provider for web-grounded answers.
+- **Search Providers** - _Coming Soon_ - Plug in your own search provider for web-grounded answers.
 - **Auth Providers** - Plug in your own authentication provider (e.g. OIDC, SAML, magic link).
-- **Backends** - *Coming Soon* - Connect Thunderbolt to any backend server.
-- **Extensions** - *Coming Soon* - Bundles of primitives that can be installed as a unit.
+- **Backends** - _Coming Soon_ - Connect Thunderbolt to any backend server.
+- **Extensions** - _Coming Soon_ - Bundles of primitives that can be installed as a unit.

@@ -16,7 +16,7 @@ projects
 Two things flow from a project into a chat:
 
 1. **Instructions** — injected into the system prompt on every send.
-2. **`search_project_chats`** — a tool for looking through the project's *other*
+2. **`search_project_chats`** — a tool for looking through the project's _other_
    conversations.
 
 Chats themselves stay isolated: one chat never sees another's transcript unless
@@ -75,7 +75,7 @@ than infrastructure:
 
 - The tool description tells the model this is keyword search and to retry with
   synonyms before concluding a topic was never discussed.
-- An empty result *explains why it might be empty*, rather than returning
+- An empty result _explains why it might be empty_, rather than returning
   nothing — the likeliest failure of a lexical index is the model confidently
   reporting "you never discussed that" when only the vocabulary differed.
 
@@ -86,17 +86,18 @@ the tool that is sitting right there.
 
 ## Reactivity: queries must be compiled, not invalidated
 
-`powersyncTableToQueryKeys` in `shared/powersync-tables.ts` *looks* like the
+`powersyncTableToQueryKeys` in `shared/powersync-tables.ts` _looks_ like the
 invalidation map for synced data. **It has had no consumer since THU-249** —
 nothing reads it. Updates come from PowerSync's own reactivity, so a query only
 refreshes if it is compiled through `toCompilableQuery`.
 
-Every project read is therefore a reactive hook (`useProjects`, `useProject`,
-`useProjectChats`, `useProjectArtifacts`, `useProjectChatCounts`).
+Every project read from React is therefore a reactive hook (`useProjects`,
+`useProjectChatCounts`, `useProjectChats`, `useProjectArtifacts`).
 An earlier version used plain TanStack queries with manual `refetch()` after each
 edit; those went stale on any change from another device, and adding entries to
-that map would have looked like a fix while doing nothing. The non-reactive
-`getProject*` functions remain for callers outside React (the prompt path).
+that map would have looked like a fix while doing nothing. A single project is
+read with the non-reactive `getProject`, which along with the other
+`getProject*` functions serves callers outside React (the prompt path).
 
 ## Membership, and why it lives on the session
 
@@ -117,13 +118,13 @@ it; removing the chats too is a separate, explicit action.
 ## UI surfaces
 
 - **List** (`/projects` and `/projects/:projectId`, lazy) — **one component for
-  both routes.** The id in the URL *is* the selection, so the panel opens with it;
+  both routes.** The id in the URL _is_ the selection, so the panel opens with it;
   there is no separate detail page. That means a deep link, a sidebar row, a search
   hit, and the chat badge all land on the same surface, and a project is edited in
   exactly one place. Selection living in the route also means no effect syncing a
   param into state.
 - **Slide-out** — two modes, mirroring the skills page: read-only, showing what the
-  project *contains* (chats and artifacts, plus "New chat in this project"), and —
+  project _contains_ (chats and artifacts, plus "New chat in this project"), and —
   via ⋯ → Edit — the same panel carrying the form. Read-only by default because a
   panel full of live inputs invites accidental edits while scanning the list;
   contents rather than settings because clicking a row asks "what's in here?", not
@@ -133,7 +134,7 @@ it; removing the chats too is a separate, explicit action.
   sharing `deleteProjectPrompt`.
 - **Chat header** — beside the agent selector, styled to match it (same height,
   `rounded-full`, background on hover only). Desktop shows the project's name;
-  mobile shows an icon-only circle rendered *inside* the agent pill's positioned
+  mobile shows an icon-only circle rendered _inside_ the agent pill's positioned
   wrapper, so the pair docks together when the pill slides top-right.
 - **Sidebar** — project rows double as drop targets, so a chat can be dragged into
   a project. "Remove from project" appears only while dragging a chat that has one.
@@ -148,37 +149,31 @@ it; removing the chats too is a separate, explicit action.
   that. Projects past the cap are reached through **Move to project** in the chat's
   action menu, which gains a search field past 8 projects — a 100-row drop zone was
   never usable anyway.
+
 - **Emoji icons** — the full Unicode set via `@emoji-mart/data`, dynamically
   imported so the entry chunk is unchanged, and virtualized because ~1,870 glyphs
   is far too many DOM nodes. Popover on desktop, bottom sheet on touch.
 
-## Deploying this
+## Deployment
 
-> **Projects adds one synced table (`projects`), so the running PowerSync service
-> must know about it before cross-device sync works.** Sync rules are baked into
-> `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` (built by
-> `images-publish.yml` on merge), so a **new image has to be live on the Render
-> `powersync` service** — see
-> [powersync-account-devices.md](./powersync-account-devices.md#pr-flow-for-adding-tables).
->
-> This ships as a single PR, which is safe but not instant. What happens on merge:
->
-> - The backend's upload validator derives from `shared/powersync-tables.ts` (same
->   PR), so writes to `projects` are accepted and persisted in Postgres
->   immediately. **No data is lost.**
-> - Until the `powersync` service runs the new image, the table has no buckets, so
->   **a second device sees nothing**. Projects looks fine on the
->   device that created it.
-> - Once the image is live, PowerSync re-processes and clients receive the data.
->   The gap **self-heals**; it does not need a migration or manual repair.
->
-> **The Render roll is manual** — the `powersync` service does not auto-deploy on
-> a new image. After merge: wait for `images-publish.yml` to publish
-> `thunderbolt-powersync`, then in the Render dashboard use
-> **Manual Deploy → Deploy latest reference** on the `powersync` service, then
-> verify a second device sees a project.
->
-> Until that's done, treat cross-device Projects as not yet shipped.
+Projects adds one synced table (`projects`), and its bucket rule landed with the
+feature in #1215 (2026-08-17). It is present in all three sync-rule configs:
+`powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`
+and `deploy/k8s/templates/configmaps.yaml`.
+
+Rules and frontend shipped in a single PR, which is safe but not instant — the
+reasoning is worth keeping for the next synced table. The backend's upload
+validator derives from `shared/powersync-tables.ts`, so writes to `projects`
+were accepted and persisted in Postgres from the moment the PR merged; no data
+could be lost. But sync rules are baked into
+`ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` (built by
+`images-publish.yml` on merge) and the Render `powersync` service does **not**
+auto-deploy a new image, so until that roll happened the table had no buckets: a
+second device saw nothing while the device that created the project looked fine.
+Once the image is live PowerSync re-processes and clients receive the data — the
+gap self-heals, with no migration or manual repair. For the general procedure,
+including the manual roll of the Render service, see
+[powersync-account-devices.md](./powersync-account-devices.md#pr-flow-for-adding-tables).
 
 `chat_threads.project_id` needs no sync-rule change — those rules are `SELECT *`.
 Account deletion needs no code: the table cascades on `user_id`. Export needs no
@@ -187,21 +182,23 @@ a conscious include/exclude on any future table).
 
 ## Source map
 
-| Concern | File |
-| --- | --- |
-| Tables (frontend / backend) | `src/db/tables.ts`, `backend/src/db/powersync-schema.ts` |
-| Encrypted columns | `src/db/encryption/config.ts` |
-| Data access + live hooks | `src/dal/projects.ts` |
-| Prompt section | `src/projects/project-prompt.ts` |
-| Loading a send's project context | `src/projects/load-project-context.ts` |
-| Cross-chat search tool | `src/projects/project-search-tool.ts` |
-| Page + panels | `src/projects/{index,project-detail-panel,create-project-panel}.tsx` |
-| Create/edit form (shared) | `src/projects/project-form.tsx` |
-| Emoji icon picker | `src/projects/emoji-picker.tsx`, `src/projects/emoji-catalog.ts` |
-| Drag-to-project | `src/projects/chat-drop.ts`, `src/layout/sidebar/project-drop-list.tsx` |
-| Moving a chat (shared by drop + menu) | `src/projects/use-move-chat-to-project.ts` |
-| Project picker (menu path, all platforms) | `src/projects/move-chat-to-project-dialog.tsx` |
-| Chat header badge | `src/projects/project-badge.tsx` |
+| Concern                                              | File                                                                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Tables (frontend / backend)                          | `src/db/tables.ts`, `backend/src/db/powersync-schema.ts`                                                   |
+| Encrypted columns                                    | `src/db/encryption/config.ts`                                                                              |
+| Data access + live hooks                             | `src/dal/projects.ts`                                                                                      |
+| Prompt section                                       | `src/projects/project-prompt.ts`                                                                           |
+| Loading a send's project context                     | `src/projects/load-project-context.ts`                                                                     |
+| Cross-chat search tool                               | `src/projects/project-search-tool.ts`                                                                      |
+| Page + panels                                        | `src/projects/{index,project-detail-panel,create-project-panel}.tsx`                                       |
+| Page state machine (overlay + delete flow)           | `src/projects/projects-view-state.ts`                                                                      |
+| Create/edit form (shared)                            | `src/projects/project-form.tsx`                                                                            |
+| Emoji icon picker                                    | `src/projects/emoji-picker.tsx`, `src/projects/use-emoji-picker-state.ts`, `src/projects/emoji-catalog.ts` |
+| Project glyph (chosen emoji, or the folder fallback) | `src/projects/project-icon.tsx`                                                                            |
+| Drag-to-project                                      | `src/projects/chat-drop.ts`, `src/layout/sidebar/project-drop-list.tsx`                                    |
+| Moving a chat (shared by drop + menu)                | `src/projects/use-move-chat-to-project.ts`                                                                 |
+| Project picker (menu path, all platforms)            | `src/projects/move-chat-to-project-dialog.tsx`                                                             |
+| Chat header badge                                    | `src/projects/project-badge.tsx`                                                                           |
 
 ## Known gaps
 

@@ -1,19 +1,13 @@
 # Analyze Vite Modules
 
-Thunderbolt ships with [vite-bundle-analyzer](https://github.com/victorb/vite-plugin-bundle-analyzer) wired in, but **it is disabled by default** so it doesn't slow down normal builds or break CI on missing `stats.html`.
+Thunderbolt wires [vite-bundle-analyzer](https://github.com/nonzzz/vite-bundle-analyzer) into `vite.config.ts`, but the plugin is added to the plugin list only when explicitly requested (`vite.config.ts:88-95`). It is off by default because it forces sourcemaps on for the whole build — it needs them to attribute bytes to modules — whereas a normal production build emits none unless `ENABLE_SOURCEMAP=true` (`vite.config.ts:31`).
 
-There are two ways to turn it on:
+Turn it on for a production build with an environment variable:
 
-1. Run the dedicated script (convenient for local use):
+```sh
+ANALYZE=true bun run build
+```
 
-   ```sh
-   bun analyze   # alias for `vite analyze`
-   ```
+The comparison is case-insensitive and matches only `true` (`vite.config.ts:27`). The plugin runs in `static` mode with `openAnalyzer: false`, so it writes the treemap to `dist/stats.html` and does not try to open a browser — open the file yourself. It also appends a one-line chunk-count and size summary to the end of the build output.
 
-2. Toggle it for any build by setting an environment variable (handy in CI):
-
-   ```sh
-   ANALYZE=true bun run build   # generates dist/stats.html alongside a normal production build
-   ```
-
-In both cases the plugin runs in _static_ mode and writes `dist/stats.html`; it will **not** try to open a browser automatically.
+`package.json:27` defines an `analyze` script (`vite analyze`), but it does not produce a report: Vite's CLI has no `analyze` command, so the word is parsed as the dev-server root and `bun analyze` starts a dev server on port 5173. The plugin declares `apply: 'build'` and never runs there. Use `ANALYZE=true bun run build` instead.

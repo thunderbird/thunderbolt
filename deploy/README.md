@@ -20,22 +20,25 @@ Self-hosted Thunderbolt with OIDC or SAML authentication via Keycloak. Three dep
 
 ## Architecture
 
-All deployment paths run the same five services with path-based routing:
+The stack is six services. Docker Compose runs five of them — the marketing site (the Astro landing page, blog and docs) is only wired into the Helm chart and the Pulumi stacks.
+
+The path-based routing below describes the Kubernetes Ingress (`k8s/templates/ingress.yaml`) and the Fargate ALB (`pulumi/src/alb.ts`). Docker Compose has no shared ingress: each service is published on its own host port and the frontend's nginx proxies `/v1/` only.
 
 ```
-                        Ingress / ALB / nginx proxy
-                        ┌─────────────────────────────┐
-                        │  /v1/*        -> backend     │
-                        │  /auth/*      -> keycloak    │
-                        │  /realms/*    -> keycloak    │
-                        │  /powersync/* -> powersync   │
-                        │  /*           -> frontend    │
-                        └─────────────────────────────┘
+                        Ingress / ALB
+                        ┌──────────────────────────────────────┐
+                        │  /v1/*        -> backend             │
+                        │  /realms/*    -> keycloak            │
+                        │  /resources/* -> keycloak (k8s only) │
+                        │  /auth/*      -> keycloak (ALB only) │
+                        │  /powersync/* -> powersync           │
+                        │  /*           -> frontend            │
+                        └──────────────────────────────────────┘
 
-  ┌──────────┐    ┌──────────┐    ┌──────────┐
-  │ frontend │    │ backend  │    │ keycloak │
-  │ (nginx)  │    │ (bun)    │    │ (OIDC)   │
-  └──────────┘    └────┬─────┘    └──────────┘
+  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌───────────┐
+  │ frontend │    │ backend  │    │ keycloak │    │ marketing │
+  │ (nginx)  │    │ (bun)    │    │ (OIDC)   │    │ (nginx)   │
+  └──────────┘    └────┬─────┘    └──────────┘    └───────────┘
                        │
               ┌────────┼────────┐
               v                 v
@@ -46,9 +49,11 @@ All deployment paths run the same five services with path-based routing:
         └──────────┘
 ```
 
+Path rules are the fallback. When per-service hostnames are configured — the preview stacks do this — host-header rules take precedence and every service, marketing included, gets its own subdomain (`pulumi/src/alb.ts`, `k8s/templates/ingress.yaml`).
+
 ## Services
 
-All deployment paths use the same Docker images:
+The Helm chart and the Pulumi stacks run the published images built from these Dockerfiles. Docker Compose builds only the frontend and backend from them — Postgres, PowerSync and Keycloak run their upstream images directly with the same config files bind-mounted (`docker-compose.yml`).
 
 | Service        | Image                         | Purpose                                                                                                        | Port |
 | -------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ---- |
@@ -57,6 +62,7 @@ All deployment paths use the same Docker images:
 | **PostgreSQL** | `docker/postgres.Dockerfile`  | Database with WAL logical replication for PowerSync; hosts both app data and the `powersync_storage` bucket DB | 5432 |
 | **Keycloak**   | `docker/keycloak.Dockerfile`  | OIDC identity provider with pre-configured realm                                                               | 8080 |
 | **PowerSync**  | `docker/powersync.Dockerfile` | Real-time sync between Postgres and client devices                                                             | 8080 |
+| **Marketing**  | `docker/marketing.Dockerfile` | Astro static site (landing page, blog, and the repo's `docs/`) served by nginx; not in Docker Compose          | 8080 |
 
 ### Data Flow
 
@@ -75,10 +81,13 @@ deploy/
     postgres.Dockerfile
     keycloak.Dockerfile
     powersync.Dockerfile
+    marketing.Dockerfile
     backend-entrypoint.sh   # Waits for Postgres, runs migrations, starts server
-    postgres-init/          # SQL to create PowerSync replication role
+    postgres-init/          # 01-powersync.sh — replication role, publication, storage DB
   config/                   # Shared config files
     nginx.conf.template     # Frontend nginx with COEP/COOP headers; ${THUNDERBOLT_BACKEND_HOST}/${THUNDERBOLT_BACKEND_PORT} substituted at container start
+    security-headers.conf   # Shared nginx security-header snippet, included by nginx.conf.template
+    marketing-nginx.conf    # Marketing/docs site nginx
     powersync-config.yaml   # Sync rules + replication config
     keycloak-realm.json     # Thunderbolt realm + demo user
   k8s/                      # Helm chart
@@ -97,9 +106,13 @@ deploy/
       discovery.ts          # Cloud Map service discovery
 
 .github/workflows/
-  images-publish.yml        # Build + push Docker images to GHCR
-  stack-deploy.yml          # Deploy to AWS via Pulumi
-  nightly-images.yml        # Nightly rebuild + publish of main images to GHCR
+  images-publish.yml         # Build + push Docker images to GHCR
+  stack-deploy.yml           # Deploy to AWS via Pulumi
+  nightly-images.yml         # Nightly rebuild + publish of main images to GHCR
+  preview-deploy.yml         # Per-PR ephemeral preview stack
+  preview-destroy.yml        # Tears the preview stack down when the PR closes
+  preview-cleanup.yml        # Hourly orphan sweep
+  previews-shared-deploy.yml # Long-lived infrastructure the previews share
 ```
 
 ---
@@ -116,8 +129,12 @@ The fastest way to run the full stack locally.
 
 ```bash
 cd deploy
+cp .env.example .env
+# Set BETTER_AUTH_SECRET in .env — generate one with: openssl rand -base64 32
 docker compose up --build
 ```
+
+The `.env` file is not optional: the backend service declares `env_file: .env`, and `BETTER_AUTH_SECRET` has no default (`docker-compose.yml`), so compose fails without it. `.env.example` also carries the published host ports, which is why they differ from the fallbacks baked into `docker-compose.yml`.
 
 First boot takes a few minutes as images build and Keycloak initializes.
 
@@ -128,12 +145,12 @@ First boot takes a few minutes as images build and Keycloak initializes.
 | App            | http://localhost:3000       | Sign in via Keycloak       |
 | Keycloak Admin | http://localhost:8180/admin | admin / admin              |
 | Demo User      | (Keycloak login)            | demo@thunderbolt.io / demo |
-| Postgres       | localhost:5433              | postgres / postgres        |
-| PowerSync      | http://localhost:8080       |                            |
+| Postgres       | localhost:5434              | postgres / postgres        |
+| PowerSync      | http://localhost:8081       |                            |
 
 ### Customizing Ports
 
-Override any port via environment variables:
+Ports come from `deploy/.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `KEYCLOAK_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`). Override them there, or inline:
 
 ```bash
 FRONTEND_PORT=4000 KEYCLOAK_PORT=9090 docker compose up --build
@@ -250,7 +267,10 @@ docker build -f deploy/docker/backend.Dockerfile -t thunderbolt-backend .
 docker build -f deploy/docker/postgres.Dockerfile -t thunderbolt-postgres .
 docker build -f deploy/docker/keycloak.Dockerfile -t thunderbolt-keycloak .
 docker build -f deploy/docker/powersync.Dockerfile -t thunderbolt-powersync .
+docker build -f deploy/docker/marketing.Dockerfile -t thunderbolt-marketing .
 ```
+
+The chart renders the marketing Deployment unconditionally, so all six images are needed for a fully local install.
 
 > If using Minikube, run `eval $(minikube docker-env)` first so images are available to the cluster. For kind, use `kind load docker-image <image>`.
 
@@ -453,14 +473,18 @@ pulumi config set --secret powersyncDbPassword <password> -s <stack-name>
 
 Secrets are stored encrypted in the Pulumi stack config (`Pulumi.<stack>.yaml` in Pulumi Cloud). Once set, every subsequent `pulumi up` — whether from the CLI or GitHub Actions — picks them up automatically. No need to configure them as GitHub secrets.
 
-| Secret                  | Default                         | Description                                            |
-| ----------------------- | ------------------------------- | ------------------------------------------------------ |
-| `postgresPassword`      | `postgres`                      | PostgreSQL admin password                              |
-| `keycloakAdminPassword` | `admin`                         | Keycloak admin console password                        |
-| `oidcClientSecret`      | `thunderbolt-enterprise-secret` | OIDC client secret shared between Backend and Keycloak |
-| `powersyncJwtSecret`    | `enterprise-powersync-secret`   | JWT secret shared between Backend and PowerSync        |
-| `betterAuthSecret`      | `enterprise-better-auth-secret` | Better Auth session secret                             |
-| `powersyncDbPassword`   | `myhighlyrandompassword`        | PowerSync replication role password                    |
+| Secret                  | Default                                               | Description                                            |
+| ----------------------- | ----------------------------------------------------- | ------------------------------------------------------ |
+| `postgresPassword`      | `postgres`                                            | PostgreSQL admin password                              |
+| `keycloakAdminPassword` | `admin`                                               | Keycloak admin console password                        |
+| `oidcClientSecret`      | `thunderbolt-enterprise-secret`                       | OIDC client secret shared between Backend and Keycloak |
+| `powersyncJwtSecret`    | `enterprise-thunderbolt-powersync-jwt-default-secret` | JWT secret shared between Backend and PowerSync        |
+| `betterAuthSecret`      | `enterprise-thunderbolt-better-auth-default-secret`   | Better Auth session secret                             |
+| `powersyncDbPassword`   | `myhighlyrandompassword`                              | PowerSync replication role password                    |
+
+The PowerSync default is long on purpose: the backend refuses to start with a `powersyncJwtSecret` shorter than 32 characters whenever `POWERSYNC_URL` is set (`backend/src/config/settings.ts`). Any replacement must clear the same bar.
+
+Preview stacks are the exception to "defaults work out of the box". Because `preview-*` stacks are publicly reachable and these defaults are visible in this repo, `deploy/pulumi/index.ts` generates a random per-stack value for `postgresPassword`, `powersyncJwtSecret`, `betterAuthSecret` and `powersyncDbPassword` when no explicit override is configured.
 
 ### Destroy
 
@@ -480,10 +504,14 @@ pulumi/
     vpc.ts              # VPC (10.0.0.0/16), 2 AZs, public + private subnets, NAT
     # -- Fargate --
     cluster.ts          # ECS cluster + CloudWatch log group
-    services.ts         # 5 Fargate task definitions + ECS services
+    services.ts         # 6 Fargate task definitions + ECS services
     alb.ts              # ALB + target groups + path-based listener rules
     storage.ts          # EFS + postgres access point (uid:70)
     discovery.ts        # Cloud Map private DNS (thunderbolt.local)
+    dns.ts              # Cloudflare CNAMEs for the configured hostnames
+    # -- Shared-stack previews (see SHARED.md) --
+    shared.ts           # previews-shared: VPC, EFS, cluster, ALB, postgres/keycloak/powersync
+    per-pr-stack.ts     # preview-pr-*: backend/frontend/marketing + per-PR routing, Keycloak client, secrets
     # -- EKS --
     eks.ts              # EKS cluster, EBS CSI driver, Helm chart, nginx-ingress
 ```
@@ -492,7 +520,7 @@ pulumi/
 
 ## 4. GitHub Actions CI/CD
 
-Three workflows handle the enterprise build and deploy pipeline:
+Seven workflows make up the pipeline: three for the enterprise path (images publish, stack deploy, nightly rebuild) and four for the ephemeral per-PR preview stacks.
 
 ### Images Publish
 
@@ -502,16 +530,18 @@ Builds and pushes all Docker images + the Helm chart to GHCR.
 
 **Triggers**:
 
-- Push to `main` (when `deploy/`, `backend/`, `src/`, or `package.json` change)
+- Push to `main` (when `deploy/**`, `backend/**`, `src/**`, `shared/defaults/models.ts`, `shared/inference-usage.ts`, or `package.json` change)
 - Manual dispatch
 - Called by other workflows
 
 **What it does**:
 
 1. Reads version from `package.json`
-2. Builds 5 Docker images (frontend, backend, postgres, keycloak, powersync)
+2. Builds 6 Docker images (frontend, backend, postgres, keycloak, powersync, marketing)
 3. Tags each with `<version>` and `latest`
 4. Packages the Helm chart and pushes to `oci://ghcr.io/<owner>/charts`
+
+A caller can pass `tag_override` to tag the images with something other than the `package.json` version — the preview deploys use `pr-<n>-<sha>`. Setting it also skips the `:latest` tag and the Helm chart push, so a preview build never moves the pointers a real release owns.
 
 ### Stack Deploy
 
@@ -541,30 +571,63 @@ pulumi config set --secret postgresPassword <password> -s prod-acme
 
 After this one-time setup, trigger the workflow with `stack_name: prod-acme` and it just works.
 
-**Inputs**:
+**Inputs**: the manual-dispatch form exposes the first five. The rest are `workflow_call`-only and exist for the preview workflows.
 
-| Input        | Options                         | Default      | Description                     |
-| ------------ | ------------------------------- | ------------ | ------------------------------- |
-| `action`     | deploy, destroy                 | (required)   | What to do                      |
-| `platform`   | fargate, k8s                    | fargate      | Compute platform                |
-| `region`     | us-east-1, us-west-2, eu-west-1 | us-east-1    | AWS region                      |
-| `stack_name` | (string)                        | (required)   | Pulumi stack name (e.g. `demo`) |
-| `version`    | (string)                        | package.json | Image version to deploy         |
+| Input                           | Options                         | Default      | Description                                                                       |
+| ------------------------------- | ------------------------------- | ------------ | --------------------------------------------------------------------------------- |
+| `action`                        | deploy, destroy                 | (required)   | What to do                                                                        |
+| `platform`                      | fargate, k8s                    | fargate      | Compute platform                                                                  |
+| `region`                        | us-east-1, us-west-2, eu-west-1 | us-east-1    | AWS region                                                                        |
+| `stack_name`                    | (string)                        | (required)   | Pulumi stack name (e.g. `demo`)                                                   |
+| `version`                       | (string)                        | package.json | Image version to deploy                                                           |
+| `marketing_hostname`            | (string)                        | —            | Hostname for the marketing site                                                   |
+| `app_hostname`                  | (string)                        | —            | Hostname for the app frontend                                                     |
+| `api_hostname`                  | (string)                        | —            | Hostname for the backend API                                                      |
+| `auth_hostname`                 | (string)                        | —            | Hostname for Keycloak                                                             |
+| `powersync_hostname`            | (string)                        | —            | Hostname for PowerSync                                                            |
+| `cloudflare_zone_id`            | (string)                        | —            | Required when any hostname is set                                                 |
+| `thunderbolt_inference_url`     | (string)                        | —            | Inference gateway URL (non-secret, passed as plain config)                        |
+| `confidential_api_keys_enabled` | (boolean)                       | false        | Let a personal access token reach the confidential (Tinfoil) routes on this stack |
+| `shared_stack_name`             | (string)                        | —            | Switches to shared-stack mode — see below                                         |
 
-**Required Secrets**:
+Hostnames add host-header rules that take precedence over the path-based fallback. `cloudflare_zone_id` is mandatory alongside them because the stack creates the DNS records itself — `deploy/pulumi/index.ts` fails fast if subdomain routing is configured without a zone ID and API token.
 
-| Secret                     | Description                            |
-| -------------------------- | -------------------------------------- |
-| `AWS_DEPLOY_ROLE_ARN`      | IAM role ARN for OIDC-based AWS auth   |
-| `PULUMI_ACCESS_TOKEN`      | Pulumi Cloud API token                 |
-| `PULUMI_CONFIG_PASSPHRASE` | Encryption passphrase for stack config |
-| `GHCR_PAT`                 | GitHub PAT for pulling private images  |
+`shared_stack_name` switches a per-PR deploy into shared-stack mode (THU-495): it deploys backend, frontend and marketing only, and reads the VPC, ALB, Postgres, Keycloak and PowerSync from the named stack via a Pulumi `StackReference`. Leave it empty for a standalone deploy. See `deploy/pulumi/SHARED.md`.
+
+**Secrets**: all are declared optional. An enterprise deploy needs the first three; the rest are for preview DNS and for provisioning provider keys into the stack.
+
+| Secret                          | Description                                              |
+| ------------------------------- | -------------------------------------------------------- |
+| `AWS_DEPLOY_ROLE_ARN`           | IAM role ARN for OIDC-based AWS auth                     |
+| `PULUMI_ACCESS_TOKEN`           | Pulumi Cloud API token                                   |
+| `GHCR_PAT`                      | GitHub PAT for pulling private images                    |
+| `CLOUDFLARE_API_TOKEN`          | Cloudflare API token, for the preview DNS records        |
+| `ANTHROPIC_API_KEY`             | Anthropic provider key                                   |
+| `FIREWORKS_API_KEY`             | Fireworks provider key                                   |
+| `THUNDERBOLT_INFERENCE_API_KEY` | Inference gateway key                                    |
+| `TINFOIL_API_KEY`               | Tinfoil provider key                                     |
+| `TINFOIL_ENCLAVE_URL`           | Tinfoil enclave endpoint                                 |
+| `EXA_API_KEY`                   | Exa search key — resolved from the `preview` environment |
+
+The deploy job runs under GitHub's `preview` environment so that env-scoped secret (`EXA_API_KEY`) resolves. No reviewers are configured on it, so enterprise dispatches are not gated. There is no `PULUMI_CONFIG_PASSPHRASE`: the workflow authenticates with `PULUMI_ACCESS_TOKEN` alone, and `Pulumi.yaml` declares no `secretsprovider`, so stack config is encrypted by Pulumi Cloud's managed key.
+
+### Preview Environments
+
+Four workflows give every pull request a disposable stack on Fargate, reachable at five Cloudflare subdomains under `preview.thunderbolt.io` (marketing, app, api, auth, powersync).
+
+**`preview-deploy.yml`** builds the PR's images through `images-publish.yml` with a `pr-<n>-<sha>` tag, then calls `stack-deploy.yml` with `stack_name: preview-pr-<n>` and `shared_stack_name: previews-shared`, and leaves a sticky comment carrying the URL. Same-repo PRs deploy on `pull_request` with no human gate. Fork PRs go through `pull_request_target` behind the `fork-preview-approval` environment, so a maintainer approves every push: under that trigger the workflow file and the Pulumi program are both read from `main`, meaning a fork can change the images but never the infrastructure code that deploys them.
+
+**`preview-destroy.yml`** tears the stack down on `pull_request_target: closed`. It uses `pull_request_target` rather than `pull_request` so credentials are available when a fork PR closes; no approval gate is needed because nothing from the fork is checked out.
+
+**`preview-cleanup.yml`** is the hourly safety net for stacks the destroy path missed — a failed teardown, a PR closed out of band, or an open PR idle past `max_age_days` (default 3). The `preview:persist` label opts a PR's stack out, and `workflow_dispatch` takes a `dry_run` input that lists what would go without destroying it.
+
+**`previews-shared-deploy.yml`** owns `previews-shared`, the long-lived stack holding the VPC, EFS, ECS cluster, Cloud Map namespace, ALB, and the shared Postgres, Keycloak and PowerSync services. Per-PR stacks read it through a Pulumi `StackReference` and so only pay for backend, frontend and marketing. It runs on manual dispatch and weekly (Mondays 07:00 UTC) to catch drift. See `deploy/pulumi/SHARED.md`.
 
 ### Nightly Images
 
 **File**: `.github/workflows/nightly-images.yml`
 
-Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml`. Since `images-publish.yml` also runs on every push to `main` that touches `deploy/**`, `backend/**`, `src/**`, or `package.json`, this scheduled run only adds value on quiet days — refreshing images when the source hasn't changed (e.g. upstream base-image / security updates).
+Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch images to GHCR (version tag, `:latest`, and Helm chart) by calling `images-publish.yml`. Since `images-publish.yml` also runs on every push to `main` touching the paths listed above, this scheduled run only adds value on quiet days — refreshing images when the source hasn't changed (e.g. upstream base-image / security updates).
 
 **Triggers**:
 
@@ -577,16 +640,20 @@ Nightly at 5:00 UTC (midnight EST), rebuilds and publishes the `main`-branch ima
 
 ### Default Credentials
 
-All deployment paths use the same defaults. Override for production.
+All deployment paths use the same defaults, with one exception noted below. Override for production.
 
-| Credential           | Default                         | Used By            |
-| -------------------- | ------------------------------- | ------------------ |
-| Postgres password    | `postgres`                      | Backend, Postgres  |
-| Keycloak admin       | `admin` / `admin`               | Keycloak           |
-| OIDC client secret   | `thunderbolt-enterprise-secret` | Backend, Keycloak  |
-| PowerSync JWT secret | `enterprise-powersync-secret`   | Backend, PowerSync |
-| Better Auth secret   | `enterprise-better-auth-secret` | Backend            |
-| Demo user            | `demo@thunderbolt.io` / `demo`  | Keycloak           |
+| Credential           | Default                                                           | Used By            |
+| -------------------- | ----------------------------------------------------------------- | ------------------ |
+| Postgres password    | `postgres`                                                        | Backend, Postgres  |
+| Keycloak admin       | `admin` / `admin`                                                 | Keycloak           |
+| OIDC client secret   | `thunderbolt-enterprise-secret`                                   | Backend, Keycloak  |
+| PowerSync JWT secret | `enterprise-thunderbolt-powersync-jwt-default-secret`             | Backend, PowerSync |
+| Better Auth secret   | `enterprise-thunderbolt-better-auth-default-secret` (Pulumi only) | Backend            |
+| Demo user            | `demo@thunderbolt.io` / `demo`                                    | Keycloak           |
+
+The Better Auth secret is the exception: only the Pulumi stacks carry a default. Docker Compose requires `BETTER_AUTH_SECRET` in `deploy/.env` and the Helm chart requires `backend.betterAuthSecretBase64` — neither has a fallback, by design, because that secret signs session cookies and bearer tokens.
+
+The PowerSync JWT secret is long rather than friendly because the backend rejects anything under 32 characters once `POWERSYNC_URL` is set (`backend/src/config/settings.ts`).
 
 ### Keycloak
 
@@ -594,23 +661,33 @@ The realm `thunderbolt` is auto-imported from `config/keycloak-realm.json` on fi
 
 - OIDC client: `thunderbolt-app` (confidential)
 - Demo user: `demo@thunderbolt.io` / `demo`
-- Admin console at `/auth/admin` (Docker Compose: port 8180, Kubernetes/AWS: via ingress at `/auth`)
+- Admin console at `/admin` on the Keycloak service itself — the images set no `KC_HTTP_RELATIVE_PATH`, so Keycloak serves from the root. Under Docker Compose that is http://localhost:8180/admin. On Kubernetes and Fargate it is reachable through the `auth` hostname when one is configured; the path-based fallback routes only `/realms` (plus `/resources` on Kubernetes and `/auth/*` on the ALB), so without an `auth` hostname use `kubectl port-forward` instead.
 
 ### PowerSync
 
-Sync rules are defined in `config/powersync-config.yaml`. The `user_data` bucket syncs these tables scoped by `user_id`:
+Sync rules live in `config/powersync-config.yaml`, and the same rules are inlined in the Helm chart's ConfigMap (`k8s/templates/configmaps.yaml`). Both must be edited together — a table added to one and not the other syncs on one deployment path and silently not on the other.
 
-settings, chat_threads, chat_messages, tasks, models, mcp_servers, prompts, triggers, model_profiles, devices
+Two buckets split the tables by how soon the client needs them. Both are parameterised on `request.user_id()`, so every row is scoped to its owner.
 
-The PowerSync JWT secret must match between the backend (`POWERSYNC_JWT_SECRET`) and the PowerSync config.
+| Bucket            | Priority | Tables                                                            |
+| ----------------- | -------- | ----------------------------------------------------------------- |
+| `user_essentials` | 1        | settings, models, model_profiles, devices, chat_threads           |
+| `user_data`       | 2        | chat_messages, tasks, prompts, skills, triggers, agents, projects |
+
+Priority 1 completes first, so a reconnecting device gets its settings, model list and thread index before the message bodies start arriving.
+
+The PowerSync JWT secret must match between the backend (`POWERSYNC_JWT_SECRET`) and the PowerSync config, where it is supplied base64-encoded as the JWK `k` value. The env var carrying it differs by path: `PS_JWT_KEY_BASE64` in `config/powersync-config.yaml` (Docker Compose and Fargate), `POWERSYNC_JWT_SECRET_B64` in the Helm ConfigMap, which reads it from the `powersync-jwt-secret-b64` entry of the `thunderbolt-secrets` Secret.
 
 ### Postgres
 
-The init script (`docker/postgres-init/01-powersync.sql`) creates:
+The init script (`docker/postgres-init/01-powersync.sh`) runs on first Postgres init only and creates:
 
-- `powersync_role` with `REPLICATION` privileges
-- A publication on all tables for logical replication
-- PostgreSQL runs with `wal_level=logical` in all deployment paths
+- The `powersync` schema
+- `powersync_role` with `REPLICATION` and `BYPASSRLS`, granted `SELECT` on that schema
+- The `powersync` publication for logical replication
+- The `powersync_storage` database PowerSync uses for bucket storage
+
+It is a shell script rather than plain SQL so the role password can come from the environment — it requires `POWERSYNC_DB_PASSWORD` and exits if it is unset, which is how preview stacks randomise it per stack. PostgreSQL runs with `wal_level=logical` on all three deployment paths.
 
 ---
 
@@ -620,7 +697,7 @@ The init script (`docker/postgres-init/01-powersync.sql`) creates:
 
 **Backend won't start**: Check that Postgres is healthy (`docker compose logs postgres`). The backend entrypoint polls Postgres and won't start migrations until it's ready.
 
-**PowerSync crashes with storage errors**: PowerSync uses the `powersync_storage` database on the same Postgres instance for bucket storage. If the DB wasn't created, check `docker compose exec postgres psql -U postgres -c '\l'` — you should see `powersync_storage` listed. If missing, the init script (`docker/postgres-init/01-powersync.sql`) didn't run; wiping the volume with `docker compose down -v` and restarting will re-run it.
+**PowerSync crashes with storage errors**: PowerSync uses the `powersync_storage` database on the same Postgres instance for bucket storage. If the DB wasn't created, check `docker compose exec postgres psql -U postgres -c '\l'` — you should see `powersync_storage` listed. If missing, the init script (`docker/postgres-init/01-powersync.sh`) didn't run; wiping the volume with `docker compose down -v` and restarting will re-run it.
 
 ### Kubernetes / Helm
 

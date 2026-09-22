@@ -187,3 +187,21 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
   # -- Set to your domain for production; leave empty for default rule
   host: ""
+  # -- Optional per-service hostnames ("preview-style" host-header routing).
+  # Every key you set gets its own ingress rule serving `/` from one service:
+  # `marketing` → marketing, `app` → frontend, `api` → backend, `auth` →
+  # keycloak, `powersync` → powersync. Leave the map empty to keep the default
+  # path-based layout, where a single host routes `/v1`, `/realms`,
+  # `/resources` and `/powersync` to their services and everything else to the
+  # frontend.
+  #
+  # The path-based rule is always rendered, so the two modes coexist: the
+  # host-header rules take precedence for the hostnames listed here and the
+  # `host` rule stays as the fallback (a catch-all when `host` is empty).
+  # See `templates/ingress.yaml`.
+  hostnames: {}
+  #   marketing: example.com
+  #   app: app.example.com
+  #   api: api.example.com
+  #   auth: auth.example.com
+  #   powersync: powersync.example.com

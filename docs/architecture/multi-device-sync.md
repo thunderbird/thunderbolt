@@ -27,70 +27,70 @@ Thunderbolt's multi-device sync is built on [PowerSync](https://powersync.com). 
 
 ## Two Sync Paths
 
-There are two distinct pipelines depending on the runtime. Both end with decrypted rows in local SQLite — the transform runs in a different execution context.
+The runtime picks one of two pipelines. Both run the transform off the UI thread, in a worker hosting the same `ThunderboltSharedSyncImplementation` — only the worker _kind_ differs.
 
-| Runtime                    | Path                                    | Why this path                                                     |
-| -------------------------- | --------------------------------------- | ----------------------------------------------------------------- |
-| Chrome · Edge · Firefox    | Custom **SharedWorker** `ThunderboltSharedSyncImplementation` | One sync connection shared across tabs; the CK stays in the worker |
-| Safari · iOS · Tauri       | Main-thread transformer                 | OPFSCoopSyncVFS doesn't support SharedWorker; Tauri blocks it too |
+| Runtime                 | Path                                                  | Why this path                                                                                          |
+| ----------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Chrome · Edge · Firefox | Custom **SharedWorker**                               | One sync connection shared across tabs; the content key stays in the worker                            |
+| Safari · iOS · Tauri    | Dedicated **Worker** standing in for the SharedWorker | OPFSCoopSyncVFS and `tauri://` rule out SharedWorker, so a dedicated Worker hosts the same sync stream |
 
 The full write-up is in [powersync-sync-middleware.md](./powersync-sync-middleware.md), including the Vite alias (`powersync-web-internal`) that lets the custom SharedWorker reach into `@powersync/web`'s `@internal` classes.
 
 ## Synced Tables
 
-From [`shared/powersync-tables.ts`](../shared/powersync-tables.ts):
+From [`shared/powersync-tables.ts`](../../shared/powersync-tables.ts):
 
-| Table            | Purpose                                                           | Primary key      |
-| ---------------- | ----------------------------------------------------------------- | ---------------- |
-| `settings`       | Per-user preferences                                              | `(key, user_id)` |
-| `chat_threads`   | Conversation metadata                                             | `id`             |
-| `chat_messages`  | Individual messages within threads                                | `id`             |
-| `tasks`          | Todo / task items (defaults seeded per user)                      | `(id, user_id)`  |
-| `models`         | Configured model profiles (defaults seeded per user)              | `(id, user_id)`  |
-| `prompts`        | Saved prompt templates (defaults seeded per user)                 | `(id, user_id)`  |
-| `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user  | `(id, user_id)`  |
-| `mcp_servers`    | Registered Model Context Protocol servers                         | `id`             |
-| `triggers`       | Automations                                                       | `id`             |
-| `devices`        | Registered devices for the current account                        | `id`             |
-| `projects`       | Project workspaces (durable instructions)                         | `id`             |
+| Table            | Purpose                                                                         | Primary key      |
+| ---------------- | ------------------------------------------------------------------------------- | ---------------- |
+| `settings`       | Per-user preferences                                                            | `(key, user_id)` |
+| `chat_threads`   | Conversation metadata                                                           | `id`             |
+| `chat_messages`  | Individual messages within threads                                              | `id`             |
+| `tasks`          | Todo / task items (defaults seeded per user)                                    | `(id, user_id)`  |
+| `models`         | Configured models — provider, endpoint, capabilities (defaults seeded per user) | `(id, user_id)`  |
+| `prompts`        | Saved prompt templates (defaults seeded per user)                               | `(id, user_id)`  |
+| `skills`         | Slash-command skills (defaults seeded per user)                                 | `(id, user_id)`  |
+| `triggers`       | Automations                                                                     | `id`             |
+| `model_profiles` | Per-model tuning (temperature, prompt overrides) seeded per user                | `(id, user_id)`  |
+| `devices`        | Registered devices for the current account                                      | `id`             |
+| `agents`         | User-created ACP agents (built-ins and system agents are not rows)              | `(id, user_id)`  |
+| `projects`       | Project workspaces (durable instructions)                                       | `id`             |
 
 Default-data tables use composite primary keys so multiple users can hold the same default id — see [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
+
+## Local-Only Tables
+
+`src/db/powersync/schema.ts` splits the client schema in two: `syncedTables` (the twelve above) and `localOnlyTables`, registered with `options: { localOnly: true }` so PowerSync creates them in SQLite but never streams them.
+
+| Table                  | Holds                                                                     |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `models_secrets`       | Model API keys                                                            |
+| `integrations_secrets` | Google / Microsoft OAuth tokens                                           |
+| `mcp_servers`          | MCP server configuration                                                  |
+| `mcp_secrets`          | MCP bearer tokens / API keys                                              |
+| `agents_system`        | System-provided ACP agents, hydrated from the backend `/agents` discovery |
+| `agents_secrets`       | ACP agent credentials                                                     |
+
+Three of them are the local half of a pair: `models` + `models_secrets` and `agents` + `agents_secrets` sync the config row and keep the credential on-device; `mcp_servers` + `mcp_secrets` pairs the same way but keeps both halves local. `src/dal/mcp-servers.ts` writes both halves in one transaction (`createMcpServerWithCredentials`, `updateMcpServerWithCredentials`) because the connection code reads the secret at connect time, so a partial write would either orphan the secret or connect unauthenticated.
+
+`mcp_servers` is local-only for a different reason than the secrets tables: replicating a server entry without its (local-only) credentials would hand every other device a server it cannot connect to. `agents_system` is a cache of a backend response, so syncing it would duplicate a source the other device can fetch for itself.
+
+The invariant: **nothing carrying a credential may join `syncedTables`.** Adding a table there means confirming it holds no secret. Only `mcp_servers` and `mcp_secrets` have a regression test (`src/db/powersync/schema.test.ts`); the other four rely on review.
 
 ## Offline Behavior
 
 - Everything you do offline — new chats, sent messages, edits — writes to local SQLite immediately.
 - On reconnect, the sync worker replays queued operations through the backend. Conflicts resolve last-writer-wins at the row level.
-- *Settings → Devices* shows each device's last-seen time; a stale value means the device hasn't reconnected yet.
+- _Settings → Devices_ shows each device's last-seen time; a stale value means the device hasn't reconnected yet.
 
 ## Adding a New Synced Table
 
-Adding a table touches both clients and the backend plus the PowerSync sync rules. To avoid races where clients expect rows the sync service won't stream, ship the change in **two PRs**:
+Adding a table touches both clients, the backend schema, and the PowerSync sync rules, so it ships as **two PRs**: backend schema + migration + `shared/powersync-tables.ts` + all three sync-rule configs first, then the frontend schema and feature code once the new `thunderbolt-powersync` image is live. Shipping the frontend first causes silent sync failure — the table works locally but rows never replicate.
 
-1. **Backend + sync rules PR**
-   - Add the table to `backend/src/db/powersync-schema.ts` with a Drizzle migration.
-   - Register in [`shared/powersync-tables.ts`](../../shared/powersync-tables.ts) (`powersyncTableNames` + `powersyncTableToQueryKeys` — the latter is
-     type-required but has no runtime consumer; see the note on the map).
-   - Add the sync rule to all three configs: `powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, and `deploy/k8s/templates/configmaps.yaml`.
-   - Merge and deploy this first. On merge, CI publishes a new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; roll the Render `powersync` service to that new tag before PR 2 merges.
-
-2. **Frontend + feature PR**
-   - Add the table to `src/db/tables.ts` and `src/db/powersync/schema.ts`.
-   - Wire up DAL, defaults, reconciliation, and UI.
-   - Merge only after PR 1's sync rules are live.
-
-Deploying the frontend before sync rules are live causes silent sync failure — the table works locally but rows never replicate.
+The full procedure, including the `user_id`-index-only rule, which bucket (and therefore which sync priority) the new rule belongs in, and how to remove a table or add a column to an existing one, is in [Adding a New Synced Table](./powersync-account-devices.md#adding-a-new-synced-table).
 
 ## Indexing Strategy
 
-The backend PostgreSQL schema uses a **minimal index strategy**:
-
-- Primary keys (required)
-- A single `user_id` index per table (required for PowerSync sync rules)
-- **No** composite foreign keys
-- **No** active/soft-delete indexes
-- **No** secondary indexes on encrypted columns
-
-Why: the backend is a sync server, not a query engine. Heavy queries run on the client's SQLite. Indexes on encrypted columns would be useless anyway, and fewer indexes means faster writes during sync. Full rationale in [composite-primary-keys-and-default-data.md](./composite-primary-keys-and-default-data.md).
+The backend Postgres schema carries primary keys and one `user_id` index per table, and nothing else — it is a sync server, not a query engine, and heavy queries run against the client's SQLite. Full rationale in [Index Strategy: user_id Only](./composite-primary-keys-and-default-data.md#index-strategy-user_id-only).
 
 ## Related Reading
 

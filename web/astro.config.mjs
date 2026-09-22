@@ -19,6 +19,10 @@ export default defineConfig({
 		'/docs/kubernetes': '/docs/self-hosting/kubernetes',
 		'/docs/docker-compose': '/docs/self-hosting/docker-compose',
 		'/docs/pulumi': '/docs/self-hosting/pulumi',
+		// Old root-level docs duplicated by maintained pages elsewhere in /docs/.
+		'/docs/introduction': '/docs',
+		'/docs/quick-start': '/docs/development/quick-start',
+		'/docs/multi-device-sync': '/docs/architecture/multi-device-sync',
 	},
 	integrations: [
 		react(),
@@ -64,18 +68,57 @@ export default defineConfig({
 						{ label: 'Docker Compose', slug: 'docs/self-hosting/docker-compose' },
 						{ label: 'Kubernetes', slug: 'docs/self-hosting/kubernetes' },
 						{ label: 'Pulumi (AWS)', slug: 'docs/self-hosting/pulumi' },
+						{ label: 'iroh Relay', slug: 'docs/architecture/iroh-relay-self-hosting' },
 					],
 				},
 				{
 					label: 'Features',
 					items: [
 						{ label: 'Projects', slug: 'docs/architecture/projects' },
+						{ label: 'Skills', slug: 'docs/architecture/skills' },
 						{ label: 'Widgets', slug: 'docs/features/widgets' },
+						{ label: 'HTML Artifacts', slug: 'docs/architecture/artifacts' },
+						{ label: 'Chat Attachments', slug: 'docs/architecture/attachments' },
+						{ label: 'Content View', slug: 'docs/architecture/content-view' },
+						{ label: 'Search & Command Palette', slug: 'docs/architecture/search' },
+						{ label: 'Voice Mode', slug: 'docs/architecture/voice' },
+						{ label: 'WebView', slug: 'docs/features/webview' },
+						{ label: 'MCP Connections', slug: 'docs/architecture/mcp-connections' },
+						{ label: 'ACP Agents', slug: 'docs/architecture/acp-agents' },
+					],
+				},
+				{
+					label: 'Architecture',
+					items: [
+						{ label: 'Overview', slug: 'docs/architecture' },
+						{ label: 'App Initialization', slug: 'docs/architecture/app-initialization' },
+						{ label: 'Chat Runtime', slug: 'docs/architecture/chat-runtime' },
+						{
+							label: 'System Prompt, Tools & Citations',
+							slug: 'docs/architecture/prompt-and-tools',
+						},
+						{
+							label: 'In-Browser Agent Harness',
+							slug: 'docs/architecture/in-browser-agent-harness',
+						},
+						{ label: 'Managed Inference', slug: 'docs/architecture/managed-inference' },
+						{ label: 'Universal Proxy', slug: 'docs/architecture/universal-proxy' },
+						{ label: 'Client Auth & Session', slug: 'docs/architecture/client-auth-and-session' },
+						{ label: 'Sign-in & Waitlist', slug: 'docs/architecture/sign-in-and-waitlist' },
+						{
+							label: 'Settings & Preferences',
+							slug: 'docs/architecture/settings-and-preferences',
+						},
+						{ label: 'Data Access Layer', slug: 'docs/architecture/data-access-layer' },
+						{ label: 'Reconciled Defaults', slug: 'docs/architecture/reconciled-defaults' },
+						{ label: 'Client Data Migrations', slug: 'docs/architecture/client-data-migrations' },
+						{ label: 'Backend API Surface', slug: 'docs/architecture/backend-api-surface' },
+						{ label: 'Tauri Shell', slug: 'docs/architecture/tauri-shell' },
+						{ label: 'Debug Transcripts', slug: 'docs/architecture/debug-transcripts' },
 						{
 							label: 'Data Syncing',
 							collapsed: true,
 							items: [
-								{ label: 'Architecture', slug: 'docs/architecture' },
 								{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
 								{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
 								{
@@ -87,6 +130,10 @@ export default defineConfig({
 									slug: 'docs/architecture/powersync-sync-middleware',
 								},
 								{
+									label: 'PowerSync · Upload Authorization',
+									slug: 'docs/architecture/powersync-upload-authorization',
+								},
+								{
 									label: 'Composite Primary Keys & Default Data',
 									slug: 'docs/architecture/composite-primary-keys-and-default-data',
 								},
@@ -94,22 +141,28 @@ export default defineConfig({
 									label: 'Delete Account & Revoke Device',
 									slug: 'docs/architecture/delete-account-and-revoke-device',
 								},
+								{ label: 'Data Export Format', slug: 'docs/architecture/export-format' },
 							],
 						},
-						{ label: 'WebView', slug: 'docs/features/webview' },
 					],
 				},
 				{
 					label: 'Development',
 					items: [
 						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
-						{ label: 'Mobile Setup', slug: 'docs/development/mobile-setup' },
+						{ label: 'Frontend Structure', slug: 'docs/development/frontend-structure' },
+						{ label: 'The shared/ Module', slug: 'docs/architecture/shared-module' },
+						{ label: 'Error Handling', slug: 'docs/development/error-handling' },
+						{ label: 'Integrations', slug: 'docs/development/integrations' },
 						{ label: 'Testing', slug: 'docs/development/testing' },
+						{ label: 'Mobile Setup', slug: 'docs/development/mobile-setup' },
+						{ label: 'CI & Preview Environments', slug: 'docs/development/ci-and-previews' },
 					],
 				},
 				{
 					label: 'Dev Tooling',
 					items: [
+						{ label: 'AI Code Review', slug: 'docs/dev-tooling/ai-code-review' },
 						{ label: 'Tauri Signing Keys', slug: 'docs/features/tauri-signing-keys' },
 						{ label: 'Storybook', slug: 'docs/dev-tooling/storybook' },
 						{ label: 'Vite Bundle Analyzer', slug: 'docs/dev-tooling/vite-bundle-analyzer' },

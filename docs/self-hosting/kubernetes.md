@@ -16,11 +16,11 @@ Total time: ~5 minutes.
 `kubectl` is the CLI to talk to a cluster — it doesn't create one. Pick a tool
 to spin one up locally:
 
-| Option            | How                                                                  |
-| ----------------- | -------------------------------------------------------------------- |
+| Option                 | How                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------ |
 | **kind** (recommended) | `brew install kind` (see config below — bare `kind create cluster` won't work) |
-| **Docker Desktop**     | Settings → Kubernetes → Enable. `kubectl cluster-info` to verify.    |
-| **Minikube**           | `brew install minikube && minikube start`                            |
+| **Docker Desktop**     | Settings → Kubernetes → Enable. `kubectl cluster-info` to verify.              |
+| **Minikube**           | `brew install minikube && minikube start`                                      |
 
 Create a `kind` cluster with the port mappings the chart's ingress needs:
 
@@ -122,13 +122,18 @@ After onboarding, drop in an AI provider key in app settings to start chatting.
 
 The chart's Ingress is path-based:
 
-| Path           | Service        |
-| -------------- | -------------- |
-| `/v1/*`        | backend        |
-| `/realms/*`    | keycloak       |
-| `/resources/*` | keycloak       |
-| `/powersync/*` | powersync      |
-| `/*`           | frontend       |
+| Path           | Service   |
+| -------------- | --------- |
+| `/v1/*`        | backend   |
+| `/realms/*`    | keycloak  |
+| `/resources/*` | keycloak  |
+| `/powersync/*` | powersync |
+| `/*`           | frontend  |
+
+Those path rules are always rendered and are what an enterprise install uses. Setting
+`ingress.hostnames` instead (`marketing`, `app`, `api`, `auth`, `powersync`) adds one host-header
+rule per service, each serving `/` — the layout the preview stacks use. The two coexist: host rules
+win for the hostnames listed, the path rule stays as the fallback.
 
 ## Cleanup
 
@@ -143,18 +148,19 @@ kind delete cluster --name thunderbolt
 See [`deploy/k8s/values.yaml`](https://github.com/thunderbird/thunderbolt/blob/main/deploy/k8s/values.yaml)
 for all options. Key values:
 
-| Value | Default | Description |
-| --- | --- | --- |
-| `backend.betterAuthSecretBase64` | `""` (REQUIRED) | Base64-encoded auth signing secret |
-| `appUrl` | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
-| `frontend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend` | Frontend image |
-| `backend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend` | Backend image |
-| `marketing.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image |
-| `imagePullSecrets` | `[]` | Registry pull secrets (empty for the default public images) |
-| `ingress.enabled` | `true` | Create Ingress resource |
-| `ingress.host` | `""` | Set to your hostname for production |
-| `postgres.storage` | `5Gi` | Postgres PVC size |
-| `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
+| Value                                     | Default                                                 | Description                                                 |
+| ----------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| `backend.betterAuthSecretBase64`          | `""` (REQUIRED)                                         | Base64-encoded auth signing secret                          |
+| `appUrl`                                  | `http://localhost`                                      | Base URL for CORS, auth callbacks, redirects                |
+| `frontend.image.repository`               | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend`  | Frontend image                                              |
+| `backend.image.repository`                | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend`   | Backend image                                               |
+| `marketing.image.repository`              | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image                                        |
+| `imagePullSecrets`                        | `[]`                                                    | Registry pull secrets (empty for the default public images) |
+| `ingress.enabled`                         | `true`                                                  | Create Ingress resource                                     |
+| `ingress.host`                            | `""`                                                    | Set to your hostname for production                         |
+| `ingress.hostnames`                       | `{}`                                                    | Per-service hostnames for host-header routing (see above)   |
+| `postgres.storage`                        | `5Gi`                                                   | Postgres PVC size                                           |
+| `backend.aiSecrets.anthropicApiKeyBase64` | `""`                                                    | Server-side Anthropic key (avoids browser CORS)             |
 
 ## Production on EKS
 
@@ -171,11 +177,11 @@ and applies the chart automatically. See [Pulumi (AWS)](./pulumi.md).
 
 ## Differences from Docker Compose
 
-| Concept             | Docker Compose              | Kubernetes                              |
-| ------------------- | --------------------------- | --------------------------------------- |
-| Service discovery   | Container names             | ClusterIP services (DNS)                |
-| Ingress / routing   | nginx proxy in the frontend | Ingress resource                        |
-| Persistent storage  | Docker volumes              | PersistentVolumeClaims                  |
-| Health checks       | `healthcheck:` in compose   | `livenessProbe` / `readinessProbe`      |
-| Config files        | Volume mounts               | ConfigMaps                              |
-| Secrets             | `.env` file                 | Kubernetes Secret + Helm values         |
+| Concept            | Docker Compose              | Kubernetes                         |
+| ------------------ | --------------------------- | ---------------------------------- |
+| Service discovery  | Container names             | ClusterIP services (DNS)           |
+| Ingress / routing  | nginx proxy in the frontend | Ingress resource                   |
+| Persistent storage | Docker volumes              | PersistentVolumeClaims             |
+| Health checks      | `healthcheck:` in compose   | `livenessProbe` / `readinessProbe` |
+| Config files       | Volume mounts               | ConfigMaps                         |
+| Secrets            | `.env` file                 | Kubernetes Secret + Helm values    |

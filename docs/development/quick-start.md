@@ -66,11 +66,13 @@ For other distributions, use the upstream
 
    Backend starts on `http://localhost:8000`, frontend on `http://localhost:1420`.
 
-   _Desktop (Tauri):_ `bun tauri:dev:desktop`
+   _Desktop (Tauri):_ `make dev-desktop`
 
-   _iOS simulator:_ `bun tauri:dev:ios`
+   _iOS simulator:_ `make dev-ios` (boot a simulator first: `open -a Simulator`)
 
-   _Android emulator:_ `bun tauri:dev:android`
+   _Android emulator:_ `make dev-android`
+
+   Use the `make dev-*` targets rather than the `bun tauri:dev:*` scripts underneath them. Each one starts the backend and then works around a failure mode: Tauri brings its own Vite, so `make run` alongside `bun tauri:dev:desktop` collides on `:1420`; `tauri ios dev` matches simulators by name and otherwise auto-selects a Wi-Fi-paired iPhone; and `gen/android` is committed for the production identifier, so an Android dev build must re-init it for the `.dev` one or it crashes with `ClassNotFoundException`. [Mobile Setup](./mobile-setup.md) has the details.
 
 5. **Sign in.** Open `http://localhost:1420`, create an account, and send a message. If it works, you're good.
 
@@ -85,20 +87,26 @@ For other distributions, use the upstream
 
 ## Helpful Makefile Targets
 
-| Command                 | What it does                                                         |
-| ----------------------- | -------------------------------------------------------------------- |
-| `make doctor`           | Verifies your tools + env files. `make doctor-q` only prints issues. |
+| Command                 | What it does                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `make doctor`           | Verifies your tools + env files. `make doctor-q` only prints issues.           |
 | `make run` / `make dev` | Starts backend + frontend. Kills stale processes on `:8000` and `:1420` first. |
-| `make up`               | Starts PowerSync and Postgres.                                       |
-| `make down`             | Stops containers, keeps volumes.                                     |
-| `make nuke`             | Wipes all container data and rebuilds from scratch.                  |
-| `make check`            | Runs type-check, lint, and format-check.                             |
-| `make format`           | Formats frontend, backend, and Rust.                                 |
+| `make up`               | Starts PowerSync and Postgres.                                                 |
+| `make down`             | Stops containers, keeps volumes.                                               |
+| `make nuke`             | Wipes all container data and rebuilds from scratch.                            |
+| `make check`            | Runs type-check, lint, format-check, and the license-header check.             |
+| `make test`             | Frontend test suite, then backend.                                             |
+| `make format`           | Formats frontend, backend, and Rust.                                           |
+
+`make help` lists the full set.
+
+The license-header step is the part of `make check` a first contribution most often trips on: every source file needs the three-line MPL-2.0 header. `bun run license:fix` adds it to anything missing one, and `scripts/license-headers.ts` knows the comment syntax for `.ts`, `.tsx`, `.js`, `.jsx`, `.cjs`, `.mjs`, `.css`, `.scss`, `.rs`, `.kt`, `.kts`, `.sh`, `.sql`, `.html`, and `.astro`. The pre-commit hook already runs it over staged files, so you normally only see the failure when committing outside the hook.
 
 ## Next Steps
 
 - [Configuration Reference](../self-hosting/configuration.md) — every backend env var.
 - [Mobile Setup](./mobile-setup.md) — iOS / Android / desktop Tauri dev prerequisites.
 - [Architecture](../architecture/) — how the pieces connect.
-- [Testing](./testing.md) — test patterns, composite keys, synced table rules.
+- [Testing](./testing.md) — how to run each suite, the globally installed fake timers, the `mock.module()` hazard, and the Playwright e2e setup.
+- [Composite Primary Keys and Default Data](../architecture/composite-primary-keys-and-default-data.md) and [Multi-Device Sync](../architecture/multi-device-sync.md#adding-a-new-synced-table) — schema rules for synced tables.
 - [Self-Hosting](../self-hosting/) — deploy Thunderbolt somewhere real.

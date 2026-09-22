@@ -35,12 +35,6 @@ bun run dev
 # Run migrations
 bun run db migrate
 
-# Run tests
-bun test
-
-# Run tests in watch mode
-bun run test:watch
-
 # Type checking
 bun run type-check
 
@@ -48,11 +42,13 @@ bun run type-check
 bun run db:dev
 ```
 
+Tests have their own scripts at the repository root — see [Testing](#testing).
+
 ### Database
 
 The project uses Drizzle with PGLite for development and tests (files in .pglite/data) and Postgres in production.
 
-PowerSync tables that hold default data (settings, models, tasks, prompts) use composite primary keys `(id/key, user_id)` so each user can have their own row with the same default ID. See [composite-primary-keys-and-default-data.md](../docs/composite-primary-keys-and-default-data.md).
+PowerSync tables that hold default data (settings, models, tasks, prompts) use composite primary keys `(id/key, user_id)` so each user can have their own row with the same default ID. See [composite-primary-keys-and-default-data.md](../docs/architecture/composite-primary-keys-and-default-data.md).
 
 ```bash
 # Run Postgres via PGLite (serves data from .pglite/data)
@@ -128,13 +124,40 @@ OpenTelemetry will automatically:
 
 ## Testing
 
+Run the suite from the repository root, which owns the sanctioned scripts:
+
 ```bash
-# Run all tests
-bun test
+# Run all backend tests
+bun run test:backend
 
-# Run specific test file
-bun test test/main.test.ts
+# Watch mode
+bun run test:backend:watch
 
-# Run tests with coverage
-bun test --coverage
+# The segregated WebSocket/Haystack suites (see below)
+bun run test:backend:ws
 ```
+
+`test:backend` is `cd backend && bun test --timeout 5000 --randomize`. Both flags matter. The 5s
+per-test timeout is pinned rather than inherited from Bun's default, so a test waiting on an event
+that never arrives fails instead of stalling the run; `--randomize` runs tests in random order so
+they cannot quietly depend on each other's leftover database state. CI raises the timeout to an
+effectively-disabled `3600000` — `bun --timeout 0` hangs async tests — because the 10-minute step
+cap is the real ceiling there and PGlite contention makes otherwise-fine tests slow; see the
+comment on the backend test step in `.github/workflows/ci.yml`.
+
+`src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` wait on same-process Bun WebSocket
+close/message events that Bun drops or delays under load. CI runs everything else with
+`--rerun-each 5` and runs these two once through a retry wrapper (`.github/workflows/ci.yml`), so
+an intermittent event drop self-heals while a genuine break still fails the job.
+`test:backend:ws` is the local equivalent of that isolated run.
+
+To narrow to one file, pass its path from inside `backend/` and keep the timeout:
+
+```bash
+cd backend
+bun test src/index.test.ts --timeout 5000
+bun test --coverage --timeout 5000
+```
+
+Initialization (database setup) happens in the `[test] preload` hook configured in
+`backend/bunfig.toml`, so it sits outside the per-test timeout and individual tests stay fast.

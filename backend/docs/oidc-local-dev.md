@@ -34,6 +34,7 @@ docker run -d \
 ```
 
 This creates:
+
 - **Realm**: `mozilla`
 - **Client**: `thunderbolt-app` (secret: `thunderbolt-dev-secret`)
 - **Users**: `mitchell@mozilla.org` / `password`, `laura@mozilla.org` / `password`
@@ -46,13 +47,14 @@ Keycloak admin panel is at http://localhost:8180 (login: `admin` / `admin`).
 
 ```sh
 AUTH_MODE=oidc
-WAITLIST_ENABLED=false
 OIDC_CLIENT_ID=thunderbolt-app
 OIDC_CLIENT_SECRET=thunderbolt-dev-secret
 OIDC_ISSUER=http://localhost:8180/realms/mozilla
 # The SSO plugin validates discovery URLs against trusted origins — include the IdP origin
 TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
+
+No waitlist variable belongs here. Both waitlist checks in `backend/src/auth/auth.ts` sit on the email-OTP sign-in path — the `before` hook returns early for anything other than `otpSignInPath`, and the other lives in the `sendVerificationOTP` callback — so an SSO sign-in never reaches them. `WAITLIST_ENABLED` would not help in consumer mode either: `settings.waitlistEnabled` is parsed in `backend/src/config/settings.ts` but read by nothing outside tests, so the gate always runs and `WAITLIST_AUTO_APPROVE_DOMAINS` is the only lever over it.
 
 **Frontend** (`.env.local` in project root, or whatever your local `.env` file is called):
 
@@ -130,11 +132,11 @@ For staging on Render, you can't use a local OIDC provider. Options:
 
 What you'll need from whoever manages the identity provider:
 
-| Value | Maps to env var | Example |
-|-------|----------------|---------|
-| Issuer URL | `OIDC_ISSUER` | `https://keycloak.company.com/realms/thunderbolt` |
-| Client ID | `OIDC_CLIENT_ID` | `thunderbolt-app` |
-| Client secret | `OIDC_CLIENT_SECRET` | (from provider's credentials page) |
+| Value         | Maps to env var      | Example                                           |
+| ------------- | -------------------- | ------------------------------------------------- |
+| Issuer URL    | `OIDC_ISSUER`        | `https://keycloak.company.com/realms/thunderbolt` |
+| Client ID     | `OIDC_CLIENT_ID`     | `thunderbolt-app`                                 |
+| Client secret | `OIDC_CLIENT_SECRET` | (from provider's credentials page)                |
 
 You'll need to give them your **callback URL** to register:
 
@@ -144,30 +146,32 @@ https://<your-backend>.onrender.com/v1/api/auth/sso/callback/sso
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
-| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
-| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
-| `discovery_unexpected_error` error | Keycloak is not running or not reachable | Run `docker ps \| grep keycloak` and start it if needed |
-| OIDC callback 404 | Wrong redirect URI in Keycloak client | Ensure `redirectUris` in realm JSON matches `/v1/api/auth/sso/callback/sso` |
+| Symptom                                | Cause                                    | Fix                                                                         |
+| -------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------- |
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true`  | Remove it or set to `false`, restart frontend                               |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data)        |
+| `discovery_untrusted_origin` error     | IdP origin not in `TRUSTED_ORIGINS`      | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env`          |
+| `discovery_unexpected_error` error     | Keycloak is not running or not reachable | Run `docker ps \| grep keycloak` and start it if needed                     |
+| OIDC callback 404                      | Wrong redirect URI in Keycloak client    | Ensure `redirectUris` in realm JSON matches `/v1/api/auth/sso/callback/sso` |
 
 ## Testing
 
-Integration tests use `oauth2-mock-server` — a lightweight in-process OIDC server that needs no Docker:
+The backend integration tests need neither Docker nor a mock IdP process — they stub `globalThis.fetch` so the only outbound call, OIDC discovery, resolves to a hand-written `.well-known/openid-configuration` payload (`backend/src/auth/oidc-integration.test.ts`). They cover the redirect URL, PKCE `code_challenge`, requested scopes, the three missing-config failures, and the rejection of SSO sign-in when `AUTH_MODE=consumer`:
 
 ```sh
 cd backend && bun test src/auth/oidc-integration.test.ts
 ```
 
+The Playwright suite is the one that runs a real provider: `e2e/global-setup.ts` starts `oauth2-mock-server` on `MOCK_OIDC_PORT` (default `9876`).
+
 ## Files overview
 
-| File | Purpose |
-|------|---------|
-| `backend/src/auth/auth.ts` | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=oidc` or `saml` |
-| `backend/src/config/settings.ts` | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars |
-| `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests using mock OIDC server |
-| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm for local development (OIDC + SAML clients) |
-| `src/lib/auth-mode.ts` | `isSsoMode()` — reads `VITE_AUTH_MODE` |
-| `src/app.tsx` | `SsoRedirect` component, conditional routing for SSO vs consumer mode |
-| `src/contexts/auth-context.tsx` | `credentials: 'include'` in SSO mode for cookie-based session bootstrap |
+| File                                        | Purpose                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `backend/src/auth/auth.ts`                  | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=oidc` or `saml` |
+| `backend/src/config/settings.ts`            | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars        |
+| `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests with a stubbed discovery endpoint                     |
+| `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm for local development (OIDC + SAML clients)    |
+| `src/lib/auth-mode.ts`                      | `isSsoMode()` — reads `VITE_AUTH_MODE`                                       |
+| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode        |
+| `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap      |

@@ -36,6 +36,7 @@ docker run -d \
 ```
 
 This creates:
+
 - **Realm**: `mozilla`
 - **OIDC client**: `thunderbolt-app` (for OIDC mode)
 - **SAML client**: `thunderbolt-saml-sp` (for SAML mode)
@@ -108,13 +109,16 @@ Enterprise admins can use this to configure their IdP.
 
 ## Using a different SAML provider
 
-The implementation is provider-agnostic. To use Okta, Entra ID, or any other SAML 2.0 provider, set the three env vars:
+The implementation is provider-agnostic. To use Okta, Entra ID, or any other SAML 2.0 provider, set all four env vars — `backend/src/auth/auth.ts` throws at startup if any one of them is missing:
 
 ```sh
 SAML_ENTRY_POINT=https://your-idp.example.com/sso/saml
-SAML_ENTITY_ID=https://your-idp.example.com
+SAML_ENTITY_ID=thunderbolt-saml-sp
+SAML_IDP_ISSUER=https://your-idp.example.com
 SAML_CERT=<idp-signing-certificate-base64>
 ```
+
+`SAML_ENTITY_ID` is the _Service Provider's_ entity ID — the one published in the SP metadata above — and must match the client/application ID registered in the IdP. `SAML_IDP_ISSUER` is the IdP's own entity ID, which assertions are validated against.
 
 You'll need to register the ACS URL with the provider:
 
@@ -124,14 +128,14 @@ https://<your-backend>/v1/api/auth/sso/saml2/sp/acs/sso
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
-| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
-| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
-| Keycloak not reachable | Container not running | Run `docker ps \| grep keycloak` and start it if needed |
-| SAML ACS returns error | Wrong ACS URL in Keycloak SAML client | Ensure `saml_assertion_consumer_url_post` matches `/v1/api/auth/sso/saml2/sp/acs/sso` |
-| Invalid certificate error | Certificate has PEM headers or wrong format | Use the raw base64 string without `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` |
+| Symptom                                | Cause                                       | Fix                                                                                           |
+| -------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true`     | Remove it or set to `false`, restart frontend                                                 |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login    | Clear site data (DevTools → Application → Storage → Clear site data)                          |
+| `discovery_untrusted_origin` error     | IdP origin not in `TRUSTED_ORIGINS`         | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env`                            |
+| Keycloak not reachable                 | Container not running                       | Run `docker ps \| grep keycloak` and start it if needed                                       |
+| SAML ACS returns error                 | Wrong ACS URL in Keycloak SAML client       | Ensure `saml_assertion_consumer_url_post` matches `/v1/api/auth/sso/saml2/sp/acs/sso`         |
+| Invalid certificate error              | Certificate has PEM headers or wrong format | Use the raw base64 string without `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` |
 
 ## SAML logout
 
@@ -139,12 +143,12 @@ Most SAML providers maintain their own session. Logging out of Thunderbolt alone
 
 ## Files overview
 
-| File | Purpose |
-|------|---------|
-| `backend/src/auth/auth.ts` | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=saml` |
-| `backend/src/config/settings.ts` | `authMode`, `samlEntryPoint`, `samlIssuer`, `samlCert` env vars |
-| `backend/src/auth/saml-integration.test.ts` | SAML integration tests |
-| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm with SAML client |
-| `src/lib/auth-mode.ts` | `isSsoMode()` — reads `VITE_AUTH_MODE` |
-| `src/app.tsx` | `SsoRedirect` component, conditional routing for SSO vs consumer mode |
-| `src/contexts/auth-context.tsx` | `credentials: 'include'` in SSO mode for cookie-based session bootstrap |
+| File                                        | Purpose                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `backend/src/auth/auth.ts`                  | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=saml`                 |
+| `backend/src/config/settings.ts`            | `authMode`, `samlEntryPoint`, `samlEntityId`, `samlIdpIssuer`, `samlCert` env vars |
+| `backend/src/auth/saml-integration.test.ts` | SAML integration tests                                                             |
+| `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm with SAML client                                     |
+| `src/lib/auth-mode.ts`                      | `isSsoMode()` — reads `VITE_AUTH_MODE`                                             |
+| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode              |
+| `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap            |

@@ -36,6 +36,4 @@ Since launching Thunderbolt, we’ve been focused on adding more functionality a
 * **Projects.** Organize your work into folders with shared context.  
 * **Thunderbolt CLI.** Use Thunderbolt agent on the command line as a coding agent.
 
-_Update, September 2026: Projects and the Thunderbolt CLI have shipped._
-
 Thunderbolt is open source and self-hostable. You can explore the [docs](https://www.thunderbolt.io/docs), see the full [code on GitHub](https://github.com/thunderbird/thunderbolt), or [contact our team](https://www.thunderbolt.io/) for a demo and custom solutions.

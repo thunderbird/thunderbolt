@@ -72,21 +72,24 @@ describe('probeCatalogModels', () => {
     expect(seen.sort()).toEqual([directWireModel, ...confidentialModels].sort())
   })
 
-  it('uses the configured Anthropic base URL', async () => {
-    const hosts: string[] = []
-    expect(
-      await probeCatalogModels({
-        database: env.db,
-        settings: { ...settings, anthropicBaseUrl: 'https://anthropic.test/v1/' },
-        fetchFn: transport(async (request) => {
-          hosts.push(new URL(request.url).host)
-          return completion()
+  it.each(['https://anthropic.test', 'https://anthropic.test/'])(
+    'uses the configured Anthropic API root %s',
+    async (root) => {
+      const urls: string[] = []
+      expect(
+        await probeCatalogModels({
+          database: env.db,
+          settings: { ...settings, anthropicBaseUrl: root },
+          fetchFn: transport(async (request) => {
+            urls.push(request.url)
+            return completion()
+          }),
+          confidentialTransport: { fetch: transport(async () => completion()), baseURL: 'https://attested.test/v1' },
         }),
-        confidentialTransport: { fetch: transport(async () => completion()), baseURL: 'https://attested.test/v1' },
-      }),
-    ).toEqual([])
-    expect(hosts).toEqual(['anthropic.test'])
-  })
+      ).toEqual([])
+      expect(urls).toEqual(['https://anthropic.test/v1/chat/completions'])
+    },
+  )
 
   it.each(['failure', 'timeout'] as const)('bounds shared confidential initialization (%s)', async (kind) => {
     const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {

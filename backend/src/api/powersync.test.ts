@@ -16,7 +16,7 @@ import { createPowerSyncRoutes } from './powersync'
 const powersyncSettings: Settings = {
   fireworksApiKey: '',
   anthropicApiKey: '',
-  anthropicBaseUrl: 'https://api.anthropic.com/v1/',
+  anthropicBaseUrl: 'https://api.anthropic.com',
   resendMonitoringApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',

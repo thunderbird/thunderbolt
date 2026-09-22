@@ -38,14 +38,14 @@ Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by d
 
 Set any subset; the app exposes each provider whose key is present.
 
-| Variable                        | Description                                                                                                                            |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                                                                                                                     |
-| `ANTHROPIC_BASE_URL`            | OpenAI-compatible endpoint; override to point the backend at a local fake provider in tests (default: `https://api.anthropic.com/v1/`) |
-| `FIREWORKS_API_KEY`             | Fireworks                                                                                                                              |
-| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)                                                                                                |
-| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint                                                                                            |
-| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint                                                                                                  |
+| Variable                        | Description                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                                                                                                                       |
+| `ANTHROPIC_BASE_URL`            | Optional API root (no `/v1`); leave unset in production (default: `https://api.anthropic.com`). Tests point it at a local fake provider. |
+| `FIREWORKS_API_KEY`             | Fireworks                                                                                                                                |
+| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)                                                                                                  |
+| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint                                                                                              |
+| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint                                                                                                    |
 
 User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
 
@@ -157,25 +157,25 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 
 ## General
 
-| Variable           | Default                 | Description                                                           |
-| ------------------ | ----------------------- | --------------------------------------------------------------------- |
-| `PORT`             | `8000`                  | HTTP port the backend listens on                                      |
-| `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                               |
-| `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                               |
-| `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
-| `MONITORING_TOKEN` | —                       | Bearer token for deep health routes under `/v1/health/`                |
-| `RESEND_MONITORING_API_KEY` | — | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
+| Variable                    | Default                 | Description                                                                                                    |
+| --------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `8000`                  | HTTP port the backend listens on                                                                               |
+| `APP_URL`                   | `http://localhost:1420` | Public URL where the frontend is served                                                                        |
+| `LOG_LEVEL`                 | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                                                                        |
+| `SWAGGER_ENABLED`           | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production)                                          |
+| `MONITORING_TOKEN`          | —                       | Bearer token for deep health routes under `/v1/health/`                                                        |
+| `RESEND_MONITORING_API_KEY` | —                       | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
 
 ### Deep health
 
 Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 
-| Route | Dependency exercised |
-| --- | --- |
-| `/v1/health/database` | A trivial database query (5-second deadline) |
-| `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds) |
-| `/v1/health/email` | Resend's authenticated domains read (10 seconds; sends no email) |
-| `/v1/health/models` | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
+| Route                  | Dependency exercised                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `/v1/health/database`  | A trivial database query (5-second deadline)                                                                 |
+| `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds)                                                          |
+| `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
+| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
 
 Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 

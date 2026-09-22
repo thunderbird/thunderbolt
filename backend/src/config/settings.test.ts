@@ -34,12 +34,12 @@ describe('Config Settings', () => {
 
     it('keeps the Anthropic endpoint when the override is unset', () => {
       delete process.env.ANTHROPIC_BASE_URL
-      expect(getSettings().anthropicBaseUrl).toBe('https://api.anthropic.com/v1/')
+      expect(getSettings().anthropicBaseUrl).toBe('https://api.anthropic.com')
     })
 
     it('honours ANTHROPIC_BASE_URL', () => {
-      process.env.ANTHROPIC_BASE_URL = 'http://localhost:9877/v1/'
-      expect(getSettings().anthropicBaseUrl).toBe('http://localhost:9877/v1/')
+      process.env.ANTHROPIC_BASE_URL = 'http://localhost:9878'
+      expect(getSettings().anthropicBaseUrl).toBe('http://localhost:9878')
     })
   })
 

@@ -29,16 +29,26 @@ import { user, verification } from '@/db/auth-schema'
 import { otpChallenge } from '@/db/schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader, testSignInOtp } from '@/auth/otp-constants'
-import { createAuth, getTestSignInOtpOptions } from '@/auth/auth'
+import { createAuth, signInOtpOptions } from '@/auth/auth'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
+import { createOtpGenerator } from '@/test-utils/otp-generator'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq, like } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
-describe('test sign-in OTP options', () => {
+describe('sign-in OTP options', () => {
+  it('prefers an injected generator over the fixed test code', () => {
+    const generateSignInOtp = createOtpGenerator()
+    expect(signInOtpOptions({ generateSignInOtp, nodeEnv: 'test' }).generateOTP?.()).toBe('00000001')
+  })
+
+  it('uses the fixed code in tests without an injected generator', () => {
+    expect(signInOtpOptions({ nodeEnv: 'test' }).generateOTP?.()).toBe(testSignInOtp)
+  })
+
   it.each(['production', 'development', '', undefined])('does not install a generator in %s', (nodeEnv) => {
-    expect(getTestSignInOtpOptions(nodeEnv)).not.toHaveProperty('generateOTP')
+    expect(signInOtpOptions({ nodeEnv })).not.toHaveProperty('generateOTP')
   })
 })
 
@@ -227,6 +237,7 @@ describe('OTP Security Hardening', () => {
     })
 
     it('should reject an exhausted code and allow sign-in after requesting another', async () => {
+      auth = createAuth(db, { generateSignInOtp: createOtpGenerator(), sendSignInEmail: mockSendSignInEmail })
       const email = 'attempts-regen@example.com'
       await insertExistingUser(email)
       await insertApprovedWaitlist(email)
@@ -244,9 +255,11 @@ describe('OTP Security Hardening', () => {
         body: { code: 'INVALID_OTP' },
       })
 
-      // NODE_ENV=test fixes the code, so regeneration is observable through the reset attempts, not code rotation.
-
       const { otp: newOtp, challengeToken: newToken } = await sendOtpWithChallenge(email)
+      expect(newOtp).not.toBe(otp)
+      await expect(signInWithChallenge(email, otp, newToken)).rejects.toMatchObject({
+        body: { code: 'INVALID_OTP' },
+      })
       const result = await signInWithChallenge(email, newOtp, newToken)
       expect(result.user).toBeDefined()
     })

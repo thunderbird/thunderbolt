@@ -31,6 +31,7 @@ import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
 import { createTestDb } from '@/test-utils/db'
+import { createOtpGenerator } from '@/test-utils/otp-generator'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -262,6 +263,8 @@ describe('Auth Waitlist Integration', () => {
 
   describe('OTP resend strategy (reuse)', () => {
     it('should reuse the same OTP on repeated sends instead of generating a new one', async () => {
+      const generateSignInOtp = mock(createOtpGenerator())
+      auth = createAuth(db, { generateSignInOtp, sendSignInEmail: mockSendSignInEmail })
       const email = 'reuse-test@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -288,6 +291,7 @@ describe('Auth Waitlist Integration', () => {
       const secondOtp = secondCall[0].otp
 
       expect(secondOtp).toBe(firstOtp)
+      expect(generateSignInOtp).toHaveBeenCalledTimes(1)
     })
 
     it('should not reset attempt counter when OTP is resent', async () => {
@@ -404,6 +408,7 @@ describe('Auth Waitlist Integration', () => {
       // Better Auth falls through to generate a fresh OTP with counter=0.
       // This is mitigated by the 15s cooldown on /waitlist/join and will be
       // further addressed by proof-of-work (THU-113).
+      auth = createAuth(db, { generateSignInOtp: createOtpGenerator(), sendSignInEmail: mockSendSignInEmail })
       const email = 'exhausted-resend@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -449,7 +454,6 @@ describe('Auth Waitlist Integration', () => {
         }),
       ).rejects.toMatchObject({ body: { code: 'INVALID_OTP' } })
 
-      // NODE_ENV=test fixes the code, so regeneration is observable through the reset attempts, not code rotation.
       // Resend after exhaustion — generates a fresh OTP with counter=0
       mockSendSignInEmail.mockClear()
       await auth.api.sendVerificationOTP({
@@ -457,9 +461,16 @@ describe('Auth Waitlist Integration', () => {
       })
       const secondCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
       const freshOtp = secondCall[0].otp
+      expect(freshOtp).not.toBe(firstOtp)
 
-      // The fresh OTP works — counter was reset to 0.
+      // The fresh OTP works after rejecting the old code.
       const freshChallengeToken = await createTestChallenge(db, email)
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
+          headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
+        }),
+      ).rejects.toMatchObject({ body: { code: 'INVALID_OTP' } })
       const result = await auth.api.signInEmailOTP({
         body: { email, otp: freshOtp },
         headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),

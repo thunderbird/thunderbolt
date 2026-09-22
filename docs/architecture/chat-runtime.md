@@ -105,10 +105,15 @@ regenerate (the Retry button, and `useChatAutomation`'s auto-run), collapses
 that backoff.
 
 Behind the built-in adapter there is a second routing decision, invisible to
-`src/chats/`: `src/acp/built-in-adapter.ts` runs Anthropic, OpenAI-wire and
-confidential Tinfoil models on the in-browser Pi harness (lazily imported so its
-weight stays off the chat entry chunk) and falls back to the legacy
-`aiFetchStreamingResponse` pipeline otherwise. Turn telemetry records which one
+`src/chats/`: `src/acp/built-in-adapter.ts` runs some models on the in-browser
+Pi harness (lazily imported so its weight stays off the chat entry chunk) and
+falls back to the legacy `aiFetchStreamingResponse` pipeline for the rest.
+`isPiModelCandidate` (`built-in-adapter.ts:165`) decides: the provider must be
+one of `anthropic`, `openai`, `custom`, `openrouter`, `thunderbolt` or
+`tinfoil`, **and** the model must either be `tinfoil` or declare
+`toolUsage !== 0`. So a model from a Pi-capable provider still takes the legacy
+path when it reports no tool usage, and Tinfoil takes Pi unconditionally because
+confidential inference has no legacy fallback. Turn telemetry records which one
 ran as the turn's `engine`, whose only values are `pi` and `legacy`; an ACP turn
 emits no turn telemetry and carries `acp` in its debug-transcript metadata
 instead.

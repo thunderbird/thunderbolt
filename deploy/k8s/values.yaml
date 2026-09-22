@@ -164,11 +164,16 @@ keycloak:
   # Convenient for local/preview environments and docs walk-throughs; set to
   # `false` for production deployments. Default `true` preserves current behavior.
   #
-  # IMPORTANT: realm import is one-shot. Keycloak only imports the realm JSON
-  # on first boot of an empty database, so flipping this from `true` to `false`
-  # on an existing cluster does NOT delete a previously-imported demo user.
-  # To remove an already-imported demo user, delete it from the Keycloak admin
-  # console (Users → demo → Delete), or destroy the Keycloak storage volume.
+  # Realm import happens only on boot of an empty database, so flipping this to
+  # `false` does not remove a demo user from a running Keycloak. In THIS chart
+  # that is a restart away: `templates/keycloak.yaml` runs `start-dev
+  # --import-realm` with no `KC_DB`, so Keycloak keeps its embedded database
+  # inside the pod and the only mounted volume is the read-only realm ConfigMap.
+  # Rolling the deployment therefore starts from an empty database and re-imports
+  # the realm — which applies this flag, and equally discards anything else
+  # configured in Keycloak since the pod started. On a Keycloak backed by a
+  # persistent database, delete the user in the admin console instead
+  # (Users → demo → Delete).
   demoUserEnabled: true
   # -- Pod annotations applied to keycloak pods. Merged with top-level
   # `podAnnotations`; these win on key conflict.

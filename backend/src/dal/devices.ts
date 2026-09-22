@@ -301,8 +301,8 @@ export const listEnvelopeCapableDeviceIds = async (database: QueryableDatabase, 
  * cached, so it can still read future writes sealed under the SAME primary DEK.
  * What actually locks it out is minting a NEW primary DEK it never had. So the
  * clock is the `created_at` of the CURRENT primary DEK row (the one
- * `encryption_metadata.primary_key_id` points at): a device revoked before that
- * mint is still awaiting lockout.
+ * `encryption_metadata.primary_key_id` points at): a device revoked after that
+ * mint is still awaiting lockout, because no newer mint has locked it out.
  *
  * `MAX(updated_at)` over the keyring was WRONG here: every AK rotation re-wraps
  * every row and bumps `updated_at`, including a recovery-phrase change, which

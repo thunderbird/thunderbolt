@@ -47,6 +47,7 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
+import { resolveEmailLocale } from '@/emails/i18n'
 import {
   type ChallengeOperation,
   type RecoverySlotRequest,
@@ -443,6 +444,7 @@ export const createEncryptionRoutes = (
             email: sessionUser!.email,
             code: otp,
             deviceName: caller.device.name ?? 'Unknown device',
+            locale: resolveEmailLocale(request.headers.get('X-App-Language')),
           })
           lastStepUpRequestAt.set(userId, Date.now())
           return { ok: true as const }
@@ -783,6 +785,7 @@ export const createEncryptionRoutes = (
           return mapEncryptionError(err, set)
         }
 
+        const locale = resolveEmailLocale(request.headers.get('X-App-Language'))
         if (accessGained === 'bootstrap') {
           notifyBestEffort(
             'encryption-set-up',
@@ -790,6 +793,7 @@ export const createEncryptionRoutes = (
               email: sessionUser!.email,
               deviceName: device.name ?? 'Unknown device',
               upgraded: false,
+              locale,
             }),
           )
         } else if (accessGained === 'recovery') {
@@ -798,6 +802,7 @@ export const createEncryptionRoutes = (
             notifications.sendRecoveryPhraseUsed({
               email: sessionUser!.email,
               deviceName: device.name ?? 'Unknown device',
+              locale,
             }),
           )
         } else if (accessGained === 'approved') {
@@ -808,6 +813,7 @@ export const createEncryptionRoutes = (
               email: sessionUser!.email,
               deviceName: device.name ?? 'Unknown device',
               approverName: approver?.name ?? 'Unknown device',
+              locale,
             }),
           )
         }
@@ -1217,6 +1223,7 @@ export const createEncryptionRoutes = (
               notifications.sendRecoveryPhraseChanged({
                 email: sessionUser!.email,
                 deviceName: caller.device.name ?? 'Unknown device',
+                locale: resolveEmailLocale(request.headers.get('X-App-Language')),
               }),
             )
           }
@@ -1341,6 +1348,7 @@ export const createEncryptionRoutes = (
               email: sessionUser!.email,
               deviceName: caller.device.name ?? 'Unknown device',
               upgraded: true,
+              locale: resolveEmailLocale(request.headers.get('X-App-Language')),
             }),
           )
 
@@ -1543,7 +1551,7 @@ export const createEncryptionRoutes = (
     // tombstone so the caller can remove it explicitly before pairing again.
     .post(
       '/devices/bridge',
-      async ({ body, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
         const result = await database.transaction(async (tx) => {
@@ -1580,7 +1588,11 @@ export const createEncryptionRoutes = (
         if (result.isNew) {
           notifyBestEffort(
             'bridge-connected',
-            notifications.sendBridgeConnected({ email: sessionUser!.email, deviceName: name }),
+            notifications.sendBridgeConnected({
+              email: sessionUser!.email,
+              deviceName: name,
+              locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+            }),
           )
         }
         return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }

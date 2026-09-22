@@ -131,6 +131,10 @@ msgstr ""
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr ""
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
+msgstr ""
+
 #: src/components/pending-device-modal.tsx
 msgid "A new device is requesting access to your encrypted data."
 msgstr ""
@@ -530,6 +534,7 @@ msgstr ""
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
 #: src/components/telemetry-required-modal.tsx
 #: src/components/telemetry-warning-modal.tsx
@@ -539,6 +544,7 @@ msgstr ""
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -560,6 +566,14 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Change recovery phrase"
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change Recovery Phrase"
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change your recovery phrase?"
 msgstr ""
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
@@ -1573,6 +1587,10 @@ msgstr ""
 msgid "Enables location-based responses"
 msgstr ""
 
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Endpoint"
 msgstr ""
@@ -1611,6 +1629,10 @@ msgstr ""
 
 #: src/components/onboarding/onboarding-name-step.tsx
 msgid "Enter your name"
+msgstr ""
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Enter your verification code"
 msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
@@ -1746,11 +1768,24 @@ msgstr ""
 msgid "Food & drink"
 msgstr ""
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Generate a new phrase"
+msgstr ""
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Generate new phrase"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr ""
 
 #: src/components/chat/inline-artifact-card.tsx
+#: src/components/step-up-code-dialog.tsx
 msgid "Generating…"
 msgstr ""
 
@@ -2032,6 +2067,7 @@ msgid "Last seen {lastSeen}"
 msgstr ""
 
 #: src/components/download-app-banner-desktop.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr ""
@@ -2847,6 +2883,10 @@ msgstr ""
 msgid "Resend as text"
 msgstr ""
 
+#: src/components/step-up-code-dialog.tsx
+msgid "Resend code"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Resend Email"
 msgstr ""
@@ -2951,6 +2991,11 @@ msgstr ""
 
 #: src/settings/connections/index.tsx
 msgid "Save failed"
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Save your new recovery phrase"
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -3097,6 +3142,10 @@ msgstr ""
 msgid "Select…"
 msgstr ""
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Send code"
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
 msgstr ""
@@ -3107,6 +3156,11 @@ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Sending code…"
 msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
@@ -3879,6 +3933,7 @@ msgstr ""
 
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Try again"
 msgstr ""
 
@@ -4112,6 +4167,10 @@ msgstr ""
 msgid "We sent a code to <0>{email}</0>"
 msgstr ""
 
+#: src/components/step-up-code-dialog.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
 msgstr ""
@@ -4212,6 +4271,10 @@ msgstr ""
 
 #: src/settings/preferences.tsx
 msgid "Would you like to update your units based on the new location?"
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
 msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
@@ -4345,8 +4408,16 @@ msgstr ""
 #~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 #~ msgstr ""
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Your recovery phrase was never saved"
 msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx

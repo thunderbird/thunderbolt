@@ -34,7 +34,10 @@ export default defineConfig({
   catalogs: [
     {
       path: '<rootDir>/src/emails/locales/{locale}/messages',
-      include: ['src/emails'],
+      // `src/emails` holds the templates; `security-notifications` (THU-875) is
+      // the one send helper that authors its email prose outside a template, so
+      // it is scanned too — otherwise its `i18n._` strings never reach the catalog.
+      include: ['src/emails', 'src/lib/security-notifications.tsx'],
       exclude: ['**/*.test.*'],
     },
   ],

@@ -14,6 +14,92 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/security-code.tsx
+#: src/lib/security-notifications.tsx
+msgid "Confirm your recovery phrase change"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your recovery phrase was changed"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your Thunderbolt recovery phrase was changed from device “{deviceName}”. Your previous phrase no longer works."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "A new device was added to your account"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Device “{deviceName}” was approved from device “{approverName}” and now has access to your encrypted data."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, revoke it from Settings → Devices."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your recovery phrase was used"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Device “{deviceName}” was connected to your account using your recovery phrase."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, your recovery phrase is compromised — revoke that device from Settings → Devices and change your phrase immediately."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "A bridge device was connected to your account"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Bridge device “{deviceName}” was connected to your account and now has access to your encrypted data."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your account encryption was upgraded"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "End-to-end encryption was set up"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "Your account was upgraded to the new encryption scheme from device “{deviceName}”, and a new recovery phrase was created."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "End-to-end encryption was set up for your account from device “{deviceName}”, and a recovery phrase was created."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/security-notifications.tsx
+msgid "If this wasn’t you, secure your account now: revoke unknown devices from Settings → Devices."
+msgstr ""
+
+#. js-lingui-explicit-id
 #: src/emails/email-layout.tsx
 msgid "Questions?"
 msgstr ""
@@ -41,6 +127,16 @@ msgstr ""
 #. js-lingui-explicit-id
 #: src/emails/magic-link.tsx
 msgid "Sign In"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/security-code.tsx
+msgid "A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue."
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/emails/security-code.tsx
+msgid "If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices."
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { RecoveryKeyDialog } from '@/components/recovery-key-dialog'
 import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
@@ -36,6 +37,7 @@ type ChangeRecoveryKeySectionProps = {
  * device — there is no key to rotate before then.
  */
 export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecoveryKeySectionProps) => {
+  const { t } = useLingui()
   const ready = useE2eeReady()
   const {
     status,
@@ -61,23 +63,29 @@ export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecovery
 
       <div className="flex flex-col gap-2">
         <label htmlFor="change-recovery-key-button" className="text-sm font-medium">
-          Change Recovery Phrase
+          <Trans>Change Recovery Phrase</Trans>
         </label>
         <p className="text-sm text-muted-foreground">
-          Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working.
+          <Trans>
+            Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working.
+          </Trans>
         </p>
         <Button id="change-recovery-key-button" variant="secondary" onClick={openConfirm}>
-          Change Recovery Phrase
+          <Trans>Change Recovery Phrase</Trans>
         </Button>
       </div>
 
       <AlertDialog open={status === 'confirming'} onOpenChange={(open) => !open && !isBusy && cancel()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Change your recovery phrase?</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Change your recovery phrase?</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop
-              working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code.
+              <Trans>
+                A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop
+                working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code.
+              </Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error && (
@@ -89,9 +97,11 @@ export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecovery
             {/* Radix's Cancel closes the dialog itself; a plain Button for the
                 confirm keeps the dialog open while the request is in flight
                 (and doubles as the retry affordance on failure). */}
-            <AlertDialogCancel disabled={isBusy}>Cancel</AlertDialogCancel>
-            <Button onClick={requestStepUpCode} isLoading={isBusy} loadingLabel="Sending code…">
-              {error ? 'Try again' : 'Send code'}
+            <AlertDialogCancel disabled={isBusy}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
+            <Button onClick={requestStepUpCode} isLoading={isBusy} loadingLabel={t`Sending code…`}>
+              {error ? t`Try again` : t`Send code`}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -111,8 +121,8 @@ export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecovery
       <RecoveryKeyDialog
         open={status === 'display'}
         recoveryKey={newRecoveryKey ?? ''}
-        title="Save your new recovery phrase"
-        description="Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+        title={t`Save your new recovery phrase`}
+        description={t`Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again.`}
         onDone={done}
       />
     </>

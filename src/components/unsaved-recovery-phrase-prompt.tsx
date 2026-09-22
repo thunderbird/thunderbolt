@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -33,6 +34,7 @@ import { useChangeRecoveryKey } from '@/settings/encryption/use-change-recovery-
  * launch until a phrase is actually confirmed.
  */
 export const UnsavedRecoveryPhrasePrompt = () => {
+  const { t } = useLingui()
   const pending = useRecoveryPhrasePending()
   const [dismissed, setDismissed] = useState(false)
   const { status, newRecoveryKey, isBusy, otp, error, setOtp, requestStepUpCode, confirmRotation, cancel, done } =
@@ -58,11 +60,15 @@ export const UnsavedRecoveryPhrasePrompt = () => {
       <AlertDialog open={wasPendingAtStartup && pending && !dismissed && status !== 'display' && status !== 'stepUp'}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Your recovery phrase was never saved</AlertDialogTitle>
+            <AlertDialogTitle>
+              <Trans>Your recovery phrase was never saved</Trans>
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you
-              cannot recover your data if you lose access to this device. The previous phrase cannot be shown again —
-              generate a new one now.
+              <Trans>
+                Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you
+                cannot recover your data if you lose access to this device. The previous phrase cannot be shown again —
+                generate a new one now.
+              </Trans>
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error && (
@@ -72,12 +78,12 @@ export const UnsavedRecoveryPhrasePrompt = () => {
           )}
           <AlertDialogFooter>
             <Button variant="ghost" onClick={() => setDismissed(true)} disabled={isBusy}>
-              Later
+              <Trans>Later</Trans>
             </Button>
             {/* Phrase changes are step-up-gated (THU-875): email a code first,
                 then StepUpCodeDialog below runs the gated rotation. */}
             <AlertDialogAction onClick={requestStepUpCode} disabled={isBusy}>
-              {isBusy ? 'Sending code…' : 'Generate a new phrase'}
+              {isBusy ? t`Sending code…` : t`Generate a new phrase`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -97,8 +103,8 @@ export const UnsavedRecoveryPhrasePrompt = () => {
       <RecoveryKeyDialog
         open={status === 'display'}
         recoveryKey={newRecoveryKey ?? ''}
-        title="Save your new recovery phrase"
-        description="Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+        title={t`Save your new recovery phrase`}
+        description={t`Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again.`}
         onDone={done}
       />
     </>

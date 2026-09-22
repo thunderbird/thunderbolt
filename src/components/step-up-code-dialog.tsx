@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { stepUpOtpLength } from '@/settings/encryption/use-change-recovery-key'
@@ -41,55 +42,60 @@ export const StepUpCodeDialog = ({
   onResend,
   onSubmit,
   onCancel,
-}: StepUpCodeDialogProps) => (
-  <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && !isBusy && onCancel()}>
-    {/* sm:max-w-md matches the sign-in modal, so the OTP slots render at the
+}: StepUpCodeDialogProps) => {
+  const { t } = useLingui()
+  return (
+    <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && !isBusy && onCancel()}>
+      {/* sm:max-w-md matches the sign-in modal, so the OTP slots render at the
         exact width users already know from sign-in. */}
-    <AlertDialogContent className="sm:max-w-md">
-      <AlertDialogHeader>
-        <AlertDialogTitle>Enter your verification code</AlertDialogTitle>
-        <AlertDialogDescription>
-          We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <InputOTP
-        maxLength={stepUpOtpLength}
-        pattern={REGEXP_ONLY_DIGITS}
-        value={otp}
-        onChange={onOtpChange}
-        onComplete={onSubmit}
-        disabled={isBusy}
-        autoFocus
-        autoComplete="one-time-code"
-        data-1p-ignore
-        data-lpignore="true"
-        data-form-type="other"
-        containerClassName="w-full"
-      >
-        <InputOTPSlots />
-      </InputOTP>
-      {error && (
-        <p className="text-sm text-destructive text-center" role="alert">
-          {error}
-        </p>
-      )}
-      <AlertDialogFooter className="flex-col sm:flex-col">
-        <Button
-          className="w-full"
-          onClick={onSubmit}
-          isLoading={isBusy}
-          loadingLabel="Generating…"
-          disabled={otp.length !== stepUpOtpLength}
+      <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            <Trans>Enter your verification code</Trans>
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            <Trans>We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.</Trans>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <InputOTP
+          maxLength={stepUpOtpLength}
+          pattern={REGEXP_ONLY_DIGITS}
+          value={otp}
+          onChange={onOtpChange}
+          onComplete={onSubmit}
+          disabled={isBusy}
+          autoFocus
+          autoComplete="one-time-code"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
+          containerClassName="w-full"
         >
-          Generate new phrase
-        </Button>
-        <Button className="w-full" variant="ghost" onClick={onResend} disabled={isBusy}>
-          Resend code
-        </Button>
-        <AlertDialogCancel className="w-full" disabled={isBusy}>
-          Cancel
-        </AlertDialogCancel>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)
+          <InputOTPSlots />
+        </InputOTP>
+        {error && (
+          <p className="text-sm text-destructive text-center" role="alert">
+            {error}
+          </p>
+        )}
+        <AlertDialogFooter className="flex-col sm:flex-col">
+          <Button
+            className="w-full"
+            onClick={onSubmit}
+            isLoading={isBusy}
+            loadingLabel={t`Generating…`}
+            disabled={otp.length !== stepUpOtpLength}
+          >
+            <Trans>Generate new phrase</Trans>
+          </Button>
+          <Button className="w-full" variant="ghost" onClick={onResend} disabled={isBusy}>
+            <Trans>Resend code</Trans>
+          </Button>
+          <AlertDialogCancel className="w-full" disabled={isBusy}>
+            <Trans>Cancel</Trans>
+          </AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}

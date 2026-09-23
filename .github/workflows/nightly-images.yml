@@ -23,3 +23,16 @@ jobs:
     # auto-provided to reusable workflows via this job's `permissions` block. Passing
     # the whole repo secret set would violate least privilege for no benefit.
     uses: ./.github/workflows/images-publish.yml
+
+  notify:
+    needs: publish
+    if: ${{ always() && !cancelled() && (needs.publish.result == 'success' || needs.publish.result == 'failure') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.publish.result == 'failure' && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

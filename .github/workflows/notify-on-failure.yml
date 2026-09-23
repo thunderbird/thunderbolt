@@ -1,0 +1,43 @@
+name: Notify on failure
+
+on:
+  workflow_call:
+    inputs:
+      conclusion:
+        required: true
+        type: string
+    secrets:
+      LINEAR_API_KEY:
+        required: true
+      RESEND_API_KEY:
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  notify:
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: notify-on-failure-${{ github.workflow }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Notify
+        run: bun scripts/notify-on-failure.ts
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_CONCLUSION: ${{ inputs.conclusion }}
+          GITHUB_TOKEN: ${{ github.token }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_RECIPIENTS: ${{ vars.ALERT_RECIPIENTS }}

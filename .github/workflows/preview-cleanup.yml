@@ -68,7 +68,7 @@ jobs:
           # projects (e.g. thunderbird's accounts/prod, shared-services/prod). The
           # `^preview-pr-[0-9]+$` grep is then a second, belt-and-suspenders filter.
           # PULUMI_ACCESS_TOKEN env handles auth — no interactive login needed.
-          STACKS=$(pulumi stack ls --json 2>/dev/null | jq -r '.[].name' | grep -E '^preview-pr-[0-9]+$' || true)
+          STACKS=$(pulumi stack ls --json | jq -r '.[].name | select(test("^preview-pr-[0-9]+$"))')
 
           if [ -z "$STACKS" ]; then
             echo "No preview stacks found."
@@ -156,8 +156,8 @@ jobs:
 
   summary:
     needs: [find-orphans, destroy-orphans]
-    # Always run so dry-run reports are visible; ignore destroy status for reporting.
-    if: always()
+    # Report dry runs and attempted destroys, but no misleading count if the scan failed.
+    if: ${{ always() && needs.find-orphans.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Summarize
@@ -171,9 +171,22 @@ jobs:
             echo "Would destroy **${COUNT}** orphan stack(s):" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Preview cleanup" >> $GITHUB_STEP_SUMMARY
-            echo "Destroyed **${COUNT}** orphan stack(s):" >> $GITHUB_STEP_SUMMARY
+            echo "Selected **${COUNT}** orphan stack(s) for destruction:" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Stack | Reason |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "$ORPHANS" | jq -r '.[] | "| `\(.stack)` | \(.reason) |"' >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    needs: [find-orphans, destroy-orphans, summary]
+    if: ${{ always() && !cancelled() && (contains(needs.*.result, 'failure') || (needs.find-orphans.result == 'success' && needs.summary.result == 'success')) }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

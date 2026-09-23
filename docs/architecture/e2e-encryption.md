@@ -28,7 +28,7 @@ So even if the server is hacked, subpoenaed, or malicious, it holds a pile of lo
 ### Configuration & rollout
 
 - **Compatibility shim:** `GET /v1/config` still returns a hard-coded `e2eeEnabled: true`. Pre-cutover bundles gate `encodeForUpload` on that key, and `updateConfig` replaces the whole config object — omitting it would make a stale client read `undefined`, skip encryption, and upload plaintext into an account current clients treat as encrypted (permanently, since there is no re-encryption pass). The shim is safe to delete only once `MIN_APP_VERSION` is at or above the first always-on release, which 426s every client that still reads it.
-- **Rolling out always-on E2EE** to a deployment where encryption was previously optional is a **hard cutover**: raise `MIN_APP_VERSION` past the first always-on release so stranded pre-cutover clients get a 426 instead of silently uploading plaintext. Rows written as plaintext before the cutover stay plaintext — dual-read passes them through indefinitely.
+- **Rolling out always-on E2EE** to a deployment where encryption was previously optional is a **hard cutover**: raise `MIN_APP_VERSION` past the first always-on release so stranded pre-cutover clients get a 426 instead of silently uploading plaintext. Rows written as plaintext before the cutover stay plaintext **server-side** — there is no re-encryption pass — but they do not keep flowing to clients: dual-read passes through legacy `__enc:` v1 *ciphertext* indefinitely, whereas a plaintext value in a mapped column is suppressed by the [download quarantine](#download-quarantine) on any device holding an AK. So pre-cutover plaintext becomes invisible to newly-enrolled devices rather than being read in place; recovering it needs a re-encryption migration (the `reencrypt-agents` shape).
 - **Migration gate (`MIN_APP_VERSION`):** the v1 → v2 rollout is likewise a hard cutover guarded by the app-version gate (`createAppVersionMiddleware`, mounted before auth in `backend/src/index.ts`). When set, every non-exempt `/v1` request from a below-minimum client (including `GET /v1/powersync/token`) is rejected with **426 Upgrade Required** — fail-closed, so a missing `X-App-Version` is also rejected. See [powersync-account-devices.md](powersync-account-devices.md) and [Migration](#migration-v1--v2-absorb--permanent-dual-read).
 
 ---
@@ -456,7 +456,7 @@ sequenceDiagram
     N->>S: GET /encryption/challenge?operation=approve
     S-->>N: nonce
     N->>N: derive signing key from the canary seed → sign proof
-    N->>S: POST /devices/me/envelope (own envelope + proof) — self-approve
+    N->>S: POST /devices/{ownId}/envelope (own envelope + proof) — self-approve
     S-->>N: trusted — sync resumes
 ```
 
@@ -482,7 +482,7 @@ sequenceDiagram
     D->>D: generate random AK · mint DEK "0" wrapped under it
     D->>D: seal canary under the AK → derive signing key
     D->>D: wrap AK (+ primary pointer) for self + recovery keypair · sign attestation
-    D->>S: POST /devices/me/envelope — full bootstrap payload
+    D->>S: POST /devices/{ownId}/envelope — full bootstrap payload
     S->>S: one tx: metadata + keyring + envelope → device trusted
     S-->>D: trusted
     D->>D: store keyring first, AK last (AK present ⇒ keyring complete)
@@ -595,6 +595,7 @@ All routes are under `/v1`, require an authenticated session, and most also requ
 | `GET /encryption/canary` | session | Account metadata: canary (sealed under the AK), `kdf_salt`, signing public key, recovery slot + attestation, `key_version`, `primary_key_id`, `scheme_version`. The polling heartbeat for detecting rotations and the v2 flip. |
 | `GET /encryption/keys` / `/keys/:keyId` | non-revoked device | The wrapped-DEK keyring. Pending devices may read (recovery needs it); wrapped keys are inert without the AK. |
 | `GET /encryption/envelope-targets` | non-revoked device | The exact device set (+ public keys) a rotation/upgrade must cover — served from the same predicate the validator uses. |
+| `GET /encryption/lockout-pending` | non-revoked device | Device ids revoked whose AK rotation never landed, so any device can offer to finish the lockout. Device-gated on purpose — the canary route is not, and widening what an unbound session learns would deepen a tracked gap. |
 | `GET /encryption/challenge?operation=` | non-revoked device | Issue a single-use nonce bound to (user, operation, device), ~5 min TTL. |
 | `GET /devices/me/bind-challenge` | session | Single-use bind nonce, **sealed** to the claimed device's ECDH public key. |
 | `POST /devices/me/bind` | session + opened nonce | Consume the opened nonce and link the session to the device. |

@@ -645,9 +645,10 @@ const unwrapAKInternal = async (
 /**
  * WS3 — legacy CK absorption. Unwrap a v1 device envelope into the legacy
  * content key as an EXTRACTABLE AES-256-GCM key (usages encrypt/decrypt). The
- * envelope is byte-identical to a v2 AK envelope, so this shares
- * `deriveEnvelopeUnwrap`; only the wrapped payload is a CK (AES-GCM) rather than
- * an AK (AES-KW). Runs once, on the migrator, against the server-fetched
+ * envelope's OUTER structure is identical to a v2 AK envelope — same hybrid
+ * derivation, so this shares `deriveEnvelopeUnwrap` — and only the wrapped
+ * payload differs: a CK (AES-GCM) rather than an AK (AES-KW). Runs once, on the
+ * migrator, against the server-fetched
  * envelope. The result is extractable so the service layer can (a) `wrapDEK` it
  * into the keyring as the reserved `"v1"` slot and (b) feed it to
  * `recoverCanarySecretV1` for the D1 possession proof.

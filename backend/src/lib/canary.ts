@@ -73,7 +73,12 @@ export const verifyPossessionProof = async (
  * Steps (all fail closed):
  * 1. Consume the nonce — a single atomic UPDATE rejects replay and expiry.
  *    Consumption happens before signature verification, so a failed attempt
- *    burns the nonce (the client simply fetches a fresh one).
+ *    burns the nonce — but only as durably as the caller's transaction. Callers
+ *    that pass a `txDb` and throw on failure (envelope, rotate, upgrade) roll
+ *    the consumption back with everything else, so the nonce survives a failed
+ *    verify and stays usable until its own TTL. That is intentional: it keeps a
+ *    rotation that failed mid-flight retryable, and a nonce is a replay guard,
+ *    not a guess budget — the signature is what cannot be forged.
  * 2. Check the nonce row's binding matches BOTH the proof fields and the
  *    caller-supplied expectations (operation + deviceId + userId).
  * 3. Verify the P-256/SHA-256 signature over the shared payload encoding

@@ -26,9 +26,15 @@ ENCRYPTION DESIGN
   Not reportable as a new finding.
 - Decrypt-failure handling writes through rather than failing closed, because
   PowerSync retries would poison the sync loop. Deferred by design.
-- DEK "0" is retained forever and the canary is anchored to it. Deliberate: the
-  keys endpoint has no canary fields, so anchoring to "current primary" would
-  break verification after a rotation.
+- DEK "0" is retained forever, never pruned, so historical rows stay readable.
+  That retention on its own is by design and not a finding.
+  The canary is NO LONGER anchored to it. Since THU-872 the canary seed is
+  sealed under the AK (`canaryAAD(userId, '__ak')`, `src/crypto/canary.ts`),
+  which is what makes a revoked device lose the derived signing key: the AK is
+  replaced on every rotation and never delivered to a revoked device. So "the
+  canary is anchored to DEK 0", or "a revoked device can re-derive the current
+  signing key", is a REAL regression now, not a false positive; do not suppress
+  it. Gated by `e2e/e2ee/attacks/revoked-device-signing-key.spec.ts`.
 - E2EE is UNCONDITIONAL since THU-868. `E2EE_ENABLED` and `settings.e2eeEnabled`
   are gone, and device trust is always enforced — `markDeviceTrusted` has one call
   site, inside the envelope-storing transaction, so a device that can sync is

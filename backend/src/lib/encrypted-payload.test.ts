@@ -58,7 +58,7 @@ describe('findPlaintextViolation', () => {
     expect(violation).toBeNull()
   })
 
-  it('now rejects plaintext in agents columns (THU-870 mapped them)', () => {
+  it('rejects plaintext in agents columns', () => {
     const violation = findPlaintextViolation([
       { op: 'PUT', type: 'agents', id: 'a-1', data: { name: 'plain', url: 'wss://example.test' } },
     ])

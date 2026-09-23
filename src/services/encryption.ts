@@ -249,7 +249,7 @@ export class AKAnchorError extends Error {
 
 /**
  * The authenticated user's account id — the `rowId` bound into the canary AAD
- * (`canaryAAD(userId, keyId)`, Track 0). Read from the cached Better Auth
+ * (`canaryAAD(userId, akCanaryAnchor)`). Read from the cached Better Auth
  * session (same localStorage identity source the bearer token uses offline).
  * The canary is written and verified on every device, so this MUST equal the
  * backend's `sessionUser.id`; it fails loud if unavailable.
@@ -932,7 +932,14 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
     orgEnvelope: await buildOrgEnvelope(extractableAK),
   })
 
-  // AK stored LAST so its presence always implies a complete local keyring.
+  // AK stored LAST, so a crash mid-sequence leaves no AK rather than an AK with
+  // a half-written keyring. Local to bootstrap — recovery and the rotations
+  // (`recoverWithKey`, `runAKRotation`, `followToV2`) deliberately store the AK
+  // first and stage the keyring after it, because they re-anchor under a key the
+  // device has already verified. So "AK present ⇒ keyring complete" is NOT an
+  // account-wide invariant, and `hasStagedAK` does not rely on it being one: it
+  // arms the quarantine, and an AK with an incomplete keyring makes `codec.encode`
+  // fail CLOSED, which is the safe side of that window.
   await storeDEK(initialKeyId, wrappedKey)
   await storePrimaryKeyId(initialKeyId)
   await storeKeyVersion(1)
@@ -1385,10 +1392,10 @@ const runAKRotation = async (
   // retryable error. That is correct — nothing should rotate under an
   // unverifiable AK — but for `revokeDeviceAndRotate` the revoke has already
   // committed by this point, so the device ends up revoked without being
-  // cryptographically locked out and `src/settings/devices.tsx` hides the
-  // button that would resume it. That is THU-871's open "no retry affordance"
-  // residual, reached by one more route; it is not made worse here beyond
-  // adding the route.
+  // cryptographically locked out. That half-finished state is recoverable and
+  // visible: the server derives the pending set (`GET /encryption/lockout-pending`)
+  // so any device can offer to finish it, and `src/settings/devices.tsx` gates
+  // its resume action on that list rather than on `revokedAt`.
   if (strandedKeyIds.includes(initialKeyId)) {
     await refreshAKForRotation(httpClient)
     throw new RotationStaleError()

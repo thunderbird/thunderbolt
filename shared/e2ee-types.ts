@@ -4,8 +4,18 @@
 
 /**
  * E2EE v2 shared contracts — the single source of truth for every byte-level
- * contract that crosses the frontend/backend boundary (Track 0 of the
- * consolidated plan, docs/architecture/e2ee-v2-plan.md).
+ * contract that crosses the frontend/backend boundary.
+ *
+ * HISTORICAL MARKERS: `Track N`, `plan §N`, `WS1`, `D1`, `Decision B` and the
+ * like, here and across `src/services/encryption.ts` and
+ * `backend/src/api/encryption.ts`, refer to the consolidated build plan. That
+ * document was a working artifact and is NOT in this repo — do not go looking
+ * for `docs/architecture/e2ee-v2-plan.md`. Treat the markers as provenance, not
+ * as references you can follow. The living documentation is
+ * `docs/architecture/e2e-encryption.md` (as-built) and
+ * `docs/architecture/e2ee-threat-model.md` (claims and adversaries); anything a
+ * marker was carrying that still matters should be inlined here as it is
+ * touched.
  *
  * Imported by BOTH the frontend (`@shared/e2ee-types`) and the backend
  * (`@shared/e2ee-types`, wired into backend/tsconfig.json `include`). Keep this
@@ -245,9 +255,13 @@ export const encodeAAD = (table: string, column: string, rowId: string, keyId: K
 /**
  * Canary AAD — Decision (c). The canary is a synthetic v2 value not tied to any
  * real table row, so it binds a FIXED tuple: table `__meta`, column `canary`,
- * rowId = the account's userId, and the primary DEK's keyId. Single source of
- * truth — `createCanary`/`verifyCanary` (Track B) MUST build canary AAD through
- * this helper, never inline, or verification silently fails across devices.
+ * rowId = the account's userId, and a key-slot label. That last component is
+ * `akCanaryAnchor` (`'__ak'`) for every v2 canary — see it for why the anchor is
+ * the AK and not a DEK id; a real keyId appears here only for the historical
+ * DEK-anchored blobs the attack specs reconstruct. Single source of truth —
+ * `mintCanary`/`unwrapCanaryKey` (`src/crypto/canary.ts`) MUST build canary AAD
+ * through this helper, never inline, or verification silently fails across
+ * devices.
  */
 export const canaryAAD = (userId: string, keyId: KeyId): Uint8Array => encodeAAD('__meta', 'canary', userId, keyId)
 

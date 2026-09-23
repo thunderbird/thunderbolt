@@ -87,8 +87,8 @@ export const mintKeyringAnchor = async (dek0: CryptoKey): Promise<KeyringAnchor>
  * witness must not be rewritable on any signal the server can induce.
  *
  * Returns `false` rather than throwing on a wrong key: an authentication-tag
- * failure is the expected negative result here, not an exception. Mirrors
- * `verifyCanary`.
+ * failure is the expected negative result here, not an exception. Same contract
+ * as `unwrapCanaryKey`'s caller-side check in `src/crypto/canary.ts`.
  */
 export const keyringAnchorOpens = async (anchor: KeyringAnchor, dek0: CryptoKey): Promise<boolean> => {
   if (anchor.version !== anchorVersion) {

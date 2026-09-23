@@ -155,7 +155,7 @@ falsify, not a fact.
   `shared/e2ee-types.ts:61`; the server rejects anything outside it — see C15), so reintroducing one
   is a wire-format change rather than a comment someone implements. (2) A2 never holds another
   account's AK in openable form: only wrappings to that account's own device public keys, plus the
-  org-escrow envelope, which is C8's deliberate operator concession. (3) A `user_id` never changes
+  org-escrow envelope, which is C11's deliberate operator concession. (3) A `user_id` never changes
   under a live account — `onLinkAccount` (`backend/src/auth/auth.ts:414`) deletes the anonymous user
   outright, so no ciphertext survives an id change. Any change to (1) or (2) invalidates this claim
   and must revisit the AAD. **Adding the account id to the AAD was considered and rejected**
@@ -212,8 +212,9 @@ falsify, not a fact.
   Residual: the pointer is unauthenticated server data, so a **grammar-valid** rollback is still
   open — A2 reporting `"0"` on an account that rotated to `"1"` puts new writes back under a DEK a
   revoked device copied while trusted. Same shape as C5's guarantee, different label. Nothing the
-  client holds can settle it: the canary, the one artifact a server cannot forge, is deliberately
-  bound to DEK `"0"` for the life of the account, so it attests nothing about which DEK is primary.
+  client holds can settle it: the canary, the one artifact a server cannot forge, is sealed under the
+  AK (THU-872), and a pointer rollback leaves the AK untouched — so the canary opens exactly as it
+  should and attests nothing about which DEK is primary.
   THU-893's wrap AAD does not reach it — nothing is mislabelled in a rollback; the row is genuine
   under its own honest name. What the AAD settles is the `key_id → material` half: a signed pointer
   can no longer be satisfied by an honest-looking relabel, so what remains for THU-890 is
@@ -221,10 +222,14 @@ falsify, not a fact.
   monotonic local guard's blind spot (a freshly enrolled device has no baseline).
 - **C5 — Revocation is cryptographic.** After `revokeDeviceAndRotate`, the removed device cannot
   read new data, cannot obtain the new AK or primary DEK, **and cannot authorize any further trust
-  operation.** Note the coupling: the ECDSA signing keypair is derived from the canary secret, which
-  lives under a DEK the revoked device may still hold. That retained key is why the third clause now
-  rests on device—session binding rather than on the proof (THU-873): a proof shows *account* key
-  possession, so only `session.deviceId` establishes *which* device is calling. A revoked device can
+  operation.** Note the coupling: the ECDSA signing keypair is derived from the canary, which since
+  THU-872 is sealed under the **AK** rather than under DEK `"0"` — so the removed device loses the
+  signing identity the moment the AK rotation lands, and not a step before it. The third clause
+  nonetheless rests on device–session binding rather than on the proof (THU-873), for two reasons the
+  re-anchor does not touch. First, a proof shows *account* key possession, so only `session.deviceId`
+  establishes *which* device is calling. Second, revoke and AK rotation are separate steps: between
+  them the removed device still holds the current AK and canary, which is exactly the state
+  `LockoutIncompleteError` reports and the finish-lockout path exists to close. A revoked device can
   rebind only as itself, and that row is revoked. Revocation also has to SURVIVE a hostile keyring:
   one unopenable `wrapped_keys` row used to throw the whole AK rotation, so a single planted row
   voided the cryptographic half of every future revocation, permanently (THU-871 — see C15).
@@ -271,17 +276,20 @@ falsify, not a fact.
   slot re-anchoring (which needs only the public half) cannot be abused for takeover: the anchor
   carries a **recovery attestation** (THU-865) signed with the epoch's canary-derived signing key, and
   a rotating device verifies it against a key it derives from its OWN keyring before wrapping. A2
-  cannot forge that signature — it does not hold DEK `"0"`, so it cannot learn the canary secret — and
-  a missing or bad attestation fails closed, so a substituted anchor aborts the rotation instead of
-  escrowing the next AK. Gated by `attacks/recovery-slot-substitution.spec.ts` (green, untagged).
-  **Four residuals.** (1) A2 can *withhold* the attestation and thereby block AK rotation —
-  degradation, not takeover, same shape as THU-871. (2) The signing key derives from the canary
-  secret, and a **revoked** device retains DEK `"0"` and can still fetch the current canary (THU-872),
-  so A2 colluding with a revoked device can forge an attestation; closing THU-872 closes this too.
-  (3) `revokeDeviceAndRotate` verifies the anchor only at its third step, so under this attack the
-  revoke and DEK rotation commit while the AK never rotates — pre-flighting the check is follow-up.
+  cannot forge that signature — it does not hold the AK, so it cannot open the canary and cannot
+  learn the seed the signing key derives from — and a missing or bad attestation fails closed, so a
+  substituted anchor aborts the rotation instead of escrowing the next AK. Gated by
+  `attacks/recovery-slot-substitution.spec.ts` (green, untagged).
+  **Four residuals, one since closed.** (1) A2 can *withhold* the attestation and thereby block AK
+  rotation — degradation, not takeover, same shape as THU-871. (2) **CLOSED (THU-872).** The signing
+  key derives from the canary, which used to be anchored to DEK `"0"` — retained forever and still
+  held by a revoked device, so that device re-derived every future signing key and A2 colluding with
+  it could forge an attestation. The canary is now sealed under the AK, which no revocation leaves
+  behind; gated permanently by `attacks/revoked-device-signing-key.spec.ts` (green, tag retired).
+  (3) `revokeDeviceAndRotate` verifies the anchor only at its third step, so under (1) the revoke and
+  DEK rotation commit while the AK never rotates — pre-flighting the check is follow-up.
   (4) **The verifying key is only as trustworthy as the AK it derives through.** "A key it derives
-  from its OWN keyring" means AK → DEK `"0"` → canary → signing key, and until THU-869 the AK itself
+  from its OWN keyring" means AK → canary → signing key, and until THU-869 the AK itself
   was adoptable from a server-minted envelope — so A2 substituted the AK and thereby owned the key
   that verifies the attestation, with no collusion needed. Closed for an **established** device,
   which now refuses an AK that cannot reproduce its DEK `"0"` witness (see C2). NOT closed for a
@@ -368,8 +376,10 @@ falsify, not a fact.
   Residuals: passed-through rows accumulate, so an operator-gated cleanup is still owed; a keyring
   grown past `maxKeyringKeys` rows cannot be re-wrapped in one atomic request, which A2 can still
   reach through direct DB writes; and a revocation whose rotation fails leaves the device revoked but
-  not cryptographically locked out, with no in-UI affordance to resume it
-  (`src/settings/devices.tsx` hides the button once `revokedAt` is set).
+  not cryptographically locked out until someone finishes the lockout. That last one is no longer
+  silent: the server derives the pending set (`GET /encryption/lockout-pending`) so **any** device
+  sees it, and `src/settings/devices.tsx` offers a resume action for each — it is gated on that list,
+  not on `revokedAt`. What remains is the window itself, not the absence of a way out of it.
 
 ## v1 regressions
 

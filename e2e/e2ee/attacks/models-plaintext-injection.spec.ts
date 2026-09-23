@@ -97,8 +97,9 @@ test.describe.serial('THU-874 — models plaintext injection', () => {
       .toBe(true)
 
     // SECURE assertion: the injected plaintext name must be quarantined, not
-    // shown. Fails today (the download path persists it verbatim, so the marker
-    // is now rendered); passes once THU-874 makes the download path map-aware.
+    // shown. This passes since THU-874 made the download path map-aware; before
+    // it, the path persisted the value verbatim and the marker rendered. The
+    // tag is retired, so this is now the permanent regression gate.
     await expect(page.getByText(nameMarker)).toBeHidden()
   })
 })

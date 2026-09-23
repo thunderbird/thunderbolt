@@ -9,38 +9,39 @@ import { encryptedColumnsMap, type EncryptionCodec, type EncryptionContext } fro
 
 type SyncEntry = SyncDataBucket['data'][number]
 
-/**
- * Plaintext quarantine (THU-874) — the download-side half of the plaintext
- * contract. On an account whose device holds an Account Key, every legitimate
- * writer encrypts the columns in `encryptedColumnsMap` on upload and the server
- * rejects plaintext uploads to them — so a NON-`__enc:` value arriving in a
- * mapped column via sync has exactly one possible author: the server itself.
- * Persisting it verbatim is what let a malicious server steer inference to its
- * own endpoint (and exfiltrate a BYOK key) by rewriting a `models.url`.
- *
- * Returns the first offending column, or null when the entry is clean.
- *
- * The acceptance rule is any `__enc:` prefix — v2 AND legacy v1, which the
- * reserved `"v1"` DEK slot decrypts forever (dual-read). Non-string, non-null
- * values are violations too: legitimate current writers only ever produce
- * `__enc:` strings or null in mapped columns, and a smuggled JSON object or
- * number would surface as a usable plaintext string through the SQLite view.
- *
- * What this deliberately does NOT change:
- * - Decryption stays map-blind (`decryptEntry` scans for the prefix), so a
- *   stale bundle still decrypts columns it does not know are encrypted. The
- *   map is consulted only to DETECT plaintext — and there a stale bundle fails
- *   open per unknown column, converging when the app updates.
- * - A2 deleting rows, or deleting-and-reinserting them as plaintext (the
- *   reinsert is quarantined), can hide data. That is a plain DoS the server
- *   has anyway — it can withhold any row outright — never a disclosure.
- *
- * RULE THIS CREATES for future schema work: adding a column or table to
- * `encryptedColumnsMap` when plaintext rows for it already exist server-side
- * requires a re-encryption pass in the same change (see the agents re-save,
- * `src/lib/reencrypt-agents.ts`), or established accounts' historical rows will
- * be quarantined on every device enrolled afterwards.
- */
+// =============================================================================
+// Plaintext quarantine (THU-874)
+//
+// The download-side half of the plaintext contract. On an account whose device
+// holds an Account Key, every legitimate writer encrypts the columns in
+// `encryptedColumnsMap` on upload and the server rejects plaintext uploads to
+// them — so a NON-`__enc:` value arriving in a mapped column via sync has
+// exactly one possible author: the server itself. Persisting it verbatim is
+// what let a malicious server steer inference to its own endpoint (and
+// exfiltrate a BYOK key) by rewriting a `models.url`.
+//
+// The acceptance rule is any `__enc:` prefix — v2 AND legacy v1, which the
+// reserved `"v1"` DEK slot decrypts forever (dual-read). Non-string, non-null
+// values are violations too: legitimate current writers only ever produce
+// `__enc:` strings or null in mapped columns, and a smuggled JSON object or
+// number would surface as a usable plaintext string through the SQLite view.
+//
+// What this deliberately does NOT change:
+// - Decryption stays map-blind (`decryptEntry` scans for the prefix), so a
+//   stale bundle still decrypts columns it does not know are encrypted. The
+//   map is consulted only to DETECT plaintext — and there a stale bundle fails
+//   open per unknown column, converging when the app updates.
+// - A2 deleting rows, or deleting-and-reinserting them as plaintext (the
+//   reinsert is quarantined), can hide data. That is a plain DoS the server
+//   has anyway — it can withhold any row outright — never a disclosure.
+//
+// RULE THIS CREATES for future schema work: adding a column or table to
+// `encryptedColumnsMap` when plaintext rows for it already exist server-side
+// requires a re-encryption pass in the same change (see the agents re-save,
+// `src/lib/data-migrations/reencrypt-agents.ts`), or established accounts'
+// historical rows will be quarantined on every device enrolled afterwards.
+// =============================================================================
+
 /**
  * Tables whose mapped columns have a LEGITIMATE plaintext writer and are
  * therefore not quarantined. `devices`: the row is inserted by the backend at
@@ -55,6 +56,11 @@ type SyncEntry = SyncDataBucket['data'][number]
  */
 const quarantineExemptTables = new Set(['devices'])
 
+/**
+ * The first mapped column in this entry carrying a non-`__enc:` value, or null
+ * when the entry is clean. See the quarantine banner above for the rule and its
+ * deliberate exclusions.
+ */
 const plaintextViolation = (entry: SyncEntry, row: Record<string, unknown>): string | null => {
   if (entry.op !== 'PUT') {
     return null

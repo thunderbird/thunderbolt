@@ -849,7 +849,7 @@ describe('encryption service (v2)', () => {
       storedKeyPair = kp
       const legacyCK = await generateDEK(true)
       await seedV2Account(server, kp, legacyCK)
-      storedAK = await unwrapDeviceAK(server) // helper below
+      storedAK = await unwrapDeviceAK(server)
       // Stage DEK 0 locally so getCanarySecret can build the proof.
       storedDEKs.set('0', server.wrappedKeys.get('0')!)
 

@@ -33,11 +33,13 @@
  *
  * So what this spec proves is an ungated-metadata leak, not the vulnerability.
  * THU-872's actual break — a revoked device re-deriving the account's CURRENT
- * signing key from retained DEK-0, because the signing key is
- * `HKDF(canary secret)` and the canary is permanently anchored to a DEK that
- * never re-keys — is witnessed by
- * `attacks/revoked-device-signing-key.spec.ts`. **That** spec is the one whose
- * tag tracks THU-872, and it is deliberately unaffected by gating this route.
+ * signing key from retained DEK-0, because the signing key was
+ * `HKDF(canary secret)` and the canary was anchored to a DEK that never
+ * re-keys — is FIXED: the canary is now sealed under the AK, and
+ * `attacks/revoked-device-signing-key.spec.ts` is its permanent regression
+ * gate. That fix is deliberately unaffected by whether this route is gated,
+ * and gating this route would not have prevented the break (a colluding server
+ * reads the row directly).
  *
  * Do NOT chase this by widening the session sweep either: `session.device_id` is
  * nullable by design (a session exists before any device can register, and
@@ -52,7 +54,8 @@
  * Expected-failure (Option C): this asserts the SECURE behavior — a device-less
  * session is refused the canary ciphertext — and is tagged `test.fail()` because
  * the route is ungated today. Once the route is gated, drop the tag for a
- * permanent regression gate on the metadata leak, and leave THU-872 open.
+ * permanent regression gate on the metadata leak. THU-872 is independent of
+ * that and already closed.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/canary-route-ungated.spec.ts

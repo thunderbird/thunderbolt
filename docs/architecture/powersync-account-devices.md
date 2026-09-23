@@ -96,8 +96,13 @@ See [powersync-service/README.md](../../powersync-service/README.md) for full st
 POWERSYNC_URL=http://localhost:8080
 POWERSYNC_JWT_SECRET=powersync-dev-secret-change-in-production
 POWERSYNC_JWT_KID=powersync-dev
-POWERSYNC_TOKEN_EXPIRY_SECONDS=3600
+POWERSYNC_TOKEN_EXPIRY_SECONDS=300
 ```
+
+`POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to `300`. It is not just a refresh interval: PowerSync
+verifies the JWT locally and never calls back to the backend, so a revoked device keeps reading the
+sync stream until its current token expires — the TTL **is** the post-revocation read window.
+
 
 The local `config/config.yaml` uses HS256 with the same secret (base64) and kid so backend-issued tokens are accepted.
 

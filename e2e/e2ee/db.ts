@@ -245,8 +245,8 @@ export const waitForSchemeV2 = async (userId: string, expectedKeyIds: readonly s
     }
     const keyIds = Object.keys(snapshot.wrappedKeys).sort()
     return [...expectedKeyIds].sort().every((id) => keyIds.includes(id)) ? true : null
-    // Concurrent migrators reload and race their app-init flip; allow headroom for
-    // the winner's CAS upgrade to land on a loaded CI runner.
+    // The 150s budget below: concurrent migrators reload and race their app-init
+    // flip, so allow headroom for the winner's CAS upgrade on a loaded CI runner.
   }, 150_000)
 }
 
@@ -653,7 +653,6 @@ export const getCanaryCiphertext = async (userId: string): Promise<{ iv: string;
   return { iv: row.canary_iv, ctext: row.canary_ctext }
 }
 
-/** Live sessions for one device — revocation is expected to leave none. */
 /**
  * Delete every session row for a user, simulating the expiry that leaves a
  * device holding its keys and device id but no valid session (THU-873). The
@@ -671,6 +670,7 @@ export const getSessionDeviceIds = async (userId: string): Promise<Array<string 
   return rows.map((row) => row.device_id)
 }
 
+/** Live sessions for one device — revocation is expected to leave none. */
 export const countDeviceSessions = async (userId: string, deviceId: string): Promise<number> => {
   const rows = await sql<{ count: number }[]>`
     SELECT COUNT(*)::int AS count

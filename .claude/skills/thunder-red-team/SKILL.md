@@ -79,7 +79,7 @@ multiple passes inline in a single context.
 | `backend` | `backend/src/api/encryption.ts`, `account.ts`, `dal/encryption.ts`, `lib/canary.ts`, schema + migrations — authz, IDOR, nonce lifecycle, advisory locks, CAS, device-state transitions |
 | `migration` | `src/services/encryption.ts` migrator/follower, `POST /upgrade`, `e2e/e2ee/migration.spec.ts` — interleavings, crash points, hostile flip, 409 path, continuity check, data loss |
 | `lifecycle` | approve / deny / revoke / rotate / recover / change-phrase across services, hooks, backend. Focus `C5`, `C6`, `C9` |
-| `escrow` | `backend/src/lib/org-escrow.ts`, `scripts/org-escrow-*.ts`, `wrapAKForOrg`, config + rollout. Focus `C11`, `C2` |
+| `escrow` | `scripts/org-escrow-*.ts`, `wrapAKForOrg` + `buildOrgEnvelope` (`src/crypto/primitives.ts`, `src/services/encryption.ts`), the server side in `backend/src/{api/encryption.ts,api/config.ts,dal/encryption.ts,config/settings.ts}`, config + rollout. Focus `C11`, `C2` |
 | `sync` | `src/db/powersync/*`, key-request responder, SharedWorker vs main thread, IndexedDB at rest, sign-out teardown, log/telemetry leaks. Focus `C1`, `C10`, `C13`, adversary `A6` |
 | `sweep` | Take `A2` (malicious server) alone and walk **every** response the client trusts, end to end. Exists to catch what the file-scoped passes miss |
 

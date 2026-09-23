@@ -1,0 +1,108 @@
+# Apps and Sync
+
+Each install keeps its own copy of your data and works on its own. Sync is optional, and you control it per device.
+
+> **Preview.** Cross-device sync is in preview, and the optional end-to-end encryption that protects synced data has not yet had a cryptography audit.
+
+## Where Thunderbolt runs
+
+| Platform              | How you get it                                                                         | Notes                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Web                   | Open the app URL in Chrome, Edge, Firefox, or Safari                                   | Current browser versions, served over HTTPS                                    |
+| macOS, Windows, Linux | Installers on the [releases page](https://github.com/thunderbird/thunderbolt/releases) | Checks for updates and prompts to restart when one is ready                    |
+| iOS, Android          | Apple TestFlight and Google Play internal testing                                      | Not yet listed publicly in the app stores                                      |
+| Terminal              | `thunderbolt` command line client                                                      | Apple Silicon Macs and Linux. Installable from the desktop app, or from source |
+
+All of them run the same application, so the feature set does not change between them. Layout and a few platform conveniences (window controls, keyboard insets, the system tray) differ.
+
+Two things to know before a rollout:
+
+- **HTTPS is required for the web app.** It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin.
+- **Automatic desktop updates only reach the official builds.** They ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
+
+### Pointing the apps at your own backend
+
+The server address is fixed when a client is built. There is no field inside the app for it.
+
+- **Self-hosted web**: build the web client with `VITE_THUNDERBOLT_CLOUD_URL` set to your backend, then serve it. See the [configuration reference](../self-hosting/configuration.md).
+- **Desktop and mobile**: the published builds point at the public service. To hand your team desktop or mobile apps that talk to your own backend, build and distribute them yourself.
+
+## Data lives on the device first
+
+Every install holds a full local database. Reads and writes go there first, so the interface does not wait on the network.
+
+If sync is off, that local copy is the only copy. Chat content leaves the device only when it is sent to a model or to a tool you have connected.
+
+## Turning sync on and off
+
+Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**.
+
+- A device that has never been signed in has sync off. Anonymous sessions cannot sync at all.
+- Signing in from inside the app turns sync on for that device. Where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes.
+- You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
+
+Whether the data is encrypted on the server is the operator's decision, not the user's. With encryption off, synced data is stored on the server in a form the server can read, and every device the account signs in on syncs immediately. With encryption on, each new device has to be approved before it can read anything.
+
+## What syncs and what does not
+
+| Syncs across your devices                 | Stays on the one device                                    |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| Chats and messages                        | Model API keys                                             |
+| Tasks, saved prompts, skills, automations | Tokens for connected accounts such as Google and Microsoft |
+| Projects and their instructions           | MCP server addresses and their credentials                 |
+| Model entries and per-model tuning        | External agent credentials                                 |
+| External agent entries                    | Attached file contents                                     |
+| Settings and preferences                  | The local search index and sign-in token                   |
+| The list of devices on the account        |                                                            |
+
+Two consequences:
+
+- **Credentials never sync.** A model or an external agent you add on one device appears on the others, but each device needs its own key or token entered locally. MCP servers do not appear at all on the other devices, because an address without its credential is one they could not connect to anyway. This is deliberate: a replicated secret is a secret in one more place.
+- **File attachments do not follow a chat.** The file's name travels with the message, the bytes do not. On another device the message shows the filename, and the model does not receive the file. Attached files are also absent from a data export.
+
+## Adding a device
+
+Install or open Thunderbolt on the new device and sign in with the same account. With encryption off, the device starts syncing immediately. With encryption on, it registers as pending and shows an "Approve this device" screen until you either:
+
+- Approve it from an already trusted device under **Settings → Devices**, or
+- Enter the 24 word recovery key you saved when you first set up sync.
+
+The pending device checks for approval on its own, so nothing needs re-entering once you approve.
+
+Device identity:
+
+- Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows". They cannot be renamed.
+- Every tab of the same browser profile is one device. A different browser, or a different profile in the same browser, is a separate device.
+- An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit; revoked ones do not either.
+- Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in has no entry in the list.
+
+## Approving, denying, and revoking
+
+**Settings → Devices** lists pending and trusted devices, with the time each was last seen.
+
+| Action      | Where it applies          | What happens                                                                         |
+| ----------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| **Approve** | A device pending approval | The device gains access to the account's encrypted data and starts syncing           |
+| **Deny**    | A device pending approval | The request is dismissed. That device can ask again                                  |
+| **Revoke**  | Any other trusted device  | Sessions on it are ended, it stops syncing, and it can no longer decrypt synced data |
+| **Remove**  | A revoked bridge only     | Deletes the record so the same bridge can be paired again                            |
+
+Revoking is not reversible. The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out. To bring it back, sign in again and approve it as a new device. Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
+
+Deleting the account is separate and wider: every signed-in device clears its local data the next time it reaches the server.
+
+Full detail on approval, recovery keys, and revocation is in [Devices and Accounts](../admin/devices.md).
+
+## Working offline
+
+| Works with no network                              | Needs the network                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------- |
+| Reading and searching existing chats               | Model responses, unless the model runs on the same machine or network |
+| Writing messages, editing tasks, changing settings | Web search and other connected tools                                  |
+|                                                    | Signing in, sync itself, and approving a device                       |
+
+Changes made offline are saved locally and queued. On reconnect the device uploads them and pulls down what it missed. If the same record was changed on two devices while one was offline, the most recent write wins for that record.
+
+One browser caveat: the web app has to be fetched from the server before it can run, so a browser with no connection cannot open it cold. The desktop and mobile apps start offline.
+
+Under **Settings → Devices**, a last seen time that has stopped moving means that device has not reconnected yet, and its queued changes are still on it.

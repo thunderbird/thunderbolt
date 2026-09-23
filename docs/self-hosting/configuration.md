@@ -1,282 +1,325 @@
 # Configuration
 
-Environment variables, validated with Zod on startup against the schema in [backend/src/config/settings.ts](../../backend/src/config/settings.ts). Misconfiguration fails at boot, never silently, and variables marked **required** must be set before the backend will start.
+Thunderbolt's API is configured entirely through environment variables. A missing or invalid required value stops the process at startup with a message naming the setting.
 
-```bash
-cp backend/.env.example backend/.env
-```
+Settings are read once at startup. **Restart the API after any change.**
+
+## Start here: the minimum
+
+| Variable               | What it is                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`   | Random string used to sign sessions. Generate with `openssl rand -hex 32`.                                          |
+| `DATABASE_URL`         | PostgreSQL connection string.                                                                                       |
+| One model provider key | `ANTHROPIC_API_KEY`, `FIREWORKS_API_KEY`, or `TINFOIL_API_KEY`. Without one, the API runs but cannot answer a chat. |
+
+Add `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` if you want conversations to sync between a user's devices. Everything else below has a working default.
+
+## Core URLs and server
+
+Get these wrong and sign-in redirects land on the wrong host.
+
+| Variable          | Default                                        | What it does                                                                                      |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `APP_URL`         | `http://localhost:1420`                        | Public URL where users reach the web app. Used in emails and redirects.                           |
+| `BETTER_AUTH_URL` | `http://localhost:8000`                        | Public URL of the API itself. Must match the redirect URI registered with your identity provider. |
+| `PORT`            | `8000`                                         | Port the API listens on.                                                                          |
+| `HOST`            | `0.0.0.0` in production, `localhost` otherwise | Network interface to bind. The published container image runs in production mode.                 |
+| `WEB_CONCURRENCY` | One worker per CPU in production, 1 otherwise  | Number of worker processes.                                                                       |
+| `LOG_LEVEL`       | `INFO`                                         | `DEBUG`, `INFO`, `WARN`, or `ERROR`.                                                              |
+| `SWAGGER_ENABLED` | `false`                                        | Publishes an interactive API browser at `/v1/swagger`. Leave off in production.                   |
 
 ## Database
 
-| Variable             | Default                                                       | Required | Description                                                                                                                                                                                            |
-| -------------------- | ------------------------------------------------------------- | :------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`       | dev: `postgresql://postgres:postgres@localhost:5433/postgres` | **yes**  | Postgres connection string. Outside `NODE_ENV=development` the backend throws at import when it is unset and the driver is `postgres`.                                                                 |
-| `DATABASE_DRIVER`    | `postgres`                                                    |          | Set to `pglite` for an embedded Postgres without Docker. PowerSync cannot replicate from PGlite, so sync is off.                                                                                       |
-| `SKIP_MIGRATIONS`    | unset                                                         |          | `true` skips the startup migration run, for deployments that migrate out of band.                                                                                                                      |
-| `MIGRATIONS_DIR`     | `<cwd>/drizzle`                                               |          | Override the Drizzle migrations folder.                                                                                                                                                                |
-| `POSTGRES_ADMIN_URL` | none                                                          |          | Read by `deploy/docker/backend-entrypoint.sh`, not the backend. When set, the entrypoint creates the logical database named in `DATABASE_URL` before migrating (the shared-Postgres PR-preview model). |
+Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When sync is turned on, the database also holds the server-side copy of each user's synced data (conversations, settings, devices and the rest). With end-to-end encryption on, that copy is ciphertext your servers cannot read.
 
-Under `DATABASE_DRIVER=pglite`, `DATABASE_URL` is a _data directory path_ (`.pglite/data` in `backend/.env.example`). A value still shaped like a connection string falls back to in-memory with a warning, so an inherited `postgresql://…` cannot bootstrap a data directory inside `backend/` ([db/client.ts](../../backend/src/db/client.ts)).
+| Variable             | Default    | What it does                                                                                                                                                                |
+| -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`       | none       | PostgreSQL connection string. Required.                                                                                                                                     |
+| `DATABASE_DRIVER`    | `postgres` | Set to `pglite` to run an embedded database with no PostgreSQL server. Sync does not work in this mode.                                                                     |
+| `SKIP_MIGRATIONS`    | unset      | `true` skips the schema migration that normally runs at startup, for deployments that migrate separately.                                                                   |
+| `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
+| `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
+
+The embedded `pglite` driver is for evaluation and testing only. The sync service cannot replicate from it, so multi-device sync is off, and under this driver `DATABASE_URL` is a directory path rather than a connection string. Leave a `postgresql://` value in place and it falls back to an in-memory database with only a warning in the log, losing everything on restart.
 
 ## Authentication
 
-| Variable                     | Default                                           | Required | Description                                                                                                                                                                                                              |
-| ---------------------------- | ------------------------------------------------- | :------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AUTH_MODE`                  | `consumer`                                        |          | `consumer` for magic-link + Google/Microsoft OAuth, `oidc` for OIDC SSO, `saml` for SAML SSO                                                                                                                             |
-| `AUTH_ALLOW_ANONYMOUS`       | `false`                                           |          | Registers Better Auth's anonymous plugin. Off by default, so `/v1/api/auth/sign-in/anonymous` returns 404. Pair it with the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay or the UI offers a route the server rejects    |
-| `BETTER_AUTH_SECRET`         | none                                              | **yes**  | Non-empty string used to sign sessions. Generate with `openssl rand -hex 32`.                                                                                                                                            |
-| `BETTER_AUTH_URL`            | `http://localhost:8000`                           |          | Public URL the backend is served at; used in OAuth redirects                                                                                                                                                             |
-| `TRUSTED_ORIGINS`            | `http://localhost:1420,tauri://localhost`         |          | Comma-separated origins Better Auth accepts for callbacks and SSO discovery/metadata. Read straight from `process.env`, outside the Zod schema; `tauri://localhost` and the `BETTER_AUTH_URL` origin are always appended |
-| `GOOGLE_CLIENT_ID`           | none                                              |          | Google OAuth client ID (consumer mode)                                                                                                                                                                                   |
-| `GOOGLE_CLIENT_SECRET`       | none                                              |          | Google OAuth client secret                                                                                                                                                                                               |
-| `MICROSOFT_CLIENT_ID`        | none                                              |          | Microsoft OAuth client ID                                                                                                                                                                                                |
-| `MICROSOFT_CLIENT_SECRET`    | none                                              |          | Microsoft OAuth client secret                                                                                                                                                                                            |
-| `OIDC_ISSUER`                | none                                              |          | OIDC issuer URL (required when `AUTH_MODE=oidc`)                                                                                                                                                                         |
-| `OIDC_DISCOVERY_URL`         | `${OIDC_ISSUER}/.well-known/openid-configuration` |          | Override the discovery endpoint when the backend reaches the IdP at an internal hostname (e.g. `http://keycloak:8080/...`) but tokens are issued with a browser-facing hostname                                          |
-| `OIDC_CLIENT_ID`             | none                                              |          | OIDC client ID                                                                                                                                                                                                           |
-| `OIDC_CLIENT_SECRET`         | none                                              |          | OIDC client secret                                                                                                                                                                                                       |
-| `SAML_ENTRY_POINT`           | none                                              |          | SAML IdP SSO URL (required when `AUTH_MODE=saml`)                                                                                                                                                                        |
-| `SAML_ENTITY_ID`             | none                                              |          | SP entity ID. Must match the SAML client ID in the IdP (e.g. `thunderbolt-saml-sp`)                                                                                                                                      |
-| `SAML_IDP_ISSUER`            | none                                              |          | IdP entity ID / issuer (e.g. `https://keycloak.example.com/realms/thunderbolt`)                                                                                                                                          |
-| `SAML_CERT`                  | none                                              |          | SAML IdP signing certificate (base64, no PEM headers)                                                                                                                                                                    |
-| `DEVICE_AUTH_EXPIRES_IN`     | `30m`                                             |          | How long a device/user code from the RFC 8628 grant (used by the `thunderbolt` CLI) stays valid. Better Auth time string                                                                                                 |
-| `DEVICE_AUTH_INTERVAL`       | `5s`                                              |          | Minimum polling gap the device grant asks clients to respect                                                                                                                                                             |
-| `API_KEY_DEFAULT_EXPIRES_IN` | `7776000`                                         |          | Default personal-access-token lifetime in seconds (90 days). Callers may request another supported lifetime at creation                                                                                                  |
+Pick one mode.
 
-Consumer mode uses [Better Auth](https://better-auth.com) magic links (email OTP); add the OAuth credentials above for a provider. SSO modes delegate entirely to an OIDC or SAML IdP (Keycloak by default): [OIDC local dev](../../backend/docs/oidc-local-dev.md), [SAML local dev](../../backend/docs/saml-local-dev.md).
+| Variable               | Default                                   | What it does                                                                                                           |
+| ---------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`            | `consumer`                                | `consumer` for email codes plus optional Google and Microsoft sign-in, `oidc` or `saml` for enterprise SSO.            |
+| `AUTH_ALLOW_ANONYMOUS` | `false`                                   | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
+| `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
 
-**Important:** under `oidc` or `saml`, the IdP origin must appear in `TRUSTED_ORIGINS` (a Better Auth setting, not `CORS_ORIGINS`), which the SSO plugin validates discovery/metadata URLs against. Containerized deploys need _both_ the browser-facing issuer origin and the internal discovery host: `deploy/docker-compose.yml` sets app origin, `http://localhost:${KEYCLOAK_PORT}`, and `http://keycloak:8080`.
+`tauri://localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
 
-### Desktop OAuth redirect URIs
+### OIDC
 
-The desktop app binds a loopback server to the first free port of `17421`, `17422`, `17423` (`src-tauri/src/commands.rs`). Register all three in your Google and Microsoft consoles; the web redirect alone means a hard sign-in failure on desktop. There is deliberately no random-port fallback, since providers reject unregistered ports: `bind_to_port` (`src-tauri/src/oauth_server.rs`) fails locally instead.
+| Variable             | Default                                           | What it does                                                                                              |
+| -------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `OIDC_ISSUER`        | none                                              | Issuer URL. Required when `AUTH_MODE=oidc`.                                                               |
+| `OIDC_CLIENT_ID`     | none                                              | Client ID registered with your provider.                                                                  |
+| `OIDC_CLIENT_SECRET` | none                                              | Client secret.                                                                                            |
+| `OIDC_DISCOVERY_URL` | `${OIDC_ISSUER}/.well-known/openid-configuration` | Override when the API reaches the provider at an internal hostname but tokens carry a browser-facing one. |
 
-## AI Provider Keys
+Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 
-Set any subset; the app exposes each provider whose key is present.
+### SAML
 
-| Variable              | Default                           | Description                                                                                     |
-| --------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`   | none                              | Anthropic (Claude)                                                                              |
-| `FIREWORKS_API_KEY`   | none                              | Fireworks                                                                                       |
-| `EXA_API_KEY`         | none                              | Exa search (web-grounded retrieval)                                                             |
-| `TINFOIL_API_KEY`     | none                              | Tinfoil, the confidential (attested enclave) tier                                               |
-| `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | Enclave base URL. Include the `/v1` prefix; Tinfoil's OpenAI-compatible endpoints live under it |
+| Variable           | Default | What it does                                                                      |
+| ------------------ | ------- | --------------------------------------------------------------------------------- |
+| `SAML_ENTRY_POINT` | none    | Identity provider sign-on URL. Required when `AUTH_MODE=saml`.                    |
+| `SAML_ENTITY_ID`   | none    | Service provider entity ID. Must match the SAML client in your identity provider. |
+| `SAML_IDP_ISSUER`  | none    | Identity provider entity ID.                                                      |
+| `SAML_CERT`        | none    | Identity provider signing certificate, base64, without PEM headers.               |
 
-Other base URLs are fixed in `backend/src/inference/client.ts`; no backend variable takes your own OpenAI-compatible endpoint. User-level keys (OpenAI, OpenRouter, and so on) are configured in the app, not as backend env vars: a local Ollama or llama.cpp server goes in the Add Model form's `custom` provider, which prefills `http://localhost:11434/v1`.
+Under either SSO mode, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
-### Managed inference quotas
+### Social sign-in
 
-Rolling spend windows, positive integers in cents, spent against by `backend/src/inference/usage-ledger.ts`. Anonymous sessions get a smaller allowance because they cost an attacker nothing to create.
+Optional in consumer mode.
 
-| Variable                              | Default |
-| ------------------------------------- | ------- |
-| `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`  | `10`    |
-| `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`  | `60`    |
-| `INFERENCE_QUOTA_REGISTERED_5H_CENTS` | `1500`  |
-| `INFERENCE_QUOTA_REGISTERED_7D_CENTS` | `7500`  |
+| Variable                  | Default |
+| ------------------------- | ------- |
+| `GOOGLE_CLIENT_ID`        | none    |
+| `GOOGLE_CLIENT_SECRET`    | none    |
+| `MICROSOFT_CLIENT_ID`     | none    |
+| `MICROSOFT_CLIENT_SECRET` | none    |
+
+The desktop app completes social sign-in through a local callback and tries ports `17421`, `17422`, and `17423` in that order. Register `http://localhost:17421`, `http://localhost:17422` and `http://localhost:17423` as redirect URIs with Google and Microsoft alongside your web one, or desktop sign-in fails.
+
+### Tokens and CLI sign-in
+
+Users create personal access tokens in the app so a script or the command-line client can call the API without an interactive sign-in.
+
+| Variable                     | Default             | What it does                                                                                     |
+| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `API_KEY_DEFAULT_EXPIRES_IN` | `7776000` (90 days) | Default lifetime, in seconds, of a personal access token.                                        |
+| `DEVICE_AUTH_EXPIRES_IN`     | `30m`               | How long a code shown by the command-line client stays valid. Digits plus `s`, `m`, `h`, or `d`. |
+| `DEVICE_AUTH_INTERVAL`       | `5s`                | Minimum interval at which the command-line client polls while waiting for approval.              |
+
+## Models and inference
+
+Set a key for each provider you want available. A provider with no key does not appear.
+
+| Variable              | Default                           | Provider                                                                                                               |
+| --------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | none                              | Anthropic (Claude)                                                                                                     |
+| `FIREWORKS_API_KEY`   | none                              | Fireworks                                                                                                              |
+| `TINFOIL_API_KEY`     | none                              | Tinfoil, a confidential tier that runs models inside verified secure hardware, so the provider cannot read the request |
+| `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | Tinfoil endpoint. Keep the `/v1` suffix.                                                                               |
+| `EXA_API_KEY`         | none                              | Exa, used for web search                                                                                               |
+
+There is no server setting for a custom OpenAI-compatible endpoint. Users add those themselves in the app, including a local Ollama or llama.cpp server, and those keys stay on the user's device.
+
+The list of models offered by default is built into the API image rather than configured, so changing it means rebuilding.
+
+### Spending limits
+
+Rolling caps on what the API will spend on model usage per user, in whole cents. Anonymous sessions get less because they cost an attacker nothing to create.
+
+| Variable                              | Default | Window                     |
+| ------------------------------------- | ------- | -------------------------- |
+| `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`  | `10`    | Anonymous, rolling 5 hours |
+| `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`  | `60`    | Anonymous, rolling 7 days  |
+| `INFERENCE_QUOTA_REGISTERED_5H_CENTS` | `1500`  | Signed in, rolling 5 hours |
+| `INFERENCE_QUOTA_REGISTERED_7D_CENTS` | `7500`  | Signed in, rolling 7 days  |
+
+| Variable                        | Default | What it does                                                                                   |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `CONFIDENTIAL_API_KEYS_ENABLED` | `false` | Allows a personal access token, not just an interactive session, to use the confidential tier. |
+
+## Sync
+
+The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync: the app still works, on one device at a time.
+
+| Variable                         | Default | What it does                                                                                    |
+| -------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `POWERSYNC_URL`                  | none    | URL of your sync service, as the browser reaches it. Setting it turns sync on.                  |
+| `POWERSYNC_JWT_SECRET`           | none    | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.             |
+| `POWERSYNC_JWT_KID`              | none    | Key identifier, so the sync service can pick between secrets during a rotation.                 |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  | Lifetime, in seconds, of the short-lived token each client uses to connect to the sync service. |
+
+The secret and key identifier must match the values your sync service loads. If you generate the secret in base64, use base64url: a value containing `+`, `/`, or `=` is rejected by the sync service.
+
+```bash
+openssl rand 32 | basenc --base64url --wrap=0
+```
+
+## Encryption
+
+| Variable       | Default | What it does                                                                                                                          |
+| -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `E2EE_ENABLED` | `false` | Encrypts message content on the device before it syncs, and requires each new device to be approved from one the user already trusts. |
+
+With this on, your servers hold ciphertext they cannot read, so an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost. There is no matching client setting: apps read this from the API at startup.
 
 ## Agents
 
-| Variable                 | Default | Description                                                                                                                             |
-| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLED_AGENTS`         | `""`    | Comma-separated agent IDs `GET /v1/agents` may expose. Empty means no filter: every registered provider is listed                       |
-| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` makes the discovery response report `allowCustomAgents: false` and the UI hides "Add Custom Agent"                              |
-| `DISABLE_BUILT_IN_AGENT` | `false` | `true` omits the built-in Thunderbolt agent from the client's agent list, for deployments shipping only their own agents                |
-| `HAYSTACK_BASE_URL`      | none    | Deepset/Haystack API base URL                                                                                                           |
-| `HAYSTACK_API_KEY`       | none    | Deepset/Haystack API key                                                                                                                |
-| `HAYSTACK_WORKSPACE`     | none    | Deepset workspace slug; request URLs are `${base}/api/v1/workspaces/${workspace}/...`                                                   |
-| `HAYSTACK_PIPELINES`     | none    | JSON array of pipeline descriptors: `[{id, name, pipelineName, pipelineId, description?, icon?, supportedContent?}]`, validated on read |
+An agent is the assistant behind a conversation. Thunderbolt ships a built-in one and can offer others alongside it, including ones you run yourself.
 
-## PowerSync
+| Variable                 | Default | What it does                                                                                       |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `ENABLED_AGENTS`         | empty   | Comma-separated list of agent identifiers to offer. Empty means offer all of them.                 |
+| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the option to add a custom agent, so users cannot connect their own.                 |
+| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 
-| Variable                         | Default | Required         | Description                                                               |
-| -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | none    | yes (for sync)   | URL of the PowerSync service (e.g. `http://localhost:8080` for local dev) |
-| `POWERSYNC_JWT_SECRET`           | none    | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
-| `POWERSYNC_JWT_KID`              | none    |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                    |
+### Deepset (Haystack) pipelines
 
-`POWERSYNC_JWT_SECRET` must match the `k` value PowerSync loads at runtime, and `POWERSYNC_JWT_KID` its `PS_JWT_KID`. Self-hosted, `deploy/config/powersync-config.yaml` reads the secret from `PS_JWT_KEY_BASE64` (base64 of the raw secret); local dev bakes both into `powersync-service/config/config.yaml`.
+Optional. Offers Deepset Cloud pipelines, which answer from your own document collections, as agents users can pick.
 
-## End-to-End Encryption
+| Variable             | What it is                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `HAYSTACK_BASE_URL`  | Deepset Cloud API root, for example `https://api.cloud.deepset.ai`.                                                                       |
+| `HAYSTACK_API_KEY`   | Deepset API token.                                                                                                                        |
+| `HAYSTACK_WORKSPACE` | Workspace slug.                                                                                                                           |
+| `HAYSTACK_PIPELINES` | JSON array of pipelines to offer. Each entry needs `id`, `name`, `pipelineName`, and `pipelineId`; `description` and `icon` are optional. |
 
-| Variable       | Default | Description                                                                                                                                     |
-| -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2EE_ENABLED` | `false` | Requires each device to complete the trust flow before it may sync, and turns on client-side encryption of the columns in `encryptedColumnsMap` |
+```bash
+HAYSTACK_PIPELINES='[{"id":"rag-chat","name":"RAG Chat","pipelineName":"rag-chat-pipeline","pipelineId":"15cf8b39-0000-0000-0000-000000000000","icon":"book"}]'
+```
 
-There is no frontend variable: the client reads this from `GET /v1/config`. See [E2E encryption](../architecture/e2e-encryption.md) for the key hierarchy, approval flows, and covered columns.
+A pipeline that should accept file attachments needs `"supportedContent": {"text": true, "files": true}`. Without it attachments never reach the pipeline, and it is run as a chat pipeline rather than a generative one.
 
-## CORS
+## Email
 
-| Variable                 | Default                                                          | Description                                                                              |
-| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                                            |
-| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                                                        |
-| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                                                     |
-| `CORS_ALLOW_HEADERS`     | `""`                                                             | Legacy, unused. No production mount reads it; kept for backward compat and test fixtures |
-| `CORS_EXPOSE_HEADERS`    | _(see [settings.ts](../../backend/src/config/settings.ts))_      | Response headers the browser makes readable to client code                               |
+Sign-in codes and waitlist notices are sent through Resend.
 
-Request headers need no configuration: both mounts ([cors.ts](../../backend/src/config/cors.ts), [posthog/routes.ts](../../backend/src/posthog/routes.ts)) pass `allowedHeaders: true` and echo back `Access-Control-Request-Headers`. `/v1/proxy` requires that, forwarding arbitrary upstream headers as `X-Proxy-Passthrough-*`, where a static allowlist would break preflight on every new provider header.
+| Variable                    | Default | What it does                                                                                                          |
+| --------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `RESEND_API_KEY`            | none    | Sending key. Leave it unset and no mail is sent, which is fine for local evaluation but breaks sign-in in production. |
+| `RESEND_MONITORING_API_KEY` | none    | Separate full-access key used only by the email health check, so the sending key can stay send-only.                  |
 
-Response headers are the opposite: a browser can only read one named in `CORS_EXPOSE_HEADERS`.
+Mail goes out from a Thunderbolt-owned sender address, `hello@auth.thunderbolt.io`. There is no setting to change the from address or to use your own SMTP server.
 
-## Analytics
+## Browser access
 
-| Variable          | Default                    | Description                                  |
-| ----------------- | -------------------------- | -------------------------------------------- |
-| `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                    |
-| `POSTHOG_API_KEY` | none                       | Leave unset to disable server-side analytics |
+| Variable                 | Default                                                          | What it does                                            |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------- |
+| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Comma-separated exact origins. No wildcards.            |
+| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies.                      |
+| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Permitted HTTP methods.                                 |
+| `CORS_EXPOSE_HEADERS`    | a protocol-required list                                         | Response headers the browser makes readable to the app. |
 
-[TELEMETRY.md](../../TELEMETRY.md) lists every event the client emits.
+Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read.
 
-## Debug Transcripts
+`CORS_ALLOW_HEADERS` is accepted but ignored. It is kept so older configuration files keep working.
 
-Users can share a chat's debug transcript from the chat view; the button appears only when the relay is configured. Your deployment stores nothing, forwarding to the Thunderbolt intake under a key that identifies it.
+## Rate limiting
 
-| Variable                          | Default | Description                                                                           |
-| --------------------------------- | ------- | ------------------------------------------------------------------------------------- |
-| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty   | Base URL of the Thunderbolt API that receives transcripts. Set together with the key. |
-| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's client key, issued by the Thunderbolt team. Keep it server-side.    |
-| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Mounts the intake endpoint. Only the Thunderbolt-hosted deployment enables this.      |
+| Variable             | Default | What it does                                                                                                               |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED` | `true`  | Set `false` to switch limits off. Local evaluation only.                                                                   |
+| `TRUSTED_PROXY`      | empty   | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
 
-Contact the Thunderbolt team with a deployment name to obtain a key. Transcripts carry the user id and email your deployment knows (blank when anonymous), are retained by the Thunderbolt team, and survive deletion of the submitting account.
+Trusting the wrong proxy header lets any client claim any IP and walk past the limits. Leave `TRUSTED_PROXY` empty unless you know exactly what sits in front of the API.
 
-## Rate Limiting and Proxy Trust
+The limits themselves are fixed and not configurable:
 
-| Variable             | Default | Description                                                                                               |
-| -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED` | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
-| `TRUSTED_PROXY`      | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
+| Request group           | Limit          |
+| ----------------------- | -------------- |
+| Chat responses          | 60 per minute  |
+| Usage receipts          | 100 per minute |
+| Tools, search, previews | 100 per minute |
+| Sign-in                 | 10 per minute  |
+| Debug transcript upload | 10 per hour    |
 
-Trusting the wrong proxy header lets a client spoof its IP to bypass the limit; leave it empty unless you know your edge.
+Signed-in requests are counted per user, anonymous ones per IP address. When an IP cannot be determined, those requests share a single bucket rather than skipping the limit, so the protection on sign-in and waitlist requests cannot quietly turn itself off.
 
-Limits are hardcoded per tier in [backend/src/middleware/rate-limit.ts](../../backend/src/middleware/rate-limit.ts):
+Rejections return `429` with a `Retry-After` header.
 
-| Tier                      | Limit          |
-| ------------------------- | -------------- |
-| `inference`               | 60 per minute  |
-| `receipt`                 | 100 per minute |
-| `pro`                     | 100 per minute |
-| `auth`                    | 10 per minute  |
-| `debug-transcript`        | 10 per hour    |
-| `debug-transcript-intake` | 600 per hour   |
+## Minimum client version
 
-Authenticated routes key on `user:<id>`, unauthenticated ones on the client IP. IP keying fails **closed**: unresolvable IPs share one `ip:unknown` bucket rather than skipping the limit, so the guard on abuse-prone endpoints (OTP send, waitlist join) cannot silently disable itself; identifiable clients keep their own bucket and are unaffected.
+| Variable          | Default | What it does                                                                                                               |
+| ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as three dot-separated numbers (`0.2.0`). Empty disables the check. |
 
-Limited responses carry `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; a rejection is `429` with `Retry-After`. None are in the default `CORS_EXPOSE_HEADERS`.
+Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version too. Sign-in callbacks, health checks, analytics capture and the startup configuration request are exempt, so a blocked user can still reach the update prompt.
 
-The backend test preload (`backend/src/test-utils/test-setup.ts`) forces rate limiting off, because the limiter's transactions bypass PGlite's test isolation. `backend/src/middleware/rate-limit.test.ts` covers the middleware separately, with `enabled: true` on its own connection.
+## Command-line client rollout
 
-## App Version Gate
+| Variable                          | Default | What it does                                            |
+| --------------------------------- | ------- | ------------------------------------------------------- |
+| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Allows the command-line client to register as a device. |
 
-| Variable          | Default | Description                                                                                                                                                                                                                   |
-| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MIN_APP_VERSION` | `""`    | Minimum client version (semver). Empty disables the gate. When set, older clients get `426 Upgrade Required` outside the exempt prefixes. Semver-validated at startup, so a typo fails fast instead of reaching every client. |
-
-The gate **fails closed**: a missing or unparseable `X-App-Version` is rejected like an outdated client. Only `appVersionExemptPrefixes` ([app-version.ts](../../backend/src/middleware/app-version.ts)) passes, covering callers that cannot attach the header: `/v1/config`, `/v1/health`, `/static`, `/v1/api/auth/sso`, `/v1/api/auth/device`, `/v1/posthog`, `/v1/proxy/ws` (no headers on a WebSocket handshake) and `/v1/debug-transcripts/intake` (server-to-server). `OPTIONS` is always exempt; matching is on segment boundaries, so `/v1/config` never exempts a future `/v1/configuration`.
-
-Auth scheme grants no exemption: a personal access token on a gated route must send `X-App-Version`. Settings are read once at startup, so **restart the backend** after changing `MIN_APP_VERSION`.
-
-## CLI Device Rollout
-
-| Variable                          | Default | Description                                                          |
-| --------------------------------- | ------- | -------------------------------------------------------------------- |
-| `MIN_APP_VERSION`                 | `""`    | Minimum compatible app semver; empty disables client blocking        |
-| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Enables server-owned CLI device registration                         |
-| `CONFIDENTIAL_API_KEYS_ENABLED`   | `false` | Lets a personal access token reach the confidential (Tinfoil) routes |
-
-Three mandatory stages, in order:
-
-1. **Existing clients:** ship web, desktop, and mobile schema/UI support for `deviceType: cli`. Without a guaranteed compatible installed base, set `MIN_APP_VERSION` before enabling CLI registration on the backend, or an older client gets a device type its schema cannot handle.
-2. **Backend:** deploy the public catalog, CLI registration/logout, revocation enforcement, and managed inference routes. Changed default-model or usage-receipt inputs need an image rebuild.
-3. **CLI:** publish the native artifacts last, or a new CLI finds a catalog the deployed backend does not implement.
+Enable this only after every app your users run is new enough to recognise a command-line client in the device list. An older app shown a kind of device it does not know about cannot display it. Set `MIN_APP_VERSION` first if you cannot be sure.
 
 ## Waitlist
 
-| Variable                        | Default | Description                                                                                   |
-| ------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
-| `WAITLIST_ENABLED`              | `false` | **Inert.** Parsed and validated, but nothing reads it                                         |
-| `WAITLIST_AUTO_APPROVE_DOMAINS` | none    | Comma-separated email domains that skip the queue; a matching address is approved on the spot |
+| Variable                        | Default | What it does                                                                            |
+| ------------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `WAITLIST_AUTO_APPROVE_DOMAINS` | none    | Comma-separated email domains approved on sight, for example `example.com,example.org`. |
+| `WAITLIST_ENABLED`              | `false` | Accepted and validated, but currently has no effect.                                    |
 
-The gate in [auth.ts](../../backend/src/auth/auth.ts) runs unconditionally on the email-OTP path: an address with no `user` row and no approved waitlist entry gets a "joined" or "not ready" email instead of a code, and is rejected again at sign-in. `settings.waitlistEnabled` has no reader outside test fixtures, though deployment configs still set it.
+The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. If your deployment uses email codes, **set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains**, or nobody new can sign in. Deployments on OIDC or SAML are unaffected, and so is social sign-in.
 
-`WAITLIST_AUTO_APPROVE_DOMAINS` is the real escape hatch for a self-hosted consumer deployment. `VITE_BYPASS_WAITLIST=true` (`src/lib/auth-mode.ts`) only hides the modal; the backend still gates sign-in.
+## Analytics and tracing
 
-## OpenTelemetry (Optional)
+| Variable                      | Default                    | What it does                                                                                                        |
+| ----------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `POSTHOG_API_KEY`             | none                       | Leave unset to send no analytics. This is the off switch.                                                           |
+| `POSTHOG_HOST`                | `https://us.i.posthog.com` | Point at your own PostHog instance if you run one.                                                                  |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | none                       | OpenTelemetry trace collector endpoint, for example `http://localhost:4318/v1/traces`. Setting it turns tracing on. |
+| `OTEL_EXPORTER_OTLP_TOKEN`    | none                       | Bearer token, for collectors that require one.                                                                      |
 
-Traces turn on automatically when these are set. Read from `process.env` directly, not the Zod schema.
+Tracing has been exercised against BetterStack, Jaeger, Zipkin, New Relic, and Grafana Cloud.
 
-| Variable                      | Description                                                 |
-| ----------------------------- | ----------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP HTTP endpoint (e.g. `http://localhost:4318/v1/traces`) |
-| `OTEL_EXPORTER_OTLP_TOKEN`    | Bearer token for authenticated collectors                   |
+## Health checks
 
-Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and other OTLP collectors.
+`/v1/health` is open and returns quickly. It is what a load balancer or liveness probe should poll.
 
-## General
+The deeper checks below each exercise one dependency and require a bearer token.
 
-| Variable                    | Default                                        | Description                                                                                                                                                                                                                              |
-| --------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                      | `8000`                                         | HTTP port the backend listens on                                                                                                                                                                                                         |
-| `HOST`                      | `0.0.0.0` in production, `localhost` otherwise | Interface the backend binds to                                                                                                                                                                                                           |
-| `WEB_CONCURRENCY`           | CPU count in production, `1` otherwise         | Worker processes forked by `backend/src/cluster.ts`                                                                                                                                                                                      |
-| `APP_URL`                   | `http://localhost:1420`                        | Public URL where the frontend is served                                                                                                                                                                                                  |
-| `LOG_LEVEL`                 | `INFO`                                         | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                                                                                                                                                                                                  |
-| `SWAGGER_ENABLED`           | `false`                                        | Expose `/v1/swagger` with the full OpenAPI spec (don't in production)                                                                                                                                                                    |
-| `MONITORING_TOKEN`          | none                                           | Bearer token for deep health routes under `/v1/health/`                                                                                                                                                                                  |
-| `RESEND_API_KEY`            | none                                           | Resend key for transactional email (sign-in codes, waitlist). Unset logs a warning at boot and skips sends, the usual local-dev setup; under `NODE_ENV=production` an unset key makes the send path throw `Email service not configured` |
-| `RESEND_MONITORING_API_KEY` | none                                           | Full access Resend key used only by `/v1/health/email`, so `RESEND_API_KEY` may stay sending-only                                                                                                                                        |
+| Variable           | Default | What it does                                     |
+| ------------------ | ------- | ------------------------------------------------ |
+| `MONITORING_TOKEN` | none    | Bearer token for the routes under `/v1/health/`. |
 
-### Deep health
+```bash
+curl -H "Authorization: Bearer $MONITORING_TOKEN" https://api.example.com/v1/health/database
+```
 
-Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
+| Route                  | What it checks                                                                               |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `/v1/health/database`  | A trivial query against PostgreSQL, 5 second deadline.                                       |
+| `/v1/health/powersync` | Sync service liveness, 5 seconds.                                                            |
+| `/v1/health/email`     | That Resend accepts your key and your sending domain is verified, 10 seconds. Sends no mail. |
+| `/v1/health/models`    | One tiny completion against every model offered, 20 seconds each.                            |
 
-| Route                  | Dependency exercised                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `/v1/health/database`  | A trivial database query (5-second deadline)                                                                 |
-| `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds)                                                          |
-| `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
-| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
+Healthy is `200` with `{"status":"ok"}`, unhealthy is `503` with a short reason. Reasons never include upstream response bodies or credentials. The models check costs real money on every call, so poll it on the order of every 15 minutes, not every 15 seconds.
 
-Success is `200 {"status":"ok"}`; failure is `503 {"status":"failed","reason":"<code>"}`, except the models route: `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, `not-configured`, and never contain upstream bodies or credentials.
+If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wrong token returns `401`.
 
-An unset token returns `403 {"error":"Monitoring token not configured"}`, a missing or wrong bearer `401 {"error":"Unauthorized"}`; rejected calls run no probes. The unauthenticated `/v1/health` stays available for load balancers and liveness probes.
+## Debug transcripts
 
-The email probe reads the domain list with `RESEND_MONITORING_API_KEY` and needs the `emailFrom` domain verified. Reasons: `not-configured` (key missing, likewise missing PowerSync config), `rejected` (invalid, sending-only, or forbidden key; upstream 400/401/403), `domain-unverified` (missing or unverified sending domain, including a malformed response).
+Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your deployment stores nothing: it forwards.
 
-Each models call costs one tiny completion per priced catalog model, without retries. BetterStack polls it every 15 minutes in production.
+| Variable                          | Default | What it does                                                                                |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `DEBUG_TRANSCRIPT_UPSTREAM_URL`   | empty   | Where transcripts are forwarded. Set together with the key.                                 |
+| `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
+| `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
 
-## The `GET /v1/config` Boot Contract
+Understand what leaves your infrastructure before enabling this. Credentials and API keys are stripped, but people are not: a transcript includes the conversation, and the user ID and email your deployment holds (both blank for anonymous users). It is retained by the Thunderbolt team and survives deletion of the submitting account. Contact the Thunderbolt team with a deployment name to get a key.
 
-Some variables above are published unauthenticated at `GET /v1/config`, fetched by every client at boot and cached in `localStorage` to keep working offline ([backend/src/api/config.ts](../../backend/src/api/config.ts)):
+## Frontend build settings
 
-| Field                     | Source                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `e2eeEnabled`             | `E2EE_ENABLED`                                                                                                       |
-| `debugTranscriptsEnabled` | Derived: true when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is set                                                            |
-| `builtInAgentEnabled`     | Inverse of `DISABLE_BUILT_IN_AGENT` (the env var reads as an opt-in switch, the wire field as a positive capability) |
-| `allowCustomAgents`       | `ALLOW_CUSTOM_AGENTS`                                                                                                |
-| `minAppVersion`           | `MIN_APP_VERSION`, **omitted** when unset so the client never parses `''` as semver                                  |
-| `defaults.models`         | `{ version, defaultModelId, data }` from the shipped default model set                                               |
+The web app is a static bundle, so these are fixed when its image is built, not when it runs. The published frontend image accepts them as Docker build arguments.
 
-`defaults` is an over-the-air channel: the client compares the server's version against its bundled copy, so changed defaults reach existing installs without a client release. The payload is baked into the backend image, so changing it needs a backend rebuild.
+| Build argument               | Default | What it does                                                                         |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------ |
+| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Where the app calls the API. A relative path works when a reverse proxy fronts both. |
+| `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for consumer sign-in.                          |
 
-## Frontend Build Args
+Two further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself: `VITE_AUTH_ENABLE_ANONYMOUS` (the client half of `AUTH_ALLOW_ANONYMOUS`; both must agree) and `VITE_IROH_RELAY_URL` (a self-hosted relay for the command-line bridge, defaulting to the public relays).
 
-`deploy/docker/frontend.Dockerfile` exposes two Vite env vars as build args:
+## Common startup errors
 
-| Arg                          | Default | Purpose                                                    |
-| ---------------------------- | ------- | ---------------------------------------------------------- |
-| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)   |
-| `VITE_AUTH_MODE`             | `sso`   | `sso` for enterprise SSO (OIDC or SAML), omit for consumer |
-
-`VITE_AUTH_ENABLE_ANONYMOUS` (the client half of `AUTH_ALLOW_ANONYMOUS`) and `VITE_BYPASS_WAITLIST` are read through `src/lib/auth-mode.ts` and baked into the bundle, but are not build args: a custom build must pass them itself.
-
-## Validating Your Config
-
-Common startup validation errors:
-
-- `BETTER_AUTH_SECRET: String must contain at least 1 character(s)`: set it.
-- `powersyncJwtSecret must be at least 32 characters when powersyncUrl is set`: regenerate with `openssl rand -hex 32`.
-- `AUTH_MODE: Invalid enum value`: must be `consumer`, `oidc`, or `saml` (case-insensitive).
+| What it reports                                       | Fix                                                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                           |
+| The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.           |
+| `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                    |
+| `MIN_APP_VERSION` is not a version number             | Use three dot-separated numbers, for example `0.2.0`, or clear it.                        |
+| `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                  |
+| The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither. |

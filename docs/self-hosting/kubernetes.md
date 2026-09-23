@@ -1,27 +1,169 @@
 # Kubernetes
 
-[`deploy/k8s/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy/k8s) is a Helm chart
-deploying the full stack (frontend, backend, PostgreSQL, PowerSync, Keycloak, ingress) to any
-conformant cluster in one `helm install`.
+One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except an AI provider, and only if you configure one.
 
-## Quick Start (Local)
+If you only want to see Thunderbolt working, [Docker Compose](./docker-compose.md) is shorter, or use the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
 
-Thunderbolt at `http://localhost` via [`kind`](https://kind.sigs.k8s.io/), in ~5 minutes.
+## What the chart deploys
 
-### 1. Get a local cluster
+| Workload   | Runs as     | Notes                                                                    |
+| ---------- | ----------- | ------------------------------------------------------------------------ |
+| Frontend   | Deployment  | The chat app, served as static files.                                    |
+| Backend    | Deployment  | The API. Health-probed, migrates the database on startup.                |
+| PostgreSQL | StatefulSet | One instance with a persistent volume. Holds the app and sync databases. |
+| PowerSync  | Deployment  | The sync service that keeps devices in agreement.                        |
+| Keycloak   | Deployment  | Identity provider. Its sign-in configuration is imported when it starts. |
+| Marketing  | Deployment  | The landing page and these docs. Deployed unconditionally.               |
+| Ingress    | Ingress     | Routes every path to the right service.                                  |
 
-`kubectl` does not create a cluster:
+Replica counts are configurable per workload except PostgreSQL, which is always a single instance. The chart has no high-availability database option.
 
-| Option                 | How                                                                                |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| **kind** (recommended) | `brew install kind`, then the config below (bare `kind create cluster` won't work) |
-| **Docker Desktop**     | Settings → Kubernetes → Enable. Verify with `kubectl cluster-info`.                |
-| **Minikube**           | `brew install minikube && minikube start`                                          |
+## Prerequisites
 
-`extraPortMappings` and the `ingress-ready` label are required: without them the step 2 ingress
-installs but is unreachable from the host.
+| You need               | Detail                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| A cluster              | Any conformant cluster serving `networking.k8s.io/v1` Ingress (Kubernetes 1.19 or newer). |
+| Helm and kubectl       | Helm 3.8 or newer, which is where installing a chart straight from OCI became stable.     |
+| An ingress controller  | The chart requests ingress class `nginx`. Change it with `ingress.className`.             |
+| A default StorageClass | PostgreSQL claims a 5 GiB volume on install.                                              |
+
+No CPU or memory requests are set by default, so the scheduler treats every pod as best-effort. Set `resources` per component before you run this anywhere real.
+
+## Generate the secrets
+
+Two values need generating. The first has no default and the chart refuses to render without it.
 
 ```bash
+BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
+POWERSYNC_JWT_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+```
+
+The sync secret must be **base64url** encoded, not standard base64. The same string is used to sign sync tokens and to verify them, and the verifier rejects the `+`, `/` and `=` characters that `openssl rand -base64` can emit. The decoded value must be at least 32 characters or the API will not start.
+
+The chart ships a working default for the sync secret, the two database passwords, the Keycloak administrator login, and the OpenID Connect (OIDC) client secret that Thunderbolt uses to authenticate against Keycloak. Every one of those defaults is published openly in the project's source. Override all of them before anyone outside your team can reach the deployment.
+
+## Install
+
+```bash
+git clone https://github.com/thunderbird/thunderbolt.git
+cd thunderbolt/deploy/k8s
+
+helm install thunderbolt . \
+  -n thunderbolt --create-namespace \
+  --set appUrl="https://thunderbolt.example.com" \
+  --set ingress.host="thunderbolt.example.com" \
+  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET" \
+  --set powersync.jwt.secretBase64="$POWERSYNC_JWT_SECRET" \
+  --set keycloak.demoUserEnabled=false
+```
+
+Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries.
+
+Image tags default to `latest`, which is rebuilt continuously. Pin `<component>.image.tag` to a published version before you depend on the deployment. See [Upgrading](./upgrading.md).
+
+Past a handful of flags, copy the chart's `values.yaml`, which documents every option, and pass it with `-f`.
+
+## Verify the deployment
+
+```bash
+kubectl get pods -n thunderbolt -w
+```
+
+First boot takes one to two minutes. `postgres-0` becomes ready first, then `keycloak`, `frontend` and `marketing`. `backend` and `powersync` may restart once or twice: they race PostgreSQL on the first install and recover on their own once it accepts connections. End state is every pod `1/1 Running`.
+
+```bash
+curl https://thunderbolt.example.com/v1/health
+```
+
+Deeper probes covering the database, the sync service, email and the model catalog are available behind a bearer token, described in the [configuration reference](./configuration.md#health-checks). If a pod is stuck, start with `kubectl logs -n thunderbolt deploy/backend`.
+
+## Routing
+
+The Ingress routes by path under a single hostname. The path rules always render, including alongside the per-service hostnames below. Set `ingress.enabled=false` if you front the cluster with your own gateway.
+
+| Path            | Goes to   |
+| --------------- | --------- |
+| `/v1/`          | Backend   |
+| `/realms/`      | Keycloak  |
+| `/resources/`   | Keycloak  |
+| `/powersync/`   | PowerSync |
+| Everything else | Frontend  |
+
+Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is what makes the local walkthrough work on `localhost`.
+
+If you would rather give each service its own hostname, set any of the five keys under `ingress.hostnames`:
+
+```yaml
+ingress:
+  host: app.example.com
+  hostnames:
+    marketing: example.com
+    app: app.example.com
+    api: api.example.com
+    auth: auth.example.com
+    powersync: powersync.example.com
+```
+
+Host rules win for the hostnames you list, and the path rules stay as a fallback for everything else, so you can move one service onto its own hostname without rewriting the rest.
+
+## TLS
+
+The chart does not render a TLS section on the Ingress. Terminate TLS in front of it:
+
+- Give your ingress controller a default certificate, or
+- Terminate at a cloud load balancer that fronts the controller, or
+- Add a `tls` block to the Ingress yourself after install.
+
+Whichever you choose, set `appUrl` to the `https://` URL. It decides which browser origins are allowed to call the API, where sign-in returns the user to, and the return addresses registered with Keycloak. An `appUrl` that does not match the address users actually visit produces sign-in loops rather than a clear error.
+
+Changing `appUrl` on a later upgrade restarts the API and Keycloak by itself, and Keycloak re-imports its sign-in configuration at the new address. Expect a brief interruption to sign-in while that happens.
+
+## Values that matter
+
+| Value                                 | Default                 | What it controls                                                                                                                                                 |
+| ------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend.betterAuthSecretBase64`      | none, **required**      | Base64 of the secret that signs sessions.                                                                                                                        |
+| `appUrl`                              | `http://localhost`      | Public base URL. CORS, auth callbacks, Keycloak redirect URIs.                                                                                                   |
+| `ingress.enabled`                     | `true`                  | Whether the chart creates an Ingress at all.                                                                                                                     |
+| `ingress.host`                        | empty                   | Hostname for the path-based rules. Empty means any host.                                                                                                         |
+| `ingress.className`                   | `nginx`                 | Which ingress controller claims the resource.                                                                                                                    |
+| `ingress.hostnames`                   | empty                   | Per-service hostnames. See [Routing](#routing).                                                                                                                  |
+| `powersync.jwt.secretBase64`          | a published dev secret  | Base64url of the sync signing secret. Replace it.                                                                                                                |
+| `postgres.storage`                    | `5Gi`                   | Size of the database volume. Set it before install, not after.                                                                                                   |
+| `postgres.credentials.passwordBase64` | base64 of `postgres`    | Database password. Replace it.                                                                                                                                   |
+| `postgres.sslmode`                    | `disable`               | `require` or stricter when the database terminates TLS.                                                                                                          |
+| `keycloak.admin.password`             | `admin`                 | Keycloak admin password. Replace it.                                                                                                                             |
+| `keycloak.oidc.clientSecretBase64`    | a published dev secret  | Base64 of the sign-in client secret. Replace it.                                                                                                                 |
+| `powersync.db.passwordBase64`         | a published dev secret  | Base64 of the sync service's database password. Replace it.                                                                                                      |
+| `keycloak.demoUserEnabled`            | `true`                  | Whether `demo@thunderbolt.io` exists. Set `false` for real deployments.                                                                                          |
+| `backend.aiSecrets.*`                 | empty                   | Base64 provider keys: `anthropicApiKeyBase64`, `fireworksApiKeyBase64`, `exaApiKeyBase64`, `thunderboltInferenceApiKeyBase64`. Empty means that provider is off. |
+| `backend.env.rateLimitEnabled`        | `"false"`               | Per-client rate limiting on the API.                                                                                                                             |
+| `backend.env.minAppVersion`           | empty                   | Reject clients older than this version. Empty disables the check.                                                                                                |
+| `<component>.image.repository`        | public GHCR / upstream  | Point at a mirror. Pair with `imagePullSecrets` if it is private.                                                                                                |
+| `<component>.image.tag`               | `latest` for our images | Pin this. See [Install](#install).                                                                                                                               |
+| `<component>.replicas`                | `1`                     | Copies of that workload. Not available for PostgreSQL.                                                                                                           |
+| `<component>.resources`               | empty                   | Requests and limits for that container.                                                                                                                          |
+| `<component>.podAnnotations`          | empty                   | Merged over the chart-wide `podAnnotations`.                                                                                                                     |
+| `imagePullSecrets`                    | empty                   | Only needed if you mirror the images to a private registry.                                                                                                      |
+
+`<component>` is one of `frontend`, `marketing`, `backend`, `postgres`, `powersync`, `keycloak`.
+
+Two encoding traps to avoid:
+
+- Secret values ending in `Base64` are base64 of the raw value, not the raw value. `echo -n "your-key" | base64`.
+- The database password must be URL safe. A password containing `@`, `:`, `/`, `?` or `#` silently corrupts the connection string and the API will not reach the database.
+
+Provider keys set here are held by the API, so browsers never hold them and never call a provider directly. Users can still bring their own keys in the app instead, but some providers reject browser-origin requests, which makes a server-side key the more reliable option. Every setting the API understands is in the [configuration reference](./configuration.md).
+
+## Try it on a local cluster
+
+Roughly five minutes to Thunderbolt at `http://localhost`, using [kind](https://kind.sigs.k8s.io/).
+
+A bare `kind create cluster` will not work. The port mappings and the node label below are what make the ingress controller reachable from your machine.
+
+```bash
+brew install kind helm
+
 cat > /tmp/kind-thunderbolt.yaml <<'EOF'
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -45,9 +187,7 @@ EOF
 kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
 ```
 
-### 2. Install nginx-ingress
-
-**kind** (the kind-flavored manifest, which binds to the labeled node):
+Install the kind-flavored ingress controller, which binds to the node you just labeled:
 
 ```bash
 kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
@@ -58,7 +198,7 @@ kubectl wait --namespace ingress-nginx \
   --timeout=120s
 ```
 
-**Docker Desktop / Minikube** (the standard chart):
+On Docker Desktop or minikube, install the standard controller instead:
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -67,64 +207,17 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.service.type=LoadBalancer
 ```
 
-### 3. Generate the required secret
-
-`backend.betterAuthSecretBase64` is the only required value with no default; templating fails
-without it.
+Install the chart with defaults and only the required secret, pulled straight from the registry so there is nothing to clone:
 
 ```bash
-BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
-```
-
-### 4. Install Thunderbolt
-
-```bash
-git clone https://github.com/thunderbird/thunderbolt.git
-cd thunderbolt/deploy/k8s
-
-helm install thunderbolt . \
+helm install thunderbolt oci://ghcr.io/thunderbird/charts/thunderbolt \
   -n thunderbolt --create-namespace \
-  --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
+  --set backend.betterAuthSecretBase64="$(openssl rand -base64 32 | tr -d '\n' | base64)"
 ```
 
-Default repos are the public `ghcr.io/thunderbird/thunderbolt/*` images: no pull secret locally.
+Open `http://localhost` in a private window. Sign-in redirects to Keycloak; the demo credentials are `demo@thunderbolt.io` / `demo`. Add an AI provider key in settings to start chatting.
 
-### 5. Watch pods come up
-
-```bash
-kubectl get pods -n thunderbolt -w
-```
-
-First boot takes 1–2 minutes:
-
-1. `postgres-0` ready first (StatefulSet + PVC).
-2. `keycloak`, `frontend`, `marketing` next.
-3. `backend` and `powersync` may **restart once or twice**, racing postgres on the first deploy,
-   and self-heal once postgres accepts connections. End state: every pod `1/1 Running`.
-
-### 6. Sign in
-
-Open `http://localhost` in a private window; sign-in bounces to Keycloak. Demo credentials:
-`demo@thunderbolt.io` / `demo`. After onboarding, add an AI provider key in settings to start
-chatting.
-
-## Routing
-
-The Ingress is path-based:
-
-| Path           | Service   |
-| -------------- | --------- |
-| `/v1/*`        | backend   |
-| `/realms/*`    | keycloak  |
-| `/resources/*` | keycloak  |
-| `/powersync/*` | powersync |
-| `/*`           | frontend  |
-
-Path rules always render (the enterprise layout). `ingress.hostnames` (`marketing`, `app`, `api`,
-`auth`, `powersync`) adds a host-header rule per service serving `/` (the preview layout); host
-rules win for those hostnames, path rules stay as fallback.
-
-## Cleanup
+Tear it down with:
 
 ```bash
 helm uninstall thunderbolt -n thunderbolt
@@ -132,43 +225,39 @@ kubectl delete namespace thunderbolt
 kind delete cluster --name thunderbolt
 ```
 
-## Configuration
+## Before you put it in front of users
 
-Key values; full list in
-[`deploy/k8s/values.yaml`](https://github.com/thunderbird/thunderbolt/blob/main/deploy/k8s/values.yaml):
+- Set `keycloak.demoUserEnabled=false`, and rotate the Keycloak admin password, the OIDC client secret, the database password and the sync secret.
+- Serve over HTTPS and set `appUrl` to that URL.
+- Set `resources` on every component.
+- Back up the PostgreSQL volume. It holds accounts, sessions and the server copy of synced data.
+- Decide how users reach a model: a provider key on the server, or each user's own key.
 
-| Value                                     | Default                                                 | Description                                                 |
-| ----------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
-| `backend.betterAuthSecretBase64`          | `""` (REQUIRED)                                         | Base64-encoded auth signing secret                          |
-| `appUrl`                                  | `http://localhost`                                      | Base URL for CORS, auth callbacks, redirects                |
-| `frontend.image.repository`               | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend`  | Frontend image                                              |
-| `backend.image.repository`                | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend`   | Backend image                                               |
-| `marketing.image.repository`              | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image                                        |
-| `imagePullSecrets`                        | `[]`                                                    | Registry pull secrets (empty for the default public images) |
-| `ingress.enabled`                         | `true`                                                  | Create Ingress resource                                     |
-| `ingress.host`                            | `""`                                                    | Set to your hostname for production                         |
-| `ingress.hostnames`                       | `{}`                                                    | Per-service hostnames for host-header routing (see above)   |
-| `postgres.storage`                        | `5Gi`                                                   | Postgres PVC size                                           |
-| `backend.aiSecrets.anthropicApiKeyBase64` | `""`                                                    | Server-side Anthropic key (avoids browser CORS)             |
+Two limitations to plan around:
 
-## Production on EKS
+**The bundled Keycloak is not production-grade.** It runs in development mode with its database inside the pod and no persistent volume. Anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. For a real deployment, point Thunderbolt at your own identity provider. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
 
-The Pulumi project creates the VPC and EKS cluster, pushes images, installs `nginx-ingress`, and
-applies the chart. See [Pulumi (AWS)](./pulumi.md).
+**The database is always the one the chart deploys.** There is no value for pointing at an external PostgreSQL such as RDS. `postgres.sslmode` exists for a database that terminates TLS, but the connection target itself is fixed to the in-cluster instance.
+
+## Upgrades and rollbacks
 
 ```bash
-cd deploy/pulumi
-pulumi config set platform k8s
-pulumi up
+helm upgrade thunderbolt . -n thunderbolt -f my-values.yaml
+helm rollback thunderbolt -n thunderbolt
 ```
 
-## Differences from Docker Compose
+Upgrading rolls each workload whose settings changed and runs any pending database migrations when the API starts. One change does not take effect on its own. `keycloak.demoUserEnabled` alters only the sign-in configuration Keycloak reads at boot, and nothing about the Keycloak pod itself, so the pod is never replaced. Apply it by hand:
 
-| Concept            | Docker Compose              | Kubernetes                         |
-| ------------------ | --------------------------- | ---------------------------------- |
-| Service discovery  | Container names             | ClusterIP services (DNS)           |
-| Ingress / routing  | nginx proxy in the frontend | Ingress resource                   |
-| Persistent storage | Docker volumes              | PersistentVolumeClaims             |
-| Health checks      | `healthcheck:` in compose   | `livenessProbe` / `readinessProbe` |
-| Config files       | Volume mounts               | ConfigMaps                         |
-| Secrets            | `.env` file                 | Kubernetes Secret + Helm values    |
+```bash
+kubectl rollout restart deployment/keycloak -n thunderbolt
+```
+
+That restart also discards anything configured in the Keycloak admin console since its pod started.
+
+`helm uninstall` leaves the PostgreSQL volume behind. Delete the namespace to remove the data with it.
+
+## Related
+
+- [Configuration](./configuration.md): every setting the API reads, with defaults.
+- [AWS with Pulumi](./pulumi.md): builds a cluster and installs this same chart, or runs the stack on Fargate instead.
+- [Docker Compose](./docker-compose.md): the same stack on one machine.

@@ -1,78 +1,140 @@
 # Docker Compose
 
-Fastest path to a working Thunderbolt install: demos, evaluations, single-host internal tools.
+The fastest way to get a working Thunderbolt on one machine. Five containers, one command, no cluster and no cloud account. It runs one copy of each service with no redundancy, so it is not a highly available deployment.
 
-## Prerequisites
+## Before you start
 
-- Docker 24+ with the Compose plugin (`docker compose version` must succeed)
-- 4 GB RAM minimum, 8 GB recommended
-- Ports `3000`, `8000`, `5434`, `8081`, `8180` free, or remap via `FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT` in `deploy/.env`
+| You need                     | Notes                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| Docker 24 or newer           | With the Compose plugin. `docker compose version` must succeed.               |
+| 4 GB RAM free                | 8 GB is comfortable. The first build is CPU heavy and takes several minutes.  |
+| Five free ports              | `3000`, `8000`, `8180`, `5434`, `8081`. All are remappable, see below.        |
+| A session secret             | A random string, 32 characters or more. There is no default, on purpose.      |
+| Access to at least one model | A provider key set here, or a key each user adds in the app after signing in. |
 
-## Spin It Up
+## Start it
 
 ```bash
 git clone https://github.com/thunderbird/thunderbolt.git
 cd thunderbolt/deploy
 cp .env.example .env
-# In .env, set at minimum BETTER_AUTH_SECRET (generate with
-# `openssl rand -base64 32`) and one AI provider API key.
-# POWERSYNC_JWT_SECRET is hardcoded in docker-compose.yml; override
-# only if you fork the compose file.
+```
+
+Open `deploy/.env` and set `BETTER_AUTH_SECRET`. Generate one with:
+
+```bash
+openssl rand -base64 32
+```
+
+Then bring the stack up:
+
+```bash
 docker compose up --build
 ```
 
-## What You Get
+The first run builds the app and API images, pulls the other three, starts PostgreSQL, imports the Keycloak sign-in configuration, and applies database migrations before the API accepts traffic. Later runs start in seconds.
 
-| Service        | URL                     | Credentials                            |
-| -------------- | ----------------------- | -------------------------------------- |
-| App            | `http://localhost:3000` | Keycloak SSO (demo user below)         |
-| Keycloak admin | `http://localhost:8180` | `admin` / `admin` (rotate immediately) |
-| Demo user      | (sign in via app)       | `demo@thunderbolt.io` / `demo`         |
+If `BETTER_AUTH_SECRET` is empty, Compose refuses to start and says so. That is the intended behaviour, not a bug.
 
-| Service   | Source                                 | Notes                                                                                                                                    |
-| --------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend  | built, `docker/frontend.Dockerfile`    | `oven/bun:1.3.14` build stage → `nginxinc/nginx-unprivileged:alpine`; Vite SPA with COEP/COOP headers                                    |
-| Backend   | built, `docker/backend.Dockerfile`     | `oven/bun:1.3.14`; entrypoint runs `bun drizzle-kit migrate` before starting Elysia                                                      |
-| Postgres  | `postgres:17-alpine`                   | `deploy/docker/postgres-init/01-powersync.sh` creates the PowerSync replication role on first init                                       |
-| PowerSync | `journeyapps/powersync-service:latest` | Sync rules bind-mounted from `deploy/config/powersync-config.yaml`; bucket data lives in the `powersync_storage` DB on the same Postgres |
-| Keycloak  | `quay.io/keycloak/keycloak:26.0`       | `start-dev --import-realm` against `deploy/config/keycloak-realm.json`                                                                   |
+## Sign in
 
-**The Postgres 17 pin is load-bearing.** Compose mounts `pg_data:/var/lib/postgresql/data` (`deploy/docker-compose.yml:75`), the v17 default path. `postgres:18` and later want the volume one level up at `/var/lib/postgresql` (they manage a version subdirectory inside it) and refuse to start against a mount at the old path. The local dev stack (`make up`) moved its mount instead (`powersync-service/docker-compose.yml:25-29`).
+| What           | Where                   | Credentials                    |
+| -------------- | ----------------------- | ------------------------------ |
+| The app        | `http://localhost:3000` | `demo@thunderbolt.io` / `demo` |
+| Keycloak admin | `http://localhost:8180` | `admin` / `admin`              |
 
-## Unused Dockerfiles
+Both sets of credentials are published in this repository, and so are two secrets that `deploy/.env` cannot override because they live in `deploy/docker-compose.yml`: the OIDC client secret, and `POWERSYNC_JWT_SECRET`, which the sync service verifies against the base64 copy in `PS_JWT_KEY_BASE64`. Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two in the compose file, both halves of the JWT pair together.
 
-`deploy/docker/` holds four more Dockerfiles, unused by compose. The first three bake config into an upstream base image and are published to GHCR by `.github/workflows/images-publish.yml`.
+## What is running
 
-| Dockerfile             | Base                             | Built and deployed by                       |
-| ---------------------- | -------------------------------- | ------------------------------------------- |
-| `postgres.Dockerfile`  | `postgres:18-alpine`             | GHCR (`images-publish.yml:130`), Pulumi EKS |
-| `keycloak.Dockerfile`  | `quay.io/keycloak/keycloak:26.7` | GHCR (`images-publish.yml:143`), Pulumi EKS |
-| `powersync.Dockerfile` | `journeyapps/powersync-service`  | GHCR (`images-publish.yml:156`), Pulumi EKS |
-| `marketing.Dockerfile` | Astro marketing site             | nothing in compose                          |
+| Container   | Port   | What it does                                                                             |
+| ----------- | ------ | ---------------------------------------------------------------------------------------- |
+| `frontend`  | `3000` | Serves the app and forwards API calls to the backend. This is the address users open.    |
+| `backend`   | `8000` | The API. Sign-in, sync tokens, and outbound calls to AI providers.                       |
+| `postgres`  | `5434` | Accounts, sessions, and the server-side copy of synced data.                             |
+| `powersync` | `8081` | Streams data changes to every signed-in device.                                          |
+| `keycloak`  | `8180` | The bundled identity provider, preloaded with a sign-in configuration and the demo user. |
 
-Pulumi deploys the GHCR builds (`deploy/pulumi/src/eks.ts:135-143`, `deploy/pulumi/src/shared.ts:408`) and pins `PGDATA` on the Fargate task, so EFS volumes predating the v17→v18 bump keep the legacy layout (`deploy/pulumi/src/services.ts:217-222`). The Helm chart instead defaults Postgres, PowerSync and Keycloak to upstream images (`deploy/k8s/values.yaml:93-95`, `:117-120`, `:149-152`), which the Pulumi EKS path overrides.
+Users open port `3000`, but their browser also talks to ports `8180` and `8081` directly: sign-in redirects to Keycloak, and the app opens its own connection to the sync service. All three must be reachable from wherever the browser runs. Port `8000` is published for convenience only, since the app reaches the API through port `3000`.
 
-## Customization
+To change a port, edit `FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT` or `KEYCLOAK_PORT` in `deploy/.env` and restart. The rest of the stack follows automatically.
 
-- **Own identity provider.** Remove the `keycloak` service and set, per your `AUTH_MODE`, either the OIDC vars (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`) or the SAML vars (`SAML_ENTRY_POINT`, `SAML_ENTITY_ID`, `SAML_IDP_ISSUER`, `SAML_CERT`) in `.env`.
-- **Managed Postgres.** Point `DATABASE_URL` at it, remove the `postgres` service, and run `deploy/docker/postgres-init/01-powersync.sh` against it by hand to create the `powersync_role` user and publication.
-- **TLS.** The stack serves plain HTTP; the frontend nginx expects an upstream reverse proxy (Caddy, Traefik) to terminate TLS.
+Data lives in a single Docker volume, listed by `docker volume ls` as `deploy_pg_data`. Nothing is written outside Docker.
 
-## Upgrading
+## Add a model provider
+
+Users can add their own provider keys in the app, so the stack is usable without any server-side key. To make a provider available to everyone, set its key in `deploy/.env` and restart:
+
+```bash
+ANTHROPIC_API_KEY=
+FIREWORKS_API_KEY=
+EXA_API_KEY=
+```
+
+`EXA_API_KEY` enables web search rather than a chat model. The [Configuration](./configuration.md) page lists every provider setting.
+
+## Verify it works
+
+```bash
+docker compose ps                        # every service up, postgres and keycloak healthy
+curl http://localhost:3000/v1/config     # returns JSON, no sign-in needed
+docker compose logs -f backend           # "Running database migrations", then "Starting server"
+```
+
+The `curl` goes through the app's own address, so a JSON reply means the browser-facing service and the API behind it are both answering. Sign in as the demo user and open the same conversation in a second browser window: if it appears there too, sync is working as well.
+
+## First-run problems
+
+| Symptom                                                            | Cause and fix                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose exits immediately complaining about `BETTER_AUTH_SECRET`   | It is unset in `deploy/.env`. Set it and retry.                                                                                                                                                       |
+| A port is already allocated                                        | Pick a free number in `deploy/.env` and restart.                                                                                                                                                      |
+| The app loads but the first sign-in fails or returns an error      | The API is still applying migrations on first boot. Watch `docker compose logs -f backend` for "Starting server", then retry.                                                                         |
+| Sign-in redirects to a page that will not load                     | Keycloak is still starting. It is the slowest service on first boot. Wait for `docker compose ps` to report it healthy.                                                                               |
+| The sync service restarts in a loop after an upgrade or a re-clone | Its database account is created only when the PostgreSQL volume is first initialised, so a volume from an older run will not have it. Run `docker compose down -v` to start clean, which erases data. |
+| The app loads but data never syncs between two windows             | The browser must reach the sync service directly. Check that `POWERSYNC_PORT` is reachable from the browser, not only from inside Docker.                                                             |
+| No models appear in the model picker                               | No provider key is set on the server and none has been added in the app. Add one of either.                                                                                                           |
+| The build fails on a machine with less than 4 GB RAM               | The app build is the memory-hungry step. Raise Docker's memory limit in Docker Desktop's settings.                                                                                                    |
+
+## Known limits of this setup
+
+**It assumes `localhost`.** Sign-in URLs, the API origin and the sync address are all written as `localhost` addresses. Serving this stack to other machines under a real hostname means editing those addresses in `deploy/docker-compose.yml`, not only the port settings in `deploy/.env`. Kubernetes and AWS are the supported paths for a shared deployment.
+
+**There is no TLS.** Everything is plain HTTP. Put a reverse proxy such as Caddy, nginx or Traefik in front of the app if it leaves your machine. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so a plain-HTTP hostname produces a broken app rather than an insecure one.
+
+**Rate limiting is off** and Keycloak runs in its development mode, neither of which is appropriate for a deployment real users can reach.
+
+**PostgreSQL 17 is pinned.** The bundled database is version 17 and its data volume is mounted at the path version 17 expects. PostgreSQL 18 moved that path, so swapping the image for 18 or later refuses to start against an existing volume.
+
+## Swap in your own pieces
+
+Both swaps below mean editing `deploy/docker-compose.yml` directly. The settings involved are written into that file rather than read from `deploy/.env`, so changing them in `.env` alone has no effect.
+
+**Your own identity provider.** Remove the `keycloak` service, and the backend's dependency on it, from `deploy/docker-compose.yml`. Then replace the bundled OIDC values in the backend's settings with your own. For OpenID Connect (OIDC) set `AUTH_MODE` to `oidc` plus `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`; for SAML set `AUTH_MODE` to `saml` plus `SAML_ENTRY_POINT`, `SAML_ENTITY_ID`, `SAML_IDP_ISSUER` and `SAML_CERT`. Add your provider's origin to `TRUSTED_ORIGINS`. The [Configuration](./configuration.md) page documents each of these.
+
+**Managed PostgreSQL.** Point `DATABASE_URL` and the sync service's two connection strings at it, then remove the `postgres` service. The bundled database is prepared for replication on first boot and a managed one is not, so before switching you must set it up by hand: enable logical replication (`wal_level=logical`), create a role named `powersync_role` with the `REPLICATION` and `BYPASSRLS` attributes, create a publication named `powersync` covering all tables, and create a second database named `powersync_storage` for the sync service's own bookkeeping. `deploy/docker/postgres-init/01-powersync.sh` is the script that does all of this on the bundled database; run it against the managed one by hand. Read the caveat about managed PostgreSQL in the [self-hosting overview](./README.md) first: that second database is known to misbehave on managed PostgreSQL 17.
+
+## Upgrade
 
 ```bash
 cd thunderbolt
 git pull
 cd deploy
-docker compose pull
+docker compose pull            # refreshes PostgreSQL, the sync service and Keycloak
 docker compose up -d --build
 ```
 
-Migrations apply on backend start; PowerSync re-reads its bind-mounted sync rules on restart.
+Database migrations run automatically when the API starts, sync configuration is re-read on restart, and your data is preserved. See [Upgrading](./upgrading.md) for version-specific notes.
 
-## Tearing Down
+## Stop and remove
 
 ```bash
-docker compose down        # stop and remove containers, keep the pg_data volume
-docker compose down -v     # also drop pg_data: app data and PowerSync bucket storage
+docker compose down      # stop the containers, keep all data
+docker compose down -v   # also delete the database volume, losing everything
 ```
+
+## Next
+
+- [Configuration](./configuration.md): every setting and environment variable, with defaults.
+- [Backup and restore](./backup-and-restore.md): what to copy, and how to bring it back.
+- [Monitoring](./monitoring.md): health endpoints, logs, and metrics.

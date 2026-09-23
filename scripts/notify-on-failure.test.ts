@@ -43,7 +43,7 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
           },
         ],
       })
-    if (url.includes('api.resend.com')) {
+    if (url === 'https://api.resend.com/emails') {
       if (state?.failEmailCount) {
         state.failEmailCount--
         return Response.json({ error: 'temporary failure' }, { status: 503 })
@@ -109,7 +109,7 @@ describe('notify-on-failure', () => {
     expect(create).toContain('"stateId":"backlog-id"')
     expect(create).toContain('"labelIds":["bug-id"]')
     expect(create).toContain('Check types')
-    expect(calls.filter((call) => call.url.includes('api.resend.com'))).toHaveLength(1)
+    expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
   })
 
   test('repeat failure adds a comment without another email', async () => {
@@ -117,21 +117,23 @@ describe('notify-on-failure', () => {
     await notify(input, fakeFetch(true, calls))
     expect(calls.some((call) => call.body.includes('mutation Comment'))).toBe(true)
     expect(calls.some((call) => call.body.includes('mutation CreateIssue'))).toBe(false)
-    expect(calls.some((call) => call.url.includes('api.resend.com'))).toBe(false)
+    expect(calls.some((call) => call.url === 'https://api.resend.com/emails')).toBe(false)
   })
 
   test('recovery closes an open incident and sends an email', async () => {
     const calls: Call[] = []
     await notify({ ...input, conclusion: 'success' }, fakeFetch(true, calls))
     expect(calls.find((call) => call.body.includes('mutation CloseIssue'))?.body).toContain('"stateId":"done-id"')
-    expect(calls.filter((call) => call.url.includes('api.resend.com'))).toHaveLength(1)
+    expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
     expect(calls.some((call) => call.url.includes('/actions/runs/'))).toBe(false)
   })
 
   test('success without an open incident makes no writes', async () => {
     const calls: Call[] = []
     await notify({ ...input, conclusion: 'success' }, fakeFetch(false, calls))
-    expect(calls.some((call) => call.body.includes('mutation') || call.url.includes('api.resend.com'))).toBe(false)
+    expect(calls.some((call) => call.body.includes('mutation') || call.url === 'https://api.resend.com/emails')).toBe(
+      false,
+    )
   })
 
   test('PR event is refused before any fetch', async () => {
@@ -146,7 +148,9 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const lines: string[] = []
     await notify({ ...input, dryRun: true }, fakeFetch(false, calls), (line) => lines.push(line))
-    expect(calls.some((call) => call.body.includes('mutation') || call.url.includes('api.resend.com'))).toBe(false)
+    expect(calls.some((call) => call.body.includes('mutation') || call.url === 'https://api.resend.com/emails')).toBe(
+      false,
+    )
     expect(lines.join('\n')).toContain('would create')
   })
 
@@ -168,7 +172,9 @@ describe('notify-on-failure', () => {
       return baseFetch(request, init)
     }) as typeof fetch
     await expect(notify(input, fetchFn)).rejects.toThrow('Linear: Query failed')
-    expect(calls.some((call) => call.body.includes('mutation') || call.url.includes('api.resend.com'))).toBe(false)
+    expect(calls.some((call) => call.body.includes('mutation') || call.url === 'https://api.resend.com/emails')).toBe(
+      false,
+    )
   })
 
   test('a failed issue create does not send an email that would be repeated on retry', async () => {
@@ -182,7 +188,7 @@ describe('notify-on-failure', () => {
       return baseFetch(request, init)
     }) as typeof fetch
     await expect(notify(input, fetchFn)).rejects.toThrow('Linear: Creation failed')
-    expect(calls.some((call) => call.url.includes('api.resend.com'))).toBe(false)
+    expect(calls.some((call) => call.url === 'https://api.resend.com/emails')).toBe(false)
   })
 
   test('PR target and branch dispatch are refused before any fetch', async () => {
@@ -209,7 +215,7 @@ describe('notify-on-failure', () => {
     await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
     expect(state.description).toContain('CI alert email pending for:')
     await notify({ ...input, runId: 43 }, fetchFn)
-    const emails = calls.filter((call) => call.url.includes('api.resend.com'))
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
@@ -228,7 +234,7 @@ describe('notify-on-failure', () => {
 
     await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
 
-    const emails = calls.filter((call) => call.url.includes('api.resend.com'))
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(3)
     expect(emails[0].body).toBe(emails[1].body)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
@@ -248,7 +254,7 @@ describe('notify-on-failure', () => {
     const fetchFn = fakeFetch(false, calls, state)
     await expect(notify(input, fetchFn)).rejects.toThrow('Linear update failed')
     await notify({ ...input, runId: 43 }, fetchFn)
-    const emails = calls.filter((call) => call.url.includes('api.resend.com'))
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
@@ -262,7 +268,7 @@ describe('notify-on-failure', () => {
     await expect(notify({ ...input, conclusion: 'success' }, fetchFn)).rejects.toThrow('HTTP 503')
     expect(calls.some((call) => call.body.includes('mutation CloseIssue'))).toBe(false)
     await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
-    const emails = calls.filter((call) => call.url.includes('api.resend.com'))
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
@@ -281,7 +287,7 @@ describe('notify-on-failure', () => {
     const fetchFn = fakeFetch(true, calls, state)
     await expect(notify({ ...input, conclusion: 'success' }, fetchFn)).rejects.toThrow('Close failed')
     await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
-    const emails = calls.filter((call) => call.url.includes('api.resend.com'))
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)

@@ -1,6 +1,6 @@
 # Chat Attachments
 
-Users attach PDFs, images, Word documents, and plain-text files to a chat turn. One invariant shapes the subsystem:
+Users attach PDFs, images, Word documents, spreadsheets, and plain-text files to a chat turn. One invariant shapes the subsystem:
 **the bytes are never stored off-device. They leave only in-flight, inside the request that answers the turn.**
 
 ## Limits and accepted types
@@ -11,7 +11,7 @@ Users attach PDFs, images, Word documents, and plain-text files to a chat turn. 
 | Bytes per file (post-shrink) | 25 MB | `maxAttachmentBytes`, `chat-prompt-input.tsx`                                                                               |
 | Compression threshold        | 10 MB | `compressionThresholdBytes`, [`src/files/compress/compress-attachment.ts`](../../src/files/compress/compress-attachment.ts) |
 
-Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, and Markdown/plain text/CSV/JSON.
+Accepted types: PDF, PNG/JPEG/WebP/GIF, DOCX, XLSX, and Markdown/plain text/CSV/JSON.
 
 ## Where the bytes live
 
@@ -88,7 +88,7 @@ would come out sideways with no metadata left to correct it.
 | ACP ([`src/acp/acp-adapter.ts`](../../src/acp/acp-adapter.ts))                                | An embedded `resource` block (base64) when the agent advertises `embeddedContext`, else text    |
 
 `defaultDeliveryMode` ([`src/files/transformers/index.ts`](../../src/files/transformers/index.ts)) returns `'text'`
-for plain-text MIME types and `undefined` (native bytes) otherwise. An explicit `deliverAs` overrides it, and is how
+for plain-text MIME types and for xlsx (no provider accepts a spreadsheet as a native file part, so native-first would only buy a guaranteed rejection and a retry), and `undefined` (native bytes) otherwise. An explicit `deliverAs` overrides it, and is how
 remediation records its decision durably enough to survive `regenerate()` and a reload.
 
 ### Only the current turn is delivered in full
@@ -121,6 +121,7 @@ on the embedded path.
 | `application/pdf->text`   | [`pdf-to-text.ts`](../../src/files/transformers/pdf-to-text.ts)     | pdfjs-dist |
 | `application/pdf->images` | [`pdf-to-images.ts`](../../src/files/transformers/pdf-to-images.ts) | pdfjs-dist |
 | `<docx mime>->text`       | [`docx-to-text.ts`](../../src/files/transformers/docx-to-text.ts)   | mammoth    |
+| `<xlsx mime>->text`       | [`xlsx-to-text.ts`](../../src/files/transformers/xlsx-to-text.ts)   | xlsx       |
 
 Text-ish types (`text/*`, `application/json`) resolve to
 [`text-passthrough.ts`](../../src/files/transformers/text-passthrough.ts) with no entry.

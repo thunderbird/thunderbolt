@@ -24,7 +24,7 @@ Everything this repository builds is in scope:
 Two areas are worth naming, because they take attacker-influenced input by design:
 
 - **The universal proxy.** `/v1/proxy` fetches a target URL supplied by the client, so the app can reach model providers and MCP servers from a browser. It rejects schemes other than `http(s)`, resolves the hostname up front and refuses private, reserved and IPv4-mapped ranges, then connects to the pinned IP with the original `Host` header so a second DNS answer cannot rebind it — including on each redirect hop (`backend/src/utils/url-validation.ts`, `backend/src/proxy/routes.ts`). A way past that validation is a vulnerability worth reporting.
-- **Optional end-to-end encryption.** Coverage is per column and opt-in: with `E2EE_ENABLED` on, the client encrypts the columns listed in `encryptedColumnsMap` (`src/db/encryption/config.ts`) before sync, and the server holds only ciphertext and wrapped keys for those columns. Everything else syncs in plaintext. See [E2E Encryption](./docs/architecture/e2e-encryption.md) for the key hierarchy and device-approval flows.
+- **Optional end-to-end encryption.** Coverage is per column and opt-in: with `E2EE_ENABLED` on, the client encrypts the columns listed in `encryptedColumnsMap` (`src/db/encryption/config.ts`) before sync, and the server holds only ciphertext and wrapped keys for those columns. Everything else syncs in plaintext. See [E2E Encryption](./docs/internals/architecture/e2e-encryption.md) for the key hierarchy and device-approval flows.
 
 ## Supported Versions
 

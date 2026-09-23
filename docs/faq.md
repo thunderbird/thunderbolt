@@ -58,7 +58,7 @@ Cross-device sync is off until a user turns it on. Signing in turns it on for th
 
 By default, yes: synced rows land in your PostgreSQL in plaintext, readable by anyone with database access. Turn on end-to-end encryption (E2EE) in the backend configuration and the server holds only ciphertext for the fields listed below: the keys that would unscramble it exist on the user's devices and nowhere on your infrastructure. This is a deployment-wide switch, not a per-user preference, and it changes how new devices join an account: they must be approved from an already trusted device or with the recovery phrase.
 
-```env
+```ini
 E2EE_ENABLED=true
 ```
 
@@ -119,7 +119,7 @@ Three system-managed models: GLM 5.3 Flash (the default on a new install), GLM 5
 
 A backend you host serves these only if you give it the matching keys.
 
-```env
+```ini
 ANTHROPIC_API_KEY=...
 TINFOIL_API_KEY=...
 ```

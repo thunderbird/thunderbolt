@@ -28,7 +28,7 @@ type LogoutModalProps = {
    * Injectable for tests. Defaults to the real {@link clearLocalData} — the
    * shipped UI never overrides this. Lets the test pass a stub instead of
    * `mock.module('@/lib/cleanup', ...)`, which would leak across files (see
-   * `docs/development/testing.md` §65).
+   * `docs/internals/development/testing.md` §65).
    */
   clearLocalData?: typeof defaultClearLocalData
 }

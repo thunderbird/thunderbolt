@@ -172,7 +172,7 @@ export function rewriteLinks(
 			if (repoPath.startsWith('docs/')) {
 				const docRelPath = repoPath.slice('docs/'.length);
 				// Only treat as a docs link if the target file actually exists in docs.
-				// Without this check, links like ../src/file.ts from docs/architecture/
+				// Without this check, links like ../src/file.ts from docs/internals/architecture/
 				// incorrectly resolve to docs/src/file.ts and generate broken docs URLs.
 				const withExt = /\.\w+$/.test(docRelPath) ? docRelPath : `${docRelPath}.md`;
 				if (knownDocPaths.has(withExt) || knownDocPaths.has(docRelPath)) {

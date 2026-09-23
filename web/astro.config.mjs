@@ -21,8 +21,8 @@ export default defineConfig({
 		'/docs/pulumi': '/docs/self-hosting/pulumi',
 		// Old root-level docs duplicated by maintained pages elsewhere in /docs/.
 		'/docs/introduction': '/docs',
-		'/docs/quick-start': '/docs/development/quick-start',
-		'/docs/multi-device-sync': '/docs/architecture/multi-device-sync',
+		'/docs/quick-start': '/docs/self-hosting/docker-compose',
+		'/docs/multi-device-sync': '/docs/using/apps-and-sync',
 	},
 	integrations: [
 		react(),

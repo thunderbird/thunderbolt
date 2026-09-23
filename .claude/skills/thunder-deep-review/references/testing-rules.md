@@ -1,6 +1,6 @@
 # Testing Rules — with rule ids
 
-Cite the `R-*` id when surfacing a test-file finding. Source of truth is the two testing docs: `docs/development/testing.md` (frontend/general) and `backend/docs/testing.md` (backend). Read them if in doubt.
+Cite the `R-*` id when surfacing a test-file finding. Source of truth is the two testing docs: `docs/internals/development/testing.md` (frontend/general) and `backend/docs/testing.md` (backend). Read them if in doubt.
 
 These rules apply to **test files** (`*.test.ts`, `*.test.tsx`). They are the standard a senior reviewer holds tests to — distinct from, and sometimes the **opposite of**, the production house rules (`house-rules.md`). The most important inversion is `R-SUPPRESSCONSOLE` vs `R-ERRSWALLOW` — see that rule.
 

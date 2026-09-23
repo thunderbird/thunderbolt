@@ -171,7 +171,7 @@ export type ProxyFetchOptions = {
   fetchImpl?: typeof fetch
   /** Optional Tauri-detection override — defaults to `isTauri()` from `@/lib/platform`.
    *  Tests pass an explicit boolean to avoid mocking the shared platform module
-   *  (which would leak across files; see docs/development/testing.md). */
+   *  (which would leak across files; see docs/internals/development/testing.md). */
   isStandalone?: () => boolean
   /** Optional Tauri fetch override — defaults to `@tauri-apps/plugin-http` fetch.
    *  Tests inject a stub. */

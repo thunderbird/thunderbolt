@@ -122,7 +122,7 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 | `cli/`                                                   | `cd cli && bun run test`                                     |
 | Playwright specs in `e2e/`                               | `bun run e2e`                                                |
 
-`cli` and `agent-core` are separate path-gated CI jobs, so a change there that you only exercised through `bun run test` has not been tested at all. The backend job runs `src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` in a segregated step (same-process WebSocket event delivery is flaky under 5× reruns); `bun run test:backend:ws` runs that pair locally. Full details in [docs/development/testing.md](docs/internals/development/testing.md).
+`cli` and `agent-core` are separate path-gated CI jobs, so a change there that you only exercised through `bun run test` has not been tested at all. The backend job runs `src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` in a segregated step (same-process WebSocket event delivery is flaky under 5× reruns); `bun run test:backend:ws` runs that pair locally. Full details in [docs/internals/development/testing.md](docs/internals/development/testing.md).
 
 ## After Each Task
 
@@ -132,13 +132,13 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 
 ## PowerSync and synced tables
 
-See [docs/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md) for: synced table requirements, adding, removing and extending a table (frontend + backend + schema + sync-rule configs + production), the `devices` table, and the backend token/upload/revoke API. The user-facing side — what each device does when an account is deleted or a device revoked — is in [docs/architecture/delete-account-and-revoke-device.md](docs/internals/architecture/delete-account-and-revoke-device.md).
+See [docs/internals/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md) for: synced table requirements, adding, removing and extending a table (frontend + backend + schema + sync-rule configs + production), the `devices` table, and the backend token/upload/revoke API. The user-facing side — what each device does when an account is deleted or a device revoked — is in [docs/internals/architecture/delete-account-and-revoke-device.md](docs/internals/architecture/delete-account-and-revoke-device.md).
 
-See [docs/architecture/powersync-sync-middleware.md](docs/internals/architecture/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
+See [docs/internals/architecture/powersync-sync-middleware.md](docs/internals/architecture/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
 
-See [docs/architecture/e2e-encryption.md](docs/internals/architecture/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
+See [docs/internals/architecture/e2e-encryption.md](docs/internals/architecture/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
 
-**Deploying new synced tables is a two-PR process, in this order:** PR 1 carries the backend schema, the Drizzle migration, `shared/powersync-tables.ts` and all three sync-rule configs, and is merged, migrated and rolled out to the Render `powersync` service first; PR 2 carries the frontend schema and everything else and merges only once PR 1's image is live. Merging the frontend first causes silent sync failure — the table works locally but won't replicate across devices. The full procedure (which configs, which sync bucket, the `user_id`-index-only rule, and how to remove a table) is in [docs/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).
+**Deploying new synced tables is a two-PR process, in this order:** PR 1 carries the backend schema, the Drizzle migration, `shared/powersync-tables.ts` and all three sync-rule configs, and is merged, migrated and rolled out to the Render `powersync` service first; PR 2 carries the frontend schema and everything else and merges only once PR 1's image is live. Merging the frontend first causes silent sync failure — the table works locally but won't replicate across devices. The full procedure (which configs, which sync bucket, the `user_id`-index-only rule, and how to remove a table) is in [docs/internals/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).
 
 **Backend migrations checklist:** When adding a new migration, always verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. This is easy to miss when cherry-picking migration files across branches.
 

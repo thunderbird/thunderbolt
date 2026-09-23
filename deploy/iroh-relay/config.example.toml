@@ -6,7 +6,7 @@
 #     n0computer/iroh-relay:v1.0.2 --config-path /config.toml
 #
 # Field reference: https://github.com/n0-computer/iroh/tree/main/iroh-relay
-# Walkthrough + rationale: docs/architecture/iroh-relay-self-hosting.md
+# Walkthrough + rationale: docs/internals/architecture/iroh-relay-self-hosting.md
 
 # Relay traffic proxying (the actual job of this server).
 enable_relay = true

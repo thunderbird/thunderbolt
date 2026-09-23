@@ -344,7 +344,7 @@ GitHub Releases carry the downloadable artifacts, but the in-app Tauri updater i
 
 The upload step is `continue-on-error: true`, and that is deliberate. A matrix leg that finishes late (macOS Apple Silicon queued behind the other runners, typically) can reach CrabNebula after the release has flipped to published, and `cn release upload` then fails with "release was already published". The tolerated outcome is that the GitHub Release still has the asset while the auto-updater for that one platform misses that one version. The workflow emits a `::warning title=CrabNebula upload failed::` annotation so the case stays visible instead of passing silently — check the run's annotations after every release, and re-upload manually if one fired. See THU-643.
 
-For exercising updates without a real release, see [docs/dev-tooling/local-cdn-for-app-update-testing.md](docs/dev-tooling/local-cdn-for-app-update-testing.md).
+For exercising updates without a real release, see [docs/internals/dev-tooling/local-cdn-for-app-update-testing.md](docs/internals/dev-tooling/local-cdn-for-app-update-testing.md).
 
 ## CLI Releases
 

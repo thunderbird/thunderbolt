@@ -27,7 +27,7 @@ make up        # start Postgres + PowerSync in Docker
 make run       # start the backend (:8000) and frontend (:1420)
 ```
 
-For self-hosting with Docker Compose, Kubernetes, or Pulumi on AWS, see [`docs/self-hosting/`](./docs/self-hosting/README.md). For full dev-environment details, see [`docs/development/quick-start.md`](docs/internals/development/quick-start.md).
+For self-hosting with Docker Compose, Kubernetes, or Pulumi on AWS, see [`docs/self-hosting/`](./docs/self-hosting/README.md). For full dev-environment details, see [`docs/internals/development/quick-start.md`](docs/internals/development/quick-start.md).
 
 ## Need Help?
 

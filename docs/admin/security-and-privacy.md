@@ -48,7 +48,7 @@ account's phone, and a tool server has to be added again on each device.
 
 Off by default. Turn it on before your first users sign in:
 
-```env
+```ini
 E2EE_ENABLED=true
 ```
 

@@ -16,7 +16,7 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { forceMobileViewport, restoreViewport } from '@/test-utils/viewport'
 
-// Per docs/development/testing.md: do NOT mock app-internal modules. Real implementations
+// Per docs/internals/development/testing.md: do NOT mock app-internal modules. Real implementations
 // are used via createTestProvider + SignInModalProvider + SidebarProvider. Modal components
 // only render their dialog when `open={true}`, so leaving them real is harmless here.
 

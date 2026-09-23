@@ -48,7 +48,7 @@ Tests have their own scripts at the repository root — see [Testing](#testing).
 
 The project uses Drizzle with PGLite for development and tests (files in .pglite/data) and Postgres in production.
 
-PowerSync tables that hold default data (settings, models, tasks, prompts) use composite primary keys `(id/key, user_id)` so each user can have their own row with the same default ID. See [composite-primary-keys-and-default-data.md](../docs/architecture/composite-primary-keys-and-default-data.md).
+PowerSync tables that hold default data (settings, models, tasks, prompts) use composite primary keys `(id/key, user_id)` so each user can have their own row with the same default ID. See [composite-primary-keys-and-default-data.md](../docs/internals/architecture/composite-primary-keys-and-default-data.md).
 
 ```bash
 # Run Postgres via PGLite (serves data from .pglite/data)

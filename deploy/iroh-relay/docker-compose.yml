@@ -9,7 +9,7 @@
 #   CLI  : THUNDERBOLT_IROH_RELAY_URL=http://localhost:3340
 #   App  : VITE_IROH_RELAY_URL=http://localhost:3340 (build-time)
 #
-# See docs/architecture/iroh-relay-self-hosting.md for the relay's role and
+# See docs/internals/architecture/iroh-relay-self-hosting.md for the relay's role and
 # self-hosting guidance.
 services:
   iroh-relay:

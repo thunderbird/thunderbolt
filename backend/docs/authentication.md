@@ -22,7 +22,7 @@ Sessions carry three fields beyond Better Auth's own:
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | `user.isNew`       | Cleared by the sign-in after-hook.                                                                                       |
 | `user.isAnonymous` | Exposed on the session so the PowerSync route guard needs no extra query.                                                |
-| `session.deviceId` | Binds a session to one device. See [powersync-account-devices.md](../../docs/architecture/powersync-account-devices.md). |
+| `session.deviceId` | Binds a session to one device. See [powersync-account-devices.md](../../docs/internals/architecture/powersync-account-devices.md). |
 
 ### Bearer tokens are signed, and the signature is not optional
 

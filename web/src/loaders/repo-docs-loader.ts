@@ -75,11 +75,21 @@ export const repoDocsLoader = ({
 	},
 });
 
+/**
+ * Directories under /docs/ that are NOT published to the site. `internals/`
+ * holds contributor documentation: it cites source files by line, assumes the
+ * reader is working in the repository, and is written for people changing the
+ * code rather than running the product. It stays in /docs/ so contributors find
+ * it beside everything else, and never reaches thunderbolt.io.
+ */
+const unpublishedDirs = new Set(['internals']);
+
 async function walkMarkdown(dir: string): Promise<string[]> {
 	const entries = await readdir(dir, { withFileTypes: true });
 	const results = await Promise.all(
 		entries
 			.filter((e) => !e.name.startsWith('.') && !e.name.startsWith('_'))
+			.filter((e) => !(e.isDirectory() && unpublishedDirs.has(e.name)))
 			.map((entry) => {
 				const full = join(dir, entry.name);
 				if (entry.isDirectory()) return walkMarkdown(full);

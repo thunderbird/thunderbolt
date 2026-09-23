@@ -190,6 +190,7 @@ See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-
 | `postgres.yaml`   | StatefulSet + Service | PostgreSQL with WAL replication + PVC; hosts app DB and PowerSync bucket storage |
 | `backend.yaml`    | Deployment + Service  | Bun API with health probes                                                       |
 | `frontend.yaml`   | Deployment + Service  | nginx SPA                                                                        |
+| `marketing.yaml`  | Deployment + Service  | Astro site: marketing, blog and docs                                             |
 | `keycloak.yaml`   | Deployment + Service  | OIDC provider with realm import                                                  |
 | `powersync.yaml`  | Deployment + Service  | Real-time sync engine                                                            |
 | `ingress.yaml`    | Ingress               | Path-based routing                                                               |

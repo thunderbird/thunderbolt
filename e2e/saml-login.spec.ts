@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { loginViaSaml, collectPageErrors } from './helpers'
 
 test.describe('SAML login flow', () => {
@@ -18,8 +18,8 @@ test.describe('SAML login flow', () => {
   test('authenticated session persists across navigation', async ({ page }) => {
     await loginViaSaml(page)
 
-    await page.goto('/settings')
-    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
+    await page.goto('/settings/preferences')
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible({ timeout: 10_000 })
 
     await page.goto('/chats/new')
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
@@ -32,8 +32,8 @@ test.describe('SAML login flow', () => {
 
     await loginViaSaml(page)
 
-    await page.goto('/settings')
-    await expect(page.getByText('Settings').first()).toBeVisible({ timeout: 10_000 })
+    await page.goto('/settings/preferences')
+    await expect(page.getByRole('heading', { name: 'Preferences' })).toBeVisible({ timeout: 10_000 })
     await page.goto('/chats/new')
     await expect(page.locator('textarea')).toBeVisible({ timeout: 10_000 })
 

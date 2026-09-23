@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { loginViaSaml, logoutViaSidebar } from './helpers'
 
 test.describe('SAML logout', () => {

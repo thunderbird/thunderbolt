@@ -17,18 +17,26 @@ const collectSuiteFiles = (suites: JSONReportSuite[]): string[] =>
 
 /** Ask Playwright to collect tests without starting browsers or services. */
 const listSpecFiles = async (config: string): Promise<string[]> => {
-  const result = await Bun.$`bunx playwright test --config ${config} --list --reporter=json`.quiet()
+  const result = await Bun.$`bunx playwright test --config ${config} --list --reporter=json`
+    .env({
+      ...process.env,
+      NIGHTLY_DATABASE_URL: process.env.NIGHTLY_DATABASE_URL ?? 'postgresql://unused:unused@invalid.test/postgres',
+      NIGHTLY_POWERSYNC_URL: process.env.NIGHTLY_POWERSYNC_URL ?? 'http://invalid.test:8080',
+    })
+    .quiet()
   const report: JSONReport = result.json()
   return collectSuiteFiles(report.suites).map((file) => resolve(report.config.rootDir, file))
 }
 
 if (import.meta.main) {
-  const collectedFiles = await Promise.all(['playwright.config.ts', 'playwright.preview.config.ts'].map(listSpecFiles))
+  const collectedFiles = await Promise.all(
+    ['playwright.config.ts', 'playwright.preview.config.ts', 'playwright.nightly.config.ts'].map(listSpecFiles),
+  )
   const specFiles = Array.from(new Bun.Glob('e2e/**/*.spec.ts').scanSync())
   const uncollected = findUncollectedSpecs(specFiles, collectedFiles.flat())
   if (uncollected.length > 0) {
     console.error(`No Playwright project collects:\n${uncollected.join('\n')}`)
-    console.error('Fix the testMatch in playwright.config.ts or playwright.preview.config.ts.')
+    console.error('Fix the testMatch in a Playwright config.')
     process.exit(1)
   }
   console.log(`All ${specFiles.length} e2e spec files are collected.`)

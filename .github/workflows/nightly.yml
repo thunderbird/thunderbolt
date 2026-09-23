@@ -1,0 +1,197 @@
+name: Nightly E2E
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-e2e
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: preview
+    services:
+      postgres:
+        image: ghcr.io/thunderbird/thunderbolt/thunderbolt-postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+          POWERSYNC_DB_PASSWORD: myhighlyrandompassword
+        ports:
+          - 15434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      powersync:
+        image: ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync:latest
+        env:
+          PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+          PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
+          PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+          PS_JWT_KID: enterprise-powersync
+        ports:
+          - 18081:8080
+        options: --restart always
+    env:
+      E2E_NIGHTLY_UNIQUE_USERS: 'true'
+      NIGHTLY_DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
+      NIGHTLY_POWERSYNC_URL: http://localhost:18081
+      DATABASE_DRIVER: postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+      EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+
+      - name: Install Chromium and Firefox
+        run: bunx playwright install --with-deps chromium firefox
+
+      - name: Check spec collection
+        run: bun run e2e:check-collected
+
+      - name: Enable logical replication and verify PostgreSQL init
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET wal_level = logical"
+          docker restart "$POSTGRES_CONTAINER"
+          for attempt in $(seq 1 30); do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d postgres >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'PostgreSQL did not become ready after restart'
+              exit 1
+            fi
+            sleep 2
+          done
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc 'SHOW wal_level')" = logical
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_publication WHERE pubname = 'powersync'")" = 1
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_roles WHERE rolname = 'powersync_role'")" = 1
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_database WHERE datname = 'powersync_storage'")" = 1
+
+      - name: Migrate PostgreSQL
+        run: cd backend && bunx drizzle-kit migrate
+
+      - name: Restart PowerSync after database setup
+        env:
+          POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
+        run: docker restart "$POWERSYNC_CONTAINER"
+
+      - name: Wait for PowerSync
+        run: curl --fail --silent --show-error --retry 30 --retry-delay 3 --retry-connrefused http://localhost:18081/probes/liveness
+
+      - name: Run Chromium and Firefox desktop and mobile
+        run: bunx playwright test --config playwright.nightly.config.ts
+
+      - name: Remove credentials and network data from trace attachments
+        id: sanitize
+        if: always()
+        run: |
+          python3 scripts/sanitize-nightly-artifacts.py --self-test
+          python3 scripts/sanitize-nightly-artifacts.py playwright-report
+
+      - name: Upload failure report
+        if: failure() && steps.sanitize.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-linux-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  macos:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    environment: preview
+    env:
+      E2E_NIGHTLY_UNIQUE_USERS: 'true'
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+      EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+
+      - name: Install WebKit
+        run: bunx playwright install webkit
+
+      - name: Run WebKit desktop and iPhone
+        run: bunx playwright test --config playwright.nightly.config.ts
+
+      - name: Remove credentials and network data from trace attachments
+        id: sanitize
+        if: always()
+        run: |
+          python3 scripts/sanitize-nightly-artifacts.py --self-test
+          python3 scripts/sanitize-nightly-artifacts.py playwright-report
+
+      - name: Upload failure report
+        if: failure() && steps.sanitize.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-macos-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  notify:
+    if: >-
+      always() &&
+      (needs.linux.result == 'success' || needs.linux.result == 'failure') &&
+      (needs.macos.result == 'success' || needs.macos.result == 'failure')
+    needs: [linux, macos]
+    uses: ./.github/workflows/notify-on-failure.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      conclusion: ${{ (needs.linux.result == 'failure' || needs.macos.result == 'failure') && 'failure' || 'success' }}
+    secrets:
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
+  heartbeat:
+    if: >-
+      always() && !cancelled() &&
+      (needs.linux.result == 'success' || needs.linux.result == 'failure') &&
+      (needs.macos.result == 'success' || needs.macos.result == 'failure')
+    needs: [linux, macos, notify]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Signal completed Nightly run
+        env:
+          HEARTBEAT_URL: ${{ secrets.BETTERSTACK_HEARTBEAT_URL }}
+        run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"

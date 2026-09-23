@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { defaultModelOpus5 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
@@ -31,7 +31,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
     (response) =>
       response.request().method() === 'POST' && /\/chat\/v1\/messages$/.test(new URL(response.url()).pathname),
   )
-  await composer.press('Enter')
+  await page.getByRole('button', { name: 'Send message' }).click()
 
   const reply = page.getByText(/^Hello(?:\s|$)/)
   await expect(reply).toHaveText(fakeProviderReply, { timeout: 30_000 })
@@ -40,7 +40,7 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
   const { startTime, responseEnd } = response.request().timing()
   const finishedAt = startTime + responseEnd
   const snapshots = await page.evaluate(
-    () => (window as Window & { assistantSnapshots: Snapshot[] }).assistantSnapshots,
+    () => (window as Window & { assistantSnapshots?: Snapshot[] }).assistantSnapshots!,
   )
   const completionIndex = snapshots.findIndex(({ text }) => text === fakeProviderReply)
   expect(completionIndex, 'The observer must record the complete reply').toBeGreaterThanOrEqual(0)

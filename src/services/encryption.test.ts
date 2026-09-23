@@ -2,31 +2,69 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test'
-import { createClient } from '@/lib/http'
+import { describe, expect, it, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test'
+import { getAuthToken } from '@/lib/auth-token'
+import { setCachedSession, clearCachedSession } from '@/lib/session-cache'
+import { createAuthenticatedClient, type HttpClient } from '@/lib/http'
 import {
+  generateAK,
   generateKeyPair,
   generateMlKemKeyPair,
-  generateCK,
-  exportPublicKey,
-  exportMlKemPublicKey,
-  wrapCK,
-  unwrapCK,
+  generateDEK,
+  mintDEK,
+  wrapAK,
+  wrapDEK,
+  unwrapDEK,
+  unwrapAK,
+  wrapLegacyCK,
   encrypt,
   decrypt,
-  encodeRecoveryKey,
-  decodeRecoveryKey,
-  createCanary,
-  verifyCanary,
+  exportPublicKey,
+  exportMlKemPublicKey,
+  base64ToUint8Array,
+  uint8ArrayToBase64,
+  anchorVersion,
+  keyringAnchorOpens,
+  mintKeyringAnchor,
+  type KeyringAnchor,
   type StoredKeyPair,
 } from '@/crypto'
+import { deriveSigningKeyPair, mintCanary, signRecoveryAttestation } from '@/crypto/canary'
+import {
+  decodeRecoveryKey,
+  deriveRecoveryKeyPairFromSeed,
+  encodeRecoverySeed,
+  generateKdfSalt,
+  generateRecoverySeed,
+} from '@/crypto/recovery-key'
+import { clearRecoveryPhrasePending, isRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
+import { type KeyId, deviceBindHkdfInfo, ecdhKeyAlgorithm, initialKeyId, isMintableKeyId } from '@shared/e2ee-types'
 
 // ---------------------------------------------------------------------------
 // In-memory key storage (replaces IndexedDB)
 // ---------------------------------------------------------------------------
 
 let storedKeyPair: StoredKeyPair | null = null
-let storedCK: CryptoKey | null = null
+let storedAK: CryptoKey | null = null
+const storedDEKs = new Map<KeyId, string>()
+let storedPrimaryKeyId: KeyId | null = null
+let storedKeyVersion: number | null = null
+let storedKeyringAnchor: KeyringAnchor | null = null
+/** Simulates a persistent IndexedDB write failure inside `storeAK` (post-commit staging). */
+let failStoreAK = false
+/** Simulates a TRANSIENT storeAK failure: the next call throws, the one after succeeds. */
+let failStoreAKOnce = false
+/** The v1 CK a formerly-v1 device kept through the non-destructive db bump (THU-877). */
+let storedLegacyCK: CryptoKey | null = null
+
+// Capture the real module (spread into a fresh object — bun's mock.module mutates
+// the live namespace in place, so only a value-copy survives) so afterAll can
+// restore it. Without this the Map-backed stub below leaks globally and poisons
+// crypto/key-storage.test.ts (real fake-indexeddb) into hangs. See testing.md §65.
+const realKeyStorage = { ...(await import('@/crypto/key-storage')) }
+afterAll(() => {
+  mock.module('@/crypto/key-storage', () => realKeyStorage)
+})
 
 mock.module('@/crypto/key-storage', () => ({
   storeKeyPair: async (ecdhPriv: CryptoKey, ecdhPub: CryptoKey, mlkemPub: Uint8Array, mlkemSK: Uint8Array) => {
@@ -38,114 +76,409 @@ mock.module('@/crypto/key-storage', () => ({
     }
   },
   getKeyPair: async () => storedKeyPair,
-  storeCK: async (ck: CryptoKey) => {
-    storedCK = ck
+  storeAK: async (ak: CryptoKey) => {
+    if (failStoreAK) {
+      throw new Error('IndexedDB unavailable')
+    }
+    if (failStoreAKOnce) {
+      failStoreAKOnce = false
+      throw new Error('IndexedDB unavailable')
+    }
+    storedAK = ak
   },
-  getCK: async () => storedCK,
-  clearCK: async () => {
-    storedCK = null
+  getAK: async () => storedAK,
+  getLegacyCK: async () => storedLegacyCK,
+  storeDEK: async (keyId: KeyId, wrapped: string) => {
+    storedDEKs.set(keyId, wrapped)
   },
+  getDEK: async (keyId: KeyId) => storedDEKs.get(keyId) ?? null,
+  stageWrappedDEKs: async (entries: Array<{ keyId: KeyId; wrappedKey: string }>) => {
+    for (const entry of entries) {
+      storedDEKs.set(entry.keyId, entry.wrappedKey)
+    }
+  },
+  listDEKs: async () => [...storedDEKs].map(([keyId, wrappedKey]) => ({ keyId, wrappedKey })),
+  storePrimaryKeyId: async (keyId: KeyId) => {
+    storedPrimaryKeyId = keyId
+  },
+  getPrimaryKeyId: async () => storedPrimaryKeyId,
+  storeKeyVersion: async (version: number) => {
+    storedKeyVersion = version
+  },
+  getKeyVersion: async () => storedKeyVersion,
+  storeKeyringAnchor: async (anchor: KeyringAnchor) => {
+    storedKeyringAnchor = anchor
+  },
+  getKeyringAnchor: async () => storedKeyringAnchor,
   clearAllKeys: async () => {
     storedKeyPair = null
-    storedCK = null
+    storedAK = null
+    storedLegacyCK = null
+    storedDEKs.clear()
+    storedPrimaryKeyId = null
+    storedKeyVersion = null
+    storedKeyringAnchor = null
   },
 }))
 
-// Import service under test (after key-storage mock, but API is real — uses mock fetch via httpClient)
 const {
+  ensureSessionBound,
   registerThisDevice,
   completeFirstDeviceSetup,
+  buildOrgEnvelope,
   approveDevice,
+  stageKeyring,
   checkApprovalAndUnwrap,
   recoverWithKey,
+  rotateAccountKey,
+  changeRecoveryPhrase,
+  revokeDeviceAndRotate,
+  RecoveryAnchorError,
+  RotationStaleError,
+  AKAnchorError,
+  refreshAK,
+  migrateToV2,
+  followToV2,
+  ensureV2Encryption,
   handleFullWipe,
 } = await import('./encryption')
 
 // ---------------------------------------------------------------------------
-// HTTP client with capturing mock fetch
+// Stateful fake backend
 // ---------------------------------------------------------------------------
 
-type CapturedRequest = { url: string; method: string; body: Record<string, unknown> | null }
-type RouteHandler = (url: string, method: string) => unknown | undefined
+type MetaState = {
+  canaryIv: string | null
+  canaryCtext: string | null
+  kdfSalt: string | null
+  signingPublicKey: string | null
+  recoveryEcdhPublicKey: string | null
+  recoveryMlkemPublicKey: string | null
+  recoveryWrappedAk: string | null
+  recoveryAttestation: string | null
+  keyVersion: number
+  primaryKeyId: KeyId
+  schemeVersion: 1 | 2
+}
 
-const createTestHttpClient = (...handlers: RouteHandler[]) => {
-  const requests: CapturedRequest[] = []
+/** Pull the recovery slot off a request body into its stored shape. */
+const recoverySlotFrom = (
+  body: Record<string, unknown>,
+): Pick<
+  MetaState,
+  'recoveryEcdhPublicKey' | 'recoveryMlkemPublicKey' | 'recoveryWrappedAk' | 'recoveryAttestation'
+> => ({
+  recoveryEcdhPublicKey: (body.recoveryEcdhPublicKey as string | undefined) ?? null,
+  recoveryMlkemPublicKey: (body.recoveryMlkemPublicKey as string | undefined) ?? null,
+  recoveryWrappedAk: (body.recoveryWrappedAK as string | undefined) ?? null,
+  recoveryAttestation: (body.recoveryAttestation as string | undefined) ?? null,
+})
 
-  const mockFetch = async (input: Request): Promise<Response> => {
-    const url = input.url
+type FakeServer = {
+  metadata: MetaState | null
+  envelopes: Map<string, string>
+  wrappedKeys: Map<KeyId, string>
+  deviceTrusted: Map<string, boolean>
+  /** Public keys per device — absent means "cannot hold an envelope" (bridge, v1 device). */
+  devicePublicKeys: Map<string, { publicKey: string; mlkemPublicKey: string }>
+  upgradeConflict: boolean
+  /** Applied when /upgrade returns 409 — simulates the winning migrator's committed v2 state. */
+  winner?: { metadata: MetaState; envelopes: Map<string, string>; wrappedKeys: Map<KeyId, string> }
+  rotateStatus: number
+  /** `METHOD /path` of every request, in order — lets a test assert nothing was called. */
+  requests: string[]
+  /** Operator escrow config served by GET /encryption/org-key (THU-804). */
+  orgEscrow: { enabled: boolean; publicKey: string | null }
+  /** `orgEnvelope` from the last bootstrap/rotate/upgrade body — null when the field was omitted. */
+  lastOrgEnvelope: string | null
+  /** Device this session is bound to (THU-873) — set only by a completed bind handshake. */
+  boundDeviceId: string | null
+  /** Nonce the last bind-challenge sealed, so a test can assert it never leaked. */
+  lastBindNonce: string | null
+  fetch: (input: Request) => Promise<Response>
+}
+
+/**
+ * Mirror of the BACKEND seal (`backend/src/lib/device-bind.ts`) so the fake
+ * server can answer a bind challenge the way production does — the client half
+ * under test then has to really open it with the device's private key.
+ */
+const sealForDevice = async (devicePublicKeyBase64: string, nonce: string) => {
+  const devicePublicKey = await crypto.subtle.importKey(
+    'raw',
+    base64ToUint8Array(devicePublicKeyBase64),
+    ecdhKeyAlgorithm,
+    false,
+    [],
+  )
+  const ephemeral = await crypto.subtle.generateKey(ecdhKeyAlgorithm, false, ['deriveBits'])
+  const ephemeralRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey))
+  const shared = await crypto.subtle.deriveBits(
+    { name: ecdhKeyAlgorithm.name, public: devicePublicKey },
+    ephemeral.privateKey,
+    256,
+  )
+  const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+  const sealingKey = await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: ephemeralRaw as BufferSource,
+      info: new TextEncoder().encode(deviceBindHkdfInfo),
+    },
+    hkdfKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sealingKey, new TextEncoder().encode(nonce))
+  return {
+    ephemeral_public_key: uint8ArrayToBase64(ephemeralRaw),
+    iv: uint8ArrayToBase64(iv),
+    ciphertext: uint8ArrayToBase64(new Uint8Array(ciphertext)),
+  }
+}
+
+const jsonResponse = (data: unknown, status = 200): Response =>
+  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
+
+const createFakeServer = (): FakeServer => {
+  const server: FakeServer = {
+    metadata: null,
+    envelopes: new Map(),
+    wrappedKeys: new Map(),
+    deviceTrusted: new Map(),
+    devicePublicKeys: new Map(),
+    upgradeConflict: false,
+    rotateStatus: 200,
+    requests: [],
+    orgEscrow: { enabled: false, publicKey: null },
+    lastOrgEnvelope: null,
+    boundDeviceId: null,
+    lastBindNonce: null,
+    fetch: async () => jsonResponse({}),
+  }
+
+  let nonceCounter = 0
+
+  server.fetch = async (input: Request): Promise<Response> => {
+    const url = new URL(input.url)
+    const path = url.pathname
     const method = input.method
+    const callerDeviceId = input.headers.get('x-device-id') ?? ''
+    server.requests.push(`${method} ${path}`)
     let body: Record<string, unknown> | null = null
     try {
       body = (await input.json()) as Record<string, unknown>
     } catch {
       // GET requests have no body
     }
-    requests.push({ url, method, body })
 
-    for (const handler of handlers) {
-      const response = handler(url, method)
-      if (response !== undefined) {
-        if (response instanceof Error) {
-          return new Response(JSON.stringify({ error: response.message }), {
-            status: (response as Error & { status?: number }).status ?? 500,
-            headers: { 'Content-Type': 'application/json' },
+    const metaResponse = () =>
+      server.metadata
+        ? jsonResponse({
+            canary_iv: server.metadata.canaryIv,
+            canary_ctext: server.metadata.canaryCtext,
+            kdf_salt: server.metadata.kdfSalt,
+            signing_public_key: server.metadata.signingPublicKey,
+            recovery_ecdh_public_key: server.metadata.recoveryEcdhPublicKey,
+            recovery_mlkem_public_key: server.metadata.recoveryMlkemPublicKey,
+            recovery_wrapped_ak: server.metadata.recoveryWrappedAk,
+            recovery_attestation: server.metadata.recoveryAttestation,
+            key_version: server.metadata.keyVersion,
+            primary_key_id: server.metadata.primaryKeyId,
+            scheme_version: server.metadata.schemeVersion,
           })
-        }
-        return new Response(JSON.stringify(response), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        : jsonResponse({ error: 'not set up' }, 404)
+
+    if (path === '/devices' && method === 'POST') {
+      const deviceId = body!.deviceId as string
+      if (!server.deviceTrusted.has(deviceId)) {
+        server.deviceTrusted.set(deviceId, false)
       }
+      server.devicePublicKeys.set(deviceId, {
+        publicKey: body!.publicKey as string,
+        mlkemPublicKey: body!.mlkemPublicKey as string,
+      })
+      return jsonResponse({ trusted: false })
     }
-
-    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (path === '/devices/me/envelope' && method === 'GET') {
+      const env = server.envelopes.get(callerDeviceId)
+      if (!env) {
+        return jsonResponse({ error: 'not found' }, 404)
+      }
+      return jsonResponse({ trusted: server.deviceTrusted.get(callerDeviceId) ?? false, wrappedCK: env })
+    }
+    if (path.endsWith('/envelope') && method === 'POST') {
+      const deviceId = decodeURIComponent(path.split('/')[2])
+      server.envelopes.set(deviceId, body!.wrappedCK as string)
+      server.deviceTrusted.set(deviceId, true)
+      if (body!.canaryIv) {
+        server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
+        // Bootstrap: create metadata + initial keyring atomically.
+        server.metadata = {
+          canaryIv: body!.canaryIv as string,
+          canaryCtext: body!.canaryCtext as string,
+          kdfSalt: body!.kdfSalt as string,
+          signingPublicKey: body!.signingPublicKey as string,
+          ...recoverySlotFrom(body!),
+          keyVersion: 1,
+          primaryKeyId: '0',
+          schemeVersion: 2,
+        }
+        for (const entry of (body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) ?? []) {
+          server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
+        }
+      }
+      return jsonResponse({ trusted: true })
+    }
+    if (path === '/devices/me/bind-challenge' && method === 'GET') {
+      const keys = server.devicePublicKeys.get(callerDeviceId)
+      if (!keys) {
+        return jsonResponse({ error: 'Device not found' }, 404)
+      }
+      const nonce = `bind-nonce-${++nonceCounter}`
+      server.lastBindNonce = nonce
+      return jsonResponse({
+        sealed: await sealForDevice(keys.publicKey, nonce),
+        expires_at: new Date(Date.now() + 300_000).toISOString(),
+      })
+    }
+    if (path === '/devices/me/bind' && method === 'POST') {
+      if (body!.nonce !== server.lastBindNonce) {
+        return jsonResponse({ error: 'Invalid or expired bind nonce' }, 403)
+      }
+      server.boundDeviceId = body!.deviceId as string
+      return jsonResponse({ deviceId: server.boundDeviceId })
+    }
+    if (path === '/encryption/canary' && method === 'GET') {
+      return metaResponse()
+    }
+    if (path === '/encryption/org-key' && method === 'GET') {
+      const { enabled, publicKey } = server.orgEscrow
+      return jsonResponse({ enabled, publicKey, fingerprint: publicKey ? 'test-fingerprint' : null })
+    }
+    if (path === '/encryption/envelope-targets' && method === 'GET') {
+      // Mirrors the server predicate: trusted, non-revoked, both public keys present.
+      const targets = [...server.deviceTrusted]
+        .filter(([, trusted]) => trusted)
+        .flatMap(([deviceId]) => {
+          const keys = server.devicePublicKeys.get(deviceId)
+          return keys
+            ? [{ device_id: deviceId, public_key: keys.publicKey, mlkem_public_key: keys.mlkemPublicKey }]
+            : []
+        })
+      return jsonResponse({ devices: targets })
+    }
+    if (path === '/encryption/keys' && method === 'GET') {
+      return jsonResponse({ keys: [...server.wrappedKeys].map(([key_id, wrapped_key]) => ({ key_id, wrapped_key })) })
+    }
+    if (path.startsWith('/encryption/keys/') && method === 'GET') {
+      const keyId = decodeURIComponent(path.slice('/encryption/keys/'.length))
+      const wrapped = server.wrappedKeys.get(keyId)
+      return wrapped ? jsonResponse({ key_id: keyId, wrapped_key: wrapped }) : jsonResponse({ error: 'not found' }, 404)
+    }
+    if (path === '/encryption/challenge' && method === 'GET') {
+      nonceCounter += 1
+      return jsonResponse({ nonce: `nonce-${nonceCounter}`, expires_at: new Date(Date.now() + 300_000).toISOString() })
+    }
+    if (path === '/encryption/rotate' && method === 'POST') {
+      if (server.rotateStatus !== 200) {
+        return jsonResponse({ error: 'stale' }, server.rotateStatus)
+      }
+      server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
+      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
+        server.envelopes.set(env.deviceId, env.wrappedCK)
+      }
+      // A rotation may mint one new primary DEK (THU-871). Mirror the server's
+      // conflict check: a key_id that already exists aborts the whole rotation,
+      // it is never silently swallowed.
+      const newPrimaryKey = body!.newPrimaryKey as { keyId: KeyId; wrappedKey: string } | undefined
+      if (newPrimaryKey && server.wrappedKeys.has(newPrimaryKey.keyId)) {
+        return jsonResponse({ error: `key_id '${newPrimaryKey.keyId}' already exists — mint aborted` }, 409)
+      }
+      server.wrappedKeys.clear()
+      for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
+        server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
+      }
+      if (newPrimaryKey) {
+        server.wrappedKeys.set(newPrimaryKey.keyId, newPrimaryKey.wrappedKey)
+      }
+      server.metadata = {
+        ...server.metadata!,
+        ...(newPrimaryKey ? { primaryKeyId: newPrimaryKey.keyId } : {}),
+        canaryIv: body!.canaryIv as string,
+        canaryCtext: body!.canaryCtext as string,
+        kdfSalt: body!.kdfSalt as string,
+        signingPublicKey: body!.signingPublicKey as string,
+        ...recoverySlotFrom(body!),
+        keyVersion: server.metadata!.keyVersion + 1,
+      }
+      return jsonResponse({ key_version: server.metadata.keyVersion })
+    }
+    if (path === '/encryption/upgrade' && method === 'POST') {
+      if (server.upgradeConflict) {
+        if (server.winner) {
+          server.metadata = server.winner.metadata
+          server.envelopes = server.winner.envelopes
+          server.wrappedKeys = server.winner.wrappedKeys
+        }
+        return jsonResponse({ error: 'already migrated' }, 409)
+      }
+      server.lastOrgEnvelope = (body!.orgEnvelope as string | undefined) ?? null
+      for (const entry of body!.wrappedKeys as Array<{ keyId: KeyId; wrappedKey: string }>) {
+        server.wrappedKeys.set(entry.keyId, entry.wrappedKey)
+      }
+      for (const env of body!.envelopes as Array<{ deviceId: string; wrappedCK: string }>) {
+        server.envelopes.set(env.deviceId, env.wrappedCK)
+      }
+      server.metadata = {
+        canaryIv: body!.canaryIv as string,
+        canaryCtext: body!.canaryCtext as string,
+        kdfSalt: body!.kdfSalt as string,
+        signingPublicKey: body!.signingPublicKey as string,
+        ...recoverySlotFrom(body!),
+        keyVersion: 1,
+        primaryKeyId: body!.primaryKeyId as KeyId,
+        schemeVersion: 2,
+      }
+      return jsonResponse({ key_version: 1, scheme_version: 2 })
+    }
+    return jsonResponse({})
   }
 
-  return {
-    httpClient: createClient({
-      fetch: mockFetch as unknown as typeof fetch,
-      prefixUrl: 'http://test-api.local',
-    }),
-    requests,
-  }
+  return server
 }
 
-// Route helpers
-const respondToRegister =
-  (response: unknown): RouteHandler =>
-  (url, method) => {
-    if (url.includes('/devices') && !url.includes('/envelope') && !url.includes('/me') && method === 'POST') {
-      return response
-    }
-  }
-
-const respondToStoreEnvelope =
-  (response: unknown): RouteHandler =>
-  (url, method) => {
-    if (url.includes('/envelope') && method === 'POST') {
-      return response
-    }
-  }
-
-const respondToFetchEnvelope =
-  (response: unknown): RouteHandler =>
-  (url, method) => {
-    if (url.includes('/devices/me/envelope') && method === 'GET') {
-      return response
-    }
-  }
-
-const respondToFetchCanary =
-  (response: unknown): RouteHandler =>
-  (url, method) => {
-    if (url.includes('/encryption/canary') && method === 'GET') {
-      return response
-    }
-  }
+const clientFor = (server: FakeServer): HttpClient =>
+  createAuthenticatedClient('http://test-api.local', getAuthToken, {
+    fetch: server.fetch as unknown as typeof fetch,
+  })
 
 // ---------------------------------------------------------------------------
-// Helper: generate a full StoredKeyPair (ECDH + ML-KEM)
+// Fixtures
 // ---------------------------------------------------------------------------
+
+const testUserId = 'test-user'
+const deviceIdKey = 'thunderbolt_device_id'
+const authTokenKey = 'thunderbolt_auth_token'
+
+// One derivation shared by every seeded fixture: PBKDF2-SHA512 at 600k
+// iterations is far too slow to repeat per test, and no seeded-account test
+// needs a distinct phrase.
+const fixtureRecoverySalt = generateKdfSalt()
+const fixtureRecoveryKeyPair = await deriveRecoveryKeyPairFromSeed(new Uint8Array(32).fill(7), fixtureRecoverySalt)
+
+/** Unwrap this device's staged envelope into the account AK (test convenience). */
+const unwrapDeviceAK = async (server: FakeServer): Promise<CryptoKey> =>
+  (
+    await unwrapAK(
+      server.envelopes.get('test-device-id')!,
+      storedKeyPair!.ecdhPrivateKey,
+      storedKeyPair!.mlkemSecretKey,
+    )
+  ).ak
 
 const generateFullKeyPair = async (): Promise<StoredKeyPair> => {
   const ecdhKeyPair = await generateKeyPair()
@@ -158,289 +491,1556 @@ const generateFullKeyPair = async (): Promise<StoredKeyPair> => {
   }
 }
 
+const deviceKeysFor = async (kp: StoredKeyPair, id: string) => ({
+  id,
+  publicKey: await exportPublicKey(kp.ecdhPublicKey),
+  mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+})
+
+/** Seed a full v2 account (AK + keyring incl. a `"v1"` slot + canary + envelope). */
+const seedV2Account = async (
+  server: FakeServer,
+  kp: StoredKeyPair,
+  legacyCK: CryptoKey,
+  extraDekIds: KeyId[] = [],
+): Promise<CryptoKey> => {
+  const ak = await generateAK(true)
+  const { wrappedKey: w0 } = await mintDEK(ak, '0')
+  server.wrappedKeys.set('0', w0)
+  server.wrappedKeys.set('v1', await wrapDEK(legacyCK, ak, 'v1'))
+  for (const id of extraDekIds) {
+    const { wrappedKey } = await mintDEK(ak, id)
+    server.wrappedKeys.set(id, wrappedKey)
+  }
+  const { canaryIv, canaryCtext, canaryKey } = await mintCanary(ak, testUserId)
+  const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+  server.envelopes.set('test-device-id', await wrapAK(ak, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+  server.deviceTrusted.set('test-device-id', true)
+  server.devicePublicKeys.set('test-device-id', {
+    publicKey: await exportPublicKey(kp.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+  })
+  // Signed for real with this epoch's canary secret, exactly as a live setup
+  // would (THU-865) — a stubbed value here would make every rotation test fail
+  // the anchor check instead of exercising it.
+  const recoveryEcdhPublicKey = await exportPublicKey(fixtureRecoveryKeyPair.ecdhPublicKey)
+  const recoveryMlkemPublicKey = exportMlKemPublicKey(fixtureRecoveryKeyPair.mlkemPublicKey)
+  server.metadata = {
+    canaryIv,
+    canaryCtext,
+    kdfSalt: fixtureRecoverySalt,
+    signingPublicKey: publicKeySpki,
+    recoveryEcdhPublicKey,
+    recoveryMlkemPublicKey,
+    recoveryWrappedAk: await wrapAK(
+      ak,
+      fixtureRecoveryKeyPair.ecdhPublicKey,
+      fixtureRecoveryKeyPair.mlkemPublicKey,
+      '0',
+    ),
+    recoveryAttestation: await signRecoveryAttestation(canaryKey, {
+      userId: testUserId,
+      kdfSalt: fixtureRecoverySalt,
+      recoveryEcdhPublicKey,
+      recoveryMlkemPublicKey,
+    }),
+    keyVersion: 1,
+    primaryKeyId: '0',
+    schemeVersion: 2,
+  }
+  return ak
+}
+
+/** Build a v1 (legacy) account: an AES-GCM CK, a no-AAD v1 canary, and a v1 envelope. */
+const seedV1Account = async (
+  server: FakeServer,
+  kp: StoredKeyPair,
+): Promise<{ legacyCK: CryptoKey; v1Secret: string }> => {
+  const legacyCK = await generateDEK(true)
+  const v1Secret = 'legacy-secret-abc'
+  const { iv, ciphertext } = await encrypt(`thunderbolt-canary-v1:${v1Secret}`, legacyCK)
+  server.metadata = {
+    canaryIv: iv,
+    canaryCtext: ciphertext,
+    kdfSalt: null,
+    signingPublicKey: null,
+    recoveryEcdhPublicKey: null,
+    recoveryMlkemPublicKey: null,
+    recoveryWrappedAk: null,
+    recoveryAttestation: null,
+    keyVersion: 1,
+    primaryKeyId: '0',
+    schemeVersion: 1,
+  }
+  server.envelopes.set('test-device-id', await wrapLegacyCK(legacyCK, kp.ecdhPublicKey, kp.mlkemPublicKey))
+  server.deviceTrusted.set('test-device-id', true)
+  server.devicePublicKeys.set('test-device-id', {
+    publicKey: await exportPublicKey(kp.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+  })
+  return { legacyCK, v1Secret }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-const deviceIdKey = 'thunderbolt_device_id'
-const authTokenKey = 'thunderbolt_auth_token'
-
-describe('encryption service', () => {
+describe('encryption service (v2)', () => {
   beforeEach(() => {
     localStorage.setItem(deviceIdKey, 'test-device-id')
     localStorage.setItem(authTokenKey, 'test-token')
+    setCachedSession({ user: { id: testUserId }, session: { expiresAt: new Date(Date.now() + 3_600_000) } })
     storedKeyPair = null
-    storedCK = null
+    storedAK = null
+    storedLegacyCK = null
+    storedDEKs.clear()
+    storedPrimaryKeyId = null
+    storedKeyVersion = null
+    storedKeyringAnchor = null
+    failStoreAK = false
+    failStoreAKOnce = false
+    clearRecoveryPhrasePending()
   })
 
   afterEach(() => {
+    failStoreAK = false
+    failStoreAKOnce = false
+    clearRecoveryPhrasePending()
     localStorage.removeItem(deviceIdKey)
     localStorage.removeItem(authTokenKey)
+    clearCachedSession()
+  })
+
+  describe('ensureSessionBound (THU-873)', () => {
+    it('opens the sealed challenge and binds the session to this device', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      // The device is registered, so the server holds its public key to seal to —
+      // the state a returning device is in after its session expired.
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+
+      await ensureSessionBound(clientFor(server))
+
+      expect(server.boundDeviceId).toBe('test-device-id')
+    })
+
+    it('does nothing when this device holds no key pair', async () => {
+      // Never registered: there is no private key to prove possession with, and
+      // registration will link the session anyway.
+      const server = createFakeServer()
+
+      await ensureSessionBound(clientFor(server))
+
+      expect(server.requests).toEqual([])
+      expect(server.boundDeviceId).toBeNull()
+    })
+
+    it('binds once per credential, not once per call', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(storedKeyPair.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(storedKeyPair.mlkemPublicKey),
+      })
+      const client = clientFor(server)
+
+      await ensureSessionBound(client)
+      const afterFirst = server.requests.length
+      await ensureSessionBound(client)
+
+      // App init and the session-change effect both call this; the second is a
+      // no-op rather than a second handshake.
+      expect(server.requests.length).toBe(afterFirst)
+
+      // A new bearer means a new (unbound) session, so it binds again.
+      localStorage.setItem(authTokenKey, 'a-fresh-session-token')
+      await ensureSessionBound(client)
+      expect(server.requests.length).toBeGreaterThan(afterFirst)
+    })
+
+    it('fails rather than binding when the challenge was sealed to another device', async () => {
+      const server = createFakeServer()
+      // A distinct bearer, because `ensureSessionBound` dedupes per token: the
+      // successful bind above already recorded the shared `test-token`, and in
+      // production a new session always means a new token.
+      localStorage.setItem(authTokenKey, 'another-session-token')
+      storedKeyPair = await generateFullKeyPair()
+      const otherDevice = await generateFullKeyPair()
+      // Server seals to a DIFFERENT device's public key — the shape of a server
+      // (or attacker) trying to bind a session it does not own.
+      server.devicePublicKeys.set('test-device-id', {
+        publicKey: await exportPublicKey(otherDevice.ecdhPublicKey),
+        mlkemPublicKey: exportMlKemPublicKey(otherDevice.mlkemPublicKey),
+      })
+
+      await expect(ensureSessionBound(clientFor(server))).rejects.toThrow()
+
+      expect(server.boundDeviceId).toBeNull()
+    })
   })
 
   describe('registerThisDevice', () => {
-    it('generates new key pair when none exists', async () => {
-      const { httpClient, requests } = createTestHttpClient(respondToRegister({ trusted: false }))
-
-      const result = await registerThisDevice(httpClient)
-
+    it('generates and stores a key pair when none exists', async () => {
+      const server = createFakeServer()
+      const result = await registerThisDevice(clientFor(server))
       expect(storedKeyPair).not.toBeNull()
-      expect(storedKeyPair!.ecdhPublicKey.algorithm.name).toBe('ECDH')
-      expect(storedKeyPair!.mlkemPublicKey).toBeInstanceOf(Uint8Array)
-      expect(storedKeyPair!.mlkemSecretKey).toBeInstanceOf(Uint8Array)
-      expect(requests).toHaveLength(1)
-      expect(requests[0].body?.deviceId).toBe('test-device-id')
-      expect((requests[0].body?.publicKey as string).length).toBeGreaterThan(0)
-      expect((requests[0].body?.mlkemPublicKey as string).length).toBeGreaterThan(0)
       expect(result).toEqual({ trusted: false })
-    })
-
-    it('reuses existing key pair', async () => {
-      const existing = await generateFullKeyPair()
-      storedKeyPair = existing
-      const exportedBefore = await exportPublicKey(existing.ecdhPublicKey)
-
-      const { httpClient, requests } = createTestHttpClient(respondToRegister({ trusted: false }))
-      await registerThisDevice(httpClient)
-
-      expect(storedKeyPair).toBe(existing)
-      expect(requests[0].body?.publicKey).toBe(exportedBefore)
-    })
-
-    it('passes device ID, public key, mlkem public key, and name to API', async () => {
-      const { httpClient, requests } = createTestHttpClient(respondToRegister({ trusted: false }))
-      await registerThisDevice(httpClient)
-
-      expect(requests[0].url).toContain('/devices')
-      expect(requests[0].method).toBe('POST')
-      expect(requests[0].body?.deviceId).toBe('test-device-id')
-      expect(typeof requests[0].body?.publicKey).toBe('string')
-      expect(typeof requests[0].body?.mlkemPublicKey).toBe('string')
-      expect(typeof requests[0].body?.name).toBe('string')
     })
   })
 
   describe('completeFirstDeviceSetup', () => {
-    it('generates CK, canary, envelope, stores keys, returns recovery key', async () => {
+    it('mints DEK 0, stores AK + keyring + primary, returns a 24-word key', async () => {
+      const server = createFakeServer()
       storedKeyPair = await generateFullKeyPair()
 
-      const { httpClient: capturingClient, requests } = createTestHttpClient(respondToStoreEnvelope({ trusted: true }))
+      const recoveryKey = await completeFirstDeviceSetup(clientFor(server))
 
-      const recoveryKey = await completeFirstDeviceSetup(capturingClient)
-
-      // Recovery key is a valid 24-word mnemonic
       expect(recoveryKey.split(' ')).toHaveLength(24)
-      // CK was stored locally (non-extractable)
-      expect(storedCK).not.toBeNull()
-      expect(storedCK!.algorithm.name).toBe('AES-GCM')
-      expect(storedCK!.extractable).toBe(false)
-      // Envelope was stored on server with canary
-      const envelopeReq = requests.find((r) => r.url.includes('/envelope'))
-      expect(envelopeReq).toBeDefined()
-      expect((envelopeReq!.body?.wrappedCK as string).length).toBeGreaterThan(0)
-      expect((envelopeReq!.body?.canaryIv as string).length).toBeGreaterThan(0)
-      expect((envelopeReq!.body?.canaryCtext as string).length).toBeGreaterThan(0)
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('0')).toBe(true)
+      expect(storedPrimaryKeyId).toBe('0')
+      expect(server.metadata?.schemeVersion).toBe(2)
+      // The staged DEK 0 unwraps under the stored AK.
+      const dek0 = await unwrapDEK(storedDEKs.get('0')!, storedAK!, '0')
+      expect(dek0.algorithm.name).toBe('AES-GCM')
     })
 
-    it('stored CK can decrypt data encrypted during setup', async () => {
+    it('throws when the key pair is missing', async () => {
+      const server = createFakeServer()
+      await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow('Key pair not found')
+    })
+
+    it('marks the phrase as pending so a reload before confirmation is recoverable', async () => {
+      // The returned phrase lives only in component state; the durable flag is
+      // what lets the app re-prompt if the user never confirms saving it.
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      expect(isRecoveryPhrasePending()).toBe(false)
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(isRecoveryPhrasePending()).toBe(true)
+    })
+
+    it('does not mark the phrase pending when setup fails', async () => {
+      const server = createFakeServer()
+      await expect(completeFirstDeviceSetup(clientFor(server))).rejects.toThrow()
+      expect(isRecoveryPhrasePending()).toBe(false)
+    })
+  })
+
+  describe('org escrow (THU-804 / THU-866)', () => {
+    const env = import.meta.env as Record<string, unknown>
+    let savedPin: unknown
+
+    beforeEach(() => {
+      savedPin = env.VITE_ORG_ESCROW_PUBLIC_KEY
+    })
+
+    afterEach(() => {
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = savedPin
+    })
+
+    /** Pin a freshly minted operator escrow key into this build's env (THU-866). */
+    const pinOrgEscrowKey = async (): Promise<void> => {
+      const { publicKey } = await generateKeyPair()
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = await exportPublicKey(publicKey)
+    }
+
+    /**
+     * A2 lying about escrow on the wire: enabled, with a key only the server
+     * holds. The real route was deleted with THU-866, so this handler exists to
+     * keep the assertion below non-vacuous — the fake server answers the old path
+     * plausibly, and a pass means the client took its build-time pin and never
+     * asked. If a client ever re-acquires that fetch, these tests fail.
+     */
+    const serveHostileOrgKey = async (server: FakeServer): Promise<void> => {
+      const { publicKey } = await generateKeyPair()
+      server.orgEscrow = { enabled: true, publicKey: await exportPublicKey(publicKey) }
+    }
+
+    /** The deleted route that used to drive the wrap target — no flow may request it. */
+    const expectOrgKeyRouteUntouched = (server: FakeServer): void => {
+      expect(server.requests).not.toContain('GET /encryption/org-key')
+    }
+
+    const makeAK = () => generateAK(true)
+
+    it('buildOrgEnvelope escrows nothing when this build pins no key', async () => {
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
+      expect(await buildOrgEnvelope(await makeAK())).toBeUndefined()
+    })
+
+    it('buildOrgEnvelope wraps the AK to the pinned key', async () => {
+      await pinOrgEscrowKey()
+      const envelope = await buildOrgEnvelope(await makeAK())
+      expect(typeof envelope).toBe('string')
+      expect(envelope!.length).toBeGreaterThan(0)
+    })
+
+    it('completeFirstDeviceSetup omits orgEnvelope when this build pins no key', async () => {
+      const server = createFakeServer()
+      await serveHostileOrgKey(server)
+      env.VITE_ORG_ESCROW_PUBLIC_KEY = undefined
       storedKeyPair = await generateFullKeyPair()
 
-      const { httpClient: capturingClient, requests } = createTestHttpClient(respondToStoreEnvelope({ trusted: true }))
+      await completeFirstDeviceSetup(clientFor(server))
 
-      const recoveryKey = await completeFirstDeviceSetup(capturingClient)
-
-      // The stored non-extractable CK should be usable
-      const encrypted = await encrypt('test data', storedCK!)
-      const decrypted = await decrypt(encrypted, storedCK!)
-      expect(decrypted).toBe('test data')
-
-      // Recovery key should decode to a CK that can verify the canary
-      const envelopeReq = requests.find((r) => r.url.includes('/envelope'))!
-      const recoveredCK = await decodeRecoveryKey(recoveryKey)
-      const { valid } = await verifyCanary(
-        recoveredCK,
-        envelopeReq.body!.canaryIv as string,
-        envelopeReq.body!.canaryCtext as string,
-      )
-      expect(valid).toBe(true)
+      // The escrow-DISABLED variant of THU-866: a deployment that configured no
+      // escrow must not be talked into one by a server claiming escrow is on.
+      expect(server.lastOrgEnvelope).toBeNull()
+      expectOrgKeyRouteUntouched(server)
     })
 
-    it('throws if key pair is missing', async () => {
-      const { httpClient } = createTestHttpClient()
-      await expect(completeFirstDeviceSetup(httpClient)).rejects.toThrow('Key pair not found')
+    it('completeFirstDeviceSetup escrows to the pin while the server serves a hostile key', async () => {
+      const server = createFakeServer()
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
+      storedKeyPair = await generateFullKeyPair()
+
+      await completeFirstDeviceSetup(clientFor(server))
+
+      expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
+    })
+
+    it('rotateAccountKey escrows to the pin while the server serves a hostile key', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
+    })
+
+    it('migrateToV2 escrows to the pin while the server serves a hostile key', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      await pinOrgEscrowKey()
+      await serveHostileOrgKey(server)
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      expect(typeof server.lastOrgEnvelope).toBe('string')
+      expectOrgKeyRouteUntouched(server)
     })
   })
 
   describe('approveDevice', () => {
-    it('fetches own envelope, rewraps CK for pending device, stores envelope with canary proof', async () => {
-      const thisKeyPair = await generateFullKeyPair()
-      storedKeyPair = thisKeyPair
+    it('rewraps the AK for the pending device and sends an approve proof', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const legacyCK = await generateDEK(true)
+      await seedV2Account(server, kp, legacyCK)
+      storedAK = await unwrapDeviceAK(server) // helper below
+      // Stage DEK 0 locally so getCanarySecret can build the proof.
+      storedDEKs.set('0', server.wrappedKeys.get('0')!)
 
-      // Create a real CK and wrap it for this device (simulates existing envelope)
-      const ck = await generateCK(true)
-      storedCK = ck
-      const wrappedForThis = await wrapCK(ck, thisKeyPair.ecdhPublicKey, thisKeyPair.mlkemPublicKey)
-
-      // Create canary from the CK (so extractCanarySecret can decrypt it)
-      const { canaryIv, canaryCtext } = await createCanary(ck)
-
-      // Pending device's key pairs
-      const pendingKeyPair = await generateFullKeyPair()
-      const pendingEcdhPubBase64 = await exportPublicKey(pendingKeyPair.ecdhPublicKey)
-      const pendingMlkemPubBase64 = exportMlKemPublicKey(pendingKeyPair.mlkemPublicKey)
-
-      const { httpClient, requests } = createTestHttpClient(
-        respondToFetchEnvelope({ trusted: true, wrappedCK: wrappedForThis }),
-        respondToFetchCanary({ canaryIv, canaryCtext }),
-        respondToStoreEnvelope({ trusted: true }),
+      const pending = await generateFullKeyPair()
+      await approveDevice(
+        clientFor(server),
+        'pending-dev',
+        await exportPublicKey(pending.ecdhPublicKey),
+        exportMlKemPublicKey(pending.mlkemPublicKey),
       )
 
-      await approveDevice(httpClient, 'pending-dev', pendingEcdhPubBase64, pendingMlkemPubBase64)
-
-      // Envelope was stored for the pending device with canary proof
-      const storeReq = requests.find((r) => r.url.includes('/envelope') && r.method === 'POST')
-      expect(storeReq).toBeDefined()
-      expect(storeReq!.url).toContain('pending-dev')
-      expect(storeReq!.body!.canarySecret).toBeDefined()
-      expect(typeof storeReq!.body!.canarySecret).toBe('string')
-
-      // The wrapped CK should be unwrappable by the pending device
-      const unwrappedCK = await unwrapCK(
-        storeReq!.body!.wrappedCK as string,
-        pendingKeyPair.ecdhPrivateKey,
-        pendingKeyPair.mlkemSecretKey,
-      )
-      expect(unwrappedCK.algorithm.name).toBe('AES-GCM')
-    })
-
-    it('throws if key pair is missing', async () => {
-      const { httpClient } = createTestHttpClient()
-      await expect(approveDevice(httpClient, 'dev', 'key', 'mlkem-key')).rejects.toThrow('Key pair not found')
+      // The pending device now has an envelope it can unwrap.
+      expect(server.envelopes.has('pending-dev')).toBe(true)
     })
   })
 
   describe('checkApprovalAndUnwrap', () => {
-    it('fetches envelope, unwraps CK, stores it, returns true', async () => {
-      const keyPair = await generateFullKeyPair()
-      storedKeyPair = keyPair
-      const ck = await generateCK(true)
-      const wrappedCK = await wrapCK(ck, keyPair.ecdhPublicKey, keyPair.mlkemPublicKey)
+    it('unwraps + stores the AK and stages the keyring when approved', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
 
-      const { httpClient } = createTestHttpClient(respondToFetchEnvelope({ trusted: true, wrappedCK }))
-
-      const result = await checkApprovalAndUnwrap(httpClient)
+      const result = await checkApprovalAndUnwrap(clientFor(server))
 
       expect(result).toBe(true)
-      expect(storedCK).not.toBeNull()
-      expect(storedCK!.algorithm.name).toBe('AES-GCM')
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('0')).toBe(true)
+      expect(storedDEKs.has('v1')).toBe(true)
     })
 
-    it('returns false when envelope fetch returns 404 (not yet approved)', async () => {
+    it('returns false when the envelope is not yet present (404)', async () => {
+      const server = createFakeServer()
       storedKeyPair = await generateFullKeyPair()
-
-      const mockFetch = async (): Promise<Response> =>
-        new Response('Not found', { status: 404, headers: { 'Content-Type': 'application/json' } })
-
-      const httpClient = createClient({
-        fetch: mockFetch as unknown as typeof fetch,
-        prefixUrl: 'http://test-api.local',
-      })
-
-      const result = await checkApprovalAndUnwrap(httpClient)
+      const result = await checkApprovalAndUnwrap(clientFor(server))
       expect(result).toBe(false)
     })
+  })
 
-    it('throws when envelope fetch fails with non-404 error', async () => {
-      storedKeyPair = await generateFullKeyPair()
+  describe('stageKeyring', () => {
+    /**
+     * Rotate the account elsewhere: re-wrap the server keyring under a brand-new
+     * AK, replace this device's envelope with one carrying it, and bump the
+     * version — exactly the state another device's rotation leaves behind.
+     */
+    const rotateOnServer = async (server: FakeServer, kp: StoredKeyPair): Promise<CryptoKey> => {
+      const { ak: oldAK } = await unwrapAK(
+        server.envelopes.get('test-device-id')!,
+        kp.ecdhPrivateKey,
+        kp.mlkemSecretKey,
+      )
+      const newAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, oldAK, keyId, true), newAK, keyId))
+      }
+      server.envelopes.set(
+        'test-device-id',
+        await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey, server.metadata!.primaryKeyId),
+      )
+      server.metadata!.keyVersion += 1
+      return newAK
+    }
 
-      const mockFetch = async (): Promise<Response> =>
-        new Response('Server error', { status: 500, headers: { 'Content-Type': 'application/json' } })
+    it('adopts the rotated AK instead of staging a keyring the stored AK cannot open', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
 
-      const httpClient = createClient({
-        fetch: mockFetch as unknown as typeof fetch,
-        prefixUrl: 'http://test-api.local',
-      })
+      await rotateOnServer(server, kp)
+      await stageKeyring(clientFor(server))
 
-      await expect(checkApprovalAndUnwrap(httpClient)).rejects.toThrow()
+      // The invariant: whatever landed in IndexedDB opens under the stored AK.
+      // Pre-fix this staged new-AK wrappings next to the old AK, and every
+      // decode failed open to raw ciphertext until an unwrap-failed escalation.
+      for (const keyId of ['0', 'v1']) {
+        expect(await unwrapDEK(storedDEKs.get(keyId)!, storedAK!, keyId).then(() => true)).toBe(true)
+      }
+      expect(storedKeyVersion).toBe(2)
     })
 
-    it('throws when key pair is missing', async () => {
-      const tempKeyPair = await generateFullKeyPair()
-      const ck = await generateCK(true)
-      const wrappedCK = await wrapCK(ck, tempKeyPair.ecdhPublicKey, tempKeyPair.mlkemPublicKey)
+    it('ignores a steered metadata primary key_id but still stages the keys (THU-876/THU-890)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('0')
 
-      const { httpClient } = createTestHttpClient(respondToFetchEnvelope({ trusted: true, wrappedCK }))
+      // A2 points the metadata primary at the decrypt-only legacy slot. Every
+      // DEK it serves is honest and opens under our AK — only the pointer is a
+      // lie. Post-THU-890 the served pointer is ADVISORY: the fast path never
+      // stores a pointer at all (only an adopted envelope's sealed pointer is
+      // trusted), so the steer — and equally a grammar-valid rollback like
+      // `'0'` after a rotation — simply never reaches durable state.
+      server.metadata!.primaryKeyId = 'v1'
+      server.metadata!.keyVersion += 1
+      storedDEKs.clear()
 
-      await expect(checkApprovalAndUnwrap(httpClient)).rejects.toThrow('Key pair not found')
+      await stageKeyring(clientFor(server))
+
+      // The steer is ignored and the primary already in force survives...
+      expect(storedPrimaryKeyId).toBe('0')
+      // ...while the keys and the version still land: the DEKs are
+      // self-verifying, the pointer is not, and ignoring it must not cost the
+      // device its reads.
+      expect([...storedDEKs.keys()].sort()).toEqual(['0', 'v1'])
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+    })
+
+    it('a grammar-valid pointer rollback in metadata never reaches durable state (THU-890)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const seededAK = await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      // A DEK mint moved the primary to '1' elsewhere; this device adopts the
+      // envelope that seals the new pointer (same AK — a pure mint, no AK
+      // rotation, keeps the witness and the staged keyring valid).
+      server.metadata!.primaryKeyId = '1'
+      server.wrappedKeys.set('1', (await mintDEK(seededAK, '1')).wrappedKey)
+      server.envelopes.set('test-device-id', await wrapAK(seededAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '1'))
+      await refreshAK(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('1')
+
+      // THE ROLLBACK (THU-890): A2 serves the old pointer '0' while the keyring
+      // still opens under the current AK — the exact move that used to steer
+      // new writes back onto the DEK a revoked device copied.
+      server.metadata!.primaryKeyId = '0'
+      server.metadata!.keyVersion += 1
+
+      await stageKeyring(clientFor(server))
+
+      // The fast path staged keys + version but the pointer never moved: it has
+      // no trusted source outside an adopted envelope, and no adoption happened.
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+    })
+
+    it('does not re-fetch the envelope when the stored AK still opens the keyring', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      server.requests.length = 0
+      await stageKeyring(clientFor(server))
+
+      expect(server.requests).not.toContain('GET /devices/me/envelope')
+    })
+  })
+
+  /**
+   * THU-869 — the AK envelope is ANONYMOUS: `wrapAK` needs only this device's
+   * PUBLIC ECDH + ML-KEM keys, which the server stores. So a malicious server
+   * mints an AK of its own, wraps it to those keys, and the device unwraps it
+   * with its own private keys and cannot tell the sender changed. The defence is
+   * a device-local witness to DEK "0"'s key material: DEK "0" is minted once per
+   * account and every rotation re-wraps the SAME key, so a candidate AK that
+   * cannot reproduce it is not this account's AK.
+   */
+  describe('inbound AK adoption (THU-869)', () => {
+    /** A2 mints its own AK + DEK "0" and serves both, as a matching pair. */
+    const substituteAKOnServer = async (server: FakeServer, kp: StoredKeyPair): Promise<CryptoKey> => {
+      const attackerAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        void wrapped
+        server.wrappedKeys.set(keyId, await wrapDEK(await generateDEK(true), attackerAK, keyId))
+      }
+      server.envelopes.set('test-device-id', await wrapAK(attackerAK, kp.ecdhPublicKey, kp.mlkemPublicKey, '0'))
+      server.metadata!.keyVersion += 1
+      return attackerAK
+    }
+
+    const establishedDevice = async (): Promise<{ server: FakeServer; kp: StoredKeyPair }> => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      return { server, kp }
+    }
+
+    it('mints a witness for an established device, from local state', async () => {
+      await establishedDevice()
+
+      expect(storedKeyringAnchor).not.toBeNull()
+      expect(storedKeyringAnchor!.version).toBe(anchorVersion)
+      // Bound to DEK "0"'s material, so it opens under the DEK "0" the local AK
+      // yields — and under nothing else.
+      const dek0 = await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!, initialKeyId)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('refuses a substituted AK and keeps the keys already in force', async () => {
+      const { server, kp } = await establishedDevice()
+      const honestAK = storedAK
+      const honestDEKs = new Map(storedDEKs)
+      const honestVersion = storedKeyVersion
+
+      const attackerAK = await substituteAKOnServer(server, kp)
+
+      const errors: string[] = []
+      const consoleError = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.map(String).join(' '))
+      })
+      try {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(AKAnchorError)
+      } finally {
+        consoleError.mockRestore()
+      }
+
+      // Nothing was written: not the AK, not the keyring, not the version.
+      expect(storedAK).toBe(honestAK)
+      expect(storedAK).not.toBe(attackerAK)
+      expect([...storedDEKs]).toEqual([...honestDEKs])
+      expect(storedKeyVersion).toBe(honestVersion)
+      expect(errors.some((line) => line.includes('refused an inbound account key (material-mismatch)'))).toBe(true)
+    })
+
+    it('still adopts a LEGITIMATELY rotated AK — the no-wedge property', async () => {
+      const { server, kp } = await establishedDevice()
+      const anchorBefore = storedKeyringAnchor
+
+      // A real rotation elsewhere: the SAME DEKs re-wrapped under a new AK.
+      const { ak: oldAK } = await unwrapAK(
+        server.envelopes.get('test-device-id')!,
+        kp.ecdhPrivateKey,
+        kp.mlkemSecretKey,
+      )
+      const newAK = await generateAK(true)
+      for (const [keyId, wrapped] of [...server.wrappedKeys]) {
+        server.wrappedKeys.set(keyId, await wrapDEK(await unwrapDEK(wrapped, oldAK, keyId, true), newAK, keyId))
+      }
+      server.envelopes.set(
+        'test-device-id',
+        await wrapAK(newAK, kp.ecdhPublicKey, kp.mlkemPublicKey, server.metadata!.primaryKeyId),
+      )
+      server.metadata!.keyVersion += 1
+
+      await refreshAK(clientFor(server))
+
+      // Adopted, keyring staged, and the witness untouched — a rotation changes
+      // the wrapping, never DEK "0"'s material, which is why this passes.
+      expect(await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!, initialKeyId).then(() => true)).toBe(true)
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      expect(storedKeyringAnchor).toBe(anchorBefore)
+    })
+
+    it('refuses when the server withholds key_id "0" from an established device', async () => {
+      // The bypass that made the first draft of this fix a no-op: the check
+      // skips when there is no witness, so a server that never serves DEK "0"
+      // means no device ever mints one. Refusing turns that starvation from a
+      // silent bypass into a denial of service.
+      const { server, kp } = await establishedDevice()
+      storedKeyringAnchor = null
+      storedDEKs.delete(initialKeyId)
+      await substituteAKOnServer(server, kp)
+      server.wrappedKeys.delete(initialKeyId)
+
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        await expect(refreshAK(clientFor(server))).rejects.toThrow(/no-witness/)
+      } finally {
+        consoleError.mockRestore()
+      }
+    })
+
+    it('does not rewrite a current witness when the served DEK "0" is relabelled', async () => {
+      // A served DEK "0" whose MATERIAL is not the witnessed one (the wrap AAD
+      // now blocks a byte-copy relabel of another row, THU-893, but an in-origin
+      // writer or a correctly-labelled substitute blob remains conceivable). A
+      // "re-mint whenever the witness disagrees with local state" rule would
+      // quietly repoint the witness at a key the server chose. Write-once is
+      // what makes that impossible.
+      const { server, kp } = await establishedDevice()
+      const anchorBefore = storedKeyringAnchor
+      expect(anchorBefore).not.toBeNull()
+
+      const { ak } = await unwrapAK(server.envelopes.get('test-device-id')!, kp.ecdhPrivateKey, kp.mlkemSecretKey)
+      server.wrappedKeys.set(initialKeyId, await wrapDEK(await generateDEK(true), ak, initialKeyId))
+      server.metadata!.keyVersion += 1
+
+      await stageKeyring(clientFor(server)).catch(() => undefined)
+
+      expect(storedKeyringAnchor).toBe(anchorBefore)
+    })
+
+    it('re-mints only when the stored witness format is superseded', async () => {
+      const { server } = await establishedDevice()
+      const dek0 = await unwrapDEK(storedDEKs.get(initialKeyId)!, storedAK!, initialKeyId)
+      // A device carrying the previous on-disk format. It must re-mint from
+      // local state rather than read as a substituted key, or an `anchorVersion`
+      // bump would brick every device on every account.
+      storedKeyringAnchor = { ...(await mintKeyringAnchor(dek0)), version: anchorVersion - 1 }
+
+      await stageKeyring(clientFor(server))
+
+      expect(storedKeyringAnchor!.version).toBe(anchorVersion)
+      expect(await keyringAnchorOpens(storedKeyringAnchor!, dek0)).toBe(true)
+    })
+
+    it('leaves a brand-new device unverified — first adoption is trust-on-first-use', async () => {
+      // A device with no AK and no witness shares no secret with the account and
+      // its only channel is the adversary, so its FIRST key cannot be checked.
+      // Pinned deliberately so the skip is never mistaken for an oversight.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      expect(storedAK).toBeNull()
+      expect(storedKeyringAnchor).toBeNull()
+
+      expect(await checkApprovalAndUnwrap(clientFor(server))).toBe(true)
+      expect(storedAK).not.toBeNull()
+      expect(storedKeyringAnchor).not.toBeNull()
+    })
+
+    it('reports a device that is not approved yet rather than treating it as tampering', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      server.envelopes.delete('test-device-id')
+
+      expect(await checkApprovalAndUnwrap(clientFor(server))).toBe(false)
     })
   })
 
   describe('recoverWithKey', () => {
-    it('verifies canary, registers device, stores envelope and CK', async () => {
-      const originalCK = await generateCK(true)
-      const recoveryPhrase = await encodeRecoveryKey(originalCK)
-      const { canaryIv, canaryCtext } = await createCanary(originalCK)
+    it('re-derives the AK from the phrase, verifies the canary, and self-approves', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      // First device establishes the account + recovery phrase.
+      storedKeyPair = kp
+      const recoveryKey = await completeFirstDeviceSetup(clientFor(server))
 
-      const { httpClient, requests } = createTestHttpClient(
-        respondToFetchCanary({ canaryIv, canaryCtext }),
-        respondToRegister({ trusted: false }),
-        respondToStoreEnvelope({ trusted: true }),
-      )
+      // Simulate a fresh device: clear local key material.
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
 
-      await recoverWithKey(httpClient, recoveryPhrase)
+      await recoverWithKey(clientFor(server), recoveryKey)
 
-      // Key pair was generated and stored
-      expect(storedKeyPair).not.toBeNull()
-      expect(storedKeyPair!.mlkemPublicKey).toBeInstanceOf(Uint8Array)
-      // Device was registered
-      expect(requests.some((r) => r.url.includes('/devices') && r.method === 'POST')).toBe(true)
-      // Envelope was stored
-      expect(requests.some((r) => r.url.includes('/envelope') && r.method === 'POST')).toBe(true)
-      // CK was stored locally (non-extractable)
-      expect(storedCK).not.toBeNull()
-      expect(storedCK!.extractable).toBe(false)
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('0')).toBe(true)
     })
 
-    it('reuses existing key pair during recovery', async () => {
-      const existing = await generateFullKeyPair()
-      storedKeyPair = existing
+    it('rejects a wrong recovery phrase on the public-key comparison, before any further request', async () => {
+      // The derivation is deterministic, so a wrong phrase is caught offline by
+      // comparing against the stored public keys — no registration round trip.
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      await completeFirstDeviceSetup(clientFor(server))
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
+      server.requests.length = 0
 
-      const originalCK = await generateCK(true)
-      const recoveryPhrase = await encodeRecoveryKey(originalCK)
-      const { canaryIv, canaryCtext } = await createCanary(originalCK)
+      const wrongPhrase = encodeRecoverySeed(generateRecoverySeed())
+      await expect(recoverWithKey(clientFor(server), wrongPhrase)).rejects.toThrow('Invalid recovery key')
 
-      const { httpClient } = createTestHttpClient(
-        respondToFetchCanary({ canaryIv, canaryCtext }),
-        respondToRegister({ trusted: false }),
-        respondToStoreEnvelope({ trusted: true }),
-      )
-
-      await recoverWithKey(httpClient, recoveryPhrase)
-
-      expect(storedKeyPair).toBe(existing)
+      expect(server.requests).toEqual(['GET /encryption/canary'])
     })
 
-    it('throws on invalid recovery key (canary verification fails)', async () => {
-      const originalCK = await generateCK(true)
-      const differentCK = await generateCK(true)
-      const { canaryIv, canaryCtext } = await createCanary(originalCK)
-      const wrongPhrase = await encodeRecoveryKey(differentCK)
+    it('rejects a v2 account whose recovery slot was never written', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      server.metadata!.recoveryWrappedAk = null
+      storedKeyPair = null
 
-      const { httpClient } = createTestHttpClient(respondToFetchCanary({ canaryIv, canaryCtext }))
+      await expect(recoverWithKey(clientFor(server), encodeRecoverySeed(generateRecoverySeed()))).rejects.toThrow(
+        'has not finished upgrading',
+      )
+    })
+  })
 
-      await expect(recoverWithKey(httpClient, wrongPhrase)).rejects.toThrow('Invalid recovery key')
+  describe('rotateAccountKey', () => {
+    it('re-wraps the whole keyring (0, v1, 1) under the new AK', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true), ['1'])
+      await checkApprovalAndUnwrap(clientFor(server)) // loads AK + stages keyring
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // Every key_id is re-wrapped and unwraps under the new stored AK.
+      for (const keyId of ['0', 'v1', '1']) {
+        expect(storedDEKs.has(keyId)).toBe(true)
+        const dek = await unwrapDEK(storedDEKs.get(keyId)!, storedAK!, keyId)
+        expect(dek.algorithm.name).toBe('AES-GCM')
+      }
+    })
+
+    /**
+     * Pins the invariant every device's AK check depends on, at the only layer
+     * that can break it. `assertRotateKeyCoverage` validates key_id SETS and
+     * cannot see key material — the server holds no AK — so if a rotation ever
+     * submitted FRESH material for `key_id "0"` the backend would accept it and
+     * every established device on the account would refuse every future Account
+     * Key, permanently and silently (THU-869). Nothing else would fail: not a
+     * type, not the coverage check, not the rotation itself.
+     */
+    it('re-wraps DEK "0" rather than minting fresh material for it', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const akBefore = storedAK!
+      const rawBefore = await crypto.subtle.exportKey(
+        'raw',
+        await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, akBefore, initialKeyId, true),
+      )
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The wrapping changed; the key underneath did not.
+      expect(server.wrappedKeys.get(initialKeyId)).not.toBe(undefined)
+      expect(storedAK).not.toBe(akBefore)
+      const rawAfter = await crypto.subtle.exportKey(
+        'raw',
+        await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, storedAK!, initialKeyId, true),
+      )
+      expect(uint8ArrayToBase64(new Uint8Array(rawAfter))).toBe(uint8ArrayToBase64(new Uint8Array(rawBefore)))
+    })
+
+    it('re-anchors the recovery slot to the existing phrase without minting a new one', async () => {
+      // The whole point of the indirection: the AK changes, the phrase does not.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const wrappedAkBefore = server.metadata!.recoveryWrappedAk
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(server.metadata!.kdfSalt).toBe(fixtureRecoverySalt)
+      expect(server.metadata!.recoveryEcdhPublicKey).toBe(await exportPublicKey(fixtureRecoveryKeyPair.ecdhPublicKey))
+      expect(server.metadata!.recoveryWrappedAk).not.toBe(wrappedAkBefore)
+      // The unchanged phrase still opens the NEW account key.
+      const recoveredAK = await unwrapAK(
+        server.metadata!.recoveryWrappedAk!,
+        fixtureRecoveryKeyPair.ecdhPrivateKey,
+        fixtureRecoveryKeyPair.mlkemSecretKey,
+      )
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')
+      expect(dek0.algorithm.name).toBe('AES-GCM')
+    })
+
+    // THU-865. A malicious server needs only to lie on GET /encryption/canary:
+    // wrapping the new AK takes public keys alone, so a substituted recovery
+    // keypair silently escrows the account to a phrase the attacker chose. The
+    // attestation is verified against a signing key derived from LOCAL key
+    // material, so the lie cannot be signed. Reproduced end to end by
+    // e2e/e2ee/attacks/recovery-slot-substitution.spec.ts.
+    it('aborts the re-anchor when the server substitutes the recovery public keys', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const legit = { ...server.metadata! }
+
+      const attackerKeyPair = await deriveRecoveryKeyPairFromSeed(generateRecoverySeed(), fixtureRecoverySalt)
+      server.metadata!.recoveryEcdhPublicKey = await exportPublicKey(attackerKeyPair.ecdhPublicKey)
+      server.metadata!.recoveryMlkemPublicKey = exportMlKemPublicKey(attackerKeyPair.mlkemPublicKey)
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow(RecoveryAnchorError)
+
+      // Nothing was wrapped to the attacker: the rotation never reached the server.
+      expect(server.metadata!.recoveryWrappedAk).toBe(legit.recoveryWrappedAk)
+      expect(server.metadata!.keyVersion).toBe(legit.keyVersion)
+    })
+
+    it('aborts the re-anchor when the served anchor carries no attestation', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      // Fail closed rather than adopting an unverifiable anchor — an account row
+      // predating the attestation column re-anchors via changeRecoveryPhrase.
+      server.metadata!.recoveryAttestation = null
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow(RecoveryAnchorError)
+    })
+
+    it('does not mark a recovery phrase pending — the user has nothing new to write down', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      await rotateAccountKey(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(isRecoveryPhrasePending()).toBe(false)
+    })
+
+    it('throws instead of silently minting a phrase when the recovery slot is missing', async () => {
+      // A v2 account with null recovery columns is broken, not a fresh account —
+      // quietly issuing a new phrase mid-revoke would strand the user's old one.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.metadata!.recoveryEcdhPublicKey = null
+      server.metadata!.recoveryMlkemPublicKey = null
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow('Account has no recovery slot')
+    })
+
+    it('throws RotationStaleError and refreshes the AK on a 4xx', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.rotateStatus = 400
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toBeInstanceOf(RotationStaleError)
+    })
+
+    it('builds envelopes from the server list, skipping a trusted keyless bridge', async () => {
+      // No `listTrustedDevices` seam here on purpose: this exercises the real
+      // path, which asks the server who must be covered instead of reading the
+      // PowerSync-synced `devices` table. A bridge is trusted but has no public
+      // keys, so no envelope can exist for it — the server's coverage rule uses
+      // the same predicate, so the rotation is accepted.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.deviceTrusted.set('bridge-1', true)
+
+      await rotateAccountKey(clientFor(server))
+
+      expect(server.envelopes.has('test-device-id')).toBe(true)
+      expect(server.envelopes.has('bridge-1')).toBe(false)
+    })
+  })
+
+  describe('changeRecoveryPhrase', () => {
+    it('returns a phrase that opens the new AK, and marks it pending', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const newPhrase = await changeRecoveryPhrase(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(newPhrase.split(' ')).toHaveLength(24)
+      expect(isRecoveryPhrasePending()).toBe(true)
+      expect(server.metadata!.kdfSalt).not.toBe(fixtureRecoverySalt)
+      // The returned phrase is the real one: it opens the recovery envelope the
+      // server now holds, which in turn unwraps the live keyring.
+      const rkp = await deriveRecoveryKeyPairFromSeed(decodeRecoveryKey(newPhrase), server.metadata!.kdfSalt!)
+      const recoveredAK = await unwrapAK(server.metadata!.recoveryWrappedAk!, rkp.ecdhPrivateKey, rkp.mlkemSecretKey)
+      const dek0 = await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')
+      expect(dek0.algorithm.name).toBe('AES-GCM')
+    })
+
+    it('still returns the new phrase when post-commit local staging fails', async () => {
+      // The server already re-anchored the recovery slot, so the old phrase is
+      // dead. A local IndexedDB failure must not swallow the only copy of the new one.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      failStoreAK = true
+
+      const newPhrase = await changeRecoveryPhrase(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(newPhrase.split(' ')).toHaveLength(24)
+    })
+  })
+
+  describe('revokeDeviceAndRotate', () => {
+    it('revokes, rotates the DEK, and rotates the AK — leaving the phrase untouched', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // A fresh DEK became primary, and the whole keyring rides the new AK.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      for (const keyId of ['0', 'v1', '1']) {
+        const dek = await unwrapDEK(storedDEKs.get(keyId)!, storedAK!, keyId)
+        expect(dek.algorithm.name).toBe('AES-GCM')
+      }
+      // The device recorded the committed epoch, so a later app-init epoch check
+      // sees it is current and does not needlessly re-adopt on every launch.
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      // Revocation is silent: same phrase, same salt, nothing owed to the user.
+      expect(server.metadata!.kdfSalt).toBe(fixtureRecoverySalt)
+      expect(isRecoveryPhrasePending()).toBe(false)
+      const recoveredAK = await unwrapAK(
+        server.metadata!.recoveryWrappedAk!,
+        fixtureRecoveryKeyPair.ecdhPrivateKey,
+        fixtureRecoveryKeyPair.mlkemSecretKey,
+      )
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, recoveredAK.ak, '1')).toBeDefined()
+    })
+
+    it('ignores a planted out-of-grammar key_id when allocating the new primary (THU-871)', async () => {
+      // THE collision. A 17-digit key_id makes `max + 1 === max` under IEEE-754,
+      // so the unfiltered allocator handed back the attacker's own id: the
+      // server discarded the freshly minted DEK (ON CONFLICT DO NOTHING),
+      // reported success, and moved the primary onto a row nobody holds the key
+      // for — bricking every future write, permanently, because each later
+      // rotation recomputed the same id. Filtering candidates through
+      // `keyIdPattern` makes the planted row inert.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      // Carries a byte-copy of DEK '0's wrapping, so the row OPENS under the AK
+      // and the re-wrap succeeds — isolating the collision from the separate
+      // poison-pill defect that an unopenable row triggers.
+      const planted = '10000000000000000'
+      expect(String(Number.parseInt(planted, 10) + 1)).toBe(planted) // the arithmetic really does collide
+      const dek0Wrapping = server.wrappedKeys.get(initialKeyId)!
+      server.wrappedKeys.set(planted, dek0Wrapping)
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // Allocated past the real counter, not onto the planted row, and the
+      // primary points at a key this device actually minted.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(server.wrappedKeys.has(planted)).toBe(true)
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!, '1')).toBeDefined()
+    })
+
+    it('is not blocked by a planted key_id at the top of the grammar (THU-871)', async () => {
+      // The boundary case that highest-plus-one left open. `'9'.repeat(15)` is
+      // itself grammar-valid, so filtering could not ignore it, and `max + 1`
+      // produced a 16-digit id the server's own mint validation rejects — every
+      // revocation then failed as "retry" forever. Allocating the smallest hole
+      // instead steps over the planted row entirely.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      const planted = '9'.repeat(15)
+      server.wrappedKeys.set(planted, server.wrappedKeys.get(initialKeyId)!)
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // Allocated into the gap, well inside the grammar the server enforces.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(isMintableKeyId(server.metadata!.primaryKeyId)).toBe(true)
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!, '1')).toBeDefined()
+    })
+
+    it('completes despite an unopenable keyring row, passing it through (THU-871)', async () => {
+      // The poison-pill. One junk row used to throw inside `rewrapKeyring`, and
+      // because revocation IS an AK rotation that permanently killed
+      // cryptographic revocation AND "Change Recovery Phrase" for the account.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      // Wrapped under an AK nobody on this account holds.
+      const junk = await wrapDEK(await generateDEK(true), await generateAK(true), 'poison')
+      server.wrappedKeys.set('poison', junk)
+      const versionBefore = server.metadata!.keyVersion
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The rotation went through: version bumped, a new primary was minted, and
+      // the real keys moved to the new AK.
+      expect(server.metadata!.keyVersion).toBe(versionBefore + 1)
+      expect(server.metadata!.primaryKeyId).toBe('1')
+      expect(await unwrapDEK(server.wrappedKeys.get(initialKeyId)!, storedAK!, initialKeyId)).toBeDefined()
+      // The junk row kept its original blob — passed through, not dropped and not
+      // deleted, so it remains repairable by a device holding the old AK.
+      expect(server.wrappedKeys.get('poison')).toBe(junk)
+    })
+
+    it('leaves the previous phrase valid AND mints nothing when the rotation fails', async () => {
+      // Regression, in two parts. The phrase half: the DEK rotation used to run
+      // AFTER the AK rotation, so a failure invalidated the old phrase while the
+      // new one was never returned — leaving the account with a phrase nobody
+      // knows. The keyring half (THU-871): the DEK mint used to be its own
+      // request, so a failed rotation still left a new row behind and every
+      // retry added another one, ratcheting the keyring toward the size at
+      // which no rotation fits. Folded into /encryption/rotate, one failure
+      // leaves both untouched.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const originalPhrase = await completeFirstDeviceSetup(clientFor(server))
+      const saltBefore = server.metadata!.kdfSalt
+      const keyIdsBefore = [...server.wrappedKeys.keys()]
+      server.rotateStatus = 500
+
+      // Retried the way the UI asks the user to, to pin that it does not ratchet.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(
+          revokeDeviceAndRotate(clientFor(server), 'other-device', {
+            listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+          }),
+        ).rejects.toThrow()
+      }
+
+      expect([...server.wrappedKeys.keys()]).toEqual(keyIdsBefore)
+      // The AK rotation never ran, so the account still answers to the phrase
+      // the user already wrote down.
+      expect(server.metadata!.kdfSalt).toBe(saltBefore)
+      storedKeyPair = null
+      storedAK = null
+      storedDEKs.clear()
+      await recoverWithKey(clientFor(server), originalPhrase)
+      expect(storedAK).not.toBeNull()
+    })
+
+    it('re-adopts the committed epoch when a transient local write fails post-commit', async () => {
+      // The server commits the rotation, then a local IndexedDB write fails.
+      // Because `storeAK` is the FIRST write, its failure used to leave the device
+      // fully self-consistent on the OLD epoch: old AK, old pointer, the new
+      // primary never staged. It kept writing `__enc:v2:0:` under a DEK the
+      // just-revoked device still holds, and — being internally consistent — no
+      // unwrap ever failed, so the codec's self-heal never fired. Revocation was
+      // silently defeated for this device's writes. The fix re-adopts the
+      // committed epoch from the server instead of swallowing the failure.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedPrimaryKeyId).toBe('0')
+      // A transient fault — the realistic trigger (quota / eviction / torn write).
+      // The re-adoption retry lands on the second `storeAK`. A PERSISTENT fault
+      // cannot be healed locally and must fail closed at the codec on next use;
+      // surviving a restart under it needs the boot-time epoch check (C7 bundle).
+      failStoreAKOnce = true
+
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      // The server advanced to the freshly minted primary, and this device caught
+      // up to it rather than silently staying on the stale primary '0'.
+      expect(server.metadata?.primaryKeyId).toBe('1')
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedDEKs.has('1')).toBe(true)
+    })
+  })
+
+  describe('migrateToV2', () => {
+    it('absorbs the v1 CK, mints a fresh primary, and migrates — legacy data still decrypts', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      // A real legacy value on the wire, encrypted with the v1 CK and NO AAD.
+      const legacyValue = await encrypt('hello legacy', legacyCK)
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      if (result.outcome !== 'migrated') {
+        throw new Error('expected migrated')
+      }
+      expect(result.recoveryKey.split(' ')).toHaveLength(24)
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('0')).toBe(true)
+      expect(storedDEKs.has('v1')).toBe(true)
+      expect(server.metadata?.schemeVersion).toBe(2)
+
+      // Dual-read: the absorbed "v1" slot decrypts the legacy value end-to-end.
+      const v1Dek = await unwrapDEK(storedDEKs.get('v1')!, storedAK!, 'v1')
+      const plaintext = await decrypt(legacyValue, v1Dek)
+      expect(plaintext).toBe('hello legacy')
+
+      // The migrated account carries a recovery slot the new phrase can open.
+      const rkp = await deriveRecoveryKeyPairFromSeed(decodeRecoveryKey(result.recoveryKey), server.metadata!.kdfSalt!)
+      expect(server.metadata!.recoveryEcdhPublicKey).toBe(await exportPublicKey(rkp.ecdhPublicKey))
+      const recoveredAK = await unwrapAK(server.metadata!.recoveryWrappedAk!, rkp.ecdhPrivateKey, rkp.mlkemSecretKey)
+      expect(await unwrapDEK(server.wrappedKeys.get('0')!, recoveredAK.ak, '0')).toBeDefined()
+    })
+
+    it('covers this device from local keys even when the synced devices table is empty', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+
+      // Simulate PowerSync replication lag: the synced `devices` table has not
+      // surfaced this (freshly trusted) device yet. The migrator must still cover
+      // itself from local key material — otherwise `envelopes` is empty and the
+      // upgrade is rejected (this is the CI-only failure mode).
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      expect(server.envelopes.has('test-device-id')).toBe(true)
+    })
+
+    it('falls through to the follower path on a 409 CAS-loss (candidate AK discarded)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+
+      // The winning migrator's committed v2 state — built on a throwaway server
+      // and swapped in when this migrator's /upgrade loses the CAS (409).
+      const winnerState = createFakeServer()
+      await seedV2Account(winnerState, kp, legacyCK)
+      server.winner = {
+        metadata: winnerState.metadata!,
+        envelopes: winnerState.envelopes,
+        wrappedKeys: winnerState.wrappedKeys,
+      }
+      server.upgradeConflict = true
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        getLegacyV1Sample: async () => null,
+      })
+
+      expect(result.outcome).toBe('followed')
+      expect(storedAK).not.toBeNull() // obtained via the follower path
+    })
+
+    it('still returns the recovery phrase when post-commit local staging fails', async () => {
+      // The server has already flipped scheme_version to 2 and anchored recovery
+      // to the freshly minted phrase, so the old v1 phrase is dead and this new
+      // one is the account's ONLY recovery. A local IndexedDB write failing after
+      // that commit must not swallow it (and rethrow a "migration failed" that
+      // hides a migration the server actually did): the phrase must reach the
+      // caller. Device access self-heals via followToV2 on the next boot.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      failStoreAK = true
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('migrated')
+      if (result.outcome !== 'migrated') {
+        throw new Error('expected migrated')
+      }
+      expect(result.recoveryKey.split(' ')).toHaveLength(24)
+      // Non-vacuous: the server really committed the flip, so the phrase owed to
+      // the user is the one recovery this now-v2 account has.
+      expect(server.metadata?.schemeVersion).toBe(2)
+      expect(isRecoveryPhrasePending()).toBe(true)
+    })
+  })
+
+  describe('migrateToV2 — forged v1 envelope (THU-877)', () => {
+    /** A2 swaps BOTH the envelope and the canary, so the D1 possession proof is self-consistent. */
+    const forgeEnvelopeAndCanary = async (server: FakeServer, kp: StoredKeyPair): Promise<void> => {
+      const attackerCK = await generateDEK(true)
+      const forgedCanary = await encrypt('thunderbolt-canary-v1:forged-secret', attackerCK)
+      server.envelopes.set('test-device-id', await wrapLegacyCK(attackerCK, kp.ecdhPublicKey, kp.mlkemPublicKey))
+      server.metadata!.canaryIv = forgedCanary.iv
+      server.metadata!.canaryCtext = forgedCanary.ciphertext
+    }
+
+    it("aborts when the offered CK cannot decrypt the account's own legacy data", async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      const legacySample = await encrypt('hello legacy', legacyCK)
+      await forgeEnvelopeAndCanary(server, kp)
+
+      await expect(
+        migrateToV2(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+          getLegacyV1Sample: async () => legacySample,
+        }),
+      ).rejects.toThrow(/cannot decrypt this account's own legacy/)
+
+      // Nothing committed: the account stays on v1 with its data intact, so the
+      // migration retries cleanly once the server serves the genuine envelope.
+      expect(server.metadata!.schemeVersion).toBe(1)
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.has('v1')).toBe(false)
+    })
+
+    it('falls back to the CK this device kept from v1 when no legacy row has synced yet', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      // The genuine CK, retained through the non-destructive db bump. It can never
+      // be absorbed (v1 stored it non-extractable) — only compared against.
+      storedLegacyCK = legacyCK
+      await forgeEnvelopeAndCanary(server, kp)
+
+      await expect(
+        migrateToV2(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+          getLegacyV1Sample: async () => null,
+        }),
+      ).rejects.toThrow(/does not match the one this device kept from v1/)
+
+      expect(server.metadata!.schemeVersion).toBe(1)
+      expect(storedDEKs.has('v1')).toBe(false)
+    })
+
+    it('a genuine envelope still migrates, and the absorbed slot decrypts legacy data', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      const legacyValue = await encrypt('hello legacy', legacyCK)
+      storedLegacyCK = legacyCK
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        getLegacyV1Sample: async () => legacyValue,
+      })
+
+      expect(result.outcome).toBe('migrated')
+      const v1Dek = await unwrapDEK(storedDEKs.get('v1')!, storedAK!, 'v1')
+      expect(await decrypt(legacyValue, v1Dek)).toBe('hello legacy')
+    })
+
+    it("does not block a legitimate migration on another account's leftover CK", async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      const legacyValue = await encrypt('hello legacy', legacyCK)
+
+      // A previous account's CK, left behind by a wipe that threw and was
+      // logged-and-continued (`src/lib/cleanup.ts`). The synced legacy row settles
+      // the question first, so the stale local copy is never consulted — without
+      // that ordering this migration would abort on a false mismatch.
+      storedLegacyCK = await generateDEK(true)
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        getLegacyV1Sample: async () => legacyValue,
+      })
+
+      expect(result.outcome).toBe('migrated')
+    })
+
+    it('ACCEPTED RESIDUAL: with no legacy row and no local CK, a forged envelope is still absorbed', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      storedLegacyCK = null
+      await forgeEnvelopeAndCanary(server, kp)
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        getLegacyV1Sample: async () => null,
+      })
+
+      // Pinned deliberately: nothing local exists to verify against. Siblings
+      // reject the poisoned keyring in `followToV2`, so it cannot spread. If a
+      // signal the server does not author ever appears, this test is where it lands.
+      expect(result.outcome).toBe('migrated')
+    })
+  })
+
+  describe('followToV2', () => {
+    it('unwraps the AK, stages the keyring, and passes the continuity check', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const legacyCK = await generateDEK(true)
+      await seedV2Account(server, kp, legacyCK)
+      const legacySample = await encrypt('continuity', legacyCK)
+
+      const result = await followToV2(clientFor(server), { getLegacyV1Sample: async () => legacySample })
+
+      expect(result.outcome).toBe('followed')
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('v1')).toBe(true)
+    })
+
+    it('rejects a keyring whose "v1" slot cannot decrypt legacy data (continuity failure)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const realCK = await generateDEK(true)
+      await seedV2Account(server, kp, realCK)
+      // Sample encrypted with a DIFFERENT key — the candidate "v1" slot can't read it.
+      const impostorSample = await encrypt('tampered', await generateDEK(true))
+
+      await expect(followToV2(clientFor(server), { getLegacyV1Sample: async () => impostorSample })).rejects.toThrow(
+        'continuity check failed',
+      )
+
+      // Nothing persisted: a rejected keyring must not leave key material behind.
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
+    })
+
+    it('re-runs the continuity check on the next attempt after a rejection', async () => {
+      // Regression: the keys used to be stored before the check, so a rejection
+      // left an AK behind and `ensureV2Encryption` reported `already-v2` forever
+      // — the check that had just failed never ran again.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      const impostorSample = await encrypt('tampered', await generateDEK(true))
+
+      await expect(
+        ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => impostorSample }),
+      ).rejects.toThrow('continuity check failed')
+
+      // Second boot: still no AK, so the follower path (and the check) runs again.
+      await expect(
+        ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => impostorSample }),
+      ).rejects.toThrow('continuity check failed')
+    })
+
+    it('returns awaiting-approval when no envelope exists yet', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      server.envelopes.delete('test-device-id')
+
+      const result = await followToV2(clientFor(server), { getLegacyV1Sample: async () => null })
+      expect(result.outcome).toBe('awaiting-approval')
+    })
+  })
+
+  describe('ensureV2Encryption', () => {
+    it('returns already-v2 when a local AK exists', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      storedAK = await unwrapDeviceAK(server)
+
+      const result = await ensureV2Encryption(clientFor(server))
+      expect(result.outcome).toBe('already-v2')
+    })
+
+    it('returns not-applicable when there is no encryption metadata', async () => {
+      const server = createFakeServer()
+      storedKeyPair = await generateFullKeyPair()
+      const result = await ensureV2Encryption(clientFor(server))
+      expect(result.outcome).toBe('not-applicable')
+    })
+
+    it('follows when scheme is v2 and there is no local AK', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const legacyCK = await generateDEK(true)
+      await seedV2Account(server, kp, legacyCK)
+
+      const result = await ensureV2Encryption(clientFor(server), { getLegacyV1Sample: async () => null })
+      expect(result.outcome).toBe('followed')
+      expect(storedAK).not.toBeNull()
+    })
+
+    it('re-adopts at boot when the local AK is behind the committed epoch', async () => {
+      // A PERSISTENT post-commit staging failure (the tail the transient re-adopt
+      // above cannot heal) leaves this device holding a stale AK while the server
+      // advanced — and it never self-heals, because a consistent old-epoch device
+      // trips no unwrap failure. The boot check catches the lagging key_version
+      // and re-adopts, so the device stops encoding under the old primary.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const staleVersion = storedKeyVersion
+
+      // Rotate with a persistent local write fault: the server moves to the new
+      // epoch, but this device's storeAK — and the catch's re-adoption retry —
+      // both fail, so it stays on the old AK, pointer, and version.
+      failStoreAK = true
+      await revokeDeviceAndRotate(clientFor(server), 'other-device', {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+      expect(storedPrimaryKeyId).toBe('0')
+      expect(storedKeyVersion).toBe(staleVersion)
+      expect(server.metadata!.keyVersion).toBeGreaterThan(staleVersion!)
+
+      // IndexedDB recovers; the next app-init epoch check re-adopts the committed epoch.
+      failStoreAK = false
+      const result = await ensureV2Encryption(clientFor(server))
+
+      expect(result.outcome).toBe('already-v2')
+      expect(storedPrimaryKeyId).toBe('1')
+      expect(storedDEKs.has('1')).toBe(true)
+      expect(storedKeyVersion).toBe(server.metadata!.keyVersion)
+      // The stored AK is genuinely the new one: it opens the server's new primary.
+      expect(await unwrapDEK(server.wrappedKeys.get('1')!, storedAK!, '1')).toBeDefined()
+    })
+
+    it('does not re-adopt when the local AK is already current', async () => {
+      // The boot check must not refresh a device that is already on the committed
+      // epoch — local key_version == server, so nothing to do.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      const akBefore = storedAK
+
+      const result = await ensureV2Encryption(clientFor(server))
+
+      expect(result.outcome).toBe('already-v2')
+      // Untouched: a re-adoption would have stored a fresh AK object and moved the
+      // pointer. Same object identity proves refreshAK was never called.
+      expect(storedAK).toBe(akBefore)
+      expect(storedPrimaryKeyId).toBe('0')
     })
   })
 
   describe('handleFullWipe', () => {
-    it('clears all keys', async () => {
+    it('clears all key material', async () => {
       storedKeyPair = await generateFullKeyPair()
-      storedCK = await generateCK()
+      storedAK = await generateDEK()
+      storedDEKs.set('0', 'blob')
 
       await handleFullWipe()
 
       expect(storedKeyPair).toBeNull()
-      expect(storedCK).toBeNull()
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.size).toBe(0)
     })
   })
 })

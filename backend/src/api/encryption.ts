@@ -7,6 +7,8 @@ import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 import {
   bridgeDeviceId,
   cliDeviceIdPrefix,
+  isTrustedAppDevice,
+  maxActiveDevicesPerUser,
   countActiveDevices,
   getDeviceById,
   linkSessionToDevice,
@@ -17,152 +19,563 @@ import {
   markDeviceTrusted,
   setDeviceNodeId,
   getTrustedNodeIds,
+  listEnvelopeCapableDeviceIds,
+  listEnvelopeCapableDevices,
+  listDevicesAwaitingLockout,
   getEnvelopeByDeviceId,
   hasEnvelopesForUser,
   upsertEnvelope,
   getEncryptionMetadata,
   insertEncryptionMetadataIfNotExists,
-  isTrustedAppDevice,
+  replaceEncryptionMetadata,
+  flipSchemeToV2,
+  bumpKeyVersion,
+  setPrimaryKeyId,
+  getWrappedKey,
+  listWrappedKeys,
+  insertWrappedKey,
+  updateWrappedKey,
+  issueChallengeNonce,
+  consumeChallengeNonce,
   revokeDeviceSessions,
-  maxActiveDevicesPerUser,
-  withUserDeviceRegistrationLock,
+  upsertOrgEnvelope,
 } from '@/dal'
-import type { db as DbType, QueryableDatabase } from '@/db/client'
+import type { Settings } from '@/config/settings'
+import type { db as DbType } from '@/db/client'
+import { verification } from '@/db/auth-schema'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
-import { hashCanarySecret, verifyCanaryProof, verifyCanaryProofWithMetadata } from '@/lib/canary'
+import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
+import { sealBindNonce } from '@/lib/device-bind'
+import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
+import { resolveEmailLocale } from '@/emails/i18n'
+import {
+  type ChallengeOperation,
+  type RecoverySlotRequest,
+  type WrappedKeyEntry,
+  bindOperation,
+  challengeNonceTtlMs,
+  challengeOperations,
+  initialKeyId,
+  keyIdPattern,
+  legacyKeyId,
+} from '@shared/e2ee-types'
+import { eq, sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-class DeviceRegistrationConflictError extends Error {}
-
-type EncryptionRouteDependencies = {
-  readonly linkSessionToDevice?: typeof linkSessionToDevice
-}
-
 /**
- * Check if the caller is performing a self-recovery.
- * Requires callerDeviceId === deviceId (self-operation) AND valid canary secret.
+ * Upper bound on keyring rows carried in one request. The keyring grows by one
+ * DEK per device revocation and rows are retained forever, so this must sit far
+ * above any reachable count: it is the size at which an AK rotation — which must
+ * re-wrap the FULL keyring atomically — stops fitting, and a rotation that
+ * cannot be expressed is a revocation that cannot be made cryptographic
+ * (THU-871).
+ *
+ * 1000 is ~10x the human ceiling (revocations, not devices) and well inside the
+ * tightest transport limit on any deployment path: real entries are ~90 bytes,
+ * and the nginx paths in `deploy/` set no `client_max_body_size`, so they cap at
+ * the 1 MiB default — room for ~11k entries.
  */
-const checkSelfRecovery = async (
-  txDb: QueryableDatabase,
+const maxKeyringKeys = 1000
+
+/** Thrown when a concurrent migrator already flipped the account (CAS 1→2 lost) — mapped to 409. */
+class SchemeConflictError extends Error {}
+
+/**
+ * Thrown when minting a key_id that already exists — mapped to 409 (THU-871).
+ *
+ * `insertWrappedKey` is `ON CONFLICT DO NOTHING`, so a colliding mint used to be
+ * discarded in silence while the route still reported success and moved the
+ * primary pointer onto the pre-existing row. Every mint path now asserts that a
+ * row was actually inserted, so a conflict aborts its transaction instead.
+ */
+class KeyConflictError extends Error {}
+
+/** Elysia schema for the shared ChallengeProof request DTO. */
+const proofSchema = t.Object({
+  signature: t.String({ maxLength: 200 }),
+  nonce: t.String({ maxLength: 128 }),
+  operation: t.Union(challengeOperations.map((op) => t.Literal(op))),
+  deviceId: t.String({ maxLength: 36 }),
+})
+
+/**
+ * Elysia schema for one wrapped-DEK keyring entry. key_id is a wire-format
+ * segment — no ':' allowed.
+ *
+ * DELIBERATELY NOT tightened to `keyIdPattern` (THU-871). This schema is used by
+ * paths that RE-WRAP an existing keyring, and an account may already carry a row
+ * whose id predates the grammar or was planted by a malicious server. Rejecting
+ * it here would make that account permanently unrotatable — which is exactly the
+ * rotation freeze this ticket fixes. The grammar is enforced where a key_id is
+ * MINTED (`newPrimaryKey` on /encryption/rotate, and the fixed reserved ids on
+ * bootstrap and /encryption/upgrade), so no new id can enter the keyring outside
+ * it.
+ */
+const wrappedKeyEntrySchema = t.Object({
+  keyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
+  wrappedKey: t.String({ minLength: 1, maxLength: 500 }),
+})
+
+/** Elysia schema for the freshly minted primary DEK an AK rotation may carry (THU-871). */
+const newPrimaryKeySchema = t.Object({
+  keyId: t.String({ minLength: 1, maxLength: 15, pattern: keyIdPattern }),
+  wrappedKey: t.String({ minLength: 1, maxLength: 500 }),
+})
+
+/** Elysia schema for one AK envelope (`wrappedCK` historically named — it carries the AK). */
+const envelopeEntrySchema = t.Object({
+  deviceId: t.String({ maxLength: 36 }),
+  wrappedCK: t.String({ maxLength: 2200 }),
+})
+
+type CallerDeviceResult =
+  | { status: 400 | 403 | 404; error: string }
+  | { deviceId: string; device: NonNullable<Awaited<ReturnType<typeof getDeviceById>>> }
+
+/** The session fields the caller gate reads. Narrowed so callers pass anything session-shaped. */
+type CallerSession = { deviceId?: string | null }
+
+/**
+ * Resolve the caller's device: the `X-Device-ID` header must be present AND
+ * match the device this session is bound to server-side. The device must belong
+ * to the authenticated user and not be revoked. Trust is NOT required here —
+ * routes that need a trusted caller check `device.trusted` themselves.
+ *
+ * THU-873: the header is client-set, so on its own it is a CLAIM, not an
+ * identity — any session could name any device and inherit its authority. The
+ * authority is `session.deviceId`, which is written only by the sealed-nonce
+ * bind handshake (`POST /devices/me/bind`) and by first registration. A session
+ * that was never bound fails closed rather than falling back to the header.
+ *
+ * The match is checked BEFORE the device lookup, so a session cannot probe which
+ * device ids exist on its own account either.
+ */
+const getCallerDevice = async (
+  database: typeof DbType,
   userId: string,
-  callerDeviceId: string,
-  deviceId: string,
-  canarySecret?: string,
-): Promise<boolean> => {
-  if (callerDeviceId !== deviceId || !canarySecret) {
-    return false
+  request: Request,
+  session: CallerSession,
+): Promise<CallerDeviceResult> => {
+  const deviceId = request.headers.get('x-device-id')?.trim()
+  if (!deviceId) {
+    return { status: 400, error: 'X-Device-ID header is required' }
   }
-  return verifyCanaryProof(txDb, userId, canarySecret)
+  if (!session.deviceId) {
+    return { status: 403, error: 'Session is not bound to a device' }
+  }
+  if (session.deviceId !== deviceId) {
+    return { status: 403, error: 'X-Device-ID does not match the authenticated device' }
+  }
+  const device = await getDeviceById(database, deviceId)
+  if (!device || device.userId !== userId) {
+    return { status: 404, error: 'Device not found' }
+  }
+  if (device.revokedAt != null) {
+    return { status: 403, error: 'Device has been revoked' }
+  }
+  return { deviceId, device }
 }
 
 /**
- * Encryption API routes for device registration, envelope management, and canary.
+ * Envelope coverage validation (AK rotation + upgrade): the client must supply a
+ * new-AK envelope for EXACTLY the set of envelope-capable devices — a missing one
+ * locks a device out; an extra one hands the new AK to a revoked/pending device.
+ * Throws BadRequestError on any mismatch.
+ *
+ * "Envelope-capable" (see `listEnvelopeCapableDeviceIds`) means trusted,
+ * non-revoked AND holding both hybrid public keys. Requiring coverage for a
+ * keyless trusted device (a bridge, or a v1 device that never published v2 keys)
+ * would be unsatisfiable — the client cannot wrap an AK without those keys — and
+ * would fail every rotation and upgrade on such an account.
+ */
+const assertEnvelopeCoverage = (capableDeviceIds: string[], envelopes: Array<{ deviceId: string }>): void => {
+  const capable = new Set(capableDeviceIds)
+  const submitted = new Set(envelopes.map((envelope) => envelope.deviceId))
+  if (submitted.size !== envelopes.length) {
+    throw new BadRequestError('Duplicate deviceId in envelopes')
+  }
+  const missing = [...capable].filter((deviceId) => !submitted.has(deviceId))
+  if (missing.length > 0) {
+    throw new BadRequestError(`envelopes must cover every envelope-capable device — missing: ${missing.join(', ')}`)
+  }
+  const unknown = [...submitted].filter((deviceId) => !capable.has(deviceId))
+  if (unknown.length > 0) {
+    throw new BadRequestError(`envelopes contains non-trusted devices: ${unknown.join(', ')}`)
+  }
+}
+
+/**
+ * AK-rotation keyring coverage: the FULL keyring must be re-wrapped under the
+ * new AK — re-wrapping a subset strands the missing key_ids under the discarded
+ * old AK (permanent data loss). `wrappedKeys` therefore has to match the existing
+ * id set EXACTLY, which naturally requires the `"v1"` slot when the account
+ * carries one (plan Risk 1). Throws BadRequestError on any mismatch.
+ *
+ * A rotation may also MINT one new primary DEK (THU-871), and that is the only
+ * way a new key_id ever enters an established keyring. It arrives in its own
+ * `newPrimaryKey` field rather than as an extra `wrappedKeys` entry, and the
+ * strict set equality above is what keeps that door shut: loosening it to "extra
+ * ids are fine" would let any caller holding a 'rotate' proof plant arbitrary
+ * unopenable rows, which is precisely the capability this ticket removed by
+ * deleting `POST /encryption/keys`. So the mint is exactly one id, it must not
+ * already exist, and it must not be smuggled into `wrappedKeys` as well.
+ *
+ * WHAT THIS CANNOT CHECK: key MATERIAL. The server holds no AK, so a submitted
+ * `wrappedKeys` entry is an opaque blob — a caller with a valid 'rotate' proof
+ * could send freshly minted material for `key_id "0"` and this would accept it.
+ * Clients rely on DEK `"0"`'s material being immutable for the life of the
+ * account (see `initialKeyId` in `shared/e2ee-types.ts`): each device keeps a
+ * local witness under it and refuses any Account Key that cannot reproduce it
+ * (THU-869). Giving `"0"` new material therefore makes every established device
+ * on that account refuse every future AK, permanently. Preserving it is a
+ * client-side obligation of `rewrapKeyring`, enforced nowhere.
+ */
+const assertRotateKeyCoverage = (
+  existingKeyIds: string[],
+  wrappedKeys: WrappedKeyEntry[],
+  newPrimaryKey?: { keyId: string },
+): void => {
+  const existing = new Set(existingKeyIds)
+  const submitted = new Set(wrappedKeys.map((entry) => entry.keyId))
+  if (submitted.size !== wrappedKeys.length) {
+    throw new BadRequestError('Duplicate key_id in wrappedKeys')
+  }
+  const missing = [...existing].filter((keyId) => !submitted.has(keyId))
+  if (missing.length > 0) {
+    throw new BadRequestError(`wrappedKeys must cover every existing key_id — missing: ${missing.join(', ')}`)
+  }
+  const unknown = [...submitted].filter((keyId) => !existing.has(keyId))
+  if (unknown.length > 0) {
+    throw new BadRequestError(`wrappedKeys contains unknown key_ids: ${unknown.join(', ')}`)
+  }
+  if (!newPrimaryKey) {
+    return
+  }
+  if (existing.has(newPrimaryKey.keyId)) {
+    throw new BadRequestError(`newPrimaryKey.keyId '${newPrimaryKey.keyId}' already exists on the keyring`)
+  }
+  if (submitted.has(newPrimaryKey.keyId)) {
+    throw new BadRequestError(`newPrimaryKey.keyId '${newPrimaryKey.keyId}' must not also appear in wrappedKeys`)
+  }
+}
+
+/**
+ * Upgrade keyring coverage: the migrated keyring MUST be EXACTLY the fresh
+ * primary DEK `"0"` (post-flip writes need an encrypt-capable primary) plus the
+ * absorbed legacy `"v1"` slot (without it, all legacy data is stranded). Throws
+ * BadRequestError on anything else (plan §4 Track A upgrade).
+ *
+ * The exact-set rule (THU-871) is what stops a hostile migrator minting an
+ * extra, arbitrary key_id at the moment the account is born — including one
+ * crafted to collide with the next allocation and wedge the account's first DEK
+ * rotation. Upgrade is a MINT path, so unlike the re-wrap paths it can afford to
+ * be strict: the legitimate client submits precisely these two ids.
+ */
+const assertUpgradeKeyCoverage = (wrappedKeys: WrappedKeyEntry[], primaryKeyId: string): void => {
+  const submitted = new Set(wrappedKeys.map((entry) => entry.keyId))
+  if (submitted.size !== wrappedKeys.length) {
+    throw new BadRequestError('Duplicate key_id in wrappedKeys')
+  }
+  if (!submitted.has(initialKeyId)) {
+    throw new BadRequestError(`upgrade requires a fresh primary key for key_id '${initialKeyId}'`)
+  }
+  if (!submitted.has(legacyKeyId)) {
+    throw new BadRequestError(`upgrade requires the absorbed legacy '${legacyKeyId}' slot`)
+  }
+  const unexpected = [...submitted].filter((keyId) => keyId !== initialKeyId && keyId !== legacyKeyId)
+  if (unexpected.length > 0) {
+    throw new BadRequestError(
+      `upgrade must mint only '${initialKeyId}' and '${legacyKeyId}' — got: ${unexpected.join(', ')}`,
+    )
+  }
+  // The primary MUST be the freshly-minted encrypt-capable DEK "0" — never the
+  // read-only "v1" slot or a key_id absent from the keyring, either of which
+  // would break every post-flip write.
+  if (primaryKeyId !== initialKeyId) {
+    throw new BadRequestError(`upgrade primary_key_id must be '${initialKeyId}'`)
+  }
+}
+
+/**
+ * Recovery-slot coverage (AK rotation + upgrade): the phrase-derived hybrid
+ * public keys, the AK wrapped to them, and the attestation over them must arrive
+ * together. A partial write would leave the account with a recovery slot no
+ * phrase can open — the AK becomes unrecoverable the moment the last device is
+ * lost. Submitting public keys that DIFFER from the stored ones is legal: that is
+ * an explicit phrase change, gated by the 'rotate' challenge proof.
+ *
+ * Requiring the attestation here is what lets the client fail closed with no
+ * legacy-tolerant branch (THU-865): no v2 recovery slot can be written without
+ * one, so a missing attestation means either a pre-column row or tampering —
+ * never a legitimate current write.
+ *
+ * Throws BadRequestError unless all four are present.
+ */
+const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
+  if (
+    !recovery.recoveryEcdhPublicKey ||
+    !recovery.recoveryMlkemPublicKey ||
+    !recovery.recoveryWrappedAK ||
+    !recovery.recoveryAttestation
+  ) {
+    throw new BadRequestError(
+      'recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK and recoveryAttestation must be supplied together',
+    )
+  }
+}
+
+/**
+ * Enforce + persist the org-escrow envelope (THU-804) inside an AK create/change
+ * transaction. Every flow that mints a new AK (first-device bootstrap, rotate,
+ * upgrade) must give the operator escrow key its wrapped copy atomically: when
+ * escrow is enabled the envelope is REQUIRED (400 when missing) and upserted;
+ * when disabled it is ignored entirely and never persisted. Device approval
+ * does NOT route through here — approving a device does not change the AK.
+ *
+ * `ORG_ESCROW_ENABLED` is all this needs (THU-866). The server holds no escrow
+ * public key: the client wraps to the key its own build pins, so the envelope
+ * arrives as opaque ciphertext and the only server-side decision left is whether
+ * one is mandatory. That flag is what stops an account slipping through
+ * unescrowed on a deployment that expects escrow.
+ */
+const persistOrgEnvelope = async (
+  txDb: typeof DbType,
+  settings: Settings,
+  userId: string,
+  orgEnvelope: string | undefined,
+): Promise<void> => {
+  if (!settings.orgEscrowEnabled) {
+    return
+  }
+  if (!orgEnvelope) {
+    throw new BadRequestError('orgEnvelope is required when org escrow is enabled')
+  }
+  await upsertOrgEnvelope(txDb, { userId, wrappedAk: orgEnvelope })
+}
+
+/** Map a thrown BadRequest/Forbidden/SchemeConflict error onto the response; rethrow anything else. */
+const mapEncryptionError = (err: unknown, set: { status?: number | string }): { error: string } => {
+  if (err instanceof BadRequestError) {
+    set.status = 400
+    return { error: err.message }
+  }
+  if (err instanceof ForbiddenError) {
+    set.status = 403
+    return { error: err.message }
+  }
+  if (err instanceof SchemeConflictError || err instanceof KeyConflictError) {
+    set.status = 409
+    return { error: err.message }
+  }
+  throw err
+}
+
+/**
+ * Encryption API routes for device registration, envelope management, the
+ * wrapped-DEK keyring, challenge-response, AK rotation, and the v1→v2 upgrade.
  * All routes require authentication via session.
  */
+/**
+ * Step-up verification (THU-875). A rotation that moves the recovery anchor to
+ * DIFFERENT keys is a phrase change, and a still-trusted attacker (in-origin
+ * script, borrowed session) can run one silently through the legitimate flow —
+ * so it additionally requires proof-of-inbox: an emailed code checked against
+ * Better Auth's verification table, always keyed by the SESSION's email (the
+ * OTP check API itself is email-keyed and unauthenticated; this binding is the
+ * entire session↔proof link). The `email-verification` type is borrowed — this
+ * app has no password auth, so nothing else uses it, and the app's Better Auth
+ * OTP sender deliberately drops non-sign-in types, which is fine because the
+ * code is delivered exclusively through `securityNotifications.sendStepUpCode`.
+ */
+const stepUpOtpType = 'email-verification' as const
+
+/** Mirrors better-auth's `toOTPIdentifier` — the verification row's lookup key. */
+const stepUpIdentifier = (email: string): string => `${stepUpOtpType}-otp-${email.toLowerCase()}`
+
+/**
+ * Single-use enforcement: better-auth's check does NOT consume the code on
+ * success, so the rotate route deletes the row after its transaction commits.
+ * Delete-on-commit (not on-check) keeps a rotation that fails midway retryable
+ * with the same code.
+ */
+const consumeStepUpOtp = (database: typeof DbType, email: string) =>
+  database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(email)))
+
+/** `resendStrategy: 'reuse'` re-sends the same code; the cooldown just caps email volume. */
+const stepUpRequestCooldownMs = 30_000
+const lastStepUpRequestAt = new Map<string, number>()
+
+/** Security emails ride committed transactions — a send failure is logged, never surfaced. */
+const notifyBestEffort = (label: string, send: Promise<void>): void => {
+  send.catch((err) => console.error(`[security-email] ${label} failed:`, err))
+}
+
 export const createEncryptionRoutes = (
   auth: Auth,
   database: typeof DbType,
-  { linkSessionToDevice: bindSessionToDevice = linkSessionToDevice }: EncryptionRouteDependencies = {},
+  settings: Settings,
+  notifications: SecurityNotifications = securityNotifications,
 ) =>
   new Elysia()
     .use(createAuthMacro(auth))
+    .post(
+      '/encryption/step-up/request',
+      async ({ request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+        if (!caller.device.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can request a step-up code' }
+        }
+        const last = lastStepUpRequestAt.get(userId)
+        if (last != null && Date.now() - last < stepUpRequestCooldownMs) {
+          set.status = 429
+          return { error: 'A code was just sent — wait a moment before requesting another' }
+        }
+        try {
+          const otp = await auth.api.createVerificationOTP({
+            body: { email: sessionUser!.email, type: stepUpOtpType },
+          })
+          await notifications.sendStepUpCode({
+            email: sessionUser!.email,
+            code: otp,
+            deviceName: caller.device.name ?? 'Unknown device',
+            locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+          })
+          lastStepUpRequestAt.set(userId, Date.now())
+          return { ok: true as const }
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+      },
+      { auth: true },
+    )
     .post(
       '/devices',
       async ({ body, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const { deviceId, publicKey, mlkemPublicKey, name } = body
 
+        // CLI devices register through the dedicated account flow, never here.
         if (deviceId.startsWith(cliDeviceIdPrefix)) {
           set.status = 400
           return { error: 'CLI device IDs must use account registration' }
         }
 
-        const deviceName = name || 'Unknown device'
-        try {
-          const result = await database.transaction((tx) =>
-            withUserDeviceRegistrationLock(tx, userId, async () => {
-              const existingDevice = await getDeviceById(tx, deviceId)
-              if (existingDevice) {
-                if (existingDevice.userId !== userId) {
-                  return { kind: 'device-taken' as const }
-                }
-                if (existingDevice.revokedAt !== null) {
-                  return { kind: 'device-revoked' as const }
-                }
-              } else {
-                const activeCount = await countActiveDevices(tx, userId)
-                if (activeCount >= maxActiveDevicesPerUser) {
-                  return { kind: 'limit-reached' as const }
-                }
-              }
+        // Check if device already exists (fast-path before transaction)
+        const existingDevice = await getDeviceById(database, deviceId)
 
-              const binding = await bindSessionToDevice(tx, session.id, deviceId, userId)
-              if (binding.status === 'conflict') {
-                return { kind: 'binding-conflict' as const }
-              }
-              if (binding.status === 'invalid-session') {
-                return { kind: 'invalid-session' as const }
-              }
-
-              if (existingDevice?.publicKey && existingDevice.trusted) {
-                const envelope = await getEnvelopeByDeviceId(tx, deviceId, userId)
-                return {
-                  kind: 'registered' as const,
-                  trusted: true as const,
-                  envelope: envelope?.wrappedCk ?? null,
-                }
-              }
-
-              const registered = await registerDevice(tx, {
-                id: deviceId,
-                userId,
-                name: deviceName,
-                publicKey,
-                mlkemPublicKey,
-              })
-
-              // Roll back the successful bind if another transaction changed the row after our read.
-              if (registered.length === 0 || registered[0].userId !== userId) {
-                throw new DeviceRegistrationConflictError()
-              }
-
-              return { kind: 'registered' as const, trusted: false as const }
-            }),
-          )
-
-          if (result.kind === 'device-taken') {
+        if (existingDevice) {
+          // Device belongs to a different user
+          if (existingDevice.userId !== userId) {
             set.status = 409
             return { error: 'Device ID already taken' }
           }
-          if (result.kind === 'device-revoked') {
+
+          // Revoked — device cannot re-register
+          if (existingDevice.revokedAt != null) {
             set.status = 403
             return { error: 'Device has been revoked' }
           }
-          if (result.kind === 'limit-reached') {
-            set.status = 422
-            return { error: 'Device limit reached' }
-          }
-          if (result.kind === 'binding-conflict') {
-            set.status = 409
-            return { code: 'SESSION_DEVICE_MISMATCH' }
-          }
-          if (result.kind === 'invalid-session') {
-            set.status = 401
-            return { error: 'Unauthorized' }
-          }
-          return result.trusted ? { trusted: true as const, envelope: result.envelope } : { trusted: false as const }
-        } catch (error) {
-          if (error instanceof DeviceRegistrationConflictError) {
-            const currentDevice = await getDeviceById(database, deviceId)
-            if (currentDevice?.userId === userId && currentDevice.revokedAt !== null) {
-              set.status = 403
-              return { error: 'Device has been revoked' }
+
+          // Encryption-registered device (has publicKey): return current state
+          if (existingDevice.publicKey) {
+            if (existingDevice.trusted) {
+              // NO session link here (THU-873). This branch takes an unverified
+              // client-supplied `deviceId`, so linking would let any session
+              // claim any already-trusted device — the rebind hole that made
+              // pinning `getCallerDevice` to `session.deviceId` worthless. A
+              // returning device binds through the sealed-nonce handshake
+              // (`GET /devices/me/bind-challenge` + `POST /devices/me/bind`),
+              // which proves it holds this device's private key.
+              // The envelope below is safe to return unbound: it is the AK
+              // wrapped TO this device's public keys, useless without them.
+              const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
+              return {
+                trusted: true as const,
+                envelope: envelope?.wrappedCk ?? null,
+              }
             }
-            set.status = 409
-            return { error: 'Device ID already taken' }
+            // Non-trusted device re-registering (reopen modal after deny/cancel):
+            // fall through to registerDevice which upserts with approvalPending=true
           }
-          throw error
+
+          // Pre-encryption device (no publicKey): fall through to register with publicKey
         }
+
+        // Wrap limit check + registration in a transaction to prevent TOCTOU race
+        const deviceName = name || 'Unknown device'
+        const result = await database.transaction(async (tx) => {
+          const txDb = tx as unknown as typeof database
+
+          // Re-check device inside transaction to close race window
+          const freshDevice = await getDeviceById(txDb, deviceId)
+          if (!freshDevice) {
+            const activeCount = await countActiveDevices(txDb, userId)
+            if (activeCount >= maxActiveDevicesPerUser) {
+              return { limitReached: true as const }
+            }
+          }
+
+          // Bind the session to this device BEFORE creating the row, so a session
+          // already bound to a different device (e.g. a CLI device-grant session)
+          // is rejected without leaving an orphan pending row. The bind is
+          // conflict-aware: it only takes when the session is unbound or already
+          // points here (THU-873 pins the caller to `session.deviceId`).
+          const binding = await linkSessionToDevice(txDb, session.id, deviceId, userId)
+          if (binding.status === 'conflict') {
+            return { bindingConflict: true as const }
+          }
+          if (binding.status === 'invalid-session') {
+            return { invalidSession: true as const }
+          }
+
+          const registered = await registerDevice(txDb, {
+            id: deviceId,
+            userId,
+            name: deviceName,
+            publicKey,
+            mlkemPublicKey,
+          })
+
+          // If upsert returned no rows, another user claimed this device ID
+          if (registered.length === 0 || registered[0].userId !== userId) {
+            return { taken: true as const }
+          }
+
+          return { ok: true as const, pendingSince: registered[0].lastSeen }
+        })
+
+        if ('limitReached' in result) {
+          set.status = 422
+          return { error: 'Device limit reached' }
+        }
+
+        if ('taken' in result) {
+          set.status = 409
+          return { error: 'Device ID already taken' }
+        }
+
+        if ('bindingConflict' in result) {
+          set.status = 409
+          return { code: 'SESSION_DEVICE_MISMATCH' }
+        }
+
+        if ('invalidSession' in result) {
+          set.status = 401
+          return { error: 'Unauthorized' }
+        }
+
+        // `pendingSince` identifies THIS registration. The client echoes it back
+        // on cancel so a cancel that was issued for an earlier attempt cannot
+        // clear a newer one (see `denyDevice`).
+        // `lastSeen` is nullable in the schema; `registerDevice` always stamps it,
+        // and omitting the token simply falls back to an unscoped cancel.
+        return { trusted: false as const, pendingSince: result.pendingSince?.toISOString() }
       },
       {
         auth: true,
@@ -174,92 +587,160 @@ export const createEncryptionRoutes = (
         }),
       },
     )
+    // Store a device envelope. `wrappedCK` carries the ACCOUNT KEY (AK) in v2 —
+    // the historical name is kept to avoid wire churn.
+    //
+    // Two shapes:
+    // 1. First-device bootstrap — NO encryption metadata exists, caller==target:
+    //    requires the full atomic v2 setup payload (canary + signing key +
+    //    kdf_salt + recovery slot + initial wrapped keyring incl key_id "0").
+    //    Everything is created in one transaction so half-configured accounts
+    //    cannot exist.
+    // 2. Approval / self-recovery — metadata exists: requires a ChallengeProof
+    //    (operation 'approve'). A pre-flip v1 account (NULL signing key) fails
+    //    verification closed and must go through POST /encryption/upgrade first;
+    //    an active v2 account has no static-secret override.
     .post(
       '/devices/:deviceId/envelope',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const { deviceId } = params
-        const { wrappedCK, canaryIv, canaryCtext, canarySecret } = body
+        const {
+          wrappedCK,
+          proof,
+          canaryIv,
+          canaryCtext,
+          signingPublicKey,
+          kdfSalt,
+          wrappedKeys,
+          recoveryEcdhPublicKey,
+          recoveryMlkemPublicKey,
+          recoveryWrappedAK,
+          recoveryAttestation,
+          orgEnvelope,
+        } = body
 
-        // Pre-transaction check: fast-path rejection for missing/wrong-user/revoked devices
-        // without starting a transaction. Re-checked inside tx to close race window.
+        // Pre-transaction fast-path rejection; re-checked inside tx to close race window.
+        // CLI devices never carry E2EE envelopes — they are excluded here so a CLI
+        // row can neither bootstrap, self-recover, nor be approved.
         const device = await getDeviceById(database, deviceId)
         if (!device || device.userId !== userId || device.deviceType === 'cli') {
           set.status = 404
           return { error: 'Device not found' }
         }
-
         if (device.revokedAt != null) {
           set.status = 403
           return { error: 'Device has been revoked' }
         }
 
-        // Reject if target device is already trusted (prevents envelope overwrite attacks)
-        // Only the device itself can re-key its own envelope
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
         if (!callerDeviceId) {
           set.status = 400
           return { error: 'X-Device-ID header is required' }
         }
+        // THU-873: the header is a claim; the session's bound device is the
+        // identity. First registration binds the session, so an enrolling
+        // device reaches this route already bound.
+        if (!session.deviceId) {
+          set.status = 403
+          return { error: 'Session is not bound to a device' }
+        }
+        if (session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
 
+        // Only the device itself can re-key its own envelope (prevents overwrite attacks)
         if (device.trusted && callerDeviceId !== deviceId) {
           set.status = 409
           return { error: 'Cannot overwrite envelope of an already-trusted device' }
         }
 
-        // Use a transaction for atomicity (prevents race conditions on first-device bootstrap)
+        // Which security email this request earns (THU-875) — decided inside the
+        // tx where the authoritative reads happen, sent only after commit.
+        let accessGained: 'bootstrap' | 'approved' | 'recovery' | null = null
+
         try {
-          await database.transaction((tx) =>
-            withUserDeviceRegistrationLock(tx, userId, async () => {
-              const txDb = tx
+          await database.transaction(async (tx) => {
+            const txDb = tx as unknown as typeof database
 
+            // Serialize concurrent device approvals for this user to prevent cap bypass and
+            // to serialize against POST /rotate, /upgrade and revoke (same lock). Auto-releases
+            // on commit/rollback.
+            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            const metadata = await getEncryptionMetadata(txDb, userId)
+
+            if (!metadata) {
+              // ── Shape 1: first-device bootstrap (atomic v2 setup) ──
               const envelopesExist = await hasEnvelopesForUser(txDb, userId)
-              const isFirstDeviceBootstrap = !envelopesExist && callerDeviceId === deviceId
-
-              // First device bootstrap requires canary data for recovery to work
-              if (isFirstDeviceBootstrap && (!canaryIv || !canaryCtext || !canarySecret)) {
-                throw new BadRequestError('First device bootstrap requires canaryIv, canaryCtext, and canarySecret')
+              if (envelopesExist || callerDeviceId !== deviceId) {
+                throw new ForbiddenError('Encryption is not set up — only first-device bootstrap can store envelopes')
               }
-
-              // Defense-in-depth: if encryption metadata already exists, verify canary proof
-              // to prevent E2EE state reset even if device revocation protections are bypassed.
-              // Checks `existingMetadata` (not `existingMetadata?.canarySecretHash`) for fail-closed
-              // behavior: if metadata exists with a null hash, we block rather than silently skip.
-              if (isFirstDeviceBootstrap) {
-                const existingMetadata = await getEncryptionMetadata(txDb, userId)
-                if (existingMetadata) {
-                  if (!(await verifyCanaryProofWithMetadata(canarySecret!, existingMetadata.canarySecretHash))) {
-                    throw new ForbiddenError(
-                      'Invalid canary secret — cannot re-bootstrap with existing encryption metadata',
-                    )
-                  }
+              if (
+                !canaryIv ||
+                !canaryCtext ||
+                !signingPublicKey ||
+                !kdfSalt ||
+                !wrappedKeys?.length ||
+                !recoveryEcdhPublicKey ||
+                !recoveryMlkemPublicKey ||
+                !recoveryWrappedAK ||
+                !recoveryAttestation
+              ) {
+                throw new BadRequestError(
+                  'First device bootstrap requires canaryIv, canaryCtext, signingPublicKey, kdfSalt, wrappedKeys, recoveryEcdhPublicKey, recoveryMlkemPublicKey, recoveryWrappedAK, and recoveryAttestation',
+                )
+              }
+              // Exactly `"0"`, nothing else (THU-871). Bootstrap is a MINT path,
+              // so an extra id here would enter the keyring un-vetted — including
+              // one crafted to collide with a later allocation and wedge every
+              // future DEK rotation. The legitimate client submits precisely one.
+              if (wrappedKeys.length !== 1 || wrappedKeys[0]!.keyId !== initialKeyId) {
+                throw new BadRequestError(
+                  `First device bootstrap requires exactly one wrapped key, for key_id '${initialKeyId}'`,
+                )
+              }
+              await insertEncryptionMetadataIfNotExists(txDb, {
+                userId,
+                canaryIv,
+                canaryCtext,
+                signingPublicKey,
+                kdfSalt,
+                recoveryEcdhPublicKey,
+                recoveryMlkemPublicKey,
+                recoveryWrappedAk: recoveryWrappedAK,
+                recoveryAttestation,
+              })
+              for (const entry of wrappedKeys) {
+                const inserted = await insertWrappedKey(txDb, {
+                  userId,
+                  keyId: entry.keyId,
+                  wrappedKey: entry.wrappedKey,
+                })
+                if (inserted.length === 0) {
+                  // A pre-existing row for this key_id means the keyring was
+                  // written before setup — the bootstrap's own DEK would be
+                  // discarded and the account born unreadable (THU-871).
+                  throw new KeyConflictError(`key_id '${entry.keyId}' already exists — cannot bootstrap over it`)
                 }
               }
-
-              // Recovery: device is self-storing and provided canary that matches stored metadata.
-              // This means the client fetched the canary, verified the recovery key against it,
-              // and is now re-bootstrapping with the recovered CK.
-              const isSelfRecovery = isFirstDeviceBootstrap
-                ? false
-                : await checkSelfRecovery(txDb, userId, callerDeviceId, deviceId, canarySecret)
-
-              // Re-check target device inside transaction to close race window
-              const targetDevice = await getDeviceById(txDb, deviceId)
-              if (!targetDevice || targetDevice.deviceType === 'cli' || targetDevice.revokedAt != null) {
-                throw new ForbiddenError('Device has been revoked')
+              // Bootstrap mints the account's first AK — escrow it in the same tx.
+              await persistOrgEnvelope(txDb, settings, userId, orgEnvelope)
+            } else {
+              // ── Shape 2: metadata exists — approval / self-recovery. Every path
+              // requires a valid 'approve' proof; a pre-flip v1 account (NULL
+              // signing key) fails closed and must upgrade first.
+              if (!proof) {
+                throw new ForbiddenError('Challenge proof required for device approval')
+              }
+              if (!(await verifyChallengeSignature(txDb, userId, proof, 'approve', callerDeviceId))) {
+                throw new ForbiddenError('Invalid challenge proof')
               }
 
-              if (!isFirstDeviceBootstrap && !isSelfRecovery) {
-                // Proof-of-CK-possession prevents X-Device-ID spoofing: a pending device
-                // cannot provide the canary secret because it doesn't have the Content Key.
-                if (!canarySecret) {
-                  throw new ForbiddenError('Canary secret required for device approval')
-                }
-                if (!(await verifyCanaryProof(txDb, userId, canarySecret))) {
-                  throw new ForbiddenError('Invalid canary secret')
-                }
-
-                // Caller-trust check (defense-in-depth)
+              if (callerDeviceId !== deviceId) {
+                // Approving another device — caller-trust check (defense-in-depth).
+                // A CLI device is never a valid approver even when trusted.
                 const callerDevice = await getDeviceById(txDb, callerDeviceId)
                 if (!isTrustedAppDevice(callerDevice, userId)) {
                   const callerBelongsToApp =
@@ -269,57 +750,72 @@ export const createEncryptionRoutes = (
                   )
                 }
               }
+              // caller==target: self-recovery / envelope re-key — the proof is the gate.
+            }
 
-              await upsertEnvelope(txDb, {
-                deviceId,
-                userId,
-                wrappedCk: wrappedCK,
-              })
+            // Re-check target device inside transaction to close race window
+            const targetDevice = await getDeviceById(txDb, deviceId)
+            if (!targetDevice || targetDevice.deviceType === 'cli' || targetDevice.revokedAt != null) {
+              throw new ForbiddenError('Device has been revoked')
+            }
 
-              // Store canary if provided (first device setup — idempotent)
-              if (canaryIv && canaryCtext) {
-                const canarySecretHash = canarySecret ? await hashCanarySecret(canarySecret) : undefined
-                await insertEncryptionMetadataIfNotExists(txDb, {
-                  userId,
-                  canaryIv,
-                  canaryCtext,
-                  canarySecretHash,
-                })
+            // Store envelope (carries the AK)
+            await upsertEnvelope(txDb, { deviceId, userId, wrappedCk: wrappedCK })
+
+            // Approval-only state transition: cap check + markDeviceTrusted only run when
+            // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
+            // envelopes), the upsertEnvelope above is the only state change needed.
+            if (!targetDevice.trusted) {
+              const activeCount = await countActiveDevices(txDb, userId)
+              if (activeCount >= maxActiveDevicesPerUser) {
+                throw new ForbiddenError('Device limit reached — revoke an existing device first')
               }
-
-              // Approval-only state transition: cap check + markDeviceTrusted only run when
-              // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
-              // envelopes), the upsertEnvelope above is the only state change needed. Running
-              // markDeviceTrusted on an already-trusted device matches 0 rows (its WHERE requires
-              // approvalPending=true) and would falsely throw 'Device has been revoked'.
-              if (!targetDevice.trusted) {
-                // registerDevice checks the cap, but pending devices don't count toward it. Without
-                // this guard, a user could register N+1 pending devices and approve them all,
-                // exceeding maxActiveDevicesPerUser.
-                const activeCount = await countActiveDevices(txDb, userId)
-                if (activeCount >= maxActiveDevicesPerUser) {
-                  throw new ForbiddenError('Device limit reached — revoke an existing device first')
-                }
-
-                // Mark device as trusted. Check rows returned to detect a concurrent revoke
-                // that committed between the in-tx target read above and this UPDATE.
-                const updated = await markDeviceTrusted(txDb, deviceId, userId)
-                if (updated.length === 0) {
-                  throw new ForbiddenError('Device has been revoked')
-                }
+              // Check rows returned to detect a concurrent revoke between the in-tx read and this UPDATE.
+              const updated = await markDeviceTrusted(txDb, deviceId, userId)
+              if (updated.length === 0) {
+                throw new ForbiddenError('Device has been revoked')
               }
+              // Bootstrap is its own wording; otherwise caller==target is the
+              // recovery-phrase self-approval (Shape 2 admits nothing else
+              // untrusted), and caller≠target is a normal approval.
+              accessGained = !metadata ? 'bootstrap' : callerDeviceId === deviceId ? 'recovery' : 'approved'
+            }
+          })
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+
+        const locale = resolveEmailLocale(request.headers.get('X-App-Language'))
+        if (accessGained === 'bootstrap') {
+          notifyBestEffort(
+            'encryption-set-up',
+            notifications.sendEncryptionSetUp({
+              email: sessionUser!.email,
+              deviceName: device.name ?? 'Unknown device',
+              upgraded: false,
+              locale,
             }),
           )
-        } catch (err) {
-          if (err instanceof BadRequestError) {
-            set.status = 400
-            return { error: err.message }
-          }
-          if (err instanceof ForbiddenError) {
-            set.status = 403
-            return { error: err.message }
-          }
-          throw err
+        } else if (accessGained === 'recovery') {
+          notifyBestEffort(
+            'recovery-phrase-used',
+            notifications.sendRecoveryPhraseUsed({
+              email: sessionUser!.email,
+              deviceName: device.name ?? 'Unknown device',
+              locale,
+            }),
+          )
+        } else if (accessGained === 'approved') {
+          const approver = await getDeviceById(database, callerDeviceId)
+          notifyBestEffort(
+            'device-approved',
+            notifications.sendDeviceApproved({
+              email: sessionUser!.email,
+              deviceName: device.name ?? 'Unknown device',
+              approverName: approver?.name ?? 'Unknown device',
+              locale,
+            }),
+          )
         }
 
         return { trusted: true as const }
@@ -328,15 +824,23 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           wrappedCK: t.String({ maxLength: 2200 }),
+          proof: t.Optional(proofSchema),
           canaryIv: t.Optional(t.String({ maxLength: 500 })),
           canaryCtext: t.Optional(t.String({ maxLength: 500 })),
-          canarySecret: t.Optional(t.String({ maxLength: 500 })),
+          signingPublicKey: t.Optional(t.String({ maxLength: 500 })),
+          kdfSalt: t.Optional(t.String({ maxLength: 500 })),
+          wrappedKeys: t.Optional(t.Array(wrappedKeyEntrySchema, { maxItems: maxKeyringKeys })),
+          recoveryEcdhPublicKey: t.Optional(t.String({ maxLength: 200 })),
+          recoveryMlkemPublicKey: t.Optional(t.String({ maxLength: 1700 })),
+          recoveryWrappedAK: t.Optional(t.String({ maxLength: 2200 })),
+          recoveryAttestation: t.Optional(t.String({ maxLength: 200 })),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
         }),
       },
     )
     .get(
       '/devices/me/envelope',
-      async ({ request, set, user: sessionUser }) => {
+      async ({ request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const deviceId = request.headers.get('x-device-id')?.trim()
 
@@ -344,14 +848,20 @@ export const createEncryptionRoutes = (
           set.status = 400
           return { error: 'X-Device-ID header is required' }
         }
+        // THU-873: a device may only fetch ITS OWN envelope. The blob is wrapped
+        // to this device's public keys so it is useless to another session, but
+        // serving it on a client-set header alone would still leak which devices
+        // are enrolled.
+        if (!session.deviceId || session.deviceId !== deviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
 
-        // Verify device belongs to this user
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId || device.deviceType === 'cli') {
+        if (!device || device.userId !== userId) {
           set.status = 404
           return { error: 'Device not found' }
         }
-
         if (device.revokedAt != null) {
           set.status = 403
           return { error: 'Device has been revoked' }
@@ -371,11 +881,17 @@ export const createEncryptionRoutes = (
 
         return {
           trusted: device.trusted,
+          // Carries the AK in v2 — field name kept for wire compatibility.
           wrappedCK: envelope.wrappedCk,
         }
       },
       { auth: true },
     )
+    // Encryption metadata (still at /encryption/canary — the poll clients already
+    // do at unlock). Returns the shared EncryptionMetadataResponse DTO;
+    // `key_version`/`primary_key_id`/`scheme_version` ride along so devices detect
+    // AK/DEK rotations and the v1→v2 flip by polling (plan §2.4 transport).
+    // `signing_public_key`/`kdf_salt` are null for a pre-flip v1 account.
     .get(
       '/encryption/canary',
       async ({ set, user: sessionUser }) => {
@@ -388,15 +904,482 @@ export const createEncryptionRoutes = (
         }
 
         return {
-          canaryIv: metadata.canaryIv,
-          canaryCtext: metadata.canaryCtext,
+          canary_iv: metadata.canaryIv,
+          canary_ctext: metadata.canaryCtext,
+          kdf_salt: metadata.kdfSalt,
+          signing_public_key: metadata.signingPublicKey,
+          recovery_attestation: metadata.recoveryAttestation,
+          recovery_ecdh_public_key: metadata.recoveryEcdhPublicKey,
+          recovery_mlkem_public_key: metadata.recoveryMlkemPublicKey,
+          recovery_wrapped_ak: metadata.recoveryWrappedAk,
+          key_version: metadata.keyVersion,
+          primary_key_id: metadata.primaryKeyId,
+          scheme_version: metadata.schemeVersion,
         }
       },
       { auth: true },
     )
+    // Wrapped-DEK keyring. ACCESS RULE: any authenticated, NON-REVOKED device of
+    // the user may read wrapped keys, including pending ones. A recovering device
+    // must fetch the wrapped DEK BEFORE it is trusted (mnemonic → AK → unwrap DEK
+    // → decrypt canary → derive signing key → prove possession). The AES-KW
+    // wrapping under the AK is the real cryptographic gate — a wrapped key is
+    // useless without the AK. Revoked devices are rejected (403).
+    .get(
+      '/encryption/keys',
+      async ({ request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        const keys = await listWrappedKeys(database, userId)
+        return {
+          keys: keys.map((key) => ({ key_id: key.keyId, wrapped_key: key.wrappedKey })),
+        }
+      },
+      { auth: true },
+    )
+    // The exact device set an AK rotation / upgrade must cover, with the public
+    // keys needed to wrap for each — served from the SAME predicate
+    // `assertEnvelopeCoverage` validates against. Clients previously derived this
+    // from their PowerSync-synced `devices` table, so a replication lag (two
+    // devices migrating at once, a freshly approved peer) produced envelopes the
+    // server then rejected as incomplete, with no way to recover. Public keys are
+    // not secrets — they already sync to every device on the account.
+    .get(
+      '/encryption/envelope-targets',
+      async ({ request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        const devices = await listEnvelopeCapableDevices(database, userId)
+        return {
+          devices: devices.map((device) => ({
+            device_id: device.id,
+            public_key: device.publicKey,
+            mlkem_public_key: device.mlkemPublicKey,
+          })),
+        }
+      },
+      { auth: true },
+    )
+    // Revoked devices whose AK rotation never landed (THU-887). Revoking cuts
+    // server access in its own transaction and replaces the AK in a second one;
+    // when the second fails, the device is revoked while the AK it holds is
+    // still the live one. This endpoint is what turns that into an observable
+    // account fact, so the UI can report it and ANY device can finish the job —
+    // see `listDevicesAwaitingLockout` for why the keyring is the clock.
+    //
+    // DEVICE-GATED, deliberately. The obvious home for this would be the
+    // metadata response, but `GET /encryption/canary` is `{ auth: true }` only,
+    // and `attacks/canary-route-ungated.spec.ts` already tracks that as an open
+    // metadata-hygiene defect — widening what an unbound session learns would
+    // make a tagged finding worse.
+    .get(
+      '/encryption/lockout-pending',
+      async ({ request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        return { device_ids: await listDevicesAwaitingLockout(database, userId) }
+      },
+      { auth: true },
+    )
+    .get(
+      '/encryption/keys/:keyId',
+      async ({ params, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        const key = await getWrappedKey(database, userId, params.keyId)
+        if (!key) {
+          set.status = 404
+          return { error: 'Key not found' }
+        }
+
+        return { key_id: key.keyId, wrapped_key: key.wrappedKey }
+      },
+      { auth: true },
+    )
+    // NOTE: there is deliberately no standalone "mint a key_id" route (THU-871).
+    // A new DEK is minted only as part of an AK rotation, via `newPrimaryKey` on
+    // POST /encryption/rotate. That is what makes minting atomic (a failed
+    // rotation adds nothing, so a retried revocation cannot ratchet the keyring),
+    // guarantees every row is wrapped under the CURRENT AK (the mint happens in
+    // the same request that installs that AK), and denies an in-origin script a
+    // cheap endpoint for planting unopenable rows.
+    // Issue a single-use challenge nonce bound to (user, operation, caller
+    // device). Pending devices may request one — a recovering device needs an
+    // 'approve' challenge before it is trusted; the signature is the real gate.
+    // Revoked devices are rejected by getCallerDevice.
+    .get(
+      '/encryption/challenge',
+      async ({ query, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+
+        const operation = query.operation
+        if (!challengeOperations.includes(operation as ChallengeOperation)) {
+          set.status = 400
+          return { error: 'Invalid operation' }
+        }
+
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+
+        const { nonce, expiresAt } = await issueChallengeNonce(database, {
+          userId,
+          operation: operation as ChallengeOperation,
+          deviceId: caller.deviceId,
+          ttlMs: challengeNonceTtlMs,
+        })
+
+        return { nonce, expires_at: expiresAt.toISOString() }
+      },
+      {
+        auth: true,
+        query: t.Object({ operation: t.String({ maxLength: 20 }) }),
+      },
+    )
+    // Atomic AK rotation: replace every trusted device's envelope, re-anchor the
+    // recovery slot, re-wrap EVERY key_id on the keyring under the new AK,
+    // OPTIONALLY mint one new primary DEK, replace canary + signing key +
+    // kdf_salt, and bump key_version — one all-or-nothing transaction under the
+    // per-user advisory lock (shared with envelope approval, upgrade and revoke,
+    // so rotation can't race them). Gated by a 'rotate' challenge signature.
+    //
+    // `newPrimaryKey` is the ONLY way a key_id enters an established keyring
+    // (THU-871). Device revocation needs both rotations — a new DEK so future
+    // writes use a key the removed device never held, and a new AK to lock it out
+    // of the keyring — and doing them in one transaction is what makes the pair
+    // atomic: a failure adds nothing, so retrying a revocation cannot grow the
+    // keyring, and the minted DEK is wrapped under the very AK this request
+    // installs, so it can never be stranded under a stale one.
+    //
+    // The recovery public keys normally match the stored ones (a silent rotation
+    // keeps the user's phrase working); submitting DIFFERENT ones is the explicit
+    // phrase-change path and is gated by the same proof.
+    .post(
+      '/encryption/rotate',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+        if (!caller.device.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can rotate keys' }
+        }
+
+        // THU-875 step-up gate. Intent is derived from EFFECT (body keys vs
+        // stored keys), never from a client-declared mode — the client here may
+        // be the attacker, and matching keys cannot be faked without the
+        // recovery private halves. Same-key rotations (revocation's silent
+        // re-anchor) never see this. Also closes THU-865's residual: differing
+        // keys can no longer ride a keep-shaped rotation unnoticed.
+        //
+        // Slot-shape validation first (repeated inside the tx), so a malformed
+        // recovery slot stays a 400 rather than masquerading as a step-up 403.
+        try {
+          assertRecoveryCoverage(body)
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+        const storedMetadata = await getEncryptionMetadata(database, userId)
+        const recoveryChanged =
+          storedMetadata != null &&
+          (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
+            storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
+        if (recoveryChanged) {
+          if (!body.stepUpOtp) {
+            set.status = 403
+            return { error: 'Step-up verification required to change the recovery phrase', code: 'step_up_required' }
+          }
+          // Session email, never client input — see `stepUpOtpType`.
+          const valid = await auth.api
+            .checkVerificationOTP({
+              body: { email: sessionUser!.email, type: stepUpOtpType, otp: body.stepUpOtp },
+            })
+            .then((result) => result.success)
+            .catch(() => false)
+          if (!valid) {
+            set.status = 403
+            return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
+          }
+        }
+
+        try {
+          const keyVersion = await database.transaction(async (tx) => {
+            const txDb = tx as unknown as typeof database
+            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            // Verify inside the tx so nonce consumption serializes under the lock
+            // (concurrent rotates: the second fails on its own nonce or on coverage
+            // validation against the already-rotated state).
+            if (!(await verifyChallengeSignature(txDb, userId, body.proof, 'rotate', caller.deviceId))) {
+              throw new ForbiddenError('Invalid challenge proof')
+            }
+
+            const existingKeys = await listWrappedKeys(txDb, userId)
+            assertRotateKeyCoverage(
+              existingKeys.map((key) => key.keyId),
+              body.wrappedKeys,
+              body.newPrimaryKey,
+            )
+            const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
+            assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
+            assertRecoveryCoverage(body)
+
+            for (const envelope of body.envelopes) {
+              await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
+            }
+            for (const entry of body.wrappedKeys) {
+              const updated = await updateWrappedKey(txDb, userId, entry.keyId, entry.wrappedKey)
+              if (updated.length === 0) {
+                // Unreachable under coverage validation + the advisory lock, but
+                // a silently dropped re-wrap strands that key_id under the AK
+                // about to be discarded, so it must abort rather than commit.
+                throw new BadRequestError(`key_id '${entry.keyId}' vanished mid-rotation — aborting`)
+              }
+            }
+            // The freshly minted primary DEK, already wrapped under the NEW AK
+            // (THU-871). Minting inside the rotation transaction is what makes it
+            // atomic: a rotation that fails anywhere adds no keyring row, so a
+            // retried revocation cannot ratchet the keyring, and the new row can
+            // never be wrapped under a stale AK.
+            if (body.newPrimaryKey) {
+              const inserted = await insertWrappedKey(txDb, {
+                userId,
+                keyId: body.newPrimaryKey.keyId,
+                wrappedKey: body.newPrimaryKey.wrappedKey,
+              })
+              if (inserted.length === 0) {
+                throw new KeyConflictError(`key_id '${body.newPrimaryKey.keyId}' already exists — mint aborted`)
+              }
+              await setPrimaryKeyId(txDb, userId, body.newPrimaryKey.keyId)
+            }
+            // Race guard for the THU-875 gate: the pre-tx compare ran against a
+            // snapshot; if the stored keys moved between that read and this lock
+            // (a concurrent phrase change), an un-stepped-up request must not
+            // slide through on the stale "unchanged" verdict.
+            const txMetadata = await getEncryptionMetadata(txDb, userId)
+            const txRecoveryChanged =
+              txMetadata != null &&
+              (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
+                txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
+            if (txRecoveryChanged && !recoveryChanged) {
+              throw new ForbiddenError('Step-up verification required to change the recovery phrase')
+            }
+
+            // The org envelope wraps the NEW AK — replaced atomically with the rotation.
+            await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
+            await replaceEncryptionMetadata(txDb, {
+              userId,
+              canaryIv: body.canaryIv,
+              canaryCtext: body.canaryCtext,
+              signingPublicKey: body.signingPublicKey,
+              kdfSalt: body.kdfSalt,
+              recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
+              recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
+              recoveryWrappedAk: body.recoveryWrappedAK,
+              recoveryAttestation: body.recoveryAttestation,
+            })
+            const newVersion = await bumpKeyVersion(txDb, userId)
+            if (newVersion == null) {
+              throw new BadRequestError('Encryption not set up')
+            }
+            return newVersion
+          })
+
+          if (recoveryChanged) {
+            // Consume the code only after the commit, so a rotation that failed
+            // midway stays retryable with the same code. A failed delete leaves
+            // the code valid until its own expiry for the inbox holder only —
+            // log, never fail a committed rotation over it.
+            await consumeStepUpOtp(database, sessionUser!.email).catch((err) =>
+              console.error('[step-up] failed to consume verification code:', err),
+            )
+            notifyBestEffort(
+              'recovery-phrase-changed',
+              notifications.sendRecoveryPhraseChanged({
+                email: sessionUser!.email,
+                deviceName: caller.device.name ?? 'Unknown device',
+                locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+              }),
+            )
+          }
+
+          return { key_version: keyVersion }
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          proof: proofSchema,
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
+          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 1, maxItems: maxKeyringKeys }),
+          newPrimaryKey: t.Optional(newPrimaryKeySchema),
+          stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })),
+          canaryIv: t.String({ maxLength: 500 }),
+          canaryCtext: t.String({ maxLength: 500 }),
+          signingPublicKey: t.String({ maxLength: 500 }),
+          kdfSalt: t.String({ maxLength: 500 }),
+          recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
+          recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
+          recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          recoveryAttestation: t.String({ maxLength: 200 }),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
+        }),
+      },
+    )
+    // v1→v2 migration (WS1). The migrator absorbs the legacy CK into the keyring
+    // as the reserved read-only `"v1"` slot AND mints a fresh primary DEK `"0"`,
+    // registers the signing key + kdf_salt + recovery slot, re-encrypts the canary
+    // under the new primary DEK, writes a new-AK envelope for every trusted
+    // device and for the phrase-derived recovery keypair, and flips
+    // scheme_version 1→2 atomically (CAS) as the LAST step — one all-or-nothing
+    // transaction under the per-user advisory lock.
+    //
+    // Gated ONLY by the D1 CK-possession proof (the signing key does not exist
+    // pre-flip, so this is the bootstrap op and is NOT signature-gated); an
+    // 'upgrade' nonce is consumed for replay protection. A second concurrent
+    // migrator loses the CAS and gets a 409.
+    .post(
+      '/encryption/upgrade',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const caller = await getCallerDevice(database, userId, request, session)
+        if ('error' in caller) {
+          set.status = caller.status
+          return { error: caller.error }
+        }
+        if (!caller.device.trusted) {
+          set.status = 403
+          return { error: 'Only trusted devices can upgrade encryption' }
+        }
+
+        try {
+          const result = await database.transaction(async (tx) => {
+            const txDb = tx as unknown as typeof database
+            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+
+            // Replay protection only (bootstrap op — NOT signature-verified).
+            const nonceRow = await consumeChallengeNonce(txDb, body.nonce)
+            if (
+              !nonceRow ||
+              nonceRow.userId !== userId ||
+              nonceRow.operation !== 'upgrade' ||
+              nonceRow.deviceId !== caller.deviceId
+            ) {
+              throw new ForbiddenError('Invalid or expired upgrade nonce')
+            }
+
+            // D1 possession proof: only a device holding the v1 CK can produce the
+            // canarySecret that hashes to the retained canary_secret_hash.
+            if (!(await verifyPossessionProof(txDb, userId, body.possessionProof))) {
+              throw new ForbiddenError('Invalid CK-possession proof')
+            }
+
+            assertUpgradeKeyCoverage(body.wrappedKeys, body.primaryKeyId)
+            const capableDeviceIds = await listEnvelopeCapableDeviceIds(txDb, userId)
+            assertEnvelopeCoverage(capableDeviceIds, body.envelopes)
+            assertRecoveryCoverage(body)
+
+            for (const entry of body.wrappedKeys) {
+              const inserted = await insertWrappedKey(txDb, {
+                userId,
+                keyId: entry.keyId,
+                wrappedKey: entry.wrappedKey,
+              })
+              if (inserted.length === 0) {
+                throw new KeyConflictError(`key_id '${entry.keyId}' already exists — cannot absorb over it`)
+              }
+            }
+            for (const envelope of body.envelopes) {
+              await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
+            }
+
+            // Atomic last step: CAS scheme_version 1→2. A concurrent migrator that
+            // already flipped leaves 0 rows → 409 (candidate AK never persisted).
+            const flipped = await flipSchemeToV2(txDb, {
+              userId,
+              canaryIv: body.canaryIv,
+              canaryCtext: body.canaryCtext,
+              signingPublicKey: body.signingPublicKey,
+              kdfSalt: body.kdfSalt,
+              primaryKeyId: body.primaryKeyId,
+              recoveryEcdhPublicKey: body.recoveryEcdhPublicKey,
+              recoveryMlkemPublicKey: body.recoveryMlkemPublicKey,
+              recoveryWrappedAk: body.recoveryWrappedAK,
+              recoveryAttestation: body.recoveryAttestation,
+            })
+            if (!flipped) {
+              throw new SchemeConflictError('Account already migrated to scheme v2')
+            }
+            // The org envelope wraps the NEW AK minted by this migration.
+            await persistOrgEnvelope(txDb, settings, userId, body.orgEnvelope)
+            return { keyVersion: flipped.keyVersion, schemeVersion: flipped.schemeVersion }
+          })
+
+          notifyBestEffort(
+            'encryption-upgraded',
+            notifications.sendEncryptionSetUp({
+              email: sessionUser!.email,
+              deviceName: caller.device.name ?? 'Unknown device',
+              upgraded: true,
+              locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+            }),
+          )
+
+          return { key_version: result.keyVersion, scheme_version: result.schemeVersion }
+        } catch (err) {
+          return mapEncryptionError(err, set)
+        }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          nonce: t.String({ maxLength: 128 }),
+          possessionProof: t.String({ maxLength: 500 }),
+          envelopes: t.Array(envelopeEntrySchema, { minItems: 1, maxItems: maxActiveDevicesPerUser }),
+          wrappedKeys: t.Array(wrappedKeyEntrySchema, { minItems: 2, maxItems: maxKeyringKeys }),
+          primaryKeyId: t.String({ minLength: 1, maxLength: 64, pattern: '^[^:]+$' }),
+          canaryIv: t.String({ maxLength: 500 }),
+          canaryCtext: t.String({ maxLength: 500 }),
+          signingPublicKey: t.String({ maxLength: 500 }),
+          kdfSalt: t.String({ maxLength: 500 }),
+          recoveryEcdhPublicKey: t.String({ maxLength: 200 }),
+          recoveryMlkemPublicKey: t.String({ maxLength: 1700 }),
+          recoveryWrappedAK: t.String({ maxLength: 2200 }),
+          recoveryAttestation: t.String({ maxLength: 200 }),
+          orgEnvelope: t.Optional(t.String({ maxLength: 500 })),
+        }),
+      },
+    )
     .post(
       '/devices/:deviceId/deny',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
@@ -404,15 +1387,22 @@ export const createEncryptionRoutes = (
           set.status = 400
           return { error: 'X-Device-ID header is required' }
         }
-
-        // Proof-of-CK-possession prevents X-Device-ID spoofing
-        const validProof = await verifyCanaryProof(database, userId, body.canarySecret)
-        if (!validProof) {
+        // THU-873: pin the caller to its session before trusting the header. The
+        // signature below proves ACCOUNT key possession, which a revoked device
+        // retains — only this check proves WHICH device is calling.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
           set.status = 403
-          return { error: 'Invalid canary secret' }
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
-        // Caller must be a trusted device (defense-in-depth)
+        // Proof-of-key-possession prevents X-Device-ID spoofing: only a device
+        // holding the account signing key can sign the challenge.
+        if (!(await verifyChallengeSignature(database, userId, body.proof, 'deny', callerDeviceId))) {
+          set.status = 403
+          return { error: 'Invalid challenge proof' }
+        }
+
+        // Caller must be a trusted app device (defense-in-depth; never a CLI device)
         const callerDevice = await getDeviceById(database, callerDeviceId)
         if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
@@ -425,7 +1415,6 @@ export const createEncryptionRoutes = (
           set.status = 404
           return { error: 'Device not found' }
         }
-
         if (targetDevice.trusted || targetDevice.revokedAt != null) {
           set.status = 409
           return { error: 'Device is not pending approval' }
@@ -441,14 +1430,12 @@ export const createEncryptionRoutes = (
       },
       {
         auth: true,
-        body: t.Object({
-          canarySecret: t.String({ maxLength: 500 }),
-        }),
+        body: t.Object({ proof: proofSchema }),
       },
     )
     .post(
       '/devices/:deviceId/node-id',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
 
@@ -457,16 +1444,25 @@ export const createEncryptionRoutes = (
           return { error: 'X-Device-ID header is required' }
         }
 
-        // Proof-of-CK-possession prevents X-Device-ID spoofing: only a device that holds the
-        // Content Key can decrypt the canary and produce this secret. Mirrors the deny route.
-        const validProof = await verifyCanaryProof(database, userId, body.canarySecret)
-        if (!validProof) {
+        // THU-873: pin the caller to its session first — the account signing key
+        // the proof below checks is retained by a revoked device, so it cannot
+        // establish WHICH device is attesting.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
           set.status = 403
-          return { error: 'Invalid canary secret' }
+          return { error: 'X-Device-ID does not match the authenticated device' }
         }
 
-        // Caller must be a trusted device (defense-in-depth: only a trusted app
-        // device may attest another device's P2P identity).
+        // Proof-of-key-possession prevents X-Device-ID spoofing: only a device
+        // holding the account signing key can sign the challenge. Attesting
+        // another device's P2P identity is a trusted-device admin action gated
+        // with the 'approve' operation (challengeOperations has no 'node-id').
+        if (!(await verifyChallengeSignature(database, userId, body.proof, 'approve', callerDeviceId))) {
+          set.status = 403
+          return { error: 'Invalid challenge proof' }
+        }
+
+        // Caller must be a trusted app device (defense-in-depth: only a trusted app
+        // device may attest another device's P2P identity; never a CLI device).
         const callerDevice = await getDeviceById(database, callerDeviceId)
         if (!isTrustedAppDevice(callerDevice, userId)) {
           set.status = 403
@@ -485,15 +1481,15 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           nodeId: t.String({ minLength: 1, maxLength: 2048 }),
-          canarySecret: t.String({ maxLength: 500 }),
+          proof: proofSchema,
         }),
       },
     )
-    // Self-enroll: a device binds its OWN iroh endpoint identity (node_id) — no canary /
-    // Content Key. Proof-of-possession happens at the iroh handshake on connect, so declaring a
+    // Self-enroll: a device binds its OWN iroh endpoint identity (node_id) — no challenge
+    // proof. Proof-of-possession happens at the iroh handshake on connect, so declaring a
     // node_id you can't dial as grants nothing. The caller is pinned to the session's server-set
     // deviceId (from linkSessionToDevice), so it can only write the device its session is bound
-    // to — not an arbitrary target the way the canary-gated POST /devices/:deviceId/node-id can.
+    // to — not an arbitrary target the way the proof-gated POST /devices/:deviceId/node-id can.
     // The trust boundary is the account: a live same-account session may declare its own node_id.
     // Device revocation plus the bridge's heartbeat re-check mitigate a rogue session rather than
     // intra-account isolation here.
@@ -555,30 +1551,30 @@ export const createEncryptionRoutes = (
     // tombstone so the caller can remove it explicitly before pairing again.
     .post(
       '/devices/bridge',
-      async ({ body, set, user: sessionUser }) => {
+      async ({ body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
-        const result = await database.transaction((tx) =>
-          withUserDeviceRegistrationLock(tx, userId, async () => {
-            const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-            if (!existingBridge) {
-              const activeCount = await countActiveDevices(tx, userId)
-              if (activeCount >= maxActiveDevicesPerUser) {
-                return { limitReached: true as const }
-              }
+        const result = await database.transaction(async (tx) => {
+          const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+          if (!existingBridge) {
+            const activeCount = await countActiveDevices(tx, userId)
+            if (activeCount >= maxActiveDevicesPerUser) {
+              return { limitReached: true as const }
             }
+          }
 
-            const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
-            if (!device) {
-              const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-              if (tombstone?.userId === userId && tombstone.revokedAt != null) {
-                return { revoked: true as const }
-              }
-              throw new Error('Bridge device registration returned no device')
+          const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
+          if (!device) {
+            const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+            if (tombstone?.userId === userId && tombstone.revokedAt != null) {
+              return { revoked: true as const }
             }
-            return { device }
-          }),
-        )
+            throw new Error('Bridge device registration returned no device')
+          }
+          // isNew distinguishes first registration from the re-registration
+          // upsert — only the former is a device GAINING access (THU-875 email).
+          return { device, isNew: !existingBridge }
+        })
 
         if ('limitReached' in result) {
           set.status = 422
@@ -589,6 +1585,16 @@ export const createEncryptionRoutes = (
           return { error: 'Bridge device revoked' }
         }
         const { device } = result
+        if (result.isNew) {
+          notifyBestEffort(
+            'bridge-connected',
+            notifications.sendBridgeConnected({
+              email: sessionUser!.email,
+              deviceName: name,
+              locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+            }),
+          )
+        }
         return { id: device.id, nodeId: device.nodeId, deviceType: device.deviceType }
       },
       {
@@ -629,8 +1635,22 @@ export const createEncryptionRoutes = (
       },
       { auth: true },
     )
-    .post(
-      '/devices/me/cancel-pending',
+    // Device–session binding (THU-873), the handshake that makes every trust
+    // route's `session.deviceId` gate meaningful. Two steps, both auth-gated:
+    //
+    //   1. GET  /devices/me/bind-challenge → a nonce SEALED to the claimed
+    //      device's stored ECDH public key. The `X-Device-ID` header here is a
+    //      CLAIM, not authority — anyone may ask for a challenge naming any
+    //      device, and learn nothing, because only the holder of that device's
+    //      private key can open the blob.
+    //   2. POST /devices/me/bind → echo the opened nonce; the server consumes
+    //      it and links the session to that device.
+    //
+    // This is the only path that binds a session to an already-trusted device.
+    // `POST /devices` deliberately links only at first registration, when the
+    // device is still pending and the link grants nothing.
+    .get(
+      '/devices/me/bind-challenge',
       async ({ request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const deviceId = request.headers.get('x-device-id')?.trim()
@@ -641,7 +1661,96 @@ export const createEncryptionRoutes = (
         }
 
         const device = await getDeviceById(database, deviceId)
-        if (!device || device.userId !== userId || device.deviceType === 'cli') {
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if (device.revokedAt != null) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+        // A keyless row (a bridge, or a v1 device that never published hybrid
+        // keys) has nothing to seal to, so it can never bind — and never needs
+        // to: nothing keyless reaches a route that resolves a caller device.
+        if (!device.publicKey) {
+          set.status = 409
+          return { error: 'Device has no key material to bind with' }
+        }
+
+        const { nonce, expiresAt } = await issueChallengeNonce(database, {
+          userId,
+          operation: bindOperation,
+          deviceId,
+          ttlMs: challengeNonceTtlMs,
+        })
+
+        return { sealed: await sealBindNonce(device.publicKey, nonce), expires_at: expiresAt.toISOString() }
+      },
+      { auth: true },
+    )
+    .post(
+      '/devices/me/bind',
+      async ({ body, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+
+        // Single-use: `consumeChallengeNonce` flips `consumed` in one UPDATE, so
+        // a replay matches 0 rows. Only a device that OPENED the sealed blob
+        // knows this value.
+        const consumed = await consumeChallengeNonce(database, body.nonce)
+        if (
+          !consumed ||
+          consumed.userId !== userId ||
+          consumed.operation !== bindOperation ||
+          consumed.deviceId !== body.deviceId
+        ) {
+          set.status = 403
+          return { error: 'Invalid or expired bind nonce' }
+        }
+
+        // Re-check state at bind time: the device may have been revoked between
+        // the challenge and this call.
+        const device = await getDeviceById(database, body.deviceId)
+        if (!device || device.userId !== userId) {
+          set.status = 404
+          return { error: 'Device not found' }
+        }
+        if (device.revokedAt != null) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
+        }
+
+        await linkSessionToDevice(database, session.id, body.deviceId, userId)
+
+        return { deviceId: body.deviceId }
+      },
+      {
+        auth: true,
+        body: t.Object({
+          deviceId: t.String({ maxLength: 36 }),
+          nonce: t.String({ maxLength: 128 }),
+        }),
+      },
+    )
+    .post(
+      '/devices/me/cancel-pending',
+      async ({ body, request, set, user: sessionUser, session }) => {
+        const userId = sessionUser!.id
+        const deviceId = request.headers.get('x-device-id')?.trim()
+
+        if (!deviceId) {
+          set.status = 400
+          return { error: 'X-Device-ID header is required' }
+        }
+
+        // THU-873: only the device whose session this is may cancel its own
+        // pending registration.
+        if (!session.deviceId || session.deviceId !== deviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
+
+        const device = await getDeviceById(database, deviceId)
+        if (!device || device.userId !== userId) {
           set.status = 404
           return { error: 'Device not found' }
         }
@@ -651,8 +1760,23 @@ export const createEncryptionRoutes = (
           return { error: 'Device is not pending approval' }
         }
 
-        await denyDevice(database, deviceId, userId)
+        // Scoped to the registration it was issued for. Clients fire this
+        // without awaiting it (the modal closes immediately), so a slow cancel
+        // could otherwise land after the user retried and wipe the FRESH pending
+        // request — the retry vanished with the peer showing "Request denied".
+        const cancelled = await denyDevice(
+          database,
+          deviceId,
+          userId,
+          body?.pendingSince ? new Date(body.pendingSince) : undefined,
+        )
+        if (cancelled.length === 0) {
+          // Superseded by a newer registration — leave it alone. Not an error:
+          // the request this cancel referred to is already gone.
+          set.status = 409
+          return { error: 'Pending request was superseded' }
+        }
         set.status = 204
       },
-      { auth: true },
+      { auth: true, body: t.Optional(t.Object({ pendingSince: t.Optional(t.String({ maxLength: 40 })) })) },
     )

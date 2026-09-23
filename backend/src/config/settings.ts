@@ -92,7 +92,10 @@ const settingsSchema = z
     powersyncUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
-    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us, so a
+    // revoked device keeps reading the sync stream until its current token expires. This value
+    // therefore *is* the post-revocation read window for downloads — keep it short.
+    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(300),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -106,8 +109,14 @@ const settingsSchema = z
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
     corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
-    // E2E encryption — when true, devices must complete the trust flow before syncing
-    e2eeEnabled: z.boolean().default(false),
+    // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every
+    // AK create/change (setup / rotate / upgrade) must include an org envelope, and the
+    // server rejects the write without one. That is the whole of the server's role:
+    // the escrow public key lives only in the client build (`VITE_ORG_ESCROW_PUBLIC_KEY`,
+    // THU-866), so the server never holds escrow key material and cannot steer the wrap
+    // target. Recovery runs offline via scripts/org-escrow-decrypt.ts with the
+    // operator-held private key.
+    orgEscrowEnabled: z.boolean().default(false),
 
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
@@ -244,13 +253,13 @@ const parseSettings = (): Settings => {
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
-    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '300',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
-    e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
     debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',

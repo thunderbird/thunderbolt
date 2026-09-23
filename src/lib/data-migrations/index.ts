@@ -4,6 +4,7 @@
 
 import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { automationsToSkills } from './automations-to-skills'
+import { reencryptAgents } from './reencrypt-agents'
 import { restampSkillDefaultHashes } from './restamp-skill-default-hashes'
 import { restampWidgetSkillDefaultHashes } from './restamp-widget-skill-default-hashes'
 
@@ -43,6 +44,7 @@ const migrations: readonly DataMigration[] = [
   automationsToSkills,
   restampSkillDefaultHashes,
   restampWidgetSkillDefaultHashes,
+  reencryptAgents,
 ] as const
 
 /**

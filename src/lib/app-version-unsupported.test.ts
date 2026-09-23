@@ -23,6 +23,9 @@ describe('handleAppVersionUnsupported', () => {
 
   afterEach(() => {
     window.dispatchEvent = originalDispatch
+    // The latch is module state shared with every other suite in the process —
+    // leaving it set makes an unrelated file's "not blocked" assertion fail.
+    resetAppVersionBlockedForTesting()
   })
 
   it('dispatches app_version_unsupported with the min version on a 426 status', () => {

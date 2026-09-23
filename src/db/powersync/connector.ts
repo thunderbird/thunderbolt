@@ -7,7 +7,8 @@ import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
-import { encodeForUpload } from '@/db/encryption'
+import { encodeForUpload, keysSyncChannelName, type KeysSyncMessage } from '@/db/encryption'
+import { getAK, getPrimaryKeyId } from '@/crypto'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -99,6 +100,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         return null
       }
 
+      if (!(await this.canDecryptAccountData())) {
+        console.info('[PowerSync] Encryption keys not on this device yet — deferring sync')
+        trackSyncEvent('sync_credentials_error', { error_code: 'KEYRING_MISSING', had_token: hadToken })
+        return null
+      }
+
       const tokenRequestStartedAt = performance.now()
       const response = await this.fetchFn(`${this.backendUrl}/powersync/token`, {
         headers: getAuthenticatedHeaders(),
@@ -125,6 +132,12 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
         const isQuietStatus =
           status === 401 ||
           body.code === 'DEVICE_NOT_TRUSTED' ||
+          // Expected on the launch right after a re-authentication: the session
+          // is not yet bound to this device (THU-873). `ensureSessionBound`
+          // fixes it within the same boot and PowerSync retries, so this is a
+          // transient defer, not an error. Deliberately absent from
+          // `getCredentialsInvalidReason` so it never trips a device reset.
+          body.code === 'DEVICE_NOT_BOUND' ||
           body.code === 'ANONYMOUS_SYNC_FORBIDDEN' ||
           (status === 503 && import.meta.env.DEV)
         if (!isQuietStatus) {
@@ -158,6 +171,125 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
   }
 
   /**
+   * Whether this device can read what the account's sync stream will deliver.
+   *
+   * The download counterpart to {@link ensureUploadEncryptionReady}. Decode runs
+   * in the SharedWorker and its result is PERSISTED into local SQLite, so when a
+   * keyless device receives encrypted rows the codec's pre-unlock passthrough
+   * stores raw `__enc:…` strings as if they were values: the UI renders
+   * ciphertext, and writing such a row back re-encrypts the ciphertext. There is
+   * no way to defer a single value once the row is in the stream — so the fix is
+   * to not open the stream at all until the keyring is present.
+   *
+   * Returning null credentials is the established "not ready, keep retrying"
+   * channel here (the same one `DEVICE_NOT_TRUSTED` uses during setup), so sync
+   * resumes on PowerSync's own retry once keys land — no extra wiring needed.
+   *
+   * An AK on this device is enough: a missing individual DEK is the codec's
+   * key-request/self-heal case, not a reason to withhold the stream.
+   */
+  private async canDecryptAccountData(): Promise<boolean> {
+    if (await getAK()) {
+      return true
+    }
+    const account = await this.probeAccountEncryption()
+    // 'absent' = the account never enabled E2EE, so its rows are plaintext and
+    // readable. 'unknown' withholds the stream: an unprovable state must not be
+    // treated as "nothing to decrypt".
+    return account.status === 'absent'
+  }
+
+  /**
+   * Whether the ACCOUNT has E2EE set up, independent of what this device holds.
+   * `GET /encryption/canary` answers 200 with the metadata, or 404 ("Encryption
+   * not set up") for an account that never enabled it.
+   *
+   * A failed probe (offline, 401/403/5xx) is `unknown`, never `absent` — "not
+   * encrypted" may only be concluded from an explicit 404.
+   */
+  private async probeAccountEncryption(): Promise<{ status: 'set-up' | 'absent' | 'unknown' }> {
+    try {
+      const response = await this.fetchFn(`${this.backendUrl}/encryption/canary`, {
+        headers: getAuthenticatedHeaders(),
+        credentials: isSsoMode() ? 'include' : undefined,
+      })
+      if (response.status === 404) {
+        return { status: 'absent' }
+      }
+      // The body (incl. `primary_key_id`) is DELIBERATELY not read: a served
+      // pointer is advisory only — the AK envelope is its trusted source
+      // (THU-890). Only the account's set-up-ness is consumed here.
+      return response.ok ? { status: 'set-up' } : { status: 'unknown' }
+    } catch {
+      return { status: 'unknown' }
+    }
+  }
+  /**
+   * Guarantee this batch can be encrypted before `encodeForUpload` touches it.
+   *
+   * Encryption happens at upload time, so a CRUD op sits in `ps_crud` as
+   * plaintext until it flushes. `codec.encode` fails OPEN when no primary key_id
+   * resolves (`encodeWithoutKeys`) — correct for an account that never enabled
+   * E2EE, catastrophic for one that did but whose keyring has not reached this
+   * device yet: the queue flushes as plaintext the moment sync connects, before
+   * the setup wizard runs. That is how a stale client's backlog leaks after an
+   * upgrade.
+   *
+   * The codec cannot make this call itself — it also runs in the SharedWorker,
+   * which has no auth token — so the connector resolves account state here and
+   * THROWS rather than letting a batch through unencrypted. Throwing skips
+   * `transaction.complete()`, so PowerSync simply retries: the writes wait,
+   * intact, until the keyring lands.
+   *
+   * A stored primary key_id means setup completed and `codec.encode` enforces
+   * its own fail-closed rule, so no probe is needed.
+   */
+  private async ensureUploadEncryptionReady(): Promise<void> {
+    if ((await getPrimaryKeyId()) !== null) {
+      return
+    }
+    const account = await this.probeAccountEncryption()
+    if (account.status === 'absent') {
+      return // Genuinely pre-E2EE account — plaintext passthrough is by design.
+    }
+    if (account.status === 'unknown') {
+      throw new Error('Cannot confirm account encryption state — deferring upload instead of risking plaintext')
+    }
+    if (!(await getAK())) {
+      throw new Error('Account is E2EE but this device holds no access key — deferring upload instead of plaintext')
+    }
+    // AK present, pointer missing. This used to adopt `metadata.primary_key_id`
+    // — which made it the second place a SERVED pointer became durable local
+    // state, and the door a grammar-valid rollback walked through (THU-890:
+    // `"0"` served after a revocation moved the primary to `"1"` sealed new
+    // writes under the DEK the revoked device copied). The pointer's only
+    // trusted source is now the AK envelope, so: nudge the main-thread
+    // responder to re-adopt (its `stageKeyring` escalates to a witness-gated
+    // envelope adoption when the pointer is missing) and DEFER this batch —
+    // PowerSync retries it once the pointer lands.
+    this.requestPointerAdoption()
+    throw new Error('No verified primary key_id on this device yet — deferring upload until the envelope is adopted')
+  }
+
+  /**
+   * Ask the main-thread key-request responder to restore the missing pointer.
+   * Reuses the codec's keys-sync channel: `unknown-key` for DEK "0" routes to
+   * `stageKeyring`, which adopts this device's envelope (the pointer's trusted
+   * source) whenever the local pointer is null. Fire-and-forget — the responder
+   * has its own cooldown, and absence of BroadcastChannel (tests, exotic
+   * runtimes) must not turn a defer into a crash.
+   */
+  private requestPointerAdoption(): void {
+    if (typeof BroadcastChannel === 'undefined') {
+      return
+    }
+    const channel = new BroadcastChannel(keysSyncChannelName)
+    const message: KeysSyncMessage = { type: 'key-request', keyId: '0', reason: 'unknown-key' }
+    channel.postMessage(message)
+    channel.close()
+  }
+
+  /**
    * Upload local changes to the backend.
    * This is called by PowerSync when there are pending changes in the upload queue.
    */
@@ -170,6 +302,10 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
     }
 
     try {
+      // Inside the try so a refusal is tracked and, crucially, leaves the
+      // transaction uncompleted for PowerSync to retry.
+      await this.ensureUploadEncryptionReady()
+
       // Convert CRUD operations to our API format (encrypt encrypted columns)
       const operations = await Promise.all(
         transaction.crud.map((op) =>

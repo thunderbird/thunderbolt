@@ -1,0 +1,130 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Button } from '@/components/ui/button'
+import { RecoveryKeyDialog } from '@/components/recovery-key-dialog'
+import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
+import { useE2eeReady } from '@/hooks/use-e2ee-ready'
+import { useChangeRecoveryKey } from './use-change-recovery-key'
+import type { HttpClient } from '@/contexts'
+
+type ChangeRecoveryKeySectionProps = {
+  /** Dependency seam for the rotation (tests). Defaults to `changeRecoveryPhrase`. */
+  rotate?: (httpClient: HttpClient, opts: { stepUpOtp: string }) => Promise<string>
+  /** Dependency seam for the step-up code request (tests). Defaults to `postStepUpRequest`. */
+  requestCode?: (httpClient: HttpClient) => Promise<void>
+}
+
+/**
+ * "Change recovery phrase" row for the preferences Data section. Confirms,
+ * emails a step-up code (THU-875 — the server refuses a recovery re-anchor
+ * without it), then rotates the Account Key (0 rows re-encrypted), re-anchors
+ * the recovery slot to a new phrase, and shows those 24 words exactly once
+ * behind the saved-it confirmation gate. This is the only place outside
+ * first-device setup and the v1→v2 migration that mints a phrase — device
+ * revocation rotates silently. Hidden until E2EE v2 is fully set up on this
+ * device — there is no key to rotate before then.
+ */
+export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecoveryKeySectionProps) => {
+  const { t } = useLingui()
+  const ready = useE2eeReady()
+  const {
+    status,
+    isBusy,
+    otp,
+    newRecoveryKey,
+    error,
+    openConfirm,
+    cancel,
+    setOtp,
+    requestStepUpCode,
+    confirmRotation,
+    done,
+  } = useChangeRecoveryKey(rotate, requestCode)
+
+  if (!ready) {
+    return null
+  }
+
+  return (
+    <>
+      <div className="h-px bg-border -mx-6" />
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="change-recovery-key-button" className="text-sm font-medium">
+          <Trans>Change Recovery Phrase</Trans>
+        </label>
+        <p className="text-sm text-muted-foreground">
+          <Trans>
+            Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working.
+          </Trans>
+        </p>
+        <Button id="change-recovery-key-button" variant="secondary" onClick={openConfirm}>
+          <Trans>Change Recovery Phrase</Trans>
+        </Button>
+      </div>
+
+      <AlertDialog open={status === 'confirming'} onOpenChange={(open) => !open && !isBusy && cancel()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <Trans>Change your recovery phrase?</Trans>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <Trans>
+                A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop
+                working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code.
+              </Trans>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            {/* Radix's Cancel closes the dialog itself; a plain Button for the
+                confirm keeps the dialog open while the request is in flight
+                (and doubles as the retry affordance on failure). */}
+            <AlertDialogCancel disabled={isBusy}>
+              <Trans>Cancel</Trans>
+            </AlertDialogCancel>
+            <Button onClick={requestStepUpCode} isLoading={isBusy} loadingLabel={t`Sending code…`}>
+              {error ? t`Try again` : t`Send code`}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <StepUpCodeDialog
+        open={status === 'stepUp'}
+        otp={otp}
+        isBusy={isBusy}
+        error={error}
+        onOtpChange={setOtp}
+        onResend={requestStepUpCode}
+        onSubmit={confirmRotation}
+        onCancel={cancel}
+      />
+
+      <RecoveryKeyDialog
+        open={status === 'display'}
+        recoveryKey={newRecoveryKey ?? ''}
+        title={t`Save your new recovery phrase`}
+        description={t`Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again.`}
+        onDone={done}
+      />
+    </>
+  )
+}

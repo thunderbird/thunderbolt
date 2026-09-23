@@ -6,28 +6,72 @@
 export {
   generateKeyPair,
   generateMlKemKeyPair,
-  generateCK,
+  generateAK,
+  generateDEK,
+  mintDEK,
   reimportAsNonExtractable,
   exportPublicKey,
   importPublicKey,
   exportMlKemPublicKey,
   importMlKemPublicKey,
-  wrapCK,
-  rewrapCK,
-  unwrapCK,
+  deriveMlKemAtRestKey,
+  wrapAK,
+  rewrapAK,
+  unwrapAK,
+  wrapLegacyCK,
+  type OpenedAkEnvelope,
+  wrapDEK,
+  unwrapDEK,
+  rewrapKeyring,
+  unwrapLegacyCK,
+  importOrgPublicKey,
+  wrapAKForOrg,
   encrypt,
   decrypt,
+  encryptBytes,
+  decryptBytes,
+  uint8ArrayToBase64,
+  base64ToUint8Array,
   type MlKemKeyPair,
+  type EncryptedBytes,
 } from './primitives'
 
-// Canary
-export { createCanary, verifyCanary } from './canary'
+// Canary + challenge-response signing, and the recovery key (seed <-> mnemonic,
+// KDF -> recovery-slot keypair), are deliberately NOT re-exported at runtime:
+// they pull ~44 KB (minified) of @noble P-256/BIP-39 code that no boot-path
+// caller needs. Import them with `await import('@/crypto/canary')` /
+// `await import('@/crypto/recovery-key')` inside the user-initiated flow that
+// needs them (see src/services/encryption.ts) so the weight stays out of the
+// entry bundle. Their types are free to re-export.
+export type { RecoveryAnchor, SigningKeyPair } from './canary'
 
-// Recovery key
-export { encodeRecoveryKey, decodeRecoveryKey } from './recovery-key'
+// Local witness to DEK "0"'s material — gates inbound AK adoption (THU-869)
+export { anchorVersion, mintKeyringAnchor, keyringAnchorOpens, type KeyringAnchor } from './keyring-anchor'
+
+// Device–session binding (client half of the sealed-nonce handshake)
+export { openBindNonce } from './device-bind'
 
 // Key storage (IndexedDB)
-export { storeKeyPair, getKeyPair, storeCK, getCK, clearCK, clearAllKeys, type StoredKeyPair } from './key-storage'
+export {
+  storeKeyPair,
+  getKeyPair,
+  storeAK,
+  getAK,
+  storeDEK,
+  getDEK,
+  getLegacyCK,
+  stageWrappedDEKs,
+  listDEKs,
+  pruneStagedDEKs,
+  storePrimaryKeyId,
+  getPrimaryKeyId,
+  storeKeyVersion,
+  getKeyVersion,
+  storeKeyringAnchor,
+  getKeyringAnchor,
+  clearAllKeys,
+  type StoredKeyPair,
+} from './key-storage'
 
 // Errors
-export { EncryptionError, DecryptionError, StorageError, ValidationError } from './errors'
+export { EncryptionError, DecryptionError, StorageError, ValidationError, KeyDerivationError } from './errors'

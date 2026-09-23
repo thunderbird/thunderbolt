@@ -52,7 +52,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   corsAllowMethods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
   corsAllowHeaders: 'Content-Type,Authorization',
   corsExposeHeaders: '',
-  e2eeEnabled: false,
+  orgEscrowEnabled: false,
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',

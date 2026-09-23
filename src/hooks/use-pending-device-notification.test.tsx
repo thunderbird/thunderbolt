@@ -28,12 +28,16 @@ mock.module('@/db/powersync/sync-state', () => ({
   isSyncEnabled: () => useLocalSettingsStore.getState().syncEnabled,
 }))
 
-// These tests verify E2EE pending device behavior — encryption must be enabled.
-const realEncryption = await import('@/db/encryption')
-mock.module('@/db/encryption', () => ({
-  ...realEncryption,
-  isEncryptionEnabled: () => true,
-}))
+// Pure passthrough mock: shields this file from '@/db/encryption' overrides
+// leaked by other test files (bun's mock.module leaks across files), and the
+// afterAll restore keeps this file from leaking in turn. See testing.md §65.
+const realEncryption = { ...(await import('@/db/encryption')) }
+const realEncryptionConfig = { ...(await import('@/db/encryption/config')) }
+mock.module('@/db/encryption', () => ({ ...realEncryption }))
+afterAll(() => {
+  mock.module('@/db/encryption', () => realEncryption)
+  mock.module('@/db/encryption/config', () => realEncryptionConfig)
+})
 
 const { usePendingDeviceNotification } = await import('./use-pending-device-notification')
 

@@ -1,28 +1,25 @@
 # Kubernetes
 
-The Helm chart at [`deploy/k8s/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy/k8s)
-deploys the full Thunderbolt stack — frontend, backend, PostgreSQL, PowerSync,
-Keycloak, and ingress — onto any conformant Kubernetes cluster from a single
-`helm install`.
+[`deploy/k8s/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy/k8s) is a Helm chart
+deploying the full stack (frontend, backend, PostgreSQL, PowerSync, Keycloak, ingress) to any
+conformant cluster in one `helm install`.
 
 ## Quick Start (Local)
 
-This walkthrough takes you from "no cluster" to a working Thunderbolt at
-`http://localhost` using [`kind`](https://kind.sigs.k8s.io/) (Kubernetes-in-Docker).
-Total time: ~5 minutes.
+Thunderbolt at `http://localhost` via [`kind`](https://kind.sigs.k8s.io/), in ~5 minutes.
 
 ### 1. Get a local cluster
 
-`kubectl` is the CLI to talk to a cluster — it doesn't create one. Pick a tool
-to spin one up locally:
+`kubectl` does not create a cluster:
 
-| Option                 | How                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| **kind** (recommended) | `brew install kind` (see config below — bare `kind create cluster` won't work) |
-| **Docker Desktop**     | Settings → Kubernetes → Enable. `kubectl cluster-info` to verify.              |
-| **Minikube**           | `brew install minikube && minikube start`                                      |
+| Option                 | How                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| **kind** (recommended) | `brew install kind`, then the config below (bare `kind create cluster` won't work) |
+| **Docker Desktop**     | Settings → Kubernetes → Enable. Verify with `kubectl cluster-info`.                |
+| **Minikube**           | `brew install minikube && minikube start`                                          |
 
-Create a `kind` cluster with the port mappings the chart's ingress needs:
+`extraPortMappings` and the `ingress-ready` label are required: without them the step 2 ingress
+installs but is unreachable from the host.
 
 ```bash
 cat > /tmp/kind-thunderbolt.yaml <<'EOF'
@@ -48,13 +45,9 @@ EOF
 kind create cluster --name thunderbolt --config /tmp/kind-thunderbolt.yaml
 ```
 
-The `extraPortMappings` and `ingress-ready` label are required for the chart's
-ingress to be reachable at `http://localhost`. Without them the ingress install
-in step 2 succeeds but isn't reachable from the host.
-
 ### 2. Install nginx-ingress
 
-For **kind**, use the kind-flavored manifest (binds to the labeled node):
+**kind** (the kind-flavored manifest, which binds to the labeled node):
 
 ```bash
 kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
@@ -65,7 +58,7 @@ kubectl wait --namespace ingress-nginx \
   --timeout=120s
 ```
 
-For **Docker Desktop / Minikube**, use the standard chart:
+**Docker Desktop / Minikube** (the standard chart):
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -76,8 +69,8 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ### 3. Generate the required secret
 
-`backend.betterAuthSecretBase64` is the only required value with no default —
-the chart fails to template without it. Generate one:
+`backend.betterAuthSecretBase64` is the only required value with no default; templating fails
+without it.
 
 ```bash
 BETTER_AUTH_SECRET=$(openssl rand -base64 32 | tr -d '\n' | base64)
@@ -94,8 +87,7 @@ helm install thunderbolt . \
   --set backend.betterAuthSecretBase64="$BETTER_AUTH_SECRET"
 ```
 
-The chart's default image repos point at the public images at
-`ghcr.io/thunderbird/thunderbolt/*` — no pull secret needed for a local install.
+Default repos are the public `ghcr.io/thunderbird/thunderbolt/*` images: no pull secret locally.
 
 ### 5. Watch pods come up
 
@@ -103,24 +95,22 @@ The chart's default image repos point at the public images at
 kubectl get pods -n thunderbolt -w
 ```
 
-First boot takes 1–2 minutes. Expected sequence:
+First boot takes 1–2 minutes:
 
 1. `postgres-0` ready first (StatefulSet + PVC).
-2. `keycloak`, `frontend`, `marketing` ready next.
-3. `backend` and `powersync` may **show one or two restarts** — they race
-   postgres on the first deploy. They self-heal once postgres accepts
-   connections. End state: every pod `1/1 Running`.
+2. `keycloak`, `frontend`, `marketing` next.
+3. `backend` and `powersync` may **restart once or twice**, racing postgres on the first deploy,
+   and self-heal once postgres accepts connections. End state: every pod `1/1 Running`.
 
 ### 6. Sign in
 
-Open `http://localhost` in a private window. Click sign-in to bounce to
-Keycloak. Demo credentials: `demo@thunderbolt.io` / `demo`.
-
-After onboarding, drop in an AI provider key in app settings to start chatting.
+Open `http://localhost` in a private window; sign-in bounces to Keycloak. Demo credentials:
+`demo@thunderbolt.io` / `demo`. After onboarding, add an AI provider key in settings to start
+chatting.
 
 ## Routing
 
-The chart's Ingress is path-based:
+The Ingress is path-based:
 
 | Path           | Service   |
 | -------------- | --------- |
@@ -130,10 +120,9 @@ The chart's Ingress is path-based:
 | `/powersync/*` | powersync |
 | `/*`           | frontend  |
 
-Those path rules are always rendered and are what an enterprise install uses. Setting
-`ingress.hostnames` instead (`marketing`, `app`, `api`, `auth`, `powersync`) adds one host-header
-rule per service, each serving `/` — the layout the preview stacks use. The two coexist: host rules
-win for the hostnames listed, the path rule stays as the fallback.
+Path rules always render (the enterprise layout). `ingress.hostnames` (`marketing`, `app`, `api`,
+`auth`, `powersync`) adds a host-header rule per service serving `/` (the preview layout); host
+rules win for those hostnames, path rules stay as fallback.
 
 ## Cleanup
 
@@ -145,8 +134,8 @@ kind delete cluster --name thunderbolt
 
 ## Configuration
 
-See [`deploy/k8s/values.yaml`](https://github.com/thunderbird/thunderbolt/blob/main/deploy/k8s/values.yaml)
-for all options. Key values:
+Key values; full list in
+[`deploy/k8s/values.yaml`](https://github.com/thunderbird/thunderbolt/blob/main/deploy/k8s/values.yaml):
 
 | Value                                     | Default                                                 | Description                                                 |
 | ----------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
@@ -164,16 +153,14 @@ for all options. Key values:
 
 ## Production on EKS
 
-For a production deployment to AWS EKS, use the Pulumi project:
+The Pulumi project creates the VPC and EKS cluster, pushes images, installs `nginx-ingress`, and
+applies the chart. See [Pulumi (AWS)](./pulumi.md).
 
 ```bash
 cd deploy/pulumi
 pulumi config set platform k8s
 pulumi up
 ```
-
-This creates the VPC and EKS cluster, pushes images, installs `nginx-ingress`,
-and applies the chart automatically. See [Pulumi (AWS)](./pulumi.md).
 
 ## Differences from Docker Compose
 

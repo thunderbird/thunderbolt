@@ -1,25 +1,23 @@
 # OIDC Authentication
 
-This guide covers running and testing the OIDC authentication flow locally. This is the auth mode used for enterprise self-hosted deployments where all users sign in through their organization's identity provider (Keycloak, Okta, Auth0, Microsoft Entra ID, etc.).
+OIDC (`AUTH_MODE=oidc`) is the auth mode for enterprise self-hosted deployments: every user signs in through their organization's identity provider (Keycloak, Okta, Auth0, Microsoft Entra ID).
 
 ## How it works
 
-In OIDC mode (`AUTH_MODE=oidc`), the app has no login page. Unauthenticated users are immediately redirected through a chain:
+There is no login page. Unauthenticated users are redirected through a chain:
 
-1. App detects no session, redirects to backend's OIDC sign-in endpoint
-2. Backend redirects to the OIDC provider's authorization endpoint
-3. User authenticates with their identity provider (corporate SSO)
-4. Provider redirects back to backend with an auth code
-5. Backend exchanges code for tokens, creates/updates user + session
-6. Backend redirects to frontend — user is authenticated
-
-Any OIDC-compliant provider works — the implementation uses standard OIDC discovery (`.well-known/openid-configuration`).
+1. App sees no session, redirects to the backend's OIDC sign-in endpoint
+2. Backend redirects to the provider's authorization endpoint
+3. User authenticates with the corporate IdP
+4. Provider redirects back with an auth code
+5. Backend exchanges the code for tokens, creates or updates user + session
+6. Backend redirects to the frontend, authenticated
 
 ## Quick start (Keycloak example)
 
-### 1. Start Keycloak with pre-configured realm
+### 1. Start Keycloak with the pre-configured realm
 
-The `docs/mozilla-realm.json` file contains a ready-to-go realm with a client and test users. Mount it on startup so there's zero manual setup:
+`docs/mozilla-realm.json` is a ready-made realm (client + test users). Mount it:
 
 ```sh
 cd backend  # run from backend/ so the volume mount path resolves correctly
@@ -38,8 +36,7 @@ This creates:
 - **Realm**: `mozilla`
 - **Client**: `thunderbolt-app` (secret: `thunderbolt-dev-secret`)
 - **Users**: `mitchell@mozilla.org` / `password`, `laura@mozilla.org` / `password`
-
-Keycloak admin panel is at http://localhost:8180 (login: `admin` / `admin`).
+- **Admin panel**: http://localhost:8180 (`admin` / `admin`)
 
 ### 2. Set environment variables
 
@@ -50,40 +47,40 @@ AUTH_MODE=oidc
 OIDC_CLIENT_ID=thunderbolt-app
 OIDC_CLIENT_SECRET=thunderbolt-dev-secret
 OIDC_ISSUER=http://localhost:8180/realms/mozilla
-# The SSO plugin validates discovery URLs against trusted origins — include the IdP origin
+# The SSO plugin validates discovery URLs against trusted origins, so include the IdP origin
 TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
 
-No waitlist variable belongs here. Both waitlist checks in `backend/src/auth/auth.ts` sit on the email-OTP sign-in path — the `before` hook returns early for anything other than `otpSignInPath`, and the other lives in the `sendVerificationOTP` callback — so an SSO sign-in never reaches them. `WAITLIST_ENABLED` would not help in consumer mode either: `settings.waitlistEnabled` is parsed in `backend/src/config/settings.ts` but read by nothing outside tests, so the gate always runs and `WAITLIST_AUTO_APPROVE_DOMAINS` is the only lever over it.
+No waitlist variable belongs here. Both waitlist checks in `backend/src/auth/auth.ts` are on the email-OTP path (the `before` hook returns early for anything but `otpSignInPath`; the other is in the `sendVerificationOTP` callback), so SSO never reaches them. `WAITLIST_ENABLED` is inert even in consumer mode: `settings.waitlistEnabled` (`backend/src/config/settings.ts`) is read by nothing outside tests, so the gate always runs and `WAITLIST_AUTO_APPROVE_DOMAINS` is the only lever.
 
-**Frontend** (`.env.local` in project root, or whatever your local `.env` file is called):
+**Frontend** (`.env.local` in the project root):
 
 ```sh
 VITE_AUTH_MODE=sso
-# Make sure VITE_BYPASS_WAITLIST is NOT set (or set to false) — it skips the auth gate entirely
+# VITE_BYPASS_WAITLIST must NOT be set (or set to false); it skips the auth gate entirely
 ```
 
 ### 3. Start backend and frontend
 
 ```sh
-# Terminal 1 — backend
+# Terminal 1: backend
 cd backend && bun dev
 
-# Terminal 2 — frontend
+# Terminal 2: frontend
 bun dev
 ```
 
-Open http://localhost:1420 — you should be redirected to Keycloak's login page for the "mozilla" realm. Sign in as `mitchell@mozilla.org` / `password`.
+Open http://localhost:1420. You should land on Keycloak's `mozilla` realm login; sign in as `mitchell@mozilla.org` / `password`.
 
 ## Pre-configured realm
 
-The realm import file at `docs/mozilla-realm.json` defines everything Keycloak needs. To modify it:
+To change `docs/mozilla-realm.json`:
 
-- **Add users**: Add entries to the `users` array with `username`, `email`, `credentials`
-- **Change client secret**: Update `clients[0].secret` and your `OIDC_CLIENT_SECRET` env var
-- **Change redirect URIs**: Update `clients[0].redirectUris` (must match your backend's callback URL)
+- **Add users**: entries in the `users` array with `username`, `email`, `credentials`
+- **Change client secret**: `clients[0].secret` plus your `OIDC_CLIENT_SECRET`
+- **Change redirect URIs**: `clients[0].redirectUris` (must match the backend's callback URL)
 
-After modifying the JSON, remove the old container and re-run the docker command:
+Then recreate the container:
 
 ```sh
 docker rm -f keycloak
@@ -92,7 +89,7 @@ docker rm -f keycloak
 
 ## Using a different OIDC provider
 
-The implementation is provider-agnostic. To use Okta, Auth0, Entra ID, or any other OIDC provider, just set the three env vars:
+The implementation is provider-agnostic: set the three env vars for any OIDC provider that serves discovery at `{OIDC_ISSUER}/.well-known/openid-configuration`.
 
 ```sh
 # Okta example
@@ -111,9 +108,7 @@ OIDC_CLIENT_SECRET=your-client-secret
 OIDC_ISSUER=https://login.microsoftonline.com/your-tenant-id/v2.0
 ```
 
-The only requirement is that the provider supports OIDC discovery at `{OIDC_ISSUER}/.well-known/openid-configuration`.
-
-You'll need to register a callback URL with the provider:
+Callback URL to register:
 
 ```
 https://<your-backend>/v1/api/auth/sso/callback/sso
@@ -121,24 +116,21 @@ https://<your-backend>/v1/api/auth/sso/callback/sso
 
 ## OIDC logout
 
-Most OIDC providers maintain their own session. Logging out of Thunderbolt alone won't clear the provider session — the user will be silently re-authenticated on the next visit. This is expected SSO behavior. In enterprise deployments, users typically stay signed in via their corporate identity provider.
+Most providers keep their own session, so signing out of Thunderbolt does not clear it and the next visit silently re-authenticates. Expected SSO behavior.
 
 ## Deploying to staging (Render)
 
-For staging on Render, you can't use a local OIDC provider. Options:
+A local OIDC provider is not usable from Render. Use your company's IdP sandbox (ask for a client ID, secret, and test users), or deploy Keycloak as a Render Docker service with the same image and realm import.
 
-- Use your company's existing identity provider sandbox (ask for a client ID, secret, and test users)
-- Deploy Keycloak as a Render Docker service using the same image and realm import
-
-What you'll need from whoever manages the identity provider:
+What you need from the IdP owner:
 
 | Value         | Maps to env var      | Example                                           |
 | ------------- | -------------------- | ------------------------------------------------- |
 | Issuer URL    | `OIDC_ISSUER`        | `https://keycloak.company.com/realms/thunderbolt` |
 | Client ID     | `OIDC_CLIENT_ID`     | `thunderbolt-app`                                 |
-| Client secret | `OIDC_CLIENT_SECRET` | (from provider's credentials page)                |
+| Client secret | `OIDC_CLIENT_SECRET` | (from the provider's credentials page)            |
 
-You'll need to give them your **callback URL** to register:
+Callback URL to register:
 
 ```
 https://<your-backend>.onrender.com/v1/api/auth/sso/callback/sso
@@ -156,13 +148,13 @@ https://<your-backend>.onrender.com/v1/api/auth/sso/callback/sso
 
 ## Testing
 
-The backend integration tests need neither Docker nor a mock IdP process — they stub `globalThis.fetch` so the only outbound call, OIDC discovery, resolves to a hand-written `.well-known/openid-configuration` payload (`backend/src/auth/oidc-integration.test.ts`). They cover the redirect URL, PKCE `code_challenge`, requested scopes, the three missing-config failures, and the rejection of SSO sign-in when `AUTH_MODE=consumer`:
+Backend tests need no Docker and no mock IdP: they stub `globalThis.fetch` so OIDC discovery, the only outbound call, returns a hand-written `.well-known/openid-configuration`. Covered: redirect URL, PKCE `code_challenge`, scopes, the three missing-config failures, and rejection of SSO sign-in under `AUTH_MODE=consumer`.
 
 ```sh
 cd backend && bun test src/auth/oidc-integration.test.ts
 ```
 
-The Playwright suite is the one that runs a real provider: `e2e/global-setup.ts` starts `oauth2-mock-server` on `MOCK_OIDC_PORT` (default `9876`).
+Playwright runs a real provider: `e2e/global-setup.ts` starts `oauth2-mock-server` on `MOCK_OIDC_PORT` (default `9876`).
 
 ## Files overview
 
@@ -172,6 +164,6 @@ The Playwright suite is the one that runs a real provider: `e2e/global-setup.ts`
 | `backend/src/config/settings.ts`            | `authMode`, `oidcClientId`, `oidcClientSecret`, `oidcIssuer` env vars        |
 | `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests with a stubbed discovery endpoint                     |
 | `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm for local development (OIDC + SAML clients)    |
-| `src/lib/auth-mode.ts`                      | `isSsoMode()` — reads `VITE_AUTH_MODE`                                       |
+| `src/lib/auth-mode.ts`                      | `isSsoMode()`, reads `VITE_AUTH_MODE`                                        |
 | `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode        |
 | `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap      |

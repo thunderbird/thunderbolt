@@ -2,45 +2,42 @@
 
 Thunderbolt has two directories called `dal`, and they are not the same kind of thing.
 
-- [`src/dal/`](../../src/dal) is the **client** DAL: seventeen modules of Drizzle queries against the
-  local SQLite database that PowerSync manages. Most of its rules exist because the app's tables are
-  really SQLite _views_ over PowerSync's own backing tables.
-- [`backend/src/dal/`](../../backend/src/dal) is the **server** DAL: eight modules of Drizzle queries
-  against PostgreSQL. It runs on real tables, so the client's constraints do not apply — but it owns
-  concurrency and authorization invariants the API routes depend on.
+| Directory                                   | Kind       | Contents                                                       | Defining constraint                                                                          |
+| ------------------------------------------- | ---------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [`src/dal/`](../../src/dal)                 | **client** | 17 modules of Drizzle queries against PowerSync's local SQLite | The app's tables are really SQLite _views_ over PowerSync's backing tables                   |
+| [`backend/src/dal/`](../../backend/src/dal) | **server** | 8 modules of Drizzle queries against PostgreSQL                | Real tables, so the client's rules do not apply, but it owns the API's concurrency and authz |
 
-Read this page before adding a query anywhere. Almost every rule below exists because someone hit the
-failure it prevents.
+## Client DAL rules
 
-## The client DAL
+| Rule                                                    | Why                                                      |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| The database is always the first argument               | Lets a helper compose inside a caller's transaction      |
+| Read helpers return an un-awaited query                 | Awaiting collapses it to an array and kills live updates |
+| No `onConflictDoUpdate` / `onConflictDoNothing`         | SQLite refuses UPSERT on a view                          |
+| No nested `transaction()`                               | The PowerSync Drizzle driver rejects them                |
+| Deletes are soft, and scrub the row's free-text columns | The tombstone must sync without carrying user content    |
 
 ### Shape
 
-Every function takes the Drizzle database as its first argument rather than reaching for a module
-global. React callers get it from `useDatabase()` ([`src/contexts/database-context.tsx`](../../src/contexts/database-context.tsx));
-non-React callers use `getDb()` ([`src/db/database.ts`](../../src/db/database.ts)). Passing it in is
-what lets a DAL function be composed inside a transaction — the transaction client `tx` satisfies the
-same `AnyDrizzleDatabase` type ([`src/db/database-interface.ts`](../../src/db/database-interface.ts)),
-so `deleteModel` can call `deleteModelProfileForModel(tx, id)` and have both writes commit together.
-
-The public surface is re-exported from [`src/dal/index.ts`](../../src/dal/index.ts); both barrel
-imports (`from '@/dal'`) and deep imports (`from '@/dal/skills'`) are in use.
-
-Business rules that a caller must be able to distinguish get typed errors rather than booleans —
-`SkillNameTakenError`, `SkillNameInvalidError`, `PinLimitExceededError` in
-[`src/dal/skills.ts`](../../src/dal/skills.ts) — so the UI can map each to its own message without
-string-matching.
-
-The boundary is a convention, not a lint rule — no ESLint config mentions `src/dal/`. A handful of
-modules outside it build queries against the table definitions directly: the defaults reconciler, the
-four client data migrations, `src/defaults/settings.ts`, `src/extensions/tasks/tools.ts` and
-`src/lib/mcp-auth/ensure-valid-token.ts`. Adding to that list should be a deliberate decision, not a
-shortcut around a missing DAL function.
+- The Drizzle database is the first argument, never a module global. React callers use
+  `useDatabase()` ([`database-context.tsx`](../../src/contexts/database-context.tsx)), others
+  `getDb()` ([`src/db/database.ts`](../../src/db/database.ts)). A transaction client `tx` satisfies
+  the same `AnyDrizzleDatabase` ([`database-interface.ts`](../../src/db/database-interface.ts)), so
+  `deleteModel` can call `deleteModelProfileForModel(tx, id)` in one commit.
+- The public surface is re-exported from [`src/dal/index.ts`](../../src/dal/index.ts); barrel
+  (`from '@/dal'`) and deep (`from '@/dal/skills'`) imports are both in use.
+- Business rules a caller must distinguish get typed errors, not booleans: `SkillNameTakenError`,
+  `SkillNameInvalidError`, `PinLimitExceededError`
+  ([`src/dal/skills.ts`](../../src/dal/skills.ts)).
+- The boundary is a convention; no ESLint config mentions `src/dal/`. These query the table
+  definitions directly: the defaults reconciler, the four client data migrations,
+  `src/defaults/settings.ts`, `src/extensions/tasks/tools.ts`,
+  `src/lib/mcp-auth/ensure-valid-token.ts`. Additions are deliberate.
 
 ### Reads return an un-awaited query
 
-Read helpers deliberately do **not** `await`. They build the Drizzle query and return it, cast to
-`DrizzleQueryWithPromise<T>` ([`src/types.ts:159`](../../src/types.ts)):
+Read helpers build the query and return it, cast to `DrizzleQueryWithPromise<T>`
+([`src/types.ts:159`](../../src/types.ts)):
 
 ```ts
 export const getPendingDevices = (db: AnyDrizzleDatabase) => {
@@ -49,85 +46,65 @@ export const getPendingDevices = (db: AnyDrizzleDatabase) => {
 }
 ```
 
-The cast serves two consumers at once. A one-shot caller can `await getPendingDevices(db)` and get
-`Device[]` with no manual cast. A reactive caller hands the same object to
-`toCompilableQuery(...)` and PowerSync re-runs it whenever the underlying tables change — see
-[`src/hooks/use-pending-device-notification.ts`](../../src/hooks/use-pending-device-notification.ts)
-or [`src/settings/devices.tsx`](../../src/settings/devices.tsx). Awaiting inside the DAL would
-collapse the query to a plain array and silently remove live updates from every call site. If you
-write a read helper that must return a scalar or a mapped object (`getModel`, `getSkill`), that is
-fine — just know it is not watchable.
-
-Write helpers are ordinary `async` functions.
+One-shot callers `await` it and get `Device[]`. Reactive callers pass the same object to
+`toCompilableQuery(...)`, and PowerSync re-runs it whenever the tables change
+([`use-pending-device-notification.ts`](../../src/hooks/use-pending-device-notification.ts),
+[`settings/devices.tsx`](../../src/settings/devices.tsx)). Helpers returning a scalar or mapped object
+(`getModel`, `getSkill`) are fine but not watchable; write helpers are ordinary `async`.
 
 ### PowerSync tables are views, so `ON CONFLICT` is banned
 
-PowerSync does not hand SQLite your tables. It keeps the rows in internal backing tables —
-`ps_data__*` for synced tables, `ps_data_local__*` for local-only ones, as
-[`src/search/fts-setup.ts:94`](../../src/search/fts-setup.ts) documents while reading them directly —
-and exposes each schema table as a **view**. SQLite refuses UPSERT syntax on a view: the statement
-fails at prepare time with `cannot UPSERT a view`, before any row is touched. This applies to both
-halves of [`src/db/powersync/schema.ts`](../../src/db/powersync/schema.ts) — `syncedTables` and
-`localOnlyTables` are registered in the same `DrizzleAppSchema`, and both become views.
+SQLite fails UPSERT on a view at prepare time with `cannot UPSERT a view`. PowerSync keeps rows in
+backing tables (`ps_data__*` synced, `ps_data_local__*` local-only,
+read directly at [`src/search/fts-setup.ts:94`](../../src/search/fts-setup.ts)) and exposes each
+schema table as a view. Both `syncedTables` and `localOnlyTables`
+([`src/db/powersync/schema.ts`](../../src/db/powersync/schema.ts)) register in the same
+`DrizzleAppSchema`.
 
-So `onConflictDoUpdate` and `onConflictDoNothing` are unavailable in the client DAL. Two emulations
-are sanctioned, and which one to pick depends on whether concurrent writers are possible.
+Two emulations are sanctioned:
 
-**SELECT-then-INSERT/UPDATE** — read the row, branch, write. Correct when the write path is
-single-writer. Used by `updateModel` for `models_secrets`
-([`src/dal/models.ts:151`](../../src/dal/models.ts)), `setAgentSecrets`
-([`src/dal/agents.ts:238`](../../src/dal/agents.ts)), `saveIntegrationCredentials`
-([`src/dal/integrations.ts`](../../src/dal/integrations.ts)), and the importer
-([`src/dal/import.ts:180`](../../src/dal/import.ts)).
+| Emulation                                                  | Correct when                                       | Call sites                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SELECT-then-INSERT/UPDATE**: read the row, branch, write | The write path is single-writer                    | `updateModel` for `models_secrets` ([`src/dal/models.ts:151`](../../src/dal/models.ts)), `setAgentSecrets` ([`src/dal/agents.ts:238`](../../src/dal/agents.ts)), `saveIntegrationCredentials` ([`src/dal/integrations.ts`](../../src/dal/integrations.ts)), the importer ([`src/dal/import.ts:180`](../../src/dal/import.ts)) |
+| **Insert-first, catch the conflict**, then UPDATE          | Callers can race, so check-then-write has a TOCTOU | `createSetting` and `updateSettings` ([`src/dal/settings.ts:274`](../../src/dal/settings.ts), `:342`), the message writers ([`src/dal/chat-messages.ts:104`](../../src/dal/chat-messages.ts), `:158`)                                                                                                                         |
 
-**Insert-first, catch the conflict** — attempt the INSERT, and on a duplicate-key error fall through
-to an UPDATE. This is the right choice where several callers can race, because the check-then-write
-split above has a TOCTOU window. `createSetting` and `updateSettings`
-([`src/dal/settings.ts:274`](../../src/dal/settings.ts), `:342`) and the message writers
-([`src/dal/chat-messages.ts:104`](../../src/dal/chat-messages.ts), `:158`) use it. The catch must
-narrow with `isInsertConflictError` ([`src/lib/sqlite-errors.ts`](../../src/lib/sqlite-errors.ts))
-and rethrow everything else — a disk-full or corruption error must not be swallowed as "row already
-exists". That helper matches on numeric errno, `SQLITE_CONSTRAINT_*` string codes, message text, and
-wa-sqlite's `Unexpected step result: <code>` form, because the shape differs per backend.
+Narrow the catch with `isInsertConflictError`
+([`src/lib/sqlite-errors.ts`](../../src/lib/sqlite-errors.ts)) and rethrow the rest, so a disk-full
+or corruption is not swallowed as "row already exists". It matches numeric errno,
+`SQLITE_CONSTRAINT_*` codes, message text and wa-sqlite's `Unexpected step result: <code>`; the
+shape is backend-specific.
 
-**One module does not follow the rule.** `upsertModelProfile`
-([`src/dal/model-profiles.ts:33`](../../src/dal/model-profiles.ts)) uses `onConflictDoUpdate` and
-`createDefaultModelProfile` (`:52`) uses `onConflictDoNothing`, both against `model_profiles`, which
-is registered in `syncedTables` and is therefore a view. Neither statement fires in a shipping build
-today: `upsertModelProfile` has no caller outside the barrel and its test, and
-`createDefaultModelProfile`'s only production caller is `createModel`
-([`src/dal/models.ts:221`](../../src/dal/models.ts)), which passes a freshly generated `uuidv7()`
-([`src/settings/models/use-add-model-form.ts:152`](../../src/settings/models/use-add-model-form.ts)) —
-so the `defaultModelProfiles.find(...)` lookup at `model-profiles.ts:41` misses and the function
-returns before reaching the insert. The statements are latent, not live. Do not treat them as
-precedent, and do not route a new caller through them without converting them first.
-
-Tests will not warn you about this. See [Testing](#testing-the-client-dal) below.
+**One module breaks the rule, latently.** In
+[`src/dal/model-profiles.ts`](../../src/dal/model-profiles.ts), `upsertModelProfile` (`:33`) uses
+`onConflictDoUpdate` and `createDefaultModelProfile` (`:52`) uses `onConflictDoNothing`, both against
+`model_profiles`, a synced table and therefore a view. Neither fires in a shipping build:
+`upsertModelProfile` has no caller outside the barrel and its test, and `createDefaultModelProfile`'s
+only production caller `createModel` ([`models.ts:221`](../../src/dal/models.ts)) passes a fresh
+`uuidv7()` ([`use-add-model-form.ts:152`](../../src/settings/models/use-add-model-form.ts)), so the
+`defaultModelProfiles.find(...)` at `model-profiles.ts:41` misses and it returns before the insert. Not precedent:
+convert them before routing a new caller through them, and note that tests will not warn you
+([Testing](#testing-the-client-dal)).
 
 ### No nested transactions
 
-The PowerSync Drizzle driver rejects a `transaction()` opened inside another one. The consequence is
-that a DAL helper which opens its own transaction cannot be reused from inside a caller's
-transaction — the caller has to inline the writes instead.
+A helper that opens its own transaction cannot be reused inside one. Two places inline their writes
+instead, with the reasoning in the code:
 
-Two places in the tree are shaped by this, both with the reasoning recorded inline.
-`createMcpServersWithCredentials` ([`src/dal/mcp-servers.ts`](../../src/dal/mcp-servers.ts)) batches
-its writes directly rather than looping over `createMcpServerWithCredentials`, which opens a
-transaction per item. `advanceVersionMarker`
-([`src/lib/reconcile-defaults.ts`](../../src/lib/reconcile-defaults.ts)) hand-rolls an
-INSERT-or-UPDATE against `settings` instead of calling `updateSettings`, for the same reason.
+- `createMcpServersWithCredentials` ([`src/dal/mcp-servers.ts`](../../src/dal/mcp-servers.ts))
+  batches directly rather than looping over `createMcpServerWithCredentials`, which opens one
+  transaction per item.
+- `advanceVersionMarker` ([`src/lib/reconcile-defaults.ts`](../../src/lib/reconcile-defaults.ts))
+  hand-rolls an INSERT-or-UPDATE against `settings` rather than calling `updateSettings`.
 
-The corollary for callers: **write a group of settings with one `updateSettings(db, { … })` call.**
-Four separate `setValue` calls each open a transaction, and SQLite rejects a `BEGIN` while one is
-open, so `Promise.all` over them fails all but the first — the reason
-`src/hooks/use-language-setting.ts:33-35` awaits its two writes separately. The case that made this
-concrete, seeding the four unit settings, is recorded under
-["Units and their defaults"](../../AGENTS.md#units-and-their-defaults) in AGENTS.md.
+Corollary: **write a group of settings with one `updateSettings(db, { … })` call.** Separate
+`setValue` calls each open a transaction, and SQLite rejects a `BEGIN` while one is open, so
+`Promise.all` over them fails all but the first; `src/hooks/use-language-setting.ts:33-35` awaits
+its two writes separately. Background:
+["Units and their defaults"](../../AGENTS.md#units-and-their-defaults).
 
 ### Soft delete
 
-Per the repo-wide rule, client deletes are soft. The DAL convention is a single UPDATE that sets
-`deletedAt` **and** scrubs the row's free-text columns:
+One UPDATE sets `deletedAt` **and** scrubs the row's free-text columns.
 
 ```ts
 await db
@@ -136,184 +113,186 @@ await db
   .where(and(eq(mcpServersTable.id, id), isNull(mcpServersTable.deletedAt)))
 ```
 
-`clearNullableColumns` ([`src/lib/utils.ts`](../../src/lib/utils.ts)) nulls every nullable column
-while skipping primary keys, foreign keys, unique columns, `NOT NULL` columns, `userId`, and
-`deletedAt` itself — so the tombstone keeps enough identity to sync and to be reasoned about, but
-stops carrying the user's content to every other device. The `isNull(deletedAt)` guard in the WHERE
-clause makes re-deleting a no-op, which preserves the original deletion timestamp.
-
-Reads filter `isNull(deletedAt)`. Hard `DELETE` is for the local-only secret tables, where the point
-is that the credential stops existing: `deleteMcpServer` deletes the `mcp_secrets` row and
-soft-deletes the `mcp_servers` row in the same transaction. The one exception is `deleteSetting`
-([`src/dal/settings.ts:372`](../../src/dal/settings.ts)), which drops a synced `settings` row outright
-so the code default applies again; it has no production caller today.
+- `clearNullableColumns` ([`src/lib/utils.ts`](../../src/lib/utils.ts)) nulls every nullable column,
+  skipping primary keys, foreign keys, unique columns, `NOT NULL` columns, `userId` and `deletedAt`,
+  so the tombstone keeps enough identity to sync without carrying user content to other devices.
+- The `isNull(deletedAt)` guard makes re-deleting a no-op, preserving the original timestamp; reads
+  filter on it too.
+- Hard `DELETE` is for local-only secret tables, where the point is that the credential stops
+  existing: `deleteMcpServer` deletes the `mcp_secrets` row and
+  soft-deletes the `mcp_servers` row in one transaction.
+- Exception: `deleteSetting` ([`src/dal/settings.ts:372`](../../src/dal/settings.ts)) drops a synced
+  `settings` row outright so the code default applies again (no production caller today).
 
 ### Synced config, local-only secret
 
-Several features store a synced configuration row and keep its credential in a local-only table that
-never leaves the device. The pairing and the "nothing carrying a credential may join `syncedTables`"
-invariant are documented in [multi-device-sync.md](./multi-device-sync.md#local-only-tables); what
-belongs here is the DAL consequence. `models` joins `models_secrets` at read time via a `LEFT JOIN`
-in `selectModelsWithSecrets` ([`src/dal/models.ts`](../../src/dal/models.ts)), so a `Model` carries
-its `apiKey` without the column ever being synced — and every write path has to strip `apiKey` back
-out before touching `modelsTable`. `createModel` writes both halves in one transaction, so no caller
-can observe a config row without its credential. The MCP DAL writes atomically for the same reason
-but is not an instance of this split: `mcp_servers` is itself local-only, because replicating a
-server row without its credential would hand another device a connection it cannot make — see
-[mcp-connections.md](./mcp-connections.md#servers-and-secrets-are-device-local). The agent DAL has
-the same split as `models` but not the same atomicity: `createAgent` writes only the synced row, and `setAgentSecrets` is
-a separate call (with no production caller of its own today).
+Several features pair a synced config row with a credential in a local-only table; the "nothing
+carrying a credential may join `syncedTables`" invariant is in
+[multi-device-sync.md](./multi-device-sync.md#local-only-tables). DAL consequences:
+
+- **Models.** `selectModelsWithSecrets` ([`src/dal/models.ts`](../../src/dal/models.ts)) `LEFT JOIN`s
+  `models_secrets` at read time, so a `Model` carries `apiKey` without the column syncing, and every
+  write path strips `apiKey` before touching `modelsTable`. `createModel` writes both halves in one
+  transaction, so no caller observes a config row without its credential.
+- **Agents.** Same split without the atomicity: `createAgent` writes only the synced row, and
+  `setAgentSecrets` is separate (no production caller today).
+- **MCP.** Not this split: `mcp_servers` is itself local-only, because replicating a server row
+  without its credential hands another device a connection it cannot make
+  ([mcp-connections.md](./mcp-connections.md#servers-and-secrets-are-device-local)).
 
 ## Client database backends
 
-`DatabaseType` has three values ([`src/db/database.ts:7`](../../src/db/database.ts)) and `Database.initialize`
-branches three ways, but only one branch runs in a shipping build.
+`DatabaseType` has three values ([`src/db/database.ts:7`](../../src/db/database.ts)) and
+`Database.initialize` branches three ways, but only one branch ships.
 
-| Type         | Implementation                                                                | Where it runs                                         |
-| ------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `powersync`  | [`src/db/powersync/`](../../src/db/powersync)                                 | Every platform — web, desktop, mobile                 |
-| `bun-sqlite` | [`src/db/bun-sqlite-database.ts`](../../src/db/bun-sqlite-database.ts)        | Tests only, via `src/dal/test-utils.ts`               |
-| `wa-sqlite`  | [`src/db/wa-sqlite-database.ts`](../../src/db/wa-sqlite-database.ts) + worker | Nowhere — unreachable in every shipping configuration |
+| Type         | Implementation                                                                | Where it runs                            |
+| ------------ | ----------------------------------------------------------------------------- | ---------------------------------------- |
+| `powersync`  | [`src/db/powersync/`](../../src/db/powersync)                                 | Every platform: web, desktop, mobile     |
+| `bun-sqlite` | [`src/db/bun-sqlite-database.ts`](../../src/db/bun-sqlite-database.ts)        | Tests only, via `src/dal/test-utils.ts`  |
+| `wa-sqlite`  | [`src/db/wa-sqlite-database.ts`](../../src/db/wa-sqlite-database.ts) + worker | Nowhere; unreachable in shipping configs |
 
-`getDatabaseType()` ([`src/lib/platform.ts:272`](../../src/lib/platform.ts)) has a JSDoc promising
-platform- and capability-based selection, and is `async` for a backend query that JSDoc anticipates;
-the body is `return 'powersync'`. Its only callers are `src/hooks/use-app-initialization.ts` and
-`src/lib/fs.ts`, so the `wa-sqlite` branch in `database.ts` is dead. The three WA-SQLite source
-files and their tests still build and still pull in `@journeyapps/wa-sqlite` as a direct dependency.
-They should either be deleted or have their revival condition written down — right now a reader
-cannot tell which.
+`getDatabaseType()` ([`src/lib/platform.ts:272`](../../src/lib/platform.ts)) promises platform- and
+capability-based selection in its JSDoc and is `async` for a backend query that JSDoc anticipates;
+the body is `return 'powersync'`. Its only callers are `src/hooks/use-app-initialization.ts` and `src/lib/fs.ts`, so the `wa-sqlite` branch
+is dead, yet its three source files and their tests still build and still pull in
+`@journeyapps/wa-sqlite` as a direct dependency. Delete them or write down their revival
+condition.
 
-Note that `wa-sqlite` still appears in two live code paths for reasons unrelated to the backend
-selector: `src/lib/fs.ts` treats it like `powersync` when resolving the OPFS database path, and
-`isInsertConflictError` recognizes the wa-sqlite worker's error format.
+`wa-sqlite` survives in two paths unrelated to the selector: `src/lib/fs.ts` treats it like
+`powersync` when resolving the OPFS database path, and `isInsertConflictError` recognizes the
+wa-sqlite worker's error format.
 
 ## Testing the client DAL
 
 Tests run on `bun-sqlite` through `setupTestDatabase` / `resetTestDatabase`
-([`src/dal/test-utils.ts`](../../src/dal/test-utils.ts)). The schema is not built from migrations —
-`applySchema` ([`src/db/apply-schema.ts`](../../src/db/apply-schema.ts)) generates `CREATE TABLE`
-statements from the Drizzle definitions at init, mirroring how PowerSync applies its schema.
+([`src/dal/test-utils.ts`](../../src/dal/test-utils.ts)). The schema comes from `applySchema`
+([`src/db/apply-schema.ts`](../../src/db/apply-schema.ts)), which generates `CREATE TABLE` from the
+Drizzle definitions at init, not from migrations, mirroring how PowerSync applies its schema. Two
+divergences matter.
 
-Two divergences from the app are worth holding in mind.
+**Views versus tables.** `bun-sqlite` creates real tables, so `ON CONFLICT` works there: a DAL
+function violating the views rule passes its unit tests and fails only in the app, as
+`src/dal/model-profiles.test.ts:318` does, asserting `onConflictDoNothing` behavior PowerSync would
+reject at prepare time.
 
-**Views versus tables.** `bun-sqlite` creates real tables, so `ON CONFLICT` works there. A DAL
-function that violates the views rule passes its unit tests and fails only in the app — which is
-exactly the situation `src/dal/model-profiles.test.ts:318` is in, asserting
-`onConflictDoNothing` behavior that the PowerSync backend would reject at prepare time.
-
-**Indexes.** The same partial index exists in three different shapes. `src/db/tables.ts` declares a
-dozen of them as `WHERE deleted_at IS NULL`. The PowerSync Drizzle driver keeps only the column list
-and drops the predicate (`toPowerSyncTable` in `@powersync/drizzle-driver`), so the app gets a full
-index. `applySchema` skips partial indexes outright
-([`src/db/apply-schema.ts:52-53`](../../src/db/apply-schema.ts)), so tests get no index at all.
-Nothing about correctness changes, but never conclude anything about index usage from a test.
+**Indexes.** The same partial index exists in three shapes: `src/db/tables.ts` declares a dozen as
+`WHERE deleted_at IS NULL`; the PowerSync Drizzle driver keeps the column list and drops the
+predicate (`toPowerSyncTable` in `@powersync/drizzle-driver`), giving the app a full index;
+`applySchema` skips partial indexes ([`apply-schema.ts:52-53`](../../src/db/apply-schema.ts)),
+giving tests none.
+Correctness is unaffected, but never conclude anything about index usage from a test.
 
 ## The backend DAL
 
-The server DAL talks to PostgreSQL, so the client's central constraint is inverted: these are real
-tables, `ON CONFLICT` is the idiom, and it is load-bearing. Every upsert pins its conflict handling
-with a `setWhere` clause re-asserting ownership (`eq(devicesTable.userId, …)`) or liveness
-(`isNull(devicesTable.revokedAt)`): `upsertDevice`, `upsertCliDevice`, `registerDevice` and
-`registerBridgeDevice` in [`devices.ts`](../../backend/src/dal/devices.ts), plus `upsertEnvelope` in
-[`encryption.ts`](../../backend/src/dal/encryption.ts). An upsert that lands on someone else's row,
-or on a revoked row, therefore updates nothing — and the four device upserts end in `.returning()`
-so the caller reads the empty result as the refusal. `applyOperation` does the same for client
-uploads, building the conflict target from the schema
-([`backend/src/dal/powersync.ts:143-152`](../../backend/src/dal/powersync.ts)).
+| Module                                                               | Owns                                                                                                          |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| [`devices.ts`](../../backend/src/dal/devices.ts)                     | Device identity, trust, revocation, the per-account registration lock, and the reserved id namespaces (below) |
+| [`sessions.ts`](../../backend/src/dal/sessions.ts)                   | Binding a Better Auth session to a device, and revoking every session for a device                            |
+| [`encryption.ts`](../../backend/src/dal/encryption.ts)               | Envelopes (wrapped Content Keys) and the canary metadata row; see [e2e-encryption.md](./e2e-encryption.md)    |
+| [`powersync.ts`](../../backend/src/dal/powersync.ts)                 | Applying one client upload op; see [powersync-upload-authorization.md](./powersync-upload-authorization.md)   |
+| [`otp-challenge.ts`](../../backend/src/dal/otp-challenge.ts)         | The sign-in challenge token's first-writer-wins lifecycle, plus deleting Better Auth's persisted OTP          |
+| [`users.ts`](../../backend/src/dal/users.ts)                         | User lookup, the `isNew` flag, and the hard delete that cascades account deletion                             |
+| [`waitlist.ts`](../../backend/src/dal/waitlist.ts)                   | Waitlist entry create (conflict-tolerant) and approval                                                        |
+| [`debug-transcripts.ts`](../../backend/src/dal/debug-transcripts.ts) | Transcript intake rows and intake-client key-hash lookup (returns revoked clients so the route can 403)       |
 
-### Two database types, and why the distinction matters
+### `ON CONFLICT` is the idiom, and `setWhere` is load-bearing
+
+Every upsert pins its conflict handling with a `setWhere` re-asserting ownership
+(`eq(devicesTable.userId, …)`) or liveness (`isNull(devicesTable.revokedAt)`): `upsertDevice`,
+`upsertCliDevice`, `registerDevice`, `registerBridgeDevice`
+([`devices.ts`](../../backend/src/dal/devices.ts)) and `upsertEnvelope`
+([`encryption.ts`](../../backend/src/dal/encryption.ts)).
+
+An upsert landing on someone else's row, or a revoked row, updates nothing; the four device upserts
+end in `.returning()` so the caller reads the empty result as the refusal. `applyOperation` does the
+same for uploads, building the conflict target from the schema
+([`powersync.ts:143-152`](../../backend/src/dal/powersync.ts)).
+
+### Which database type a helper takes
 
 `QueryableDatabase` ([`backend/src/db/client.ts:88`](../../backend/src/db/client.ts)) is
-`Pick<typeof db, 'delete' | 'insert' | 'select' | 'update'>` — the query-builder surface shared by
-the root connection and a transaction client. A helper typed against it can be called with `tx`
-inside `database.transaction(...)`; a helper typed `typeof db` cannot. That is the whole reason most
-of the device, session, and encryption helpers take `QueryableDatabase` while the waitlist, user, OTP
-and PowerSync-upload helpers take `typeof db`: the former are composed into multi-statement
-transactions in `backend/src/api/account.ts` and `backend/src/api/encryption.ts`, the latter never
-are. The split is per helper, not per module — `denyDevice`, `setDeviceNodeId` and
-`getTrustedNodeIds` live in `devices.ts` and still take `typeof db`, because nothing transacts them.
-Widen a signature to `QueryableDatabase` when you first need to transact it, rather than passing the
-root connection into a transaction and losing atomicity without a type error.
+`Pick<typeof db, 'delete' | 'insert' | 'select' | 'update'>`, the surface shared by the root
+connection and a transaction client. A helper typed against it takes `tx` inside
+`database.transaction(...)`; one typed `typeof db` cannot.
 
-### Module map
+- `QueryableDatabase`: most device, session and encryption helpers, composed into multi-statement
+  transactions by `backend/src/api/account.ts` and `backend/src/api/encryption.ts`.
+- `typeof db`: waitlist, user, OTP and PowerSync-upload helpers, plus `denyDevice`, `setDeviceNodeId`
+  and `getTrustedNodeIds` in `devices.ts`, which nothing transacts. The split is per helper, not per
+  module.
 
-| Module                                                               | Owns                                                                                                           |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [`devices.ts`](../../backend/src/dal/devices.ts)                     | Device identity, trust, revocation, the per-account registration lock, and the reserved id namespaces (below)  |
-| [`sessions.ts`](../../backend/src/dal/sessions.ts)                   | Binding a Better Auth session to a device, and revoking every session for a device                             |
-| [`encryption.ts`](../../backend/src/dal/encryption.ts)               | Envelopes (wrapped Content Keys) and the canary metadata row — see [e2e-encryption.md](./e2e-encryption.md)    |
-| [`powersync.ts`](../../backend/src/dal/powersync.ts)                 | Applying one client upload op — see [powersync-upload-authorization.md](./powersync-upload-authorization.md)   |
-| [`otp-challenge.ts`](../../backend/src/dal/otp-challenge.ts)         | The sign-in challenge token's first-writer-wins lifecycle, plus deleting Better Auth's persisted OTP           |
-| [`users.ts`](../../backend/src/dal/users.ts)                         | User lookup, the `isNew` flag, and the hard delete that cascades account deletion                              |
-| [`waitlist.ts`](../../backend/src/dal/waitlist.ts)                   | Waitlist entry create (conflict-tolerant) and approval                                                         |
-| [`debug-transcripts.ts`](../../backend/src/dal/debug-transcripts.ts) | Transcript intake rows and intake-client key-hash lookup (returns revoked clients so the route can answer 403) |
+Widen a signature when you first need to transact it, rather than passing the root connection into a
+transaction and losing atomicity without a type error.
 
 ### Invariants worth knowing before you touch a device route
 
 **Registration is serialized per account.** `withUserDeviceRegistrationLock`
-([`backend/src/dal/devices.ts:20`](../../backend/src/dal/devices.ts)) takes a Postgres transaction
-advisory lock keyed on `hashtext(userId)` and runs the operation inside it. It exists because the
-device cap (`maxActiveDevicesPerUser = 10`, `devices.ts:17`) is a count-then-insert, and two
-concurrent registrations would both read nine and both insert. The lock is `pg_advisory_xact_lock`,
-so it releases with the transaction — which means it is only meaningful when you pass it `tx`, not
-the root connection. The revoke route is the worked example: `backend/src/api/account.ts:296-305`
-wraps `deleteEnvelope`, `revokeDevice`, and `revokeDeviceSessions` in one locked transaction, the
-session purge conditional on `revokeDevice` having matched a row. Why the envelope is deleted at all,
-and why the cap is enforced twice, is in [e2e-encryption.md](./e2e-encryption.md) and
+([`devices.ts:20`](../../backend/src/dal/devices.ts)) takes a Postgres advisory lock on
+`hashtext(userId)`: the device cap (`maxActiveDevicesPerUser = 10`, `devices.ts:17`) is a
+count-then-insert, so two concurrent registrations would both read nine and both insert. It is
+`pg_advisory_xact_lock`, so it releases with the transaction and only does anything when you pass it
+`tx`, not the root connection.
+`backend/src/api/account.ts:296-305` wraps `deleteEnvelope`, `revokeDevice` and
+`revokeDeviceSessions` in one locked transaction, the session purge conditional on `revokeDevice`
+matching a row. Why the envelope is deleted and why the cap is enforced twice:
+[e2e-encryption.md](./e2e-encryption.md),
 [delete-account-and-revoke-device.md](./delete-account-and-revoke-device.md).
 
 **Two device-id prefixes are reserved.** `bridge-` (`bridgeDeviceIdPrefix`) and `cli-`
-(`cliDeviceIdPrefix`, from [`shared/cli-device-id.ts`](../../shared/cli-device-id.ts)) name rows
-that only their server routes may create. `isReservedDeviceId` in `backend/src/dal/powersync.ts` rejects any client upload op whose
-`devices` id starts with either, so a client cannot forge or overwrite a bridge or CLI row through
-the sync path (the rest of that gate is in
-[powersync-upload-authorization.md](./powersync-upload-authorization.md)). A bridge's id is additionally _derived_ —
-`bridgeDeviceId(userId, nodeId) = 'bridge-' + sha256(userId + ':' + nodeId)` — which makes
-re-registering the same bridge an idempotent upsert on `(userId, nodeId)` without a dedicated unique
-constraint, and makes cross-account id collision impossible.
+(`cliDeviceIdPrefix`, [`shared/cli-device-id.ts`](../../shared/cli-device-id.ts)) name rows only
+their server routes may create. `isReservedDeviceId` (`backend/src/dal/powersync.ts`) rejects any
+upload op whose `devices` id starts with either, so a client cannot forge or overwrite a bridge or CLI row through the sync path
+([powersync-upload-authorization.md](./powersync-upload-authorization.md) has the rest of the gate).
+A bridge id is also _derived_, `bridgeDeviceId(userId, nodeId) = 'bridge-' + sha256(userId + ':' + nodeId)`, making
+re-registration an idempotent upsert on `(userId, nodeId)` without a unique constraint and
+cross-account collision impossible.
 
-**`isTrustedAppDevice` is the authorization predicate, not a field read.** It requires the row to
-exist, to belong to the calling user, to not be a `cli` device, and to be `trusted` —
-`devices.ts:30-33`. CLI devices are excluded because they are server-owned: `upsertCliDevice` pins
-`publicKey` and `mlkemPublicKey` to `null` (`devices.ts:103-104`), so no envelope can ever be wrapped
-to one and it must never act as the approving party in a trust decision. Routes that gate on "a real
-trusted device of this account is asking" call it rather than checking `device.trusted` — three
-encryption routes unconditionally (`backend/src/api/encryption.ts:264`, `:417`, `:471`), and
-`POST /v1/account/devices/:id/revoke` for accounts that have encryption metadata, where it is layered
-with `device_type = 'normal'` and non-revoked (`backend/src/api/account.ts:284-293`). Four query
-helpers encode the same CLI exclusion in SQL instead: `markDeviceTrusted`, `denyDevice` and
-`setDeviceNodeId` carry `ne(devicesTable.deviceType, 'cli')` in their UPDATE, `getTrustedNodeIds` in
-its SELECT.
+**`isTrustedAppDevice` is the authorization predicate, not a field read.** The row must exist,
+belong to the calling user, not be a `cli` device, and be `trusted` (`devices.ts:30-33`). CLI devices
+are server-owned: `upsertCliDevice` pins `publicKey` and `mlkemPublicKey` to `null`
+(`devices.ts:103-104`), so no envelope can be wrapped to one and it must never be the approving party
+in a trust decision.
 
-**Guards live in the WHERE clause, and callers check `.returning()`.** `markDeviceTrusted` requires
-`approval_pending = true` and `revoked_at IS NULL`; `denyDevice` requires `trusted = false`;
-`setDeviceNodeId` excludes both revoked and denied rows; `deleteRevokedBridgeDevice` re-checks
-device type and revocation in the DELETE. Each returns its updated rows so the caller can detect the
-zero-row case, which is how the deny-versus-approve and revoke-versus-approve races resolve without
-a second read. Moving one of those predicates up into an `if` in the route reintroduces the TOCTOU
-window it was written to close.
+- Callers use it instead of reading `device.trusted`: three encryption routes unconditionally
+  ([`api/encryption.ts:264`](../../backend/src/api/encryption.ts), `:417`, `:471`), and
+  `POST /v1/account/devices/:id/revoke` for accounts with encryption metadata, layered with
+  `device_type = 'normal'` and non-revoked (`api/account.ts:284-293`).
+- Four helpers encode the exclusion in SQL: `ne(devicesTable.deviceType, 'cli')` in the
+  `markDeviceTrusted`, `denyDevice` and `setDeviceNodeId` UPDATEs, and in the `getTrustedNodeIds`
+  SELECT.
 
-**Session binding is device-scoped.** `linkSessionToDevice` only binds a session whose `device_id` is
-null or already the same device, so a session cannot be stolen by a second device. The CLI
-device-grant flow needs one extra transition — a session created by the grant carries the marker
+**Guards live in the WHERE clause, and callers check `.returning()`.**
+
+| Helper                      | Guard                                               |
+| --------------------------- | --------------------------------------------------- |
+| `markDeviceTrusted`         | `approval_pending = true`, `revoked_at IS NULL`     |
+| `denyDevice`                | `trusted = false`                                   |
+| `setDeviceNodeId`           | excludes revoked and denied rows                    |
+| `deleteRevokedBridgeDevice` | re-checks device type and revocation, in the DELETE |
+
+Each returns its updated rows so the caller can detect the zero-row case, which is how the
+deny-versus-approve and revoke-versus-approve races
+resolve without a second read. Moving a predicate into an `if` in the route reopens the TOCTOU window
+it closes.
+
+**Session binding is device-scoped.** `linkSessionToDevice` binds only a session whose `device_id`
+is null or already the same device, so a second device cannot steal it. `linkCliSessionToDevice` is
+separate because the CLI device-grant flow needs one extra transition: its session carries
 `cliRegistrationPendingDeviceId = 'cli-registration-pending'`
-([`backend/src/dal/sessions.ts:12`](../../backend/src/dal/sessions.ts)) until registration binds a
-real device id — so `linkCliSessionToDevice` is a separate entry point rather than a flag on the
-common one.
+([`sessions.ts:12`](../../backend/src/dal/sessions.ts)) until registration binds a real device id.
 
 ## Related pages
 
-- [Multi-Device Sync](./multi-device-sync.md) — synced versus local-only tables, offline behavior.
-- [PowerSync, Account & Device Management](./powersync-account-devices.md) — adding, removing and
-  deploying a synced table; the device registration and revocation flows end to end.
-- [Composite Primary Keys and Default Data](./composite-primary-keys-and-default-data.md) — why some
+- [Multi-Device Sync](./multi-device-sync.md): synced versus local-only tables, offline behavior.
+- [PowerSync, Account & Device Management](./powersync-account-devices.md): adding, removing and
+  deploying a synced table; registration and revocation end to end.
+- [Composite Primary Keys and Default Data](./composite-primary-keys-and-default-data.md): why some
   synced tables key on `(id, user_id)`.
-- [Delete Account and Revoke Device](./delete-account-and-revoke-device.md) — the upload deny-lists
-  and what a revoked device sees.
-- [Client Data Migrations](./client-data-migrations.md) — writing a migration that converges across
-  devices.
-- [Export Format](./export-format.md) — the exporter and importer, which are DAL modules with their
-  own compatibility contract.
-- [Reconciled Defaults](./reconciled-defaults.md) — the one caller that writes into user tables on
-  every boot, and the hash/version signals it uses;
-  [AGENTS.md](../../AGENTS.md#reconciled-defaults-and-version-bumps) has the short version.
+- [Delete Account and Revoke Device](./delete-account-and-revoke-device.md): upload deny-lists, and
+  what a revoked device sees.
+- [Client Data Migrations](./client-data-migrations.md): migrations that converge across devices.
+- [Export Format](./export-format.md): the exporter and importer, DAL modules with their own
+  compatibility contract.
+- [Reconciled Defaults](./reconciled-defaults.md): the one caller that writes into user tables on
+  every boot, and the hash/version signals it uses. Short version in
+  [AGENTS.md](../../AGENTS.md#reconciled-defaults-and-version-bumps).

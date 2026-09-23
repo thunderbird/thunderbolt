@@ -2,15 +2,15 @@
 
 > ⚠️ End-to-end encryption is in **Preview**. It has not yet undergone a cryptography audit and is subject to further refinements.
 
-Thunderbolt supports optional zero-knowledge end-to-end encryption. Coverage is per column and opt-in: the columns listed in `encryptedColumnsMap` are encrypted client-side before sync and decrypted client-side after download, and for those columns the server stores only ciphertext and wrapped keys — it cannot read them even if compelled or breached. Everything else syncs in plaintext. See [What Is and Isn't Encrypted](#what-is-and-isnt-encrypted) for the current set.
+Optional zero-knowledge encryption, per column and opt-in. Columns in `encryptedColumnsMap` are encrypted client-side before upload and decrypted client-side after download, so the server holds only ciphertext and wrapped keys for them. Everything else syncs in plaintext ([current set](#what-is-and-isnt-encrypted)).
 
-For the sync pipeline integration, see [powersync-sync-middleware.md](powersync-sync-middleware.md).
+Sync pipeline integration: [powersync-sync-middleware.md](powersync-sync-middleware.md).
 
 ---
 
 ## Configuration
 
-E2EE is **disabled by default**. The backend is the single source of truth:
+E2EE is **disabled by default**; the backend is the single source of truth.
 
 | Variable       | Where          | Default | Effect when enabled                                                                                                  |
 | -------------- | -------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -21,13 +21,14 @@ E2EE is **disabled by default**. The backend is the single source of truth:
 E2EE_ENABLED=true
 ```
 
-The frontend reads this flag from the backend's `GET /v1/config` endpoint at app initialization and caches it in `localStorage` for offline use. No frontend environment variable is needed.
+The frontend reads the flag from `GET /v1/config` at app initialization and caches it in `localStorage` for offline use. There is no frontend environment variable.
 
-When disabled (default), sync works without encryption — no setup wizard, no key generation, no recovery key. The backend auto-trusts devices and skips the envelope flow. The encryption API endpoints remain available but are not called.
+When disabled, the backend auto-trusts devices and skips the envelope flow: no setup wizard, no key generation, no recovery key. The encryption endpoints remain, uncalled.
 
-**Frontend control point:** `isEncryptionEnabled()` in `src/db/encryption/config.ts` reads the cached flag from `localStorage`. The companion `needsSyncSetupWizard()` helper combines the encryption-enabled check with the CK-exists check — it returns `true` only when E2EE is on and no Content Key has been set up yet. Both the sign-in flow and the sync toggle use this helper to decide whether to show the setup wizard or enable sync directly.
-
-**Backend control point:** `e2eeEnabled` in `backend/src/config/settings.ts`. When `false`, `validateDeviceForSync()` skips the trust check and `issuePowerSyncToken()` auto-trusts devices on upsert.
+| Side     | Control point                                            | Behaviour                                                                                                                                                           |
+| -------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend | `isEncryptionEnabled()` in `src/db/encryption/config.ts` | Reads the cached flag. `needsSyncSetupWizard()` is true only when E2EE is on and no CK exists; sign-in and the sync toggle use it to pick wizard vs. direct enable. |
+| Backend  | `e2eeEnabled` in `backend/src/config/settings.ts`        | When `false`, `validateDeviceForSync()` skips the trust check and `issuePowerSyncToken()` auto-trusts devices on upsert.                                            |
 
 ---
 
@@ -43,7 +44,7 @@ When disabled (default), sync works without encryption — no setup wizard, no k
 
 ## Key Hierarchy
 
-There's one content key per account. Each device has its own keypair. The CK is wrapped separately for every device using a hybrid envelope. Each device unwraps its own envelope to arrive at the same CK.
+One CK per account, wrapped separately for each device's key pair.
 
 ```
                          ┌─────────────────────────┐
@@ -67,17 +68,15 @@ There's one content key per account. Each device has its own keypair. The CK is 
 
 ## Wire Format
 
-Encrypted column values on the wire are written as:
-
 ```
 __enc:<iv-base64>:<ciphertext-base64>
 ```
 
-Upload encryption reads `encryptedColumnsMap` in [src/db/encryption/config.ts](../../src/db/encryption/config.ts) to decide what to encrypt. Download decryption does not: `EncryptionMiddleware` decrypts any string value carrying the `__enc:` prefix, whatever its column. The prefix is the authoritative signal precisely so that a stale desktop bundle — whose compiled-in map predates a newly encrypted column — still decrypts correctly instead of writing ciphertext into SQLite.
+Uploads consult `encryptedColumnsMap` in [src/db/encryption/config.ts](../../src/db/encryption/config.ts); downloads do not. `EncryptionMiddleware` decrypts any string carrying the `__enc:` prefix, whatever its column, so a stale desktop bundle whose compiled-in map predates a newly encrypted column still decrypts instead of writing ciphertext into SQLite.
 
 ## What Is and Isn't Encrypted
 
-[`encryptedColumnsMap`](../../src/db/encryption/config.ts) is the single source of truth. `encodeForUpload` (`src/db/encryption/upload-encoder.ts`) looks the operation's table up in the map and returns the row unchanged when there is no entry, so **a synced table absent from the map uploads in plaintext** — the silent default when someone adds a table.
+[`encryptedColumnsMap`](../../src/db/encryption/config.ts) is the single source of truth. `encodeForUpload` (`src/db/encryption/upload-encoder.ts`) passes a row through unchanged when its table has no entry, so **a synced table absent from the map uploads in plaintext**.
 
 | Table            | Encrypted columns                                         |
 | ---------------- | --------------------------------------------------------- |
@@ -92,13 +91,11 @@ Upload encryption reads `encryptedColumnsMap` in [src/db/encryption/config.ts](.
 | `devices`        | `name`                                                    |
 | `skills`         | `name`, `label`, `description`, `instruction`             |
 | `projects`       | `name`, `description`, `instructions`                     |
-| `agents`         | _(none — the whole table syncs in plaintext)_             |
+| `agents`         | _(none; the whole table syncs in plaintext)_              |
 
-Two gaps are deliberate and one is not.
-
-- **Structural columns stay plaintext across every table.** Ids, foreign keys, `deleted_at`, ordering, and boolean flags are what sync rules filter on and what local queries index; encrypting them would break both.
-- **`projects.icon` and `projects.pinned_order` stay plaintext** because neither carries user-authored content — the icon is a single emoji picked from a fixed set.
-- **`agents` has no entry at all**, so a user-created ACP agent's `name`, `url`, `description` and `icon` reach the server in the clear even with E2EE on. That is an omission rather than a decision; the table is synced (`shared/powersync-tables.ts`) and its columns are user-authored (`src/db/tables.ts`, `backend/src/db/powersync-schema.ts`).
+- **Structural columns stay plaintext everywhere.** Ids, foreign keys, `deleted_at`, ordering and boolean flags are what sync rules filter on and what local queries index.
+- **`projects.icon` and `projects.pinned_order` stay plaintext**: no user-authored content (the icon is one emoji from a fixed set).
+- **`agents` has no entry**, so an ACP agent's `name`, `url`, `description` and `icon` reach the server in the clear even with E2EE on. An omission, not a decision: the table is synced (`shared/powersync-tables.ts`) and its columns are user-authored (`src/db/tables.ts`, `backend/src/db/powersync-schema.ts`).
 
 ## User Flows
 
@@ -113,7 +110,7 @@ Two gaps are deliberate and one is not.
 
 ## Device Trust Lifecycle
 
-A device row (`devices` in `backend/src/db/powersync-schema.ts`) encodes its state in three columns — `trusted`, `approval_pending`, `revoked_at` — rather than a single status enum, so every state is a combination:
+`devices` (`backend/src/db/powersync-schema.ts`) encodes state in three columns rather than a status enum, so every state is a combination:
 
 | State                    | `trusted` | `approval_pending` | `revoked_at` |
 | ------------------------ | --------- | ------------------ | ------------ |
@@ -122,63 +119,72 @@ A device row (`devices` in `backend/src/db/powersync-schema.ts`) encodes its sta
 | Denied or self-cancelled | false     | false              | null         |
 | Revoked                  | false     | false              | set          |
 
-`registerDevice` inserts pending, and on conflict resets an existing non-revoked row back to pending with fresh public keys — a re-registered device must go through approval again. From there:
+`registerDevice` inserts pending; on conflict it resets a non-revoked row back to pending with fresh public keys, so a re-registered device needs approval again.
 
-- **Pending → trusted** via `markDeviceTrusted`, which the envelope route calls after storing the wrapped CK. Its `WHERE` requires `approval_pending = true`, so if a deny committed first the update matches zero rows and the caller gets a 403 instead of silently trusting a denied device.
-- **Pending → denied** via `denyDevice`, from either a trusted device (`POST /devices/:deviceId/deny`) or the pending device itself (`POST /devices/me/cancel-pending`). Denial also clears `node_id`/`node_id_attested_at`, and `setDeviceNodeId` excludes denied and revoked rows — a denied peer cannot re-bind a P2P identity.
-- **Any → revoked** via `POST /v1/account/devices/:id/revoke` in `backend/src/api/account.ts` (see [powersync-account-devices.md](powersync-account-devices.md)), which in one transaction deletes the envelope, calls `revokeDevice` to stamp `revoked_at` and clear both trust flags and the P2P binding, then revokes the device's sessions. When encryption metadata exists the route also demands a canary secret and a trusted `normal` caller, so a device with no CK cannot revoke one that has it.
+| Transition            | How                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Pending → trusted** | `markDeviceTrusted`, called by the envelope route after storing the wrapped CK. Its `WHERE` requires `approval_pending = true`, so a deny that commits first makes the update match zero rows and the caller gets a 403.                                                                                                                                                                                                                                     |
+| **Pending → denied**  | `denyDevice`, from a trusted device (`POST /devices/:deviceId/deny`) or the pending device itself (`POST /devices/me/cancel-pending`). Also clears `node_id`/`node_id_attested_at`; `setDeviceNodeId` excludes denied and revoked rows, so a denied peer cannot re-bind a P2P identity.                                                                                                                                                                      |
+| **Any → revoked**     | `POST /v1/account/devices/:id/revoke` (`backend/src/api/account.ts`, see [powersync-account-devices.md](powersync-account-devices.md)): one transaction deletes the envelope, stamps `revoked_at` via `revokeDevice`, clears both trust flags and the P2P binding, then revokes the device's sessions. With encryption metadata present it also demands a canary secret and a trusted `normal` caller, so a device with no CK cannot revoke one that has it. |
 
 ### Device cap
 
-`maxActiveDevicesPerUser = 10` in `backend/src/dal/devices.ts`. `countActiveDevices` counts only trusted, non-revoked rows — pending devices are deliberately excluded (THU-502) so a device waiting for approval can't lock a user out of registering. That exclusion is why the cap is enforced **twice**: once at registration and again at approval, in the envelope route. Without the second check a user could register eleven pending devices and approve them all.
+`maxActiveDevicesPerUser = 10` in `backend/src/dal/devices.ts`. `countActiveDevices` counts only trusted, non-revoked rows; pending devices are excluded (THU-502) so a device awaiting approval can't lock a user out of registering. Hence the cap is enforced **twice**, at registration and again at approval in the envelope route: otherwise eleven pending devices could all be approved.
 
-`POST /devices` answers **422** `{ "error": "Device limit reached" }`. The CLI registration path (`backend/src/api/account.ts`) has its own **422** with the machine-readable `{ "code": "DEVICE_LIMIT_REACHED" }`.
+`POST /devices` answers **422** `{ "error": "Device limit reached" }`; the CLI registration path (`backend/src/api/account.ts`) has its own **422** with the machine-readable `{ "code": "DEVICE_LIMIT_REACHED" }`.
 
 ### Device types
 
-`device_type` is `'normal' | 'bridge' | 'cli'` and is **server-set only** — it is in the `uploadDenyColumns` list for `devices` in `backend/src/dal/powersync.ts`, alongside `trusted`, `approval_pending`, `revoked_at`, the public keys and `node_id`. A client therefore cannot relabel its own device a bridge through a raw PowerSync upload. `bridge` and `cli` are each written by exactly one route; `normal` is the column default, so any route that upserts a device without naming a type produces one.
+`device_type` is `'normal' | 'bridge' | 'cli'` and is **server-set only**: it sits in `uploadDenyColumns` for `devices` (`backend/src/dal/powersync.ts`) alongside `trusted`, `approval_pending`, `revoked_at`, the public keys and `node_id`, so no client can relabel itself a bridge through a raw PowerSync upload. `normal` is the column default, so any route that upserts a device without naming a type produces one.
 
-| Type     | Created by                                                     | Notes                                                                                                                                                                |
-| -------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `normal` | `POST /devices`, or `issuePowerSyncToken` on first token issue | An app install. On the E2EE path it holds a device key pair and an envelope; with E2EE off the token route upserts it trusted and neither exists.                    |
-| `bridge` | `POST /devices/bridge`                                         | A headless ACP/MCP bridge, keyed on a hash of (`userId`, `nodeId`) so re-registration is idempotent. Inserted trusted — the user added it deliberately. Holds no CK. |
-| `cli`    | `PUT /v1/account/devices/cli`                                  | Account-only. Excluded from every encryption route and from the node-id and allowlist queries.                                                                       |
+| Type     | Created by                                                     | Notes                                                                                                                                      |
+| -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `normal` | `POST /devices`, or `issuePowerSyncToken` on first token issue | An app install. On the E2EE path it holds a key pair and an envelope; with E2EE off the token route upserts it trusted and neither exists. |
+| `bridge` | `POST /devices/bridge`                                         | A headless ACP/MCP bridge, keyed on a hash of (`userId`, `nodeId`) so re-registration is idempotent. Inserted trusted. Holds no CK.        |
+| `cli`    | `PUT /v1/account/devices/cli`                                  | Account-only. Excluded from every encryption route and from the node-id and allowlist queries.                                             |
 
 ## API Endpoints
 
-All routes below are served by `backend/src/api/encryption.ts` under the global `/v1` prefix (`backend/src/index.ts`) and all require an authenticated session.
+Served by `backend/src/api/encryption.ts` under the global `/v1` prefix (`backend/src/index.ts`); all require an authenticated session.
 
-Six of them additionally read the caller's own device id from the **`X-Device-ID`** request header and answer **400** when it is absent. That header is client-set and therefore never an authorization on its own: what actually gates the trust-sensitive routes is a _canary secret_ — proof that the caller can decrypt the account canary, and so holds the Content Key. A pending device cannot produce one. The one exception, `POST /devices/me/node-id`, takes no canary and instead pins the caller to the server-side `session.deviceId`.
+`X-Device-ID` carries the caller's own device id. It is client-set and never an authorization on its own: routes that need it answer **400** when it is absent, and trust-sensitive ones are gated by a _canary secret_, proof the caller can decrypt the account canary and so holds the CK. A pending device cannot produce one. `POST /devices/me/node-id` takes no canary and instead pins the caller to the server-side `session.deviceId`.
 
 | Method   | Path                          | `X-Device-ID` | Purpose                                                                                                         |
 | -------- | ----------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------- |
-| `POST`   | `/devices`                    | —             | Register or re-identify this device with its ECDH and ML-KEM public keys. Binds the session to the device.      |
+| `POST`   | `/devices`                    | no            | Register or re-identify this device with its ECDH and ML-KEM public keys. Binds the session to the device.      |
 | `POST`   | `/devices/:deviceId/envelope` | required      | Store a wrapped CK for a device, promoting it from pending to trusted.                                          |
 | `GET`    | `/devices/me/envelope`        | required      | Fetch this device's own wrapped CK.                                                                             |
-| `GET`    | `/encryption/canary`          | —             | Fetch `canaryIv`/`canaryCtext` for recovery-key verification. Its 404 doubles as the "is E2EE set up?" probe.   |
+| `GET`    | `/encryption/canary`          | no            | Fetch `canaryIv`/`canaryCtext` for recovery-key verification. Its 404 doubles as the "is E2EE set up?" probe.   |
 | `POST`   | `/devices/:deviceId/deny`     | required      | A trusted device rejects a pending device.                                                                      |
 | `POST`   | `/devices/me/cancel-pending`  | required      | A pending device withdraws its own request.                                                                     |
 | `POST`   | `/devices/:deviceId/node-id`  | required      | A trusted device attests another device's iroh endpoint identity.                                               |
 | `POST`   | `/devices/me/node-id`         | required      | A device self-enrolls its own iroh endpoint identity.                                                           |
-| `GET`    | `/devices/allowlist`          | —             | The account's trusted, non-revoked `node_id`s. A bridge fetches and caches it to auto-allow same-account peers. |
-| `POST`   | `/devices/bridge`             | —             | Register a bridge device for the account.                                                                       |
-| `DELETE` | `/devices/:deviceId`          | —             | Hard-delete a device row. Only a bridge that is already revoked qualifies.                                      |
+| `GET`    | `/devices/allowlist`          | no            | The account's trusted, non-revoked `node_id`s. A bridge fetches and caches it to auto-allow same-account peers. |
+| `POST`   | `/devices/bridge`             | no            | Register a bridge device for the account.                                                                       |
+| `DELETE` | `/devices/:deviceId`          | no            | Hard-delete a device row. Only a bridge that is already revoked qualifies.                                      |
 
 ### `POST /devices/:deviceId/envelope`
 
-The route that actually grants trust, and the one with the most conditions. It accepts exactly three shapes:
+The route that grants trust. It accepts exactly three shapes:
 
-1. **First-device bootstrap** — no envelopes exist for the account and the caller is storing for itself. `canaryIv`, `canaryCtext` and `canarySecret` are all required, because without a canary there is no recovery path later. If encryption metadata already exists the supplied secret must verify against it, which stops a re-bootstrap from resetting the account's E2EE state even if the revocation checks were bypassed.
-2. **Self-recovery** — caller and target are the same device and the canary secret verifies. This is the path a device takes after the user enters a recovery key.
-3. **Approval** — a trusted, non-CLI caller stores an envelope for someone else's pending row, with a valid canary secret.
+| Shape                      | Accepted when                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **First-device bootstrap** | No envelopes exist for the account and the caller is storing for itself. `canaryIv`, `canaryCtext` and `canarySecret` are all required, since without a canary there is no recovery path later. If encryption metadata already exists the supplied secret must verify against it, which blocks a re-bootstrap that would reset the account's E2EE state even if the revocation checks were bypassed. |
+| **Self-recovery**          | Caller and target are the same device and the canary secret verifies. This is the path after the user enters a recovery key.                                                                                                                                                                                                                                                                         |
+| **Approval**               | A trusted, non-CLI caller stores an envelope for another device's pending row, with a valid canary secret.                                                                                                                                                                                                                                                                                           |
 
-Storing for an already-trusted device from a _different_ caller is **409**; only a device may re-key its own envelope. Once the envelope is written, the trusted transition runs only for a target that wasn't already trusted — re-keying a trusted device changes nothing else, and running `markDeviceTrusted` on it would match zero rows and be misread as a revoke.
+Storing for an already-trusted device from a _different_ caller is **409**; only a device may re-key its own envelope. The trusted transition runs only for a not-yet-trusted target, since `markDeviceTrusted` on a trusted row matches zero rows and would be misread as a revoke.
 
-Notable failure codes: **400** missing header or incomplete bootstrap canary; **403** revoked device, missing or invalid canary secret, untrusted caller, or a concurrent revoke or deny; **404** unknown device, another user's device, or a CLI device; **409** envelope overwrite of a trusted device.
+| Code    | Cause                                                                                              |
+| ------- | -------------------------------------------------------------------------------------------------- |
+| **400** | Missing header, or incomplete bootstrap canary                                                     |
+| **403** | Revoked device, missing or invalid canary secret, untrusted caller, or a concurrent revoke or deny |
+| **404** | Unknown device, another user's device, or a CLI device                                             |
+| **409** | Envelope overwrite of a trusted device                                                             |
 
 ## Adding a New Encrypted Column
 
-To encrypt a new column, add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../../src/db/encryption/config.ts). That is the only change needed: `encodeForUpload` encrypts every column in the map on upload, and `encryptionMiddleware` decrypts by `__enc:` prefix on download, so neither needs to know about the new column ahead of time. Rows already synced in plaintext are not retro-encrypted — only writes made after the change are.
+Add the table and column name to `encryptedColumnsMap` in [src/db/encryption/config.ts](../../src/db/encryption/config.ts). Nothing else: uploads encrypt every column in the map, downloads decrypt by `__enc:` prefix. Rows already synced in plaintext are not retro-encrypted.
 
 ## Key Files
 
@@ -196,4 +202,4 @@ To encrypt a new column, add the table and column name to `encryptedColumnsMap` 
 
 ## Sync Pipeline Integration
 
-Encryption is implemented as a PowerSync transform-middleware. On **Chrome/Edge/Firefox** it runs inside a custom SharedWorker so the CK stays in one place across tabs; on **Safari and Tauri** it runs in a dedicated Worker, which stands in for the SharedWorker those environments can't use (`sync: { worker: () => createDedicatedSyncWorker(dbFilename) }` in `src/db/powersync/database.ts`). Either way download decryption happens off the UI thread. Upload encryption does not: `encodeForUpload` runs in `ThunderboltConnector.uploadData` on the main thread, so the CK cache exists there too — which is why `invalidateCKCache()` broadcasts over a `BroadcastChannel` rather than clearing one copy. See [Multi-Device Sync](./multi-device-sync.md#two-sync-paths) and [powersync-sync-middleware.md](./powersync-sync-middleware.md) for the full architecture.
+Encryption is a PowerSync transform-middleware. On **Chrome/Edge/Firefox** it runs inside a custom SharedWorker so the CK stays in one place across tabs; **Safari and Tauri**, which cannot use one, get a dedicated Worker instead (`sync: { worker: () => createDedicatedSyncWorker(dbFilename) }` in `src/db/powersync/database.ts`). Download decryption is off the UI thread either way; upload encryption is not, because `encodeForUpload` runs in `ThunderboltConnector.uploadData` on the main thread. That second CK cache is why `invalidateCKCache()` broadcasts over a `BroadcastChannel`. See [Multi-Device Sync](./multi-device-sync.md#two-sync-paths) and [powersync-sync-middleware.md](./powersync-sync-middleware.md).

@@ -17,7 +17,17 @@ const renderMermaid = async () => {
 	const blocks = document.querySelectorAll('pre[data-language="mermaid"]');
 	if (blocks.length === 0) return;
 	const { default: mermaid } = await import('mermaid');
-	mermaid.initialize({ startOnLoad: false, theme: 'default' });
+	// useMaxWidth is Mermaid's default and scales every diagram down to the
+	// container. Starlight's prose column is ~750px, so a wide flowchart shrinks
+	// until its labels are unreadable. Render at natural size instead and let the
+	// host scroll horizontally (see the .mermaid rule in docs.css).
+	mermaid.initialize({
+		startOnLoad: false,
+		theme: 'default',
+		flowchart: { useMaxWidth: false },
+		sequence: { useMaxWidth: false },
+		gantt: { useMaxWidth: false },
+	});
 	blocks.forEach((pre, i) => {
 		const src = extractSource(pre);
 		const host = document.createElement('div');

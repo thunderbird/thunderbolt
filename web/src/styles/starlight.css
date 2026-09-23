@@ -506,3 +506,25 @@ site-search dialog {
 	outline-offset: -1px;
 	border-color: var(--tb-text-secondary);
 }
+
+/* Mermaid diagrams render at natural size (useMaxWidth: false in
+   scripts/docs-client.ts), so the host scrolls rather than shrinking a wide
+   flowchart until its labels are unreadable. The negative margins let a
+   diagram use the page gutters before it starts scrolling. */
+.mermaid {
+	overflow-x: auto;
+	max-width: calc(100% + 4rem);
+	margin-inline: -2rem;
+	padding-inline: 2rem;
+}
+.mermaid svg {
+	max-width: none;
+	height: auto;
+}
+@media (max-width: 50rem) {
+	.mermaid {
+		max-width: 100%;
+		margin-inline: 0;
+		padding-inline: 0;
+	}
+}

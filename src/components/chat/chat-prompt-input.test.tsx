@@ -618,6 +618,63 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe('new-chat focus request', () => {
+    // Typed against the real hooks so a router signature change is a compile
+    // error rather than a fake drifting out of shape.
+    const fakeUseLocation =
+      (state: unknown): typeof import('react-router').useLocation =>
+      () => ({ pathname: '/chats/new', search: '', hash: '', state, key: 'test' })
+
+    const renderWithState = (state: unknown) => {
+      const { mockUseChat } = setupStore()
+      const navigate = mock(() => {})
+      render(
+        <ChatPromptInput
+          useChat={mockUseChat}
+          // Mobile viewport: mount-time autoFocus is off, so focus can only
+          // come from the navigation request under test.
+          useIsMobile={createMockUseIsMobile(true)}
+          useLocation={fakeUseLocation(state)}
+          useNavigate={(() => navigate) as unknown as typeof import('react-router').useNavigate}
+        />,
+        { wrapper: TestWrapper },
+      )
+      return { navigate, textarea: screen.getByPlaceholderText('Ask me anything…') }
+    }
+
+    it('focuses the composer a frame after the navigation asks for it', () => {
+      const { textarea } = renderWithState({ focusComposer: true })
+
+      expect(textarea).not.toHaveFocus()
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(textarea).toHaveFocus()
+    })
+
+    it('consumes the request so back/forward cannot re-raise the keyboard', () => {
+      const { navigate } = renderWithState({ focusComposer: true })
+
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(navigate).toHaveBeenCalledWith('/chats/new', { replace: true, state: {} })
+    })
+
+    it('leaves focus alone when the navigation carries no request', () => {
+      const { textarea, navigate } = renderWithState(null)
+
+      act(() => {
+        getClock().tick(20)
+      })
+
+      expect(textarea).not.toHaveFocus()
+      expect(navigate).not.toHaveBeenCalled()
+    })
+  })
+
   describe('dependency injection', () => {
     it('should accept injected useChat', () => {
       const { mockUseChat } = setupStore()

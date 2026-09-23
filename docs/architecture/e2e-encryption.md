@@ -362,6 +362,7 @@ A rotation performed on device A must not break devices B and C. Two mechanisms,
 
 - **Polling:** `key_version` rides along on `GET /encryption/canary` (the metadata fetch clients already do at unlock). A bump means "your envelope was replaced — go fetch it."
 - **Failure-driven refresh:** when a device tries to unwrap a DEK and its stored AK doesn't fit (a rotation happened elsewhere), the codec escalates to `refreshAK()`: re-fetch this device's *new* envelope, unwrap the new AK, re-stage the keyring. The staging code probes the keyring against the local AK *before* writing, so IndexedDB can never end up holding DEKs the stored AK can't open.
+- **Adoption also resets the codec's sticky pointer.** The in-memory primary pointer deliberately survives ordinary cache invalidation (that stickiness is part of the anti-steering defense in [Which key is primary](#which-key-is-primary)) — but after a *verified* envelope adoption moves the primary, keeping it would leave a warmed surviving device encrypting under the pre-rotation primary — the very DEK the revoked device still holds — for the rest of its session. So adopting a rotation drops every codec cache including the pointer (`invalidateAdoptedKeyring`); the next encode re-reads it from IndexedDB, which only trusted code writes, so this opens no steering surface.
 
 #### Adopting an AK from the server
 
@@ -394,7 +395,9 @@ sequenceDiagram
     Note over R: old AK opens nothing new; the new canary<br/>is sealed under an AK it never gets
 ```
 
-**And if step ② fails?** That used to be the dangerous corner: the device was revoked at the API but still cryptographically inside the keyring, and nothing said so. An incomplete revocation is now **visible and resumable**: the devices screen surfaces the half-finished lockout with a specific action — retry the rotation, finish the lockout, refresh this device's keys, or change the phrase — depending on what actually failed (a transient error retries; a failed recovery-attestation or witness check is named as possible tampering and routes to a phrase change; see `src/services/revoke-failure.ts`). Re-running a revoke is a server-side no-op, so the whole flow is safely retryable.
+**One bounded window to know about:** the sync stream doesn't cut off at the same instant as the API. PowerSync verifies its JWT locally (signature + expiry) and never calls back to the backend, so a revoked device keeps *reading* the stream until its current token expires — the token TTL **is** the post-revocation read window. That's why `POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to 300 (5 minutes) and should stay short. Writes don't get this grace: uploads go through the backend, which rejects a revoked device immediately.
+
+**And if step ② fails?** That used to be the dangerous corner: the device was revoked at the API but still cryptographically inside the keyring, and nothing said so. An incomplete revocation is now **visible and resumable**: the devices screen surfaces the half-finished lockout with a specific action — retry the rotation, finish the lockout, refresh this device's keys, or change the phrase — depending on what actually failed (a transient error retries; a failed recovery-attestation or witness check is named as possible tampering and routes to a phrase change; see `src/services/revoke-failure.ts`). Re-running a revoke is a server-side no-op, so the whole flow is safely retryable. The server derives the pending-lockout list itself, so a revocation that failed on one device is visible to every other one — and it clocks that list on the **current primary DEK's mint**, not on keyring re-wraps: what actually locks a revoked device out of future writes is a new primary it never held, and an AK-only rotation (a phrase change mints no new primary) must not clear the list while the old primary still serves new writes.
 
 ---
 
@@ -602,7 +605,7 @@ All routes are under `/v1`, require an authenticated session, and most also requ
 | `POST /account/devices/:id/revoke` | trusted + proof `revoke` | Revoke a device and kill its sessions (client follows with the atomic rotation). |
 | `POST /devices/:id/node-id` · `/devices/me/node-id` · `/devices/bridge` · `/devices/allowlist` · `/devices/me/cancel-pending` | varies | P2P identity attestation (proof-gated for other devices; self-enroll pinned to the session's device), bridge registration, account allowlist, cancel a pending request. |
 
-All mutating key routes take a **per-user advisory lock** in Postgres (`pg_advisory_xact_lock`) inside their transaction, so approvals, rotations, upgrades, and revokes serialize instead of interleaving. The PowerSync sync routes (`GET /powersync/token`, `PUT /powersync/upload`) resolve their device from the same session binding.
+All mutating key routes take a **per-user advisory lock** in Postgres (`pg_advisory_xact_lock`) inside their transaction, so approvals, rotations, upgrades, and revokes serialize instead of interleaving. The PowerSync sync routes (`GET /powersync/token`, `PUT /powersync/upload`) resolve their device from the same session binding, and the issued sync JWT carries a server-asserted `device_id` claim — the value comes from the bind-pinned device, never from the client — so a token's blast radius is scoped to the one device it was minted for. Its TTL (`POWERSYNC_TOKEN_EXPIRY_SECONDS`, default 300) doubles as the post-revocation read window for the sync stream (see [Device revocation](#device-revocation)).
 
 ## Server-side tables
 

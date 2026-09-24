@@ -13,31 +13,53 @@ const extractSource = (pre: Element): string => {
 	return (pre as HTMLElement).textContent?.trim() ?? '';
 };
 
-const renderMermaid = async () => {
-	const blocks = document.querySelectorAll('pre[data-language="mermaid"]');
-	if (blocks.length === 0) return;
+const isDark = () => document.documentElement.dataset.theme === 'dark';
+
+/** Mermaid bakes colors into the SVG it generates, so a theme change needs a
+ *  re-render rather than a restyle. Keeping each diagram's source on the host
+ *  element is what makes that possible after the <pre> has been replaced. */
+const renderMermaidDiagrams = async () => {
+	const hosts = document.querySelectorAll<HTMLElement>('.mermaid');
+	if (hosts.length === 0) return;
 	const { default: mermaid } = await import('mermaid');
 	// useMaxWidth is Mermaid's default and scales every diagram down to the
 	// container. Starlight's prose column is ~750px, so a wide flowchart shrinks
 	// until its labels are unreadable. Render at natural size instead and let the
-	// host scroll horizontally (see the .mermaid rule in docs.css).
+	// host scroll horizontally (see the .mermaid rule in starlight.css).
 	mermaid.initialize({
 		startOnLoad: false,
-		theme: 'default',
+		theme: isDark() ? 'dark' : 'default',
 		flowchart: { useMaxWidth: false },
 		sequence: { useMaxWidth: false },
 		gantt: { useMaxWidth: false },
 	});
+	hosts.forEach((host) => {
+		host.removeAttribute('data-processed');
+		host.textContent = host.dataset.source ?? host.textContent;
+	});
+	await mermaid.run({ querySelector: '.mermaid' });
+};
+
+const renderMermaid = async () => {
+	const blocks = document.querySelectorAll('pre[data-language="mermaid"]');
+	if (blocks.length === 0) return;
 	blocks.forEach((pre, i) => {
 		const src = extractSource(pre);
 		const host = document.createElement('div');
 		host.className = 'mermaid';
 		host.id = 'mermaid-' + i;
+		host.dataset.source = src;
 		host.textContent = src;
 		const wrapper = pre.closest('.expressive-code') ?? pre;
 		wrapper.replaceWith(host);
 	});
-	await mermaid.run({ querySelector: '.mermaid' });
+	await renderMermaidDiagrams();
+
+	// Starlight's theme toggle writes data-theme on <html>; re-render so diagram
+	// colors follow the page instead of staying on the palette they were built with.
+	new MutationObserver(() => {
+		void renderMermaidDiagrams();
+	}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 };
 
 const addLanguagePills = () => {

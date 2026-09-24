@@ -74,15 +74,33 @@ html {
 	scrollbar-gutter: stable;
 }
 
-/* Starlight ships dark/light theme classes. We force the light brand palette for both.
- * We apply overrides to all three selectors so nothing slips through:
- *   :root                  — default (before any theme class is set)
- *   :root[data-theme='light'] — explicit light mode (higher specificity, blue hsl(224/234) grays)
- *   :root[data-theme='dark']  — force-mapped back to light tokens
+/* Starlight ships dark/light theme classes. We map both to the brand tokens
+ * below, so the palette is decided by the --tb-* values in effect rather than
+ * by Starlight's own grays. Light is the default and matches the marketing
+ * site; dark redefines the same ten tokens.
+ *
+ * The dark ramp is the light ramp inverted, reusing the brand grays rather than
+ * introducing new hues, so docs in dark mode still read as the same product.
+ * Marketing pages are deliberately excluded: they load tokens.css through
+ * BaseLayout and never set data-theme, so they stay light whatever the docs do.
  */
-:root[data-theme='light'],
-:root[data-theme='dark'] {
+:root[data-theme='light'] {
 	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+
+	--tb-bg: #0c111d;
+	--tb-surface: #101828;
+	--tb-surface-subtle: #1a2333;
+	--tb-surface-input: #1d2739;
+	--tb-border: #27324a;
+	--tb-border-strong: #3a4761;
+	--tb-text: #f9fafb;
+	--tb-text-secondary: #d0d5dd;
+	--tb-text-muted: #98a2b3;
+	--tb-text-dim: #667085;
 }
 
 :root[data-theme='light'],
@@ -527,4 +545,19 @@ site-search dialog {
 		margin-inline: 0;
 		padding-inline: 0;
 	}
+}
+
+/* Code blocks carry their own night-owl background, which sits close in value
+   to the dark page. A hairline keeps the panel edge legible there; light mode
+   needs none, since the contrast does the work. */
+:root[data-theme='dark'] .sl-markdown-content .expressive-code .frame {
+	border: 1px solid var(--tb-border);
+	border-radius: 0.5rem;
+	overflow: hidden;
+}
+
+/* Mermaid renders its own SVG colors, so the dark theme it switches to already
+   matches the page. This only keeps the scroll host from showing a light seam. */
+:root[data-theme='dark'] .mermaid {
+	background: transparent;
 }

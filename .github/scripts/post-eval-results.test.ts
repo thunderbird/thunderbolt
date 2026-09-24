@@ -165,7 +165,7 @@ test.each([false, true])('I2: real default matrix comment is bounded (smoke=%s)'
   expect(comment).toContain('Expected:')
   expect(comment).toContain('Observed:')
   expect(comment).toContain('more diagnostics in the full report')
-  expect(comment).toContain('Opus 5')
+  expect(comment).toContain('Opus 5.5')
   expect(comment).toContain('GLM 5.3 Flash')
   expect(comment).toContain('manifest artifacts')
   expect(comment).not.toContain('rubricHash')

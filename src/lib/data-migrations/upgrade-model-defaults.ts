@@ -18,8 +18,8 @@ import { eq } from 'drizzle-orm'
 const modelLineages = [
   {
     target: defaultModelOpus5,
-    legacySlugs: ['sonnet-4.5', 'opus-4.8'],
-    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8'],
+    legacySlugs: ['sonnet-4.5', 'opus-4.8', 'opus-5'],
+    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8', 'Opus 5'],
   },
   {
     target: defaultModelGlm53,

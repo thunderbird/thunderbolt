@@ -170,7 +170,7 @@ Unknown IDs within those filters fail; when `EVAL_SMOKE=1` is also set, only the
 
 Use these names in `EVAL_MODELS`:
 
-- `opus` — Opus 5
+- `opus` — Opus 5.5
 - `flash` — GLM 5.3 Flash
 - `glm` — GLM 5.3
 

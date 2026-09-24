@@ -16,7 +16,7 @@ type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
 const nativeSse = [
   'event: message_start',
-  'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"cache_creation":{"ephemeral_1h_input_tokens":5,"ephemeral_5m_input_tokens":15}}}}',
+  'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":20,"cache_read_input_tokens":30,"cache_creation":{"ephemeral_1h_input_tokens":5,"ephemeral_5m_input_tokens":15}}}}',
   '',
   'event: message_delta',
   'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":10,"output_tokens":4,"cache_creation_input_tokens":20,"cache_read_input_tokens":30}}',
@@ -71,7 +71,7 @@ describe('POST /chat/v1/messages', () => {
       }),
     )
     const requestBody = {
-      model: 'opus-5',
+      model: 'opus-5-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: 'Hello' }],
       system: [{ type: 'text', text: 'System prompt' }],
@@ -90,7 +90,7 @@ describe('POST /chat/v1/messages', () => {
     expect(response.status).toBe(200)
     expect(await response.text()).toBe(nativeSse)
     expect(create).toHaveBeenCalledWith({
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       max_tokens: 4096,
       messages: requestBody.messages,
       stream: true,
@@ -107,11 +107,11 @@ describe('POST /chat/v1/messages', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
       provider: 'anthropic',
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       promptTokens: 60,
       completionTokens: 4,
       totalTokens: 64,
-      costNanoUsd: 308_750n,
+      costNanoUsd: 247_000n,
     })
   })
 
@@ -153,7 +153,7 @@ describe('POST /chat/v1/messages', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'opus-5',
+          model: 'opus-5-5',
           max_tokens: 4096,
           messages: [{ role: 'user', content: 'Search the web' }],
           tools: [{ type: 'web_search_20250305', name: 'web_search' }],
@@ -194,7 +194,7 @@ describe('POST /chat/v1/messages', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'opus-5',
+          model: 'opus-5-5',
           max_tokens: 4096,
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
@@ -206,7 +206,7 @@ describe('POST /chat/v1/messages', () => {
     expect(captureInferenceErrorFn).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 429,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'rate_limit',
         errorType: 'rate_limit_error',
         requestId: 'req_123',
@@ -244,7 +244,7 @@ describe('POST /chat/v1/messages', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'opus-5',
+          model: 'opus-5-5',
           max_tokens: 4096,
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,

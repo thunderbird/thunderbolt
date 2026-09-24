@@ -43,6 +43,15 @@ describe('managed model backend coverage', () => {
     }
   })
 
+  it('resolves the legacy direct slug opus-5 to the current runtime and price', async () => {
+    const runtime = resolveManagedDirectRuntime('opus-5')
+
+    expect(runtime).toBe(managedDirectRuntimes['opus-5-5'])
+    expect(
+      await loadInferencePrice(database, { provider: runtime!.provider, model: runtime!.internalName }),
+    ).not.toBeNull()
+  })
+
   it.each(['toString', 'constructor', '__proto__'])('does not resolve prototype-property slug %s', (slug) => {
     expect(resolveManagedDirectRuntime(slug)).toBeUndefined()
     expect(resolveConfidentialManagedModel(slug)).toBeUndefined()

@@ -38,12 +38,14 @@ type ProviderCall = Readonly<{
 // Canonical Tinfoil catalog: https://api.tinfoil.sh/api/config/models?paid=true
 const officialPriceOracle = {
   'tinfoil/deepseek-v4-flash': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+  'anthropic/claude-opus-5-5': { inputNanoUsdPerToken: 4_000n, outputNanoUsdPerToken: 20_000n },
+  // Retired upstream, price row retained so historical usage stays priceable.
   'anthropic/claude-opus-5': { inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
   'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n },
 } as const
 
 const deepseekCounts = { promptTokens: 10_000, completionTokens: 10_000, totalTokens: 20_000 } as const
-const opusCounts = { promptTokens: 5_000, completionTokens: 1_000, totalTokens: 6_000 } as const
+const opusCounts = { promptTokens: 5_000, completionTokens: 1_500, totalTokens: 6_500 } as const
 const glmCounts = { promptTokens: 10_000, completionTokens: 5_000, totalTokens: 15_000 } as const
 const betterAuthSecret = 'managed-usage-better-auth-secret-1234567890'
 const uuidV4Pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -171,7 +173,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           providerCalls.push({ url: request.url, method: request.method, bodyBytes, bodyJson })
 
           if (request.url === 'https://api.anthropic.com/v1/chat/completions') {
-            return new Response(createOpenAiSse('chatcmpl-opus', 'claude-opus-5', opusCounts), {
+            return new Response(createOpenAiSse('chatcmpl-opus', 'claude-opus-5-5', opusCounts), {
               status: 200,
               headers: { 'Content-Type': 'text/event-stream' },
             })
@@ -251,7 +253,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'opus-5',
+            model: 'opus-5-5',
             messages: [{ role: 'user', content: 'opus fixture' }],
             stream: true,
             stream_options: { include_usage: false, client_value: 'ignored' },
@@ -303,7 +305,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'opus-5',
+            model: 'opus-5-5',
             messages: [{ role: 'user', content: 'must be rejected before transport' }],
             stream: true,
           }),
@@ -338,7 +340,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       ).toEqual([
         {
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           ...opusCounts,
           costNanoUsd: 50_000_000n,
         },
@@ -379,6 +381,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         })),
       ).toEqual([
         { provider: 'anthropic', model: 'claude-opus-5', ...officialPriceOracle['anthropic/claude-opus-5'] },
+        { provider: 'anthropic', model: 'claude-opus-5-5', ...officialPriceOracle['anthropic/claude-opus-5-5'] },
         {
           provider: 'tinfoil',
           model: 'deepseek-v4-flash',
@@ -404,7 +407,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       expect(providerCalls[0].bodyJson).toBeNull()
       expect(providerCalls[0].bodyBytes).toEqual(glmRequestBytes)
       expect(providerCalls[1].bodyJson).toMatchObject({
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         stream: true,
         stream_options: { include_usage: true },
       })

@@ -38,8 +38,8 @@ const computeMetadataHash = () =>
   defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
 
 const expected = {
-  version: 9,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-lo3iv3|1:01a06dd7-67ee-75be-b957-2b746271c49d:-n92e4|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
+  version: 10,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-n92e4|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
   metadataHash: '0:vzhyk4|1:d17qpa|2:-cajkcl',
 }
 
@@ -64,12 +64,12 @@ describe('defaultModels version snapshot', () => {
     expect(defaultModels.some(({ id }) => id === '019f227e-d640-727d-ba12-d51bd7d0a3d6')).toBe(false)
   })
 
-  test('ships Opus 5 as the sole model using its canonical id', () => {
+  test('ships Opus 5.5 as the sole model using its canonical id', () => {
     expect(defaultModelOpus5).toMatchObject({
       id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-      name: 'Opus 5',
+      name: 'Opus 5.5',
       provider: 'thunderbolt',
-      model: 'opus-5',
+      model: 'opus-5-5',
       contextWindow: 1_000_000,
       isSystem: 1,
       enabled: 1,

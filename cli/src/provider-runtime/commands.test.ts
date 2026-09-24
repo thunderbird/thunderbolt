@@ -46,16 +46,16 @@ describe('createCommandRouter', () => {
     const calls: ProviderManagerMode[] = []
     const outcome: CommandOutcome = {
       kind: 'switch',
-      selection: { providerId: 'thunderbolt', model: 'opus-5' },
-      persist: { type: 'select-model', providerId: 'thunderbolt', model: 'opus-5' },
+      selection: { providerId: 'thunderbolt', model: 'opus-5-5' },
+      persist: { type: 'select-model', providerId: 'thunderbolt', model: 'opus-5-5' },
       forceReplace: false,
     }
     const router = createCommandRouter(managerReturning('models', outcome, calls), permissionsUnused)
 
     expect(await router.handle('/models')).toEqual({
       kind: 'switch',
-      selection: { providerId: 'thunderbolt', model: 'opus-5' },
-      persist: { type: 'select-model', providerId: 'thunderbolt', model: 'opus-5' },
+      selection: { providerId: 'thunderbolt', model: 'opus-5-5' },
+      persist: { type: 'select-model', providerId: 'thunderbolt', model: 'opus-5-5' },
       forceReplace: false,
     })
     expect(calls).toEqual(['models'])

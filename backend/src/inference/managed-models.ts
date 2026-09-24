@@ -15,19 +15,32 @@ export type ManagedDirectRuntime = {
 
 /** Private upstream routing for public direct managed-model slugs. */
 export const managedDirectRuntimes = {
-  'opus-5': {
+  'opus-5-5': {
     provider: 'anthropic',
-    internalName: 'claude-opus-5',
+    internalName: 'claude-opus-5-5',
     omitTemperature: true,
     supportsStreamUsage: true,
   },
 } as const satisfies Readonly<Record<string, ManagedDirectRuntime>>
 
+/**
+ * Direct slugs the catalog has moved past, kept resolvable for clients that have
+ * not reloaded since the rollout. `upgradeModelDefaults` rewrites the row on next
+ * boot, so an alias only has to cover tabs open across a deploy — it points at the
+ * slug that replaced it rather than keeping a retired upstream (and its price)
+ * alive. Mirrors `legacyConfidentialModels` below.
+ */
+const legacyDirectSlugs: Readonly<Record<string, keyof typeof managedDirectRuntimes>> = {
+  'opus-5': 'opus-5-5',
+}
+
 /** Resolve a public direct slug without consulting inherited object properties. */
-export const resolveManagedDirectRuntime = (model: string): ManagedDirectRuntime | undefined =>
-  Object.hasOwn(managedDirectRuntimes, model)
-    ? managedDirectRuntimes[model as keyof typeof managedDirectRuntimes]
+export const resolveManagedDirectRuntime = (model: string): ManagedDirectRuntime | undefined => {
+  const slug = Object.hasOwn(legacyDirectSlugs, model) ? legacyDirectSlugs[model] : model
+  return Object.hasOwn(managedDirectRuntimes, slug)
+    ? managedDirectRuntimes[slug as keyof typeof managedDirectRuntimes]
     : undefined
+}
 
 const legacyConfidentialModels = ['glm-5-2', 'deepseek-v4-flash']
 const confidentialManagedModels = new Map<string, ManagedInferenceIdentity>(

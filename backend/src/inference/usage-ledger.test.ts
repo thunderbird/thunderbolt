@@ -29,7 +29,7 @@ type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 const postgresBigintMax = 9_223_372_036_854_775_807n
 const oneCentNanoUsd = 10_000_000n
 const deepseekIdentity = { provider: 'tinfoil', model: 'deepseek-v4-flash' } as const
-const opusIdentity = { provider: 'anthropic', model: 'claude-opus-5' } as const
+const opusIdentity = { provider: 'anthropic', model: 'claude-opus-5-5' } as const
 const glmIdentity = { provider: 'tinfoil', model: 'glm-5-2' } as const
 
 const insertUser = async (database: TestDatabase, id: string, isAnonymous = false) => {
@@ -200,8 +200,8 @@ describe('inference usage ledger', () => {
       })
       expect(await loadInferencePrice(database, opusIdentity)).toEqual({
         ...opusIdentity,
-        inputNanoUsdPerToken: 5_000n,
-        outputNanoUsdPerToken: 25_000n,
+        inputNanoUsdPerToken: 4_000n,
+        outputNanoUsdPerToken: 20_000n,
       })
       expect(await loadInferencePrice(database, glmIdentity)).toEqual({
         ...glmIdentity,
@@ -250,9 +250,9 @@ describe('inference usage ledger', () => {
       expect(
         calculateInferenceCost(
           { promptTokens: 5_000, completionTokens: 1_000, totalTokens: 6_000 },
-          { ...opusIdentity, inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
+          { ...opusIdentity, inputNanoUsdPerToken: 4_000n, outputNanoUsdPerToken: 20_000n },
         ),
-      ).toBe(50_000_000n)
+      ).toBe(40_000_000n)
       expect(
         calculateInferenceCost(
           { promptTokens: 10_000, completionTokens: 5_000, totalTokens: 15_000 },
@@ -285,9 +285,9 @@ describe('inference usage ledger', () => {
             cacheCreation1hTokens: 5,
             cacheReadTokens: 30,
           },
-          { ...opusIdentity, inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
+          { ...opusIdentity, inputNanoUsdPerToken: 4_000n, outputNanoUsdPerToken: 20_000n },
         ),
-      ).toBe(308_750n)
+      ).toBe(247_000n)
     })
 
     it('accepts the signed PostgreSQL bigint maximum and rejects overflow', () => {
@@ -600,7 +600,7 @@ describe('inference usage ledger', () => {
       await insertUser(database, userId)
       const fixtures = [
         [deepseekIdentity, 'shared-deepseek', { promptTokens: 10_000, completionTokens: 10_000, totalTokens: 20_000 }],
-        [opusIdentity, 'shared-opus', { promptTokens: 5_000, completionTokens: 1_000, totalTokens: 6_000 }],
+        [opusIdentity, 'shared-opus', { promptTokens: 5_000, completionTokens: 1_500, totalTokens: 6_500 }],
         [glmIdentity, 'shared-glm', { promptTokens: 10_000, completionTokens: 5_000, totalTokens: 15_000 }],
       ] as const
 

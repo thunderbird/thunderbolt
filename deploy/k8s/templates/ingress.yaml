@@ -111,13 +111,6 @@ spec:
                 name: keycloak
                 port:
                   number: {{ .Values.keycloak.service.port }}
-          - path: /powersync
-            pathType: Prefix
-            backend:
-              service:
-                name: powersync
-                port:
-                  number: {{ .Values.powersync.service.port }}
           - path: /
             pathType: Prefix
             backend:
@@ -125,4 +118,42 @@ spec:
                 name: frontend
                 port:
                   number: {{ .Values.frontend.service.port }}
+---
+{{- /*
+  PowerSync's own HTTP routes (/sync/stream, /write-checkpoint2.json, ...) are
+  mounted at its service root and have no awareness of a `/powersync` prefix —
+  unlike the backend and Keycloak routes above, which are already prefix-aware
+  (the backend's Elysia app is itself mounted under `/v1`, and Keycloak's
+  `/realms`/`/resources` paths are its own native routing). Forwarding the
+  unstripped path here 404s. `rewrite-target` is Ingress-object-wide in
+  ingress-nginx (it can't be scoped to one path within a shared Ingress), so
+  this gets its own Ingress resource for the same host.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: thunderbolt-ingress-powersync
+  labels:
+    {{- include "thunderbolt.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          - path: /powersync(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: powersync
+                port:
+                  number: {{ .Values.powersync.service.port }}
 {{- end }}

@@ -2,8 +2,6 @@
 
 Before you deploy Thunderbolt you need a host or cluster, a PostgreSQL database, a hostname with TLS, and outbound access to at least one AI provider.
 
-> Thunderbolt is undergoing a security audit and is not production-ready. Treat these deployments as evaluation and early-testing environments.
-
 ## What gets deployed
 
 Thunderbolt is six services. The Kubernetes and AWS deployments run all six; the Docker Compose stack runs five, leaving out the marketing site.

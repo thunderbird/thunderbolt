@@ -2,8 +2,6 @@
 
 Thunderbolt is an open-source AI chat client that you host yourself. It runs on the web, macOS, Windows, Linux, iOS, and Android, and it talks to whichever AI models you choose. That can be a commercial provider on your own account, a model running on your own hardware, or a catalog your deployment serves on behalf of your users.
 
-> **Under active development.** Thunderbolt is undergoing a security audit and is not production-ready. Self-host it, evaluate it, and tell us what breaks, but do not put it in front of real users yet.
-
 ![Thunderbolt Main Dashboard](https://raw.githubusercontent.com/thunderbird/thunderbolt/main/docs/screenshots/main.png)
 
 ## What you get
@@ -28,7 +26,6 @@ Thunderbolt is free and open source under the Mozilla Public License 2.0, funded
 
 ## Limitations
 
-- Not production-ready; the security audit is still in progress.
 - End-to-end encryption is in preview and has not had a cryptography audit. It is off unless you turn it on.
 - Sign-in requires the backend, so the app is not yet usable fully offline. Once a user is signed in, chats, edits, and settings changes are written locally and replay when the network returns, but answering them needs a network unless the model runs on your own hardware.
 - Web search reaches an external provider. It is part of the **Thunderbolt** connection under **Settings → Connections**, which requires a Thunderbolt Pro subscription; without one the assistant is never offered web search at all, and with one a user can switch it off there.

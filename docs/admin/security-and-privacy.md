@@ -3,9 +3,7 @@
 What Thunderbolt stores, what leaves your infrastructure, and what you can and cannot see as the
 operator of a deployment.
 
-> **Not production-ready.** Thunderbolt is undergoing a security audit. End-to-end encryption is a
-> preview feature and has not had a cryptography audit. Evaluate it, but do not put it in front of
-> real users yet.
+> **End-to-end encryption is a preview feature** and has not had a cryptography audit.
 
 ## The short version
 

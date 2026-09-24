@@ -14,10 +14,6 @@ MZLA Technologies, the entity behind Thunderbird, funded through a grant from Mo
 
 No. It is its own product from MZLA, the same entity that makes the Thunderbird email client.
 
-### Can I run it in production today?
-
-Not yet. Thunderbolt is undergoing a security audit and is still being prepared for enterprise production readiness. Self-host it, evaluate it, and pilot it, but do not put it in front of production users.
-
 ### Is there a hosted version?
 
 A hosted version is planned. There is no release date.
@@ -210,7 +206,6 @@ Mobile builds are not publicly listed in the app stores yet. Every platform runs
 | Server access to content       | None for covered fields with E2EE on             | Full                     |
 | Where it runs                  | Your infrastructure, including on-prem           | The vendor's cloud       |
 | Cost model                     | Software free, you pay for inference             | Per seat, per month      |
-| Maturity                       | Under active development, audit in progress      | Generally available      |
 
 ## Getting help
 

@@ -10,7 +10,7 @@ import { Header } from '../header'
 
 const GitHubIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" width="18" height="18" style={{ flexShrink: 0 }}>
-    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
   </svg>
 )
 
@@ -46,8 +46,7 @@ const StarOnGitHubButton = ({ fullWidth = false }: { fullWidth?: boolean }) => (
   </a>
 )
 
-const formatStars = (n: number): string =>
-  n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n)
+const formatStars = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : String(n))
 
 // Compact header badge: white, GitHub icon + live star count, no label.
 // Geometry is reserved from first paint to prevent layout shift while the
@@ -154,17 +153,26 @@ const PromptCard = ({ pillGapClass = 'gap-1.5 sm:gap-2' }: { pillGapClass?: stri
     <div className="border-[0.5px] border-[#eaecf0] bg-gradient-to-b from-[rgba(241,241,241,0.3)] to-[rgba(228,228,228,0.3)] p-5 backdrop-blur-[5px]">
       <div className={`flex items-center ${pillGapClass}`}>
         {['Conduct research', 'Organize my files', 'Search my email'].map((label) => (
-          <span key={label} className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+          <span
+            key={label}
+            className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] sm:px-3.5 sm:py-1.5 sm:text-[11px] whitespace-nowrap text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]"
+          >
             {label}
           </span>
         ))}
-        <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">+</span>
+        <span className="flex size-7 items-center justify-center rounded-full bg-white text-sm text-[#344054] shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
+          +
+        </span>
       </div>
       <div className="mt-2.5 rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0px_2px_8px_0px_rgba(0,0,0,0.08)]">
         <p className="text-sm text-[#667085]">Ask me anything</p>
         <div className="mt-2 flex items-center justify-between">
-          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">+</span>
-          <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">&uarr;</span>
+          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">
+            +
+          </span>
+          <span className="flex size-7 items-center justify-center rounded-lg bg-[#f2f4f7] text-sm font-bold text-[#344054]">
+            &uarr;
+          </span>
         </div>
       </div>
     </div>
@@ -179,19 +187,45 @@ const DesktopMockup = () => (
       <clipPath id="desktop-screen-clip">
         <rect x="89.207" y="19.834" width="547.279" height="290.599" />
       </clipPath>
-      <filter id="filter0_i" x="0.675171" y="331.449" width="724.651" height="3.94098" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+      <filter
+        id="filter0_i"
+        x="0.675171"
+        y="331.449"
+        width="724.651"
+        height="3.94098"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
         <feFlood floodOpacity="0" result="BackgroundImageFix" />
         <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-        <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+        <feColorMatrix
+          in="SourceAlpha"
+          type="matrix"
+          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+          result="hardAlpha"
+        />
         <feOffset dy="1.53255" />
         <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
         <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.02 0" />
         <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
       </filter>
-      <filter id="filter1_i" x="293.499" y="331.446" width="138.655" height="5.25488" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+      <filter
+        id="filter1_i"
+        x="293.499"
+        y="331.446"
+        width="138.655"
+        height="5.25488"
+        filterUnits="userSpaceOnUse"
+        colorInterpolationFilters="sRGB"
+      >
         <feFlood floodOpacity="0" result="BackgroundImageFix" />
         <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape" />
-        <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+        <feColorMatrix
+          in="SourceAlpha"
+          type="matrix"
+          values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+          result="hardAlpha"
+        />
         <feOffset dy="1.53255" />
         <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
         <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.03 0" />
@@ -245,15 +279,28 @@ const DesktopMockup = () => (
       </linearGradient>
     </defs>
     {/* Outer body */}
-    <path d="M637.696 0.25C644.31 0.250036 649.459 1.4171 652.955 4.39355C656.46 7.37802 658.25 12.1353 658.25 19.1865V320.49C658.25 328.619 656.012 332.973 652.484 335.269C648.985 337.546 644.279 337.75 639.476 337.75H105.32C96.0761 337.75 86.932 337.755 80.1064 334.552C76.6823 332.945 73.8366 330.53 71.8506 326.907C69.8668 323.289 68.75 318.482 68.75 312.106V14.1572C68.75 8.94251 70.5545 5.45501 73.0625 3.27539C75.5633 1.10229 78.7392 0.250006 81.4551 0.25H637.696Z" fill="#F9FAFB" stroke="#EFF1F4" strokeWidth="0.5" />
+    <path
+      d="M637.696 0.25C644.31 0.250036 649.459 1.4171 652.955 4.39355C656.46 7.37802 658.25 12.1353 658.25 19.1865V320.49C658.25 328.619 656.012 332.973 652.484 335.269C648.985 337.546 644.279 337.75 639.476 337.75H105.32C96.0761 337.75 86.932 337.755 80.1064 334.552C76.6823 332.945 73.8366 330.53 71.8506 326.907C69.8668 323.289 68.75 318.482 68.75 312.106V14.1572C68.75 8.94251 70.5545 5.45501 73.0625 3.27539C75.5633 1.10229 78.7392 0.250006 81.4551 0.25H637.696Z"
+      fill="#F9FAFB"
+      stroke="#EFF1F4"
+      strokeWidth="0.5"
+    />
     {/* Camera dot */}
-    <path fillRule="evenodd" clipRule="evenodd" d="M361.819 37.9134C363.03 37.9134 364.012 38.8691 364.012 40.0481C364.012 41.227 363.03 42.1828 361.819 42.1828C360.608 42.1828 359.627 41.227 359.627 40.0481C359.627 38.8691 360.608 37.9134 361.819 37.9134Z" fill="#F2F2F2" />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M361.819 37.9134C363.03 37.9134 364.012 38.8691 364.012 40.0481C364.012 41.227 363.03 42.1828 361.819 42.1828C360.608 42.1828 359.627 41.227 359.627 40.0481C359.627 38.8691 360.608 37.9134 361.819 37.9134Z"
+      fill="#F2F2F2"
+    />
     {/* White screen background */}
     <rect x="89.207" y="19.834" width="547.279" height="290.599" fill="#FFFFFF" />
     {/* Screenshot clipped to screen */}
     <image
       href="/enterprise/desktop_screenshot.png"
-      x="89.207" y="19.834" width="547.279" height="290.599"
+      x="89.207"
+      y="19.834"
+      width="547.279"
+      height="290.599"
       preserveAspectRatio="xMidYMin slice"
       clipPath="url(#desktop-screen-clip)"
     />
@@ -262,30 +309,93 @@ const DesktopMockup = () => (
     {/* Hinge bar */}
     <g filter="url(#filter0_i)">
       <path fillRule="evenodd" clipRule="evenodd" d="M0.675167 331.449H725.326V335.39H0.675167V331.449Z" fill="white" />
-      <path fillRule="evenodd" clipRule="evenodd" d="M0.675167 331.449H725.326V335.39H0.675167V331.449Z" fill="url(#paint0)" style={{ mixBlendMode: 'multiply' }} />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M0.675167 331.449H725.326V335.39H0.675167V331.449Z"
+        fill="url(#paint0)"
+        style={{ mixBlendMode: 'multiply' }}
+      />
     </g>
     <g opacity="0.1" style={{ mixBlendMode: 'multiply' }}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M698.333 331.448H725.322V335.389H698.333V331.448Z" fill="url(#paint1)" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M698.333 331.448H725.322V335.389H698.333V331.448Z"
+        fill="url(#paint1)"
+      />
     </g>
     <g opacity="0.1" style={{ mixBlendMode: 'multiply' }}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M0.675248 331.449H27.6641V335.39H0.675248V331.449Z" fill="url(#paint2)" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M0.675248 331.449H27.6641V335.39H0.675248V331.449Z"
+        fill="url(#paint2)"
+      />
     </g>
     {/* Base */}
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="white" />
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint3)" style={{ mixBlendMode: 'multiply' }} />
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint4)" style={{ mixBlendMode: 'multiply' }} />
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint5)" style={{ mixBlendMode: 'multiply' }} />
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint6)" style={{ mixBlendMode: 'multiply' }} />
-    <path fillRule="evenodd" clipRule="evenodd" d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z" fill="url(#paint7)" />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="white"
+    />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="url(#paint3)"
+      style={{ mixBlendMode: 'multiply' }}
+    />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="url(#paint4)"
+      style={{ mixBlendMode: 'multiply' }}
+    />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="url(#paint5)"
+      style={{ mixBlendMode: 'multiply' }}
+    />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="url(#paint6)"
+      style={{ mixBlendMode: 'multiply' }}
+    />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M0.674454 335.388H725.326C721.043 337.991 683.056 348.672 556.645 345.897C545.481 345.897 230.866 345.569 161.933 345.569C81.9298 345.569 48.8112 345.882 18.5834 340.211C8.00125 338.226 2.70217 336.587 0.674454 335.388Z"
+      fill="url(#paint7)"
+    />
     {/* Trackpad notch */}
     <g filter="url(#filter1_i)">
-      <path d="M432.154 331.446C432.154 331.446 432.154 333.674 432.154 335.059C432.154 336.439 418.734 336.7 418.66 336.701H306.993C306.94 336.7 293.499 336.44 293.499 335.059V331.446H432.154Z" fill="white" />
+      <path
+        d="M432.154 331.446C432.154 331.446 432.154 333.674 432.154 335.059C432.154 336.439 418.734 336.7 418.66 336.701H306.993C306.94 336.7 293.499 336.44 293.499 335.059V331.446H432.154Z"
+        fill="white"
+      />
     </g>
     <g opacity="0.07" style={{ mixBlendMode: 'multiply' }}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M293.499 331.446H306.993V336.701C306.993 336.701 293.499 336.443 293.499 335.059C293.499 333.674 293.499 331.446 293.499 331.446Z" fill="url(#paint8)" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M293.499 331.446H306.993V336.701C306.993 336.701 293.499 336.443 293.499 335.059C293.499 333.674 293.499 331.446 293.499 331.446Z"
+        fill="url(#paint8)"
+      />
     </g>
     <g opacity="0.07" style={{ mixBlendMode: 'multiply' }}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M432.156 331.446H418.662V336.701C418.662 336.701 432.156 336.443 432.156 335.059C432.156 333.674 432.156 331.446 432.156 331.446Z" fill="url(#paint9)" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M432.156 331.446H418.662V336.701C418.662 336.701 432.156 336.443 432.156 335.059C432.156 333.674 432.156 331.446 432.156 331.446Z"
+        fill="url(#paint9)"
+      />
     </g>
   </svg>
 )
@@ -332,22 +442,50 @@ const Hero = () => (
               </clipPath>
             </defs>
             {/* Outer body */}
-            <path d="M192.548 0.25C211.738 0.25 227.301 15.5684 227.301 34.4727V417.387C227.301 436.291 211.738 451.609 192.548 451.609H35.0029C15.8131 451.609 0.25 436.291 0.25 417.387V34.4727C0.25 15.5685 15.8131 0.250059 35.0029 0.25H192.548Z" fill="#F9FAFB" stroke="#EFF1F4" strokeWidth="0.5" />
+            <path
+              d="M192.548 0.25C211.738 0.25 227.301 15.5684 227.301 34.4727V417.387C227.301 436.291 211.738 451.609 192.548 451.609H35.0029C15.8131 451.609 0.25 436.291 0.25 417.387V34.4727C0.25 15.5685 15.8131 0.250059 35.0029 0.25H192.548Z"
+              fill="#F9FAFB"
+              stroke="#EFF1F4"
+              strokeWidth="0.5"
+            />
             {/* White screen background */}
-            <path d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z" fill="#FFFFFF" />
+            <path
+              d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z"
+              fill="#FFFFFF"
+            />
             {/* Screenshot clipped to screen area */}
             <image
               href="/enterprise/mobile_screenshot.png"
-              x="18" y="18" width="191" height="413"
+              x="18"
+              y="18"
+              width="191"
+              height="413"
               preserveAspectRatio="xMidYMin slice"
               clipPath="url(#mobile-screen-clip)"
             />
             {/* Screen border */}
-            <path d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z" stroke="#E1E1E1" strokeLinejoin="round" fill="none" />
+            <path
+              d="M169.388 18.4507C176.045 18.4363 182.728 18.3336 189.4 18.4878C198.419 18.6976 205.801 24.5205 208.337 33.1489V33.1499C208.813 34.7742 209.052 36.4585 209.047 38.1509C209.039 51.5419 209.04 64.9321 209.049 78.3208C209.049 188.645 209.053 298.972 209.061 409.302C209.061 412.09 208.921 414.915 207.832 417.631C204.94 424.84 199.641 429.156 191.989 430.542L191.99 430.542C190.627 430.793 189.254 430.792 187.938 430.792H42.998C41.2406 430.792 39.4564 430.816 37.6797 430.755V430.754C28.1294 430.451 20.2682 423.728 18.4424 414.405L18.3594 413.958C18.1164 412.553 18.0947 411.156 18.0947 409.795C18.0911 368.299 18.0898 326.806 18.0918 285.317V224.723C18.0915 224.717 18.0898 224.71 18.0898 224.704C18.0898 167.937 18.0902 111.171 18.0918 54.4048C18.0918 48.8426 18.0148 43.2535 18.1523 37.6763C18.3741 28.7266 25.1034 20.8076 33.8535 18.9478L34.4424 18.8296C35.8189 18.5719 37.2168 18.4414 38.6182 18.4399C44.8435 18.4411 51.0683 18.4395 57.292 18.4351V18.436C58.2061 18.4337 59.1562 18.5775 59.917 19.3237L60.0664 19.481C60.6439 20.1332 60.8386 20.9001 60.8535 21.686C60.8802 23.0185 60.9055 24.2972 61.1797 25.5356C62.2175 30.22 66.2449 33.5613 71.0557 33.5991C78.7224 33.6604 86.3894 33.6204 94.0635 33.6216C114.304 33.6228 134.545 33.6228 154.786 33.6216C155.84 33.6216 156.827 33.6263 157.802 33.4224H157.804C162.44 32.4787 165.843 28.5158 166.068 23.8003V23.7983C166.088 23.4267 166.096 23.0541 166.105 22.6694C166.115 22.2881 166.127 21.8967 166.155 21.5044C166.221 20.6031 166.534 19.8294 167.108 19.2798C167.684 18.7284 168.471 18.4527 169.388 18.4507Z"
+              stroke="#E1E1E1"
+              strokeLinejoin="round"
+              fill="none"
+            />
             {/* Notch speaker */}
-            <path opacity="0.4" fillRule="evenodd" clipRule="evenodd" d="M98.547 24.4338C98.5467 23.4675 99.3426 22.6839 100.325 22.6837L118.567 22.6792C119.549 22.6789 120.345 23.4621 120.345 24.4284C120.345 25.3947 119.549 26.1783 118.567 26.1785L100.326 26.183C99.3435 26.1833 98.5472 25.4001 98.547 24.4338Z" fill="#C8C8C8" />
+            <path
+              opacity="0.4"
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M98.547 24.4338C98.5467 23.4675 99.3426 22.6839 100.325 22.6837L118.567 22.6792C119.549 22.6789 120.345 23.4621 120.345 24.4284C120.345 25.3947 119.549 26.1783 118.567 26.1785L100.326 26.183C99.3435 26.1833 98.5472 25.4001 98.547 24.4338Z"
+              fill="#C8C8C8"
+            />
             {/* Notch camera */}
-            <path opacity="0.546196" fillRule="evenodd" clipRule="evenodd" d="M125.41 24.4259C125.41 23.4623 126.204 22.6773 127.183 22.677C128.162 22.6768 128.956 23.4615 128.956 24.425C128.957 25.3886 128.163 26.1737 127.184 26.1739C126.205 26.1741 125.411 25.3895 125.41 24.4259Z" fill="#C8C8C8" />
+            <path
+              opacity="0.546196"
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M125.41 24.4259C125.41 23.4623 126.204 22.6773 127.183 22.677C128.162 22.6768 128.956 23.4615 128.956 24.425C128.957 25.3886 128.163 26.1737 127.184 26.1739C126.205 26.1741 125.411 25.3895 125.41 24.4259Z"
+              fill="#C8C8C8"
+            />
           </svg>
         </div>
         {/* Prompt input card overlay — desktop only */}
@@ -387,10 +525,13 @@ const FeatureCards = () => (
         <div className="pointer-events-none absolute -bottom-[6px] -left-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">
-          Choose Any Agent<br />(or Model)
+          Choose Any Agent
+          <br />
+          (or Model)
         </h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
-          Connect any ACP-compatible agent or any model with an OpenAI-compatible API (Claude, Codex, OpenClaw, DeepSeek, OpenCode).
+          Connect any ACP-compatible agent or any model with an OpenAI-compatible API (Claude, Codex, OpenClaw,
+          DeepSeek, OpenCode).
         </p>
         {/* Model logos — wave layout, scaled down on md to fit the 2-col grid */}
         <div className="relative z-10 mx-auto mt-4 h-[173px] w-[402px] origin-top-left md:-ml-[68px] md:mx-0 md:scale-75 lg:-ml-[55px] lg:scale-100">
@@ -406,7 +547,12 @@ const FeatureCards = () => (
               className="absolute flex size-[85px] items-center justify-center border border-[#eaecf0] bg-[#f9fafb] shadow-[0px_0px_14px_0px_rgba(0,0,0,0.05)]"
               style={{ left: logo.x, top: logo.y, zIndex: logo.z }}
             >
-              <img src={logo.src} alt={logo.alt} style={{ width: logo.size, height: logo.size }} className="object-contain" />
+              <img
+                src={logo.src}
+                alt={logo.alt}
+                style={{ width: logo.size, height: logo.size }}
+                className="object-contain"
+              />
             </div>
           ))}
         </div>
@@ -420,7 +566,8 @@ const FeatureCards = () => (
         <div className="pointer-events-none absolute -bottom-[6px] -right-[6px] z-10 hidden size-3 bg-[#eaecf0] lg:block" />
         <h3 className="text-2xl font-medium leading-8 tracking-[-0.48px] text-[#101828]">Built for Enterprise</h3>
         <p className="mt-2 text-base leading-6 text-[#667085]">
-          Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering from trusted partners. Open source you can audit and customize as your business needs evolve.
+          Native apps across web, desktop, and mobile. MCP integration with your systems. Forward-Deployed Engineering
+          from trusted partners. Open source you can audit and customize as your business needs evolve.
         </p>
       </div>
     </div>
@@ -433,9 +580,17 @@ const features = [
   { icon: '/enterprise/icon-blocks.svg', title: 'Extensible', desc: 'MCP support, custom integrations, full API' },
   { icon: '/enterprise/icon-map-pin.svg', title: 'Data Sovereignty', desc: 'On-prem, sovereign cloud, or air-gapped' },
   { icon: '/enterprise/icon-ai-scan.svg', title: 'Automations', desc: 'Reusable workflows for recurring tasks' },
-  { icon: '/enterprise/icon-earth.svg', title: 'European Delivery', desc: 'Trusted partners for sovereign deployments' },
+  {
+    icon: '/enterprise/icon-earth.svg',
+    title: 'European Delivery',
+    desc: 'Trusted partners for sovereign deployments',
+  },
   { icon: '/enterprise/icon-heart.svg', title: 'All Platforms', desc: 'Web, Windows, macOS, Linux, iOS, Android' },
-  { icon: '/enterprise/icon-directions.svg', title: 'Model + Agent Agnostic', desc: 'Connect any ACP-compatible agent or OpenAI-compatible model' },
+  {
+    icon: '/enterprise/icon-directions.svg',
+    title: 'Model + Agent Agnostic',
+    desc: 'Connect any ACP-compatible agent or OpenAI-compatible model',
+  },
 ]
 
 const CompromiseSection = () => (
@@ -457,7 +612,10 @@ const CompromiseSection = () => (
       </div>
       <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-3">
         {features.map((f) => (
-          <div key={f.title} className="flex min-h-[144px] flex-col border border-[#d0d5dd]/50 bg-[#f9fafb]/30 p-4 shadow-[0px_7px_12px_0px_rgba(0,0,0,0.07)] backdrop-blur-[1px]">
+          <div
+            key={f.title}
+            className="flex min-h-[144px] flex-col border border-[#d0d5dd]/50 bg-[#f9fafb]/30 p-4 shadow-[0px_7px_12px_0px_rgba(0,0,0,0.07)] backdrop-blur-[1px]"
+          >
             <img src={f.icon} alt="" className="size-6" />
             <h3 className="mt-4 text-lg font-semibold leading-7 text-[#101828]">{f.title}</h3>
             <p className="mt-0.5 text-sm leading-5 text-[#667085]">{f.desc}</p>
@@ -477,26 +635,13 @@ const PartnershipSection = () => (
       <div className="flex flex-col items-center justify-between gap-6 md:flex-row md:items-end md:gap-8">
         <div className="flex flex-col items-center gap-3 md:flex-row md:gap-8">
           <div className="flex items-center gap-3">
-            <img
-              src="/enterprise/thunderbolt-logo.png"
-              alt="Thunderbolt"
-              className="size-[44px] md:size-[56px]"
-            />
-            <span className="text-[28px] font-medium tracking-tight text-[#101828] md:text-[40px]">
-              Thunderbolt
-            </span>
+            <img src="/enterprise/thunderbolt-logo.png" alt="Thunderbolt" className="size-[44px] md:size-[56px]" />
+            <span className="text-[28px] font-medium tracking-tight text-[#101828] md:text-[40px]">Thunderbolt</span>
           </div>
-          <span
-            className="text-[32px] font-light leading-none text-[#98a2b3] md:text-[44px]"
-            aria-hidden="true"
-          >
+          <span className="text-[32px] font-light leading-none text-[#98a2b3] md:text-[44px]" aria-hidden="true">
             +
           </span>
-          <img
-            src="/enterprise/deepset.png"
-            alt="deepset"
-            className="mt-2 h-[32px] w-auto md:mt-0 md:h-[40px]"
-          />
+          <img src="/enterprise/deepset.png" alt="deepset" className="mt-2 h-[32px] w-auto md:mt-0 md:h-[40px]" />
         </div>
         <a
           href="https://www.deepset.ai/news/sovereign-ai-stack-mozilla-thunderbolt-haystack"
@@ -521,9 +666,9 @@ const PartnershipSection = () => (
             </h3>
           </div>
           <p className="mt-4 text-base leading-7 text-[#667085] md:text-[17px] md:leading-7">
-            Native apps across web, desktop, and mobile. Forward-Deployed Engineering support through a
-            partnership with deepset&rsquo;s Haystack. MCP integration with your systems. Open source you
-            can audit and customize as your business needs evolve.
+            Native apps across web, desktop, and mobile. Forward-Deployed Engineering support through a partnership with
+            deepset&rsquo;s Haystack. MCP integration with your systems. Open source you can audit and customize as your
+            business needs evolve.
           </p>
         </div>
         {/* European Delivery */}
@@ -535,10 +680,10 @@ const PartnershipSection = () => (
             </h3>
           </div>
           <p className="mt-4 text-base leading-7 text-[#667085] md:text-[17px] md:leading-7">
-            Partnership with deepset for sovereign deployments across the EU. Thunderbolt&rsquo;s
-            open-source client pairs with Haystack&rsquo;s orchestration platform into a unified,
-            sovereign stack &mdash; giving organizations long-term control over how AI is built, run, and
-            experienced, without trade-offs between capability and control.
+            Partnership with deepset for sovereign deployments across the EU. Thunderbolt&rsquo;s open-source client
+            pairs with Haystack&rsquo;s orchestration platform into a unified, sovereign stack &mdash; giving
+            organizations long-term control over how AI is built, run, and experienced, without trade-offs between
+            capability and control.
           </p>
         </div>
       </div>
@@ -574,7 +719,11 @@ const QuoteSection = () => (
           </p>
           <p className="mt-6 font-['Mozilla_Text',sans-serif] text-[19px] font-normal uppercase leading-[26px] tracking-[-0.38px] text-[#344054]">
             <span className="hidden md:inline">Ryan Sipes, CEO, MZLA Technologies</span>
-            <span className="md:hidden">Ryan Sipes,<br />CEO, MZLA Technologies</span>
+            <span className="md:hidden">
+              Ryan Sipes,
+              <br />
+              CEO, MZLA Technologies
+            </span>
           </p>
         </div>
       </div>
@@ -643,7 +792,8 @@ const CTASection = () => (
         Ready to Take Control?
       </h2>
       <p className="mx-auto mt-2 max-w-[567px] text-base leading-6 text-[#667085]">
-        Start with a pilot deployment or talk to our enterprise team about Forward-Deployed Engineering and sovereign infrastructure.
+        Start with a pilot deployment or talk to our enterprise team about Forward-Deployed Engineering and sovereign
+        infrastructure.
       </p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <StarOnGitHubButton />
@@ -665,33 +815,20 @@ const MobileFooterCTA = () => (
 
 export const EnterprisePage = () => {
   return (
-  <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
-    <BackgroundGrid />
-    <Header
-      banner={
-        <a
-          href="/blog/mozilla-introduces-thunderbolt"
-          className="group flex w-full items-center justify-center gap-2 bg-gradient-to-r from-[#8b5cf6] from-20% via-[#ea580c] via-60% to-[#fbbf24] px-4 py-2.5 text-sm font-semibold text-white"
-        >
-          <span>
-            Thunderbolt is here! <span className="text-white/80">&mdash; Read the announcement</span>
-          </span>
-          <span className="text-white/80 transition-transform group-hover:translate-x-0.5">&rarr;</span>
-        </a>
-      }
-      action={<StarCountBadge />}
-    />
-    <main className="relative pt-[144px]">
-      <Hero />
-      <FeatureCards />
-      <CompromiseSection />
-      <PartnershipSection />
-      <QuoteSection />
-      <FeaturedInSection />
-      <CTASection />
-    </main>
-    <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />
-    <MobileFooterCTA />
-  </div>
+    <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
+      <BackgroundGrid />
+      <Header action={<StarCountBadge />} />
+      <main className="relative pt-[144px]">
+        <Hero />
+        <FeatureCards />
+        <CompromiseSection />
+        <PartnershipSection />
+        <QuoteSection />
+        <FeaturedInSection />
+        <CTASection />
+      </main>
+      <FooterSection className="relative z-10 bg-[#f9fafb] pb-24 md:pb-16" />
+      <MobileFooterCTA />
+    </div>
   )
 }

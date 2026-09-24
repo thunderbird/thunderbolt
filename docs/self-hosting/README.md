@@ -1,7 +1,5 @@
 # Self-Hosting
 
-> **Under active development.** Thunderbolt is undergoing a security audit and is not production-ready. Use these paths to evaluate it, not to serve real users yet.
-
 Thunderbolt runs entirely on infrastructure you control, with no vendor control plane to call home to. Traffic leaves your network to reach the AI providers you configure and a short list of feature endpoints, every one of which is listed in [Requirements](./requirements.md).
 
 ## Pick a deployment path

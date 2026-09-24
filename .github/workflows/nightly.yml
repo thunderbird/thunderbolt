@@ -49,10 +49,6 @@ jobs:
       NIGHTLY_POWERSYNC_URL: http://localhost:18081
       DATABASE_DRIVER: postgres
       DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
-      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
-      EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -104,6 +100,11 @@ jobs:
         run: curl --fail --silent --show-error --retry 30 --retry-delay 3 --retry-connrefused http://localhost:18081/probes/liveness
 
       - name: Run Chromium and Firefox desktop and mobile
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+          TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: bunx playwright test --config playwright.nightly.config.ts
 
       - name: Remove credentials and network data from trace attachments
@@ -129,10 +130,6 @@ jobs:
     environment: preview
     env:
       E2E_NIGHTLY_UNIQUE_USERS: 'true'
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
-      TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
-      EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -149,6 +146,11 @@ jobs:
         run: bunx playwright install webkit
 
       - name: Run WebKit desktop and iPhone
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
+          TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: bunx playwright test --config playwright.nightly.config.ts
 
       - name: Remove credentials and network data from trace attachments
@@ -187,7 +189,8 @@ jobs:
     if: >-
       always() && !cancelled() &&
       (needs.linux.result == 'success' || needs.linux.result == 'failure') &&
-      (needs.macos.result == 'success' || needs.macos.result == 'failure')
+      (needs.macos.result == 'success' || needs.macos.result == 'failure') &&
+      needs.notify.result == 'success'
     needs: [linux, macos, notify]
     runs-on: ubuntu-latest
     steps:

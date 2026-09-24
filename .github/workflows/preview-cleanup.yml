@@ -65,8 +65,8 @@ jobs:
           # project (thunderbolt-enterprise); must run from deploy/pulumi where
           # Pulumi.yaml lives. Scoping to this project is a hard guardrail: it means
           # cleanup can never even enumerate — let alone destroy — stacks in other
-          # projects (e.g. thunderbird's accounts/prod, shared-services/prod). The
-          # `^preview-pr-[0-9]+$` grep is then a second, belt-and-suspenders filter.
+          # projects (e.g. thunderbird's accounts/prod, shared-services/prod).
+          # The jq `select(test("^preview-pr-[0-9]+$"))` filter is a second guard.
           # PULUMI_ACCESS_TOKEN env handles auth — no interactive login needed.
           STACKS=$(pulumi stack ls --json | jq -r '.[].name | select(test("^preview-pr-[0-9]+$"))')
 

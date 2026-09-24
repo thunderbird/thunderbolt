@@ -257,16 +257,19 @@ bun run e2e:preview
 
 [`nightly.yml`](../../.github/workflows/nightly.yml) runs daily at 04:00 UTC and can be started manually with `gh workflow run nightly.yml --ref main`. Its Linux job runs Chromium and Firefox on desktop and mobile viewports against temporary PostgreSQL and PowerSync service containers (currently 200 cases). Its macOS job runs WebKit on desktop and iPhone viewports (currently 100 cases). Failure reports are sanitized before upload, with trace content and network data removed. This is a scheduled coverage run, not a blocking PR check. PRs still use the two-shard Chromium workflow in [`e2e.yml`](../../.github/workflows/e2e.yml).
 
-To reproduce the Linux job from this VM, check the remote Mac's published ports first. The Compose services run on the Mac, while Bun, Vite, backend, and Playwright run here. The local helper builds containers from this checkout; CI uses published `:latest` images. Set `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, and `EXA_API_KEY` in your shell as needed for provider tests; CI reads them from the `preview` environment.
+The Nightly and reusable notification workflows pin Bun 1.3.14. Use that version when reproducing their CI failures locally.
+
+To reproduce the Linux job, check `docker ps` for port conflicts first. The local helper builds containers from this checkout; CI uses published `:latest` images. With local Docker, Compose publishes on loopback by default and the runner reaches containers at `127.0.0.1`. With remote Docker, containers and published ports are on the Docker host: set `NIGHTLY_DOCKER_BIND` to the host's private interface address and `NIGHTLY_HOST` to an address the test runner can reach on that interface. Keep the default loopback binding for local Docker; do not publish the test databases on every interface. Bun, Vite, the backend, and Playwright still run on the test runner. Set `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, and `EXA_API_KEY` in your shell as needed for provider tests. CI reads them from the `preview` environment only for the Playwright steps; Playwright passes them to its backend processes.
 
 ```sh
 docker ps
+export NIGHTLY_HOST=${NIGHTLY_HOST:-127.0.0.1}
 bunx playwright install chromium firefox
-NIGHTLY_DOCKER_BIND=0.0.0.0 docker compose -f deploy/nightly-compose.yml up -d --build --wait postgres
-(cd backend && DATABASE_DRIVER=postgres DATABASE_URL=postgresql://postgres:postgres@100.118.239.120:15434/postgres bunx drizzle-kit migrate)
-NIGHTLY_DOCKER_BIND=0.0.0.0 docker compose -f deploy/nightly-compose.yml up -d --build --wait powersync
-NIGHTLY_DATABASE_URL=postgresql://postgres:postgres@100.118.239.120:15434/postgres \
-NIGHTLY_POWERSYNC_URL=http://100.118.239.120:18081 \
+docker compose -f deploy/nightly-compose.yml up -d --build --wait postgres
+(cd backend && DATABASE_DRIVER=postgres DATABASE_URL="postgresql://postgres:postgres@${NIGHTLY_HOST}:${NIGHTLY_POSTGRES_PORT:-15434}/postgres" bunx drizzle-kit migrate)
+docker compose -f deploy/nightly-compose.yml up -d --build --wait powersync
+NIGHTLY_DATABASE_URL="postgresql://postgres:postgres@${NIGHTLY_HOST}:${NIGHTLY_POSTGRES_PORT:-15434}/postgres" \
+NIGHTLY_POWERSYNC_URL="http://${NIGHTLY_HOST}:${NIGHTLY_POWERSYNC_PORT:-18081}" \
 NIGHTLY_PLATFORM=linux \
 E2E_NIGHTLY_UNIQUE_USERS=true CI=1 \
 bunx playwright test --config playwright.nightly.config.ts
@@ -277,7 +280,7 @@ On a Mac running the app locally, `bunx playwright test --config playwright.nigh
 
 ### CI failure and recovery alerts
 
-Release, Nightly Images, Preview Cleanup, Previews Shared Deploy, and Nightly E2E notify after completed scheduled or manually dispatched runs. The regular E2E workflow notifies only for pushes to `main`; PR runs never send alerts. On the first failure, the notifier opens a Thunderbolt Linear issue in Backlog with the Bug label and emails `ALERT_RECIPIENTS` through Resend. Later failures update that issue. Recovery closes an open issue and emails `ALERT_RECIPIENTS`; success with no open issue is quiet. The notifier needs repository secrets `LINEAR_API_KEY` and `RESEND_API_KEY`, plus the `ALERT_RECIPIENTS` repository variable. Nightly E2E also uses `BETTERSTACK_HEARTBEAT_URL` after a completed run; its provider credentials come from the `preview` environment.
+Release, Nightly Images, Preview Cleanup, Previews Shared Deploy, and Nightly E2E notify after completed scheduled or manually dispatched runs. The regular E2E workflow notifies only for pushes to `main`; PR runs never send alerts. On the first failure, the notifier opens a Thunderbolt Linear issue in Backlog with the Bug label and emails `ALERT_RECIPIENTS` through Resend. Later failures update that issue. Recovery closes an open issue and emails `ALERT_RECIPIENTS`; success with no open issue is quiet. The notifier needs repository secrets `LINEAR_API_KEY` and `RESEND_API_KEY`, plus the `ALERT_RECIPIENTS` repository variable. Nightly E2E sends its `BETTERSTACK_HEARTBEAT_URL` ping only after both test jobs finish and the notification job succeeds. A failed test run can still ping after successful notification; a failed notification job prevents the ping.
 
 Recovery requires a completed run of the monitored scope and a success newer than the latest recorded failure. Release requires every platform and the CLI to succeed, so a single-platform dispatch cannot close a nightly incident. Previews Shared Deploy monitors the `previews-shared` stack; manual runs against another stack do not affect its incident. Preview Cleanup dry runs cannot recover an incident; a real run must finish its scan and any required destruction successfully. Failures in those workflows still alert under their workflow conditions. `scripts/notify-on-failure.test.ts` runs in the normal `bun run test` suite and its CI `test:5x` variant.
 

@@ -113,6 +113,22 @@ describe('step-up OTP (THU-875)', () => {
       expect(await readRow()).toBeUndefined()
     })
 
+    it('charges every guess in a concurrent burst, not just one', async () => {
+      // The budget is the whole defence, and the attacker this gate stops
+      // already holds a session — so it can fire guesses in parallel. Read and
+      // charge must serialize; otherwise all three read `attempts: 0`, all three
+      // write `1`, and three guesses cost one attempt.
+      const code = await mintStepUpOtp(db, email)
+      const verdicts = await Promise.all([
+        verifyStepUpOtp(db, email, '00000001'),
+        verifyStepUpOtp(db, email, '00000002'),
+        verifyStepUpOtp(db, email, '00000003'),
+      ])
+
+      expect(verdicts).toEqual(['invalid', 'invalid', 'invalid'])
+      expect(await verifyStepUpOtp(db, email, code)).toBe('too-many-attempts')
+    })
+
     it('reports `expired` and clears the row once the window closes', async () => {
       const code = await mintStepUpOtp(db, email)
       await db

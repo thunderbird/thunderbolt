@@ -62,7 +62,14 @@ const generateStepUpOtp = (): string => {
   return digits.join('')
 }
 
-/** Length-invariant here (codes are fixed-width), so the compare leaks nothing but equality. */
+/**
+ * Length-invariant here (codes are fixed-width), so the compare leaks nothing
+ * but equality.
+ *
+ * NO TEST ENFORCES THIS. Swapping the body for `a === b` passes the whole
+ * suite — timing is not observable from the test harness, and a wall-clock
+ * assertion would be flaky. It is held by review alone, so do not "simplify" it.
+ */
 const constantTimeEquals = (a: string, b: string): boolean => {
   const left = Buffer.from(a, 'utf8')
   const right = Buffer.from(b, 'utf8')
@@ -113,39 +120,49 @@ export const mintStepUpOtp = async (database: typeof DbType, email: string): Pro
  */
 export type StepUpOtpVerdict = 'valid' | 'invalid' | 'expired' | 'too-many-attempts'
 
-/** Check a submitted code, charging the attempt budget for a wrong one. Does not consume a valid code. */
-export const verifyStepUpOtp = async (
-  database: typeof DbType,
-  email: string,
-  otp: string,
-): Promise<StepUpOtpVerdict> => {
-  const [row] = await database
-    .select()
-    .from(verification)
-    .where(eq(verification.identifier, stepUpIdentifier(email)))
-    .orderBy(desc(verification.createdAt))
-    .limit(1)
-  if (!row) {
-    return 'invalid'
-  }
-  if (row.expiresAt < new Date()) {
-    await database.delete(verification).where(eq(verification.id, row.id))
-    return 'expired'
-  }
-  const { code, attempts } = splitStoredOtp(row.value)
-  if (attempts >= stepUpAllowedAttempts) {
-    await database.delete(verification).where(eq(verification.id, row.id))
-    return 'too-many-attempts'
-  }
-  if (!constantTimeEquals(code, otp)) {
-    await database
-      .update(verification)
-      .set({ value: `${code}:${attempts + 1}` })
-      .where(eq(verification.id, row.id))
-    return 'invalid'
-  }
-  return 'valid'
-}
+/**
+ * Check a submitted code, charging the attempt budget for a wrong one. Does not
+ * consume a valid code.
+ *
+ * The read and the charge share one transaction and the row is taken `FOR
+ * UPDATE`, so concurrent guesses queue instead of interleaving. Without that
+ * they each read the same `attempts` and each write the same `attempts + 1`, so
+ * a batch of N wrong guesses costs ONE attempt and the budget stops bounding
+ * anything. A conditional write is not enough — it only turns the loser's write
+ * into a no-op, which lands on the same undercount. The caller holds a session,
+ * which is precisely the attacker this gate exists to stop, so issuing the
+ * guesses in parallel costs it nothing.
+ */
+export const verifyStepUpOtp = async (database: typeof DbType, email: string, otp: string): Promise<StepUpOtpVerdict> =>
+  database.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(verification)
+      .where(eq(verification.identifier, stepUpIdentifier(email)))
+      .orderBy(desc(verification.createdAt))
+      .limit(1)
+      .for('update')
+    if (!row) {
+      return 'invalid'
+    }
+    if (row.expiresAt < new Date()) {
+      await tx.delete(verification).where(eq(verification.id, row.id))
+      return 'expired'
+    }
+    const { code, attempts } = splitStoredOtp(row.value)
+    if (attempts >= stepUpAllowedAttempts) {
+      await tx.delete(verification).where(eq(verification.id, row.id))
+      return 'too-many-attempts'
+    }
+    if (!constantTimeEquals(code, otp)) {
+      await tx
+        .update(verification)
+        .set({ value: `${code}:${attempts + 1}` })
+        .where(eq(verification.id, row.id))
+      return 'invalid'
+    }
+    return 'valid'
+  })
 
 /**
  * Single-use enforcement: `verifyStepUpOtp` deliberately does NOT consume a

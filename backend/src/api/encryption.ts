@@ -39,6 +39,7 @@ import {
   consumeChallengeNonce,
   revokeDeviceSessions,
   upsertOrgEnvelope,
+  withUserDeviceRegistrationLock,
 } from '@/dal'
 import type { Settings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
@@ -1539,27 +1540,33 @@ export const createEncryptionRoutes = (
       async ({ body, request, set, user: sessionUser }) => {
         const userId = sessionUser!.id
         const name = body.name?.trim() || 'Bridge'
-        const result = await database.transaction(async (tx) => {
-          const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-          if (!existingBridge) {
-            const activeCount = await countActiveDevices(tx, userId)
-            if (activeCount >= maxActiveDevicesPerUser) {
-              return { limitReached: true as const }
+        // Under the same per-account lock as every other device-inserting path
+        // (approve, rotate, upgrade, CLI register). Bridges insert TRUSTED, so
+        // without it two concurrent registrations both read a count under the
+        // cap and both insert, landing the account past `maxActiveDevicesPerUser`.
+        const result = await database.transaction((tx) =>
+          withUserDeviceRegistrationLock(tx, userId, async () => {
+            const existingBridge = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+            if (!existingBridge) {
+              const activeCount = await countActiveDevices(tx, userId)
+              if (activeCount >= maxActiveDevicesPerUser) {
+                return { limitReached: true as const }
+              }
             }
-          }
 
-          const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
-          if (!device) {
-            const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
-            if (tombstone?.userId === userId && tombstone.revokedAt != null) {
-              return { revoked: true as const }
+            const [device] = await registerBridgeDevice(tx, { userId, nodeId: body.nodeId, name })
+            if (!device) {
+              const tombstone = await getDeviceById(tx, bridgeDeviceId(userId, body.nodeId))
+              if (tombstone?.userId === userId && tombstone.revokedAt != null) {
+                return { revoked: true as const }
+              }
+              throw new Error('Bridge device registration returned no device')
             }
-            throw new Error('Bridge device registration returned no device')
-          }
-          // isNew distinguishes first registration from the re-registration
-          // upsert — only the former is a device GAINING access (THU-875 email).
-          return { device, isNew: !existingBridge }
-        })
+            // isNew distinguishes first registration from the re-registration
+            // upsert — only the former is a device GAINING access (THU-875 email).
+            return { device, isNew: !existingBridge }
+          }),
+        )
 
         if ('limitReached' in result) {
           set.status = 422

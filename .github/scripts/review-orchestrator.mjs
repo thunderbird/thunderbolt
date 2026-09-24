@@ -112,10 +112,16 @@ const SECURITY_PATH_MATCHERS = [
   (p) => p.startsWith('src/crypto/'),
   (p) => p.startsWith('src/db/encryption/'),
   (p) => p.startsWith('backend/drizzle/'),
+  (p) => p.startsWith('scripts/org-escrow-'),
   (p) => p === 'backend/src/api/encryption.ts',
+  (p) => p === 'backend/src/api/powersync.ts',
   (p) => p === 'backend/src/lib/canary.ts',
-  (p) => p === 'backend/src/lib/org-escrow.ts',
+  (p) => p === 'backend/src/lib/device-bind.ts',
+  (p) => p === 'backend/src/lib/encrypted-payload.ts',
+  (p) => p === 'backend/src/lib/step-up-otp.ts',
   (p) => p === 'shared/e2ee-types.ts',
+  (p) => p === 'src/services/encryption.ts',
+  (p) => p === 'src/db/powersync/middleware/EncryptionMiddleware.ts',
 ];
 const matchesSecurityPath = (filename) =>
   typeof filename === 'string' && SECURITY_PATH_MATCHERS.some((m) => m(filename));

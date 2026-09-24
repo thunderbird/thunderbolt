@@ -549,20 +549,30 @@ describe('matchesSecurityPath: crypto/E2EE path predicate', () => {
     expect(matchesSecurityPath('src/crypto/key-storage.ts')).toBe(true);
     expect(matchesSecurityPath('src/db/encryption/codec.ts')).toBe(true);
     expect(matchesSecurityPath('backend/drizzle/meta/_journal.json')).toBe(true);
+    expect(matchesSecurityPath('scripts/org-escrow-decrypt.ts')).toBe(true);
   });
 
+  // Every entry names a file that EXISTS. The list previously carried
+  // `backend/src/lib/org-escrow.ts`, which never has — a dead matcher that made
+  // the list look complete while the security lane skipped the real surface.
   test('matches the exact sensitive files', () => {
     expect(matchesSecurityPath('backend/src/api/encryption.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/api/powersync.ts')).toBe(true);
     expect(matchesSecurityPath('backend/src/lib/canary.ts')).toBe(true);
-    expect(matchesSecurityPath('backend/src/lib/org-escrow.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/device-bind.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/encrypted-payload.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/step-up-otp.ts')).toBe(true);
     expect(matchesSecurityPath('shared/e2ee-types.ts')).toBe(true);
+    expect(matchesSecurityPath('src/services/encryption.ts')).toBe(true);
+    expect(matchesSecurityPath('src/db/powersync/middleware/EncryptionMiddleware.ts')).toBe(true);
   });
 
   test('does not match adjacent non-crypto paths or a bare prefix', () => {
     expect(matchesSecurityPath('src/app.tsx')).toBe(false);
-    expect(matchesSecurityPath('backend/src/lib/http.ts')).toBe(false); // sibling of canary/org-escrow
+    expect(matchesSecurityPath('backend/src/lib/http.ts')).toBe(false); // sibling of canary/device-bind
     expect(matchesSecurityPath('backend/src/api/encryptionX.ts')).toBe(false); // exact-match only
     expect(matchesSecurityPath('src/cryptography/x.ts')).toBe(false); // not the src/crypto/ tree
+    expect(matchesSecurityPath('scripts/create-release.ts')).toBe(false); // not an org-escrow script
   });
 
   test('tolerates a non-string filename (undefined from a malformed file entry)', () => {

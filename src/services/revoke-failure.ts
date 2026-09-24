@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import type { MessageDescriptor } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
 import {
   AKAnchorError,
   LockoutIncompleteError,
+  MissingRecoverySlotError,
   RecoveryAnchorError,
   StaleKeyMaterialError,
 } from '@/services/encryption'
@@ -18,8 +21,12 @@ import {
 export type RevokeFailureAction = 'retry' | 'phraseChange' | 'finishLockout' | 'refreshKeys'
 
 export type RevokeFailure = {
-  message: string
-  /** Present only when a specific cause was recognised; drives the wording too. */
+  /**
+   * A descriptor, not a string. This is called during render from a component
+   * that may outlive a language change, and `msg` at module scope is the only
+   * form that follows one — the display boundary resolves it with `i18n._`.
+   */
+  message: MessageDescriptor
   action: RevokeFailureAction
 }
 
@@ -27,25 +34,53 @@ export type RevokeFailure = {
  * The two causes that are neither transient nor retryable: the served recovery
  * anchor did not verify (THU-865) or the served account key did not match this
  * device's witness (THU-869). Both mean "re-anchor the account", and both must
- * be named as possible tampering. Everything else is transient or unknown, and
- * is reported as such rather than dressed up.
+ * be named as possible tampering. An account with no recovery slot needs the
+ * same re-anchor, so it belongs here too. Everything else is transient or
+ * unknown, and is reported as such rather than dressed up.
  */
-const wedgeCause = (err: unknown): string | null => {
+type WedgeCause = 'recoveryAnchor' | 'akAnchor' | 'noRecoverySlot'
+
+const wedgeCause = (err: unknown): WedgeCause | null => {
   if (err instanceof RecoveryAnchorError) {
-    return 'the recovery keys the server offered could not be verified against this device'
+    return 'recoveryAnchor'
   }
   if (err instanceof AKAnchorError) {
-    return 'this device refused the account key the server offered'
+    return 'akAnchor'
   }
-  // An account with no recovery slot throws a plain Error, and it needs the same
-  // re-anchor, so it belongs here rather than in the transient bucket.
-  if (err instanceof Error && err.message.includes('no recovery slot')) {
-    return 'this account has no recovery phrase on record'
+  if (err instanceof MissingRecoverySlotError) {
+    return 'noRecoverySlot'
   }
   return null
 }
 
-const tamperingNote = ' This can indicate tampering.'
+/**
+ * Whole sentences, one per outcome, deliberately not assembled from a phase
+ * clause plus a cause clause plus a tampering clause. The English reads as
+ * though it were — but word order is not portable, and a translator handed
+ * "this device refused the account key the server offered" as a fragment has no
+ * way to know what it will be glued to.
+ *
+ * The cost is that the phase clause is repeated six times. That is the right
+ * trade here: the phase clause is the security-relevant half of the sentence,
+ * and it is exactly the half a concatenation would let a translation reorder
+ * away from the cause it qualifies.
+ */
+const wedgeMessage: Record<'preCut' | 'postCut', Record<WedgeCause, MessageDescriptor>> = {
+  preCut: {
+    recoveryAnchor: msg`Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering.`,
+    akAnchor: msg`Nothing was changed — this device refused the account key the server offered. This can indicate tampering.`,
+    noRecoverySlot: msg`Nothing was changed — this account has no recovery phrase on record. This can indicate tampering.`,
+  },
+  postCut: {
+    recoveryAnchor: msg`The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering.`,
+    akAnchor: msg`The device lost access, but your account key was not replaced, so it can still read your data — this device refused the account key the server offered. This can indicate tampering.`,
+    noRecoverySlot: msg`The device lost access, but your account key was not replaced, so it can still read your data — this account has no recovery phrase on record. This can indicate tampering.`,
+  },
+}
+
+const preCutUnknownCause = msg`Nothing was changed. The device was not revoked.`
+const postCutUnknownCause = msg`The device lost access, but your account key was not replaced, so it can still read your data.`
+const staleKeyMaterial = msg`Nothing was changed — this device's encryption keys are out of date.`
 
 /**
  * Plain-language outcome of a revocation that did not complete, for the revoke
@@ -74,28 +109,18 @@ export const describeRevokeFailure = (err: unknown): RevokeFailure => {
   // cut must not have a server-driven key adoption running invisibly inside it.
   // Nothing was applied; the fix is an explicit refresh, then retry.
   if (err instanceof StaleKeyMaterialError) {
-    return {
-      message: "Nothing was changed — this device's encryption keys are out of date.",
-      action: 'refreshKeys',
-    }
+    return { message: staleKeyMaterial, action: 'refreshKeys' }
   }
-
-  const cause = wedgeCause(err instanceof LockoutIncompleteError ? err.cause : err)
 
   if (err instanceof LockoutIncompleteError) {
-    return {
-      message: cause
-        ? `The device lost access, but your account key was not replaced, so it can still read your ` +
-          `data — ${cause}.${tamperingNote}`
-        : 'The device lost access, but your account key was not replaced, so it can still read your data.',
-      action: cause ? 'phraseChange' : 'finishLockout',
-    }
+    const cause = wedgeCause(err.cause)
+    return cause
+      ? { message: wedgeMessage.postCut[cause], action: 'phraseChange' }
+      : { message: postCutUnknownCause, action: 'finishLockout' }
   }
 
-  return {
-    message: cause
-      ? `Nothing was changed — ${cause}.${tamperingNote}`
-      : 'Nothing was changed. The device was not revoked.',
-    action: cause ? 'phraseChange' : 'retry',
-  }
+  const cause = wedgeCause(err)
+  return cause
+    ? { message: wedgeMessage.preCut[cause], action: 'phraseChange' }
+    : { message: preCutUnknownCause, action: 'retry' }
 }

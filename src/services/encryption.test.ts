@@ -146,6 +146,7 @@ const {
   changeRecoveryPhrase,
   revokeDeviceAndRotate,
   RecoveryAnchorError,
+  MissingRecoverySlotError,
   RotationStaleError,
   AKAnchorError,
   refreshAK,
@@ -1416,11 +1417,13 @@ describe('encryption service (v2)', () => {
       server.metadata!.recoveryEcdhPublicKey = null
       server.metadata!.recoveryMlkemPublicKey = null
 
+      // The TYPE, not the wording: `describeRevokeFailure` routes this to the
+      // recovery-phrase change, and it used to do so by matching on the prose.
       await expect(
         rotateAccountKey(clientFor(server), {
           listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
         }),
-      ).rejects.toThrow('Account has no recovery slot')
+      ).rejects.toBeInstanceOf(MissingRecoverySlotError)
     })
 
     it('throws RotationStaleError and refreshes the AK on a 4xx', async () => {

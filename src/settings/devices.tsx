@@ -313,7 +313,7 @@ const TrustedDeviceRow = ({
 }
 
 export default function DevicesSettingsPage() {
-  const { t } = useLingui()
+  const { i18n, t } = useLingui()
   const db = useDatabase()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
@@ -402,7 +402,7 @@ export default function DevicesSettingsPage() {
       {/* The lockout retry has no dialog of its own, so its failure surfaces here. */}
       {finishLockoutMutation.error && (
         <p className="text-sm text-destructive" role="alert">
-          {describeRevokeFailure(finishLockoutMutation.error).message}
+          {i18n._(describeRevokeFailure(finishLockoutMutation.error).message)}
         </p>
       )}
 
@@ -488,7 +488,7 @@ export default function DevicesSettingsPage() {
         onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
         variant={revokeDevice?.deviceType === 'cli' ? 'cli' : 'trusted'}
-        error={revokeFailure?.message}
+        error={revokeFailure && i18n._(revokeFailure.message)}
         errorAction={
           revokeFailure?.action === 'refreshKeys' ? (
             // The revoke NEVER refreshes keys as a silent side effect (THU-872)

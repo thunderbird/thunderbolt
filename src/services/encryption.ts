@@ -199,6 +199,24 @@ export class RecoveryAnchorError extends Error {
 }
 
 /**
+ * Thrown when a phrase-preserving re-anchor finds no recovery slot on the
+ * account: the new AK cannot be wrapped to a virtual device that was never
+ * written, and minting a phrase here would silently strand the one the user
+ * holds. Like `RecoveryAnchorError`, the way out is one explicit recovery-phrase
+ * change, which anchors the slot properly — so the revoke dialog routes both to
+ * the same action.
+ */
+export class MissingRecoverySlotError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Account has no recovery slot — the account key cannot be rotated without changing the recovery phrase',
+      options,
+    )
+    this.name = 'MissingRecoverySlotError'
+  }
+}
+
+/**
  * Why an inbound Account Key was refused. Reported verbatim in telemetry —
  * these are SYMPTOMS, not diagnoses, because the two underlying causes are not
  * distinguishable from the client:
@@ -449,9 +467,7 @@ const mintRecoveryPlan = async (): Promise<Extract<RecoveryPlan, { mode: 'new' }
 const readStoredRecoveryPlan = async (httpClient: HttpClient, canaryKey: CryptoKey): Promise<RecoveryPlan> => {
   const metadata = await fetchEncryptionMetadata(httpClient)
   if (!metadata.kdf_salt || !metadata.recovery_ecdh_public_key || !metadata.recovery_mlkem_public_key) {
-    throw new Error(
-      'Account has no recovery slot — the account key cannot be rotated without changing the recovery phrase',
-    )
+    throw new MissingRecoverySlotError()
   }
   const anchor = {
     userId: getUserId(),

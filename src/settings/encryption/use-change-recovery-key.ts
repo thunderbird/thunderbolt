@@ -3,9 +3,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { useReducer } from 'react'
+import { msg } from '@lingui/core/macro'
 import { useHttpClient, type HttpClient } from '@/contexts'
+import { i18n } from '@/i18n'
 import { postStepUpRequest } from '@/api/encryption'
 import { changeRecoveryPhrase, RotationStaleError, StepUpVerificationError } from '@/services/encryption'
+
+// `msg` at module scope, resolved with `i18n._` in the handler below: a
+// module-scope `t` would freeze these to the boot locale. Resolving eagerly is
+// deliberate — the reducer stores a string, and the snapshot is taken while the
+// user is looking at the dialog.
+const codeRequestFailed = msg`Failed to send the verification code`
+const codeRejected = msg`That code is invalid or expired. Check your email and try again.`
+const rotationStale = msg`Your account keys changed while preparing the new phrase. Please try again.`
+const rotationFailed = msg`Failed to change the recovery phrase`
 
 type ChangeRecoveryKeyState = {
   /** idle → confirming (dialog open) → stepUp (emailed code entry) → display (new phrase shown) → idle */
@@ -98,7 +109,7 @@ export const useChangeRecoveryKey = (
       await requestCode(httpClient)
       dispatch({ type: 'CODE_SENT' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to send the verification code'
+      const message = err instanceof Error ? err.message : i18n._(codeRequestFailed)
       dispatch({ type: 'REQUEST_FAILED', payload: message })
     }
   }
@@ -110,19 +121,16 @@ export const useChangeRecoveryKey = (
       dispatch({ type: 'ROTATION_SUCCESS', payload: newRecoveryKey })
     } catch (err) {
       if (err instanceof StepUpVerificationError) {
-        dispatch({ type: 'CODE_REJECTED', payload: 'That code is invalid or expired. Check your email and try again.' })
+        dispatch({ type: 'CODE_REJECTED', payload: i18n._(codeRejected) })
         return
       }
       if (err instanceof RotationStaleError) {
         // The code was NOT consumed (that happens only on a committed
         // rotation), so retrying with the same one is fine.
-        dispatch({
-          type: 'ROTATION_FAILED',
-          payload: 'Your account keys changed while preparing the new phrase. Please try again.',
-        })
+        dispatch({ type: 'ROTATION_FAILED', payload: i18n._(rotationStale) })
         return
       }
-      const message = err instanceof Error ? err.message : 'Failed to change the recovery phrase'
+      const message = err instanceof Error ? err.message : i18n._(rotationFailed)
       dispatch({ type: 'ROTATION_FAILED', payload: message })
     }
   }

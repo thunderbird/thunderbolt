@@ -1668,6 +1668,10 @@ msgstr ""
 msgid "Fahrenheit"
 msgstr ""
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to change the recovery phrase"
+msgstr ""
+
 #: src/hooks/use-sync-setup.ts
 msgid "Failed to check approval"
 msgstr ""
@@ -1726,6 +1730,10 @@ msgstr ""
 
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to resend verification code. Please check your connection."
+msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to send the verification code"
 msgstr ""
 
 #: src/components/sign-in/use-sign-in-form-state.ts
@@ -2478,6 +2486,26 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Not tested"
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this account has no recovery phrase on record. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device refused the account key the server offered. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device's encryption keys are out of date."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed. The device was not revoked."
 msgstr ""
 
 #: src/lib/mcp-auth/callback-validation.ts
@@ -3571,6 +3599,10 @@ msgstr ""
 msgid "Testing…"
 msgstr ""
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "That code is invalid or expired. Check your email and try again."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr ""
@@ -3601,6 +3633,22 @@ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
 msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this account has no recovery phrase on record. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this device refused the account key the server offered. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data."
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
@@ -4357,6 +4405,10 @@ msgstr ""
 
 #: src/components/account-deleted.tsx
 msgid "Your account has been deleted and local data has been cleared."
+msgstr ""
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Your account keys changed while preparing the new phrase. Please try again."
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx

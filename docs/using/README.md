@@ -10,7 +10,9 @@ A conversation is titled from your first message. A message you have already sen
 
 ## Models and agents
 
-Each conversation keeps its own model and agent, picked from the composer and the chat header. An external agent brings its own model, so the model picker is hidden while one is selected.
+Each conversation keeps its own model and agent, picked from the composer and the chat header.
+
+**Settings → Models** and the composer's model picker cover the built-in Thunderbolt agent only. Every other agent, whether your deployment serves it or you added it yourself, chooses its own model upstream. The picker is hidden while one is selected, and whether you get any say in that choice is up to the agent rather than Thunderbolt.
 
 Adding models and providers is covered in [Customize](../customize.md).
 
@@ -28,11 +30,11 @@ A skill is a named block of instructions. Type `/` or `@` in the composer to pic
 
 Settings → Connections is where the assistant gets tools beyond the ones built in.
 
-| Connection            | What it adds                                                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Thunderbolt           | Web search and page fetching, with Thunderbolt Pro. Without Pro these tools are not offered                       |
-| Google, Microsoft     | Read access to that account's mail, calendar, and files, once you sign in. Mail drafts can be created, never sent |
-| An MCP server you add | Whatever tools that server publishes, such as searching a wiki, querying a database, or filing a ticket           |
+| Connection            | What it adds                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Thunderbolt           | Web search and page fetching. On by default, and inert unless your deployment sets a search provider key |
+| Google, Microsoft     | Google: mail and calendar, plus draft creation. Microsoft: Outlook mail and OneDrive files, read-only    |
+| An MCP server you add | Whatever tools that server publishes, such as searching a wiki, querying a database, or filing a ticket  |
 
 MCP is the Model Context Protocol, an open standard for publishing tools to an AI assistant. You add a server by URL, and a test button lists the tools it offers before you save it. Google and Microsoft also need whoever runs your deployment to have configured sign-in credentials for that provider.
 
@@ -53,7 +55,7 @@ Search runs against an index on the device, so it works offline and no query lea
 | Page        | What you set there                                                                        |
 | ----------- | ----------------------------------------------------------------------------------------- |
 | Agents      | The agents available in the agent picker                                                  |
-| Skills      | Create, edit, enable, and pin skills                                                      |
+| Skills      | Create, edit, and enable skills. Pinning is done from the composer's skills bar           |
 | Connections | MCP servers, external services, and the tools each one exposes                            |
 | Models      | Providers, API keys, and which models appear in the picker                                |
 | Voice       | The speech provider, when the voice preview is turned on                                  |

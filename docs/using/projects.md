@@ -21,7 +21,7 @@ Instructions are plain prose, for example: `Reply in British English. Prefer bul
 
 ## What a chat gets from its project
 
-Every message in a chat carries the project's name and instructions, alongside the rest of the chat's context. The model can also keyword-search the project's other chats when you refer back to an earlier conversation. Beyond those two things the chats stay separate: nothing from one chat is pasted into another automatically, and the model sees another conversation only if it searches for it.
+Every message in a chat carries the project's name and instructions, alongside the rest of the chat's context, once there are instructions to carry. The model can also keyword-search the project's other chats when you refer back to an earlier conversation. Beyond those two things the chats stay separate: nothing from one chat is pasted into another automatically, and the model sees another conversation only if it searches for it.
 
 ## Add chats to a project
 

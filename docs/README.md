@@ -10,7 +10,7 @@ Thunderbolt is an open-source AI chat client that you host yourself. It runs on 
 
 **Your infrastructure.** The whole server stack runs on a single Docker host, a Kubernetes cluster, or AWS, with no SaaS control plane to call home to and no vendor account to lose access to.
 
-**Your data.** Each device keeps its own local database and reads and writes there first. Cross-device sync is off until a user turns it on. You can switch on [end-to-end encryption](./admin/security-and-privacy.md) so the server holds only ciphertext for chat content, titles, settings and other covered fields.
+**Your data.** Each device keeps its own local database and reads and writes there first. Cross-device sync is off until a user signs in, which turns it on for that device; they can switch it off again under Settings → Preferences → Data. You can switch on [end-to-end encryption](./admin/security-and-privacy.md) so the server holds only ciphertext for chat content, titles, settings and other covered fields.
 
 **Your identity provider.** Sign-in runs through OIDC or SAML against the identity provider you already operate. Deployments without one can use emailed sign-in codes instead. You choose which method to run, and only one is active at a time. See [Authentication](./self-hosting/authentication.md).
 
@@ -22,13 +22,13 @@ We built Thunderbolt for **organizations deploying on-premises**. Individuals ca
 
 ## What it costs
 
-Thunderbolt is free and open source under the Mozilla Public License 2.0, funded by a grant from Mozilla. Inference is the only line item, billed by whichever provider you point it at. A local model through Ollama or llama.cpp costs nothing beyond the hardware.
+Thunderbolt is free and open source under the Mozilla Public License 2.0, funded through a dedicated investment from Mozilla. Inference is the only line item, billed by whichever provider you point it at. A local model through Ollama or llama.cpp costs nothing beyond the hardware.
 
 ## Limitations
 
 - End-to-end encryption is in preview and has not had a cryptography audit. It is off unless you turn it on.
 - Sign-in requires the backend, so the app is not yet usable fully offline. Once a user is signed in, chats, edits, and settings changes are written locally and replay when the network returns, but answering them needs a network unless the model runs on your own hardware.
-- Web search reaches an external provider. It is part of the **Thunderbolt** connection under **Settings → Connections**, which requires a Thunderbolt Pro subscription; without one the assistant is never offered web search at all, and with one a user can switch it off there.
+- Web search reaches an external provider. It is part of the **Thunderbolt** connection under **Settings → Connections**, on by default, and it only works when the deployment sets `EXA_API_KEY`. A user can switch the connection off there.
 - Analytics are opt-in and off by default.
 
 ## Where to go next

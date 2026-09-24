@@ -166,15 +166,15 @@ For anything beyond an evaluation we recommend pointing Thunderbolt at your own 
 
 ## What users can back up themselves
 
-The only way to capture what never reaches the server is from the device that holds it. Under **Settings → Preferences → Data**, **Export My Data** writes out chats and messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration, and the provider keys and tool server credentials the user typed. **Import Data** reads such an export back in; anything in the file that shares an ID with existing data replaces it.
+The only way to capture what never reaches the server is from the device that holds it. Under **Settings → Preferences → Data**, **Export My Data** writes out chats and messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration, and the provider keys, tool server credentials and agent credentials the user typed. **Import Data** reads such an export back in; anything in the file that shares an ID with existing data replaces it.
 
-The export leaves out attached files, their encryption keys, and their Google and Microsoft connections.
+The export leaves out attached files, the account's encryption keys, its device trust records, and Google and Microsoft connections.
 
-With end-to-end encryption on, importing on a new device still requires approving that device first.
+With end-to-end encryption on, an import lands locally straight away, but the device still has to be approved from a trusted one, or recovered with the recovery key, before sync carries any of it anywhere.
 
 > The export is plaintext JSON, API keys included. Tell users to treat the file like a password.
 
-Importing on a device with sync on pushes the restored content to the user's other devices as well, so an old export can overwrite newer content everywhere. The API keys and tool server tokens in the file are the exception: they never leave the device that imported them. The app warns about this before it writes anything, and it warns again if the file was exported by a different account.
+Importing on a device with sync on pushes the restored content to the user's other devices as well, so an old export can overwrite newer content everywhere. The provider keys, the whole tool server record, and the agent credentials in the file are the exception: they never leave the device that imported them. The app warns about this before it writes anything, and it warns again if the file was exported by a different account.
 
 ## A workable routine
 

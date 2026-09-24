@@ -8,7 +8,7 @@ An open-source AI client you deploy yourself. It runs on the web, macOS, Windows
 
 ### Who makes it, and how is it funded?
 
-We are MZLA Technologies, the entity behind Thunderbird, funded through a grant from Mozilla.
+We are MZLA Technologies, the entity behind Thunderbird, funded through a dedicated investment from Mozilla.
 
 ### Is it part of Thunderbird?
 
@@ -46,7 +46,7 @@ MPL 2.0 is file-level copyleft. Modifications to Thunderbolt's own files must be
 
 On the device. Every client reads and writes a local database first, so the app works against local data even when the network does not.
 
-Cross-device sync stays off until a user turns it on. Signing in enables it for that device, and an anonymous session never syncs; the toggle is under _Settings → Preferences → Data_. When it is on, synced rows are stored in your deployment's PostgreSQL database. Encryption applies to what is sent and stored on the server; the copy on the device stays readable locally so the app can search and render it.
+Cross-device sync is off by default and signing in turns it on for that device. An anonymous session never syncs. The toggle is under _Settings → Preferences → Data_. When it is on, synced rows are stored in your deployment's PostgreSQL database. Encryption applies to what is sent and stored on the server; the copy on the device stays readable locally so the app can search and render it.
 
 ### Can the server read my chats?
 
@@ -70,7 +70,7 @@ End-to-end encryption is in preview. It has not yet had a cryptography audit.
 
 ### Does my data leave my network?
 
-Sync and authentication stay inside your deployment, and prompts go wherever your chosen model lives. Web search reaches an external search provider, but only for users with Thunderbolt Pro who have the connection switched on.
+Sync and authentication stay inside your deployment, and prompts go wherever your chosen model lives. Web search reaches an external search provider, and only when the deployment sets `EXA_API_KEY` and the user leaves the **Thunderbolt** connection switched on.
 
 | Model you picked                    | Where the prompt goes                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -89,7 +89,7 @@ One exception: if you connect an external coding agent that stages files on its 
 
 ### Do you collect analytics?
 
-Only if a user opts in. The toggle sits under _Settings → Preferences_, off by default. Events never carry prompts, responses, or API keys, and every event and property is listed in [Telemetry](../TELEMETRY.md).
+Client events, only if a user opts in: the toggle sits under _Settings → Preferences_, off by default. A deployment that sets `POSTHOG_API_KEY` also emits two server-side events per inference call, attributed to the user id and independent of that toggle. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
 
 ## Models
 
@@ -135,7 +135,7 @@ Override them with `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYM
 
 ### Are user API keys visible to the server?
 
-No. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync. It never reaches your server, and a user who signs in on a second device has to enter it again there. We cannot read it either. No central copy exists.
+Not stored, no. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync, so no central copy exists and a user who signs in on a second device has to enter it again there. The key does pass through your server on each request, because the browser cannot call most provider APIs directly: it is forwarded and discarded, never written down, and access logs record only the destination hostname.
 
 ## Running it
 
@@ -149,7 +149,7 @@ No. A provider key, an agent credential, or a connected account's token is writt
 
 We recommend starting with Docker Compose whatever you plan to run in the end. All three read the same settings.
 
-All three deploy the same five pieces: the application frontend, the backend API, a PostgreSQL database, the sync service that replicates data between devices, and Keycloak for single sign-on over OIDC or SAML. There is no external service the deployment has to call home to.
+All three deploy the application frontend, the backend API, a PostgreSQL server (holding two databases), the sync service that replicates data between devices, and Keycloak for single sign-on over OIDC or SAML. Kubernetes and AWS add a sixth piece, the marketing and docs site. There is no external service the deployment has to call home to.
 
 ### Does it work offline?
 
@@ -162,7 +162,8 @@ Sign-in, web search, and inference against any model that is not running on your
 Every server component runs inside your network, and with a local model and no web search there is no required outbound call at runtime. Two things to plan for:
 
 - Official desktop builds check a hosted update service for new versions. Build your own or distribute installers internally if that is unacceptable.
-- Web search needs a search provider key on the backend (`EXA_API_KEY`). Leave it unset. Web search also requires Thunderbolt Pro, so it is unavailable by default on a self-hosted deployment; a Pro user can switch the **Thunderbolt** connection off under _Settings → Connections_.
+- Web search needs a search provider key on the backend (`EXA_API_KEY`). Leave it unset and no search call is possible. A user can also switch the **Thunderbolt** connection off under _Settings → Connections_.
+- Location search, the weather widget and map tiles call `geocoding-api.open-meteo.com`, `api.open-meteo.com` and `basemaps.cartocdn.com`. No setting disables them; block them at the network edge and those features degrade.
 
 We don't test air-gapped operation today, so treat it as a pilot.
 

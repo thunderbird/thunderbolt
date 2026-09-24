@@ -19,7 +19,7 @@ The Model Context Protocol (MCP) is an open standard for exposing tools to an AI
 | **Transport**             | `HTTP` for a modern streamable server, `SSE` only for a legacy server that supports nothing else |
 | **Credential (optional)** | A bearer token or API key, if the server uses one                                                |
 
-Once the URL looks complete, Thunderbolt dials the endpoint exactly the way a real chat will and lists the tools it found. **Test connection** re-runs the same check on demand. **Add Server** stays disabled until that test passes, and editing any field afterwards invalidates the result, so you cannot save a URL, transport and credential combination that was never tried together.
+Once the URL looks complete, Thunderbolt dials the endpoint exactly the way a real chat will and lists the tools it found. **Test connection** re-runs the same check on demand. **Add Server** stays disabled until that test passes, and editing the URL, transport or credential afterwards invalidates the result, so you cannot save a combination that was never tried together. Renaming does not invalidate it.
 
 ### What the test tells you
 
@@ -33,7 +33,7 @@ Once the URL looks complete, Thunderbolt dials the endpoint exactly the way a re
 
 ### Authorizing with OAuth
 
-Servers that support OAuth are handled in the app: Thunderbolt discovers the authorization server, registers itself, opens the sign-in page, and stores the resulting tokens on the device. Tokens refresh on their own shortly before they expire, and if a refresh is rejected the server card shows **Re-authorize**. Only one authorization can be in progress at a time; an abandoned one clears after 10 minutes.
+Servers that support OAuth are handled in the app: Thunderbolt discovers the authorization server, registers itself, opens the sign-in page, and stores the resulting tokens on the device. Tokens refresh on their own shortly before they expire, and if a refresh is rejected the server's detail panel shows **Authorize** again. Only one authorization can be in progress at a time; an abandoned one clears after 10 minutes.
 
 Some servers publish OAuth metadata but do not let a new client register itself. GitHub is the common example. For those, paste a personal access token in the credential field instead.
 
@@ -69,7 +69,7 @@ The add form checks something narrower: whether the address is one the device it
 
 > `http://localhost:3000/mcp` passes both the form and the JSON importer and is still refused in transit, with no warning at save time.
 
-The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it changes this. The direct path it selects needs a build flag that no released build enables, so turning it off changes nothing today.
+The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it changes this. For MCP servers it does not: the direct path needs a build flag that no released build enables, so those calls are relayed either way. External agents are different, and do follow the switch.
 
 ### Local servers
 
@@ -79,7 +79,7 @@ Servers that run as a local command cannot be added directly. Bridge one with th
 thunderbolt mcp --transport iroh -- <server-command...>
 ```
 
-The bridge prints an identity (a node ID) or a pairing ticket. Paste it into the **Server URL** field: Thunderbolt recognizes the shape, hides the transport and credential fields, and connects peer-to-peer over an encrypted link instead of over HTTP. A peer-to-peer target has no test step; the connection is verified the first time it is used.
+The bridge prints both a node ID and a pairing ticket. Paste either into the **Server URL** field: Thunderbolt recognizes the shape, hides the transport and credential fields, and connects peer-to-peer over an encrypted link instead of over HTTP. A peer-to-peer target has no test step; the connection is verified the first time it is used.
 
 For such a target the form shows an **Authorize this app on your bridge** panel with this app's pairing identity and the command to run on the machine hosting the bridge:
 
@@ -91,7 +91,7 @@ Bridges running on a machine signed in to your own account trust your own device
 
 ### How tools appear in chat
 
-Every tool is prefixed with the server name, lowercased, with anything that is not a letter or digit turned into an underscore. A server named `Acme Docs` contributes `acme_docs_search`. Two servers that reduce to the same prefix get a numeric suffix; a tool whose full name still collides with an existing one is skipped. The assistant is told which servers are connected and how many tools each contributes, and tool calls in the transcript are labelled with the server they came from.
+Every tool is prefixed with the server name, lowercased, with each run of non-alphanumeric characters turned into a single underscore. A server named `Acme Docs` contributes `acme_docs_search`. The second and later servers that reduce to the same prefix get a numeric suffix; a tool whose full name still collides with an existing one is skipped. The assistant is told which servers are connected and how many tools each contributes, and tool calls in the transcript are labelled with the server they came from.
 
 ### Switching off and removing
 
@@ -99,7 +99,7 @@ A disabled server is not connected and its tools are not offered. Deleting a ser
 
 ### Where server settings are stored
 
-MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both. Signing out, deleting your account, or revoking the device erases them along with the rest of the local data.
+MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both. Deleting your account erases them along with the rest of the local data. Signing out, or having the device revoked, offers to keep or delete that data: only the delete choice removes them.
 
 ## External agents
 
@@ -107,11 +107,11 @@ An external agent is a separate program that answers a chat instead of the built
 
 Each chat keeps its own agent, picked from the selector at the top of the chat window. The selector is locked while a reply is streaming.
 
-An external agent brings its own model, so the model picker is hidden while one is selected, and its own tools, so your MCP servers are not offered to it. Your enabled skills are still handed over ([Skills](./skills.md)).
+An external agent brings its own model, so the model picker is hidden while one is selected and your entries under **Settings → Models** do not apply to it. It brings its own tools too, so your MCP servers are not offered to it. Your enabled skills are still handed over ([Skills](./skills.md)).
 
 ### Where agents come from
 
-The built-in assistant is part of Thunderbolt and needs no setup. Agents served by your deployment need no setup either; they appear under **System agents**. Anything else that speaks ACP and that you can reach is added by you, and shows up under **Your agents**.
+The built-in assistant needs no setup and appears under **Your agents**, marked as built into the app. Agents your deployment serves need no setup either and appear under **System agents**. Anything else that speaks ACP and that you can reach is added by you, alongside the built-in one. The two headings only appear when you have both kinds.
 
 ### Adding your own
 
@@ -142,7 +142,7 @@ A loopback bridge is also available (`--transport wss`, default port `8839`), pr
 
 When an agent asks permission to run a tool, the chat shows an inline prompt before anything happens. It names the action, shows the exact command or arguments, and lists any files involved.
 
-The buttons the agent itself offers are usually allow once, allow always, reject once and reject always. Your answer goes straight back to the agent. Two further buttons go beyond them. **Always allow all ... actions** approves this call and every later action of the same kind from this agent, where a kind is editing, deleting, running a command, or moving a file. **Always allow everything from this agent** approves this call and anything else the agent asks for. A remembered allowance lasts until the app is reloaded or restarted; it is not written to disk and not shared with your other devices.
+The buttons the agent itself offers are usually allow once, allow always, reject once and reject always. Your answer goes straight back to the agent. Two further buttons go beyond them. **Always allow all ... actions** approves this call and every later action of the same kind from this agent, where a kind is reading, editing, deleting, moving, searching, running a command, and so on. **Always allow everything from this agent** approves this call and anything else the agent asks for. A remembered allowance lasts until the app is reloaded or restarted; it is not written to disk and not shared with your other devices.
 
 > **Always allow everything from this agent** is as broad as it sounds. We recommend it only for an agent you run yourself.
 
@@ -152,11 +152,11 @@ Agents can also advertise their own commands. Those appear in the composer's sla
 
 Whoever runs the backend decides which agents are available at all.
 
-| Setting                  | Default | Effect                                                                      |
-| ------------------------ | ------- | --------------------------------------------------------------------------- |
-| `ENABLED_AGENTS`         | empty   | Comma-separated list of agent IDs to expose. Empty exposes all              |
-| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the New Agent action in Settings and in the chat's agent menu |
-| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in assistant from the list entirely                |
+| Setting                  | Default | Effect                                                                                                                            |
+| ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `ENABLED_AGENTS`         | empty   | Comma-separated list of **system** agent IDs to expose. Empty exposes all of them. Does not affect the built-in agent or your own |
+| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the New Agent action in Settings and in the chat's agent menu                                                       |
+| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in assistant from the list entirely                                                                      |
 
 If the list cannot be fetched while you are offline, the agents you already had stay in place.
 
@@ -170,7 +170,7 @@ The Connections screen also lists three ready-made integrations.
 | Google      | Gmail inbox check, search and read, draft creation, Google Calendar           |
 | Microsoft   | Outlook messages, OneDrive file search and file contents                      |
 
-Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Mail access stops at drafting: the assistant can create a draft, but cannot send one.
+Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Google mail access stops at drafting: the assistant can create a draft, but cannot send one. Microsoft access is read-only.
 
 ## What a connection can and cannot reach
 

@@ -7,7 +7,7 @@ operator of a deployment.
 
 ## The short version
 
-Conversations live on each device first, and reach your server only if the user turns sync on. With
+Conversations live on each device first, and reach your server only once sync is on for that device. With
 sync on and encryption off you can read a user's chats from your database; with encryption on you
 cannot. Provider API keys stay on the device that entered them and never reach your server or
 another device. Uploaded files stay on the device too, and are sent only inside the request that
@@ -24,7 +24,7 @@ and a user who opts in.
 | Chats, messages, tasks, skills, projects, automations, settings | Always        | Only when the user enables sync     |
 | Model configuration (names, endpoints, tuning)                  | Always        | Only when the user enables sync     |
 | External agent entries (name, address, description)             | Always        | Only when the user enables sync     |
-| The device list (names, last-seen times)                        | Always        | Always                              |
+| The device list (names, last-seen times)                        | Always        | Once the device registers for sync  |
 | Provider API keys                                               | Always        | Never                               |
 | Tool server addresses and their credentials                     | Always        | Never                               |
 | External agent credentials                                      | Always        | Never                               |
@@ -36,7 +36,9 @@ A **tool server** here means an MCP server: a small service a user points the ap
 call its tools.
 
 Every device keeps a full local database and reads and writes there first, so the app works offline
-once the user is signed in. Sync is per user and off until they turn it on. With `POWERSYNC_URL`
+once the user is signed in. Sync is per device and off by default, but signing in through the in-app
+sign-in modal turns it on: silently when encryption is off, and by opening the device-setup wizard
+when it is on. With `POWERSYNC_URL`
 unset there is no sync at all and your server never receives conversation data. Even with sync on,
 uploaded file contents, provider API keys, and tool server and external agent credentials never
 leave the device: a file attached on a laptop is not readable from the same account's phone, and a
@@ -68,13 +70,13 @@ setting to match.
 **What it covers**
 
 Before upload the device encrypts message content, chat titles, task text, saved prompts, skill
-text, project names and instructions, device names, setting values, model names and endpoints and
+text, project names, descriptions and instructions, setting values, model names and endpoints and
 descriptions, per-model tuning overrides, and automation schedule times. Anything not in that list
 syncs as plain text.
 
 Record ids, timestamps, relationships, ordering, deletion markers and on/off flags stay readable on
-the server, and so do external agent entries: an agent's name, address, description and icon sync in
-the clear. The external agent gap is a known omission rather than a design decision, and a fix is
+the server. So do device names, which the app sends in a header on every sync-token request, and
+external agent entries: an agent's name, address, description and icon sync in the clear. The external agent gap is a known omission rather than a design decision, and a fix is
 planned.
 
 **Limits worth knowing before you commit**
@@ -90,16 +92,16 @@ planned.
 
 ## What leaves your deployment
 
-| Destination                                    | What it receives                                                                                                                           | How to stop it                                                                                                                                                                                 |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model providers the user adds                  | The prompt, conversation history, and attachments, plus the user's own API key                                                             | Point users at a local model server instead                                                                                                                                                    |
-| Tool servers and external agents the user adds | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential | `ALLOW_CUSTOM_AGENTS=false` blocks user-added agents. MCP servers have no equivalent switch                                                                                                    |
-| Managed models you configure                   | Depends on the tier, see below                                                                                                             | Leave the provider keys unset                                                                                                                                                                  |
-| Exa (web search, page fetch)                   | The search query, and the URL of any page the model reads                                                                                  | Leave `EXA_API_KEY` unset. These tools also require Thunderbolt Pro, so they are unavailable by default; a Pro user can switch the **Thunderbolt** connection off under Settings → Connections |
-| Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                               | Not separately configurable today                                                                                                                                                              |
-| Resend                                         | The recipient address for sign-in codes and waitlist mail                                                                                  | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                                                                |
-| PostHog                                        | Product analytics, never prompt or response content                                                                                        | Leave `POSTHOG_API_KEY` unset                                                                                                                                                                  |
-| The Thunderbolt team                           | Nothing, unless you configure debug transcript forwarding                                                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                                                                              |
+| Destination                                    | What it receives                                                                                                                           | How to stop it                                                                                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model providers the user adds                  | The prompt, conversation history, and attachments, plus the user's own API key                                                             | Point users at a local model server instead                                                                                                     |
+| Tool servers and external agents the user adds | An MCP server gets the arguments of each tool call; an external agent gets the conversation it answers. Both get the user's own credential | `ALLOW_CUSTOM_AGENTS=false` hides the add-agent control; it is not enforced server-side. MCP servers have no equivalent switch                  |
+| Managed models you configure                   | Depends on the tier, see below                                                                                                             | Leave the provider keys unset                                                                                                                   |
+| Exa (web search, page fetch)                   | The search query, and the URL of any page the model reads                                                                                  | Leave `EXA_API_KEY` unset and neither tool can call out. A user can also switch the **Thunderbolt** connection off under Settings → Connections |
+| Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                               | Not separately configurable today                                                                                                               |
+| Resend                                         | The recipient address for sign-in codes and waitlist mail                                                                                  | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
+| PostHog                                        | Product analytics, never prompt or response content                                                                                        | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
+| The Thunderbolt team                           | Nothing, unless you configure debug transcript forwarding                                                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
 
 Requests to a user-added provider or tool server pass through your server, because a browser cannot
 call most provider APIs directly. Your server forwards the bytes and the user's credential untouched
@@ -206,8 +208,9 @@ user's conversations. What follows is about direct access to your own database a
 
 An export file does not include attached file contents.
 
-> It does contain the user's provider API keys, tool server credentials, external agent keys and
-> connected-account tokens in plain text, and it is not encrypted at rest. Treat it as a secret.
+> It does contain the user's provider API keys, tool server credentials and external agent keys in
+> plain text, and it is not encrypted at rest. Treat it as a secret. Google and Microsoft tokens are
+> the one credential class left out; the user re-authorizes those on the new device.
 
 ## Hardening a deployment
 

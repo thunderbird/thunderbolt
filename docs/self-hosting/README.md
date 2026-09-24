@@ -22,7 +22,7 @@ The app is the chat interface, served to a browser as a static site. The API beh
 
 Three more pieces run alongside them. PostgreSQL holds accounts, sessions, and the server-side copy of synced data. PowerSync keeps every signed-in device holding the same data and streams changes as they happen; it is part of the stack and needs no external service. Keycloak, the identity provider, arrives preloaded with a realm and a demo user, so sign-in works on first boot.
 
-Only the database and the identity provider can be replaced. Any OIDC or SAML identity provider can stand in for Keycloak. The database can be replaced on Docker Compose: drop the bundled PostgreSQL and point `DATABASE_URL` at a managed service such as Amazon RDS, after creating the replication role and publication the sync service needs. The Kubernetes chart and the AWS project do not offer that; both always run the PostgreSQL they deploy.
+Only the database and the identity provider can be replaced. Any OIDC or SAML identity provider can stand in for Keycloak. The database can be replaced on Docker Compose: drop the bundled PostgreSQL and point `DATABASE_URL` at a managed service such as Amazon RDS, after creating the replication role and publication the sync service needs. That value is written into `deploy/docker-compose.yml` rather than read from `deploy/.env`, so it has to be changed in the compose file. The Kubernetes chart and the AWS project do not offer that; both always run the PostgreSQL they deploy.
 
 Separately, the sync service keeps its own bookkeeping in a second database (`powersync_storage`) on the same server. Don't put that one on managed PostgreSQL 17. The sync service hangs partway through startup against RDS-managed 17 and logs nothing to tell you why. Keep it on the PostgreSQL the deployment ships, or on an unmanaged instance.
 
@@ -37,7 +37,7 @@ Each user's device keeps its own local database and reads and writes there first
 | Sign-in               | OIDC through the bundled Keycloak. SAML is also supported: switch `AUTH_MODE` to `saml` and supply your provider's details.                                                                                                |
 | Identity realm        | `thunderbolt`, imported the first time Keycloak boots.                                                                                                                                                                     |
 | Demo user             | `demo@thunderbolt.io` / `demo`                                                                                                                                                                                             |
-| Keycloak admin        | `admin` / `admin` on Docker Compose and Kubernetes. The AWS path generates a random password unless you set one.                                                                                                           |
+| Keycloak admin        | `admin` / `admin` on every path, AWS included. Set `keycloakAdminPassword` before anyone can reach the deployment.                                                                                                         |
 | Waitlist              | Off. Anyone your identity provider authenticates can sign in.                                                                                                                                                              |
 | Analytics             | Off. Nothing is sent unless you configure an analytics service, and each user still has to opt in.                                                                                                                         |
 | End-to-end encryption | Off. Turning on `E2EE_ENABLED` applies it to the whole deployment: message content is encrypted on the device, your servers hold only ciphertext, and each new device has to be approved from one the user already trusts. |
@@ -50,7 +50,7 @@ Each user's device keeps its own local database and reads and writes there first
 - A domain and DNS control, for a shared deployment only. Docker Compose on `localhost` needs neither.
 - TLS certificates, because anything other than `localhost` must be served over HTTPS. Issue them with cert-manager on Kubernetes, AWS Certificate Manager on AWS, or your own certificate authority.
 - Access to at least one model, whether a provider key set on the server, a key each user adds in the app, or a local endpoint such as Ollama or llama.cpp.
-- `BETTER_AUTH_SECRET` to sign sessions, generated with `openssl rand -hex 32`. Compose and Kubernetes refuse to start without it; the AWS path generates one if you do not supply it.
+- `BETTER_AUTH_SECRET` to sign sessions, generated with `openssl rand -hex 32`. Compose and Kubernetes refuse to start without it. The AWS path does not: leave `betterAuthSecret` unset and it falls back to a fixed value published in this repository.
 - `POWERSYNC_JWT_SECRET`, 32 characters or more, required once sync is turned on. The API and the sync service must be given the same value.
 
 [Requirements](./requirements.md) has the detail behind each of these: sizing per service, database prerequisites, ports, and the outbound addresses to allow through a firewall.

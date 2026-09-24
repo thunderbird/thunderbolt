@@ -46,8 +46,10 @@ The 15-second cooldown is held in memory by the process that served the request,
 deployment running several workers or replicas. The per-IP limit is recorded in the database and so is
 shared across them, unless you set `RATE_LIMIT_ENABLED=false`, which turns it off everywhere.
 
-> Without `RESEND_API_KEY` the API never sends a sign-in email. It writes the code and link to its
-> own log instead. That is enough to evaluate the deployment and leaves real users unable to sign in.
+> Without `RESEND_API_KEY` no sign-in email is sent. Outside production the API logs the code and
+> link instead, which is enough for a local evaluation. On `NODE_ENV=production`, which both the
+> packaged Compose and Helm deployments set, the send throws and the request fails, so consumer mode
+> needs the key.
 
 ## The waitlist
 
@@ -66,8 +68,9 @@ need:
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 ```
 
-Any address ending in a listed domain is approved the first time it asks and gets a code
-immediately. Matching uses the part after the last `@` and ignores case. Settings are read once at
+An address whose domain is exactly one of the listed entries is approved the first time it asks and
+gets a code immediately. Matching uses the part after the last `@` and ignores case. Subdomains are
+not covered, so list `mail.example.com` separately if you need it. Settings are read once at
 startup, so restart the API after changing this.
 
 ### Approve one address
@@ -106,9 +109,10 @@ The API works down this list and stops at the first match.
 | 3     | Ends in a domain you auto-approve  | Code sent, and the address is recorded as approved |
 | 4     | Anything else                      | Queued. No code                                    |
 
-Every well-formed request answers the same way, with the same status and the same wording, whether the
-address is brand new, queued, approved, or an existing account, so the sign-in form cannot be used to
-find out who already has an account here.
+Every well-formed request returns the same `200`, so the failure modes an enumerator looks for, a 404
+or an "already registered" error, do not exist. The body does differ: an approved address gets a
+challenge token and a queued one does not, so the endpoint reveals whether an address is approved. It
+cannot distinguish an existing account from an approved waitlist row.
 
 ### What the person receives
 
@@ -186,10 +190,11 @@ signs in for the first time.
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                                          |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data             |
 
-Deleting the account stops new requests at once. Each of their signed-in devices notices on its next
-check with the API, clears its local copy, and shows an account-deleted screen. A device that is
-offline and stays offline keeps what it has, so treat device recovery as a separate step for a
-high-stakes departure.
+Deleting the account stops new requests at once. Each of their devices that has sync on notices on
+its next check with the API, clears its local copy, and shows an account-deleted screen. A signed-in
+device with sync off only sees its session fail and is asked to sign in again, and keeps its local
+copy; so does a device that stays offline. Treat device recovery as a separate step for a high-stakes
+departure.
 
 Revoking a single device stops that device syncing and cuts its sessions, and the person is asked
 whether to keep or erase the local copy.

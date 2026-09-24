@@ -21,7 +21,7 @@ kubectl -n thunderbolt get deploy -o jsonpath='{range .items[*]}{.metadata.name}
 pulumi config get version -s <stack-name>
 ```
 
-Signed-in users can also check **Settings → Preferences → App Version**, which shows the version of the app they have loaded.
+**Settings → Preferences → App Version** shows the version of the app a client has loaded, signed in or not.
 
 ## How versions are published
 
@@ -48,7 +48,7 @@ Kubernetes uses only three of the six: the Helm chart runs stock PostgreSQL, syn
 
 Version numbers are not frozen, either. The images are rebuilt and republished under the same tag on every merge to the main branch that touches the app, the API or the deployment files, until the next version bump moves the number on. Two pulls of `0.1.133` a week apart are not guaranteed to be the same build. If you need a build you can prove is unchanged, record the image digest at deploy time and pin to that.
 
-> **`latest` is not a release channel.** It is rebuilt on every merge to the main branch and again each night, so it can change under you between two runs of the same command. Set an explicit version tag for anything other than a throwaway evaluation.
+> **`latest` is not a release channel.** It is rebuilt on every merge that touches the app, the API or the deployment files, and again each night, so it can change under you between two runs of the same command. Set an explicit version tag for anything other than a throwaway evaluation.
 >
 > The Helm chart ships `latest` as its default image tag with a pull policy of `IfNotPresent`. On a node that already holds an image tagged `latest`, an upgrade will reuse the old one and appear to do nothing. This is the most common cause of "the upgrade ran but nothing changed".
 
@@ -118,9 +118,9 @@ kubectl get pods -n thunderbolt -w
 kubectl logs -n thunderbolt deploy/backend -f
 ```
 
-Expect the API to be briefly unavailable while this happens: it runs one replica by default and holds off serving until migrations finish.
+Helm's rolling update keeps the old API pod serving until the new one passes its readiness probe, and the new pod holds off readiness until migrations finish, so the swap is usually seamless. The AWS Fargate path is the one that drops traffic, since it replaces the task rather than overlapping it.
 
-Changing a configuration value on its own does not restart anything. Values that are rendered into configuration rather than into the pod definition, such as the Keycloak realm or the sync rules, take effect only when the pod is replaced, which you force with `kubectl rollout restart deployment/<name> -n thunderbolt`.
+Most values are rendered into the pod definition, so changing one rolls that deployment by itself. Values rendered into mounted configuration instead, such as the Keycloak realm or the sync rules, take effect only when the pod is replaced, which you force with `kubectl rollout restart deployment/<name> -n thunderbolt`.
 
 The database keeps its persistent volume across upgrades and across an uninstall. Deleting the volume claim is the only way to lose it.
 
@@ -141,7 +141,7 @@ If you deploy through the repository's stack workflow instead, pass the same ver
 
 ## Database migrations
 
-Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand, and you cannot skip them: the API will not start without applying them. They are also **not** reversible: migrations are forward-only, and there are no down migrations. If one fails, the container exits and the reason is in its log. Any changes that already succeeded in that run stay applied.
+Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand. `SKIP_MIGRATIONS=true` stops the API applying them in-process, but the container image's entrypoint runs `drizzle-kit migrate` before the server starts regardless, so migrating separately means overriding the container command as well. They are **not** reversible: migrations are forward-only, and there are no down migrations. The whole run goes in one transaction, so if any migration fails the rest roll back with it, the container exits, and the reason is in its log.
 
 Forward-only also means going back to an older image does not undo a schema change. Some releases drop columns or tables, and an older API against a newer schema may fail. A database backup taken before the upgrade is the only real rollback for a schema change.
 
@@ -165,7 +165,7 @@ Browsers pick up an upgrade on reload. Nothing is installed, so there is no user
 
 Data already synced to a device stays on that device through a server upgrade. Devices reconcile against the server when they reconnect.
 
-A version can also change the models, skills and tasks the app ships with. Those are rows in each user's own data, reconciled on the next load: rows the user has edited or deleted are left as they are, the rest are updated.
+A version can also change the models, skills and tasks the app ships with. Those are rows in each user's own data, reconciled on the next load: rows the user has edited or deleted are left as they are, the rest are updated. A default the new version retires outright is the exception, and is removed even if the user had customised it.
 
 If a release is not backwards compatible with older clients, set `MIN_APP_VERSION` to the lowest version you want to allow. Clients below it are refused with `426 Upgrade Required`. It is read once at startup, so restart the API after changing it. Leave it empty to accept any client. See [Configuration](./configuration.md#minimum-client-version).
 
@@ -204,7 +204,7 @@ The Keycloak that ships with the deployment runs in development mode with no sto
 
 We recommend pointing the deployment at your own identity provider, which upgrades never touch. If you keep the bundled one, put its configuration in the realm file the deployment imports so a restart reproduces it. See [Configuration](./configuration.md#authentication).
 
-The same applies to the bundled PostgreSQL in one narrower case: its major version is pinned, and its data directory is tied to that major version. An upgrade of Thunderbolt never changes it. Moving PostgreSQL to a new major version is a separate migration you perform yourself.
+The bundled PostgreSQL needs the same care for a different reason. Its major version is pinned per release and its data directory is tied to that major, and a release can move it: the packaged image and the Compose and Helm defaults have not always been on the same major. An existing data directory will not start under a new one. Read the release notes before upgrading, and plan a `pg_upgrade` or a dump and restore when the major moves.
 
 ## After the upgrade
 

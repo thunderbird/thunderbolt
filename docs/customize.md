@@ -1,7 +1,7 @@
 # Customize
 
-Everything below is changed in the app under **Settings**, except the deployment-level switches at
-the end.
+Everything below is changed in the app under **Settings**, except Projects, which live in the chat
+sidebar, and the deployment-level switches at the end.
 
 | Settings page   | What you change there                                                                   |
 | --------------- | --------------------------------------------------------------------------------------- |
@@ -24,10 +24,16 @@ add, your Google and Microsoft authorizations, the theme, haptics, link-opening 
 engine, the cloud proxy, and whether this device syncs at all. MCP servers are device-local in full,
 the server entry as well as its secret, because an entry without its credential cannot connect.
 
-Those device-local items reach a second device only through the export under
-**Preferences → Data**, which includes them. See [Apps and sync](using/apps-and-sync.md).
+The export under **Preferences → Data** carries your provider keys, MCP servers and their
+credentials, and agent credentials to a second device. It does not carry your Google or Microsoft
+authorization, which you re-authorize there, or the per-device interface preferences: theme,
+haptics, link behaviour, speech engine, and the proxy and sync switches. See
+[Apps and sync](using/apps-and-sync.md).
 
 ## Models
+
+Everything in this section applies to the built-in Thunderbolt agent. An external agent runs a
+model of its own, chosen at its end, and ignores what you configure here.
 
 ### Providers
 
@@ -120,9 +126,10 @@ and none doubled.
 The model sees one line per enabled skill and fetches the body only when it decides that skill
 applies. A vague description means the skill is never used.
 
-Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. A
-handful of built-in skills define how Thunderbolt renders things like weather and maps in a reply:
-those can be switched off but not edited or deleted, and once unpinned cannot be pinned again. Your
+Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. Five
+built-in skills define how Thunderbolt renders things like weather and maps in a reply: those can be
+switched off but not edited or deleted, and once unpinned cannot be pinned again. The other four it
+ships with, Search, Research, Daily Brief and Important Emails, you can edit or delete like your own. Your
 edits to a built-in skill are preserved when Thunderbolt updates its own copies. Worked examples:
 [Skills](using/skills.md).
 
@@ -131,12 +138,12 @@ edits to a built-in skill are preserved when Thunderbolt updates its own copies.
 **Settings → Connections** holds two different things.
 
 **Integrations** are ready-made connections we supply. The Thunderbolt one gives the
-assistant web search, page fetching and weather, and requires Thunderbolt Pro: without Pro the row
-offers Get Pro and the assistant gets none of those tools, and with Pro you can switch the
-integration off here. Google covers Gmail (read, search, draft) and Google Calendar; Microsoft
+assistant web search and page fetching, and is on by default; it does nothing unless the deployment
+sets `EXA_API_KEY`. You can switch it off here. Google covers Gmail (read, search, draft) and Google Calendar; Microsoft
 covers Outlook mail and OneDrive files. Both need you to authorize the account first.
 
-Authorizing is per device, and so is switching an integration off.
+Authorizing Google or Microsoft is per device, and so is switching either of them off. Switching the
+Thunderbolt integration off applies to every device on the account.
 
 **MCP servers** are yours to add. [Model Context Protocol](https://modelcontextprotocol.io) is an
 open standard for exposing tools to an AI client, so an MCP server is a tool server: it publishes a
@@ -179,8 +186,8 @@ use:
   anywhere else, though a data export carries them across on restore.
 - Deleting a server deletes its stored credential with it.
 
-> A plain `http` URL saves without complaint and then never connects. Use `https` for anything that
-> is not on the machine in front of you.
+> A `localhost` or private-network `http` URL saves without complaint and then never connects, because
+> the relay refuses those targets. A plain `http` URL on a public host is rejected at save instead.
 
 ## Projects
 
@@ -205,16 +212,16 @@ voice to speak in. The choice is per device. See [Voice](using/voice.md).
 
 ## Preferences
 
-| Section                  | Controls                                                                            | Scope              |
-| ------------------------ | ----------------------------------------------------------------------------------- | ------------------ |
-| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Sidebar, Browser), haptics | This device        |
-| Personalization          | Preferred name                                                                      | Your account       |
-| Localization             | Location, language, distance, temperature, time format, currency                    | Your account       |
-| Help Thunderbolt Improve | Preview features, anonymous usage data                                              | Your account       |
-| Network                  | Use cloud proxy                                                                     | This device        |
-| Data                     | Sync this device, export, import, delete local data, and delete the whole account   | Mostly this device |
+| Section                  | Controls                                                                                                       | Scope              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------ |
+| User Experience          | Theme (Light, Dark, System), where chat links open (Ask, Browser or New tab, plus Sidebar on desktop), haptics | This device        |
+| Personalization          | Preferred name                                                                                                 | Your account       |
+| Localization             | Location, language, distance, temperature, time format, currency                                               | Your account       |
+| Help Thunderbolt Improve | Preview features, anonymous usage data                                                                         | Your account       |
+| Network                  | Use cloud proxy                                                                                                | This device        |
+| Data                     | Sync this device, export, import, delete local data, and delete the whole account                              | Mostly this device |
 
-Any preference you have changed from its shipped value shows a revert control next to it.
+Most preferences show a revert control next to them once changed from their shipped value.
 
 **Localization.** Setting a location seeds units, time format and currency from the conventions of
 that region, and you can override any of them individually. Changing the language changes the
@@ -237,13 +244,13 @@ An operator can restrict what users are allowed to customize. These are environm
 on the backend, not in-app settings, and changing one needs a restart. Full list:
 [Configuration](self-hosting/configuration.md).
 
-| Variable                                 | Default | Effect                                                                  |
-| ---------------------------------------- | ------- | ----------------------------------------------------------------------- |
-| `ALLOW_CUSTOM_AGENTS`                    | `true`  | `false` hides the add-agent control, leaving only agents you provide    |
-| `DISABLE_BUILT_IN_AGENT`                 | `false` | `true` removes Thunderbolt's own assistant from the agent list          |
-| `ENABLED_AGENTS`                         | empty   | Comma-separated list of the agent ids to offer. Empty means all of them |
-| `ANTHROPIC_API_KEY`, `FIREWORKS_API_KEY` | unset   | Enable the managed direct model tier                                    |
-| `TINFOIL_API_KEY`                        | unset   | Enables the managed confidential model tier                             |
+| Variable                 | Default | Effect                                                                  |
+| ------------------------ | ------- | ----------------------------------------------------------------------- |
+| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the add-agent control, leaving only agents you provide    |
+| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes Thunderbolt's own assistant from the agent list          |
+| `ENABLED_AGENTS`         | empty   | Comma-separated list of the agent ids to offer. Empty means all of them |
+| `ANTHROPIC_API_KEY`      | unset   | Enables the managed direct model tier                                   |
+| `TINFOIL_API_KEY`        | unset   | Enables the managed confidential model tier                             |
 
 There is no server-side control over which models, skills or MCP servers an individual user adds
 for themselves.

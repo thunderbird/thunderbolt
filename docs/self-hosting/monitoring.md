@@ -60,14 +60,14 @@ An unauthenticated caller never causes a probe to run, so the endpoints cannot b
 
 ### Failure reasons
 
-| Reason              | Applies to            | What it means                                                                     |
-| ------------------- | --------------------- | --------------------------------------------------------------------------------- |
-| `timeout`           | all                   | The dependency did not answer inside the deadline.                                |
-| `unreachable`       | database, sync, email | Connection refused, DNS failure, or the network path is broken.                   |
-| `not-configured`    | sync, email           | `POWERSYNC_URL` or `RESEND_MONITORING_API_KEY` is unset.                          |
-| `http-<code>`       | sync, email           | The dependency answered, with an error status.                                    |
-| `rejected`          | email                 | The email provider refused the key. Usually a sending-only key, or a revoked one. |
-| `domain-unverified` | email                 | The sending domain is missing from your provider account, or not verified yet.    |
+| Reason              | Applies to            | What it means                                                                                    |
+| ------------------- | --------------------- | ------------------------------------------------------------------------------------------------ |
+| `timeout`           | all                   | The dependency did not answer inside the deadline.                                               |
+| `unreachable`       | database, sync, email | Anything that is not a timeout: refused connection, DNS, bad credentials, or a missing database. |
+| `not-configured`    | sync, email           | `POWERSYNC_URL` or `RESEND_MONITORING_API_KEY` is unset.                                         |
+| `http-<code>`       | sync, email           | The dependency answered, with an error status.                                                   |
+| `rejected`          | email                 | The email provider refused the key. Usually a sending-only key, or a revoked one.                |
+| `domain-unverified` | email                 | The sending domain is missing from your provider account, or not verified yet.                   |
 
 The email probe asks the provider for your verified sending domains, so it needs a key with read access to that list. Keep `RESEND_API_KEY` sending-only and give the probe its own `RESEND_MONITORING_API_KEY`. It looks for the fixed sender domain `auth.thunderbolt.io`, which no setting changes, so the probe is red until that domain is verified on the account the key belongs to.
 
@@ -103,7 +103,7 @@ The probe exercises only the models your deployment is configured to serve; mode
 | `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed sign-in codes are the only way in under `AUTH_MODE=consumer`. Single sign-on deployments do not use them.                             |
 | `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                         |
 | API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                               |
-| A sustained rise in `429` responses          | ticket                                  | Rate limits are not configurable. A steady stream means a client is misbehaving or your team has outgrown the limits.                         |
+| A sustained rise in `429` responses          | ticket                                  | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                     |
 | A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                      |
 | `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                             |
 
@@ -127,7 +127,7 @@ Request lines use the Apache common log format with a response time appended:
 
 The client address is the connecting socket unless `TRUSTED_PROXY` is set to `cloudflare` or `akamai`. Behind a load balancer and without it, every line shows the balancer's address. Don't set it unless you know exactly what sits in front of the server. Trusting the wrong header lets any client claim any IP and walk straight past the rate limits.
 
-Requests to `/v1/health` and to static assets are not access-logged, so load balancer traffic will not drown the log. The deep probes under `/v1/health/` are logged like any other request.
+Requests to `/v1/health`, to static assets, and to the analytics proxy under `/v1/posthog/` (its config request aside) are not access-logged, so load balancer traffic will not drown the log. The deep probes under `/v1/health/` are logged like any other request.
 
 ### What is never in a log
 
@@ -153,13 +153,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 OTEL_EXPORTER_OTLP_TOKEN=your-collector-token
 ```
 
-Leave `OTEL_EXPORTER_OTLP_ENDPOINT` unset and tracing is off entirely, with nothing loaded and no overhead. The token is optional and sent as a bearer token, for collectors that require one. Tested against BetterStack, Jaeger, Zipkin, New Relic and Grafana Cloud.
+Leave `OTEL_EXPORTER_OTLP_ENDPOINT` unset and tracing is off entirely, with nothing loaded and no overhead. The token is optional and sent as a bearer token, for collectors that require one. Any OTLP collector works; we test with BetterStack.
 
 ## Not provided
 
 Thunderbolt exposes no Prometheus metrics and no `/metrics` endpoint, so dashboards have to come from your platform's container metrics and from traces. Alerting is not built in either: the endpoints are there, and the polling, thresholds and paging are yours. Health endpoints report the present moment and store nothing, so nothing on the server holds uptime history.
 
-The server keeps no view of usage. Conversations live on the user's devices, so there is no per-user or per-conversation telemetry to collect server-side, and although spend on the preconfigured models is recorded per request, nothing renders it for an administrator.
+Nothing aggregates usage for an administrator. Conversation rows do reach the database for every user who turns sync on, but no endpoint or dashboard summarizes them, and although spend on the preconfigured models is recorded per request, nothing renders that for an administrator either.
 
 Nothing verifies your backups. Monitoring that your PostgreSQL backups exist and restore is your responsibility, and those backups hold every account and the synced copy of every conversation.
 

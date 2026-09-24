@@ -23,13 +23,13 @@ Settings → Preferences.
 | **Browser**       | Opens in your default browser (a new tab on the web) with no confirmation                                                                             |
 
 Each device keeps its own copy of this preference, and on the web **Browser** is shown as **New
-tab**. Only `http` and `https` links open in the panel; any other link shows the confirmation dialog
-instead.
+tab**. Only `http` and `https` links open in the panel. A link using any other scheme is inert: clicking it
+does nothing.
 
 ## Using the panel
 
 The panel holds one thing at a time, so opening a page replaces whatever was in it: an attachment
-preview, a tool result, or an artifact.
+preview, a cited source, a tool result, or an artifact.
 
 Drag the divider between the chat and the panel to resize it, and the width is remembered for next
 time. An open page covers the right half of that divider, so drag from the left half, the side
@@ -39,7 +39,7 @@ nearest the chat.
 
 Pages open in a private session. Nothing from the page is written to disk, and each page you open
 starts from a clean state, with no cookies, logins, or stored preferences carried over from the last
-one. You can sign in to a site, but the session will not survive a reload or a second visit.
+one. You can sign in to a site, and the session lasts until you close the page or open another one in the panel. The next visit starts signed out.
 
 The page connects directly to the site, bypassing the backend proxy that carries your model and MCP
 traffic. The site sees your real IP address and the usual device details a browser reveals, such as

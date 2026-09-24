@@ -17,11 +17,11 @@ A device is one install signed in to the account, identified by an ID stored loc
 - Every tab of the same browser profile is one device. A different browser, or a different profile in the same browser, is a separate device.
 - Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows". They cannot be renamed.
 - Headless bridges for external agents appear in the list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in is a session with no entry in this list.
-- An account can hold **10 active devices**. Devices waiting for approval and revoked devices do not count, so a device can register past the limit and then fail at approval. To free a slot, revoke one.
+- An account can hold **10 active devices**. Devices waiting for approval and revoked devices do not count, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. To free a slot, revoke one.
 
 ## Adding a device
 
-Sign in on the new device with the same account, then open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**. With encryption off the device starts syncing right away, after the app warns that synced data is stored on the server unencrypted. Turn encryption on and it registers as pending instead, unable to read synced data until it is approved. Either way the person has to be signed in to a real account first, because anonymous sessions cannot sync.
+Sign in on the new device with the same account, then open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**. With encryption off the device starts syncing right away, with no confirmation step. Turn encryption on and it registers as pending instead, unable to read synced data until it is approved. Either way the person has to be signed in to a real account first, because anonymous sessions cannot sync.
 
 ## Approving a device (encryption on)
 
@@ -30,7 +30,7 @@ A pending device shows an "Approve this device" screen and polls for the result,
 - **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. The trusted device hands the new one a copy of the account's encryption key, wrapped so that only the new device can open it.
 - **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the 24 word phrase saved at first setup. This is the path when no other device is available.
 
-**Deny** dismisses the request without revoking anything, and that device can ask again; a pending device can also withdraw its own request. The approving device has to be a regular app device that is trusted and not revoked. A CLI device cannot approve, and neither can a device that is itself still pending.
+**Deny** dismisses the request without revoking anything, and that device can ask again; a pending device can also withdraw its own request. The approving device has to be trusted and not revoked, and cannot be a CLI device or a device that is itself still pending. Revoking is stricter: only a regular app device can do that.
 
 ## The recovery key
 
@@ -80,7 +80,7 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 
 The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again when encryption is on.
 
-A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** only when nobody has signed in yet, for someone trying the app without an account. It wipes that device's local database and nothing else.
+A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local database and nothing else.
 
 ## Deleting an account
 

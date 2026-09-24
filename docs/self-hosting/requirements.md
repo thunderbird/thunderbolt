@@ -68,17 +68,20 @@ Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps e
 
 The containers themselves speak plain HTTP and expect TLS to terminate in front of them, at your ingress controller, load balancer, or a reverse proxy such as Caddy or Traefik. cert-manager handles the certificates on Kubernetes, and the Pulumi path uses AWS Certificate Manager.
 
-One hostname is enough. Routing is path-based by default:
+One hostname is enough for most of the stack. The Kubernetes chart routes by path:
 
-| Path            | Goes to   |
-| --------------- | --------- |
-| `/v1/`          | Backend   |
-| `/powersync/`   | PowerSync |
-| `/realms/`      | Keycloak  |
-| `/resources/`   | Keycloak  |
-| everything else | Frontend  |
+| Path            | Goes to  |
+| --------------- | -------- |
+| `/v1/`          | Backend  |
+| `/realms/`      | Keycloak |
+| `/resources/`   | Keycloak |
+| everything else | Frontend |
+
+The AWS Fargate load balancer uses a different set: `/v1/`, `/auth/`, `/realms/` and `/powersync/`, with no `/resources/` rule.
 
 You can instead give each service its own hostname (for example `app.`, `api.`, `auth.`, `powersync.`). Both layouts can be configured at once, with per-service hostnames taking precedence.
+
+> Multi-device sync needs the per-service hostname. The chart renders a `/powersync/` path rule, but it hands the browser the in-cluster `http://powersync:8080` address and does not strip the path prefix, so sync only works once you set `ingress.hostnames.powersync`.
 
 ## Ports
 
@@ -141,7 +144,7 @@ http://localhost:17423
 
 ## Secrets to generate first
 
-`BETTER_AUTH_SECRET` signs sessions and bearer tokens, and takes any random string of 32 characters or more. `POWERSYNC_JWT_SECRET` has the same length rule and must be identical on the backend and the PowerSync service. An AI provider key is not strictly required, but without one every user must add their own in-app.
+`BETTER_AUTH_SECRET` signs sessions and bearer tokens. The server only checks that it is non-empty, so use 32 random characters or more by choice rather than by enforcement. `POWERSYNC_JWT_SECRET` is checked: at least 32 characters whenever `POWERSYNC_URL` is set, and identical on the backend and the PowerSync service. An AI provider key is not strictly required, but without one every user must add their own in-app.
 
 ```bash
 openssl rand -base64 32
@@ -177,7 +180,9 @@ The published desktop and mobile apps connect to Thunderbolt's hosted service. P
 | End-to-end encryption | Off by default. Turning it on requires each device to be approved before it syncs                                                            |
 | Rate limiting         | On by default, though the bundled Compose and Helm configs switch it off. Switch it back on for anything reachable from outside your network |
 
-The Kubernetes chart has no switch for the first two rows. It always installs Keycloak and the marketing site, so leaving out Keycloak there means pointing the API at your own provider and ignoring the workload you do not use.
+The Kubernetes chart has no switch for the first three rows. It always installs Keycloak and the marketing site, so leaving out Keycloak there means pointing the API at your own provider and ignoring the workload you do not use, and it sets the sync service's address unconditionally.
+
+The chart also exposes no values for transactional email, analytics, tracing or end-to-end encryption. Those are off on Kubernetes because the chart cannot set them, so turning any of them on means adding your own `backend` environment entries.
 
 ## Next
 

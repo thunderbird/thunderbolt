@@ -6,11 +6,13 @@ A skill is a named, reusable block of instructions. Instead of pasting the same 
 
 Type `/name` in the composer and those instructions are attached to that one message. The assistant can also load a skill on its own when a request matches what the skill is for, pulling the instructions in mid-answer and carrying on with the reply.
 
-Up front it normally sees only a short list of skill names and descriptions. Full instructions are pulled in when a skill is used, so a large library does not slow down or inflate every message. Loading a skill unprompted needs a model with tool support; on a model without it the assistant never sees your skills, though typing the token still works.
+Up front it normally sees only a short list of skill names and descriptions. Full instructions are pulled in when a skill is used, so a large library does not slow down or inflate every message.
+
+That holds only on a model with tool support. Without it there is no way to fetch a skill mid-answer, so every enabled skill's full text goes into the system prompt instead: the assistant still uses them, but a large library inflates every message.
 
 ## Using a skill in chat
 
-Pinned skills appear as chips above the composer, and typing `/` or `@` opens a picker that also lists any commands offered by a connected external agent. A token such as `/daily-brief` works anywhere in a message, as long as it follows a space or starts the line, and one message can carry several of them.
+Pinned skills appear as chips above the composer, and typing `/` or `@` opens a picker that also lists any commands offered by a connected external agent. A token such as `/daily-brief` works anywhere in a message, as long as it follows a space or starts the line and is followed by a space or the end of the message. A trailing period stops it resolving. One message can carry several of them.
 
 Click a greyed-out token to enable the skill it names, or to create a skill under that name if none exists. A token that matches nothing is sent as ordinary text.
 
@@ -37,7 +39,7 @@ Skills can refer to each other by token, so a longer workflow can call out to `/
 
 ## Editing, disabling and deleting
 
-Toggling a skill off keeps it in your library but hides it from the assistant and from `/` tokens. An edit applies to your next message; past chats keep the answers they already produced, though regenerating one uses the current instructions. Deleting a skill removes it from your library on every device.
+Toggling a skill off keeps it in your library but hides it from the assistant and from `/` tokens. An edit applies to your next message; past chats keep the answers they already produced. Deleting a skill removes it from your library on every device.
 
 Changing a slug does not rewrite tokens you have already typed into a draft, so update those by hand. If another skill mentions the one you are about to disable or delete, Thunderbolt names the skills that reference it before you confirm.
 

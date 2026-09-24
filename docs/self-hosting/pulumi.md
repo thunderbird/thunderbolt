@@ -145,7 +145,7 @@ Provider keys are optional. Leave them unset if your users will supply their own
 
 ## Deploying from CI
 
-The repository includes a GitHub Actions workflow that wraps the same deployment. If you fork the repository you can use it as-is: it takes the action (`deploy` or `destroy`), stack name, target, region, version, the hostnames, and the Cloudflare zone as inputs.
+The repository includes a GitHub Actions workflow that wraps the same deployment. From the Actions UI it takes five inputs: the action (`deploy` or `destroy`), stack name, target, region and version. The hostname and Cloudflare-zone inputs exist only on its `workflow_call` path, so setting those means calling this workflow from one of your own.
 
 Two repository secrets are the minimum. `PULUMI_ACCESS_TOKEN` is a Pulumi Cloud token, which also unlocks the stack secrets, and `AWS_DEPLOY_ROLE_ARN` is an IAM role the workflow assumes through OIDC. A registry token, provider keys, and the Cloudflare token are optional additions. The deploy job runs in a GitHub environment named `preview`, so any secret you scope to an environment has to live in that one.
 

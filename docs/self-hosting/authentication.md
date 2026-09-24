@@ -27,14 +27,14 @@ An unset `AUTH_MODE` falls back to `consumer`, so set it explicitly. `VITE_AUTH_
 
 ### What you configure
 
-| Variable             | Required | What it is                                                            |
-| -------------------- | :------: | --------------------------------------------------------------------- |
-| `AUTH_MODE`          |   yes    | Set to `oidc`                                                         |
-| `OIDC_ISSUER`        |   yes    | Your provider's issuer URL, as it appears in tokens                   |
-| `OIDC_CLIENT_ID`     |   yes    | The client (application) registered with your provider                |
-| `OIDC_CLIENT_SECRET` |   yes    | That client's secret                                                  |
-| `OIDC_DISCOVERY_URL` |    no    | Override when the server reaches the provider at a different hostname |
-| `TRUSTED_ORIGINS`    |   yes    | Comma-separated list. Must include your provider's origin.            |
+| Variable             |  Required   | What it is                                                                                        |
+| -------------------- | :---------: | ------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`          |     yes     | Set to `oidc`                                                                                     |
+| `OIDC_ISSUER`        |     yes     | Your provider's issuer URL, as it appears in tokens                                               |
+| `OIDC_CLIENT_ID`     |     yes     | The client (application) registered with your provider                                            |
+| `OIDC_CLIENT_SECRET` |     yes     | That client's secret                                                                              |
+| `OIDC_DISCOVERY_URL` |     no      | Override when the server reaches the provider at a different hostname                             |
+| `TRUSTED_ORIGINS`    | in practice | Comma-separated list. Has a default, but sign-in fails unless it includes your provider's origin. |
 
 Any provider serving standard discovery at `{OIDC_ISSUER}/.well-known/openid-configuration` works: Keycloak, Okta, Auth0, Microsoft Entra ID, and others.
 
@@ -71,14 +71,14 @@ Put **both** origins in `TRUSTED_ORIGINS`. The server validates discovery and me
 
 ### What you configure
 
-| Variable           | Required | What it is                                                                               |
-| ------------------ | :------: | ---------------------------------------------------------------------------------------- |
-| `AUTH_MODE`        |   yes    | Set to `saml`                                                                            |
-| `SAML_ENTRY_POINT` |   yes    | Your provider's sign-on URL, where users are sent to authenticate                        |
-| `SAML_ENTITY_ID`   |   yes    | Thunderbolt's own entity ID. Must match the application you register with your provider. |
-| `SAML_IDP_ISSUER`  |   yes    | Your provider's entity ID. Assertions are checked against it.                            |
-| `SAML_CERT`        |   yes    | Your provider's signing certificate                                                      |
-| `TRUSTED_ORIGINS`  |   yes    | Must include your provider's origin                                                      |
+| Variable           |  Required   | What it is                                                                               |
+| ------------------ | :---------: | ---------------------------------------------------------------------------------------- |
+| `AUTH_MODE`        |     yes     | Set to `saml`                                                                            |
+| `SAML_ENTRY_POINT` |     yes     | Your provider's sign-on URL, where users are sent to authenticate                        |
+| `SAML_ENTITY_ID`   |     yes     | Thunderbolt's own entity ID. Must match the application you register with your provider. |
+| `SAML_IDP_ISSUER`  |     yes     | Your provider's entity ID. Assertions are checked against it.                            |
+| `SAML_CERT`        |     yes     | Your provider's signing certificate                                                      |
+| `TRUSTED_ORIGINS`  | in practice | Has a default, but sign-in fails unless it includes your provider's origin               |
 
 ```sh
 AUTH_MODE=saml
@@ -119,7 +119,9 @@ Signing out of Thunderbolt ends the Thunderbolt session and leaves the one your 
 
 The shipped Keycloak's realm, client secret, admin password and demo user are all published in the Thunderbolt repository.
 
-On Docker Compose, delete the `keycloak` service from the Compose file and set your own OIDC or SAML values. On Kubernetes, point the backend settings at your provider and disable the demo user with `keycloak.demoUserEnabled: false`. That change needs the Keycloak pod restarted, because the realm file is only read at startup. The AWS stack installs the same chart, so the Kubernetes steps apply there too.
+On Docker Compose, delete the `keycloak` service from the Compose file and set your own OIDC or SAML values. On Kubernetes, point the backend settings at your provider and disable the demo user with `keycloak.demoUserEnabled: false`. That change needs the Keycloak pod restarted, because the realm file is only read at startup.
+
+The AWS stack installs that same chart only when you set `platform` to `k8s`. On the default Fargate platform Keycloak runs as an ECS task from a prebuilt image whose realm, demo user included, is baked in at build time, so there is no `demoUserEnabled` to set: point `OIDC_*` at your own provider and remove the Keycloak service instead.
 
 > Whichever path you are on, the bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup. Anything you configure in its admin console is lost when the container is replaced.
 

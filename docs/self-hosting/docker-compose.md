@@ -41,9 +41,9 @@ The first run builds the app and API images, pulls the other three, starts Postg
 | The app        | `http://localhost:3000` | `demo@thunderbolt.io` / `demo` |
 | Keycloak admin | `http://localhost:8180` | `admin` / `admin`              |
 
-Both sets of credentials are published in this repository. So are two secrets that `deploy/.env` cannot override, because they live in `deploy/docker-compose.yml`: the OIDC client secret, and `POWERSYNC_JWT_SECRET`, which the sync service verifies against the base64 copy in `PS_JWT_KEY_BASE64`.
+Both sets of credentials are published in this repository. So are four more that `deploy/.env` cannot override, because they live in `deploy/docker-compose.yml`: the OIDC client secret, the `POWERSYNC_JWT_SECRET` and `PS_JWT_KEY_BASE64` pair the sync service verifies against, the PostgreSQL superuser password, and the `powersync_role` replication password, which appears in three places in that file. PostgreSQL is published on a host port, so its password is a live credential rather than an internal one.
 
-> Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two secrets in the compose file, changing both halves of the JWT pair together.
+> Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate all four compose-file credentials, changing both halves of the JWT pair together and all three copies of the replication password.
 
 ## What is running
 

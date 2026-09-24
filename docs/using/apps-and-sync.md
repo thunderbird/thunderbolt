@@ -30,16 +30,18 @@ Every install holds a full local database. Reads and writes go there first, so t
 
 ## Turning sync on and off
 
-Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app turns sync on for that device; where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
+Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**, and repeated as **Cloud Sync** in the sidebar account menu. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app turns sync on for that device; where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
 
 Whether the data is encrypted on the server is the operator's decision, and a user cannot change it. With encryption off, synced data is stored on the server in a form the server can read, and every device the account signs in on syncs immediately. With encryption on, each new device has to be approved before it can read anything.
+
+Encryption covers the columns that hold your content. Structural fields, and the external agents you add, are stored readable either way.
 
 ## What syncs and what does not
 
 These sync across your devices:
 
 - Chats and messages
-- Tasks, saved prompts, skills, automations
+- Tasks and skills
 - Projects and their instructions
 - Model entries and per-model tuning
 - External agent entries
@@ -59,7 +61,7 @@ Credentials never sync. A model or an external agent you add on one device appea
 
 File attachments do not follow a chat. The message carries the file's name but not its bytes, so on another device the message shows the filename and the model does not receive the file.
 
-> Attached files are absent from a data export too. The only copy is on the device that added them.
+> Attached files are absent from a data export too. The only copy is on the device that added them. The export does carry your API keys and tool server credentials in the clear, so treat the file as a secret.
 
 ## Adding a device
 
@@ -70,7 +72,7 @@ Install or open Thunderbolt on the new device and sign in with the same account.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 
-Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in has no entry in the list.
+Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. Where the deployment has end-to-end encryption enabled, an account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on `thunderbolt login` fails outright. A command line client authenticated with an API token never registers a device and has no entry in the list.
 
 ## Approving, denying, and revoking
 
@@ -97,7 +99,7 @@ Full detail on approval, recovery keys, and revocation is in [Devices and Accoun
 
 With no network you can read and search existing chats, write messages, edit tasks, and change settings. Web search and other connected tools need the network, as do signing in, sync itself, and approving a device. So do model responses, unless the model runs on the same machine or network.
 
-Changes made offline are saved locally and queued. On reconnect the device uploads them and pulls down what it missed. If the same record was changed on two devices while one was offline, the most recent write wins for that record.
+Changes made offline are saved locally and queued. On reconnect the device uploads them and pulls down what it missed. A record changed on two devices is merged column by column, and for any column both changed, the value from whichever device uploads last is kept. That is not necessarily the one edited most recently: a device that was offline for a day overwrites the newer edit when it reconnects.
 
 The web app has to be fetched from the server before it can run, so a browser with no connection cannot open it cold. The desktop and mobile apps start offline.
 

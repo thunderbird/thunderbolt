@@ -2,7 +2,7 @@
 
 ## Check these first
 
-Three checks account for most problems. `curl https://your-host/v1/health` needs no credentials and returns `200` quickly when the API is up. `curl https://your-host/v1/config` is unauthenticated JSON showing what the apps see: whether encryption is on, which agents are offered, the minimum app version you enforce, and the model catalog you ship.
+Three checks account for most problems. `curl https://your-host/v1/health` needs no credentials and returns `200` quickly when the API is up. `curl https://your-host/v1/config` is unauthenticated JSON showing what the apps see: whether encryption is on, whether the built-in and custom agents are allowed, the minimum app version you enforce, and the model catalog you ship. `GET /v1/agents` lists the agents themselves.
 
 The server logs name the setting behind every startup failure. The command to follow them depends on the deployment:
 
@@ -34,7 +34,7 @@ Every setting is validated on boot, and a value the server rejects stops startup
 | `DATABASE_URL is required when DATABASE_DRIVER=postgres (outside development)`   | Set a connection string, or `DATABASE_DRIVER=pglite` for evaluation.     |
 | `powersyncJwtSecret must be at least 32 characters when powersyncUrl is set`     | Generate a longer secret and update the sync service to match.           |
 | `authMode: Invalid option: expected one of "consumer"\|"oidc"\|"saml"`           | `AUTH_MODE` is misspelled. Use one of those three values.                |
-| `MIN_APP_VERSION must be empty or a semver string`                               | Use three dot-separated numbers such as `0.2.0`, or clear it.            |
+| `MIN_APP_VERSION must be empty or a semver string (e.g. "0.2.0")`                | Use a semver string such as `0.2.0`, or clear it.                        |
 | `debugTranscriptUpstreamUrl and debugTranscriptUpstreamKey must be set together` | Set both, or neither.                                                    |
 
 Some messages name the setting in mixed case instead of as the environment variable you set: `betterAuthSecret` is `BETTER_AUTH_SECRET`, `powersyncJwtSecret` is `POWERSYNC_JWT_SECRET`. Split it at each capital letter and upper-case the result.
@@ -46,14 +46,14 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ### Other startup failures
 
-| Symptom                                                            | Cause and fix                                                                                                                                                                   |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compose exits immediately complaining about `BETTER_AUTH_SECRET`   | Unset in `deploy/.env`. Set it and retry. There is no default, deliberately.                                                                                                    |
-| `port is already allocated`                                        | Remap it in `deploy/.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT`). Port `5434` collides most often.                               |
-| The sync container restarts in a loop after an upgrade or re-clone | Its database account is created only when the database volume is first initialised, so an older volume does not have it. `docker compose down -v` starts clean and erases data. |
-| The image build fails on a small machine                           | The app build is the memory-hungry step. Give Docker at least 4 GB.                                                                                                             |
-| On Kubernetes, `backend` and `powersync` restart once or twice     | Expected on first install. They race PostgreSQL and recover once it accepts connections. End state is every pod `1/1 Running`.                                                  |
-| Sign-in pages will not load right after startup                    | The bundled Keycloak is the slowest service to boot. Wait for it to report healthy.                                                                                             |
+| Symptom                                                            | Cause and fix                                                                                                                                                                                                          |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose exits immediately complaining about `BETTER_AUTH_SECRET`   | Unset in `deploy/.env`. Set it and retry. There is no default, deliberately.                                                                                                                                           |
+| `port is already allocated`                                        | Remap it in `deploy/.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT`). Port `5434` collides most often; without a `deploy/.env` the compose fallbacks are `5433` and `8080`. |
+| The sync container restarts in a loop after an upgrade or re-clone | Its database account is created only when the database volume is first initialised, so an older volume does not have it. `docker compose down -v` starts clean and erases data.                                        |
+| The image build fails on a small machine                           | The app build is the memory-hungry step. Give Docker at least 4 GB.                                                                                                                                                    |
+| On Kubernetes, `backend` and `powersync` restart once or twice     | Expected on first install. They race PostgreSQL and recover once it accepts connections. End state is every pod `1/1 Running`.                                                                                         |
+| Sign-in pages will not load right after startup                    | The bundled Keycloak is the slowest service to boot. Wait for it to report healthy.                                                                                                                                    |
 
 ## Users cannot sign in
 
@@ -65,17 +65,17 @@ Check the waitlist gate first. An address with no existing account and no approv
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 ```
 
-| Symptom                                                      | Likely cause                                                                                       | Check                                                                                                                                                      |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No email arrives at all                                      | `RESEND_API_KEY` is unset, so nothing is sent                                                      | The log warns at startup when the key is missing. `/v1/health/email` confirms the sending domain is verified, once `RESEND_MONITORING_API_KEY` is also set |
-| A waitlist email arrives instead of a code                   | The waitlist gate above                                                                            | Add the domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart                                                                                              |
-| "This code has expired" or "Invalid code"                    | The code timed out or was mistyped                                                                 | Request a new one                                                                                                                                          |
-| "Too many attempts"                                          | Repeated wrong codes                                                                               | Request a new code                                                                                                                                         |
-| `429` on a sign-in request                                   | Either of two limits: 10 requests per minute per IP, or a 15 second per-address cooldown on resend | Wait out `Retry-After` where it is sent. The resend cooldown returns `code_already_sent` with no header                                                    |
-| The sign-in link opens the wrong host                        | `APP_URL` or `BETTER_AUTH_URL` does not match the public URL                                       | Set both to the URLs users actually reach, then restart                                                                                                    |
-| Sign-in fails only in the browser, with a console CORS error | The app origin is not in `CORS_ORIGINS`                                                            | Add the exact origin. Wildcards are not accepted                                                                                                           |
-| Desktop app sign-in with Google or Microsoft fails           | The loopback redirect URIs are not registered                                                      | Register `http://localhost:17421`, `:17422`, and `:17423` with the provider                                                                                |
-| Anonymous use is rejected                                    | `AUTH_ALLOW_ANONYMOUS` is `false`, and the client build must agree                                 | Set it on the server and build the client with `VITE_AUTH_ENABLE_ANONYMOUS`                                                                                |
+| Symptom                                                             | Likely cause                                                                                       | Check                                                                                                                                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No email arrives at all                                             | `RESEND_API_KEY` is unset, so nothing is sent                                                      | The log warns at startup when the key is missing. `/v1/health/email` confirms the sending domain is verified, once `RESEND_MONITORING_API_KEY` is also set |
+| A waitlist email arrives instead of a code                          | The waitlist gate above                                                                            | Add the domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart                                                                                              |
+| "This code has expired" or "Invalid code"                           | The code timed out or was mistyped                                                                 | Request a new one                                                                                                                                          |
+| "Too many attempts"                                                 | Repeated wrong codes                                                                               | Request a new code                                                                                                                                         |
+| `429` on a sign-in request                                          | Either of two limits: 10 requests per minute per IP, or a 15 second per-address cooldown on resend | Wait out `Retry-After` where it is sent. The resend cooldown returns `code_already_sent` with no header                                                    |
+| The sign-in link opens the wrong host                               | `APP_URL` or `BETTER_AUTH_URL` does not match the public URL                                       | Set both to the URLs users actually reach, then restart                                                                                                    |
+| Sign-in fails only in the browser, with a console CORS error        | The app origin is not in `CORS_ORIGINS`                                                            | Add the exact origin. Wildcards are not accepted                                                                                                           |
+| Connecting a Google or Microsoft account from the desktop app fails | The loopback redirect URIs are not registered                                                      | Register `http://localhost:17421`, `:17422`, and `:17423` with the provider. The same ports serve the desktop SSO callback                                 |
+| Anonymous use is rejected                                           | `AUTH_ALLOW_ANONYMOUS` is `false`, and the client build must agree                                 | Set it on the server and build the client with `VITE_AUTH_ENABLE_ANONYMOUS`                                                                                |
 
 ### When the app itself is broken
 
@@ -104,13 +104,13 @@ https://your-backend/v1/api/auth/sso/saml2/sp/metadata?providerId=sso
 Two behaviours that are not faults:
 
 - **Signing out puts the user straight back in.** The identity provider keeps its own session, so the next visit re-authenticates silently. This is normal SSO behaviour and Thunderbolt cannot end the provider's session for you.
-- **The bundled Keycloak forgets its configuration.** In the Kubernetes chart it runs in development mode with no persistent volume, so anything set in its admin console is lost on pod restart and the realm is re-imported. Don't use it past evaluation.
+- **The bundled Keycloak forgets its configuration.** In every bundled deployment it runs in development mode with no persistent storage, so anything set in its admin console is lost when the container or pod restarts and the realm is re-imported. Don't use it past evaluation.
 
 ## Chats are not syncing between devices
 
 Work down this list in order. Most reports are the first item.
 
-**1. Sync is off until each device turns it on.** Sign in (anonymous sessions cannot sync), then open **Settings → Preferences → Data** and switch on **Sync This Device With Cloud**. Do this on every device.
+**1. Sync needs a signed-in account** (anonymous sessions cannot sync). Signing in turns it on automatically, but check **Settings → Preferences → Data → Sync This Device With Cloud** is still on, on every device.
 
 **2. The server has no sync configured.** `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` must both be set. Without them the app works on one device at a time.
 
@@ -148,16 +148,16 @@ Rotating `POWERSYNC_JWT_SECRET` invalidates every outstanding sync token, so eve
 
 ## A model returns an error
 
-| What the user sees                       | Meaning                                                                                | Fix                                                                                                                            |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| No models in the picker                  | No provider key on the server and none added in the app                                | Set a provider key, or have users add their own in **Settings → Models**                                                       |
-| `429` with `INFERENCE_QUOTA_EXCEEDED`    | The user hit a spending cap, not a request limit                                       | Raise the relevant `INFERENCE_QUOTA_*` value. Caps are rolling 5 hour and 7 day windows, and much lower for anonymous sessions |
-| `429` reading "Too many requests"        | The request rate limit: 60 per minute for inference, 100 for other authenticated calls | Wait, or investigate a client retry loop                                                                                       |
-| `503` with `INFERENCE_PRICE_UNAVAILABLE` | The model has no price entry, so the server refuses to serve it                        | Use one of the shipped models. A model with no price is unusable rather than free                                              |
-| `503 Tinfoil provider not configured`    | `TINFOIL_API_KEY` is unset, and the confidential models are the default                | Set the key, or have users select a model they hold a key for                                                                  |
-| `403 WEB_LOGIN_REQUIRED`                 | A personal access token was used against a confidential model                          | Sign in interactively, or set `CONFIDENTIAL_API_KEYS_ENABLED=true`                                                             |
-| `426 Upgrade Required`                   | The client is older than `MIN_APP_VERSION`                                             | See [the desktop app will not update](#the-desktop-app-will-not-update)                                                        |
-| Timeouts reaching the provider           | Outbound network access is blocked                                                     | Allow the provider host from the server                                                                                        |
+| What the user sees                       | Meaning                                                                                                                                   | Fix                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| No models in the picker                  | No provider key on the server and none added in the app                                                                                   | Set a provider key, or have users add their own in **Settings → Models**                                                       |
+| `429` with `INFERENCE_QUOTA_EXCEEDED`    | The user hit a spending cap, not a request limit                                                                                          | Raise the relevant `INFERENCE_QUOTA_*` value. Caps are rolling 5 hour and 7 day windows, and much lower for anonymous sessions |
+| `429` reading "Too many requests"        | The request rate limit: 60 per minute for standard-tier inference, 100 shared between private chat, the proxy, tools, search and previews | Wait, or investigate a client retry loop                                                                                       |
+| `503` with `INFERENCE_PRICE_UNAVAILABLE` | The model has no price entry, so the server refuses to serve it                                                                           | Use one of the shipped models. A model with no price is unusable rather than free                                              |
+| `503 Tinfoil provider not configured`    | `TINFOIL_API_KEY` is unset, and the confidential models are the default                                                                   | Set the key, or have users select a model they hold a key for                                                                  |
+| `403 WEB_LOGIN_REQUIRED`                 | A personal access token was used against a confidential model                                                                             | Sign in interactively, or set `CONFIDENTIAL_API_KEYS_ENABLED=true`                                                             |
+| `426 Upgrade Required`                   | The client is older than `MIN_APP_VERSION`                                                                                                | See [the desktop app will not update](#the-desktop-app-will-not-update)                                                        |
+| Timeouts reaching the provider           | Outbound network access is blocked                                                                                                        | Allow the provider host from the server                                                                                        |
 
 The four spending caps are `INFERENCE_QUOTA_REGISTERED_5H_CENTS` (default 1500, so $15), `INFERENCE_QUOTA_REGISTERED_7D_CENTS` (7500), `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS` (10) and `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS` (60). All four are whole cents.
 
@@ -205,19 +205,19 @@ Images and PDFs are compressed before the size check, so a large photo often fit
 | Your turn never ends                                    | About 1.4 seconds of silence commits a turn. Pause fully                                                                |
 | The assistant interrupts itself                         | It is hearing its own output. Use headphones, or move away from the speakers                                            |
 
-Custom speech servers are a preview feature: turn on **Custom voice provider** under **Settings → Preferences → Preview Features**, then configure it under **Settings → Voice**. The provider configuration is per device and is not synced, and a change takes effect on the next voice session.
+Custom speech servers are a preview feature: turn on **Custom voice provider** under **Settings → Preferences → Help Thunderbolt Improve**, in Preview Features, then configure it under **Settings → Voice**. The provider configuration is per device and is not synced, and a change takes effect on the next voice session.
 
 ## The desktop app will not update
 
 Updates are checked and applied from **Settings → Preferences**, in the App Version section.
 
-| Symptom                                              | Cause and fix                                                                                                          |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| "Couldn't check for updates"                         | The app cannot reach the update service. Allow `cdn.crabnebula.app` from the client network                            |
-| No update is ever found on a build you made yourself | Only the official builds ship with an update feed and signing key. Distribute new installers to your users yourself    |
-| "Couldn't download the update"                       | A network interruption, or no permission to write to the install location. Retry, then reinstall from the release page |
-| The new version is not running after a restart       | The restart step did not complete. Quit the app fully and reopen it                                                    |
-| The mobile app has no update button                  | Mobile updates come from TestFlight or Google Play. The button opens the store listing                                 |
+| Symptom                                                 | Cause and fix                                                                                                           |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| "Couldn't check for updates"                            | The app cannot reach the update service. Allow `cdn.crabnebula.app` from the client network                             |
+| No update is ever found on a build you made yourself    | Only the official builds ship with an update feed and signing key. Distribute new installers to your users yourself     |
+| "Couldn't download the update"                          | A network interruption, or no permission to write to the install location. Retry, then reinstall from the release page  |
+| The new version is not running after a restart          | The restart step did not complete. Quit the app fully and reopen it                                                     |
+| Tapping **Check for updates** on mobile opens the store | Mobile updates come from TestFlight or Google Play, so the button opens the store listing rather than updating in place |
 
 ### "Update required" blocks the whole app
 

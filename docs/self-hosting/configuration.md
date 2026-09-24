@@ -4,11 +4,11 @@ Thunderbolt's API is configured entirely through environment variables, read onc
 
 ## Start here: the minimum
 
-| Variable               | What it is                                                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`   | Random string used to sign sessions. Generate with `openssl rand -hex 32`.                                          |
-| `DATABASE_URL`         | PostgreSQL connection string.                                                                                       |
-| One model provider key | `ANTHROPIC_API_KEY`, `FIREWORKS_API_KEY`, or `TINFOIL_API_KEY`. Without one, the API runs but cannot answer a chat. |
+| Variable               | What it is                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`   | Random string used to sign sessions. Generate with `openssl rand -hex 32`.                    |
+| `DATABASE_URL`         | PostgreSQL connection string.                                                                 |
+| One model provider key | `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`. Without one, the API runs but cannot answer a chat. |
 
 Add `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` if you want conversations to sync between a user's devices. Everything else below has a working default.
 
@@ -16,15 +16,15 @@ Add `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` if you want conversations to sync
 
 Get `APP_URL` and `BETTER_AUTH_URL` wrong and sign-in redirects land on the wrong host.
 
-| Variable          | Default                                        | What it does                                                                                      |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `APP_URL`         | `http://localhost:1420`                        | Public URL where users reach the web app. Used in emails and redirects.                           |
-| `BETTER_AUTH_URL` | `http://localhost:8000`                        | Public URL of the API itself. Must match the redirect URI registered with your identity provider. |
-| `PORT`            | `8000`                                         | Port the API listens on.                                                                          |
-| `HOST`            | `0.0.0.0` in production, `localhost` otherwise | Network interface to bind. The published container image runs in production mode.                 |
-| `WEB_CONCURRENCY` | One worker per CPU in production, 1 otherwise  | Number of worker processes.                                                                       |
-| `LOG_LEVEL`       | `INFO`                                         | `DEBUG`, `INFO`, `WARN`, or `ERROR`.                                                              |
-| `SWAGGER_ENABLED` | `false`                                        | Publishes an interactive API browser at `/v1/swagger`. Leave off in production.                   |
+| Variable          | Default                                        | What it does                                                                                                  |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `APP_URL`         | `http://localhost:1420`                        | Public URL where users reach the web app. Used in emails and redirects.                                       |
+| `BETTER_AUTH_URL` | `http://localhost:8000`                        | Public URL of the API itself. Must match the redirect URI registered with your identity provider.             |
+| `PORT`            | `8000`                                         | Port the API listens on.                                                                                      |
+| `HOST`            | `0.0.0.0` in production, `localhost` otherwise | Network interface to bind. The published container image runs in production mode.                             |
+| `WEB_CONCURRENCY` | One worker per CPU in production, 1 otherwise  | Honoured only by the compiled single-binary build. The container image runs one process; scale with replicas. |
+| `LOG_LEVEL`       | `INFO`                                         | `DEBUG`, `INFO`, `WARN`, or `ERROR`.                                                                          |
+| `SWAGGER_ENABLED` | `false`                                        | Publishes an interactive API browser at `/v1/swagger`. Leave off in production.                               |
 
 ## Database
 
@@ -34,7 +34,7 @@ Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When syn
 | -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`       | none       | PostgreSQL connection string. Required.                                                                                                                                     |
 | `DATABASE_DRIVER`    | `postgres` | Set to `pglite` to run an embedded database with no PostgreSQL server. Sync does not work in this mode.                                                                     |
-| `SKIP_MIGRATIONS`    | unset      | `true` skips the schema migration that normally runs at startup, for deployments that migrate separately.                                                                   |
+| `SKIP_MIGRATIONS`    | unset      | `true` skips the in-process migration pass. The container image's entrypoint runs `drizzle-kit migrate` regardless, so override the container command too.                  |
 | `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
 | `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
 
@@ -48,7 +48,7 @@ Pick one mode.
 
 | Variable               | Default                                   | What it does                                                                                                           |
 | ---------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_MODE`            | `consumer`                                | `consumer` for email codes plus optional Google and Microsoft sign-in, `oidc` or `saml` for enterprise SSO.            |
+| `AUTH_MODE`            | `consumer`                                | `consumer` for email sign-in codes, `oidc` or `saml` for enterprise SSO.                                               |
 | `AUTH_ALLOW_ANONYMOUS` | `false`                                   | Lets visitors use the app without an account. Off by default, and the API rejects anonymous sign-in outright when off. |
 | `TRUSTED_ORIGINS`      | `http://localhost:1420,tauri://localhost` | Comma-separated origins accepted for sign-in callbacks and identity provider discovery.                                |
 
@@ -76,9 +76,9 @@ Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 
 Under either SSO mode, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
-### Social sign-in
+### Google and Microsoft connections
 
-Both providers are optional in consumer mode.
+Optional, and not a sign-in method. These credentials power the Gmail, Calendar, Outlook and OneDrive integrations a signed-in user connects under Settings.
 
 | Variable                  | Default |
 | ------------------------- | ------- |
@@ -87,7 +87,7 @@ Both providers are optional in consumer mode.
 | `MICROSOFT_CLIENT_ID`     | none    |
 | `MICROSOFT_CLIENT_SECRET` | none    |
 
-The desktop app completes social sign-in through a local callback, trying three fixed ports in order. Register `http://localhost:17421`, `http://localhost:17422` and `http://localhost:17423` as redirect URIs with Google and Microsoft alongside your web one, or desktop sign-in fails.
+The desktop app completes the consent flow through a local callback, trying three fixed ports in order and falling back to none. Register `http://localhost:17421`, `http://localhost:17422` and `http://localhost:17423` as redirect URIs with Google and Microsoft alongside your web one, or connecting an account from the desktop app fails.
 
 ### Tokens and CLI sign-in
 
@@ -101,13 +101,13 @@ Users create personal access tokens in the app so a script or the command-line c
 
 ## Models and inference
 
-Set a key for each provider you want available. A provider with no key does not appear.
+Set a key for each provider you want to fund. The shipped models are listed either way: without the matching key they look selectable and fail when a message is sent. See [Models](./models.md).
 
 | Variable              | Default                           | Provider                                                                                                               |
 | --------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`   | none                              | Anthropic (Claude)                                                                                                     |
 | `ANTHROPIC_BASE_URL`  | `https://api.anthropic.com`       | Anthropic API root, without `/v1`. Leave it alone unless you are pointing the API at a stand-in during testing.        |
-| `FIREWORKS_API_KEY`   | none                              | Fireworks                                                                                                              |
+| `FIREWORKS_API_KEY`   | none                              | Accepted but currently unused. No shipped model routes to Fireworks.                                                   |
 | `TINFOIL_API_KEY`     | none                              | Tinfoil, a confidential tier that runs models inside verified secure hardware, so the provider cannot read the request |
 | `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | Tinfoil endpoint. Keep the `/v1` suffix.                                                                               |
 | `EXA_API_KEY`         | none                              | Exa, used for web search                                                                                               |
@@ -198,7 +198,7 @@ Mail goes out from a Thunderbolt-owned sender address, `hello@auth.thunderbolt.i
 
 | Variable                 | Default                                                          | What it does                                            |
 | ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------- |
-| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Comma-separated exact origins. No wildcards.            |
+| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Comma-separated exact origins, no per-entry patterns.   |
 | `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies.                      |
 | `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Permitted HTTP methods.                                 |
 | `CORS_EXPOSE_HEADERS`    | a protocol-required list                                         | Response headers the browser makes readable to the app. |
@@ -216,25 +216,27 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 The limits themselves are not configurable:
 
-| Request group           | Limit          |
-| ----------------------- | -------------- |
-| Chat responses          | 60 per minute  |
-| Usage receipts          | 100 per minute |
-| Tools, search, previews | 100 per minute |
-| Sign-in                 | 10 per minute  |
-| Debug transcript upload | 10 per hour    |
+| Request group                                                                    | Limit          |
+| -------------------------------------------------------------------------------- | -------------- |
+| Standard-tier chat responses                                                     | 60 per minute  |
+| Usage receipts                                                                   | 100 per minute |
+| Private chat, the bring-your-own-key relay, tools, search and previews, together | 100 per minute |
+| Sign-in                                                                          | 10 per minute  |
+| Debug transcript upload                                                          | 10 per hour    |
 
-Signed-in requests are counted per user, anonymous ones per IP address. When an IP cannot be determined, those requests share a single bucket rather than skipping the limit, so the protection on sign-in and waitlist requests cannot quietly turn itself off.
+The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in and waitlist requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
 
 Rejections return `429` with a `Retry-After` header.
 
 ## Minimum client version
 
-| Variable          | Default | What it does                                                                                                               |
-| ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as three dot-separated numbers (`0.2.0`). Empty disables the check. |
+| Variable          | Default | What it does                                                                                                                    |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `MIN_APP_VERSION` | empty   | Lowest app version allowed to talk to this deployment, as a semver string (`0.2.0`, or `0.2.0-rc.1`). Empty disables the check. |
 
-Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version too. Sign-in callbacks, health checks, analytics capture and the startup configuration request are exempt, so a blocked user can still reach the update prompt.
+Older clients receive `426 Upgrade Required` and prompt the user to update. The check fails closed: a client that sends no version is treated as too old, and a personal access token earns no exemption, so scripts and the command-line client must send a version on their API calls.
+
+Exempt, because none of them can set the header: the startup configuration request, health checks, SSO and SAML browser callbacks, the command-line client's device-grant login, analytics capture, static assets, and the proxy WebSocket upgrade. `OPTIONS` preflights are always exempt. A blocked user can therefore still reach the update prompt.
 
 ## Command-line client rollout
 
@@ -249,7 +251,7 @@ Enable it only after every app your users run is new enough to recognise a comma
 | `WAITLIST_AUTO_APPROVE_DOMAINS` | none    | Comma-separated email domains approved on sight, for example `example.com,example.org`. |
 | `WAITLIST_ENABLED`              | `false` | Accepted and validated, but currently has no effect.                                    |
 
-The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. Deployments on OIDC or SAML are unaffected, and so is social sign-in.
+The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. Deployments on OIDC or SAML are unaffected.
 
 > If your deployment uses email codes, set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains. Nobody new can sign in until you do.
 
@@ -262,7 +264,7 @@ The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: 
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | none                       | OpenTelemetry trace collector endpoint, for example `http://localhost:4318/v1/traces`. Setting it turns tracing on. |
 | `OTEL_EXPORTER_OTLP_TOKEN`    | none                       | Bearer token, for collectors that require one.                                                                      |
 
-Tracing has been exercised against BetterStack, Jaeger, Zipkin, New Relic, and Grafana Cloud.
+Any OTLP collector works. We test with BetterStack.
 
 ## Health checks
 
@@ -310,7 +312,7 @@ The web app is a static bundle, so these are fixed when its image is built, not 
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Where the app calls the API. A relative path works when a reverse proxy fronts both. |
 | `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for consumer sign-in.                          |
 
-Two further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself: `VITE_AUTH_ENABLE_ANONYMOUS` (the client half of `AUTH_ALLOW_ANONYMOUS`; both must agree) and `VITE_IROH_RELAY_URL` (a self-hosted relay for the command-line bridge, defaulting to the public relays).
+Several further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself. Anonymous sessions need `VITE_AUTH_ENABLE_ANONYMOUS=true` **and** `VITE_BYPASS_WAITLIST=true` alongside `AUTH_ALLOW_ANONYMOUS`; with only the first two a visitor still meets the sign-in wall. `VITE_APP_VERSION` is what makes a client send `X-App-Version`, so the version gate depends on it. `VITE_IROH_RELAY_URL` points the command-line bridge at a relay of your own instead of the public ones.
 
 ## Common startup errors
 
@@ -319,6 +321,6 @@ Two further settings are read when the app is built but are not offered as build
 | `BETTER_AUTH_SECRET` is empty                         | Set it. `openssl rand -hex 32`.                                                           |
 | The sync signing secret is shorter than 32 characters | Generate a longer `POWERSYNC_JWT_SECRET`, and update the sync service to match.           |
 | `AUTH_MODE` is not a recognised value                 | Must be `consumer`, `oidc`, or `saml`.                                                    |
-| `MIN_APP_VERSION` is not a version number             | Use three dot-separated numbers, for example `0.2.0`, or clear it.                        |
+| `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                    |
 | `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                  |
 | The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither. |

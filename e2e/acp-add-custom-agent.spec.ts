@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
@@ -26,7 +26,7 @@ test.describe('ACP add custom agent', () => {
     // one JSON-RPC object per WS message (see src/acp/transports/websocket.ts).
     await page.routeWebSocket(/invalid\.example\.test/, (ws) => {
       ws.onMessage((message) => {
-        const rpc = JSON.parse(typeof message === 'string' ? message : message.toString())
+        const rpc = JSON.parse(message.toString())
         if (rpc.method === 'initialize') {
           ws.send(
             JSON.stringify({
@@ -46,9 +46,11 @@ test.describe('ACP add custom agent', () => {
 
     await page.getByRole('button', { name: 'New Agent' }).click()
 
-    // Scoped by the panel title (`createItemTitles.agent`): the app renders
-    // other `aside` landmarks.
-    const panel = page.getByRole('complementary').filter({ hasText: 'Add Agent' })
+    // The desktop panel is complementary; mobile presents the same form as a dialog.
+    const panel = page
+      .getByRole('complementary')
+      .filter({ hasText: 'Add Agent' })
+      .or(page.getByRole('dialog', { name: 'Add Agent' }))
     await expect(panel).toBeVisible()
 
     await page.getByLabel('Name').fill('Test Agent')

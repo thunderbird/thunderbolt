@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test, type Page, type Request, type Route } from '@playwright/test'
-import { collectPageErrors, loginViaOidc } from './helpers'
+import { expect, test, type Page, type Request, type Route } from './test'
+import { collectPageErrors, loginViaOidc, openSidebarOnMobile } from './helpers'
 
 /**
  * THU-829 — the language picker, asserted on intercepted `X-App-Language`
@@ -77,9 +77,9 @@ const appLanguageHeaders = async (requests: Request[]): Promise<string[]> => {
  * the way the real backend answers them, so the browser exposes the response to
  * app code (same shape as min-version-gate.spec.ts). Preflights get a 204.
  */
-const fulfillWithCors = (route: Route, body: unknown): Promise<void> => {
+const fulfillWithCors = (route: Route): Promise<void> => {
   const req = route.request()
-  const cors: Record<string, string> = {
+  const cors = {
     'Access-Control-Allow-Origin': oidcOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -88,7 +88,7 @@ const fulfillWithCors = (route: Route, body: unknown): Promise<void> => {
   if (req.method() === 'OPTIONS') {
     return route.fulfill({ status: 204, headers: cors })
   }
-  return route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(body) })
+  return route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: '[]' })
 }
 
 /**
@@ -104,7 +104,7 @@ const languageHeaderOfLocationSearch = async (page: Page, query: string): Promis
     void page.route('**/v1/locations*', async (route) => {
       const isPreflight = route.request().method() === 'OPTIONS'
       const language = route.request().headers()['x-app-language'] ?? null
-      await fulfillWithCors(route, [])
+      await fulfillWithCors(route)
       if (!isPreflight) {
         resolve(language)
       }
@@ -209,8 +209,9 @@ test.describe('language picker — X-App-Language', () => {
     const accountTrigger = page.locator('[data-sidebar="footer"]').getByRole('button').first()
     const logOutItem = page.getByText(de.logOut, { exact: true })
     await expect(async () => {
+      await openSidebarOnMobile(page)
       if (!(await logOutItem.isVisible())) {
-        await accountTrigger.click()
+        await accountTrigger.click({ timeout: 2_000 })
       }
       await logOutItem.click({ timeout: 2_000 })
     }).toPass({ timeout: 20_000 })

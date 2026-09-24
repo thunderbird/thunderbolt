@@ -112,3 +112,16 @@ jobs:
           name: e2e-report
           path: playwright-report/
           retention-days: 14
+
+  notify:
+    needs: [e2e, e2e-report]
+    if: ${{ always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || (needs.e2e.result == 'success' && needs.e2e-report.result == 'success')) }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

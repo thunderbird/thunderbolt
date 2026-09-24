@@ -152,3 +152,16 @@ jobs:
           echo '```json' >> $GITHUB_STEP_SUMMARY
           pulumi stack output --json -s "$INPUT_STACK_NAME" | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    needs: deploy
+    if: ${{ always() && !cancelled() && (github.event_name == 'schedule' || inputs.stack_name == 'previews-shared') && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ needs.deploy.result == 'failure' && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

@@ -52,6 +52,15 @@ export const loginViaSaml = async (page: Page) => {
   await expect(textarea).toBeVisible({ timeout: 30_000 })
 }
 
+/** Open the chat sidebar when the mobile drawer is closed; desktop already renders it. */
+export const openSidebarOnMobile = async (page: Page) => {
+  if ((page.viewportSize()?.width ?? 768) >= 768) return
+  const openDrawer = page.locator('[data-slot="sidebar"][data-mobile="true"][data-open]')
+  if (await openDrawer.count()) return
+  await page.locator('[data-slot="create-item-layout"] header').first().getByRole('button').first().click()
+  await expect(openDrawer).toBeVisible()
+}
+
 /**
  * Open the account popover, click "Log out", confirm in the modal, and wait
  * for the signed-out landing page to appear.
@@ -59,11 +68,9 @@ export const loginViaSaml = async (page: Page) => {
  * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).
  */
 export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = 'keep') => {
-  // Open account popover in sidebar footer
+  await openSidebarOnMobile(page)
   const accountTrigger = page.locator('[data-sidebar="footer"]').getByRole('button').first()
   await accountTrigger.click()
-
-  // Click "Log out" menu item
   await page.getByText('Log out', { exact: true }).click()
 
   // Pick the data option if "delete" is requested (default is "keep")

@@ -93,3 +93,24 @@ jobs:
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
       nightly: ${{ github.event_name == 'schedule' }}
+
+  notify:
+    needs: [version_bump, desktop, ios, android, cli]
+    if: >-
+      always() && !cancelled() && (
+        contains(needs.*.result, 'failure') ||
+        needs.version_bump.result == 'success' && (
+          (github.event_name == 'schedule' || inputs.platform == 'all') &&
+          needs.desktop.result == 'success' && needs.ios.result == 'success' &&
+          needs.android.result == 'success' && needs.cli.result == 'success'
+        )
+      )
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

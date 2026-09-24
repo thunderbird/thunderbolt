@@ -37,7 +37,7 @@ spec:
           env:
             - name: POWERSYNC_CONFIG_PATH
               value: /config/config.yaml
-            - name: POWERSYNC_JWT_SECRET_B64
+            - name: PS_JWT_SECRET_B64
               valueFrom:
                 secretKeyRef:
                   name: thunderbolt-secrets

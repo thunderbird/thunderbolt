@@ -15,12 +15,16 @@
  * Only the recovered plaintext is written to stdout; all diagnostics go to
  * stderr, so callers (e.g. the e2e suite) can capture stdout cleanly.
  *
+ * The two secrets — the escrow private key and the database URL — are NEVER
+ * taken from argv (see `resolveSecret`). Each comes from an env var or a file.
+ *
  * Usage:
- *   bun scripts/org-escrow-decrypt.ts \
- *     --user-id <id> --table <table> --column <column> --row-id <id> \
- *     --db-url postgresql://... --private-key <base64-pkcs8>
+ *   ORG_ESCROW_PRIVATE_KEY=<base64-pkcs8> DATABASE_URL=postgresql://... \
+ *     bun scripts/org-escrow-decrypt.ts \
+ *       --user-id <id> --table <table> --column <column> --row-id <id>
  */
 
+import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import postgres from 'postgres'
 import {
@@ -236,17 +240,42 @@ export const decryptCellValue = async (
 // CLI
 // =============================================================================
 
+/** The two secrets, and the removed argv flags that used to carry them. */
+const secretSpecs = {
+  privateKey: {
+    label: 'operator escrow private key',
+    envVar: 'ORG_ESCROW_PRIVATE_KEY',
+    fileFlag: 'private-key-file',
+    removedFlag: 'private-key',
+  },
+  dbUrl: {
+    label: 'database URL',
+    envVar: 'DATABASE_URL',
+    fileFlag: 'db-url-file',
+    removedFlag: 'db-url',
+  },
+} as const
+
 const usage = `Org Escrow Decrypt (THU-804 POC)
 
 Recovers a user's Account Key from their org escrow envelope and decrypts one
 encrypted cell. Requires the operator's OFFLINE escrow private key.
 
 Usage:
-  bun scripts/org-escrow-decrypt.ts \\
-    --user-id <user id> \\
-    --table <table> --column <column> --row-id <row id> \\
-    --db-url postgresql://user:pass@host:port/db \\
-    --private-key <base64 PKCS8 operator private key>
+  ORG_ESCROW_PRIVATE_KEY=<base64 PKCS8> DATABASE_URL=postgresql://user:pass@host:port/db \\
+    bun scripts/org-escrow-decrypt.ts \\
+      --user-id <user id> \\
+      --table <table> --column <column> --row-id <row id>
+
+Secrets are NEVER passed as arguments — argv is visible to every process on the
+machine (\`ps\`, /proc/<pid>/cmdline) and lands in shell history. Give each one
+either as the env var above, or as a file holding just that value:
+
+  --private-key-file <path>   file containing the base64 PKCS8 private key
+  --db-url-file <path>        file containing the postgres connection URL
+
+Exactly one source per secret; passing both the file and the env var is an error.
+Use /dev/stdin as a path to pipe one in.
 
 Allowed --table/--column pairs (from shared/e2ee-types.ts encryptedColumnsMap):
 ${Object.entries(encryptedColumnsMap)
@@ -254,6 +283,65 @@ ${Object.entries(encryptedColumnsMap)
   .join('\n')}
 
 Only the recovered plaintext is printed to stdout; diagnostics go to stderr.`
+
+export type SecretSource = {
+  /** Human name for the secret, used in error messages. */
+  label: string
+  /** Env var carrying the secret value itself. */
+  envVar: string
+  /** Flag naming a FILE that holds the value (never the value itself). */
+  fileFlag: string
+  /** Value of `--<fileFlag>`, if given. */
+  filePath?: string
+  /** Value of `envVar`, if set. */
+  envValue?: string
+}
+
+/**
+ * Resolve one secret from exactly one of its two sources: an env var holding
+ * the value, or a file whose contents are the value.
+ *
+ * Deliberately no argv source. Command-line arguments are world-readable for
+ * the life of the process (`ps`, `/proc/<pid>/cmdline`) and persist in shell
+ * history; the escrow private key opens every escrowed account and the DB URL
+ * carries its own credentials. An env var is readable only by the same user
+ * (and root), and a file the operator already keeps at rest is friendlier still
+ * for a PKCS8 key.
+ *
+ * Throws — naming the source, never the value — when neither source is given,
+ * when both are, or when the file is unreadable or blank.
+ */
+export const resolveSecret = ({ label, envVar, fileFlag, filePath, envValue }: SecretSource): string => {
+  const fromEnv = envValue !== undefined && envValue !== '' ? envValue : undefined
+  if (filePath !== undefined && fromEnv !== undefined) {
+    throw new Error(`${label}: pass either --${fileFlag} or ${envVar}, not both`)
+  }
+
+  if (filePath !== undefined) {
+    const contents = (() => {
+      try {
+        return readFileSync(filePath, 'utf8')
+      } catch (err) {
+        throw new Error(`${label}: cannot read --${fileFlag} ${filePath}`, { cause: err })
+      }
+    })()
+    const secret = contents.trim()
+    if (secret === '') {
+      throw new Error(`${label}: --${fileFlag} ${filePath} is empty`)
+    }
+    return secret
+  }
+
+  if (fromEnv !== undefined) {
+    const secret = fromEnv.trim()
+    if (secret === '') {
+      throw new Error(`${label}: ${envVar} is set but blank`)
+    }
+    return secret
+  }
+
+  throw new Error(`${label}: set ${envVar} or pass --${fileFlag} <path>`)
+}
 
 type CliArgs = {
   userId: string
@@ -271,6 +359,19 @@ const parseCliArgs = (): CliArgs => {
     process.exit(1)
   }
 
+  // Checked before parseArgs, which would only say "unknown option": anyone
+  // reaching for the old flags has just leaked the secret to `ps`.
+  const removed = Object.values(secretSpecs).filter(({ removedFlag }) =>
+    process.argv.some((arg) => arg === `--${removedFlag}` || arg.startsWith(`--${removedFlag}=`)),
+  )
+  if (removed.length > 0) {
+    fail(
+      `${removed.map(({ removedFlag }) => `--${removedFlag}`).join(' and ')} no longer exist — secrets on argv are ` +
+        `world-readable via \`ps\`. Use ${removed.map(({ envVar }) => envVar).join('/')} or ` +
+        `${removed.map(({ fileFlag }) => `--${fileFlag}`).join('/')} instead, and rotate anything you just passed.`,
+    )
+  }
+
   const parsed = (() => {
     try {
       return parseArgs({
@@ -279,8 +380,8 @@ const parseCliArgs = (): CliArgs => {
           table: { type: 'string' },
           column: { type: 'string' },
           'row-id': { type: 'string' },
-          'db-url': { type: 'string' },
-          'private-key': { type: 'string' },
+          'private-key-file': { type: 'string' },
+          'db-url-file': { type: 'string' },
           help: { type: 'boolean', short: 'h' },
         },
       })
@@ -294,7 +395,7 @@ const parseCliArgs = (): CliArgs => {
     process.exit(0)
   }
 
-  const required = ['user-id', 'table', 'column', 'row-id', 'db-url', 'private-key'] as const
+  const required = ['user-id', 'table', 'column', 'row-id'] as const
   const missing = required.filter((name) => !parsed.values[name])
   if (missing.length > 0) {
     fail(`missing required argument(s): ${missing.map((name) => `--${name}`).join(', ')}`)
@@ -309,13 +410,25 @@ const parseCliArgs = (): CliArgs => {
     fail(`column "${column}" is not an encrypted column of "${table}" — allowed: ${allowedColumns!.join(', ')}`)
   }
 
+  const secret = (spec: (typeof secretSpecs)[keyof typeof secretSpecs], filePath: string | undefined): string => {
+    try {
+      const value = resolveSecret({ ...spec, filePath, envValue: process.env[spec.envVar] })
+      // Name the source, never the value — an operator holding several
+      // historical escrow keys needs to know which one this run used.
+      console.error(`Using ${spec.label} from ${filePath ?? `$${spec.envVar}`}`)
+      return value
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return {
     userId: parsed.values['user-id']!,
     table: table!,
     column: column!,
     rowId: parsed.values['row-id']!,
-    dbUrl: parsed.values['db-url']!,
-    privateKey: parsed.values['private-key']!,
+    dbUrl: secret(secretSpecs.dbUrl, parsed.values['db-url-file']),
+    privateKey: secret(secretSpecs.privateKey, parsed.values['private-key-file']),
   }
 }
 

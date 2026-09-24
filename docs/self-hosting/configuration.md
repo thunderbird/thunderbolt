@@ -100,7 +100,7 @@ Off by default. When enabled, every E2EE setup, rotation, and v1→v2 upgrade mu
 | -------------------- | ------- | ------------------------------------------------------------------------------------------------ |
 | `ORG_ESCROW_ENABLED` | `false` | Require and store an escrow envelope on every setup / rotate / upgrade.                          |
 
-**Order matters.** Ship `VITE_ORG_ESCROW_PUBLIC_KEY` (see [Frontend Build Args](#frontend-build-args)) in the client build *before* turning this on, or every setup, rotation, and upgrade fails with a 400. Generate the keypair with `scripts/org-escrow-keygen.ts`; the private half stays out-of-band and must never reach the app server. Recovery is offline, via `scripts/org-escrow-decrypt.ts`. See [e2e-encryption.md](../architecture/e2e-encryption.md) for the envelope format and its documented POC limits (classical P-256 only, no backfill for pre-escrow accounts).
+**Order matters.** Ship `VITE_ORG_ESCROW_PUBLIC_KEY` (see [Frontend Build Args](#frontend-build-args)) in the client build *before* turning this on, or every setup, rotation, and upgrade fails with a 400. Generate the keypair with `scripts/org-escrow-keygen.ts`; the private half stays out-of-band and must never reach the app server. Recovery is offline, via `scripts/org-escrow-decrypt.ts`, which takes the private key and the database URL from `ORG_ESCROW_PRIVATE_KEY` / `DATABASE_URL` or from `--private-key-file` / `--db-url-file` — never as arguments, which `ps` exposes to every process on the machine. See [e2e-encryption.md](../architecture/e2e-encryption.md) for the envelope format and its documented POC limits (classical P-256 only, no backfill for pre-escrow accounts).
 
 ## Rate Limiting and Proxy Trust
 

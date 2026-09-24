@@ -25,23 +25,27 @@ const execFileAsync = promisify(execFile)
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
 const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
 
-/** Run the offline operator decrypt tool and return its stdout (the plaintext). */
+/**
+ * Run the offline operator decrypt tool and return its stdout (the plaintext).
+ * The private key and DB URL go through the environment — the tool takes no
+ * secrets on argv, where `ps` would expose them.
+ */
 const runEscrowDecrypt = async (params: { userId: string; table: string; column: string; rowId: string }) => {
-  const { stdout } = await execFileAsync('bun', [
-    'scripts/org-escrow-decrypt.ts',
-    '--user-id',
-    params.userId,
-    '--table',
-    params.table,
-    '--column',
-    params.column,
-    '--row-id',
-    params.rowId,
-    '--db-url',
-    databaseUrl,
-    '--private-key',
-    testOrgEscrowPrivateKey,
-  ])
+  const { stdout } = await execFileAsync(
+    'bun',
+    [
+      'scripts/org-escrow-decrypt.ts',
+      '--user-id',
+      params.userId,
+      '--table',
+      params.table,
+      '--column',
+      params.column,
+      '--row-id',
+      params.rowId,
+    ],
+    { env: { ...process.env, DATABASE_URL: databaseUrl, ORG_ESCROW_PRIVATE_KEY: testOrgEscrowPrivateKey } },
+  )
   return stdout.trim()
 }
 

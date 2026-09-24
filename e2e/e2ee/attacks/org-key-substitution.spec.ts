@@ -100,7 +100,11 @@ const generateAttackerEscrowKeypair = async (): Promise<{
 const postgresPort = process.env.E2E_POSTGRES_PORT ?? '5434'
 const databaseUrl = `postgresql://postgres:postgres@localhost:${postgresPort}/postgres`
 
-/** Run the offline operator decrypt tool with a chosen private key; returns trimmed stdout. */
+/**
+ * Run the offline operator decrypt tool with a chosen private key; returns
+ * trimmed stdout. Secrets go through the environment — the tool takes none on
+ * argv, where `ps` would expose them.
+ */
 const runEscrowDecrypt = async (params: {
   userId: string
   table: string
@@ -108,21 +112,21 @@ const runEscrowDecrypt = async (params: {
   rowId: string
   privateKey: string
 }) => {
-  const { stdout } = await execFileAsync('bun', [
-    'scripts/org-escrow-decrypt.ts',
-    '--user-id',
-    params.userId,
-    '--table',
-    params.table,
-    '--column',
-    params.column,
-    '--row-id',
-    params.rowId,
-    '--db-url',
-    databaseUrl,
-    '--private-key',
-    params.privateKey,
-  ])
+  const { stdout } = await execFileAsync(
+    'bun',
+    [
+      'scripts/org-escrow-decrypt.ts',
+      '--user-id',
+      params.userId,
+      '--table',
+      params.table,
+      '--column',
+      params.column,
+      '--row-id',
+      params.rowId,
+    ],
+    { env: { ...process.env, DATABASE_URL: databaseUrl, ORG_ESCROW_PRIVATE_KEY: params.privateKey } },
+  )
   return stdout.trim()
 }
 

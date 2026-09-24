@@ -651,10 +651,17 @@ ORG_ESCROW_ENABLED=true
 ### Recovering with escrow (offline only)
 
 ```bash
+ORG_ESCROW_PRIVATE_KEY=<base64-pkcs8> DATABASE_URL=postgresql://... \
+  bun scripts/org-escrow-decrypt.ts \
+    --user-id <id> --table <table> --column <column> --row-id <id>
+
+# or, keeping the key at rest in a file instead of the environment
 bun scripts/org-escrow-decrypt.ts \
   --user-id <id> --table <table> --column <column> --row-id <id> \
-  --db-url postgresql://... --private-key <base64-pkcs8>
+  --private-key-file ./escrow.key --db-url-file ./recovery.dburl
 ```
+
+**Neither secret may be passed as an argument.** Argv is world-readable for the life of the process (`ps`, `/proc/<pid>/cmdline`) and persists in shell history, and this key opens *every* escrowed account on the deployment. Each secret comes from its env var or from a file holding just that value — exactly one source, never both; the tool exits rather than guess, and the removed `--private-key` / `--db-url` flags fail with a pointer to rotate whatever was just exposed. Only the *source* is echoed to stderr, never the value.
 
 Given the operator private key and direct DB access, the tool recovers the AK from `org_envelopes`, unwraps the DEK keyring, and decrypts a single cell (v2 with AAD, or legacy v1 via the `"v1"` slot). **The wrap target is proven by unwrapping** — identifying which public key an ECDH envelope was wrapped to requires the private half, which is why there is no fingerprint column (`org_envelopes` once carried one, stamped by the server from its own config over an envelope it never validated — a label masquerading as evidence: under a key substitution, an operator auditing it saw nothing wrong). An operator holding several historical escrow keys tries each until one opens the row; a wrong key fails with a descriptive error.
 

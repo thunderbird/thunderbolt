@@ -125,13 +125,26 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: powersync-e2ee-blob-report-${{ strategy.job-index }}
+          # Must start with `blob-report-` so the merge job's download pattern
+          # picks it up; it used to be `powersync-e2ee-blob-report-*`, which
+          # matched nothing and left this suite's results unmerged.
+          name: blob-report-powersync-${{ strategy.job-index }}
           path: blob-report/
           retention-days: 7
 
+      - name: Upload test screenshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-screenshots-powersync-${{ strategy.job-index }}
+          path: test-results/
+          retention-days: 7
+
   e2e-report:
-    if: always() && needs.e2e.result != 'skipped'
-    needs: e2e
+    # Both suites, or a red E2EE run produces no human-readable output at all:
+    # its blobs were uploaded but never merged here.
+    if: always() && (needs.e2e.result != 'skipped' || needs['powersync-e2ee'].result != 'skipped')
+    needs: [e2e, powersync-e2ee]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

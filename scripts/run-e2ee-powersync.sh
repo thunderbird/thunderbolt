@@ -42,10 +42,14 @@ done
 # --keep needs a STABLE project name so a later run reuses the same containers;
 # without it the default carries $$ (PID), which would orphan the kept stack and
 # boot a fresh one every time.
+#
+# Computed unconditionally, NEVER inherited: cleanup runs `down --volumes`, so
+# honouring an exported COMPOSE_PROJECT_NAME pointed that teardown at whatever
+# stack the developer had set it for and destroyed its pg_data on exit.
 if [[ "$KEEP" == "1" ]]; then
-  COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-thunderbolt-e2ee-keep}"
+  COMPOSE_PROJECT_NAME="thunderbolt-e2ee-keep"
 else
-  COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-thunderbolt-e2ee-${GITHUB_RUN_ID:-local}-$$}"
+  COMPOSE_PROJECT_NAME="thunderbolt-e2ee-${GITHUB_RUN_ID:-local}-$$"
 fi
 POSTGRES_PORT="${E2E_POSTGRES_PORT:-5434}"
 POWERSYNC_PORT="${E2E_POWERSYNC_PORT:-8081}"
@@ -63,13 +67,15 @@ cleanup() {
     echo "[e2ee] tear down with: docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} down --volumes --remove-orphans"
     return
   fi
-  docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
+  # `-p` explicitly, not just the exported env var: this line deletes volumes,
+  # so the project it targets should be visible at the call site.
+  docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" down --volumes --remove-orphans
 }
 
 trap cleanup EXIT INT TERM
 
 # Idempotent: reuses healthy containers (a fast no-op under --keep), or boots them.
-docker compose -f "$COMPOSE_FILE" up --detach --wait
+docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" up --detach --wait
 
 bun -e "
 const endpoint = 'http://localhost:${POWERSYNC_PORT}/probes/readiness'

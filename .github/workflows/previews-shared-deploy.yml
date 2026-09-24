@@ -155,7 +155,7 @@ jobs:
 
   notify:
     needs: deploy
-    if: ${{ always() && !cancelled() && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'schedule' || inputs.stack_name == 'previews-shared') && (needs.deploy.result == 'success' || needs.deploy.result == 'failure') }}
     permissions:
       actions: read
       contents: read

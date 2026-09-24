@@ -55,7 +55,7 @@ jobs:
         working-directory: deploy/pulumi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: ${{ inputs.dry_run != 'false' && github.event_name == 'workflow_dispatch' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           MAX_AGE_DAYS: ${{ inputs.max_age_days || '3' }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
@@ -180,7 +180,7 @@ jobs:
 
   notify:
     needs: [find-orphans, destroy-orphans, summary]
-    if: ${{ always() && !cancelled() && (contains(needs.*.result, 'failure') || (needs.find-orphans.result == 'success' && needs.summary.result == 'success')) }}
+    if: ${{ always() && !cancelled() && (contains(needs.*.result, 'failure') || (needs.find-orphans.result == 'success' && needs.summary.result == 'success' && needs.find-orphans.outputs.dry_run != 'true' && (needs.destroy-orphans.result == 'success' || needs.find-orphans.outputs.orphans == '[]'))) }}
     permissions:
       actions: read
       contents: read

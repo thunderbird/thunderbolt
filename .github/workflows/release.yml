@@ -102,10 +102,7 @@ jobs:
         needs.version_bump.result == 'success' && (
           (github.event_name == 'schedule' || inputs.platform == 'all') &&
           needs.desktop.result == 'success' && needs.ios.result == 'success' &&
-          needs.android.result == 'success' && needs.cli.result == 'success' ||
-          inputs.platform == 'desktop' && needs.desktop.result == 'success' ||
-          inputs.platform == 'ios' && needs.ios.result == 'success' ||
-          inputs.platform == 'android' && needs.android.result == 'success'
+          needs.android.result == 'success' && needs.cli.result == 'success'
         )
       )
     permissions:

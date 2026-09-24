@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { encPrefix, encV2Prefix, wireVersionV2, type KeyId } from '@shared/e2ee-types'
+import { encPrefix, encV2Prefix, isWireKeyId, wireVersionV2, type KeyId } from '@shared/e2ee-types'
 
 export { encPrefix, encV2Prefix, wireVersionV2 }
 
@@ -26,6 +26,21 @@ export const isV2EncryptedValue = (value: string): boolean => value.startsWith(e
  * Parse a v2 wire value. Returns null for anything that is not a well-formed
  * five-segment v2 value (including every v1 `__enc:<iv>:<ct>` value — a v1 IV
  * is 16 base64 chars so its second segment can never equal `v2`).
+ *
+ * The key_id segment is validated against `isWireKeyId`, not merely checked for
+ * non-emptiness. This is the trust boundary for a server-controlled string: an
+ * id outside the grammar can address no key on the account (see `isWireKeyId`),
+ * so accepting one only spends the client's resources on the server's behalf —
+ * a key-request round trip, a decode stall, and a retained responder entry,
+ * once per distinct id. Rejecting here is what keeps an invented id from
+ * reaching any of them.
+ *
+ * Null is the right verdict rather than a dangerous one: the only caller
+ * (`codec.decode`) returns the raw ciphertext unchanged, exactly as it does for
+ * an unresolvable DEK or a failed auth tag, and the download quarantine that
+ * decides plaintext-vs-ciphertext runs BEFORE decode and keys on the `__enc:`
+ * prefix alone. So a rejected value stays opaque — it can never be mistaken for
+ * server-supplied plaintext.
  */
 export const parseWireValue = (value: string): ParsedWireValue | null => {
   if (!value.startsWith(encV2Prefix)) {
@@ -40,7 +55,7 @@ export const parseWireValue = (value: string): ParsedWireValue | null => {
   const keyId = rest.slice(0, firstSep)
   const iv = rest.slice(firstSep + 1, secondSep)
   const ciphertext = rest.slice(secondSep + 1)
-  if (!iv || !ciphertext || ciphertext.includes(':')) {
+  if (!isWireKeyId(keyId) || !iv || !ciphertext || ciphertext.includes(':')) {
     return null
   }
   return { version: wireVersionV2, keyId, iv, ciphertext }

@@ -19,9 +19,14 @@
  * no plaintext.
  *
  * Test 2 covers C13's "no fail-open on an unknown key_id": a cell tagged with a
- * key_id the keyring does not hold drives the key-request → stage → still-missing
+ * GRAMMAR-VALID but absent key_id drives the key-request → stage → still-missing
  * path, and decode fails SAFE to the raw wire value — never plaintext, never a
  * hang.
+ *
+ * Test 3 is the same claim one step earlier: an out-of-grammar key_id is refused
+ * by `parseWireValue` and never reaches that path at all. Same visible outcome,
+ * no round trip and no stall. The two are split because a single out-of-grammar
+ * case would satisfy every assertion in test 2 while covering none of its path.
  *
  * Requires the PowerSync + Postgres harness. Run with:
  *   bash scripts/run-e2ee-powersync.sh attacks/key-channel-exfil.spec.ts
@@ -114,13 +119,49 @@ test.describe.serial('A5 — keys-sync channel exfiltration', () => {
     // Re-tag the SAME ciphertext with a key_id the keyring will never hold. The
     // AAD would mismatch anyway, but the point is the unknown-key_id resolution
     // path: request → stage → still missing → fail safe.
+    //
+    // The id MUST be grammar-valid (`keyIdPattern`) but absent. An invented
+    // label like `attacker0` is now rejected by `parseWireValue` before any of
+    // this runs, so it would short-circuit to raw without ever touching the
+    // resolution path — every assertion below would still pass while the test
+    // silently stopped covering what it claims. The out-of-grammar case has its
+    // own test after this one.
     const real = await getTaskCiphertext(rowId)
-    const unknownKeyId = real.replace(v2Ciphertext, '__enc:v2:attacker0:')
-    expect(unknownKeyId).toMatch(/^__enc:v2:attacker0:/)
+    const unknownKeyId = real.replace(v2Ciphertext, '__enc:v2:9:')
+    expect(unknownKeyId).toMatch(/^__enc:v2:9:/)
     await writeCell({ table: 'tasks', rowId, column: 'item' }, unknownKeyId)
 
     // decode returns the raw wire value — the user sees gibberish, never
     // plaintext, and the list stays responsive (default tasks still render).
+    await page.goto('/tasks')
+    await expect(page.getByText(/^__enc:v2:9:/).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(secret, { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Connect your email account to get started', { exact: true })).toBeVisible()
+  })
+
+  test('a cell tagged with an out-of-grammar key_id fails safe without a key request', async ({ page }) => {
+    const email = createE2eeEmail()
+    const secret = `channel-invented-${crypto.randomUUID()}`
+
+    await loginViaConsumerOtp(page, email)
+    const userId = await waitForUserId(email)
+    await completeFirstDeviceSetup(page)
+    await enableTasks(page)
+
+    await createTask(page, secret)
+    const [rowId] = await waitForCreatedTaskIds(userId, 1)
+
+    // `attacker0` is outside `keyIdPattern` and is not the reserved `v1` slot,
+    // so it can address no key on this account by construction. `parseWireValue`
+    // rejects it, and the value never reaches the key-request path at all — the
+    // amplification fix. The OUTCOME is identical to the grammar-valid case
+    // above (raw value, no plaintext); what differs is the cost, which is why
+    // both cases are covered rather than only one.
+    const real = await getTaskCiphertext(rowId)
+    const inventedKeyId = real.replace(v2Ciphertext, '__enc:v2:attacker0:')
+    expect(inventedKeyId).toMatch(/^__enc:v2:attacker0:/)
+    await writeCell({ table: 'tasks', rowId, column: 'item' }, inventedKeyId)
+
     await page.goto('/tasks')
     await expect(page.getByText(/^__enc:v2:attacker0:/).first()).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(secret, { exact: true })).toHaveCount(0)

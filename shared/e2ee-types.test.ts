@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
+  akCanaryAnchor,
   canaryAAD,
   dekWrapAAD,
   challengeOperations,
@@ -15,6 +16,7 @@ import {
   encV2Prefix,
   initialKeyId,
   isMintableKeyId,
+  isWireKeyId,
   kdfIterations,
   legacyKeyId,
   payloadSeparator,
@@ -86,6 +88,29 @@ describe('isMintableKeyId (THU-871 key_id grammar)', () => {
 
   test('the reserved legacy slot is deliberately NOT mintable — only /encryption/upgrade writes it', () => {
     expect(isMintableKeyId(legacyKeyId)).toBe(false)
+  })
+})
+
+describe('isWireKeyId — the addressable-key_id set', () => {
+  test('is the mintable grammar plus the reserved legacy slot, and nothing else', () => {
+    for (const keyId of [initialKeyId, '1', '9'.repeat(15), legacyKeyId]) {
+      expect(isWireKeyId(keyId)).toBe(true)
+    }
+    for (const keyId of ['', 'ws1', '01', '1'.repeat(16), '1e+21', 'V1', 'v1 ', '__ak']) {
+      expect(isWireKeyId(keyId)).toBe(false)
+    }
+  })
+
+  test('accepts the legacy slot that `isMintableKeyId` rejects — the two are not interchangeable', () => {
+    // Rejecting "v1" here would make every pre-upgrade row on every upgraded
+    // account undecodable; accepting it as a PRIMARY would seal new writes
+    // under the key every retired device still holds.
+    expect(isWireKeyId(legacyKeyId)).toBe(true)
+    expect(isMintableKeyId(legacyKeyId)).toBe(false)
+  })
+
+  test('the canary AAD anchor is not addressable as a key', () => {
+    expect(isWireKeyId(akCanaryAnchor)).toBe(false)
   })
 })
 

@@ -391,6 +391,16 @@ describe('keys-sync channel protocol', () => {
     expect(await decodePromise).toBe('legacy secret')
   })
 
+  it('a server-invented key_id costs nothing — no key-request, no stall, value left opaque', async () => {
+    await setupKeyring(['0'], '0')
+    // A2 stamping rows with endlessly distinct junk labels used to buy a
+    // key-request round trip and a ~10s decode stall per distinct id.
+    const planted = '__enc:v2:9999999999999999:aXY=:Y3Q='
+
+    expect(await codec.decode(planted, ctx)).toBe(planted)
+    expect(fakeChannel.posted.filter((message) => message.type === 'key-request')).toEqual([])
+  })
+
   it("unwrap failure: posts key-request (unwrap-failed) and re-reads the AK after 'ak-refreshed'", async () => {
     // Post-revocation shape: this device still holds the OLD AK while key "1"
     // arrives wrapped under the NEW AK.

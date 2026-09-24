@@ -69,6 +69,13 @@ export type KeyRequestResponder = {
   /** Settles when the startup staging pass (incl. key_version check) finished. Never rejects. */
   ready: Promise<void>
   stop: () => void
+  /**
+   * How many key_ids the loop guard is currently holding. Observability seam:
+   * the bound on this map is a security property (key_ids are server-supplied
+   * — see `pruneExpiredAttempts`) and pruning is deliberately invisible in
+   * every other respect, so without this there is nothing to assert against.
+   */
+  trackedKeyIdCount: () => number
 }
 
 const createBroadcastChannel = (): { channel: KeysSyncChannel; close: () => void } | null => {
@@ -122,6 +129,28 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
   }
 
   /**
+   * Drop attempts whose cooldown window has already elapsed. Pure memory
+   * reclaim, never a refusal: `isOnCooldown` treats an entry at or past the
+   * window as absent anyway, so removing it cannot change the answer for any
+   * request — a legitimate user can no more be walled by this than by the
+   * cooldown itself.
+   *
+   * It has to exist because key_ids are SERVER-SUPPLIED. `parseWireValue` now
+   * keeps invented ids off this path entirely, but the grammar still admits
+   * 10^15 ids, so without a sweep a malicious server (A2) could stamp rows with
+   * endlessly distinct valid-looking ids and leave one permanent map entry per
+   * id for the life of the page.
+   */
+  const pruneExpiredAttempts = (): void => {
+    const cutoff = now() - cooldownMs
+    for (const [keyId, attempt] of lastAttempts) {
+      if (attempt.at <= cutoff) {
+        lastAttempts.delete(keyId)
+      }
+    }
+  }
+
+  /**
    * Loop guard: if staging didn't produce the key, the codec's fail-open path
    * keeps decoding rows under it — don't re-fetch the same key_id more than once
    * per cooldown window. An `unwrap-failed` escalation may still bypass a recent
@@ -149,6 +178,7 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
   }
 
   const handleKeyRequest = (keyId: KeyId, reason: KeyRequestReason): Promise<void> => {
+    pruneExpiredAttempts()
     const pending = inflight.get(keyId)
     if (pending) {
       return pending
@@ -203,6 +233,7 @@ export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyReq
       active = false
       ownedChannel?.close()
     },
+    trackedKeyIdCount: () => lastAttempts.size,
   }
 }
 

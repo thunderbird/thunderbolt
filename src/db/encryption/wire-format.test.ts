@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { legacyKeyId } from '@shared/e2ee-types'
 import { formatWireValue, isEncryptedValue, isV2EncryptedValue, parseWireValue } from './wire-format'
 
 /** A representative legacy v1 value: __enc:<iv-base64>:<ct-base64>, no version, no key_id. */
@@ -43,8 +44,32 @@ describe('parseWireValue', () => {
     })
   })
 
-  test('parses a non-numeric key_id (e.g. the reserved v1 slot, workspace DEKs)', () => {
-    expect(parseWireValue('__enc:v2:ws1:aXY=:Y3Q=')?.keyId).toBe('ws1')
+  test('parses the reserved "v1" slot — every pre-upgrade row is addressed by it', () => {
+    expect(parseWireValue(`__enc:v2:${legacyKeyId}:aXY=:Y3Q=`)?.keyId).toBe(legacyKeyId)
+  })
+
+  test('parses every mintable key_id up to the 15-digit bound', () => {
+    for (const keyId of ['0', '1', '9', '10', '42', '999999999999999']) {
+      expect(parseWireValue(`__enc:v2:${keyId}:aXY=:Y3Q=`)?.keyId).toBe(keyId)
+    }
+  })
+
+  test('returns null for a key_id outside the grammar — a server-invented label addresses no key', () => {
+    // Each of these can only come from the server: bootstrap and /upgrade mint
+    // fixed ids, /rotate validates `newPrimaryKey.keyId` against keyIdPattern.
+    for (const keyId of [
+      'ws1', // a label from no mint path
+      '01', // padded — not canonical, would alias "1"
+      '1000000000000000', // 16 digits, past the bound
+      '1e+21', // exponent notation (THU-871's aliasing primitive)
+      '-1',
+      '1.0',
+      ' 1',
+      'V1', // case does not make it the reserved slot
+      'x'.repeat(4096), // an unbounded id is an unbounded Map key downstream
+    ]) {
+      expect(parseWireValue(`__enc:v2:${keyId}:aXY=:Y3Q=`)).toBeNull()
+    }
   })
 
   test('returns null for a legacy v1 value', () => {

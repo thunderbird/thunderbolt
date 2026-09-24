@@ -413,6 +413,85 @@ describe('key-request handling (integration with the real codec)', () => {
   })
 })
 
+/**
+ * key_ids are SERVER-SUPPLIED, so the loop guard's map is attacker-influenced
+ * state. A malicious server (A2) stamping rows with endlessly distinct key_ids
+ * must not be able to grow it without limit for the life of the page.
+ */
+describe('loop-guard bound', () => {
+  const requestMany = async (workerPort: KeysSyncChannel, keyIds: string[], stage: ReturnType<typeof mock>) => {
+    for (const keyId of keyIds) {
+      const before = stage.mock.calls.length
+      workerPort.postMessage({ type: 'key-request', keyId, reason: 'unknown-key' })
+      await waitFor(() => stage.mock.calls.length > before)
+      for (let i = 0; i < 20; i++) {
+        await flushAsync()
+      }
+    }
+  }
+
+  it('prunes attempts once their cooldown window has elapsed, so the map does not grow unboundedly', async () => {
+    const hub = await setup()
+
+    let clock = 0
+    const stage = mock(async () => {})
+    const responder = createKeyRequestResponder({
+      stageKeyring: stage,
+      refreshAK: failIfCalled('refreshAK'),
+      fetchMetadata: async () => ({ key_version: 1 }),
+      channel: hub.createPort(),
+      now: () => clock,
+      cooldownMs: 30_000,
+    })
+    await responder.ready
+
+    const workerPort = hub.createPort()
+    await requestMany(workerPort, ['1', '2', '3'], stage)
+    expect(responder.trackedKeyIdCount()).toBe(3)
+
+    // Past the cooldown those three can no longer suppress anything, so holding
+    // them is pure leak. The next inbound request sweeps them.
+    clock = 31_000
+    await requestMany(workerPort, ['4'], stage)
+    expect(responder.trackedKeyIdCount()).toBe(1)
+
+    responder.stop()
+  })
+
+  it('never prunes an entry still inside its window — the loop guard keeps working', async () => {
+    const hub = await setup()
+
+    let clock = 0
+    const stage = mock(async () => {})
+    const responder = createKeyRequestResponder({
+      stageKeyring: stage,
+      refreshAK: failIfCalled('refreshAK'),
+      fetchMetadata: async () => ({ key_version: 1 }),
+      channel: hub.createPort(),
+      now: () => clock,
+      cooldownMs: 30_000,
+    })
+    await responder.ready
+
+    const workerPort = hub.createPort()
+    await requestMany(workerPort, ['1'], stage)
+
+    // A different key_id's request drives the sweep; '1' is 29s old, so it must
+    // survive — and must still suppress its own re-request.
+    clock = 29_000
+    await requestMany(workerPort, ['2'], stage)
+    expect(responder.trackedKeyIdCount()).toBe(2)
+
+    workerPort.postMessage({ type: 'key-request', keyId: '1', reason: 'unknown-key' })
+    for (let i = 0; i < 20; i++) {
+      await flushAsync()
+    }
+    expect(stage).toHaveBeenCalledTimes(2) // still on cooldown — no third staging pass
+
+    responder.stop()
+  })
+})
+
 describe('startKeyRequestResponder', () => {
   it('replaces a previous instance — only the newest responder answers', async () => {
     const hub = await setup()

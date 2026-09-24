@@ -105,6 +105,27 @@ export const initialKeyId: KeyId = '0'
  */
 export const legacyKeyId: KeyId = 'v1'
 
+/**
+ * The COMPLETE set of key_ids that may legitimately address a key on this
+ * account: every mintable id, plus the one reserved `legacyKeyId` slot. Nothing
+ * else can enter a keyring — bootstrap and `/upgrade` mint only the fixed
+ * reserved ids, and `/rotate` validates `newPrimaryKey.keyId` against
+ * `keyIdPattern` — so a label outside this set is server-invented by
+ * construction.
+ *
+ * Use it to validate a SERVER-SUPPLIED key_id before spending anything on it.
+ * NOT for the primary pointer: that is `isMintableKeyId`, which excludes `"v1"`
+ * on purpose, because a pointer there seals new writes under the decrypt-only
+ * legacy key (THU-876).
+ *
+ * Deliberately NOT applied to the keyring RE-WRAP schema
+ * (`wrappedKeyEntrySchema`, `backend/src/api/encryption.ts`): that path must
+ * keep accepting whatever ids an account already carries, or a poisoned account
+ * becomes permanently unrotatable (THU-871). Validating here costs that nothing
+ * — a re-wrap moves blobs, it never resolves a key.
+ */
+export const isWireKeyId = (keyId: string): boolean => isMintableKeyId(keyId) || keyId === legacyKeyId
+
 /** One wrapped DEK as stored server-side and staged into IndexedDB for the worker. */
 export type WrappedKeyEntry = {
   keyId: KeyId

@@ -19,7 +19,7 @@ import {
 } from 'ehbp'
 import { AEAD_AES_256_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256, type Key } from 'hpke'
 import { SecureClient } from 'tinfoil'
-import { createTinfoilClientLifecycle, isTinfoilTransportWedgedError } from './tinfoil-client'
+import { createTinfoilClientLifecycle, isTinfoilTransportWedgedError, resolveAbsoluteCloudUrl } from './tinfoil-client'
 
 /** Build the `SecureClient` slice consumed by the lifecycle. */
 const createClient = (ready: () => Promise<void> = async () => {}): SecureClient =>
@@ -380,6 +380,21 @@ describe('Tinfoil client lifecycle', () => {
       error_name: 'TypeError',
       client: 'user',
     })
+  })
+})
+
+describe('resolveAbsoluteCloudUrl', () => {
+  it('resolves a same-origin relative path against the page origin', () => {
+    expect(resolveAbsoluteCloudUrl('/v1', 'https://app.example.com')).toBe('https://app.example.com/v1')
+  })
+
+  it('leaves an already-absolute URL unchanged (local dev / cross-origin preview stacks)', () => {
+    expect(resolveAbsoluteCloudUrl('http://localhost:8000/v1', 'https://ignored.example.com')).toBe(
+      'http://localhost:8000/v1',
+    )
+    expect(resolveAbsoluteCloudUrl('https://api-pr-123.preview.thunderbolt.io/v1', 'https://ignored.example.com')).toBe(
+      'https://api-pr-123.preview.thunderbolt.io/v1',
+    )
   })
 })
 

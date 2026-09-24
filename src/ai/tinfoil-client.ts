@@ -178,6 +178,20 @@ export const createTinfoilClientLifecycle = ({
   }
 }
 
+/**
+ * Resolve `cloudUrl` (the `VITE_THUNDERBOLT_CLOUD_URL` build-time value) to an
+ * absolute URL. Same-origin deployments configure it as a relative path (e.g.
+ * `/v1`, the default for the `deploy/k8s` Helm chart) so one image serves any
+ * hostname — that's fine for `fetch`/the OpenAI-compatible clients, which
+ * resolve a relative `baseURL` against the page origin automatically, but
+ * Tinfoil's `SecureClient` requires an absolute `http(s)://` URL and throws a
+ * `ConfigurationError` otherwise. Already-absolute values (local dev,
+ * cross-origin preview stacks) pass through unchanged — `new URL(absolute,
+ * base)` ignores `base` whenever the first argument is already absolute.
+ */
+export const resolveAbsoluteCloudUrl = (cloudUrl: string, origin: string = window.location.origin): string =>
+  new URL(cloudUrl, origin).toString().replace(/\/$/, '')
+
 // Cached so callers reuse one client and its SDK-managed attestation state.
 // `tinfoil` is dynamically imported to code-split its attestation/crypto deps.
 //
@@ -194,7 +208,10 @@ const lifecycle = createTinfoilClientLifecycle({
     if (type === 'user') {
       return new SecureClient({ userCacheSecret: getUserCacheSecret() })
     }
-    return new SecureClient({ baseURL: `${cloudUrl}/tinfoil`, userCacheSecret: getUserCacheSecret() })
+    return new SecureClient({
+      baseURL: `${resolveAbsoluteCloudUrl(cloudUrl)}/tinfoil`,
+      userCacheSecret: getUserCacheSecret(),
+    })
   },
   getCloudUrl: () => getLocalSetting('cloudUrl'),
 })

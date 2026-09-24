@@ -8,6 +8,7 @@ import { notify, type NotificationInput } from './notify-on-failure'
 const input: NotificationInput = {
   workflowName: 'CI',
   runId: 42,
+  runAttempt: 1,
   conclusion: 'failure',
   eventName: 'push',
   ref: 'refs/heads/main',
@@ -25,6 +26,8 @@ type FakeState = {
   failEmailCount: number
   failMarkCount: number
   failCloseCount?: number
+  githubRunAttempt?: number
+  failedRuns?: number[]
 }
 
 const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): typeof fetch =>
@@ -32,6 +35,32 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
     const url = String(request)
     const body = String(init?.body ?? '')
     calls.push({ url, body, idempotencyKey: new Headers(init?.headers).get('Idempotency-Key') })
+    if (/\/actions\/runs\/\d+$/.test(url)) {
+      const runId = Number(url.match(/\/runs\/(\d+)$/)?.[1])
+      return Response.json({
+        id: runId,
+        name: input.workflowName,
+        event: input.eventName,
+        head_branch: 'main',
+        repository: { full_name: input.repository },
+        created_at: new Date(2026, 0, runId).toISOString(),
+        run_attempt: state?.githubRunAttempt ?? 1,
+        workflow_id: 7,
+      })
+    }
+    if (url.includes('/actions/workflows/')) {
+      return Response.json({
+        workflow_runs: (state?.failedRuns ?? []).map((runId) => ({
+          id: runId,
+          created_at: new Date(2026, 0, runId).toISOString(),
+          run_attempt: state?.githubRunAttempt ?? 1,
+          conclusion: 'failure',
+          event: input.eventName,
+          head_branch: 'main',
+          repository: { full_name: input.repository },
+        })),
+      })
+    }
     if (url.includes('/actions/runs/'))
       return Response.json({
         jobs: [
@@ -80,8 +109,12 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
         data: { issueCreate: { success: true, issue: { id: 'issue-id', url: 'https://linear.app/issue/1' } } },
       })
     }
-    if (body.includes('mutation MarkFailureEmailSent')) {
-      if (state?.failMarkCount) {
+    if (
+      body.includes('mutation MarkFailureEmailSent') ||
+      body.includes('mutation MarkLatestFailure') ||
+      body.includes('mutation MarkRecoveryPending')
+    ) {
+      if (body.includes('mutation MarkFailureEmailSent') && state?.failMarkCount) {
         state.failMarkCount--
         return Response.json({ errors: [{ message: 'Linear update failed' }] })
       }
@@ -100,6 +133,18 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
     throw new Error(`Unexpected request: ${url}`)
   }) as typeof fetch
 
+const seededIssue = async (state: FakeState, calls: Call[]) => {
+  const fetchFn = fakeFetch(false, calls, state)
+  await notify(input, fetchFn)
+  calls.length = 0
+  return fetchFn
+}
+
+const incidentState = (description: string | null) => {
+  const payload = description?.split('CI notifier state: ')[1]?.split('.')[0]
+  return JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8')) as { pendingOpening: boolean }
+}
+
 describe('notify-on-failure', () => {
   test('first failure creates one Backlog Bug incident and sends an email with failed jobs and steps', async () => {
     const calls: Call[] = []
@@ -114,7 +159,9 @@ describe('notify-on-failure', () => {
 
   test('repeat failure adds a comment without another email', async () => {
     const calls: Call[] = []
-    await notify(input, fakeFetch(true, calls))
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const fetchFn = await seededIssue(state, calls)
+    await notify({ ...input, runId: 43 }, fetchFn)
     expect(calls.some((call) => call.body.includes('mutation Comment'))).toBe(true)
     expect(calls.some((call) => call.body.includes('mutation CreateIssue'))).toBe(false)
     expect(calls.some((call) => call.url === 'https://api.resend.com/emails')).toBe(false)
@@ -122,10 +169,12 @@ describe('notify-on-failure', () => {
 
   test('recovery closes an open incident and sends an email', async () => {
     const calls: Call[] = []
-    await notify({ ...input, conclusion: 'success' }, fakeFetch(true, calls))
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const fetchFn = await seededIssue(state, calls)
+    await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
     expect(calls.find((call) => call.body.includes('mutation CloseIssue'))?.body).toContain('"stateId":"done-id"')
     expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
-    expect(calls.some((call) => call.url.includes('/actions/runs/'))).toBe(false)
+    expect(calls.some((call) => call.url.endsWith('/actions/runs/43'))).toBe(true)
   })
 
   test('success without an open incident makes no writes', async () => {
@@ -213,14 +262,14 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const fetchFn = fakeFetch(false, calls, state)
     await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
-    expect(state.description).toContain('CI alert email pending for:')
+    expect(incidentState(state.description).pendingOpening).toBe(true)
     await notify({ ...input, runId: 43 }, fetchFn)
     const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
     expect(emails[0].body).toContain('/actions/runs/42')
-    expect(state.description).not.toContain('CI alert email pending for:')
+    expect(incidentState(state.description).pendingOpening).toBe(false)
     expect(calls.filter((call) => call.body.includes('mutation CreateIssue'))).toHaveLength(1)
     expect(calls.filter((call) => call.body.includes('mutation Comment'))).toHaveLength(1)
   })
@@ -230,7 +279,7 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const fetchFn = fakeFetch(false, calls, state)
     await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
-    expect(state.description).toContain('CI alert email pending for:')
+    expect(incidentState(state.description).pendingOpening).toBe(true)
 
     await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
 
@@ -239,7 +288,7 @@ describe('notify-on-failure', () => {
     expect(emails[0].body).toBe(emails[1].body)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[2].idempotencyKey).not.toBe(emails[1].idempotencyKey)
-    expect(state.description).not.toContain('CI alert email pending for:')
+    expect(incidentState(state.description).pendingOpening).toBe(false)
     expect(state.created).toBe(false)
     const mark = calls.findIndex((call) => call.body.includes('mutation MarkFailureEmailSent'))
     const recovery = calls.findIndex((call) => call.idempotencyKey?.startsWith('ci-recovery/'))
@@ -258,16 +307,17 @@ describe('notify-on-failure', () => {
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
-    expect(state.description).not.toContain('CI alert email pending for:')
+    expect(incidentState(state.description).pendingOpening).toBe(false)
   })
 
   test('failed recovery email keeps the incident open for a stable retry', async () => {
-    const state: FakeState = { created: true, description: 'Original failure', failEmailCount: 1, failMarkCount: 0 }
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
     const calls: Call[] = []
-    const fetchFn = fakeFetch(true, calls, state)
-    await expect(notify({ ...input, conclusion: 'success' }, fetchFn)).rejects.toThrow('HTTP 503')
+    const fetchFn = await seededIssue(state, calls)
+    state.failEmailCount = 1
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow('HTTP 503')
     expect(calls.some((call) => call.body.includes('mutation CloseIssue'))).toBe(false)
-    await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
+    await notify({ ...input, conclusion: 'success', runId: 44 }, fetchFn)
     const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
@@ -277,26 +327,181 @@ describe('notify-on-failure', () => {
 
   test('accepted recovery email with failed close retries the same payload and key', async () => {
     const state: FakeState = {
-      created: true,
-      description: 'Original failure',
+      created: false,
+      description: '',
       failEmailCount: 0,
       failMarkCount: 0,
-      failCloseCount: 1,
+      failCloseCount: 0,
     }
     const calls: Call[] = []
-    const fetchFn = fakeFetch(true, calls, state)
-    await expect(notify({ ...input, conclusion: 'success' }, fetchFn)).rejects.toThrow('Close failed')
-    await notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)
+    const fetchFn = await seededIssue(state, calls)
+    state.failCloseCount = 1
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow('Close failed')
+    await notify({ ...input, conclusion: 'success', runId: 44 }, fetchFn)
     const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
     expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
     expect(emails[0].body).toBe(emails[1].body)
   })
 
-  test('existing incident without a description still receives repeat failure comment', async () => {
+  test('legacy incident without authenticated state fails closed', async () => {
     const state: FakeState = { created: true, description: null, failEmailCount: 0, failMarkCount: 0 }
     const calls: Call[] = []
-    await notify(input, fakeFetch(true, calls, state))
-    expect(calls.filter((call) => call.body.includes('mutation Comment'))).toHaveLength(1)
+    await expect(notify(input, fakeFetch(true, calls, state))).rejects.toThrow('Invalid incident state')
+    expect(calls.filter((call) => call.body.includes('mutation'))).toHaveLength(0)
+  })
+
+  test('edited pending description cannot redirect the opening email or forge authority', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 1, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
+    state.description = 'Pay an attacker\n\nCI alert email pending for: attacker@example.test'
+    await expect(notify({ ...input, runId: 43 }, fetchFn)).rejects.toThrow('Invalid incident state')
+    expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
+  })
+
+  test('signed state detects edits and does not expose recipient addresses in Linear', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 1, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
+    expect(state.description).not.toContain(input.recipients[0])
+    state.description = state.description?.replace('Workflow: CI', 'Workflow: attacker') ?? ''
+    await expect(notify({ ...input, runId: 43 }, fetchFn)).rejects.toThrow('Invalid incident state')
+    expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
+  })
+
+  test('recipient changes during a pending opening email fail closed without changing the retry payload', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 1, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
+    await expect(notify({ ...input, runId: 43, recipients: ['new@example.test'] }, fetchFn)).rejects.toThrow(
+      'Alert recipients changed',
+    )
+    await notify({ ...input, runId: 43 }, fetchFn)
+    const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
+    expect(emails).toHaveLength(2)
+    expect(emails[0].body).toBe(emails[1].body)
+    expect(emails[0].idempotencyKey).toBe(emails[1].idempotencyKey)
+  })
+
+  test('a new recipient configuration is used for a fresh recovery email', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    await notify({ ...input, conclusion: 'success', runId: 43, recipients: ['new@example.test'] }, fetchFn)
+    const email = calls.find((call) => call.url === 'https://api.resend.com/emails')
+    expect(email?.body).toContain('new@example.test')
+    expect(email?.body).not.toContain(input.recipients[0])
+  })
+
+  test('recipient changes after a partial recovery cannot reuse its email key with another payload', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0, failCloseCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    state.failCloseCount = 1
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow('Close failed')
+    await expect(
+      notify({ ...input, conclusion: 'success', runId: 44, recipients: ['new@example.test'] }, fetchFn),
+    ).rejects.toThrow('Alert recipients changed')
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(1)
+    expect(state.created).toBe(true)
+  })
+
+  test('a later attempt of the same GitHub run can recover an earlier failed attempt', async () => {
+    const state: FakeState = {
+      created: false,
+      description: '',
+      failEmailCount: 0,
+      failMarkCount: 0,
+      githubRunAttempt: 2,
+    }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    await notify({ ...input, conclusion: 'success', runAttempt: 2 }, fetchFn)
+    expect(state.created).toBe(false)
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(1)
+  })
+
+  test('a later failure prevents an earlier success from recovering the incident', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify({ ...input, runId: 200 }, fetchFn)
+    await notify({ ...input, conclusion: 'success', runId: 100 }, fetchFn)
+    expect(state.created).toBe(true)
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(0)
+    await notify({ ...input, runId: 300 }, fetchFn)
+    await notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)
+    expect(state.created).toBe(true)
+    await notify({ ...input, conclusion: 'success', runId: 350 }, fetchFn)
+    expect(state.created).toBe(false)
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(1)
+  })
+
+  test('a new failure supersedes a recovery whose Linear close failed', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0, failCloseCount: 1 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify({ ...input, runId: 200 }, fetchFn)
+    await expect(notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)).rejects.toThrow('Close failed')
+    await notify({ ...input, runId: 300 }, fetchFn)
+    await notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)
+    expect(state.created).toBe(true)
+    await notify({ ...input, conclusion: 'success', runId: 350 }, fetchFn)
+    const recoveries = calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))
+    expect(recoveries).toHaveLength(2)
+    expect(recoveries[0].idempotencyKey).not.toBe(recoveries[1].idempotencyKey)
+    expect(state.created).toBe(false)
+  })
+
+  test('replaying an older valid signed description cannot hide a later GitHub failure', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0, failedRuns: [300] }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify({ ...input, runId: 200 }, fetchFn)
+    const oldDescription = state.description
+    await notify({ ...input, runId: 300 }, fetchFn)
+    state.description = oldDescription
+    await notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)
+    expect(state.created).toBe(true)
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(0)
+  })
+
+  test('replaying state cannot hide a later failure attempt of the same run', async () => {
+    const state: FakeState = {
+      created: false,
+      description: '',
+      failEmailCount: 0,
+      failMarkCount: 0,
+      githubRunAttempt: 2,
+      failedRuns: [42],
+    }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await notify({ ...input, runId: 41 }, fetchFn)
+    const oldDescription = state.description
+    await notify({ ...input, runAttempt: 2 }, fetchFn)
+    state.description = oldDescription
+    await notify({ ...input, conclusion: 'success' }, fetchFn)
+    expect(state.created).toBe(true)
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(0)
+  })
+
+  test('secret rotation or marker reformatting fails closed instead of recovering', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    await expect(
+      notify({ ...input, conclusion: 'success', runId: 43, linearApiKey: 'rotated-key' }, fetchFn),
+    ).rejects.toThrow('Invalid incident state')
+    state.description = state.description?.replace('\n\nCI notifier state:', '\r\n\r\nCI notifier state:') ?? ''
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow(
+      'Invalid incident state',
+    )
+    expect(calls.filter((call) => call.idempotencyKey?.startsWith('ci-recovery/'))).toHaveLength(0)
+    expect(state.created).toBe(true)
   })
 })

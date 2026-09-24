@@ -4,9 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
 export type NotificationInput = {
   workflowName: string
   runId: number
+  runAttempt: number
   conclusion: string
   eventName: string
   ref: string
@@ -25,6 +28,16 @@ type Job = {
   steps?: { name: string; conclusion: string | null }[]
 }
 type Incident = { id: string; url: string; description: string | null }
+type RunOrder = { createdAt: number; runId: number; attempt: number; workflowId: number }
+type AlertState = {
+  version: 1
+  repository: string
+  workflowName: string
+  latestFailure: RunOrder
+  pendingOpening: boolean
+  openingRecipientsHash: string
+  recoveryRecipientsHash?: string
+}
 type State = { id: string; name: string; type: string }
 type Label = { id: string; name: string; team: { id: string } | null }
 type LinearVariables =
@@ -59,13 +72,13 @@ const linear = async <T>(
   return result.data
 }
 
-/** Collect failed jobs and steps from all pages of the latest run attempt. */
+/** Collect failed jobs and steps from the exact run attempt. */
 const failedJobs = async (fetchFn: typeof fetch, input: NotificationInput): Promise<string> => {
   const lines: string[] = []
   for (let page = 1; ; page++) {
     const response = await readJson<{ jobs: Job[] }>(
       await fetchFn(
-        `https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}/jobs?filter=latest&per_page=100&page=${page}`,
+        `https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}/attempts/${input.runAttempt}/jobs?per_page=100&page=${page}`,
         { headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' } },
       ),
     )
@@ -87,7 +100,6 @@ const sendEmail = async (
   subject: string,
   message: string,
   idempotencyKey: string,
-  recipients: string[] = input.recipients,
 ): Promise<void> => {
   await readJson<{ id: string }>(
     await fetchFn('https://api.resend.com/emails', {
@@ -97,23 +109,134 @@ const sendEmail = async (
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
       },
-      body: JSON.stringify({ from: 'alerts@auth.thunderbolt.io', to: recipients, subject, text: message }),
+      body: JSON.stringify({ from: 'alerts@auth.thunderbolt.io', to: input.recipients, subject, text: message }),
     }),
   )
 }
 
-const pendingMarker = '\n\nCI alert email pending for: '
+const stateMarker = '\n\nCI notifier state: '
 
-/** Recover the original failure email payload and recipients from an open incident. */
-const pendingEmail = (description: string): { body: string; recipients: string[] } | null => {
-  const markerAt = description.lastIndexOf(pendingMarker)
-  if (markerAt < 0) return null
-  const recipients = description
-    .slice(markerAt + pendingMarker.length)
-    .split(',')
-    .filter(Boolean)
-  if (!recipients.length) throw new Error('Pending incident has no alert recipients')
-  return { body: description.slice(0, markerAt), recipients }
+/** Bind editable incident state to the existing server-side Linear secret. */
+const signedDescription = (body: string, state: AlertState, key: string): string => {
+  const payload = Buffer.from(JSON.stringify(state)).toString('base64url')
+  const signature = createHmac('sha256', key).update(`${body}\n${payload}`).digest('base64url')
+  return `${body}${stateMarker}${payload}.${signature}`
+}
+
+/** Reject missing, edited, or legacy state before it can authorize side effects. */
+const readState = (issue: Incident, input: NotificationInput) => {
+  const description = issue.description ?? ''
+  const markerAt = description.lastIndexOf(stateMarker)
+  const match =
+    markerAt < 0 ? null : /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(description.slice(markerAt + stateMarker.length))
+  if (!match) throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+  const body = description.slice(0, markerAt)
+  const expected = createHmac('sha256', input.linearApiKey).update(`${body}\n${match[1]}`).digest()
+  const actual = Buffer.from(match[2], 'base64url')
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+  }
+  const state = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as AlertState
+  if (state.version !== 1 || state.repository !== input.repository || state.workflowName !== input.workflowName) {
+    throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+  }
+  return { body, state }
+}
+
+/** Fingerprint recipients without saving addresses or a guessable hash in Linear. */
+const recipientsHash = (input: NotificationInput): string =>
+  createHmac('sha256', input.linearApiKey).update(JSON.stringify(input.recipients)).digest('base64url')
+
+/** Read ordering and verify the run really belongs to the trusted workflow. */
+const runOrder = async (fetchFn: typeof fetch, input: NotificationInput): Promise<RunOrder> => {
+  const run = await readJson<{
+    id: number
+    name: string
+    event: string
+    head_branch: string
+    repository: { full_name: string }
+    created_at: string
+    run_attempt: number
+    workflow_id: number
+  }>(
+    await fetchFn(`https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}`, {
+      headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' },
+    }),
+  )
+  const createdAt = Date.parse(run.created_at)
+  if (
+    run.id !== input.runId ||
+    run.name !== input.workflowName ||
+    run.event !== input.eventName ||
+    run.head_branch !== 'main' ||
+    run.repository?.full_name !== input.repository ||
+    !Number.isFinite(createdAt) ||
+    !Number.isSafeInteger(run.workflow_id) ||
+    !Number.isSafeInteger(run.run_attempt) ||
+    run.run_attempt < input.runAttempt
+  )
+    throw new Error('GitHub run identity mismatch')
+  return { createdAt, runId: input.runId, attempt: input.runAttempt, workflowId: run.workflow_id }
+}
+
+/** Compare run creation, run ID, then attempt for reruns of one run. */
+const compareRuns = (a: RunOrder, b: RunOrder): number => {
+  if (a.workflowId !== b.workflowId) throw new Error('GitHub workflow identity mismatch')
+  return a.createdAt - b.createdAt || a.runId - b.runId || a.attempt - b.attempt
+}
+
+/** Check GitHub history so replaying an older signed marker cannot hide a newer failure. */
+const hasNewerFailure = async (
+  fetchFn: typeof fetch,
+  input: NotificationInput,
+  currentRun: RunOrder,
+): Promise<boolean> => {
+  const created = new Date(currentRun.createdAt).toISOString().slice(0, 19) + 'Z'
+  for (let page = 1; page <= 10; page++) {
+    const query = new URLSearchParams({
+      branch: 'main',
+      status: 'completed',
+      created: `>=${created}`,
+      per_page: '100',
+      page: String(page),
+    })
+    const history = await readJson<{
+      workflow_runs: {
+        id: number
+        created_at: string
+        run_attempt: number
+        conclusion: string | null
+        event: string
+        head_branch: string
+        repository: { full_name: string }
+      }[]
+    }>(
+      await fetchFn(
+        `https://api.github.com/repos/${input.repository}/actions/workflows/${currentRun.workflowId}/runs?${query}`,
+        {
+          headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' },
+        },
+      ),
+    )
+    for (const run of history.workflow_runs) {
+      if (!['schedule', 'push', 'workflow_dispatch'].includes(run.event) || run.head_branch !== 'main') continue
+      if (run.repository?.full_name !== input.repository) throw new Error('GitHub workflow run history mismatch')
+      const createdAt = Date.parse(run.created_at)
+      if (!Number.isFinite(createdAt) || !Number.isSafeInteger(run.id) || !Number.isSafeInteger(run.run_attempt)) {
+        throw new Error('Invalid GitHub workflow run history')
+      }
+      if (
+        (run.conclusion === 'failure' || run.conclusion === 'timed_out') &&
+        compareRuns(
+          { createdAt, runId: run.id, attempt: run.run_attempt, workflowId: currentRun.workflowId },
+          currentRun,
+        ) > 0
+      )
+        return true
+    }
+    if (history.workflow_runs.length < 100) return false
+  }
+  throw new Error('GitHub workflow run history exceeded safe pagination limit')
 }
 
 /** Handle a completed trusted workflow run, with read-only dry-run support. */
@@ -133,6 +256,8 @@ export const notify = async (
   if (
     !Number.isSafeInteger(input.runId) ||
     input.runId <= 0 ||
+    !Number.isSafeInteger(input.runAttempt) ||
+    input.runAttempt <= 0 ||
     !/^[\w.-]+\/[\w.-]+$/.test(input.repository) ||
     !input.workflowName.trim()
   ) {
@@ -165,42 +290,68 @@ export const notify = async (
   )
   if (data.issues.nodes.length > 1) throw new Error(`Multiple open incidents for ${title}`)
   const incident = data.issues.nodes[0]
+  if (input.conclusion === 'success' && !incident) {
+    return log(`No open incident for ${input.workflowName}; nothing to recover`)
+  }
+  const currentRun = await runOrder(fetchFn, input)
+
+  /** Persist authenticated state before any email whose retry must be stable. */
+  const updateState = async (issue: Incident, body: string, state: AlertState, mutationName: string): Promise<void> => {
+    const description = signedDescription(body, state, input.linearApiKey)
+    const updated = await linear<{ issueUpdate: { success: boolean } }>(
+      fetchFn,
+      input.linearApiKey,
+      `mutation ${mutationName}($id: String!, $description: String!) { issueUpdate(id: $id, input: { description: $description }) { success } }`,
+      { id: issue.id, description },
+    )
+    if (!updated.issueUpdate.success) throw new Error('Linear did not update incident state')
+    issue.description = description
+  }
 
   /** Complete a previously created incident's first email before further transitions. */
   const finishOpeningEmail = async (issue: Incident): Promise<void> => {
-    const pending = pendingEmail(issue.description ?? '')
-    if (!pending) return
+    const { body, state } = readState(issue, input)
+    if (!state.pendingOpening) return
+    if (state.openingRecipientsHash !== recipientsHash(input)) {
+      throw new Error(
+        'Alert recipients changed while opening email is pending; restore prior configuration before retry',
+      )
+    }
     if (input.dryRun) return log(`Dry run: would send pending opening email for ${issue.url}`)
-    await sendEmail(
-      fetchFn,
-      input,
-      title,
-      `${pending.body}\nIncident: ${issue.url}`,
-      `ci-failure/${issue.id}`,
-      pending.recipients,
-    )
-    const marked = await linear<{ issueUpdate: { success: boolean } }>(
-      fetchFn,
-      input.linearApiKey,
-      'mutation MarkFailureEmailSent($id: String!, $description: String!) { issueUpdate(id: $id, input: { description: $description }) { success } }',
-      { id: issue.id, description: pending.body },
-    )
-    if (!marked.issueUpdate.success) throw new Error('Linear did not mark the failure email delivered')
+    await sendEmail(fetchFn, input, title, `${body}\nIncident: ${issue.url}`, `ci-failure/${issue.id}`)
+    await updateState(issue, body, { ...state, pendingOpening: false }, 'MarkFailureEmailSent')
   }
 
   if (incident) await finishOpeningEmail(incident)
 
-  if (input.conclusion === 'success') {
-    if (!incident) return log(`No open incident for ${input.workflowName}; nothing to recover`)
+  if (input.conclusion === 'success' && incident) {
+    const { body: incidentBody, state } = readState(incident, input)
+    if (compareRuns(currentRun, state.latestFailure) <= 0 || (await hasNewerFailure(fetchFn, input, currentRun))) {
+      return log(`Ignoring recovery older than latest failure for ${incident.url}`)
+    }
     const done = data.workflowStates.nodes.find((state) => state.type === 'completed')
     if (!done) throw new Error('Completed Linear state not found')
     if (input.dryRun) return log(`Dry run: would close ${incident.url} and email recovery for ${runUrl}`)
+    const currentRecipientsHash = recipientsHash(input)
+    if (state.recoveryRecipientsHash && state.recoveryRecipientsHash !== currentRecipientsHash) {
+      throw new Error(
+        'Alert recipients changed while recovery email is pending; restore prior configuration before retry',
+      )
+    }
+    if (!state.recoveryRecipientsHash) {
+      await updateState(
+        incident,
+        incidentBody,
+        { ...state, recoveryRecipientsHash: currentRecipientsHash },
+        'MarkRecoveryPending',
+      )
+    }
     await sendEmail(
       fetchFn,
       input,
       `CI recovered: ${input.workflowName}`,
       `${input.workflowName} recovered.\nIncident: ${incident.url}`,
-      `ci-recovery/${incident.id}`,
+      `ci-recovery/${incident.id}/${state.latestFailure.runId}/${state.latestFailure.attempt}`,
     )
     const closed = await linear<{ issueUpdate: { success: boolean } }>(
       fetchFn,
@@ -216,6 +367,21 @@ export const notify = async (
   const body = `Workflow: ${input.workflowName}\nRun: ${runUrl}\nFailed jobs and steps:\n${failures}`
   if (incident) {
     if (input.dryRun) return log(`Dry run: would comment on ${incident.url}\n${body}`)
+    const { body: incidentBody, state } = readState(incident, input)
+    const order = compareRuns(currentRun, state.latestFailure)
+    if (order < 0) {
+      return log(`Ignoring failure older than latest failure for ${incident.url}`)
+    }
+    if (order > 0) {
+      await updateState(
+        incident,
+        incidentBody,
+        { ...state, latestFailure: currentRun, recoveryRecipientsHash: undefined },
+        'MarkLatestFailure',
+      )
+    } else if (state.recoveryRecipientsHash) {
+      return log(`Ignoring duplicate failure during recovery for ${incident.url}`)
+    }
     const commented = await linear<{ commentCreate: { success: boolean } }>(
       fetchFn,
       input.linearApiKey,
@@ -233,7 +399,18 @@ export const notify = async (
     return log(
       `Dry run: would create ${title} in Backlog with Bug label and email ${input.recipients.length} recipients\n${body}`,
     )
-  const pendingDescription = `${body}${pendingMarker}${input.recipients.join(',')}`
+  const pendingDescription = signedDescription(
+    body,
+    {
+      version: 1,
+      repository: input.repository,
+      workflowName: input.workflowName,
+      latestFailure: currentRun,
+      pendingOpening: true,
+      openingRecipientsHash: recipientsHash(input),
+    },
+    input.linearApiKey,
+  )
   const created = await linear<{ issueCreate: { success: boolean; issue: Incident } }>(
     fetchFn,
     input.linearApiKey,
@@ -263,6 +440,7 @@ if (import.meta.main) {
   await notify({
     workflowName: required('WORKFLOW_NAME'),
     runId: Number(required('WORKFLOW_RUN_ID')),
+    runAttempt: Number(required('GITHUB_RUN_ATTEMPT')),
     conclusion: required('WORKFLOW_CONCLUSION'),
     eventName: required('GITHUB_EVENT_NAME'),
     ref: required('GITHUB_REF'),

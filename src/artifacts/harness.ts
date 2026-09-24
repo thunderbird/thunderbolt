@@ -92,7 +92,10 @@ const harnessScript = (nonce: string): string => `<script>
   }, true);
   window.addEventListener('unhandledrejection', function (e) {
     var r = e.reason;
-    send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: (r && (r.message || r.stack)) || String(r) });
+    var message = r && typeof r.message === 'string' ? r.message : '';
+    var stack = r && typeof r.stack === 'string' ? r.stack : '';
+    var detail = message && stack && stack.split('\\n', 1)[0].indexOf(message) === -1 ? message + '\\n' + stack : stack || message || String(r);
+    send({ type: 'artifact-error', reason: 'unhandled-rejection', detail: detail });
   });
   function measureAndSend() {
     // body.scrollHeight (not documentElement) so the frame can also SHRINK — the root's

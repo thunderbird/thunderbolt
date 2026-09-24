@@ -61,7 +61,7 @@ Three consequences follow:
 
 ### How a file reaches the model
 
-Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document.
+Images go to the model as images. Every document (PDF, `.docx`, spreadsheet, plain text) is converted to text on your device first, because the assistant has no way to carry a document as a document. A model with tool usage turned off in its tuning is the exception: it takes an older path that can send a PDF as a file.
 
 A scanned PDF is the case to watch. It has no text layer to extract and there is no text recognition (OCR) step, so the assistant receives the filename and nothing else. Screenshot the page you care about and attach that instead.
 

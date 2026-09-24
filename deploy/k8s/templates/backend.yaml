@@ -100,8 +100,14 @@ spec:
               value: "{{ .Values.appUrl }},http://keycloak:8080"
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
+            # POWERSYNC_URL is echoed straight to the browser for real-time sync, so it
+            # must be browser-reachable — unlike every other in-cluster service URL on
+            # this page, it can NOT be the internal DNS name. Defaults to the app's own
+            # path-based ingress route (see templates/ingress.yaml's `/powersync` rule);
+            # override with `backend.env.powersyncUrl` for host-header ingress mode
+            # (`ingress.hostnames.powersync`).
             - name: POWERSYNC_URL
-              value: "http://powersync:{{ .Values.powersync.service.port }}"
+              value: {{ .Values.backend.env.powersyncUrl | default (printf "%s/powersync" .Values.appUrl) | quote }}
             - name: POWERSYNC_JWT_SECRET
               valueFrom:
                 secretKeyRef:

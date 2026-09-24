@@ -138,6 +138,15 @@ const signedDescription = (body: string, state: AlertState, key: string): string
   return `${body}${stateMarker}${payload}.${signature}`
 }
 
+/** Parse authenticated state without exposing its contents in errors. */
+const parseState = (payload: string): AlertState => {
+  try {
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as AlertState
+  } catch {
+    throw new Error('Invalid incident state; manual repair required')
+  }
+}
+
 /** Reject missing, edited, or legacy state before it can authorize side effects. */
 const readState = (issue: Incident, input: NotificationInput) => {
   const description = issue.description ?? ''
@@ -151,12 +160,7 @@ const readState = (issue: Incident, input: NotificationInput) => {
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     throw new Error('Invalid incident state; manual repair required')
   }
-  let state: AlertState
-  try {
-    state = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as AlertState
-  } catch {
-    throw new Error('Invalid incident state; manual repair required')
-  }
+  const state = parseState(match[1])
   if (
     !state ||
     state.version !== 1 ||

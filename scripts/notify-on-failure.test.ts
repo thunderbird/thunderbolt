@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { createHmac } from 'node:crypto'
 import { notify, type NotificationInput } from './notify-on-failure'
 
 const input: NotificationInput = {
@@ -157,6 +158,70 @@ describe('notify-on-failure', () => {
     expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
   })
 
+  test('a failed job on the second GitHub page appears in the incident and email', async () => {
+    const calls: Call[] = []
+    const baseFetch = fakeFetch(false, calls)
+    const fetchFn: typeof fetch = (async (request, init) => {
+      const url = String(request)
+      if (url.includes('/attempts/1/jobs?')) {
+        calls.push({ url, body: '', idempotencyKey: null })
+        return Response.json({
+          jobs: url.endsWith('page=1')
+            ? Array.from({ length: 100 }, (_, index) => ({
+                name: `passing-${index}`,
+                conclusion: 'success',
+                html_url: `https://github.com/job/${index}`,
+              }))
+            : [{ name: 'page-two-failure', conclusion: 'failure', html_url: 'https://github.com/job/101' }],
+        })
+      }
+      return baseFetch(request, init)
+    }) as typeof fetch
+
+    await notify(input, fetchFn)
+    const create = calls.find((call) => call.body.includes('mutation CreateIssue'))?.body
+    const email = calls.find((call) => call.url === 'https://api.resend.com/emails')?.body
+    expect(calls.filter((call) => call.url.includes('/attempts/1/jobs?'))).toHaveLength(2)
+    expect(create).toContain('page-two-failure')
+    expect(email).toContain('page-two-failure')
+    expect(create).not.toContain('passing-0')
+  })
+
+  test('timed out jobs and steps appear in the failure alert', async () => {
+    const calls: Call[] = []
+    const baseFetch = fakeFetch(false, calls)
+    const fetchFn: typeof fetch = (async (request, init) => {
+      const url = String(request)
+      if (url.includes('/attempts/1/jobs?')) {
+        calls.push({ url, body: '', idempotencyKey: null })
+        return Response.json({
+          jobs: [
+            {
+              name: 'timed-out-job',
+              conclusion: 'timed_out',
+              html_url: 'https://github.com/job/timeout',
+              steps: [{ name: 'slow step', conclusion: 'timed_out' }],
+            },
+            {
+              name: 'failed-job',
+              conclusion: 'failure',
+              html_url: 'https://github.com/job/failed',
+              steps: [{ name: 'failed step', conclusion: 'failure' }],
+            },
+          ],
+        })
+      }
+      return baseFetch(request, init)
+    }) as typeof fetch
+
+    await notify(input, fetchFn)
+    const email = calls.find((call) => call.url === 'https://api.resend.com/emails')?.body
+    expect(email).toContain('timed-out-job')
+    expect(email).toContain('slow step')
+    expect(email).toContain('failed-job')
+    expect(email).toContain('failed step')
+  })
+
   test('repeat failure adds a comment without another email', async () => {
     const calls: Call[] = []
     const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
@@ -203,6 +268,52 @@ describe('notify-on-failure', () => {
     expect(lines.join('\n')).toContain('would create')
   })
 
+  test('dry run with an existing incident would comment without writes', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    const lines: string[] = []
+
+    await notify({ ...input, runId: 43, dryRun: true }, fetchFn, (line) => lines.push(line))
+    expect(lines.join('\n')).toContain('would comment')
+    expect(calls.some((call) => call.url === 'https://api.resend.com/emails' || call.body.includes('mutation'))).toBe(
+      false,
+    )
+    expect(calls.some((call) => call.body.includes('query Incident'))).toBe(true)
+  })
+
+  test('dry run with an existing incident would recover without writes', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = await seededIssue(state, calls)
+    const lines: string[] = []
+
+    await notify({ ...input, conclusion: 'success', runId: 43, dryRun: true }, fetchFn, (line) => lines.push(line))
+    expect(lines.join('\n')).toContain('would close')
+    expect(state.created).toBe(true)
+    expect(calls.some((call) => call.url === 'https://api.resend.com/emails' || call.body.includes('mutation'))).toBe(
+      false,
+    )
+    expect(calls.some((call) => call.url.includes('/actions/workflows/'))).toBe(true)
+  })
+
+  test('dry run with a pending opening email would report it without writes', async () => {
+    const state: FakeState = { created: false, description: '', failEmailCount: 1, failMarkCount: 0 }
+    const calls: Call[] = []
+    const fetchFn = fakeFetch(false, calls, state)
+    await expect(notify(input, fetchFn)).rejects.toThrow('HTTP 503')
+    calls.length = 0
+    const lines: string[] = []
+
+    await notify({ ...input, runId: 43, dryRun: true }, fetchFn, (line) => lines.push(line))
+    expect(lines.join('\n')).toContain('would send pending opening email')
+    expect(lines.join('\n')).toContain('would comment')
+    expect(incidentState(state.description).pendingOpening).toBe(true)
+    expect(calls.some((call) => call.url === 'https://api.resend.com/emails' || call.body.includes('mutation'))).toBe(
+      false,
+    )
+  })
+
   test('skipped or cancelled runs do nothing', async () => {
     const calls: Call[] = []
     await notify({ ...input, conclusion: 'cancelled' }, fakeFetch(false, calls))
@@ -220,10 +331,67 @@ describe('notify-on-failure', () => {
       }
       return baseFetch(request, init)
     }) as typeof fetch
-    await expect(notify(input, fetchFn)).rejects.toThrow('Linear: Query failed')
+    await expect(notify(input, fetchFn)).rejects.toThrow('Linear Incident HTTP 200 GraphQL errors')
     expect(calls.some((call) => call.body.includes('mutation') || call.url === 'https://api.resend.com/emails')).toBe(
       false,
     )
+  })
+
+  test('Linear HTTP and GraphQL errors identify the operation without exposing API messages', async () => {
+    const secret = 'PRIVATE_MARKER_3981'
+    const baseFetch = fakeFetch(false, [])
+    for (const response of [
+      Response.json({ errors: [{ message: secret }] }, { status: 400 }),
+      Response.json({ errors: [{ message: secret }] }),
+      new Response(secret, { status: 502 }),
+    ]) {
+      const fetchFn: typeof fetch = (async (request, init) =>
+        String(init?.body ?? '').includes('query Incident') ? response : baseFetch(request, init)) as typeof fetch
+      const error = await notify(input, fetchFn).catch((caught: Error) => caught)
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain('Linear Incident')
+      expect((error as Error).message).not.toContain(secret)
+      expect((error as Error).message).toContain(`HTTP ${response.status}`)
+      if (response.status === 200) expect((error as Error).message).toContain('GraphQL errors')
+    }
+  })
+
+  test('GitHub and Resend failures identify service, operation and status without response data', async () => {
+    const secret = 'PRIVATE_MARKER_7729'
+    for (const [target, operation] of [
+      ['/attempts/1/jobs?', 'GitHub list jobs'],
+      ['https://api.resend.com/emails', 'Resend send email'],
+    ]) {
+      const baseFetch = fakeFetch(false, [])
+      const fetchFn: typeof fetch = (async (request, init) =>
+        String(request).includes(target)
+          ? Response.json({ message: secret, token: secret }, { status: 403 })
+          : baseFetch(request, init)) as typeof fetch
+      const error = await notify(input, fetchFn).catch((caught: Error) => caught)
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain(`${operation} HTTP 403`)
+      expect((error as Error).message).not.toContain(secret)
+    }
+  })
+
+  test('malformed API JSON and network errors do not expose raw details', async () => {
+    const secret = 'PRIVATE_MARKER_8126'
+    const baseFetch = fakeFetch(false, [])
+    const malformedFetch: typeof fetch = (async (request, init) =>
+      String(init?.body ?? '').includes('query Teams')
+        ? new Response(secret, { status: 200 })
+        : baseFetch(request, init)) as typeof fetch
+    const malformedError = await notify(input, malformedFetch).catch((caught: Error) => caught)
+    expect((malformedError as Error).message).toBe('Linear Teams HTTP 200 invalid JSON')
+    expect((malformedError as Error).message).not.toContain(secret)
+
+    const networkFetch: typeof fetch = (async (request, init) => {
+      if (String(request).includes('/actions/runs/')) throw new Error(secret)
+      return baseFetch(request, init)
+    }) as typeof fetch
+    const networkError = await notify(input, networkFetch).catch((caught: Error) => caught)
+    expect((networkError as Error).message).toBe('GitHub get run request failed')
+    expect((networkError as Error).message).not.toContain(secret)
   })
 
   test('a failed issue create does not send an email that would be repeated on retry', async () => {
@@ -236,7 +404,7 @@ describe('notify-on-failure', () => {
       }
       return baseFetch(request, init)
     }) as typeof fetch
-    await expect(notify(input, fetchFn)).rejects.toThrow('Linear: Creation failed')
+    await expect(notify(input, fetchFn)).rejects.toThrow('Linear CreateIssue HTTP 200 GraphQL errors')
     expect(calls.some((call) => call.url === 'https://api.resend.com/emails')).toBe(false)
   })
 
@@ -301,7 +469,7 @@ describe('notify-on-failure', () => {
     const state: FakeState = { created: false, description: '', failEmailCount: 0, failMarkCount: 1 }
     const calls: Call[] = []
     const fetchFn = fakeFetch(false, calls, state)
-    await expect(notify(input, fetchFn)).rejects.toThrow('Linear update failed')
+    await expect(notify(input, fetchFn)).rejects.toThrow('Linear MarkFailureEmailSent HTTP 200 GraphQL errors')
     await notify({ ...input, runId: 43 }, fetchFn)
     const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
@@ -336,7 +504,9 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const fetchFn = await seededIssue(state, calls)
     state.failCloseCount = 1
-    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow('Close failed')
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow(
+      'Linear CloseIssue HTTP 200 GraphQL errors',
+    )
     await notify({ ...input, conclusion: 'success', runId: 44 }, fetchFn)
     const emails = calls.filter((call) => call.url === 'https://api.resend.com/emails')
     expect(emails).toHaveLength(2)
@@ -349,6 +519,22 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     await expect(notify(input, fakeFetch(true, calls, state))).rejects.toThrow('Invalid incident state')
     expect(calls.filter((call) => call.body.includes('mutation'))).toHaveLength(0)
+  })
+
+  test('malformed signed state fails with a controlled diagnostic', async () => {
+    const secret = 'PRIVATE_MARKER_4142'
+    const body = 'Workflow: CI'
+    const payload = Buffer.from(`{${secret}`).toString('base64url')
+    const signature = createHmac('sha256', input.linearApiKey).update(`${body}\n${payload}`).digest('base64url')
+    const state: FakeState = {
+      created: true,
+      description: `${body}\n\nCI notifier state: ${payload}.${signature}`,
+      failEmailCount: 0,
+      failMarkCount: 0,
+    }
+    const error = await notify(input, fakeFetch(true, [], state)).catch((caught: Error) => caught)
+    expect((error as Error).message).toBe('Invalid incident state; manual repair required')
+    expect((error as Error).message).not.toContain(secret)
   })
 
   test('edited pending description cannot redirect the opening email or forge authority', async () => {
@@ -402,7 +588,9 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const fetchFn = await seededIssue(state, calls)
     state.failCloseCount = 1
-    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow('Close failed')
+    await expect(notify({ ...input, conclusion: 'success', runId: 43 }, fetchFn)).rejects.toThrow(
+      'Linear CloseIssue HTTP 200 GraphQL errors',
+    )
     await expect(
       notify({ ...input, conclusion: 'success', runId: 44, recipients: ['new@example.test'] }, fetchFn),
     ).rejects.toThrow('Alert recipients changed')
@@ -446,7 +634,9 @@ describe('notify-on-failure', () => {
     const calls: Call[] = []
     const fetchFn = fakeFetch(false, calls, state)
     await notify({ ...input, runId: 200 }, fetchFn)
-    await expect(notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)).rejects.toThrow('Close failed')
+    await expect(notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)).rejects.toThrow(
+      'Linear CloseIssue HTTP 200 GraphQL errors',
+    )
     await notify({ ...input, runId: 300 }, fetchFn)
     await notify({ ...input, conclusion: 'success', runId: 250 }, fetchFn)
     expect(state.created).toBe(true)

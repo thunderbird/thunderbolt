@@ -47,10 +47,21 @@ type LinearVariables =
   | { issueId: string; body: string }
   | { input: { teamId: string; title: string; stateId: string; labelIds: string[]; description: string } }
 
-/** Read JSON and surface API failures without printing request credentials. */
-const readJson = async <T>(response: Response): Promise<T> => {
-  if (!response.ok) throw new Error(`API returned HTTP ${response.status}`)
-  return (await response.json()) as T
+/** Report only trusted API context, never response content or network error text. */
+const requestJson = async <T>(
+  service: string,
+  operation: string,
+  request: () => Promise<Response>,
+): Promise<{ body: T; status: number }> => {
+  const context = `${service} ${operation}`
+  const response = await request().catch(() => {
+    throw new Error(`${context} request failed`)
+  })
+  if (!response.ok) throw new Error(`${context} HTTP ${response.status}`)
+  const body = (await response.json().catch(() => {
+    throw new Error(`${context} HTTP ${response.status} invalid JSON`)
+  })) as T
+  return { body, status: response.status }
 }
 
 /** Query Linear and reject GraphQL errors, including partial 200 responses. */
@@ -60,15 +71,19 @@ const linear = async <T>(
   query: string,
   variables?: LinearVariables,
 ): Promise<T> => {
-  const result = await readJson<{ data?: T; errors?: { message: string }[] }>(
-    await fetchFn('https://api.linear.app/graphql', {
-      method: 'POST',
-      headers: { Authorization: key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables }),
-    }),
+  const operation = /^(?:query|mutation) (\w+)/.exec(query)?.[1] ?? 'GraphQL'
+  const { body: result, status } = await requestJson<{ data?: T; errors?: { message: string }[] }>(
+    'Linear',
+    operation,
+    () =>
+      fetchFn('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: { Authorization: key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+      }),
   )
-  if (result.errors?.length) throw new Error(`Linear: ${result.errors.map((error) => error.message).join('; ')}`)
-  if (!result.data) throw new Error('Linear returned no data')
+  if (result.errors?.length) throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors`)
+  if (!result.data) throw new Error(`Linear ${operation} HTTP ${status} returned no data`)
   return result.data
 }
 
@@ -76,8 +91,8 @@ const linear = async <T>(
 const failedJobs = async (fetchFn: typeof fetch, input: NotificationInput): Promise<string> => {
   const lines: string[] = []
   for (let page = 1; ; page++) {
-    const response = await readJson<{ jobs: Job[] }>(
-      await fetchFn(
+    const { body: response } = await requestJson<{ jobs: Job[] }>('GitHub', 'list jobs', () =>
+      fetchFn(
         `https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}/attempts/${input.runAttempt}/jobs?per_page=100&page=${page}`,
         { headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' } },
       ),
@@ -101,8 +116,8 @@ const sendEmail = async (
   message: string,
   idempotencyKey: string,
 ): Promise<void> => {
-  await readJson<{ id: string }>(
-    await fetchFn('https://api.resend.com/emails', {
+  await requestJson<{ id: string }>('Resend', 'send email', () =>
+    fetchFn('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.resendApiKey}`,
@@ -129,16 +144,26 @@ const readState = (issue: Incident, input: NotificationInput) => {
   const markerAt = description.lastIndexOf(stateMarker)
   const match =
     markerAt < 0 ? null : /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(description.slice(markerAt + stateMarker.length))
-  if (!match) throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+  if (!match) throw new Error('Invalid incident state; manual repair required')
   const body = description.slice(0, markerAt)
   const expected = createHmac('sha256', input.linearApiKey).update(`${body}\n${match[1]}`).digest()
   const actual = Buffer.from(match[2], 'base64url')
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+    throw new Error('Invalid incident state; manual repair required')
   }
-  const state = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as AlertState
-  if (state.version !== 1 || state.repository !== input.repository || state.workflowName !== input.workflowName) {
-    throw new Error(`Invalid incident state for ${issue.url}; manual repair required`)
+  let state: AlertState
+  try {
+    state = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as AlertState
+  } catch {
+    throw new Error('Invalid incident state; manual repair required')
+  }
+  if (
+    !state ||
+    state.version !== 1 ||
+    state.repository !== input.repository ||
+    state.workflowName !== input.workflowName
+  ) {
+    throw new Error('Invalid incident state; manual repair required')
   }
   return { body, state }
 }
@@ -149,7 +174,7 @@ const recipientsHash = (input: NotificationInput): string =>
 
 /** Read ordering and verify the run really belongs to the trusted workflow. */
 const runOrder = async (fetchFn: typeof fetch, input: NotificationInput): Promise<RunOrder> => {
-  const run = await readJson<{
+  const { body: run } = await requestJson<{
     id: number
     name: string
     event: string
@@ -158,8 +183,8 @@ const runOrder = async (fetchFn: typeof fetch, input: NotificationInput): Promis
     created_at: string
     run_attempt: number
     workflow_id: number
-  }>(
-    await fetchFn(`https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}`, {
+  }>('GitHub', 'get run', () =>
+    fetchFn(`https://api.github.com/repos/${input.repository}/actions/runs/${input.runId}`, {
       headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' },
     }),
   )
@@ -200,7 +225,7 @@ const hasNewerFailure = async (
       per_page: '100',
       page: String(page),
     })
-    const history = await readJson<{
+    const { body: history } = await requestJson<{
       workflow_runs: {
         id: number
         created_at: string
@@ -210,8 +235,8 @@ const hasNewerFailure = async (
         head_branch: string
         repository: { full_name: string }
       }[]
-    }>(
-      await fetchFn(
+    }>('GitHub', 'list workflow runs', () =>
+      fetchFn(
         `https://api.github.com/repos/${input.repository}/actions/workflows/${currentRun.workflowId}/runs?${query}`,
         {
           headers: { Authorization: `Bearer ${input.githubToken}`, Accept: 'application/vnd.github+json' },

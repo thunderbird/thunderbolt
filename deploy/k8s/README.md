@@ -140,6 +140,7 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.host` | `""` | Set to your hostname for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
+| `postgres.storageClassName` | `""` (uses cluster default) | StorageClass for the Postgres PVC — set explicitly on clusters with a node-local default or node churn |
 | `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
 
 See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.

@@ -94,6 +94,10 @@ postgres:
     repository: postgres
     tag: 17-alpine
   storage: 5Gi
+  # -- StorageClass for the Postgres PVC. Empty uses the cluster's default.
+  # Set this explicitly if that default is node-local: a node-local volume
+  # can't reschedule once its node is gone, permanently stranding Postgres.
+  storageClassName: ""
   credentials:
     user: postgres
     database: postgres

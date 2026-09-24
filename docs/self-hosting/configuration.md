@@ -106,6 +106,7 @@ Set a key for each provider you want available. A provider with no key does not 
 | Variable              | Default                           | Provider                                                                                                               |
 | --------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`   | none                              | Anthropic (Claude)                                                                                                     |
+| `ANTHROPIC_BASE_URL`  | `https://api.anthropic.com`       | Anthropic API root, without `/v1`. Leave it alone unless you are pointing the API at a stand-in during testing.        |
 | `FIREWORKS_API_KEY`   | none                              | Fireworks                                                                                                              |
 | `TINFOIL_API_KEY`     | none                              | Tinfoil, a confidential tier that runs models inside verified secure hardware, so the provider cannot read the request |
 | `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | Tinfoil endpoint. Keep the `/v1` suffix.                                                                               |

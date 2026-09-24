@@ -18,6 +18,7 @@ const settingsSchema = z
     // API Keys
     fireworksApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
+    anthropicBaseUrl: z.string().default('https://api.anthropic.com'),
     resendMonitoringApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
@@ -206,6 +207,7 @@ const parseSettings = (): Settings => {
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
     resendMonitoringApiKey: process.env.RESEND_MONITORING_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',

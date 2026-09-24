@@ -58,6 +58,9 @@ jobs:
           echo "== nproc =="; nproc
           echo "== vmstat 1 3 (watch the 'st' steal column under ----cpu----) =="; vmstat 1 3
 
+      - name: Fail on spec files no project collects
+        run: bun run e2e:check-collected
+
       - name: Run e2e tests (shard ${{ matrix.shard }})
         run: bunx playwright test --shard=${{ matrix.shard }}
 

@@ -246,6 +246,7 @@ Each anchor records a breakage:
 - **`loginViaOidc(page)`**: navigates to `/` and waits for the chat textarea while `AuthGate → /sso-redirect → mock IdP → backend callback → session` runs. The mock IdP auto-approves, so there is nothing to type.
 - **`loginViaSaml(page)`**: same shape against the SAML mock IdP, which auto-generates the `SAMLResponse` and posts it to the ACS endpoint.
 - **`logoutViaSidebar(page, option)`**: opens the account popover, clicks "Log out", optionally picks "Delete data from device" (`option: 'delete'`), confirms, waits for the signed-out page.
+- **`loginViaEmailCode(page)`**: requests a sign-in code for a unique `@thunderbolt.test` address, enters the fixed code `12345678`, waits for the chat textarea, and returns the address. A fresh address per call avoids the per-email OTP cooldown, and `WAITLIST_AUTO_APPROVE_DOMAINS=thunderbolt.test` is required because a pending waitlist user's sign-in codes are deleted.
 - **`collectPageErrors(page)`**: subscribes to `pageerror` and returns an errors array, filtering harmless Tauri-only noise (`__TAURI__`, `convertFileSrc`).
 
 ### Current Specs
@@ -285,9 +286,22 @@ Each anchor records a breakage:
 ### Writing New Specs
 
 - Name the file to match its project: `oidc-*`, `acp-*`, `proxy-*`, `saml-*`, `min-version-gate`, `artifact-*`. A file matching no pattern is silently never run.
-- Start any test needing an authenticated user with `loginViaOidc(page)` or `loginViaSaml(page)`.
+- Start any test needing an authenticated user with `loginViaOidc(page)`, `loginViaSaml(page)` or `loginViaEmailCode(page)`.
+- Run `bun run e2e:check-collected` after adding a spec. [`scripts/check-e2e-specs-collected.ts`](../../../scripts/check-e2e-specs-collected.ts) checks the union of [`playwright.config.ts`](../../../playwright.config.ts) and [`playwright.preview.config.ts`](../../../playwright.preview.config.ts), and CI fails on an uncollected spec, which is what stops a silently-never-run file from shipping.
 - Call `collectPageErrors(page)` and assert the array is empty at the end; some regressions surface only as uncaught exceptions.
 - Keep each spec to one user-visible flow. The suite is a smoke test, not a regression matrix: unit-test branching logic, use e2e for "does the whole thing boot".
+
+### Preview Smoke
+
+A separate suite runs against a deployed preview rather than local servers. [`playwright.preview.config.ts`](../../../playwright.preview.config.ts) drives [`e2e/preview-smoke.spec.ts`](../../../e2e/preview-smoke.spec.ts) at the `app-pr-N` and `api-pr-N` services: it waits for API health, signs in as the Keycloak demo user, and checks that chat opens.
+
+The `smoke` job in [`.github/workflows/preview-deploy.yml`](../../../.github/workflows/preview-deploy.yml) runs it after a successful preview deploy and reports a check on the PR. It is deliberately not a required check, so preview infrastructure trouble does not block a merge.
+
+```sh
+PREVIEW_APP_URL=https://app-pr-N.preview.thunderbolt.io \
+PREVIEW_API_URL=https://api-pr-N.preview.thunderbolt.io \
+bun run e2e:preview
+```
 
 ### Debugging Mock Leakage
 

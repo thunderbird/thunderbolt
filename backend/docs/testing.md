@@ -4,11 +4,15 @@ Backend tests run on `bun:test`, `Elysia`, and `PGlite` (in-memory PostgreSQL).
 
 ## Overview
 
-Each test runs against a PGlite database passed in by **dependency injection**. `mock.module` leaks across test files in Bun, so every external seam (DNS, Exa, the upstream WebSocket constructor, the waitlist email service) is injected instead.
+Tests that touch the database run against PGlite, passed in by **dependency
+injection**. `mock.module` leaks across test files in Bun, so every external
+seam (DNS, Exa, the upstream WebSocket constructor, the waitlist email service)
+is injected instead. A pure unit test needs no database and should not open a
+transaction.
 
 - One PGlite instance is reused across all tests (keeps WASM loaded).
 - Migrations run once during test preload.
-- Each test runs inside a transaction rolled back in `afterEach`.
+- Tests that call `createTestDb()` run inside a transaction rolled back in `afterEach`.
 - Global `fetch` is mocked to prevent accidental network calls.
 
 PGlite initializes in preload, so these suites run in tens of milliseconds per test. The two segregated WebSocket suites are the exception (see [Running Tests](#running-tests)).
@@ -43,17 +47,17 @@ The shared singleton sits mid-`BEGIN`/`ROLLBACK` and serializes every test file 
 
 `createApp` takes one optional `AppDeps` bag ([`src/types.ts`](../src/types.ts)) and resolves defaults internally. Every field is optional:
 
-| Field                  | Injected instead of                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
+| Field                  | Injected instead of                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `database`             | the real `db/client` singleton, imported lazily so tests/CI without `DATABASE_URL` can inject one |
-| `fetchFn`              | `globalThis.fetch` (which the preload booby-traps)                                          |
-| `auth`                 | the real Better Auth instance (see `src/test-utils/mock-auth.ts`)                           |
-| `waitlistEmailService` | Resend sends from the waitlist routes                                                       |
-| `otpCooldownMs`        | the 15s per-email OTP cooldown; pass `0` to disable                                         |
-| `upstreamWsFactory`    | `globalThis.WebSocket` for the proxy's WS relay, keeping traffic in-process                 |
-| `proxyObservability`   | the Pino-backed recorder (proxy events deliberately skip PostHog)                           |
-| `dnsLookup`            | `dns.promises.lookup` in the SSRF validator                                                 |
-| `searchExaClient`      | the Exa client the `/search` route resolves from `EXA_API_KEY`                              |
+| `fetchFn`              | `globalThis.fetch` (which the preload booby-traps)                                                |
+| `auth`                 | the real Better Auth instance (see `src/test-utils/mock-auth.ts`)                                 |
+| `waitlistEmailService` | Resend sends from the waitlist routes                                                             |
+| `otpCooldownMs`        | the 15s per-email OTP cooldown; pass `0` to disable                                               |
+| `upstreamWsFactory`    | `globalThis.WebSocket` for the proxy's WS relay, keeping traffic in-process                       |
+| `proxyObservability`   | the Pino-backed recorder (proxy events deliberately skip PostHog)                                 |
+| `dnsLookup`            | `dns.promises.lookup` in the SSRF validator                                                       |
+| `searchExaClient`      | the Exa client the `/search` route resolves from `EXA_API_KEY`                                    |
 
 `dnsLookup` and `searchExaClient` are injectable so tests never reach for `mock.module('node:dns')` or `mock.module('exa-js')`, which leak across files.
 
@@ -88,6 +92,9 @@ describe('My API', () => {
   })
 })
 ```
+
+**If you call `createTestDb()`, call `cleanup()` in `afterEach`** to roll back
+its transaction. Do not call it just to open one.
 
 ## Mocking External Services
 

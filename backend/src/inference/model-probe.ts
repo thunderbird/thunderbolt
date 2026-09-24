@@ -8,14 +8,14 @@ import { defaultModels, type SharedModel } from '@shared/defaults/models'
 import { randomBytes } from 'node:crypto'
 import OpenAI from 'openai'
 import { SecureClient } from 'tinfoil'
-import { anthropicCompatBaseUrl } from './client'
+import { getAnthropicOpenAIBaseUrl } from './client'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
 export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price' | 'not-configured'
 export type ModelProbeFailure = { model: string; reason: ModelProbeFailureReason }
 export type ModelProbeDeps = {
   database: InferenceDatabase
-  settings: Pick<Settings, 'anthropicApiKey' | 'tinfoilApiKey'>
+  settings: Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'tinfoilApiKey'>
   /** Transport for the Anthropic OpenAI-compatible client (tests inject a fake). */
   fetchFn: typeof fetch
   /** Attested Tinfoil transport; defaults to a fresh SecureClient per run. */
@@ -80,7 +80,7 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       }
       signal.throwIfAborted()
       const transport = runtime
-        ? { fetch: fetchFn, baseURL: anthropicCompatBaseUrl }
+        ? { fetch: fetchFn, baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl) }
         : (deps.confidentialTransport ??
           (await Promise.race([(confidentialTransport ??= createConfidentialTransport()), deadline.promise])))
       signal.throwIfAborted()

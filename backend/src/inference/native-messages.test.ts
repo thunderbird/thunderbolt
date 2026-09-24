@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { clearSettingsCache, getSettings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
@@ -10,6 +11,8 @@ import { APIError as AnthropicAPIError } from '@anthropic-ai/sdk'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
+import type OpenAI from 'openai'
+import { clearInferenceClientCache, getAnthropicMessagesClient, getInferenceClient } from './client'
 import { createInferenceRoutes } from './routes'
 
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
@@ -264,4 +267,55 @@ describe('POST /chat/v1/messages', () => {
       }),
     )
   })
+})
+
+describe('Anthropic client API roots', () => {
+  const savedEnv = {
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+  }
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+    clearSettingsCache()
+    clearInferenceClientCache()
+  })
+
+  it.each(['https://anthropic.test', 'https://anthropic.test/'])(
+    'uses settings root %s for both protocols',
+    async (root) => {
+      process.env.ANTHROPIC_API_KEY = 'test-key'
+      process.env.ANTHROPIC_BASE_URL = root
+      clearSettingsCache()
+      getSettings()
+      // The SDK must use the resolved settings, even if the environment later changes.
+      process.env.ANTHROPIC_BASE_URL = 'https://wrong.test'
+      const urls: string[] = []
+      const fetchFn: typeof fetch = Object.assign(
+        async (input: RequestInfo | URL) => {
+          urls.push(input instanceof Request ? input.url : input.toString())
+          return Response.json({ id: 'test-response' })
+        },
+        { preconnect: globalThis.fetch.preconnect },
+      )
+      const messages = getAnthropicMessagesClient({ fetchFn })
+      await messages.messages.create({
+        model: 'claude-opus-5',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Hello' }],
+      })
+      const { client } = getInferenceClient('anthropic', { fetchFn })
+      await (client as OpenAI).chat.completions.create({
+        model: 'claude-opus-5',
+        messages: [{ role: 'user', content: 'Hello' }],
+      })
+      expect(urls).toEqual(['https://anthropic.test/v1/messages', 'https://anthropic.test/v1/chat/completions'])
+    },
+  )
 })

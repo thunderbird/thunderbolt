@@ -32,18 +32,36 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds } from './otp-constants'
+import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
 
 /**
- * Email-sending dependencies for `createAuth`. Tests can inject mocks here
+ * Email and sign-in code dependencies for `createAuth`. Tests can inject mocks here
  * instead of using `mock.module()` (which leaks across files in the same worker).
  */
 export type AuthEmailDeps = {
+  generateSignInOtp?: () => string
   sendSignInEmail?: typeof defaultSendSignInEmail
   sendWaitlistJoinedEmail?: typeof defaultSendWaitlistJoinedEmail
   sendWaitlistNotReadyEmail?: typeof defaultSendWaitlistNotReadyEmail
+}
+
+/** Prefer injection, then the fixed test code; otherwise retain Better Auth's random generator. */
+export const signInOtpOptions = ({
+  generateSignInOtp,
+  nodeEnv,
+}: {
+  generateSignInOtp?: () => string
+  nodeEnv: string | undefined
+}) => {
+  if (generateSignInOtp) {
+    return { generateOTP: generateSignInOtp }
+  }
+  if (nodeEnv !== 'test') {
+    return {}
+  }
+  return { generateOTP: () => testSignInOtp }
 }
 
 const otpSignInPath = '/sign-in/email-otp'
@@ -325,6 +343,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     plugins: [
       bearer({ requireSignature: true }), // Enables Authorization: Bearer <token> for mobile apps where cookies don't work
       emailOTP({
+        ...signInOtpOptions({ generateSignInOtp: emailDeps.generateSignInOtp, nodeEnv: process.env.NODE_ENV }),
         otpLength: 8,
         expiresIn: otpExpirySeconds,
         allowedAttempts: 3, // Built-in rate limiting - returns TOO_MANY_ATTEMPTS after exceeded

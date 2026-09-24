@@ -22,7 +22,12 @@ const resendDomainsSchema = z.object({ data: z.array(z.object({ name: z.string()
 export type HealthRouteDeps = {
   settings: Pick<
     Settings,
-    'monitoringToken' | 'powersyncUrl' | 'resendMonitoringApiKey' | 'anthropicApiKey' | 'tinfoilApiKey'
+    | 'monitoringToken'
+    | 'powersyncUrl'
+    | 'resendMonitoringApiKey'
+    | 'anthropicApiKey'
+    | 'anthropicBaseUrl'
+    | 'tinfoilApiKey'
   >
   database: Pick<typeof db, 'execute'> & InferenceDatabase
   fetchFn?: typeof fetch

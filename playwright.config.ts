@@ -8,6 +8,9 @@ import { idpCertSingleLine } from './e2e/saml-test-certs'
 const isCI = !!process.env.CI
 const mockOidcPort = process.env.MOCK_OIDC_PORT ?? '9876'
 const mockSamlPort = process.env.MOCK_SAML_PORT ?? '9877'
+const fakeProviderPort = process.env.FAKE_PROVIDER_PORT ?? '9878'
+const consumerVitePort = 1424
+const consumerBackendPort = 8005
 
 // OIDC: frontend 1421, backend 8002 (off :8000 so e2e doesn't collide with `make dev`)
 const oidcVitePort = 1421
@@ -33,8 +36,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // One worker per shard: each CI runner already hosts 4 servers (2 Vite + 2
-  // backend) on 4 vCPUs, so a second browser worker oversubscribes the box and
+  // One worker per shard: each CI runner hosts 8 app servers (4 frontend/backend pairs), a fake provider and 2 mock IdPs
+  // on 4 vCPUs, so a second browser worker oversubscribes the box and
   // starves the cold first-navigation transpile. Parallelism comes from the 2
   // shards running as separate jobs.
   workers: 1,
@@ -52,6 +55,14 @@ export default defineConfig({
     storageState: undefined,
   },
   projects: [
+    {
+      name: 'consumer',
+      testMatch: /consumer-.*\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://localhost:${consumerVitePort}`,
+      },
+    },
     {
       name: 'oidc',
       // ACP + proxy specs use the OIDC mock IdP via `loginViaOidc`, so they
@@ -100,6 +111,47 @@ export default defineConfig({
     },
   ],
   webServer: [
+    // --- Consumer frontend ---
+    {
+      command: `bun run dev -- --port ${consumerVitePort}`,
+      url: `http://localhost:${consumerVitePort}`,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        // A shell/.env VITE_AUTH_MODE=sso would otherwise use SSO against a consumer backend.
+        VITE_AUTH_MODE: 'thunderbolt',
+        VITE_SKIP_ONBOARDING: 'true',
+        // Keep the email entry page instead of silently creating an anonymous session.
+        VITE_AUTH_ENABLE_ANONYMOUS: 'false',
+        VITE_BYPASS_WAITLIST: 'false',
+        VITE_THUNDERBOLT_CLOUD_URL: `http://localhost:${consumerBackendPort}/v1`,
+      },
+    },
+    // --- Consumer backend ---
+    {
+      command: 'cd backend && bun run --watch src/index.ts',
+      url: `http://localhost:${consumerBackendPort}/v1/health`,
+      reuseExistingServer: !isCI,
+      timeout: 120_000,
+      env: {
+        PORT: String(consumerBackendPort),
+        AUTH_MODE: 'consumer',
+        // Enables the fixed test OTP and leaves development-only PowerSync defaults unset.
+        NODE_ENV: 'test',
+        ANTHROPIC_API_KEY: 'e2e-fake-provider-key',
+        // The native Messages SDK appends /v1/messages to this API root.
+        ANTHROPIC_BASE_URL: `http://localhost:${fakeProviderPort}`,
+        // New email-code users need approval even when WAITLIST_ENABLED is false.
+        WAITLIST_AUTO_APPROVE_DOMAINS: 'thunderbolt.test',
+        BETTER_AUTH_URL: `http://localhost:${consumerBackendPort}`,
+        BETTER_AUTH_SECRET: 'e2e-test-secret-at-least-32-characters-long',
+        APP_URL: `http://localhost:${consumerVitePort}`,
+        CORS_ORIGINS: `http://localhost:${consumerVitePort}`,
+        TRUSTED_ORIGINS: `http://localhost:${consumerVitePort}`,
+        RATE_LIMIT_ENABLED: 'false',
+        DATABASE_DRIVER: 'pglite',
+      },
+    },
     // --- OIDC frontend ---
     {
       command: `bun run dev -- --port ${oidcVitePort}`,

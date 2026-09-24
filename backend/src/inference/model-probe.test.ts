@@ -8,8 +8,9 @@ import { and, eq, sql } from 'drizzle-orm'
 import { inferencePrices } from '@/db/schema'
 import { resolveManagedDirectRuntime } from '@/inference/managed-models'
 import { createTestDb } from '@/test-utils/db'
+import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels } from '@shared/defaults/models'
-import { probeCatalogModels, type ModelProbeDeps } from './model-probe'
+import { probeCatalogModels } from './model-probe'
 
 const confidentialModels = defaultModels
   .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
@@ -17,10 +18,10 @@ const confidentialModels = defaultModels
 const directModel = defaultModels.find(({ provider }) => provider === 'thunderbolt')!.model
 const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 
-const settings: ModelProbeDeps['settings'] = {
+const settings = createTestSettings({
   anthropicApiKey: 'anthropic-test-key',
   tinfoilApiKey: 'tinfoil-test-key',
-}
+})
 /** Build an OpenAI-compatible response without network access. */
 const completion = (content: string | null | { type: string; text?: string }[] = 'OK') =>
   Response.json({ choices: [{ message: { content } }] })
@@ -70,6 +71,25 @@ describe('probeCatalogModels', () => {
     ).toEqual([])
     expect(seen.sort()).toEqual([directWireModel, ...confidentialModels].sort())
   })
+
+  it.each(['https://anthropic.test', 'https://anthropic.test/'])(
+    'uses the configured Anthropic API root %s',
+    async (root) => {
+      const urls: string[] = []
+      expect(
+        await probeCatalogModels({
+          database: env.db,
+          settings: { ...settings, anthropicBaseUrl: root },
+          fetchFn: transport(async (request) => {
+            urls.push(request.url)
+            return completion()
+          }),
+          confidentialTransport: { fetch: transport(async () => completion()), baseURL: 'https://attested.test/v1' },
+        }),
+      ).toEqual([])
+      expect(urls).toEqual(['https://anthropic.test/v1/chat/completions'])
+    },
+  )
 
   it.each(['failure', 'timeout'] as const)('bounds shared confidential initialization (%s)', async (kind) => {
     const ready = spyOn(SecureClient.prototype, 'ready').mockImplementation(async () => {

@@ -36,7 +36,15 @@ export type PlaintextViolation = {
  */
 export const findPlaintextViolation = (operations: readonly UploadOperation[]): PlaintextViolation | null => {
   for (const operation of operations) {
-    const columns = operation.op === 'DELETE' ? undefined : encryptedColumnsMap[operation.type]
+    // `hasOwn` before the lookup: `operation.type` is client-controlled and
+    // unvalidated (`type: t.String()` on the upload route), so a prototype key
+    // like `"constructor"` resolved to a function — truthy, so it passed the
+    // guard below, and the `for…of` then threw a 500 out of the plaintext
+    // backstop.
+    const columns =
+      operation.op === 'DELETE' || !Object.hasOwn(encryptedColumnsMap, operation.type)
+        ? undefined
+        : encryptedColumnsMap[operation.type]
     if (!columns || !operation.data) {
       continue
     }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { APIError } from 'better-auth'
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
@@ -1115,12 +1116,25 @@ export const createEncryptionRoutes = (
             return { error: 'Step-up verification required to change the recovery phrase', code: 'step_up_required' }
           }
           // Session email, never client input — see `stepUpOtpType`.
+          //
+          // `checkVerificationOTP` signals EVERY rejection by throwing an
+          // `APIError` (invalid, expired, too many attempts) and returns only
+          // `{ success: true }` — so the catch is the normal path, not an edge.
+          // It is narrowed to `APIError` on purpose: a blanket catch also
+          // turned a storage failure into "Invalid or expired verification
+          // code", telling a user their code was wrong during an outage and
+          // walking them into spending their remaining attempts on it.
           const valid = await auth.api
             .checkVerificationOTP({
               body: { email: sessionUser!.email, type: stepUpOtpType, otp: body.stepUpOtp },
             })
             .then((result) => result.success)
-            .catch(() => false)
+            .catch((err: unknown) => {
+              if (err instanceof APIError) {
+                return false
+              }
+              throw err
+            })
           if (!valid) {
             set.status = 403
             return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
@@ -1778,5 +1792,11 @@ export const createEncryptionRoutes = (
         }
         set.status = 204
       },
-      { auth: true, body: t.Optional(t.Object({ pendingSince: t.Optional(t.String({ maxLength: 40 })) })) },
+      {
+        auth: true,
+        // `format: 'date-time'` and not a bare string: the value goes straight
+        // into `new Date(...)` and on to the query, so `"not-a-date"` became an
+        // Invalid Date and a 500. Rejecting at validation makes it a 422.
+        body: t.Optional(t.Object({ pendingSince: t.Optional(t.String({ format: 'date-time', maxLength: 40 })) })),
+      },
     )

@@ -759,6 +759,18 @@ describe('Encryption API (v2)', () => {
       expect(await pendingFlag(p('d'))).toBe(false)
     })
 
+    it('rejects a pendingSince that is not a date, instead of 500ing on it', async () => {
+      // The value goes straight into `new Date(...)` and on to the query, so a
+      // free-form string used to reach Postgres as an Invalid Date.
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertDevice(p('d'), p('u'))
+
+      const res = await cancel(p('d'), { pendingSince: 'not-a-date' })
+
+      expect(res.status).toBe(422)
+      expect(await pendingFlag(p('d'))).toBe(true)
+    })
+
     it('leaves a newer pending request alone when the token is stale', async () => {
       // Regression: the cancel is fired without awaiting it, so a slow one used
       // to land after the user retried and wipe the FRESH request — the retry

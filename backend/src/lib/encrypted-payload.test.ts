@@ -113,4 +113,26 @@ describe('findPlaintextViolation', () => {
   it('accepts an empty batch', () => {
     expect(findPlaintextViolation([])).toBeNull()
   })
+
+  it('ignores prototype keys in the table name rather than throwing', () => {
+    // `type` is client-controlled and unvalidated on the upload route. A bare
+    // index lookup resolved `"constructor"` to a function — truthy, so it got
+    // past the falsy guard and the loop over it threw a 500 out of the
+    // plaintext backstop. These are not tables, so they carry no violation.
+    for (const type of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(
+        findPlaintextViolation([{ op: 'PUT', type, id: 'x-1', data: { name: 'plain', title: 'plain' } }]),
+      ).toBeNull()
+    }
+  })
+
+  it('still flags a real table appearing after a prototype-key operation', () => {
+    // The guard must skip the bogus entry, not abandon the batch.
+    expect(
+      findPlaintextViolation([
+        { op: 'PUT', type: 'constructor', id: 'x-1', data: { name: 'plain' } },
+        { op: 'PUT', type: 'chat_threads', id: 'thread-9', data: { title: 'leaked' } },
+      ]),
+    ).toEqual({ table: 'chat_threads', id: 'thread-9', column: 'title' })
+  })
 })

@@ -2,6 +2,8 @@
 
 Thunderbolt runs entirely on infrastructure you control, with no vendor control plane to call home to. Traffic leaves your network to reach the AI providers you configure and a short list of feature endpoints, every one of which is listed in [Requirements](./requirements.md).
 
+> **Evaluation.** Thunderbolt has not completed a security audit. Deploy it for evaluation and internal testing, not yet for production.
+
 ## Pick a deployment path
 
 | Path                                  | What it takes                                                                                                            | How it scales                                                            | Good for                                                                |

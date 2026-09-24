@@ -668,7 +668,7 @@ export const EnterprisePage = () => {
   <div className="relative min-h-screen overflow-x-hidden bg-[#f9fafb]">
     <BackgroundGrid />
     <Header action={<StarCountBadge />} />
-    <main className="relative pt-[144px]">
+    <main className="relative pt-[104px]">
       <Hero />
       <FeatureCards />
       <CompromiseSection />

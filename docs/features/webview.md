@@ -31,6 +31,10 @@ instead.
 The panel holds one thing at a time, so opening a page replaces whatever was in it: an attachment
 preview, a tool result, or an artifact.
 
+Drag the divider between the chat and the panel to resize it, and the width is remembered for next
+time. An open page covers the right half of that divider, so drag from the left half, the side
+nearest the chat.
+
 ## Privacy
 
 Pages open in a private session. Nothing from the page is written to disk, and each page you open

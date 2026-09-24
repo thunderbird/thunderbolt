@@ -8,6 +8,9 @@ import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 
+const repoBlobUrl = 'https://github.com/thunderbird/thunderbolt/blob/main';
+const repoTreeUrl = 'https://github.com/thunderbird/thunderbolt/tree/main';
+
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://thunderbolt.io',
@@ -23,6 +26,29 @@ export default defineConfig({
 		'/docs/introduction': '/docs',
 		'/docs/quick-start': '/docs/self-hosting/docker-compose',
 		'/docs/multi-device-sync': '/docs/using/apps-and-sync',
+		// Contributor docs moved under docs/internals/, which repo-docs-loader.ts
+		// does not publish. Where the topic has a public successor, point there.
+		'/docs/architecture/projects': '/docs/using/projects',
+		'/docs/architecture/multi-device-sync': '/docs/using/apps-and-sync',
+		'/docs/architecture/powersync-sync-middleware': '/docs/using/apps-and-sync',
+		'/docs/architecture/e2e-encryption': '/docs/admin/security-and-privacy',
+		'/docs/architecture/delete-account-and-revoke-device': '/docs/admin/devices',
+		'/docs/architecture/powersync-account-devices': '/docs/admin/devices',
+		'/docs/development/quick-start': '/docs/self-hosting/docker-compose',
+		// The rest have no public counterpart, so they go to the source file on
+		// GitHub — where repo-docs-loader.ts already sends in-page links to
+		// anything outside the published tree.
+		'/docs/architecture': `${repoTreeUrl}/docs/internals/architecture`,
+		'/docs/architecture/composite-primary-keys-and-default-data': `${repoBlobUrl}/docs/internals/architecture/composite-primary-keys-and-default-data.md`,
+		'/docs/architecture/export-format': `${repoBlobUrl}/docs/internals/architecture/export-format.md`,
+		'/docs/architecture/iroh-relay-self-hosting': `${repoBlobUrl}/docs/internals/architecture/iroh-relay-self-hosting.md`,
+		'/docs/development/mobile-setup': `${repoBlobUrl}/docs/internals/development/mobile-setup.md`,
+		'/docs/development/testing': `${repoBlobUrl}/docs/internals/development/testing.md`,
+		'/docs/dev-tooling/storybook': `${repoBlobUrl}/docs/internals/dev-tooling/storybook.md`,
+		'/docs/dev-tooling/vite-bundle-analyzer': `${repoBlobUrl}/docs/internals/dev-tooling/vite-bundle-analyzer.md`,
+		'/docs/dev-tooling/local-cdn-for-app-update-testing': `${repoBlobUrl}/docs/internals/dev-tooling/local-cdn-for-app-update-testing.md`,
+		'/docs/features/tauri-signing-keys': `${repoBlobUrl}/docs/internals/tauri-signing-keys.md`,
+		'/docs/features/widgets': `${repoBlobUrl}/docs/internals/widgets.md`,
 	},
 	integrations: [
 		react(),

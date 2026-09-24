@@ -26,7 +26,7 @@ const globalSetup = async () => {
 
   oidcServer.service.on('beforeTokenSigning', (token: MutableToken, request: TokenRequestIncomingMessage) => {
     if (!uniqueUsers) {
-      Object.assign(token, {
+      Object.assign(token.payload, {
         sub: 'e2e-test-user',
         email: 'e2e@thunderbolt.test',
         name: 'E2E Test User',

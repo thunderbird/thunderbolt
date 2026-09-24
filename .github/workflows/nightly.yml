@@ -111,8 +111,8 @@ jobs:
         id: sanitize
         if: always()
         run: |
-          python3 scripts/sanitize-nightly-artifacts.py --self-test
-          python3 scripts/sanitize-nightly-artifacts.py playwright-report
+          bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000
+          bun scripts/sanitize-nightly-artifacts.ts playwright-report
 
       - name: Upload failure report
         if: failure() && steps.sanitize.outcome == 'success'
@@ -157,8 +157,8 @@ jobs:
         id: sanitize
         if: always()
         run: |
-          python3 scripts/sanitize-nightly-artifacts.py --self-test
-          python3 scripts/sanitize-nightly-artifacts.py playwright-report
+          bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000
+          bun scripts/sanitize-nightly-artifacts.ts playwright-report
 
       - name: Upload failure report
         if: failure() && steps.sanitize.outcome == 'success'

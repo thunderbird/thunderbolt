@@ -33,14 +33,54 @@ const persistentWebkit = base.extend({
         }
       }
     } finally {
-      await Promise.all([
-        rm(videoDir, { recursive: true, force: true }),
-        rm(profile, { recursive: true, force: true }),
-      ])
+      await Promise.all([rm(videoDir, { recursive: true, force: true }), rm(profile, { recursive: true, force: true })])
     }
   },
-  page: async ({ context }, use) => {
-    await use(context.pages()[0] ?? (await context.newPage()))
+  page: async ({ context, baseURL }, use, testInfo) => {
+    const page = context.pages()[0] ?? (await context.newPage())
+    const diagnostics: string[] = []
+    if (baseURL) {
+      // WebKit shares OPFS across persistent profiles, so clear the test origin before app boot.
+      const origins = testInfo.project.name.startsWith('min-version-gate-')
+        ? [baseURL, 'http://localhost:1423']
+        : [baseURL]
+      const testOrigins = new Set(origins.map((origin) => new URL(origin).origin))
+      for (const origin of origins) {
+        const url = new URL('/__e2e_storage_reset__', origin).href
+        await page.route(url, (route) => route.fulfill({ status: 200, body: '<!doctype html>' }))
+        await page.goto(url)
+        await page.evaluate(async () => {
+          const root = await navigator.storage.getDirectory()
+          for await (const name of root.keys()) await root.removeEntry(name, { recursive: true })
+        })
+        await page.unroute(url)
+      }
+      page.on('worker', (worker) => {
+        const path = new URL(worker.url()).pathname
+        if (!path.startsWith('/@powersync/worker/') || diagnostics.length >= 20) return
+        diagnostics.push(`worker started ${path}`)
+        worker.on('close', () => diagnostics.push(`worker closed ${path}`))
+      })
+      page.on('requestfailed', (request) => {
+        const url = new URL(request.url())
+        if (request.resourceType() !== 'script' || !testOrigins.has(url.origin) || diagnostics.length >= 20) return
+        diagnostics.push(`script failed ${url.pathname}`)
+      })
+      page.on('response', (response) => {
+        const url = new URL(response.url())
+        if (!testOrigins.has(url.origin) || diagnostics.length >= 20) return
+        if (
+          !url.pathname.startsWith('/@powersync/worker/') &&
+          (response.request().resourceType() !== 'script' || response.status() < 400)
+        )
+          return
+        diagnostics.push(`${response.status()} ${response.headers()['content-type'] ?? 'unknown'} ${url.pathname}`)
+      })
+    }
+    await use(page)
+    if (testInfo.status !== testInfo.expectedStatus && diagnostics.length) {
+      console.error('[e2e] resource diagnostics:', diagnostics.join(' | '))
+    }
   },
 })
 

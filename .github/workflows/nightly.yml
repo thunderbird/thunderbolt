@@ -97,7 +97,26 @@ jobs:
         run: docker restart "$POWERSYNC_CONTAINER"
 
       - name: Wait for PowerSync
-        run: curl --fail --silent --show-error --retry 30 --retry-delay 3 --retry-connrefused http://localhost:18081/probes/liveness
+        env:
+          POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
+        run: |
+          for attempt in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Status}}' "$POWERSYNC_CONTAINER")
+            if [ "$status" != running ]; then
+              echo "PowerSync stopped before readiness: $status"
+              docker inspect --format 'Exit code: {{.State.ExitCode}}, OOM killed: {{.State.OOMKilled}}, restarts: {{.RestartCount}}' "$POWERSYNC_CONTAINER"
+              exit 1
+            fi
+            if curl --fail --silent --output /dev/null --max-time 2 http://localhost:18081/probes/readiness; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'PowerSync did not become ready after 30 attempts'
+              docker inspect --format 'Status: {{.State.Status}}, exit code: {{.State.ExitCode}}, OOM killed: {{.State.OOMKilled}}, restarts: {{.RestartCount}}' "$POWERSYNC_CONTAINER"
+              exit 1
+            fi
+            sleep 3
+          done
 
       - name: Run Chromium and Firefox desktop and mobile
         env:

@@ -100,9 +100,12 @@ test.describe('localization — language switching', () => {
    * claiming coverage for.
    */
   test('re-labels the unit rows without a reload', async ({ page }) => {
+    // WebKit normalizes en-IE to en-GB; the app reads navigator.languages for region defaults.
+    await page.addInitScript(() => Object.defineProperty(navigator, 'languages', { get: () => ['en-IE'] }))
     await loginViaOidc(page)
     await openLocalizationSettings(page)
 
+    expect(await page.evaluate(() => navigator.languages[0])).toBe('en-IE')
     await expect(page.getByTestId('distance-unit')).toHaveText('Metric (km)')
 
     await page.getByLabel('Language').click()

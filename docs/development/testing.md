@@ -183,7 +183,7 @@ The Playwright suite in [`e2e/`](../../e2e) covers OIDC and SAML sign-in and ses
 | Min-version gate pair | `1423` / `8004` | SSO frontend, OIDC backend with `MIN_APP_VERSION=99.0.0`  |
 | Consumer pair         | `1424` / `8005` | Email-code sign-in, consumer backend with `NODE_ENV=test` |
 
-Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. `e2e/global-setup.ts` starts the mock IdPs and fake provider; `e2e/global-teardown.ts` stops them.
+Regular PR tests start with fresh browser contexts and `storageState`. Nightly WebKit uses persistent profiles for OPFS support and clears OPFS on the test frontend origins before each case, since WebKit can share OPFS between separate profiles. `e2e/global-setup.ts` starts the mock IdPs and fake provider; `e2e/global-teardown.ts` stops them.
 
 ### Fake provider
 
@@ -278,7 +278,7 @@ bunx playwright test --config playwright.nightly.config.ts
 docker compose -f deploy/nightly-compose.yml down --volumes
 ```
 
-On a Mac running the app locally, `bunx playwright test --config playwright.nightly.config.ts` selects the WebKit projects and uses the test backends' in-memory databases. Nightly WebKit tests use a fresh persistent browser profile per case for OPFS support and delete it after the case; regular PR tests keep Playwright's default contexts.
+On a Mac running the app locally, `bunx playwright test --config playwright.nightly.config.ts` selects the WebKit projects and uses the test backends' in-memory databases. Nightly WebKit tests use a fresh persistent browser profile per case for OPFS support, clear OPFS on the local test frontend origins before app boot, and delete the profile afterward; regular PR tests keep Playwright's default contexts.
 
 ### CI failure and recovery alerts
 

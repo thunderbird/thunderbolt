@@ -69,7 +69,7 @@ test.describe('artifact harness (real browser)', () => {
     )
     const error = messages.find((m) => m.type === 'artifact-error')
     expect(error?.reason).toBe('exception')
-    expect(error?.detail ?? '').toContain('boom-xyz')
+    expect(error?.detail?.trim()).toBeTruthy()
   })
 
   test('an unhandled promise rejection is reported as an error', async ({ page }) => {

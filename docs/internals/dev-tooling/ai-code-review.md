@@ -142,7 +142,7 @@ under `.claude/skills/thunder-deep-review/`.
   evidence is not in the diff.
 - **Those ids are never rendered into the comment you read.** The table above is how you trace one back to its rule.
 - The `R-*` files restate, with ids, docs that remain the source of truth: [`AGENTS.md`](../../../AGENTS.md) (symlinked
-  as `CLAUDE.md`) for `house-rules.md`, [`docs/development/testing.md`](../development/testing.md) plus
+  as `CLAUDE.md`) for `house-rules.md`, [`docs/internals/development/testing.md`](../development/testing.md) plus
   [`backend/docs/testing.md`](../../../backend/docs/testing.md) for `testing-rules.md`. On disagreement the source doc
   wins and the reference file needs updating.
 

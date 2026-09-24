@@ -31,9 +31,8 @@ does nothing.
 The panel holds one thing at a time, so opening a page replaces whatever was in it: an attachment
 preview, a cited source, a tool result, or an artifact.
 
-Drag the divider between the chat and the panel to resize it, and the width is remembered for next
-time. An open page covers the right half of that divider, so drag from the left half, the side
-nearest the chat.
+The divider between the chat and the panel resizes it, and the width is remembered. An open page
+covers the divider's right half, so drag from the side nearest the chat.
 
 ## Privacy
 

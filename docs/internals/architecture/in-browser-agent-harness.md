@@ -196,7 +196,7 @@ survives a reload.
 
 CI runs both gates in a dedicated `agent-core` job on `macos-latest`, path-gated on `shared/agent-core/**`,
 `scripts/agent-core-browser-check.ts`, `vite.config.ts`, `package.json`, `bun.lock`, and the workflow itself
-(`.github/workflows/ci.yml`). See [docs/development/testing.md](../development/testing.md).
+(`.github/workflows/ci.yml`). See [docs/internals/development/testing.md](../development/testing.md).
 
 ## Upgrading the Pi packages
 

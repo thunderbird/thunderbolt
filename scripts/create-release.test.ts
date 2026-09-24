@@ -52,7 +52,7 @@ describe('create-release.ts', () => {
   describe('Version Bumping', () => {
     it('should bump major version correctly', () => {
       const current = '1.2.3'
-      const [major, minor, patch] = current.split('.').map(Number)
+      const [major] = current.split('.').map(Number)
       const result = `${major + 1}.0.0`
 
       expect(result).toBe('2.0.0')
@@ -60,7 +60,7 @@ describe('create-release.ts', () => {
 
     it('should bump minor version correctly', () => {
       const current = '1.2.3'
-      const [major, minor, patch] = current.split('.').map(Number)
+      const [major, minor] = current.split('.').map(Number)
       const result = `${major}.${minor + 1}.0`
 
       expect(result).toBe('1.3.0')
@@ -263,15 +263,18 @@ describe('create-release.ts', () => {
     })
 
     it('should detect tag does NOT exist when git throws error', () => {
-      // This simulates failed git rev-parse --verify (exception thrown)
-      let exists = false
-      try {
-        throw new Error('fatal: Needed a single revision')
-      } catch {
-        exists = false
+      // This simulates failed git rev-parse --verify (exception thrown).
+      // Expressed as a function so the catch RETURNS the answer: the throw is
+      // unconditional, so any seed value on a `let` would be dead code.
+      const tagExists = (): boolean => {
+        try {
+          throw new Error('fatal: Needed a single revision')
+        } catch {
+          return false
+        }
       }
 
-      expect(exists).toBe(false)
+      expect(tagExists()).toBe(false)
     })
 
     it('should NOT be fooled by error messages containing tag name (THE BUG)', () => {
@@ -648,7 +651,7 @@ describe('create-release.ts', () => {
     it('should strip iOS release candidate suffix before bumping minor', () => {
       const current = '0.3.0-ios-rc'
       const cleanVersion = current.split('-')[0]
-      const [major, minor, patch] = cleanVersion.split('.').map(Number)
+      const [major, minor] = cleanVersion.split('.').map(Number)
       const result = `${major}.${minor + 1}.0`
 
       expect(result).toBe('0.4.0')
@@ -694,7 +697,7 @@ describe('create-release.ts', () => {
 
     it('should handle very large version numbers', () => {
       const version = '999.999.999'
-      const [major, minor, patch] = version.split('.').map(Number)
+      const [major] = version.split('.').map(Number)
       const nextMajor = `${major + 1}.0.0`
 
       expect(nextMajor).toBe('1000.0.0')

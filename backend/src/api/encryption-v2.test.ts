@@ -2019,6 +2019,24 @@ describe('Encryption API (v2)', () => {
       expect((await res.json()).error).toBe('Invalid operation')
     })
 
+    it('refuses to rebind a session that already points at another device', async () => {
+      // Without the conflict check the route answers 200 while the session stays
+      // bound to `mine` — and the client caches that lie against its bearer
+      // (`ensureSessionBound`), so it never retries the handshake.
+      const keys = await createDeviceKeys()
+      await createUserAndSession(p('u'), p('tok'), p('mine'))
+      await insertDevice(p('mine'), p('u'), { trusted: true })
+      await insertDevice(p('other'), p('u'), { trusted: true, publicKey: keys.publicKeyBase64 })
+
+      const { sealed } = await (await bindChallenge(p('other'))).json()
+      const nonce = await openSealed(keys.privateKey, sealed)
+      const res = await bind(p('other'), nonce)
+
+      expect(res.status).toBe(409)
+      expect(await res.json()).toEqual({ code: 'SESSION_DEVICE_MISMATCH' })
+      expect(await sessionDeviceId()).toBe(p('mine'))
+    })
+
     it('POST /devices does not bind a session to an already-trusted device', async () => {
       // The rebind hole: this branch takes an unverified client-supplied id, so
       // linking here would let any session inherit any trusted device.

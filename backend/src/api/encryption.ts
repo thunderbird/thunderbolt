@@ -1733,7 +1733,20 @@ export const createEncryptionRoutes = (
           return { error: 'Device has been revoked' }
         }
 
-        await linkSessionToDevice(database, session.id, body.deviceId, userId)
+        // The bind is conflict-aware, so its verdict decides the response: a
+        // session already pointing at a DIFFERENT device keeps that binding, and
+        // answering 200 here would tell the caller it owns a binding it does not
+        // have — which `ensureSessionBound` then caches against the bearer,
+        // so the device would never retry the handshake for this session's life.
+        const binding = await linkSessionToDevice(database, session.id, body.deviceId, userId)
+        if (binding.status === 'conflict') {
+          set.status = 409
+          return { code: 'SESSION_DEVICE_MISMATCH' }
+        }
+        if (binding.status === 'invalid-session') {
+          set.status = 401
+          return { error: 'Unauthorized' }
+        }
 
         return { deviceId: body.deviceId }
       },

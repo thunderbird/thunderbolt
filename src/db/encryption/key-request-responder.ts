@@ -5,7 +5,7 @@
 import { getKeyVersion, storeKeyVersion } from '@/crypto'
 import type { KeyId } from '@shared/e2ee-types'
 import { needsSyncSetupWizard } from './config'
-import { keysSyncChannelName, type KeyRequestReason, type KeysSyncChannel, type KeysSyncMessage } from './codec'
+import { createBroadcastKeysSyncChannel, type KeyRequestReason, type KeysSyncChannel } from './codec'
 
 // =============================================================================
 // Main-thread key-request responder (plan §3 / D2 + the polling half of C3).
@@ -78,21 +78,6 @@ export type KeyRequestResponder = {
   trackedKeyIdCount: () => number
 }
 
-const createBroadcastChannel = (): { channel: KeysSyncChannel; close: () => void } | null => {
-  if (typeof BroadcastChannel === 'undefined') {
-    return null
-  }
-  const broadcast = new BroadcastChannel(keysSyncChannelName)
-  return {
-    channel: {
-      postMessage: (message) => broadcast.postMessage(message),
-      onMessage: (listener) =>
-        broadcast.addEventListener('message', (event: MessageEvent<KeysSyncMessage>) => listener(event.data)),
-    },
-    close: () => broadcast.close(),
-  }
-}
-
 /**
  * Create (and immediately start) a key-request responder. Prefer
  * `startKeyRequestResponder` in app code — this factory exists so tests can
@@ -101,7 +86,7 @@ const createBroadcastChannel = (): { channel: KeysSyncChannel; close: () => void
 export const createKeyRequestResponder = (deps: KeyRequestResponderDeps): KeyRequestResponder => {
   const { stageKeyring, refreshAK, fetchMetadata, now = () => Date.now(), cooldownMs = defaultCooldownMs } = deps
 
-  const ownedChannel = deps.channel === undefined ? createBroadcastChannel() : null
+  const ownedChannel = deps.channel === undefined ? createBroadcastKeysSyncChannel() : null
   const channel = deps.channel !== undefined ? deps.channel : (ownedChannel?.channel ?? null)
 
   let active = true

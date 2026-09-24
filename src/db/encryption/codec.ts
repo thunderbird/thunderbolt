@@ -74,7 +74,14 @@ export type KeysSyncChannel = {
 /** A keys-sync channel plus the handle needed to close its underlying BroadcastChannel. */
 type OwnedKeysSyncChannel = { channel: KeysSyncChannel; close: () => void }
 
-const createBroadcastKeysSyncChannel = (): OwnedKeysSyncChannel | null => {
+/**
+ * The single owner of `new BroadcastChannel(keysSyncChannelName)`. Everything
+ * that talks on the keys-sync channel goes through here or
+ * {@link postKeysSyncMessage}, so the channel name and the
+ * `typeof BroadcastChannel === 'undefined'` guard (tests, exotic runtimes) are
+ * stated once rather than re-derived per call site.
+ */
+export const createBroadcastKeysSyncChannel = (): OwnedKeysSyncChannel | null => {
   if (typeof BroadcastChannel === 'undefined') {
     return null
   }
@@ -87,6 +94,19 @@ const createBroadcastKeysSyncChannel = (): OwnedKeysSyncChannel | null => {
     },
     close: () => broadcast.close(),
   }
+}
+
+/**
+ * Post one message and close. For fire-and-forget senders that never listen —
+ * holding an open channel for a single post would leak a listener-less handle.
+ */
+export const postKeysSyncMessage = (message: KeysSyncMessage): void => {
+  const owned = createBroadcastKeysSyncChannel()
+  if (!owned) {
+    return
+  }
+  owned.channel.postMessage(message)
+  owned.close()
 }
 
 /** Drop the keyring caches (AK + staged DEKs) but KEEP the primary-key pointer. */
@@ -132,16 +152,13 @@ const requestKeyAndWait = (keyId: KeyId, reason: KeyRequestReason): Promise<void
   if (existing) {
     return existing.promise
   }
-  let resolvePromise!: () => void
-  const promise = new Promise<void>((resolve) => {
-    resolvePromise = resolve
-  })
+  const { promise, resolve } = Promise.withResolvers<void>()
   const pending: PendingKeyRequest = {
     promise,
     settle: () => {
       clearTimeout(timeoutId)
       pendingKeyRequests.delete(keyId)
-      resolvePromise()
+      resolve()
     },
   }
   const timeoutId = setTimeout(pending.settle, keyRequestTimeoutMs)

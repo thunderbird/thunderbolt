@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type SealedBindNonce, deviceBindHkdfInfo, ecdhKeyAlgorithm } from '@shared/e2ee-types'
+import {
+  type SealedBindNonce,
+  deviceBindAesAlgorithm,
+  deviceBindAesKeyLength,
+  deviceBindHkdfHash,
+  deviceBindHkdfInfo,
+  ecdhKeyAlgorithm,
+} from '@shared/e2ee-types'
 
 /**
  * Server half of the device–session bind handshake (THU-873). The client half
@@ -20,10 +27,7 @@ import { type SealedBindNonce, deviceBindHkdfInfo, ecdhKeyAlgorithm } from '@sha
  * published an ML-KEM public key and would then be permanently unbindable.
  */
 
-const aesGcmAlgorithm = 'AES-GCM'
-const aesKeyLength = 256
 const ivLength = 12
-const hkdfHash = 'SHA-256'
 const hkdfInfo = new TextEncoder().encode(deviceBindHkdfInfo)
 
 /**
@@ -43,9 +47,9 @@ const deriveSealingKey = async (
   )
   const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: hkdfHash, salt: ephemeralPublicKeyRaw as BufferSource, info: hkdfInfo },
+    { name: 'HKDF', hash: deviceBindHkdfHash, salt: ephemeralPublicKeyRaw as BufferSource, info: hkdfInfo },
     hkdfKey,
-    { name: aesGcmAlgorithm, length: aesKeyLength },
+    { name: deviceBindAesAlgorithm, length: deviceBindAesKeyLength },
     false,
     ['encrypt'],
   )
@@ -71,7 +75,7 @@ export const sealBindNonce = async (devicePublicKeyBase64: string, nonce: string
 
   const iv = crypto.getRandomValues(new Uint8Array(ivLength))
   const ciphertext = await crypto.subtle.encrypt(
-    { name: aesGcmAlgorithm, iv },
+    { name: deviceBindAesAlgorithm, iv },
     sealingKey,
     new TextEncoder().encode(nonce),
   )

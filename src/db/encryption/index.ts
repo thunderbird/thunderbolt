@@ -9,6 +9,7 @@ export {
   invalidateKeyringCache,
   resetCodecState,
   keysSyncChannelName,
+  postKeysSyncMessage,
   type EncryptionCodec,
   type EncryptionContext,
   type KeysSyncMessage,

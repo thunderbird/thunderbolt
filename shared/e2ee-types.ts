@@ -447,6 +447,21 @@ export type NonceOperation = ChallengeOperation | typeof bindOperation
 export const deviceBindHkdfInfo = 'thunderbolt-device-bind-v1'
 
 /**
+ * The rest of the bind-nonce sealing parameters. Shared because the seal and
+ * the open live on opposite sides of the wire (`backend/src/lib/device-bind.ts`
+ * seals, `src/crypto/device-bind.ts` opens) and any disagreement breaks every
+ * bind handshake — they were previously two independent copies of the same
+ * three literals.
+ *
+ * Deliberately NOT reused from `src/crypto/primitives.ts`, which happens to use
+ * the same values for the keyring: that is a different protocol, and coupling
+ * them would let a change made for the keyring silently alter this handshake.
+ */
+export const deviceBindAesAlgorithm = 'AES-GCM'
+export const deviceBindAesKeyLength = 256
+export const deviceBindHkdfHash = 'SHA-256'
+
+/**
  * A bind nonce sealed to one device's ECDH public key. All three fields are
  * base64. The ephemeral public key is `raw` P-256 (matching how device public
  * keys are stored) and doubles as the HKDF salt, binding the derivation to this

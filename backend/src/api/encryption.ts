@@ -42,7 +42,7 @@ import {
   withUserDeviceRegistrationLock,
 } from '@/dal'
 import type { Settings } from '@/config/settings'
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
@@ -340,7 +340,7 @@ const assertRecoveryCoverage = (recovery: RecoverySlotRequest): void => {
  * unescrowed on a deployment that expects escrow.
  */
 const persistOrgEnvelope = async (
-  txDb: typeof DbType,
+  txDb: QueryableDatabase,
   settings: Settings,
   userId: string,
   orgEnvelope: string | undefined,
@@ -494,7 +494,7 @@ export const createEncryptionRoutes = (
         // Wrap limit check + registration in a transaction to prevent TOCTOU race
         const deviceName = name || 'Unknown device'
         const result = await database.transaction(async (tx) => {
-          const txDb = tx as unknown as typeof database
+          const txDb: QueryableDatabase = tx
 
           // Re-check device inside transaction to close race window
           const freshDevice = await getDeviceById(txDb, deviceId)
@@ -646,12 +646,12 @@ export const createEncryptionRoutes = (
 
         try {
           await database.transaction(async (tx) => {
-            const txDb = tx as unknown as typeof database
+            const txDb: QueryableDatabase = tx
 
             // Serialize concurrent device approvals for this user to prevent cap bypass and
             // to serialize against POST /rotate, /upgrade and revoke (same lock). Auto-releases
             // on commit/rollback.
-            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
 
             const metadata = await getEncryptionMetadata(txDb, userId)
 
@@ -1115,8 +1115,8 @@ export const createEncryptionRoutes = (
 
         try {
           const keyVersion = await database.transaction(async (tx) => {
-            const txDb = tx as unknown as typeof database
-            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+            const txDb: QueryableDatabase = tx
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
 
             // Verify inside the tx so nonce consumption serializes under the lock
             // (concurrent rotates: the second fails on its own nonce or on coverage
@@ -1267,8 +1267,8 @@ export const createEncryptionRoutes = (
 
         try {
           const result = await database.transaction(async (tx) => {
-            const txDb = tx as unknown as typeof database
-            await txDb.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
+            const txDb: QueryableDatabase = tx
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId})::bigint)`)
 
             // Replay protection only (bootstrap op — NOT signature-verified).
             const nonceRow = await consumeChallengeNonce(txDb, body.nonce)

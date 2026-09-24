@@ -101,19 +101,21 @@ export const SignInModalProvider = ({ children }: SignInModalProviderProps) => {
    */
   useEffect(() => {
     let cancelled = false
-    shouldPromptReEnrollment({
-      isSignedIn,
-      syncEnabled: isSyncEnabled,
-      needsWizard: needsSyncSetupWizard,
-    })
-      .then((needed) => {
+    const check = async () => {
+      try {
+        const needed = await shouldPromptReEnrollment({
+          isSignedIn,
+          syncEnabled: isSyncEnabled,
+          needsWizard: needsSyncSetupWizard,
+        })
         if (needed && !cancelled) {
           setSyncSetupOpen(true)
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error) {
         console.warn('[sync-setup] Startup encryption-readiness check failed:', error)
-      })
+      }
+    }
+    void check()
     return () => {
       cancelled = true
     }

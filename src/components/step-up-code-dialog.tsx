@@ -15,7 +15,7 @@ import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
-import { stepUpOtpLength } from '@/settings/encryption/use-change-recovery-key'
+import { stepUpOtpLength } from '@/lib/constants'
 
 type StepUpCodeDialogProps = {
   open: boolean

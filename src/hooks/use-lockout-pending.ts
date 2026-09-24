@@ -7,6 +7,7 @@ import { fetchLockoutPending } from '@/api/encryption'
 import { useE2eeReady } from '@/hooks/use-e2ee-ready'
 import { finishDeviceLockout } from '@/services/encryption'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 const lockoutPendingKey = ['lockout-pending'] as const
 
@@ -33,7 +34,10 @@ export const useLockoutPending = () => {
     enabled: isReady,
   })
 
-  return new Set(data?.device_ids ?? [])
+  // Memoized on the query data: a fresh Set every render is a new identity, so
+  // any consumer that puts this in a dependency array re-runs forever even
+  // though the server answer never changed.
+  return useMemo(() => new Set(data?.device_ids ?? []), [data])
 }
 
 /**

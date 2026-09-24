@@ -79,9 +79,6 @@ export const reducer = (state: ChangeRecoveryKeyState, action: ChangeRecoveryKey
   }
 }
 
-/** Matches `stepUpOtpLength` in `backend/src/lib/step-up-otp.ts`. */
-export const stepUpOtpLength = 8
-
 /**
  * State machine for the "Change recovery phrase" settings action (THU-875):
  * confirm → request the emailed step-up code → enter it → rotate the Account

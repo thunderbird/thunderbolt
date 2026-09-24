@@ -7,7 +7,7 @@ import { getAuthenticatedHeaders, getAuthToken } from '@/lib/auth-token'
 import { isSsoMode } from '@/lib/auth-mode'
 import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
-import { encodeForUpload, keysSyncChannelName, type KeysSyncMessage } from '@/db/encryption'
+import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
@@ -297,13 +297,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * runtimes) must not turn a defer into a crash.
    */
   private requestPointerAdoption(): void {
-    if (typeof BroadcastChannel === 'undefined') {
-      return
-    }
-    const channel = new BroadcastChannel(keysSyncChannelName)
-    const message: KeysSyncMessage = { type: 'key-request', keyId: '0', reason: 'unknown-key' }
-    channel.postMessage(message)
-    channel.close()
+    postKeysSyncMessage({ type: 'key-request', keyId: '0', reason: 'unknown-key' })
   }
 
   /**

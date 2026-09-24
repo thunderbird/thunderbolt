@@ -17,14 +17,6 @@ import { RecoveryKeyDialog } from '@/components/recovery-key-dialog'
 import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
 import { useE2eeReady } from '@/hooks/use-e2ee-ready'
 import { useChangeRecoveryKey } from './use-change-recovery-key'
-import type { HttpClient } from '@/contexts'
-
-type ChangeRecoveryKeySectionProps = {
-  /** Dependency seam for the rotation (tests). Defaults to `changeRecoveryPhrase`. */
-  rotate?: (httpClient: HttpClient, opts: { stepUpOtp: string }) => Promise<string>
-  /** Dependency seam for the step-up code request (tests). Defaults to `postStepUpRequest`. */
-  requestCode?: (httpClient: HttpClient) => Promise<void>
-}
 
 /**
  * "Change recovery phrase" row for the preferences Data section. Confirms,
@@ -36,7 +28,7 @@ type ChangeRecoveryKeySectionProps = {
  * revocation rotates silently. Hidden until E2EE v2 is fully set up on this
  * device — there is no key to rotate before then.
  */
-export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecoveryKeySectionProps) => {
+export const ChangeRecoveryKeySection = () => {
   const { t } = useLingui()
   const ready = useE2eeReady()
   const {
@@ -51,7 +43,7 @@ export const ChangeRecoveryKeySection = ({ rotate, requestCode }: ChangeRecovery
     requestStepUpCode,
     confirmRotation,
     done,
-  } = useChangeRecoveryKey(rotate, requestCode)
+  } = useChangeRecoveryKey()
 
   if (!ready) {
     return null

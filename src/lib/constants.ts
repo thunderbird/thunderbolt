@@ -46,8 +46,16 @@ export const mobileSidebarWidthCss = `min(${mobileSidebarWidthRatio * 100}vw, ${
 export const getMobileSidebarWidth = (viewportWidth: number) =>
   Math.min(viewportWidth * mobileSidebarWidthRatio, mobileSidebarMaxWidth)
 
-/** OTP code length — must match backend emailOTP config (otpLength). */
+/** Sign-in/waitlist OTP code length — must match backend emailOTP config (otpLength). */
 export const otpLength = 8
+
+/**
+ * Recovery-phrase step-up code length — must match `stepUpOtpLength` in
+ * `backend/src/lib/step-up-otp.ts`. Deliberately separate from `otpLength`
+ * despite both being 8: that one tracks better-auth's emailOTP config, this one
+ * tracks a generator the app owns outright, and either can move alone.
+ */
+export const stepUpOtpLength = 8
 
 /** HTTP header name for challenge token session binding. */
 export const challengeTokenHeader = 'x-challenge-token'

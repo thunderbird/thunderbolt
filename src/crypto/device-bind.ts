@@ -2,7 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type SealedBindNonce, deviceBindHkdfInfo, ecdhKeyAlgorithm } from '@shared/e2ee-types'
+import {
+  type SealedBindNonce,
+  deviceBindAesAlgorithm,
+  deviceBindAesKeyLength,
+  deviceBindHkdfHash,
+  deviceBindHkdfInfo,
+  ecdhKeyAlgorithm,
+} from '@shared/e2ee-types'
 import { base64ToUint8Array } from './primitives'
 
 /**
@@ -17,9 +24,6 @@ import { base64ToUint8Array } from './primitives'
  * (`getKeyPair`), so opening a challenge never exposes key material.
  */
 
-const aesGcmAlgorithm = 'AES-GCM'
-const aesKeyLength = 256
-const hkdfHash = 'SHA-256'
 const hkdfInfo = new TextEncoder().encode(deviceBindHkdfInfo)
 
 /**
@@ -38,15 +42,15 @@ export const openBindNonce = async (ecdhPrivateKey: CryptoKey, sealed: SealedBin
   )
   const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
   const sealingKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: hkdfHash, salt: ephemeralPublicKeyRaw as BufferSource, info: hkdfInfo },
+    { name: 'HKDF', hash: deviceBindHkdfHash, salt: ephemeralPublicKeyRaw as BufferSource, info: hkdfInfo },
     hkdfKey,
-    { name: aesGcmAlgorithm, length: aesKeyLength },
+    { name: deviceBindAesAlgorithm, length: deviceBindAesKeyLength },
     false,
     ['decrypt'],
   )
 
   const plaintext = await crypto.subtle.decrypt(
-    { name: aesGcmAlgorithm, iv: base64ToUint8Array(sealed.iv) },
+    { name: deviceBindAesAlgorithm, iv: base64ToUint8Array(sealed.iv) },
     sealingKey,
     base64ToUint8Array(sealed.ciphertext),
   )

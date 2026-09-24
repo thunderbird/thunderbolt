@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { APIError } from 'better-auth'
 import { type Auth, createAuthMacro } from '@/auth/elysia-plugin'
 
 import {
@@ -43,11 +42,11 @@ import {
 } from '@/dal'
 import type { Settings } from '@/config/settings'
 import type { db as DbType } from '@/db/client'
-import { verification } from '@/db/auth-schema'
 import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
+import { consumeStepUpOtp, mintStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
 import { resolveEmailLocale } from '@/emails/i18n'
 import {
   type ChallengeOperation,
@@ -60,7 +59,7 @@ import {
   keyIdPattern,
   legacyKeyId,
 } from '@shared/e2ee-types'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
 /**
@@ -380,29 +379,14 @@ const mapEncryptionError = (err: unknown, set: { status?: number | string }): { 
  * Step-up verification (THU-875). A rotation that moves the recovery anchor to
  * DIFFERENT keys is a phrase change, and a still-trusted attacker (in-origin
  * script, borrowed session) can run one silently through the legitimate flow —
- * so it additionally requires proof-of-inbox: an emailed code checked against
- * Better Auth's verification table, always keyed by the SESSION's email (the
- * OTP check API itself is email-keyed and unauthenticated; this binding is the
- * entire session↔proof link). The `email-verification` type is borrowed — this
- * app has no password auth, so nothing else uses it, and the app's Better Auth
- * OTP sender deliberately drops non-sign-in types, which is fine because the
- * code is delivered exclusively through `securityNotifications.sendStepUpCode`.
+ * so it additionally requires proof-of-inbox: an emailed code, always keyed by
+ * the SESSION's email, which is the entire session↔proof link. The code lives
+ * on Better Auth's verification table under an identifier Better Auth cannot
+ * construct, and this app owns its whole lifecycle — see `@/lib/step-up-otp`
+ * for why that namespace matters and what it costs us.
  */
-const stepUpOtpType = 'email-verification' as const
 
-/** Mirrors better-auth's `toOTPIdentifier` — the verification row's lookup key. */
-const stepUpIdentifier = (email: string): string => `${stepUpOtpType}-otp-${email.toLowerCase()}`
-
-/**
- * Single-use enforcement: better-auth's check does NOT consume the code on
- * success, so the rotate route deletes the row after its transaction commits.
- * Delete-on-commit (not on-check) keeps a rotation that fails midway retryable
- * with the same code.
- */
-const consumeStepUpOtp = (database: typeof DbType, email: string) =>
-  database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(email)))
-
-/** `resendStrategy: 'reuse'` re-sends the same code; the cooldown just caps email volume. */
+/** Rotate-per-request, so the cooldown is what caps both email volume and the guess rate. */
 const stepUpRequestCooldownMs = 30_000
 const lastStepUpRequestAt = new Map<string, number>()
 
@@ -438,9 +422,7 @@ export const createEncryptionRoutes = (
           return { error: 'A code was just sent — wait a moment before requesting another' }
         }
         try {
-          const otp = await auth.api.createVerificationOTP({
-            body: { email: sessionUser!.email, type: stepUpOtpType },
-          })
+          const otp = await mintStepUpOtp(database, sessionUser!.email)
           await notifications.sendStepUpCode({
             email: sessionUser!.email,
             code: otp,
@@ -1115,27 +1097,16 @@ export const createEncryptionRoutes = (
             set.status = 403
             return { error: 'Step-up verification required to change the recovery phrase', code: 'step_up_required' }
           }
-          // Session email, never client input — see `stepUpOtpType`.
+          // Session email, never client input — see the step-up note above.
           //
-          // `checkVerificationOTP` signals EVERY rejection by throwing an
-          // `APIError` (invalid, expired, too many attempts) and returns only
-          // `{ success: true }` — so the catch is the normal path, not an edge.
-          // It is narrowed to `APIError` on purpose: a blanket catch also
-          // turned a storage failure into "Invalid or expired verification
-          // code", telling a user their code was wrong during an outage and
-          // walking them into spending their remaining attempts on it.
-          const valid = await auth.api
-            .checkVerificationOTP({
-              body: { email: sessionUser!.email, type: stepUpOtpType, otp: body.stepUpOtp },
-            })
-            .then((result) => result.success)
-            .catch((err: unknown) => {
-              if (err instanceof APIError) {
-                return false
-              }
-              throw err
-            })
-          if (!valid) {
+          // The verdict covers every way a code can be refused; a storage
+          // failure throws instead, so an outage stays a 500 rather than
+          // telling a user their code was wrong and walking them into
+          // spending their remaining attempts on it. All four rejections
+          // collapse to one response: distinguishing them would tell an
+          // attacker holding only the session whether a code is outstanding.
+          const verdict = await verifyStepUpOtp(database, sessionUser!.email, body.stepUpOtp)
+          if (verdict !== 'valid') {
             set.status = 403
             return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
           }

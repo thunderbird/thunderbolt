@@ -68,7 +68,7 @@ export const reducer = (state: ChangeRecoveryKeyState, action: ChangeRecoveryKey
   }
 }
 
-/** Backend `emailOTP` config mints 8-digit codes. */
+/** Matches `stepUpOtpLength` in `backend/src/lib/step-up-otp.ts`. */
 export const stepUpOtpLength = 8
 
 /**

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { createAuth } from '@/auth/auth'
-import { session as sessionTable, user as userTable } from '@/db/auth-schema'
+import { session as sessionTable, user as userTable, verification } from '@/db/auth-schema'
 import {
   challengeNoncesTable,
   encryptionMetadataTable,
@@ -22,6 +22,7 @@ import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
 import type { SecurityNotifications } from '@/lib/security-notifications'
+import { mintStepUpOtp, stepUpIdentifier, verifyStepUpOtp } from '@/lib/step-up-otp'
 import { createEncryptionRoutes } from './encryption'
 
 const baseUrl = 'http://localhost'
@@ -77,8 +78,7 @@ describe('Encryption API (v2)', () => {
   }
 
   /** Mint a step-up code server-side, exactly as `POST /encryption/step-up/request` does. */
-  const mintStepUpOtp = (userId: string): Promise<string> =>
-    auth.api.createVerificationOTP({ body: { email: `${userId}@test.com`, type: 'email-verification' } })
+  const mintStepUpCode = (userId: string): Promise<string> => mintStepUpOtp(db, `${userId}@test.com`)
 
   /** Notifications are fired post-response via a floating promise — let it settle. */
   const flushNotifications = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -1179,7 +1179,7 @@ describe('Encryption API (v2)', () => {
     it('accepts CHANGED recovery public keys WITH a valid step-up code — an explicit phrase change (THU-875)', async () => {
       const keypair = await setupRotatable([initialKeyId])
       const body = await rotateBody(keypair, [initialKeyId])
-      const otp = await mintStepUpOtp(p('u'))
+      const otp = await mintStepUpCode(p('u'))
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/rotate`, {
           method: 'POST',
@@ -1232,7 +1232,7 @@ describe('Encryption API (v2)', () => {
     it('refuses a wrong step-up code (THU-875)', async () => {
       const keypair = await setupRotatable([initialKeyId])
       const body = await rotateBody(keypair, [initialKeyId])
-      await mintStepUpOtp(p('u'))
+      await mintStepUpCode(p('u'))
       const res = await app.handle(
         new Request(`${baseUrl}/encryption/rotate`, {
           method: 'POST',
@@ -1247,7 +1247,7 @@ describe('Encryption API (v2)', () => {
     it('consumes the step-up code on commit — replay is refused (THU-875)', async () => {
       const keypair = await setupRotatable([initialKeyId])
       const body = await rotateBody(keypair, [initialKeyId])
-      const otp = await mintStepUpOtp(p('u'))
+      const otp = await mintStepUpCode(p('u'))
       const first = await app.handle(
         new Request(`${baseUrl}/encryption/rotate`, {
           method: 'POST',
@@ -2165,14 +2165,58 @@ describe('Encryption API (v2)', () => {
       expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
       const { code, email } = sentEmails[0]!.params as { code: string; email: string }
       expect(email).toBe(`${p('u')}@test.com`)
-      expect(code.length).toBeGreaterThan(0)
+      expect(code).toMatch(/^\d{8}$/)
 
       // And the minted code actually opens the rotate gate: verified end-to-end
       // by the rotate suite; here just confirm the row exists via a check call.
-      const { success } = await auth.api.checkVerificationOTP({
-        body: { email: `${p('u')}@test.com`, type: 'email-verification', otp: code },
-      })
-      expect(success).toBe(true)
+      expect(await verifyStepUpOtp(db, `${p('u')}@test.com`, code)).toBe('valid')
+    })
+
+    /**
+     * THU-875 regression. The code used to live under better-auth's
+     * `email-verification` OTP type, which put it on the row that the
+     * UNAUTHENTICATED `POST /email-otp/check-verification-otp` reads — anyone
+     * knowing the address could burn its three attempts and durably block the
+     * owner's phrase change. Better-auth builds identifiers as
+     * `${type}-otp-${email}` over a closed type enum, so an identifier outside
+     * that grammar is unreachable from every one of its routes.
+     */
+    it('stores the code under an identifier better-auth cannot address', async () => {
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('d'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      await insertDevice(p('d'), p('u'), { trusted: true })
+
+      const res = await app.handle(
+        new Request(`${baseUrl}/encryption/step-up/request`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('d')),
+        }),
+      )
+      expect(res.status).toBe(200)
+      const { code } = sentEmails[0]!.params as { code: string }
+
+      const email = `${p('u')}@test.com`
+      const rows = await db
+        .select()
+        .from(verification)
+        .where(eq(verification.identifier, stepUpIdentifier(email)))
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.value).toBe(`${code}:0`)
+
+      // The unauthenticated check endpoint cannot name the row under ANY type
+      // its enum admits — not even with the correct code in hand.
+      for (const type of ['email-verification', 'sign-in', 'forget-password', 'change-email'] as const) {
+        await expect(auth.api.checkVerificationOTP({ body: { email, type, otp: code } })).rejects.toThrow()
+      }
+      // And a burst of unauthenticated guesses at every nameable type leaves
+      // our attempt budget untouched — the whole point of the namespace.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await auth.api
+          .checkVerificationOTP({ body: { email, type: 'email-verification', otp: '00000000' } })
+          .catch(() => {})
+      }
+      expect(await verifyStepUpOtp(db, email, code)).toBe('valid')
     })
 
     it('cools down repeat requests (429) and refuses untrusted devices (403)', async () => {

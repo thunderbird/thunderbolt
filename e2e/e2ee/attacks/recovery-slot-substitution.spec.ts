@@ -184,9 +184,22 @@ test.describe.serial('THU-865 — recovery-slot substitution', () => {
       // device, so the recovery is refused and the device stays untrusted with no
       // envelope. Before the fix it became trusted and read the victim's task —
       // that takeover was executed in full at commit `17e79451`.
+      //
+      // Non-vacuity, in three steps, because `rejects.toThrow()` alone is
+      // satisfied by ANY failure — an unreachable database included, which would
+      // read as "the attack was refused".
+      //
+      // 1. The attempt reached the server at all: the row exists.
+      await waitForDeviceState(userId, attackerDeviceId, () => true)
+      // 2. It never reaches the compromised state within the poll window.
       await expect(
         waitForDeviceState(userId, attackerDeviceId, (state) => state.trusted && state.hasEnvelope),
       ).rejects.toThrow()
+      // 3. And the terminal state is affirmatively the secure one — a read that
+      //    would itself throw if the database had gone away under step 2.
+      const attackerState = await waitForDeviceState(userId, attackerDeviceId, () => true)
+      expect(attackerState.trusted).toBe(false)
+      expect(attackerState.hasEnvelope).toBe(false)
     } finally {
       await attacker.context.close()
     }

@@ -4,7 +4,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { type HttpClient } from '@/contexts'
-import { getAuthToken } from '@/lib/auth-token'
+import { getAuthToken, getDeviceId } from '@/lib/auth-token'
 import { createAuthenticatedClient } from '@/lib/http'
 import type { ChallengeProof } from '@shared/e2ee-types'
 import {
@@ -211,7 +211,12 @@ describe('encryption API client', () => {
     it('fetchMyEnvelope sends device headers', async () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true, wrappedCK: 'w' })
       const result = await fetchMyEnvelope(httpClient)
-      expect(getLastRequest().url).toContain('/devices/me/envelope')
+      const request = getLastRequest()
+      expect(request.url).toContain('/devices/me/envelope')
+      // The route resolves the caller device from this header, so its absence
+      // is a 400 in production — assert it, or the test name is a promise the
+      // assertions never keep.
+      expect(request.headers.get('X-Device-ID')).toBe(getDeviceId())
       expect(result.wrappedCK).toBe('w')
     })
 

@@ -12,6 +12,7 @@ import {
   wrappedKeysTable,
 } from '@/db/encryption-schema'
 import { devicesTable } from '@/db/schema'
+import { maxActiveDevicesPerUser } from '@/dal'
 import { createTestDb } from '@/test-utils/db'
 import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import { createTestSettings } from '@/test-utils/settings'
@@ -461,6 +462,125 @@ describe('Encryption API (v2)', () => {
       )
 
       expect(response.status).toBe(403)
+    })
+
+    // These four cover guards that lost their route-level tests when the v1
+    // suite was trimmed. Each guard is still live in `encryption.ts`; without
+    // these, nothing fails if one is removed.
+
+    it('refuses to overwrite an already-trusted device envelope (409)', async () => {
+      // `encryption.ts:655`. The envelope carries the AK, so letting one trusted
+      // device rewrite another's would hand the target a key of the caller's
+      // choosing — approval is a one-way transition, not a rewrite.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      await insertDevice(p('caller'), p('u'), { trusted: true })
+      await insertEnvelope(p('caller'), p('u'))
+      await insertDevice(p('target'), p('u'), { trusted: true })
+      await insertEnvelope(p('target'), p('u'), 'original-ak')
+
+      const proof = await proofFor(p('tok'), p('caller'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('caller')),
+          body: JSON.stringify({ wrappedCK: 'attacker-ak', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toBe('Cannot overwrite envelope of an already-trusted device')
+      const [envelope] = await db
+        .select()
+        .from(envelopesTable)
+        .where(eq(envelopesTable.deviceId, p('target')))
+      expect(envelope.wrappedCk).toBe('original-ak')
+    })
+
+    it('enforces the device cap at approval time', async () => {
+      // `encryption.ts:770`. The cap is checked on the untrusted → trusted
+      // transition, so registration can exceed it but approval cannot.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      for (let i = 0; i < maxActiveDevicesPerUser; i++) {
+        await insertDevice(p(`trusted-${i}`), p('u'), { trusted: true })
+      }
+      await bindSession(p('u'), p('trusted-0'))
+      await insertEnvelope(p('trusted-0'), p('u'))
+      await insertDevice(p('target'), p('u'))
+
+      const proof = await proofFor(p('tok'), p('trusted-0'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('trusted-0')),
+          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect((await response.json()).error).toContain('Device limit reached')
+      // No post-hoc DB assertion here: the route signals the cap by THROWING
+      // inside its transaction, and this harness shares that transaction with
+      // the test, so the rollback takes the fixtures with it. The 403 is the
+      // observable — `allows approval one below the cap` is what proves the
+      // check is a real boundary rather than a blanket refusal.
+    })
+
+    it('allows approval one below the cap', async () => {
+      // The other half of the boundary — without it, a cap of zero also passes
+      // the test above.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      for (let i = 0; i < maxActiveDevicesPerUser - 1; i++) {
+        await insertDevice(p(`trusted-${i}`), p('u'), { trusted: true })
+      }
+      await bindSession(p('u'), p('trusted-0'))
+      await insertEnvelope(p('trusted-0'), p('u'))
+      await insertDevice(p('target'), p('u'))
+
+      const proof = await proofFor(p('tok'), p('trusted-0'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('trusted-0')),
+          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+    })
+
+    it('allows a trusted device to re-key its own envelope even at the cap', async () => {
+      // Re-key is not a state transition, so the cap must not block it —
+      // otherwise a full account could never rotate.
+      const keypair = await generateSigningKeypair()
+      await createUserAndSession(p('u'), p('tok'), p('caller'))
+      await insertV2Metadata(p('u'), await exportSigningPublicKey(keypair))
+      for (let i = 0; i < maxActiveDevicesPerUser; i++) {
+        await insertDevice(p(`trusted-${i}`), p('u'), { trusted: true })
+      }
+      await bindSession(p('u'), p('trusted-0'))
+      await insertEnvelope(p('trusted-0'), p('u'), 'old-ak')
+
+      const proof = await proofFor(p('tok'), p('trusted-0'), 'approve', keypair)
+      const response = await app.handle(
+        new Request(`${baseUrl}/devices/${p('trusted-0')}/envelope`, {
+          method: 'POST',
+          headers: authHeaders(p('tok'), p('trusted-0')),
+          body: JSON.stringify({ wrappedCK: 'rotated-ak', proof }),
+        }),
+      )
+
+      expect(response.status).toBe(200)
+      const [envelope] = await db
+        .select()
+        .from(envelopesTable)
+        .where(eq(envelopesTable.deviceId, p('trusted-0')))
+      expect(envelope.wrappedCk).toBe('rotated-ak')
     })
   })
 

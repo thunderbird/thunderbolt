@@ -268,9 +268,18 @@ test.describe('PowerSync E2EE key rotation', () => {
       // A silent rotation must not flag the phrase as unsaved. The re-prompt
       // snapshots the flag at mount, so only a reload can prove it stayed clear.
       await page.reload()
-      await expect(page.getByText('Your recovery phrase was never saved', { exact: true })).toBeHidden({
-        timeout: 30_000,
-      })
+      // Wait for the app to actually mount before asserting absence: `toBeHidden`
+      // is satisfied by a not-yet-rendered page, so without this the assertion
+      // passes on an empty DOM and proves nothing about the prompt.
+      //
+      // `revokeTrustedDevice` left us on /settings/devices, and the CURRENT
+      // device's badge is the signal: it proves the lazy route chunk loaded and
+      // the device list rendered its data. Not a "Revoke" button — that renders
+      // only for a device that is neither revoked nor current
+      // (`src/settings/devices.tsx:207`), and after this revoke there is no such
+      // device, so waiting on one waits forever.
+      await expect(page.getByText('This device', { exact: true }).first()).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText('Your recovery phrase was never saved', { exact: true })).toBeHidden()
 
       const taskIdsBeforeRevokedWrite = await getTaskIds(userId)
       await createTask(page, afterRevokeTaskText)

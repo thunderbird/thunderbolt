@@ -4,7 +4,11 @@
 
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { dispatchMigrationRecoveryKey, useMigrationRecoveryKey } from './use-migration-recovery-key'
+import {
+  dispatchMigrationRecoveryKey,
+  migrationRecoveryKeyEvent,
+  useMigrationRecoveryKey,
+} from './use-migration-recovery-key'
 
 const phrase = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima'
 
@@ -30,7 +34,9 @@ describe('useMigrationRecoveryKey', () => {
 
   it('ignores an event with no phrase', () => {
     const { result } = renderHook(() => useMigrationRecoveryKey())
-    act(() => window.dispatchEvent(new CustomEvent('e2ee_migration_recovery_key', { detail: {} })))
+    // The exported constant, not a literal: a rename must break this test
+    // rather than leave it passing against an event nothing dispatches.
+    act(() => window.dispatchEvent(new CustomEvent(migrationRecoveryKeyEvent, { detail: {} })))
     expect(result.current.migrationRecoveryKey).toBeNull()
   })
 })

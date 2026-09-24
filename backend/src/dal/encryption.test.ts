@@ -112,14 +112,23 @@ describe('DAL: encryption', () => {
       expect(await consumeChallengeNonce(db, nonce)).toBeNull()
     })
 
-    it('deleteExpiredOrConsumedNonces sweeps consumed and expired rows', async () => {
-      const live = await issueChallengeNonce(db, { userId, operation: 'approve', deviceId: 'd1', ttlMs: 60_000 })
+    it('deleteExpiredOrConsumedNonces sweeps consumed and expired rows, keeping live ones', async () => {
+      const consumed = await issueChallengeNonce(db, { userId, operation: 'approve', deviceId: 'd1', ttlMs: 60_000 })
       const expired = await issueChallengeNonce(db, { userId, operation: 'approve', deviceId: 'd1', ttlMs: -1000 })
-      await consumeChallengeNonce(db, live.nonce) // mark consumed
+      const live = await issueChallengeNonce(db, { userId, operation: 'approve', deviceId: 'd1', ttlMs: 60_000 })
+      await consumeChallengeNonce(db, consumed.nonce)
+
       await deleteExpiredOrConsumedNonces(db)
-      const remaining = await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.userId, userId))
-      expect(remaining.map((r) => r.nonce)).not.toContain(live.nonce)
-      expect(remaining.map((r) => r.nonce)).not.toContain(expired.nonce)
+
+      const remaining = (
+        await db.select().from(challengeNoncesTable).where(eq(challengeNoncesTable.userId, userId))
+      ).map((r) => r.nonce)
+      expect(remaining).not.toContain(consumed.nonce)
+      expect(remaining).not.toContain(expired.nonce)
+      // The positive half, and the point of the test: an unconsumed, unexpired
+      // nonce must SURVIVE. Without it a sweep that lost its WHERE clause and
+      // deleted every row would pass on the two assertions above alone.
+      expect(remaining).toEqual([live.nonce])
     })
   })
 

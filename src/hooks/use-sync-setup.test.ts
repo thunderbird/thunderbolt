@@ -51,4 +51,30 @@ describe('useSyncSetup reducer', () => {
     const next = reducer(initialState, { type: 'DETECTED_FIRST_DEVICE' })
     expect(next.step).toBe('first-device-setup')
   })
+
+  it('routes a denied device to the denied step and stops the spinner', () => {
+    // The approval-waiting device polls; a denial is the terminal answer, so it
+    // must leave the waiting step AND clear isLoading or the UI spins forever.
+    const waiting = reducer(initialState, { type: 'DETECTED_ADDITIONAL_DEVICE' })
+    const next = reducer({ ...waiting, isLoading: true }, { type: 'DEVICE_DENIED' })
+    expect(next.step).toBe('denied')
+    expect(next.isLoading).toBe(false)
+  })
+
+  it('clears an error without disturbing the current step', () => {
+    const errored = reducer(initialState, { type: 'SET_ERROR', payload: 'boom' })
+    expect(errored.error).toBe('boom')
+    expect(errored.isLoading).toBe(false)
+
+    const cleared = reducer(errored, { type: 'CLEAR_ERROR' })
+    expect(cleared.error).toBeNull()
+    expect(cleared.step).toBe(errored.step)
+  })
+
+  it('GO_BACK returns to intro from a terminal step, RESET returns to the initial state', () => {
+    const denied = reducer(initialState, { type: 'DEVICE_DENIED' })
+
+    expect(reducer(denied, { type: 'GO_BACK' })).toEqual({ ...initialState, step: 'intro' })
+    expect(reducer(denied, { type: 'RESET' })).toEqual(initialState)
+  })
 })

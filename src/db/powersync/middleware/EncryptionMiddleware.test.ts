@@ -24,10 +24,13 @@ const fakeCodec: EncryptionCodec = {
   decode: async (val) => (!ckAvailable || !val.startsWith('__enc:') ? val : `decrypted(${val})`),
 }
 
-// Disarmed gate injected explicitly — NEVER the hasStagedAK default. bun runs
-// all test files in one process, so any earlier file that staged an AK (e.g.
-// codec.test.ts via fake-indexeddb) would arm the real gate here and quarantine
-// this suite's plaintext fixtures, turning these tests order-dependent.
+// Disarmed gate injected explicitly wherever a test uses PLAINTEXT fixtures.
+// bun runs all test files in one process, so any earlier file that staged an AK
+// (e.g. codec.test.ts via fake-indexeddb) would arm the real gate here and
+// quarantine those fixtures, turning the tests order-dependent. The context-
+// threading tests below may omit the argument and take the default: their
+// fixtures are already `__enc:`-prefixed, so the quarantine cannot fire either
+// way and the gate's state is irrelevant to what they assert.
 const encryptionMiddleware = createEncryptionMiddleware(fakeCodec, async () => false)
 
 afterEach(() => {

@@ -779,25 +779,13 @@ export const serveEvilOrgKey = async (
   })
 }
 
-/**
- * Drive the "Change Recovery Phrase" settings flow on a trusted device and
- * return the freshly minted 24-word phrase it reveals once. This is the
- * legitimate, proof-gated change-phrase path — no server lie — so an attacker in
- * a trusted position (A6 in-origin script, or A4 before it is revoked) can use it
- * to re-anchor the recovery slot to a phrase it controls.
- */
-export const changeRecoveryPhraseViaUi = async (page: Page): Promise<string> => {
-  await page.goto('/settings/preferences')
-  await page.getByRole('button', { name: 'Change Recovery Phrase' }).click()
-  const confirm = page.getByRole('alertdialog')
-  await confirm.getByRole('button', { name: 'Generate new phrase' }).click()
-  const phraseRegion = page.getByRole('region', { name: 'Recovery phrase' })
-  await expect(phraseRegion).toBeVisible({ timeout: 30_000 })
-  const phrase = (await phraseRegion.textContent())?.trim() ?? ''
-  await page.getByRole('checkbox', { name: 'I have saved my recovery phrase' }).check()
-  await page.getByRole('button', { name: 'Done' }).click()
-  return phrase
-}
+// `changeRecoveryPhraseViaUi` lived here and was deleted: it had no callers and
+// had gone stale — it clicked a confirm button labelled 'Generate new phrase',
+// which THU-875 replaced with 'Send code' plus the step-up dialog, so it would
+// have failed on first use. The working sequence (confirm → `completeStepUpCode`
+// → read the phrase region) is driven inline by `rotation.spec.ts` and
+// `attacks/silent-recovery-takeover.spec.ts`; extract it from one of those if a
+// shared helper is wanted again, rather than from this comment.
 
 /**
  * A2 — serve a chosen AK envelope for `GET /devices/me/envelope`. The hybrid

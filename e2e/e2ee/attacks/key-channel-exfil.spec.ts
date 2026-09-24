@@ -27,6 +27,8 @@
  *   bash scripts/run-e2ee-powersync.sh attacks/key-channel-exfil.spec.ts
  */
 
+import { keysSyncChannelName } from '@/db/encryption/codec'
+
 import { expect, test } from '../fixtures'
 import { getTaskCiphertext, getTaskIds, waitForUserId, writeCell } from '../db'
 import { completeFirstDeviceSetup, createE2eeEmail, createTask, enableTasks, loginViaConsumerOtp } from '../helpers'
@@ -68,8 +70,11 @@ test.describe.serial('A5 — keys-sync channel exfiltration', () => {
     // A6 fires every hostile control message it can craft, including `reset`
     // (clears the in-memory setup flag) and forged `key-staged` for an attacker
     // key_id. None carries key material; the union has no slot for one.
-    await page.evaluate(() => {
-      const channel = new BroadcastChannel('thunderbolt-keys-sync')
+    // The channel name is passed in from the exported constant, never re-typed:
+    // a rename would otherwise leave this barrage posting to a channel nobody
+    // listens on, and the spec would still go green having attacked nothing.
+    await page.evaluate((channelName) => {
+      const channel = new BroadcastChannel(channelName)
       channel.postMessage({ type: 'reset' })
       channel.postMessage({ type: 'invalidate' })
       channel.postMessage({ type: 'key-staged', keyId: '0' })
@@ -77,7 +82,7 @@ test.describe.serial('A5 — keys-sync channel exfiltration', () => {
       channel.postMessage({ type: 'key-request', keyId: 'attacker', reason: 'unknown-key' })
       channel.postMessage({ type: 'ak-refreshed' })
       channel.close()
-    })
+    }, keysSyncChannelName)
 
     // Encode still fails CLOSED: a persisted AK keeps `encodeWithoutKeys` from
     // ever passing plaintext through, so the new write is real ciphertext.

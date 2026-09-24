@@ -95,15 +95,29 @@ test.describe.serial('THU-877 — forged v1 envelope poison', () => {
     // v1 stored it non-extractable.
     await seedLocalLegacyCK(page, await realCk.exportRaw())
 
-    // The wizard surfaces the abort; the server-side assertions below are the gate.
-    await runSeamlessMigration(page).catch(() => {})
+    // The wizard surfaces the abort; the server-side assertions below are the
+    // gate. The rejection is swallowed on purpose — aborting IS the secure
+    // outcome — but it must not swallow "the wizard never rendered", so the
+    // migration is proven to have actually run before anything is asserted
+    // about its result.
+    const migrationOutcome = await runSeamlessMigration(page).then(
+      () => 'resolved' as const,
+      () => 'aborted' as const,
+    )
+    expect(migrationOutcome).toBe('aborted')
 
     // SECURE assertion: nothing was absorbed. The account stays on scheme 1 with no
     // `"v1"` slot, so the legacy ciphertext is untouched and the migration retries
     // cleanly. Before the fix the attacker CK landed in the keyring, scheme_version
     // flipped to 2, and every pre-migration row was sealed under a key nobody holds.
     await expect.poll(async () => await getSchemeVersion(userId), { timeout: 20_000 }).not.toBe(2)
-    const snapshot = await getEncryptionServerSnapshot(userId).catch(() => null)
-    expect(Object.keys(snapshot?.wrappedKeys ?? {})).not.toContain('v1')
+    // Read the snapshot WITHOUT a fallback: `.catch(() => null)` here made an
+    // unreachable database indistinguishable from a clean keyring, so the
+    // `not.toContain` below passed on `{}`.
+    const snapshot = await getEncryptionServerSnapshot(userId)
+    expect(Object.keys(snapshot.wrappedKeys)).not.toContain('v1')
+    // Non-vacuity: the account really is a seeded v1 account, so "no v1 slot"
+    // is a refusal to absorb rather than an empty account.
+    expect(await getSchemeVersion(userId)).toBe(1)
   })
 })

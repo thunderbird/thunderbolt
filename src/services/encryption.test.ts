@@ -98,6 +98,18 @@ mock.module('@/crypto/key-storage', () => ({
     }
   },
   listDEKs: async () => [...storedDEKs].map(([keyId, wrappedKey]) => ({ keyId, wrappedKey })),
+  // Must be stubbed like everything else. Omitting it left `applyKeyring`'s one
+  // call bound to the REAL IndexedDB implementation while the rest of this
+  // module was Map-backed, so the prune ran against fake-indexeddb and its
+  // mirror of the server keyring was never observed here.
+  pruneStagedDEKs: async (keepKeyIds: KeyId[]) => {
+    const keep = new Set(keepKeyIds)
+    for (const keyId of [...storedDEKs.keys()]) {
+      if (!keep.has(keyId)) {
+        storedDEKs.delete(keyId)
+      }
+    }
+  },
   storePrimaryKeyId: async (keyId: KeyId) => {
     storedPrimaryKeyId = keyId
   },
@@ -930,6 +942,25 @@ describe('encryption service (v2)', () => {
         expect(await unwrapDEK(storedDEKs.get(keyId)!, storedAK!, keyId).then(() => true)).toBe(true)
       }
       expect(storedKeyVersion).toBe(2)
+    })
+
+    it('mirrors the served keyring, dropping a staged DEK the server no longer lists', async () => {
+      // THU-871's prune step. `stageWrappedDEKs` only ever puts, so without it a
+      // key_id that left the server keyring keeps a stale blob here forever and
+      // resolves to a permanent `unwrap-failed` on every read that names it.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+
+      storedDEKs.set('99', 'stale-wrapped-blob-no-longer-served')
+      await stageKeyring(clientFor(server))
+
+      expect(storedDEKs.has('99')).toBe(false)
+      // The served ids survive — a prune that emptied the store would also
+      // satisfy the assertion above.
+      expect([...storedDEKs.keys()].sort()).toEqual(['0', 'v1'])
     })
 
     it('ignores a steered metadata primary key_id but still stages the keys (THU-876/THU-890)', async () => {

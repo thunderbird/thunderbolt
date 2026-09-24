@@ -20,16 +20,15 @@ so consumer mode means building that image yourself.
 [Authentication](../self-hosting/authentication.md) covers the provider settings.
 
 If your organization already runs an identity provider, use SSO. Joining, leaving, and multi-factor
-policy then stay where the rest of your accounts are, and Thunderbolt's waitlist never runs.
+policy then stay where the rest of your accounts are.
 
-Consumer mode has no passwords and no "sign in with Google" button. The emailed code is the only
+Consumer mode has no passwords and no "sign in with Google" button; the emailed code is the only
 credential. `GOOGLE_CLIENT_ID` and `MICROSOFT_CLIENT_ID`, if you have set them, let a signed-in user
 connect their own mailbox and calendar to the app. They are not a sign-in method.
 
 ## Consumer mode sign-in
 
-One message carries both an 8-digit code and a link. They are the same credential, so either one
-signs the person in.
+One message carries both an 8-digit code and a link, and either one signs the person in.
 
 | Property                | Value                                                                 |
 | ----------------------- | --------------------------------------------------------------------- |
@@ -47,21 +46,21 @@ The 15-second cooldown is held in memory by the process that served the request,
 deployment running several workers or replicas. The per-IP limit is recorded in the database and so is
 shared across them, unless you set `RATE_LIMIT_ENABLED=false`, which turns it off everywhere.
 
-**Email has to work.** Without `RESEND_API_KEY` the API never sends a sign-in email; it writes the
-code and link to its own log instead. That is usable for evaluation and useless for real users.
+Without `RESEND_API_KEY` the API never sends a sign-in email. It writes the code and link to its own
+log instead, which is enough to evaluate the deployment and leaves real users unable to sign in.
 
 ## The waitlist
 
-In consumer mode, every email address that has never signed in is queued. This is always on.
-`WAITLIST_ENABLED` is accepted and validated but currently has no effect, and the app build setting
-`VITE_BYPASS_WAITLIST` only hides the waitlist screen. The API still queues.
+In consumer mode, every email address that has never signed in is queued, and no setting turns that
+off: `WAITLIST_ENABLED` is accepted and validated but currently has no effect, and the app build
+setting `VITE_BYPASS_WAITLIST` only hides the waitlist screen while the API still queues.
 
-**On a fresh deployment running consumer mode, nobody new can sign in until you act on this.** SSO
-deployments are unaffected.
+**On a fresh deployment running consumer mode, nobody new can sign in until you act on this.**
 
 ### Auto-approve your own domains
 
-The only server-side lever, and for most team deployments the whole story:
+Domain auto-approval is the API's only approval setting, and for most team deployments it is all you
+need:
 
 ```bash
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
@@ -73,10 +72,8 @@ startup, so restart the API after changing this.
 
 ### Approve one address
 
-There is no admin console, API route, or command for this. Approval is a row in the `waitlist` table
-of your PostgreSQL database.
-
-Ask the person to request a code once, which creates their row, then approve it.
+Approval is a row in the `waitlist` table of your PostgreSQL database; no API route or command sets
+it. Ask the person to request a code once, which creates their row, then approve it.
 
 ```sql
 UPDATE waitlist SET status = 'approved', updated_at = now()
@@ -100,7 +97,7 @@ The person can sign in on their next attempt. Nothing notifies them, so tell the
 
 ### Who gets a code
 
-Checked in this order. The first match wins.
+The API works down this list and stops at the first match.
 
 | Order | The address                        | Result                                             |
 | ----- | ---------------------------------- | -------------------------------------------------- |
@@ -110,8 +107,8 @@ Checked in this order. The first match wins.
 | 4     | Anything else                      | Queued. No code                                    |
 
 Every well-formed request answers the same way, with the same status and the same wording, whether the
-address is brand new, queued, approved, or an existing account. That is deliberate: the sign-in form
-cannot be used to find out who already has an account here.
+address is brand new, queued, approved, or an existing account, so the sign-in form cannot be used to
+find out who already has an account here.
 
 ### What the person receives
 
@@ -122,24 +119,19 @@ cannot be used to find out who already has an account here.
 | Already queued, asked again  | A reminder                |
 | Queued, but tried to sign in | "Not ready yet"           |
 
-Each email is written in the language the person's app is set to.
-
-A queued user still sees the "check your email" screen with a code box, because the screen does not
-disclose which branch the API took. Expect the occasional report that a code never arrived.
+Each email is written in the language the person's app is set to. A queued user still sees the "check
+your email" screen with a code box, because the screen does not disclose which branch the API took.
+Expect the occasional report that a code never arrived.
 
 ## Anonymous access
 
-Visitors can use the app with no account at all. It is off by default and needs two settings that
-must agree:
-
-| Where     | Setting                           |
-| --------- | --------------------------------- |
-| API       | `AUTH_ALLOW_ANONYMOUS=true`       |
-| App build | `VITE_AUTH_ENABLE_ANONYMOUS=true` |
+Visitors can use the app with no account at all. Anonymous access is off by default and takes two
+settings that have to agree: `AUTH_ALLOW_ANONYMOUS=true` on the API and
+`VITE_AUTH_ENABLE_ANONYMOUS=true` in the app build. It is not available under SSO.
 
 The app build also has to drop the waitlist screen with `VITE_BYPASS_WAITLIST=true`, or visitors are
-still sent to a sign-in wall. Set `VITE_BYPASS_WAITLIST` on its own and unauthenticated visitors land
-on a not-found page, so use both or neither. Anonymous access is not available under SSO.
+still sent to a sign-in wall. Set `VITE_BYPASS_WAITLIST` on its own and unauthenticated visitors
+land on a not-found page, so use both or neither.
 
 Both app settings are read when the app is built, and neither is offered as a build argument on the
 published app image, so turning anonymous access on means building that image yourself. The API
@@ -155,18 +147,19 @@ hand-rolled client cannot create an anonymous session either.
 | Approving a command-line sign-in    | No, they are asked to sign in first |
 | Spend on the models you provide     | A much smaller allowance            |
 
-An anonymous session costs an attacker nothing to create, which is why the spending allowance is much
-tighter by default: 10 cents per rolling 5 hours and 60 cents per rolling 7 days, against 1500 and
-7500 cents for a signed-in account. All four are set by the `INFERENCE_QUOTA_*` settings in
-[Models](../self-hosting/models.md), and they only apply to models your deployment provides. A user
-running against their own provider key spends their own money and is not metered here.
+The allowance is tighter because an anonymous session costs an attacker nothing to create. By
+default it is 10 cents per rolling 5 hours and 60 cents per rolling 7 days, against 1500 and 7500
+cents for a signed-in account.
+
+All four are set by the `INFERENCE_QUOTA_*` settings in [Models](../self-hosting/models.md), and
+they only apply to models your deployment provides. A user running against their own provider key
+spends their own money and is not metered here.
 
 If an anonymous visitor signs in later, the work already on their device carries into the new account
 and the anonymous record is removed.
 
-**Anonymous visitors are never waitlist-gated.** Trying the app without an account is the point of the
-feature. Turning it on means anyone who can reach the URL can use the deployment, so put it behind
-your network perimeter if that is not what you want.
+Anonymous visitors are never waitlist-gated. Turning anonymous access on means anyone who can reach
+the URL can use the deployment, so put it behind your network perimeter if that is not what you want.
 
 ## SSO deployments
 
@@ -176,10 +169,10 @@ provider's job.
 
 - Add the provider's origin to `TRUSTED_ORIGINS`, not `CORS_ORIGINS`. Containerized deployments
   usually need two entries: the origin the browser sees and the internal hostname the API uses.
-- An identity from your provider is linked onto an existing account with the same email address.
-  That is what lets a deployment move from email codes to SSO without stranding accounts.
+- An identity from your provider is linked onto an existing account with the same email address, so a
+  deployment can move from email codes to SSO without stranding accounts.
 
-There is no SCIM endpoint and no provisioning ahead of first use. An account exists once the person
+There is no SCIM endpoint and no provisioning ahead of first use; an account exists once the person
 signs in for the first time.
 
 ## Removing access
@@ -196,13 +189,13 @@ check with the API, clears its local copy, and shows an account-deleted screen. 
 offline and stays offline keeps what it has, so treat device recovery as a separate step for a
 high-stakes departure.
 
-Revoking a single device is different on purpose: it stops that device syncing and cuts its sessions,
-and the person is asked whether to keep or erase the local copy.
+Revoking a single device stops that device syncing and cuts its sessions, and the person is asked
+whether to keep or erase the local copy.
 
 ## Programmatic access
 
 Users can mint personal access tokens for scripts and the command-line client. A token authenticates
-as its owner and carries that person's full access. There are no scopes.
+as its owner and carries that person's full access; there are no scopes.
 
 | Property                 | Value                                                        |
 | ------------------------ | ------------------------------------------------------------ |
@@ -217,15 +210,15 @@ than a browser session. Turning the setting on does not help the command-line cl
 confidential model on a token of its own accord; the setting is for service callers.
 
 Signing in from the command-line client uses a browser approval step instead, and the user must
-already have a real account. An anonymous session cannot approve one.
+already have a real account.
 
 ## What Thunderbolt does not have
 
-- **No administrator console.** Every lever on this page is an environment variable or a database row.
-- **No roles, groups, or permissions.** Every account can do the same things.
+- **No administrator console:** every lever on this page is an environment variable or a database row.
+- **No roles, groups, or permissions:** every account can do the same things.
 - **No bulk invite or import**, and no directory sync.
-- **No central model policy.** A user can add their own model provider and key inside the app, so the
+- **No central model policy:** a user can add their own model provider and key inside the app, so the
   providers you configure on the API are a default, not a restriction.
-- **No view into another user's tokens, devices, or conversations.** Nothing in the product exposes
+- **No view into another user's tokens, devices, or conversations:** nothing in the product exposes
   them, and with end-to-end encryption turned on the server cannot read message content or chat titles
   at all.

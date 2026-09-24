@@ -1,8 +1,6 @@
 # Configuration
 
-Thunderbolt's API is configured entirely through environment variables. A missing or invalid required value stops the process at startup with a message naming the setting.
-
-Settings are read once at startup. **Restart the API after any change.**
+Thunderbolt's API is configured entirely through environment variables, read once at startup, so **restart the API after any change**. A missing or invalid required value stops the process at startup, with a message naming the setting.
 
 ## Start here: the minimum
 
@@ -16,7 +14,7 @@ Add `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` if you want conversations to sync
 
 ## Core URLs and server
 
-Get these wrong and sign-in redirects land on the wrong host.
+Get `APP_URL` and `BETTER_AUTH_URL` wrong and sign-in redirects land on the wrong host.
 
 | Variable          | Default                                        | What it does                                                                                      |
 | ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -40,7 +38,7 @@ Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When syn
 | `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
 | `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
 
-The embedded `pglite` driver is for evaluation and testing only. The sync service cannot replicate from it, so multi-device sync is off, and under this driver `DATABASE_URL` is a directory path rather than a connection string. Leave a `postgresql://` value in place and it falls back to an in-memory database with only a warning in the log, losing everything on restart.
+The embedded `pglite` driver is for evaluation and testing only. The sync service cannot replicate from it, and under this driver `DATABASE_URL` is a directory path rather than a connection string. Leave a `postgresql://` value in place and it falls back to an in-memory database with only a warning in the log, losing everything on restart.
 
 ## Authentication
 
@@ -78,7 +76,7 @@ Under either SSO mode, add the identity provider's origin to `TRUSTED_ORIGINS`, 
 
 ### Social sign-in
 
-Optional in consumer mode.
+Both providers are optional in consumer mode.
 
 | Variable                  | Default |
 | ------------------------- | ------- |
@@ -87,7 +85,7 @@ Optional in consumer mode.
 | `MICROSOFT_CLIENT_ID`     | none    |
 | `MICROSOFT_CLIENT_SECRET` | none    |
 
-The desktop app completes social sign-in through a local callback and tries ports `17421`, `17422`, and `17423` in that order. Register `http://localhost:17421`, `http://localhost:17422` and `http://localhost:17423` as redirect URIs with Google and Microsoft alongside your web one, or desktop sign-in fails.
+The desktop app completes social sign-in through a local callback, trying three fixed ports in order. Register `http://localhost:17421`, `http://localhost:17422` and `http://localhost:17423` as redirect URIs with Google and Microsoft alongside your web one, or desktop sign-in fails.
 
 ### Tokens and CLI sign-in
 
@@ -127,13 +125,11 @@ Rolling caps on what the API will spend on model usage per user, in whole cents.
 | `INFERENCE_QUOTA_REGISTERED_5H_CENTS` | `1500`  | Signed in, rolling 5 hours |
 | `INFERENCE_QUOTA_REGISTERED_7D_CENTS` | `7500`  | Signed in, rolling 7 days  |
 
-| Variable                        | Default | What it does                                                                                   |
-| ------------------------------- | ------- | ---------------------------------------------------------------------------------------------- |
-| `CONFIDENTIAL_API_KEYS_ENABLED` | `false` | Allows a personal access token, not just an interactive session, to use the confidential tier. |
+Enabling `CONFIDENTIAL_API_KEYS_ENABLED`, `false` by default, lets a personal access token use the confidential tier, which otherwise takes an interactive session.
 
 ## Sync
 
-The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync: the app still works, on one device at a time.
+The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync; the app still works on one device at a time.
 
 | Variable                         | Default | What it does                                                                                    |
 | -------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
@@ -154,7 +150,7 @@ openssl rand 32 | basenc --base64url --wrap=0
 | -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `E2EE_ENABLED` | `false` | Encrypts message content on the device before it syncs, and requires each new device to be approved from one the user already trusts. |
 
-With this on, your servers hold ciphertext they cannot read, so an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost. There is no matching client setting: apps read this from the API at startup.
+Because the servers then hold only ciphertext, an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost. Apps read the setting from the API at startup, so there is no matching client setting.
 
 ## Agents
 
@@ -168,7 +164,7 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 
 ### Deepset (Haystack) pipelines
 
-Optional. Offers Deepset Cloud pipelines, which answer from your own document collections, as agents users can pick.
+These four settings are optional. They add Deepset Cloud pipelines, which answer from your own document collections, to the agents users can pick.
 
 | Variable             | What it is                                                                                                                                |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -203,9 +199,7 @@ Mail goes out from a Thunderbolt-owned sender address, `hello@auth.thunderbolt.i
 | `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Permitted HTTP methods.                                 |
 | `CORS_EXPOSE_HEADERS`    | a protocol-required list                                         | Response headers the browser makes readable to the app. |
 
-Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read.
-
-`CORS_ALLOW_HEADERS` is accepted but ignored. It is kept so older configuration files keep working.
+Request headers need no configuration: the API echoes back whatever the browser asks for. Override `CORS_EXPOSE_HEADERS` only to add to the default list, never to shorten it, or the app loses responses it needs to read. `CORS_ALLOW_HEADERS` is accepted but ignored, and kept only so that older configuration files keep working.
 
 ## Rate limiting
 
@@ -216,7 +210,7 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 Trusting the wrong proxy header lets any client claim any IP and walk past the limits. Leave `TRUSTED_PROXY` empty unless you know exactly what sits in front of the API.
 
-The limits themselves are fixed and not configurable:
+The limits themselves are not configurable:
 
 | Request group           | Limit          |
 | ----------------------- | -------------- |
@@ -240,11 +234,9 @@ Older clients receive `426 Upgrade Required` and prompt the user to update. The 
 
 ## Command-line client rollout
 
-| Variable                          | Default | What it does                                            |
-| --------------------------------- | ------- | ------------------------------------------------------- |
-| `CLI_DEVICE_REGISTRATION_ENABLED` | `false` | Allows the command-line client to register as a device. |
+`CLI_DEVICE_REGISTRATION_ENABLED`, `false` by default, allows the command-line client to register as a device.
 
-Enable this only after every app your users run is new enough to recognise a command-line client in the device list. An older app shown a kind of device it does not know about cannot display it. Set `MIN_APP_VERSION` first if you cannot be sure.
+Enable it only after every app your users run is new enough to recognise a command-line client in the device list, since an older app cannot display a kind of device it does not know about. Set `MIN_APP_VERSION` first if you cannot be sure.
 
 ## Waitlist
 
@@ -268,9 +260,7 @@ Tracing has been exercised against BetterStack, Jaeger, Zipkin, New Relic, and G
 
 ## Health checks
 
-`/v1/health` is open and returns quickly. It is what a load balancer or liveness probe should poll.
-
-The deeper checks below each exercise one dependency and require a bearer token.
+`/v1/health` is open and returns quickly. It is what a load balancer or liveness probe should poll. The deeper checks below each exercise one dependency and require a bearer token.
 
 | Variable           | Default | What it does                                     |
 | ------------------ | ------- | ------------------------------------------------ |
@@ -293,7 +283,7 @@ If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wr
 
 ## Debug transcripts
 
-Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your deployment stores nothing: it forwards.
+Users can send a conversation transcript to the Thunderbolt team for troubleshooting. The option is hidden unless you configure it, and your own deployment forwards the transcript without storing it.
 
 | Variable                          | Default | What it does                                                                                |
 | --------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
@@ -301,7 +291,7 @@ Users can send a conversation transcript to the Thunderbolt team for troubleshoo
 | `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
 
-Understand what leaves your infrastructure before enabling this. Credentials and API keys are stripped, but people are not: a transcript includes the conversation, and the user ID and email your deployment holds (both blank for anonymous users). It is retained by the Thunderbolt team and survives deletion of the submitting account. Contact the Thunderbolt team with a deployment name to get a key.
+Understand what leaves your infrastructure before enabling this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). The Thunderbolt team retains what it receives, and a transcript survives deletion of the account that submitted it. Contact the team with a deployment name to get a key.
 
 ## Frontend build settings
 

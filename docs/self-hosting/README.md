@@ -2,7 +2,7 @@
 
 > **Under active development.** Thunderbolt is undergoing a security audit and is not production-ready. Use these paths to evaluate it, not to serve real users yet.
 
-Thunderbolt runs entirely on infrastructure you control. There is no vendor control plane to call home to. Traffic leaves your network to reach the AI providers you configure and a short list of feature endpoints, every one of which is listed in [Requirements](./requirements.md).
+Thunderbolt runs entirely on infrastructure you control, with no vendor control plane to call home to. Traffic leaves your network to reach the AI providers you configure and a short list of feature endpoints, every one of which is listed in [Requirements](./requirements.md).
 
 ## Pick a deployment path
 
@@ -18,21 +18,17 @@ If you are unsure, start with Docker Compose. The other paths run the same servi
 
 ## What a deployment contains
 
-| Piece                 | What it does                                                                                                  | Can you replace it?                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| The app               | The chat interface, served to a browser as a static site.                                                     | No.                                                            |
-| The API               | Sign-in, authorizing each device for sync, link previews, web search, and the outbound calls to AI providers. | No.                                                            |
-| The database          | PostgreSQL. Holds accounts, sessions, and the server-side copy of synced data.                                | On Docker Compose only. See the caveat below.                  |
-| The sync service      | PowerSync. Keeps every signed-in device holding the same data, and streams changes as they happen.            | No, but it is part of the stack and needs no external service. |
-| The identity provider | Keycloak, preloaded with a realm and a demo user, so sign-in works on first boot.                             | Yes, any OIDC or SAML identity provider.                       |
+The app is the chat interface, served to a browser as a static site. The API behind it handles sign-in, authorizes each device for sync, fetches link previews, runs web search, and makes the outbound calls to AI providers.
 
-The Kubernetes and AWS paths also deploy a small static site (the landing page and these docs). Docker Compose does not, and on Kubernetes there is no switch to turn it off.
+Three more pieces run alongside them. PostgreSQL holds accounts, sessions, and the server-side copy of synced data. PowerSync keeps every signed-in device holding the same data and streams changes as they happen; it is part of the stack and needs no external service. Keycloak, the identity provider, arrives preloaded with a realm and a demo user, so sign-in works on first boot.
 
-Each user's device keeps its own local database and reads and writes there first, so the app keeps working when your server is unreachable. Sync is how those local databases agree with each other, not where the app reads from.
-
-**Caveat on a managed database.** On Docker Compose you can drop the bundled PostgreSQL and point `DATABASE_URL` at a managed service such as Amazon RDS, after creating the replication role and publication the sync service needs. The Kubernetes chart and the AWS project do not offer that: both always run the PostgreSQL they deploy.
+Only the database and the identity provider can be replaced. Any OIDC or SAML identity provider can stand in for Keycloak. The database can be replaced on Docker Compose: drop the bundled PostgreSQL and point `DATABASE_URL` at a managed service such as Amazon RDS, after creating the replication role and publication the sync service needs. The Kubernetes chart and the AWS project do not offer that; both always run the PostgreSQL they deploy.
 
 Separately, the sync service keeps its own bookkeeping in a second database (`powersync_storage`) on the same server, and that piece is known to hang against RDS-managed PostgreSQL 17. Leave it on the PostgreSQL the deployment ships, or on an unmanaged instance.
+
+The Kubernetes and AWS paths also deploy a small static site for the landing page and these docs; Docker Compose does not, and on Kubernetes there is no switch to turn it off.
+
+Each user's device keeps its own local database and reads and writes there first, so the app keeps working when your server is unreachable. Sync is what brings those local databases into agreement, not where the app reads from.
 
 ## What you get by default
 
@@ -50,16 +46,14 @@ Every default credential above is published in this repository. Replace the demo
 
 ## Before you start
 
-[Requirements](./requirements.md) has the detail behind this list: sizing per service, database prerequisites, ports, and the outbound addresses to allow through a firewall.
+- A host or cluster: 4 GB of RAM is the floor for the single-host path, and 8 GB is comfortable.
+- A domain and DNS control, for a shared deployment only. Docker Compose on `localhost` needs neither.
+- TLS certificates, because anything other than `localhost` must be served over HTTPS. Issue them with cert-manager on Kubernetes, AWS Certificate Manager on AWS, or your own certificate authority.
+- Access to at least one model, whether a provider key set on the server, a key each user adds in the app, or a local endpoint such as Ollama or llama.cpp.
+- `BETTER_AUTH_SECRET` to sign sessions, generated with `openssl rand -hex 32`. Compose and Kubernetes refuse to start without it; the AWS path generates one if you do not supply it.
+- `POWERSYNC_JWT_SECRET`, 32 characters or more, required once sync is turned on. The API and the sync service must be given the same value.
 
-| You need                     | Notes                                                                                                                                                                                     |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A host or cluster            | 4 GB RAM is the floor for the single-host path, 8 GB is comfortable.                                                                                                                      |
-| A domain and DNS control     | Only for a shared deployment. Docker Compose on `localhost` needs neither.                                                                                                                |
-| TLS certificates             | Anything other than `localhost` must be served over HTTPS. Issue them with cert-manager on Kubernetes, AWS Certificate Manager on AWS, or your own certificate authority.                 |
-| Access to at least one model | A provider key set on the server, a key each user adds in the app, or a local endpoint such as Ollama or llama.cpp.                                                                       |
-| A session secret             | `BETTER_AUTH_SECRET`, used to sign sessions. Generate with `openssl rand -hex 32`. Compose and Kubernetes refuse to start without it; the AWS path generates one if you do not supply it. |
-| A sync secret                | `POWERSYNC_JWT_SECRET`, 32 characters or more, required once sync is turned on. The API and the sync service must be given the same value.                                                |
+[Requirements](./requirements.md) has the detail behind each of these: sizing per service, database prerequisites, ports, and the outbound addresses to allow through a firewall.
 
 The desktop and mobile apps are told which server to use when they are built, so pointing them at your deployment means producing your own builds. The browser app has no such constraint.
 

@@ -6,37 +6,22 @@ Each install of Thunderbolt is a device on someone's account.
 
 ## Who does what
 
-Device management is self-service: each person manages the devices on their own account under **Settings → Devices**.
+Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**. Turning end-to-end encryption on or off for the deployment belongs to the operator, who sets `E2EE_ENABLED` (see the [configuration reference](../self-hosting/configuration.md)).
 
-| Task                                                    | Who can do it                                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Approve, deny, or revoke a device                       | The account owner, from another device on the same account that is already trusted              |
-| Delete an account and its server-side data              | The account owner, from **Settings → Preferences → Data**                                       |
-| Turn end-to-end encryption on or off for the deployment | The operator, with `E2EE_ENABLED` ([configuration reference](../self-hosting/configuration.md)) |
-
-There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider, which stops new sign-ins. Existing sessions on devices already signed in are not ended by that alone.
+There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider. That stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
 
 ## What counts as a device
 
-A device is one install signed in to the account, identified by an ID stored locally on it.
+A device is one install signed in to the account, identified by an ID stored locally on it. The list shows a last seen time for each. A time that has stopped moving means the device has not reconnected, so any changes it made offline are still on it.
 
 - Every tab of the same browser profile is one device. A different browser, or a different profile in the same browser, is a separate device.
 - Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows". They cannot be renamed.
 - Headless bridges for external agents appear in the list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in is a session with no entry in this list.
 - An account can hold **10 active devices**. Devices waiting for approval and revoked devices do not count, so a device can register past the limit and then fail at approval. To free a slot, revoke one.
 
-The list shows a last seen time for each device. A time that has stopped moving means that device has not reconnected, so any changes it made offline are still on it.
-
 ## Adding a device
 
-Sign in on the new device with the same account, then open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**.
-
-| Encryption | Result                                                                                                          |
-| ---------- | --------------------------------------------------------------------------------------------------------------- |
-| Off        | The device starts syncing right away. The app warns first that synced data is stored on the server unencrypted. |
-| On         | The device registers as pending and waits. It cannot read synced data until it is approved.                     |
-
-Anonymous sessions cannot sync. The person has to sign in to a real account first.
+Sign in on the new device with the same account, then open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**. With encryption off the device starts syncing right away, after the app warns that synced data is stored on the server unencrypted. Turn encryption on and it registers as pending instead, unable to read synced data until it is approved. Either way the person has to be signed in to a real account first, because anonymous sessions cannot sync.
 
 ## Approving a device (encryption on)
 
@@ -45,17 +30,13 @@ A pending device shows an "Approve this device" screen and polls for the result,
 - **Approve from a trusted device.** Open **Settings → Devices** on a device already on the account, find the entry under **Pending approvals**, and choose **Approve**. The trusted device hands the new one a copy of the account's encryption key, wrapped so that only the new device can open it.
 - **Use the recovery key.** On the pending device, choose **Use my recovery key** and enter the 24 word phrase saved at first setup. This is the path when no other device is available.
 
-**Deny** dismisses the request without revoking anything. That device can ask again. A pending device can also withdraw its own request.
-
-The approving device has to be a regular app device that is trusted and not revoked. A CLI device cannot approve, and neither can a device that is itself still pending.
+**Deny** dismisses the request without revoking anything, and that device can ask again; a pending device can also withdraw its own request. The approving device has to be a regular app device that is trusted and not revoked. A CLI device cannot approve, and neither can a device that is itself still pending.
 
 ## The recovery key
 
-At first setup on an account, Thunderbolt generates one encryption key for the account and shows a 24 word recovery phrase that encodes it.
+At first setup on an account, Thunderbolt generates one encryption key for the account and shows a 24 word recovery phrase that encodes it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
 
-- It is shown **once**. There is no way to view it again later.
-- It is the only way back in if every device on the account is lost or wiped.
-- Without it and without a trusted device, synced data is not recoverable. The server holds only ciphertext, and nobody operating the deployment can decrypt it.
+Without it and without a trusted device, synced data is not recoverable. The server holds only ciphertext, and nobody operating the deployment can decrypt it.
 
 With encryption off there is no recovery key, because the server can read the synced data and any newly signed-in device gets it directly.
 
@@ -65,19 +46,15 @@ Use this when a device is lost or stolen, or when someone should no longer have 
 
 ### What revoking does
 
-| Effect                 | Detail                                                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Sessions ended         | The device's sign-in sessions on the server are revoked                                                    |
-| Sync stopped           | The server refuses the device's sync requests from that point on                                           |
-| Decryption key removed | The server-side copy of the account key wrapped for that device is deleted, so it can never fetch it again |
-| Peer connections cut   | Its pairing identity is cleared, so other devices on the account stop accepting direct connections from it |
-| Visible for 24 hours   | The entry stays in the list marked **Revoked**, then drops off                                             |
+The device's sign-in sessions on the server are revoked, and from that point on the server refuses its sync requests.
+
+- The server-side copy of the account key wrapped for that device is deleted, so it can never fetch the key again.
+- Its pairing identity is cleared, so other devices on the account stop accepting direct connections from it.
+- The entry stays in the list marked **Revoked** for 24 hours, then drops off.
 
 ### What revoking does not do
 
-**Revoking is not a remote wipe.** Data already stored on that device stays there.
-
-If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice, so for a stolen device assume the local copy is still readable. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Rely on full-disk encryption and the device's own lock screen for that.
+Revoking is not a remote wipe: data already stored on that device stays there. If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice, so for a stolen device assume the local copy is still readable. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Rely on full-disk encryption and the device's own lock screen for that.
 
 If the device never reconnects, it stops syncing and keeps what it had.
 
@@ -99,19 +76,15 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 | **Revoke**         | Sessions ended, sync and decryption blocked for that device | Kept or deleted, the person holding it chooses | Unaffected                     |
 | **Delete account** | Account and all synced data removed                         | Deleted on every device that reconnects        | All of them reset and sign out |
 
-The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again.
-
-Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again when encryption is on.
+The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again when encryption is on.
 
 A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** only when nobody has signed in yet, for someone trying the app without an account. It wipes that device's local database and nothing else.
 
 ## Deleting an account
 
-Open **Settings → Preferences → Data** and choose **Delete My Account**.
+Open **Settings → Preferences → Data** and choose **Delete My Account**. There is no grace period and no undo, so export first from the same screen if the data matters: **Export Your Data** writes a JSON file of chats, tasks, prompts, skills, projects, automations, the model, agent and server entries the person added, and settings.
 
-There is no grace period and no undo. Export first from the same screen if the data matters: **Export Your Data** writes a JSON file of chats, tasks, prompts, skills, projects, automations, the model, agent and server entries the person added, and settings.
-
-Two things about that file: attached file contents are not in it, and it does include the credentials stored on that device such as model API keys.
+Attached file contents are not in that file. The credentials stored on that device are, including model API keys.
 
 ### What is removed
 

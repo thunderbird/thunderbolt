@@ -8,12 +8,8 @@ leaving the conversation.
 
 ## Availability
 
-| Where                        | In-app browser                              |
-| ---------------------------- | ------------------------------------------- |
-| Desktop app (macOS)          | Available, tested                           |
-| Desktop app (Windows, Linux) | Available, untested                         |
-| Mobile app (iOS, Android)    | Not available. Links open in the OS browser |
-| Web browser                  | Not available. Links open in a new tab      |
+The panel is part of the desktop app. In the iOS and Android apps a link opens in the OS browser, and
+in a web browser it opens in a new tab.
 
 ## Opening a page
 
@@ -26,10 +22,8 @@ Settings → Preferences.
 | **Sidebar**       | Opens in the side panel immediately. Desktop app only                                                                                                 |
 | **Browser**       | Opens in your default browser (a new tab on the web) with no confirmation                                                                             |
 
-The preference is per device, not synced across your devices. On the web, **Browser** is shown as
-**New tab**.
-
-Only `http` and `https` links open in the panel. Any other link shows the confirmation dialog
+Each device keeps its own copy of this preference, and on the web **Browser** is shown as **New
+tab**. Only `http` and `https` links open in the panel; any other link shows the confirmation dialog
 instead.
 
 ## Using the panel
@@ -40,32 +34,31 @@ replaces whatever was in it, such as an attachment preview, a tool result, or an
 ## Privacy
 
 Pages open in a private session. Nothing from the page is written to disk, and each page you open
-starts from a clean state with no cookies or storage carried over from the last one.
+starts from a clean state, with no cookies, logins, or stored preferences carried over from the last
+one. You can sign in to a site, but the session will not survive a reload or a second visit.
 
-- You can sign in to a site, but the session will not survive a reload or a second visit.
-- The page connects directly to the site, bypassing the backend proxy that carries your model and
-  MCP traffic. The site sees your real IP address and the usual device details a browser reveals,
-  such as screen size, operating system, and language.
-
-If you are opening sensitive pages, use a VPN, and open anything you need to sign in to in your real
-browser instead.
+The page connects directly to the site, bypassing the backend proxy that carries your model and MCP
+traffic. The site sees your real IP address and the usual device details a browser reveals, such as
+screen size, operating system, and language. If you are opening sensitive pages, use a VPN, and open
+anything you need to sign in to in your real browser instead.
 
 ## Limitations
 
-| Limitation            | Detail                                                                         |
-| --------------------- | ------------------------------------------------------------------------------ |
-| No extensions         | Ad blockers, password managers, and privacy extensions do not run in the panel |
-| No shared state       | Every page starts fresh. Logins, preferences, and cookies do not carry over    |
-| Slower than a browser | There is a visible delay before a page appears, on every open                  |
-| No tabs or history    | One page at a time, with no back, forward, or bookmark controls                |
+Extensions do not run in the panel, which rules out ad blockers, password managers, and privacy
+extensions. The panel shows one page at a time and keeps no history: there are no tabs, and no back,
+forward, or bookmark controls. It is also slower than a browser. There is a visible delay before a
+page appears, on every open.
 
 ## Known issues
 
-| Issue                             | Detail                                                                                                                                                                                                                |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Opening pages in quick succession | Opening three or more pages within a few seconds can freeze the window. Let each page finish loading first                                                                                                            |
-| Harder to resize                  | While a page is open it covers part of the panel's drag edge, so resizing takes a more precise grab                                                                                                                   |
-| Password prompt                   | A few sites make the operating system ask for your login password to unlock its keychain, even though the page is in a private session. The request comes from the page, not from Thunderbolt, and you can dismiss it |
+Opening three or more pages within a few seconds can freeze the window. Let each page finish loading
+first.
+
+While a page is open it covers part of the panel's drag edge, so resizing takes a more precise grab.
+
+A few sites make the operating system ask for your login password to unlock its keychain, even though
+the page is in a private session. The request comes from the page, not from Thunderbolt, and you can
+dismiss it.
 
 ## Rendering engine
 

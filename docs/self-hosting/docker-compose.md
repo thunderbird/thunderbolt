@@ -1,6 +1,6 @@
 # Docker Compose
 
-The fastest way to get a working Thunderbolt on one machine. Five containers, one command, no cluster and no cloud account. It runs one copy of each service with no redundancy, so it is not a highly available deployment.
+The fastest way to get a working Thunderbolt on one machine. One command brings up five containers, and there is no cluster or cloud account involved. Each service runs as a single copy with no redundancy, so this is not a highly available deployment.
 
 ## Before you start
 
@@ -20,7 +20,7 @@ cd thunderbolt/deploy
 cp .env.example .env
 ```
 
-Open `deploy/.env` and set `BETTER_AUTH_SECRET`. Generate one with:
+Open `deploy/.env` and set `BETTER_AUTH_SECRET`; Compose refuses to start while it is empty. Generate one with:
 
 ```bash
 openssl rand -base64 32
@@ -34,8 +34,6 @@ docker compose up --build
 
 The first run builds the app and API images, pulls the other three, starts PostgreSQL, imports the Keycloak sign-in configuration, and applies database migrations before the API accepts traffic. Later runs start in seconds.
 
-If `BETTER_AUTH_SECRET` is empty, Compose refuses to start and says so. That is the intended behaviour, not a bug.
-
 ## Sign in
 
 | What           | Where                   | Credentials                    |
@@ -43,7 +41,9 @@ If `BETTER_AUTH_SECRET` is empty, Compose refuses to start and says so. That is 
 | The app        | `http://localhost:3000` | `demo@thunderbolt.io` / `demo` |
 | Keycloak admin | `http://localhost:8180` | `admin` / `admin`              |
 
-Both sets of credentials are published in this repository, and so are two secrets that `deploy/.env` cannot override because they live in `deploy/docker-compose.yml`: the OIDC client secret, and `POWERSYNC_JWT_SECRET`, which the sync service verifies against the base64 copy in `PS_JWT_KEY_BASE64`. Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two in the compose file, both halves of the JWT pair together.
+Both sets of credentials are published in this repository. So are two secrets that `deploy/.env` cannot override, because they live in `deploy/docker-compose.yml`: the OIDC client secret, and `POWERSYNC_JWT_SECRET`, which the sync service verifies against the base64 copy in `PS_JWT_KEY_BASE64`.
+
+Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two secrets in the compose file, changing both halves of the JWT pair together.
 
 ## What is running
 
@@ -59,7 +59,7 @@ Users open port `3000`, but their browser also talks to ports `8180` and `8081` 
 
 To change a port, edit `FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT` or `KEYCLOAK_PORT` in `deploy/.env` and restart. The rest of the stack follows automatically.
 
-Data lives in a single Docker volume, listed by `docker volume ls` as `deploy_pg_data`. Nothing is written outside Docker.
+Data lives in a single Docker volume that `docker volume ls` lists as `deploy_pg_data`, and nothing is written outside Docker.
 
 ## Add a model provider
 

@@ -4,7 +4,7 @@
 
 ### What is Thunderbolt?
 
-An open-source AI client you deploy yourself. It runs on the web, macOS, Windows, Linux, iOS, and Android, connects to whichever models you choose, and keeps its data in a local database on each device.
+An open-source AI client you deploy yourself. It runs on the web, macOS, Windows, Linux, iOS, and Android, and connects to whichever models you choose. Each device keeps its data in a local database.
 
 ### Who makes it, and how is it funded?
 
@@ -12,7 +12,7 @@ MZLA Technologies, the entity behind Thunderbird, funded through a grant from Mo
 
 ### Is it part of Thunderbird?
 
-No. It is a separate product under the same entity, not a feature of the Thunderbird email client.
+No. It is its own product from MZLA, the same entity that makes the Thunderbird email client.
 
 ### Can I run it in production today?
 
@@ -26,9 +26,7 @@ A hosted version is planned. There is no release date.
 
 ### What does Thunderbolt cost?
 
-The software is free. It is licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/), which permits commercial and internal use.
-
-Your costs are the infrastructure you run it on and the AI inference you use.
+The software is free. It is licensed under the [Mozilla Public License 2.0](https://www.mozilla.org/MPL/2.0/), which permits commercial and internal use. Your costs are the infrastructure you run it on and the AI inference you use.
 
 ### What does inference cost?
 
@@ -52,11 +50,13 @@ MPL 2.0 is file-level copyleft. Modifications to Thunderbolt's own files must be
 
 On the device. Every client reads and writes a local database first, so the app works against local data even when the network does not.
 
-Cross-device sync is off until a user turns it on. Signing in turns it on for that device, and an anonymous session never syncs; the toggle is under _Settings → Preferences → Data_. When it is on, synced rows are stored in your deployment's PostgreSQL database. Encryption applies to what is sent and stored on the server; the copy on the device stays readable locally so the app can search and render it.
+Cross-device sync stays off until a user turns it on. Signing in enables it for that device, and an anonymous session never syncs; the toggle is under _Settings → Preferences → Data_. When it is on, synced rows are stored in your deployment's PostgreSQL database. Encryption applies to what is sent and stored on the server; the copy on the device stays readable locally so the app can search and render it.
 
 ### Can the server read my chats?
 
-By default, yes: synced rows land in your PostgreSQL in plaintext, readable by anyone with database access. Turn on end-to-end encryption (E2EE) in the backend configuration and the server holds only ciphertext for the fields listed below: the keys that would unscramble it exist on the user's devices and nowhere on your infrastructure. This is a deployment-wide switch, not a per-user preference, and it changes how new devices join an account: they must be approved from an already trusted device or with the recovery phrase.
+By default, yes. Synced rows land in your PostgreSQL in plaintext, readable by anyone with database access.
+
+Turn on end-to-end encryption (E2EE) in the backend configuration and the server holds only ciphertext for the fields listed below, because the keys that would unscramble it exist on the user's devices and nowhere on your infrastructure. E2EE applies to the whole deployment, so a user cannot turn it on for one account, and it changes how new devices join: they must be approved from an already trusted device or with the recovery phrase.
 
 ```ini
 E2EE_ENABLED=true
@@ -74,7 +74,7 @@ End-to-end encryption is in preview. It has not yet had a cryptography audit.
 
 ### Does my data leave my network?
 
-Sync and authentication stay inside your deployment. Prompts go wherever your chosen model lives. Web search reaches an external search provider, but only for users with Thunderbolt Pro who have the connection switched on.
+Sync and authentication stay inside your deployment, and prompts go wherever your chosen model lives. Web search reaches an external search provider, but only for users with Thunderbolt Pro who have the connection switched on.
 
 | Model you picked                    | Where the prompt goes                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -83,7 +83,7 @@ Sync and authentication stay inside your deployment. Prompts go wherever your ch
 | A cloud provider with your key      | That provider                                                                                    |
 | A system-managed confidential model | A hardware-isolated enclave outside your network, which neither the vendor nor you can read into |
 
-Provider calls do not go straight from the app. They are relayed through your own backend, which forwards the bytes and hands back the response. Browsers cannot call most provider APIs directly, and the published desktop and mobile builds take the same path. Two things follow: the user's key passes through untouched and is never stored, and the request path is not written to your access logs, only the destination hostname.
+Provider calls do not go straight from the app. They are relayed through your own backend, which forwards the bytes and hands back the response. Browsers cannot call most provider APIs directly, and the published desktop and mobile builds take the same path. The user's key passes through untouched and is never stored, and your access logs record the destination hostname but not the request path.
 
 ### Are file attachments stored on the server?
 
@@ -93,7 +93,7 @@ One exception: if you connect an external coding agent that stages files on its 
 
 ### Do you collect analytics?
 
-Only if a user opts in. Collection is off by default, toggled under _Settings → Preferences_. Events never carry prompts, responses, or API keys. Every event and property is listed in [Telemetry](../TELEMETRY.md).
+Only if a user opts in. The toggle sits under _Settings → Preferences_, off by default. Events never carry prompts, responses, or API keys, and every event and property is listed in [Telemetry](../TELEMETRY.md).
 
 ## Models
 
@@ -139,7 +139,7 @@ Override them with `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYM
 
 ### Are user API keys visible to the server?
 
-No. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync. It never reaches your server, and a user who signs in on a second device has to enter it again there. The same is true of any Thunderbolt operator: there is nowhere for these credentials to be read from centrally.
+No. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync. It never reaches your server, and a user who signs in on a second device has to enter it again there. No Thunderbolt operator can read it either, since no central copy exists.
 
 ## Running it
 
@@ -157,7 +157,7 @@ All three deploy the same five pieces: the application frontend, the backend API
 
 Partly. Changes are written to the device immediately and uploaded when the connection returns. If the same record was changed on two devices while one was offline, the most recent change wins.
 
-Three things still need the network: sign-in, web search, and inference against any model that is not running on your own hardware.
+Sign-in, web search, and inference against any model that is not running on your own hardware still need the network.
 
 ### Can I run it air-gapped?
 
@@ -166,7 +166,7 @@ Every server component runs inside your network, and with a local model and no w
 - Official desktop builds check a hosted update service for new versions. Build your own or distribute installers internally if that is unacceptable.
 - Web search needs a search provider key on the backend (`EXA_API_KEY`). Leave it unset. Web search also requires Thunderbolt Pro, so it is unavailable by default on a self-hosted deployment; a Pro user can switch the **Thunderbolt** connection off under _Settings → Connections_.
 
-Air-gapped operation is not a configuration the project tests today. Treat it as a pilot.
+The project does not test air-gapped operation today, so treat it as a pilot.
 
 ### How many devices can one account use?
 
@@ -176,7 +176,7 @@ Ten active devices. Devices awaiting approval do not count against the limit.
 
 Revoke it from _Settings → Devices_ on another device. The revoked device loses its sessions immediately and can no longer sync. With end-to-end encryption on, the copy of the account key that was held for that device is deleted on the server, so it can never rejoin sync or be re-approved.
 
-Be clear on what revocation does not do. It is not a remote wipe. The next time the revoked device runs, it shows a message the user cannot dismiss, offering to keep or delete its local copy of the data. Whatever was already on that device stays readable until its holder chooses to delete it, or until you wipe the device through whatever endpoint management you already use.
+Revocation is not a remote wipe. The next time the revoked device runs, it shows a message the user cannot dismiss, offering to keep or delete its local copy of the data. Whatever was already on that device stays readable until its holder chooses to delete it, or until you wipe the device through whatever endpoint management you already use.
 
 ### What if all devices are lost?
 
@@ -186,7 +186,7 @@ With it on, the 24-word recovery phrase shown once at setup is the only way back
 
 ### What happens when a user deletes their account?
 
-Deletion is permanent, not a hidden flag. The account and everything synced under it are removed from your database outright, and there is no undo inside the app. Every other device the user was signed in on notices within moments, erases its local copy, and signs out. Anything sitting in your own database backups is yours to manage under your own retention policy.
+Deletion is permanent. The account and everything synced under it are removed from your database outright, and there is no undo inside the app. Every other device the user was signed in on notices within moments, erases its local copy, and signs out. Anything sitting in your own database backups is yours to manage under your own retention policy.
 
 ## Platforms
 
@@ -220,9 +220,7 @@ Found a security vulnerability? Use the [private reporting form](https://github.
 
 For more depth on the topics above:
 
-| Topic                                     | Page                                                    |
-| ----------------------------------------- | ------------------------------------------------------- |
-| What is stored, where, and who can see it | [Security and privacy](./admin/security-and-privacy.md) |
-| Sign-in, identity providers, user access  | [Users and access](./admin/users-and-access.md)         |
-| Device approval, limits, and revocation   | [Devices](./admin/devices.md)                           |
-| Every setting and environment variable    | [Configuration](./self-hosting/configuration.md)        |
+- [Security and privacy](./admin/security-and-privacy.md): what is stored, where, and who can see it
+- [Users and access](./admin/users-and-access.md): sign-in, identity providers, and user access
+- [Devices](./admin/devices.md): device approval, limits, and revocation
+- [Configuration](./self-hosting/configuration.md): every setting and environment variable

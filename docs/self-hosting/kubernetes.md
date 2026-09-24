@@ -16,7 +16,7 @@ If you only want to see Thunderbolt working, [Docker Compose](./docker-compose.m
 | Marketing  | Deployment  | The landing page and these docs. Deployed unconditionally.               |
 | Ingress    | Ingress     | Routes every path to the right service.                                  |
 
-Replica counts are configurable per workload except PostgreSQL, which is always a single instance. The chart has no high-availability database option.
+Replica counts are configurable per workload except PostgreSQL, which is always a single instance; the chart has no high-availability database option.
 
 ## Prerequisites
 
@@ -57,9 +57,7 @@ helm install thunderbolt . \
   --set keycloak.demoUserEnabled=false
 ```
 
-Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries.
-
-Image tags default to `latest`, which is rebuilt continuously. Pin `<component>.image.tag` to a published version before you depend on the deployment. See [Upgrading](./upgrading.md).
+Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries. Image tags default to `latest`, which is rebuilt continuously, so pin `<component>.image.tag` to a published version before you depend on the deployment. See [Upgrading](./upgrading.md).
 
 Past a handful of flags, copy the chart's `values.yaml`, which documents every option, and pass it with `-f`.
 
@@ -79,7 +77,7 @@ Deeper probes covering the database, the sync service, email and the model catal
 
 ## Routing
 
-The Ingress routes by path under a single hostname. The path rules always render, including alongside the per-service hostnames below. Set `ingress.enabled=false` if you front the cluster with your own gateway.
+The Ingress routes by path under a single hostname. Set `ingress.enabled=false` if you front the cluster with your own gateway.
 
 | Path            | Goes to   |
 | --------------- | --------- |
@@ -89,7 +87,7 @@ The Ingress routes by path under a single hostname. The path rules always render
 | `/powersync/`   | PowerSync |
 | Everything else | Frontend  |
 
-Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is what makes the local walkthrough work on `localhost`.
+Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is how the local walkthrough works on `localhost`.
 
 If you would rather give each service its own hostname, set any of the five keys under `ingress.hostnames`:
 
@@ -104,7 +102,7 @@ ingress:
     powersync: powersync.example.com
 ```
 
-Host rules win for the hostnames you list, and the path rules stay as a fallback for everything else, so you can move one service onto its own hostname without rewriting the rest.
+Host rules win for the hostnames you list, and the path rules always render as a fallback for everything else, so you can move one service onto its own hostname without rewriting the rest.
 
 ## TLS
 
@@ -114,9 +112,7 @@ The chart does not render a TLS section on the Ingress. Terminate TLS in front o
 - Terminate at a cloud load balancer that fronts the controller, or
 - Add a `tls` block to the Ingress yourself after install.
 
-Whichever you choose, set `appUrl` to the `https://` URL. It decides which browser origins are allowed to call the API, where sign-in returns the user to, and the return addresses registered with Keycloak. An `appUrl` that does not match the address users actually visit produces sign-in loops rather than a clear error.
-
-Changing `appUrl` on a later upgrade restarts the API and Keycloak by itself, and Keycloak re-imports its sign-in configuration at the new address. Expect a brief interruption to sign-in while that happens.
+Whichever you choose, set `appUrl` to the `https://` URL. It decides which browser origins are allowed to call the API, where sign-in returns the user to, and the return addresses registered with Keycloak. An `appUrl` that does not match the address users actually visit produces sign-in loops rather than a clear error. Changing `appUrl` on a later upgrade restarts the API and Keycloak by itself, and Keycloak re-imports its sign-in configuration at the new address. Expect a brief interruption to sign-in while that happens.
 
 ## Values that matter
 
@@ -148,12 +144,9 @@ Changing `appUrl` on a later upgrade restarts the API and Keycloak by itself, an
 
 `<component>` is one of `frontend`, `marketing`, `backend`, `postgres`, `powersync`, `keycloak`.
 
-Two encoding traps to avoid:
+Secret values ending in `Base64` are base64 of the raw value, not the raw value: `echo -n "your-key" | base64`. The database password must also be URL safe. A password containing `@`, `:`, `/`, `?` or `#` silently corrupts the connection string and the API will not reach the database.
 
-- Secret values ending in `Base64` are base64 of the raw value, not the raw value. `echo -n "your-key" | base64`.
-- The database password must be URL safe. A password containing `@`, `:`, `/`, `?` or `#` silently corrupts the connection string and the API will not reach the database.
-
-Provider keys set here are held by the API, so browsers never hold them and never call a provider directly. Users can still bring their own keys in the app instead, but some providers reject browser-origin requests, which makes a server-side key the more reliable option. Every setting the API understands is in the [configuration reference](./configuration.md).
+Provider keys set here are held by the API, so the browser never holds them and never calls a provider directly. Users can still bring their own keys in the app instead, but some providers reject browser-origin requests, which makes a server-side key the more reliable option. Every setting the API understands is in the [configuration reference](./configuration.md).
 
 ## Try it on a local cluster
 
@@ -233,11 +226,9 @@ kind delete cluster --name thunderbolt
 - Back up the PostgreSQL volume. It holds accounts, sessions and the server copy of synced data.
 - Decide how users reach a model: a provider key on the server, or each user's own key.
 
-Two limitations to plan around:
+The bundled Keycloak is not production-grade. It runs in development mode with its database inside the pod and no persistent volume, so anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. For a real deployment, point Thunderbolt at your own identity provider. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
 
-**The bundled Keycloak is not production-grade.** It runs in development mode with its database inside the pod and no persistent volume. Anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. For a real deployment, point Thunderbolt at your own identity provider. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
-
-**The database is always the one the chart deploys.** There is no value for pointing at an external PostgreSQL such as RDS. `postgres.sslmode` exists for a database that terminates TLS, but the connection target itself is fixed to the in-cluster instance.
+The database is always the one the chart deploys. There is no value for pointing at an external PostgreSQL such as RDS: `postgres.sslmode` exists for a database that terminates TLS, but the connection target itself is fixed to the in-cluster instance.
 
 ## Upgrades and rollbacks
 
@@ -246,7 +237,7 @@ helm upgrade thunderbolt . -n thunderbolt -f my-values.yaml
 helm rollback thunderbolt -n thunderbolt
 ```
 
-Upgrading rolls each workload whose settings changed and runs any pending database migrations when the API starts. One change does not take effect on its own. `keycloak.demoUserEnabled` alters only the sign-in configuration Keycloak reads at boot, and nothing about the Keycloak pod itself, so the pod is never replaced. Apply it by hand:
+Upgrading rolls each workload whose settings changed and runs any pending database migrations when the API starts. `keycloak.demoUserEnabled` is the exception: it alters only the sign-in configuration Keycloak reads at boot, and nothing about the Keycloak pod itself, so the pod is never replaced and the change does not take effect on its own. Apply it by hand:
 
 ```bash
 kubectl rollout restart deployment/keycloak -n thunderbolt

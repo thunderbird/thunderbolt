@@ -9,14 +9,15 @@ operator of a deployment.
 
 ## The short version
 
-| Question                                             | Answer                                                                                    |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Where do conversations live?                         | On each device first. On your server only if the user turns sync on.                      |
-| Who else sees a prompt?                              | Whichever model provider answers it, and a web search provider if the model searches.     |
-| Can you read a user's chats?                         | With sync on and encryption off, yes, from your database. With encryption on, no.         |
-| Where are provider API keys?                         | On the device that entered them. They never reach your server or another device.          |
-| Is anything sent to the Thunderbolt team by default? | No. Analytics are off unless you configure a key and the user opts in.                    |
-| Does Thunderbolt store uploaded files?               | No. Files stay on the device and are sent only inside the request that answers that turn. |
+Conversations live on each device first, and reach your server only if the user turns sync on. With
+sync on and encryption off you can read a user's chats from your database; with encryption on you
+cannot. Provider API keys stay on the device that entered them and never reach your server or
+another device. Uploaded files stay on the device too, and are sent only inside the request that
+answers that turn.
+
+A prompt goes to whichever model provider answers it, and to a web search provider if the model
+searches. Nothing goes to the Thunderbolt team by default: analytics need both a key you configure
+and a user who opts in.
 
 ## Where data lives
 
@@ -38,11 +39,10 @@ call its tools.
 
 Every device keeps a full local database and reads and writes there first, so the app works offline
 once the user is signed in. Sync is per user and off until they turn it on. With `POWERSYNC_URL`
-unset there is no sync at all and your server never receives conversation data.
-
-Even with sync on, uploaded file contents, provider API keys, and tool server addresses and
-credentials never leave the device: a file attached on a laptop is not readable from the same
-account's phone, and a tool server has to be added again on each device.
+unset there is no sync at all and your server never receives conversation data. Even with sync on,
+uploaded file contents, provider API keys, and tool server and external agent credentials never
+leave the device: a file attached on a laptop is not readable from the same account's phone, and a
+tool server has to be added again on each device.
 
 ## End-to-end encryption
 
@@ -68,18 +68,20 @@ setting to match.
 
 **What it covers**
 
-| Encrypted before upload                                                                                           | Stays readable on the server                                                             |
-| ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Message content, chat titles, task text, saved prompts, skill text, project names and instructions, device names  | Record ids, timestamps, relationships, ordering, deletion markers, on/off flags          |
-| Setting values, model names and endpoints and descriptions, per-model tuning overrides, automation schedule times | External agent entries: an agent's name, address, description and icon sync in the clear |
+Before upload the device encrypts message content, chat titles, task text, saved prompts, skill
+text, project names and instructions, device names, setting values, model names and endpoints and
+descriptions, per-model tuning overrides, and automation schedule times. Anything not in that list
+syncs as plain text.
 
-The external agent gap is a known omission rather than a design decision, and a fix is planned.
-Anything not listed as encrypted syncs as plain text.
+Record ids, timestamps, relationships, ordering, deletion markers and on/off flags stay readable on
+the server, and so do external agent entries: an agent's name, address, description and icon sync in
+the clear. The external agent gap is a known omission rather than a design decision, and a fix is
+planned.
 
 **Limits worth knowing before you commit**
 
-- Encryption covers what is synced. It is not a limit on what the model provider sees: the prompt is
-  decrypted on the device and sent to the provider that answers it.
+- Encryption covers what is synced, not what the model provider sees: the prompt is decrypted on the
+  device and sent to the provider that answers it.
 - Turning encryption on later does not re-encrypt rows already synced in plain text.
 - A user is capped at 10 trusted devices per account.
 - No cryptography audit yet.
@@ -103,16 +105,16 @@ your database holds readable conversation content.
 Requests to a user-added provider or tool server pass through your server, because a browser cannot
 call most provider APIs directly. Your server forwards the bytes and the user's credential untouched
 and stores neither. Access logs record the upstream hostname, not the full URL, so a user's browsing
-is not written into your logs. The exception is a model server on the user's own machine, such as
-Ollama or LM Studio: your server cannot reach it, so the app calls it directly and nothing about
-those turns crosses your infrastructure.
+is not written into your logs. A model server on the user's own machine, such as Ollama or LM
+Studio, is the exception: your server cannot reach it, so the app calls it directly and nothing
+about those turns crosses your infrastructure.
 
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
 
-Before enabling debug transcripts: a transcript carries the whole conversation plus the user id and
-email your deployment holds, is retained by the Thunderbolt team, and survives deletion of the
-submitting account.
+If you turn on debug transcript forwarding, a transcript carries the whole conversation plus the
+user id and email your deployment holds. The Thunderbolt team retains it, and it survives deletion
+of the submitting account.
 
 ## Managed models and confidential inference
 
@@ -130,10 +132,10 @@ there, and encrypts the request so that only that enclave can open it. Your serv
 can open the payload.
 
 The default shipped model is a confidential one, so a deployment that sets only `TINFOIL_API_KEY`
-runs entirely on that tier. What your server still records on the confidential tier is the account,
-the model, timing, HTTP status, and token counts. Those counts come back from the device, because
-only the device can read the response, so a modified client can under-report its own usage. It
-cannot charge another account or invent a price: your server fixes who, which model, and at what
+runs entirely on that tier. On the confidential tier your server still records the account, the
+model, timing, HTTP status, and token counts. Those counts come back from the device, because only
+the device can read the response, so a modified client can under-report its own usage. It cannot
+charge another account or invent a price, because your server fixes the account, the model, and the
 rate before the request goes out.
 
 Chat turns on both tiers are metered against rolling per-user spend caps, and a model with no
@@ -143,25 +145,23 @@ same confidential route but are not metered or charged against those caps. See
 
 ## Telemetry
 
-Two independent switches, and both must be on before anything is sent.
-
-| Switch                                              | Default                                                    |
-| --------------------------------------------------- | ---------------------------------------------------------- |
-| `POSTHOG_API_KEY` on the server                     | Unset. No key means no analytics client exists in the app. |
-| **Anonymous Usage Data**, the user's own preference | Off. Settings → Preferences → Help Thunderbolt Improve.    |
+Two independent switches, and both must be on before anything is sent. `POSTHOG_API_KEY` on the
+server is unset by default, and no key means no analytics client exists in the app. The user's own
+preference, **Anonymous Usage Data**, starts off under Settings → Preferences → Help Thunderbolt
+Improve.
 
 Events are sent to your server and relayed from there, so the app never contacts an analytics host
 directly and you can block the egress at your firewall. Where your server forwards them is
 `POSTHOG_HOST`, which defaults to PostHog's US cloud; point it at your own instance if you run
 one.
 
-What is never collected: prompts, model responses, API keys, search queries, file names, file
+Thunderbolt never collects prompts, model responses, API keys, search queries, file names, file
 contents, skill or agent names, or the text of anything a user wrote. Events carry event names and
 single values such as a model identifier, a provider name, a character count, and timings. URLs are
 reduced to a route pattern with query strings and fragments removed, and any property literally
-named `apiKey` is stripped as the last step before sending. Automatic collection is off entirely:
-no click capture, no pageviews, no session recording, no surveys, no performance capture. An error
-the app handles is reported with its code, message and stack trace.
+named `apiKey` is stripped as the last step before sending. Automatic collection is off entirely: no
+click capture, no pageviews, no session recording, no surveys, no performance capture. An error the
+app handles is reported with its code, message and stack trace.
 
 Your server adds events of its own for managed inference: one per generation on the direct tier,
 carrying the model, provider, latency, HTTP status and token counts, and one when an upstream fails,
@@ -187,8 +187,8 @@ user's conversations. What follows is about direct access to your own database a
 
 **You cannot see**
 
-- Provider API keys, tool server credentials, or external agent credentials. They are never uploaded.
-- Uploaded file contents. They are never uploaded to your server for storage.
+- Provider API keys, tool server credentials, or external agent credentials. None are ever uploaded.
+- Uploaded file contents, which never reach your server for storage.
 - Prompts or responses on the confidential inference tier.
 - Encrypted content when `E2EE_ENABLED` is on, including messages, with no way to recover it for a
   user who loses every device and their recovery phrase.
@@ -207,7 +207,7 @@ user's conversations. What follows is about direct access to your own database a
 
 An export file contains the user's provider API keys, tool server credentials, external agent keys
 and connected-account tokens in plain text, and it is not encrypted at rest. Treat it as a secret.
-Attached file contents are the one thing it does not include.
+It does not include attached file contents.
 
 ## Hardening a deployment
 
@@ -232,7 +232,7 @@ Report privately through the
 open a public issue. Triage, questions, and the fix confirmation all happen in the advisory thread,
 and you are credited when it is published unless you ask otherwise.
 
-Two areas take attacker-influenced input by design and are the most interesting targets: the
+Two areas are meant to take attacker-influenced input and are the most interesting targets: the
 request forwarder, which fetches a URL the client supplies, and the optional end-to-end encryption.
 Known non-findings: the published credentials in the evaluation Compose file, and plaintext
 server-side storage when `E2EE_ENABLED` is off. Third-party services a deployment is pointed at,

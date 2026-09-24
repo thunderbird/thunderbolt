@@ -2,7 +2,7 @@
 
 Voice mode turns the chat composer into a spoken conversation: you talk, Thunderbolt transcribes what you said, sends it as an ordinary chat message, and reads the reply back.
 
-Audio is never stored. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
+Audio is never stored in any form, on the device or on the server. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
 
 ## Start a voice conversation
 
@@ -11,7 +11,7 @@ Audio is never stored. Only the transcript of what you said and the assistant's 
 3. Speak, then pause. About one and a half seconds of silence ends your turn and sends it.
 4. Press the exit button to leave voice mode. The conversation stays in the chat.
 
-Two short tones mark the state you are not looking at: a rising pair when the microphone opens, a quieter falling pair when your turn is handed over.
+Two short tones tell you what is happening when you are not watching the screen: a rising pair when the microphone opens, a quieter falling pair when your turn is handed over.
 
 | Status      | Meaning                                                     |
 | ----------- | ----------------------------------------------------------- |
@@ -24,31 +24,19 @@ The microphone stays open while the assistant thinks and speaks. Talking over it
 
 ## What a voice turn is
 
-A voice turn is a regular chat turn. It uses the model you have selected, the same tools, the same chat history, and any project instructions or skills that apply. Messages are stored and synced like typed ones, and encrypted if you have end-to-end encryption enabled.
-
-Three things differ:
-
-- Replies are asked to be short and free of Markdown, links and formatting, because they are read aloud.
-- On-screen results such as maps and charts are pointed at rather than read out ("Take a look at the map on screen").
-- Citation markers and display equations are skipped rather than spelled out.
+A voice turn is a regular chat turn. It uses the model you have selected, the same tools, the same chat history, and any project instructions or skills that apply. Messages are stored and synced like typed ones, and encrypted if you have end-to-end encryption enabled. What changes is the reply: because it will be read aloud, the model is asked to keep it short and free of Markdown, links and formatting. Citation markers and display equations are skipped. On-screen results such as maps and charts are pointed at instead of read out ("Take a look at the map on screen").
 
 ## What leaves your device
 
-|                           |                                                                                          |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| Sent to the speech engine | One audio clip per utterance, after you stop talking. Not a continuous microphone stream |
-| Never sent                | Anything recorded while you are silent                                                   |
-| Never stored              | Audio, in any form, on the device or on the server                                       |
-| Stored                    | The transcript and the reply, as chat messages                                           |
+One audio clip goes to the speech engine per utterance, sent after you stop talking. There is no continuous microphone stream, and anything recorded while you are silent is never sent.
 
 Transcription and spoken playback do not count against your usage allowance for Thunderbolt-hosted models. The chat reply itself does, if it runs on one of those models.
 
 ## Voice engines
 
-| Engine                                         | Setup            | Where speech is processed                                                                                                                                                       |
-| ---------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Thunderbolt (hosted, private)**, the default | None             | Thunderbolt's confidential computing service: a hardware-isolated server the app verifies before it sends any audio, and whose operator cannot read what is processed inside it |
-| **Custom OpenAI-compatible** (preview)         | Settings → Voice | Whatever server you point it at, including one on your own machine                                                                                                              |
+By default, speech goes to **Thunderbolt (hosted, private)**, which needs no setup. Audio is processed by Thunderbolt's confidential computing service: a hardware-isolated server the app verifies before it sends any audio, and whose operator cannot read what is processed inside it.
+
+The alternative, **Custom OpenAI-compatible**, is a preview option you configure under **Settings → Voice**. It sends speech to whatever server you point it at, including one on your own machine.
 
 The hosted engine needs the backend configured with a confidential-inference key, set as the `TINFOIL_API_KEY` environment variable. A self-hosted deployment without that key cannot use it: speech requests fail with `503 Tinfoil provider not configured`. Point voice at a speech server of your own instead.
 
@@ -70,11 +58,9 @@ This is a preview feature and is off by default.
 
 If the server does not list its models, the pickers become plain text fields and you enter the identifiers by hand.
 
-Requirements for the server:
+The server has to expose OpenAI-shaped `/v1/audio/transcriptions` and `/v1/audio/speech`, and it has to allow cross-origin browser requests from the address Thunderbolt is served from. That second one is a CORS setting on the speech server, and getting it wrong causes most connection failures.
 
-- It must expose OpenAI-shaped `/v1/audio/transcriptions` and `/v1/audio/speech`.
-- It must allow cross-origin browser requests from the address Thunderbolt is served from. This is a CORS setting on the speech server, and getting it wrong causes most connection failures.
-- A server on `http://localhost` cannot be reached from a Thunderbolt page served over `https`. Browsers block mixed content. Run Thunderbolt locally, use the desktop app, or put the speech server behind TLS.
+Browsers also block mixed content, so a Thunderbolt page served over `https` cannot reach a speech server on `http://localhost`. Run Thunderbolt locally, use the desktop app, or put the speech server behind TLS.
 
 Servers known to fit this shape include Kokoro-FastAPI, speaches and LocalAI.
 
@@ -82,16 +68,12 @@ Your base URL and API key are stored on that device only. They are not synced to
 
 ## Platform notes and limitations
 
-| Situation                         | Behaviour                                                                          |
-| --------------------------------- | ---------------------------------------------------------------------------------- |
-| Web browser                       | Requires `https` (or `localhost`) and microphone permission                        |
-| Desktop app run from a dev server | Microphone access is unavailable over plain `http`. Packaged builds are unaffected |
+In a web browser, voice needs `https` (or `localhost`) and microphone permission. A desktop app run from a dev server has no microphone access over plain `http`, though packaged builds are unaffected.
 
-- There is no wake word and no always-on listening. The microphone opens when you start a session and closes when you exit or leave the chat.
-- One session at a time. Navigating to another chat ends the session.
+- There is no wake word and no always-on listening. The microphone opens when you start a session and closes when you exit or leave the chat, and only one session runs at a time.
 - There is no separate voice language setting, and the assistant's voice is fixed on the hosted engine.
 - Background noise can open a turn on its own. A transcript that is nothing but the filler speech recognition emits on near-silence ("Thanks for watching", a bare "you") is dropped rather than sent, so the model never sees it. Real sign-offs like "thanks" and "bye" are kept and answered.
-- Audio is not recorded, so there is nothing to export or replay afterwards.
+- Since no audio is recorded, there is nothing to export or replay afterwards.
 
 ## Troubleshooting
 

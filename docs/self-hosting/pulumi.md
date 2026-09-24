@@ -11,17 +11,11 @@ Use this path when you want the whole deployment described as code from the star
 | **ECS Fargate** | `fargate`     | AWS-managed containers, no cluster to operate      | EFS volume                | The default. No Kubernetes knowledge needed.      |
 | **EKS**         | `k8s`         | A managed Kubernetes cluster with two worker nodes | EBS volumes (`gp3` class) | Teams who want Kubernetes and already operate it. |
 
-On EKS the project creates the cluster and then installs the Helm chart documented on the [Kubernetes](./kubernetes.md) page. That page is the reference for everything after the cluster exists: chart values, hostnames, TLS, credentials, and upgrades. Only a handful of the settings on this page reach an EKS deployment: region, target, version, the registry token, the session secret, and the public address. The rest configure Fargate services directly and are ignored there, so set their Helm equivalents instead.
+On EKS the project creates the cluster and then installs the Helm chart documented on the [Kubernetes](./kubernetes.md) page, which is the reference for everything after the cluster exists: chart values, hostnames, TLS, credentials, and upgrades. Only a handful of the settings on this page reach an EKS deployment. Region, target, version, the registry token, the session secret, and the public address get through; the rest configure Fargate services directly and are ignored there, so set their Helm equivalents instead.
 
 ## What gets created
 
-Shared by both targets:
-
-| Resource        | Detail                                                                        |
-| --------------- | ----------------------------------------------------------------------------- |
-| VPC             | `10.0.0.0/16`, two availability zones, public and private subnets             |
-| NAT gateway     | One, in the first public subnet.                                              |
-| Security groups | Public HTTP and HTTPS into the load balancer, load balancer into the services |
+Both targets get the same network: a VPC on `10.0.0.0/16` across two availability zones, with public and private subnets. One NAT gateway sits in the first public subnet. The security groups admit public HTTP and HTTPS into the load balancer, and the load balancer into the services.
 
 Fargate adds an ECS cluster, one task per service, an Application Load Balancer, internal service discovery so the services can find each other by name, an EFS filesystem for the database, CloudWatch logs with 7-day retention, and AWS Secrets Manager entries for the database, session, sync, and AI provider credentials.
 
@@ -31,7 +25,7 @@ Six services run either way: the app, the API, PostgreSQL, the sync service, Key
 
 ### Fargate sizing
 
-Each service runs a single copy. Nothing autoscales, and there is no standby.
+Each service runs a single copy with no standby, and the six together come to 4 vCPU and 8 GB running continuously.
 
 | Service      | vCPU | Memory |
 | ------------ | ---- | ------ |
@@ -42,18 +36,11 @@ Each service runs a single copy. Nothing autoscales, and there is no standby.
 | App          | 0.25 | 0.5 GB |
 | Marketing    | 0.25 | 0.5 GB |
 
-That is 4 vCPU and 8 GB in total, running continuously.
-
 ## Before you start
 
-| You need          | Notes                                                                                                                       |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| An AWS account    | With credentials the Pulumi CLI can use, for example through `aws sso login` or an access key.                              |
-| The Pulumi CLI    | Plus a Pulumi Cloud account. State and secrets are encrypted there, so there is no passphrase to manage.                    |
-| Bun               | Installs the project's dependencies.                                                                                        |
-| An image version  | The deployment installs published images. It does not build anything, so you must name a version that exists.               |
-| A Cloudflare zone | Only if you want real hostnames and TLS on Fargate. See [Hostnames and TLS](#hostnames-and-tls).                            |
-| A registry token  | Optional. The published images are public. Supply a GitHub token with package read access only if you have restricted them. |
+You need an AWS account, with credentials the Pulumi CLI can use, for example through `aws sso login` or an access key. You also need the Pulumi CLI itself and a Pulumi Cloud account, which is where state and secrets are encrypted, so there is no passphrase to manage. Bun installs the project's dependencies. The deployment installs published images and builds nothing, so you must also name an image version that exists.
+
+Two of the prerequisites are conditional. A Cloudflare zone applies only if you want real hostnames and TLS on Fargate (see [Hostnames and TLS](#hostnames-and-tls)). The published images are public, so a GitHub token with package read access is needed only if you have restricted them.
 
 ## Deploy
 
@@ -76,9 +63,7 @@ pulumi config set --secret anthropicApiKey <key>          # or another provider
 pulumi up
 ```
 
-`version` has no default and the preview fails without it. Images are published for every release under `ghcr.io/thunderbird/thunderbolt/`, so the `version` you set must match a tag that exists there. Upgrading later means setting a new `version` and running `pulumi up` again.
-
-The stack name is yours to pick, with two reservations. Names beginning with `preview-`, and the name `previews-shared`, are used by the project's own pull-request environments and behave differently.
+`version` has no default and the preview fails without it. Images are published for every release under `ghcr.io/thunderbird/thunderbolt/`, so the `version` you set must match a tag that exists there. Upgrading later means setting a new `version` and running `pulumi up` again. The stack name is yours to pick, with two reservations. Names beginning with `preview-`, and the name `previews-shared`, are used by the project's own pull-request environments and behave differently.
 
 ### Getting the address
 
@@ -93,7 +78,7 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 
 ### Rotate the defaults
 
-**Every credential you leave unset falls back to a fixed value published in this repository.** Nothing is generated for you. Set all six as secrets before anyone outside your team can reach the deployment:
+**Every credential you leave unset falls back to a fixed value published in this repository**, and nothing is generated for you. Set all six as secrets before anyone outside your team can reach the deployment:
 
 | Setting                 | Default if unset                      |
 | ----------------------- | ------------------------------------- |
@@ -110,9 +95,7 @@ On EKS these settings are not passed through to the cluster. The chart applies i
 
 ## Hostnames and TLS
 
-This section applies to the Fargate target only.
-
-By default the load balancer answers on its own AWS address over plain HTTP, and requests are routed by path: `/v1/` to the API, `/auth/` and `/realms/` to Keycloak, `/powersync/` to the sync service, everything else to the app. The marketing and docs site has no path of its own and is unreachable in this mode. That is enough to evaluate the deployment and not enough to serve users.
+This section applies to the Fargate target only. By default the load balancer answers on its own AWS address over plain HTTP, and requests are routed by path: `/v1/` to the API, `/auth/` and `/realms/` to Keycloak, `/powersync/` to the sync service, everything else to the app. The marketing and docs site has no path of its own and is unreachable in this mode. That is enough to evaluate the deployment, and not enough to serve users.
 
 Setting any hostname switches the deployment to one subdomain per service, routed by the host name in the request:
 
@@ -126,9 +109,7 @@ pulumi config set cloudflareZoneId   <zone-id>
 pulumi config set --secret cloudflareApiToken <token>
 ```
 
-**DNS automation is Cloudflare only.** The deployment creates a proxied CNAME record per hostname and relies on Cloudflare to terminate TLS at the edge. There is no certificate attached to the load balancer itself. Setting a hostname without a Cloudflare zone ID and API token fails the deployment rather than producing an unreachable stack.
-
-Using another DNS provider means creating the records yourself against the load balancer address the stack reports, and terminating TLS in front of it.
+**DNS automation is Cloudflare only.** The deployment creates a proxied CNAME record per hostname and relies on Cloudflare to terminate TLS at the edge; there is no certificate attached to the load balancer itself. Setting a hostname without a Cloudflare zone ID and API token fails the deployment rather than producing an unreachable stack. Using another DNS provider means creating the records yourself against the load balancer address the stack reports, and terminating TLS in front of it.
 
 ## Settings
 
@@ -162,18 +143,13 @@ Provider keys are optional. Leave them unset if your users will supply their own
 
 ## Deploying from CI
 
-The repository includes a GitHub Actions workflow that wraps the same deployment. If you fork the repository you can use it as-is: it takes the action (`deploy` or `destroy`), stack name, target, region, version, the hostnames, and the Cloudflare zone as inputs. It needs two repository secrets at minimum:
+The repository includes a GitHub Actions workflow that wraps the same deployment. If you fork the repository you can use it as-is: it takes the action (`deploy` or `destroy`), stack name, target, region, version, the hostnames, and the Cloudflare zone as inputs.
 
-| Secret                | What it is                                          |
-| --------------------- | --------------------------------------------------- |
-| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud token. Also unlocks the stack secrets. |
-| `AWS_DEPLOY_ROLE_ARN` | An IAM role the workflow assumes through OIDC.      |
-
-A registry token, provider keys, and the Cloudflare token are optional additions. The deploy job runs in a GitHub environment named `preview`, so any secret you scope to an environment has to live in that one.
+Two repository secrets are the minimum. `PULUMI_ACCESS_TOKEN` is a Pulumi Cloud token, which also unlocks the stack secrets, and `AWS_DEPLOY_ROLE_ARN` is an IAM role the workflow assumes through OIDC. A registry token, provider keys, and the Cloudflare token are optional additions. The deploy job runs in a GitHub environment named `preview`, so any secret you scope to an environment has to live in that one.
 
 ## What this costs
 
-Costs depend on region and usage. These are the parts that bill continuously, so price them in the AWS calculator before you commit:
+Costs depend on region and usage. EKS costs more at rest than Fargate because of the control plane and the always-on nodes, so Fargate is the cheaper of the two for a single deployment. These are the parts that bill continuously, so price them in the AWS calculator before you commit:
 
 | Applies to   | Billed continuously                                                                                             |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |
@@ -181,17 +157,20 @@ Costs depend on region and usage. These are the parts that bill continuously, so
 | Fargate      | 4 vCPU and 8 GB of tasks running 24/7, the load balancer, EFS storage, CloudWatch logs, Secrets Manager entries |
 | EKS          | Cluster control plane (hourly), two `t3.medium` nodes, EBS volumes, the ingress load balancer                   |
 
-EKS costs more at rest because of the control plane and the always-on nodes. Fargate is the cheaper of the two for a single deployment.
-
 ## Limits to know about
 
-- **No managed database.** PostgreSQL runs as one of the containers, on EFS or EBS. Moving to a managed service such as Amazon RDS is something you would wire up yourself, and the sync service's own bookkeeping database should not go there (see the caveat on the [self-hosting overview](./README.md)).
-- **No backups.** Nothing snapshots the database for you. Set that up before you store anything you care about.
-- **No high availability.** One copy of each service, one NAT gateway in one availability zone. A zone failure takes the deployment down.
-- **No autoscaling.** Service sizes are fixed. Growing the deployment means changing them.
-- **Keycloak runs in its development mode**, which is convenient for a first boot but is not a configuration to serve real users from.
-- **The database volume is pinned to uid 70** on Fargate, matching the Postgres image's system user. A Postgres major version that changes that uid needs the existing EFS data chowned before the new container starts.
-- **Logs are kept 7 days** on Fargate, then discarded.
+PostgreSQL runs as one of the containers, on EFS or EBS. There is no managed database option: moving to a service such as Amazon RDS is something you would wire up yourself, and the sync service's own bookkeeping database should not go there (see the caveat on the [self-hosting overview](./README.md)). Nothing snapshots that storage for you either, so set up backups before you store anything you care about.
+
+There is no high availability: one copy of each service, and one NAT gateway in one availability zone. A zone failure takes the deployment down.
+
+Nothing autoscales. Service sizes are fixed, so growing the deployment means changing them.
+
+Keycloak runs in its development mode, which is convenient for a first boot but is not a configuration to serve real users from.
+
+Two more Fargate specifics:
+
+- The database volume is pinned to uid 70, matching the Postgres image's system user. A Postgres major version that changes that uid needs the existing EFS data chowned before the new container starts.
+- Logs are kept 7 days, then discarded.
 
 ## Switching targets later
 

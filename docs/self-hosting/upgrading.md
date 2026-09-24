@@ -1,18 +1,10 @@
 # Upgrading
 
-There is no in-place updater and no upgrade button: you change a version, apply it, and the services restart.
-
-Two things are not reversible by rerunning the command: database migrations, and the state held by the bundled Keycloak.
+There is no in-place updater and no upgrade button. You set a new version, apply it, and the services restart. Two parts of that are not reversible by rerunning the command: database migrations, and the state held by the bundled Keycloak.
 
 ## Before you upgrade
 
-| Step                                   | Why                                                                                      |
-| -------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Back up the database                   | Schema changes are applied automatically and are not undone by going back to old images. |
-| Note the version you are on            | You need it to roll back. See below for how to find it.                                  |
-| Read the changelog for the new version | `CHANGELOG.md` in the repository lists every version and what changed in it.             |
-| Pick an explicit version, not `latest` | See the warning below.                                                                   |
-| Plan for a short interruption          | Each service runs a single copy by default, so restarting it is a gap in service.        |
+Back up the database first: schema changes are applied automatically, and going back to an old image does not undo them. Note the version you are on, because you need it to roll back. `CHANGELOG.md` in the repository lists every version and what changed in it, so read the entry for the version you are moving to. Pick an explicit version rather than `latest`, for the reason in the warning below. And expect a short interruption: each service runs a single copy by default, so restarting it is a gap in service.
 
 There is no endpoint that reports the running version, so read it from whichever tool you deployed with:
 
@@ -48,12 +40,11 @@ The Helm chart is published alongside them, at the same version:
 helm show chart oci://ghcr.io/thunderbird/charts/thunderbolt
 ```
 
-All six images and the chart are published together under one version number, such as `0.1.133`, so pin every component to the same number rather than mixing.
+All six images and the chart are published together under one version number, such as `0.1.133`, so pin every component to the same one.
 
-Two details to plan around:
+Kubernetes uses only three of the six: the Helm chart runs stock PostgreSQL, sync-service and Keycloak images from their own publishers rather than the packaged ones, which is why a Helm upgrade sets three image tags. The AWS path uses all six.
 
-- **Kubernetes only uses three of the six.** The Helm chart runs stock PostgreSQL, sync-service and Keycloak images from their own publishers rather than the packaged ones, which is why a Helm upgrade sets three image tags and not six. The AWS path uses all six.
-- **A version number is not frozen.** The images are rebuilt and republished under the same tag on every merge to the main branch that touches the app, the API or the deployment files, until the next version bump moves the number on. Two pulls of `0.1.133` a week apart are not guaranteed to be the same build. If you need a build you can prove is unchanged, record the image digest at deploy time and pin to that.
+Version numbers are not frozen, either. The images are rebuilt and republished under the same tag on every merge to the main branch that touches the app, the API or the deployment files, until the next version bump moves the number on. Two pulls of `0.1.133` a week apart are not guaranteed to be the same build. If you need a build you can prove is unchanged, record the image digest at deploy time and pin to that.
 
 > **`latest` is not a release channel.** It is rebuilt on every merge to the main branch and again each night, so it can change under you between two runs of the same command. Set an explicit version tag for anything other than a throwaway evaluation.
 >
@@ -63,10 +54,10 @@ Two details to plan around:
 
 Within a single version, apply in this order:
 
-1. **Database.** If you run your own PostgreSQL, it must be reachable and accepting connections first. The API runs migrations before it serves anything, so an unreachable database means the container exits on startup.
-2. **Sync service.** If the release changes which data is synced, the sync service must be running the new rules before clients that expect them.
-3. **API.** Applies database migrations on startup, then starts serving.
-4. **App and landing page.** Static, so these can go last with no coordination.
+1. **Database:** if you run your own PostgreSQL, it must be reachable and accepting connections first. The API runs migrations before it serves anything, so an unreachable database means the container exits on startup.
+2. **Sync service:** if the release changes which data is synced, the sync service must be running the new rules before clients that expect them.
+3. **API:** applies database migrations on startup, then starts serving.
+4. **App and landing page:** static, so these can go last with no coordination.
 
 Helm and Pulumi apply everything in one command and give you no ordering control. That is fine for a normal version-to-version upgrade, because the API refuses to serve until the database answers. If a release note calls for a staged rollout, do it by upgrading one component's tag at a time.
 
@@ -125,11 +116,11 @@ kubectl get pods -n thunderbolt -w
 kubectl logs -n thunderbolt deploy/backend -f
 ```
 
-Three things to expect:
+Expect the API to be briefly unavailable while this happens: it runs one replica by default and holds off serving until migrations finish.
 
-- **The API is briefly unavailable.** It runs one replica by default and holds off serving until migrations finish.
-- **Changing a configuration value alone does not restart anything.** Values that are rendered into configuration rather than into the pod definition, such as the Keycloak realm or the sync rules, take effect only when the pod is replaced. Force it with `kubectl rollout restart deployment/<name> -n thunderbolt`.
-- **Storage survives.** The database keeps its persistent volume across upgrades and across an uninstall. Deleting the volume claim is the only way to lose it.
+Changing a configuration value on its own does not restart anything. Values that are rendered into configuration rather than into the pod definition, such as the Keycloak realm or the sync rules, take effect only when the pod is replaced, which you force with `kubectl rollout restart deployment/<name> -n thunderbolt`.
+
+The database keeps its persistent volume across upgrades and across an uninstall. Deleting the volume claim is the only way to lose it.
 
 ## AWS with Pulumi
 
@@ -148,19 +139,13 @@ If you deploy through the repository's stack workflow instead, pass the same ver
 
 ## Database migrations
 
-| Question                   | Answer                                                                                                         |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| When do they run?          | Automatically, each time the API container starts, before it accepts traffic.                                  |
-| Do I run anything by hand? | No.                                                                                                            |
-| Can I skip them?           | No. The API will not start without applying them.                                                              |
-| Are they reversible?       | **No.** Migrations are forward-only. There are no down migrations.                                             |
-| What if one fails?         | The container exits and the reason is in its log. Any changes that already succeeded in that run stay applied. |
+Migrations run automatically, each time the API container starts, before it accepts traffic. You never run one by hand, and you cannot skip them: the API will not start without applying them. They are also **not** reversible: migrations are forward-only, and there are no down migrations. If one fails, the container exits and the reason is in its log. Any changes that already succeeded in that run stay applied.
 
-Because migrations are forward-only, going back to an older image does not undo a schema change. Some releases drop columns or tables, and an older API against a newer schema may fail. A database backup taken before the upgrade is the only real rollback for a schema change.
+Forward-only also means going back to an older image does not undo a schema change. Some releases drop columns or tables, and an older API against a newer schema may fail. A database backup taken before the upgrade is the only real rollback for a schema change.
 
 ## Sync rules
 
-The sync service decides which data reaches a device, and it reads that from a configuration file rather than working it out for itself. Where that file comes from depends on how you deploy:
+The sync service decides which data reaches a device, and it reads that from a configuration file. Where the file comes from depends on how you deploy:
 
 | Deployment     | Where the sync rules come from                      | What that means for an upgrade        |
 | -------------- | --------------------------------------------------- | ------------------------------------- |
@@ -168,16 +153,13 @@ The sync service decides which data reaches a device, and it reads that from a c
 | Kubernetes     | The Helm chart                                      | Upgrading the chart updates the rules |
 | AWS            | Built into the packaged sync-service image          | Moving the version updates the rules  |
 
-A rule change takes effect only when the sync service restarts. On Kubernetes, configuration alone does not trigger that (see below), so roll the sync deployment by hand after a chart upgrade that changes the rules.
+A rule change takes effect only when the sync service restarts. On Kubernetes, changing the configuration does not trigger that, so roll the sync deployment by hand after a chart upgrade that changes the rules.
 
 If a release adds newly synced data and only the app is upgraded, the feature works on the device it was used on and silently fails to appear on the user's other devices.
 
 ## Client apps
 
-| Client          | How it picks up an upgrade                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Browser         | On reload. Nothing is installed, so no user action beyond refreshing the page.                                                                   |
-| Desktop, mobile | Separately, through their own release channels. They are built against a fixed server address, so a self-hosted deployment needs its own builds. |
+Browsers pick up an upgrade on reload. Nothing is installed, so there is no user action beyond refreshing the page. The desktop and mobile apps upgrade separately, through their own release channels, and both are built against a fixed server address, so a self-hosted deployment needs its own builds.
 
 Data already synced to a device stays on that device through a server upgrade. Devices reconcile against the server when they reconnect.
 
@@ -216,14 +198,9 @@ Before you roll back, check whether the release you are leaving included a migra
 
 ## The bundled Keycloak
 
-The Keycloak that ships with the deployment runs in development mode with no storage of its own. Its realm is imported from configuration every time the container starts.
+The Keycloak that ships with the deployment runs in development mode with no storage of its own. Its realm is imported from configuration every time the container starts, and **replacing the Keycloak container discards everything configured inside Keycloak since it last started**, including users you created there and client settings you changed in its admin console. Upgrading its image replaces the container.
 
-**Replacing the Keycloak container discards everything configured inside Keycloak since it last started**, including users you created there and client settings you changed in its admin console. Upgrading its image replaces the container.
-
-Two ways to live with this:
-
-- Keep Keycloak's configuration in the realm file the deployment imports, so a restart reproduces it.
-- Point the deployment at your own identity provider instead. Then upgrades never touch it. See [Configuration](./configuration.md#authentication).
+You can live with that in two ways. Keep Keycloak's configuration in the realm file the deployment imports, so a restart reproduces it. Or point the deployment at your own identity provider instead, which upgrades never touch. See [Configuration](./configuration.md#authentication).
 
 The same applies to the bundled PostgreSQL in one narrower case: its major version is pinned, and its data directory is tied to that major version. An upgrade of Thunderbolt never changes it. Moving PostgreSQL to a new major version is a separate migration you perform yourself.
 
@@ -249,15 +226,10 @@ curl -s -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health
 
 Then do the end-to-end check by hand, because the probes do not cover it:
 
-1. Sign in from a private browser window, which exercises the identity provider and the session path.
-2. Send a message and get a reply, which exercises the API and your model provider.
-3. Open a second window and confirm the same conversation appears, which exercises sync.
+1. Sign in from a private browser window. This exercises the identity provider and the session path.
+2. Send a message and get a reply, which covers the API and your model provider.
+3. Open a second window and confirm the same conversation appears there. That is the sync path.
 
 ## What is not automated
 
-- Nothing tells you a new version exists.
-- Nothing checks that your images, chart and configuration are all at the same version.
-- Migrations only go forward. There is no automated schema rollback.
-- Nothing backs up your database before an upgrade.
-- New configuration settings are not reported to you. Compare against the example configuration after each upgrade.
-- The bundled Keycloak's state is not preserved across a container replacement.
+Nothing tells you a new version exists, and nothing checks that your images, chart and configuration are all at the same version. No backup of your database is taken before an upgrade, and since migrations only go forward there is no automated schema rollback. New configuration settings are not reported to you either, so compare your configuration against the example configuration after each upgrade. The bundled Keycloak's state is not preserved across a container replacement.

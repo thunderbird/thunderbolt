@@ -1,8 +1,8 @@
 # Backup and Restore
 
-Thunderbolt ships no backup scheduler, no snapshot job, and no built-in restore command. Backing up is your job, and the whole of it is one PostgreSQL database plus the secrets in your configuration.
+Thunderbolt ships no backup scheduler, no snapshot job, and no built-in restore command. Backing up is your job, and what there is to back up is one PostgreSQL database plus the secrets in your configuration.
 
-A meaningful part of each user's data never reaches the server, by design: read [what a backup cannot recover](#what-a-server-backup-does-not-recover) before you rely on any of this.
+A meaningful part of each user's data is deliberately kept off the server. Read [what a backup cannot recover](#what-a-server-backup-does-not-recover) before you rely on any of this.
 
 ## What to back up
 
@@ -30,9 +30,9 @@ Restore into the same version of Thunderbolt or a newer one. The API applies any
 | Personal access tokens       | Only if you issue them: the tokens used for command-line and programmatic access.                                                             |
 | Token usage and cost records | Only when the server supplies model access: what each user spent, for the per-user spending caps.                                             |
 
-Data reaches the database only for users who turn sync on. With sync off, a user's content stays on their device and a server backup contains nothing of theirs but their account.
+Data reaches the database only for users who turn sync on. With sync off, a server backup contains their account and nothing else of theirs.
 
-Back up the **whole** database, not selected tables. Encrypted content, the per-device key copies that open it, and device trust are three parts of one state; restoring them from different points leaves accounts that cannot read their own data.
+Back up the whole database, not selected tables. Encrypted content, the per-device key copies that open it, and device trust are one state; restoring them from different points leaves accounts that cannot read their own data.
 
 ## What a server backup does NOT recover
 
@@ -78,7 +78,7 @@ kubectl exec -n thunderbolt postgres-0 -- \
 
 Adjust the user and database name if you changed `postgres.credentials` in your Helm values.
 
-The database lives on a PersistentVolumeClaim named `pg-data-postgres-0`. Volume snapshots of that claim are a reasonable second layer, but they are not a substitute for a dump you have verified. Note that `helm uninstall` leaves the claim in place, while deleting the namespace destroys it.
+The database lives on a PersistentVolumeClaim named `pg-data-postgres-0`. Volume snapshots of that claim are a reasonable second layer, but not a substitute for a dump you have verified. `helm uninstall` leaves the claim in place; deleting the namespace destroys it.
 
 ### Managed PostgreSQL
 
@@ -86,7 +86,7 @@ If you pointed `DATABASE_URL` at a managed service, use that service's own backu
 
 ### The embedded database
 
-If you set `DATABASE_DRIVER=pglite`, there is no PostgreSQL server and `DATABASE_URL` is a directory on disk. Back up that directory with the API stopped. If `DATABASE_URL` is unset or still holds a connection string, PGlite runs in memory and there is nothing on disk to back up. This mode is for evaluation only: sync does not work under it, so nothing syncs to or from user devices in the first place.
+If you set `DATABASE_DRIVER=pglite`, there is no PostgreSQL server and `DATABASE_URL` is a directory on disk. Back up that directory with the API stopped. If `DATABASE_URL` is unset or still holds a connection string, PGlite runs in memory and there is nothing on disk to back up. The mode is for evaluation only, and sync does not work under it.
 
 ## Restore
 
@@ -113,9 +113,9 @@ kubectl exec -i -n thunderbolt postgres-0 -- \
 kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=<your replica count>
 ```
 
-Stopping the API and the sync service first matters. The sync service streams changes out of the database continuously, and restoring underneath it produces a mix of old and new rows on user devices.
+Both the API and the sync service stop before the restore because the sync service streams changes out of the database continuously, and restoring underneath it produces a mix of old and new rows on user devices.
 
-`pg_restore` prints warnings for objects it cannot drop. Those are expected on a database that was created empty and are not a failed restore.
+`pg_restore` prints warnings for objects it cannot drop. Those are expected on a database that was created empty and do not mean the restore failed.
 
 ### After a restore
 
@@ -137,11 +137,11 @@ The sync service reads the application database again from the beginning and eve
 
 ## Rolling back to an older backup is destructive
 
-Devices are kept in step with the server. Rolling back to an earlier backup rolls those devices back too: content created after the backup was taken can disappear from them when they reconnect.
+Devices are kept in step with the server, so rolling back to an earlier backup rolls those devices back too: content created after the backup was taken can disappear from them when they reconnect. Devices that still hold newer data do not push it back up on their own. To recover it, have the user export their data from that device before it reconnects, then import it afterwards.
 
-Devices that still hold newer data do not push it back up on their own. To recover it, have the user export their data from that device before it reconnects, then import it afterwards.
+Device trust rolls back with everything else. A device revoked after the backup was taken comes back trusted, with its copy of the encryption key, and has to be revoked again.
 
-Device trust rolls back with everything else: a device revoked after the backup was taken comes back trusted, with its copy of the encryption key, and has to be revoked again. Where the server supplies model access, the per-user spending caps are sums over the usage records, so a rollback discards recent spend and hands every user their allowance back.
+Where the server supplies model access, the per-user spending caps are sums over the usage records, so a rollback discards recent spend and hands every user their allowance back.
 
 ## End-to-end encryption and restores
 
@@ -154,29 +154,21 @@ End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it i
 | Every device lost, recovery key kept         | The user enters the 24-word recovery key and reads their restored data.                                             |
 | Every device lost, recovery key lost         | The data is unrecoverable. You hold ciphertext and nothing that opens it.                                           |
 
-There is no administrative override and no key escrow. Neither you nor Thunderbolt can decrypt an account whose keys are gone, which is the point of the feature. Make sure users understand that the recovery key is shown once and is the only backup of their own.
+There is no administrative override and no key escrow: neither you nor Thunderbolt can decrypt an account whose keys are gone. Make sure users understand that the recovery key is shown once and is the only backup of their own.
 
 ## The identity provider
 
 Thunderbolt accounts reference identities in your identity provider, so its backups belong beside the database ones. If it reissues different identifiers for the same people, they arrive as new, empty accounts.
 
-**The bundled Keycloak keeps nothing.** It runs in development mode with its database inside the container and re-imports its realm every time it starts. Any user you create in its admin console, and any change you make there, is gone as soon as its container or pod is replaced. It exists so sign-in works on first boot, not to hold real accounts.
+The bundled Keycloak keeps nothing. It runs in development mode with its database inside the container and re-imports its realm every time it starts, so any user you create in its admin console, and any change you make there, is gone as soon as its container or pod is replaced. It exists so that sign-in works on first boot.
 
 For anything beyond an evaluation, point Thunderbolt at your own identity provider, or give Keycloak an external database of its own and back that up.
 
 ## What users can back up themselves
 
-The only way to capture what never reaches the server is from the device that holds it. Under **Settings → Preferences → Data**:
+The only way to capture what never reaches the server is from the device that holds it. Under **Settings → Preferences → Data**, **Export My Data** writes out chats and messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration, and the provider keys and tool server credentials the user typed. **Import Data** reads such an export back in; anything in the file that shares an ID with existing data replaces it.
 
-| Action             | What it covers                                                                                                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Export My Data** | Chats and messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration, and the provider keys and tool server credentials the user typed. |
-| **Import Data**    | Reads an export back in. Anything in the file that shares an ID with existing data replaces it.                                                                               |
-
-Tell users two things about the export file:
-
-- **It is plaintext JSON**, including their API keys. It should be treated like a password and stored accordingly.
-- **It does not include attached files**, their encryption keys, or their Google and Microsoft connections. With end-to-end encryption on, importing on a new device still requires approving that device first.
+Tell users that the export is plaintext JSON, including their API keys, and should be treated like a password and stored accordingly. It leaves out attached files, their encryption keys, and their Google and Microsoft connections. With end-to-end encryption on, importing on a new device still requires approving that device first.
 
 Importing on a device with sync on pushes the restored content to the user's other devices as well, so an old export can overwrite newer content everywhere. The API keys and tool server tokens in the file are the exception: they never leave the device that imported them. The app warns about this before it writes anything, and it warns again if the file was exported by a different account.
 

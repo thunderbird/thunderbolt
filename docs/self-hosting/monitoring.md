@@ -1,34 +1,30 @@
 # Monitoring
 
-Thunderbolt exposes one public liveness endpoint for load balancers and four token-protected probes that test each dependency for real. It writes logs to standard output and can send traces to any OpenTelemetry collector. It does not ship a metrics endpoint, a dashboard, or an alerting system, so you point your own tooling at the endpoints below.
+Thunderbolt exposes one public liveness endpoint for load balancers and four token-protected probes that test each dependency for real. It writes logs to standard output and can send traces to any OpenTelemetry collector. There is no metrics endpoint and no dashboard, and nothing polls those endpoints or raises an alert on its own, so you point your own tooling at them.
 
-## The short version
+## Where to start
 
-| Do this                                                            | Why                                                                       |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| Point your load balancer at `/v1/health`                           | Restarts a wedged API process. No token needed.                           |
-| Set `MONITORING_TOKEN` and poll `/v1/health/database` every minute | The most common real outage is the database, not the API.                 |
-| Poll `/v1/health/powersync` every minute                           | Sync failing is invisible to users until they open a second device.       |
-| Poll `/v1/health/email` every 15 minutes                           | A broken sending domain locks everyone out of email sign-in.              |
-| Ship container logs somewhere durable                              | Nothing is written to disk. When a container restarts, its logs are gone. |
+Point your load balancer at `/v1/health`. It needs no token, and it gives the balancer a way to restart a wedged API process. Then set `MONITORING_TOKEN` and poll the deep probes: `/v1/health/database` and `/v1/health/powersync` every minute, `/v1/health/email` every 15 minutes. The most common real outage is the database, not the API. Sync failing is invisible to users until they open a second device, and a broken sending domain locks everyone out of email sign-in.
+
+Ship the container logs somewhere durable too. Nothing is written to disk, so a restarted container takes its logs with it.
 
 ## Health endpoints
 
 | Endpoint                   | Auth             | What it proves                                                                                        |
 | -------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`           | none             | The API process is accepting requests. Nothing else.                                                  |
+| `GET /v1/health`           | none             | The API process is accepting requests.                                                                |
 | `GET /v1/health/database`  | monitoring token | A query reached PostgreSQL and came back. 5 second deadline.                                          |
 | `GET /v1/health/powersync` | monitoring token | The sync service answered its own liveness probe. 5 seconds.                                          |
 | `GET /v1/health/email`     | monitoring token | The email provider accepted the key and the sending domain is verified. 10 seconds. No email is sent. |
 | `GET /v1/health/models`    | monitoring token | Every model your server supplies a key for answered a real request.                                   |
 
-`GET /v1/health` returns `{"status":"ok"}` and touches no dependency. A green response means the process is alive, not that anyone can sign in or send a message.
+`GET /v1/health` returns `{"status":"ok"}` and touches no dependency, so a green response tells you the process is alive and nothing about whether anyone can sign in or send a message.
 
 All health endpoints are exempt from the minimum app version gate, so they keep answering after you set `MIN_APP_VERSION`.
 
 ## Load balancer and orchestrator probes
 
-The supported deployments already wire these up:
+Each supported deployment already wires these up.
 
 | Deployment     | API service                                                         | App                | Sync service                 |
 | -------------- | ------------------------------------------------------------------- | ------------------ | ---------------------------- |
@@ -40,7 +36,7 @@ If you put your own proxy in front, give the API service at least 30 seconds of 
 
 ## Deep health checks
 
-Set a token and the four probes turn on:
+The four probes stay off until a monitoring token is set.
 
 ```bash
 MONITORING_TOKEN=$(openssl rand -hex 32)
@@ -77,7 +73,7 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 ### The models probe
 
-`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. It is the only probe that costs money, and it is the only way to tell "the model list looks fine" apart from "the model list is fine".
+`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. It is the only probe that costs money, so poll it no more than a few times an hour; every 15 minutes is a reasonable ceiling.
 
 ```json
 { "status": "failed", "failures": [{ "model": "glm-5-3", "reason": "no-text" }] }
@@ -93,23 +89,21 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 Failure entries never contain the upstream response body or your credentials.
 
-**Do not alert on this endpoint unless your server holds keys for the preconfigured models.** Without `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`, every entry fails as `not-configured` and the endpoint is permanently red, which is correct but useless as a signal. Models your users add themselves are not covered either: the probe only exercises the ones your deployment is configured to serve.
-
-Poll it no more than a few times an hour; every 15 minutes is a reasonable ceiling.
+**Do not alert on this endpoint unless your server holds keys for the preconfigured models.** Without `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`, every entry fails as `not-configured` and the endpoint stays red however healthy the deployment is. It also exercises only the models your deployment is configured to serve; models your users add themselves are not covered.
 
 ## What to alert on
 
-| Signal                                       | Severity                                | Reasoning                                                                                                                                                                       |
-| -------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/v1/health` failing for 1 minute            | page                                    | The API is down. Everything else follows.                                                                                                                                       |
-| `/v1/health/database` failing for 2 minutes  | page                                    | Sign-in, sync and settings all stop.                                                                                                                                            |
-| `/v1/health/powersync` failing for 5 minutes | page                                    | Chat still works on the device in front of the user, but nothing reaches their other devices and nothing is backed up. Users will not notice, which is what makes it dangerous. |
-| `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed sign-in codes are the only way in under `AUTH_MODE=consumer`. Single sign-on deployments do not use them.                                                               |
-| `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                                                           |
-| API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                                                                 |
-| A sustained rise in `429` responses          | ticket                                  | Rate limits are fixed and not configurable. A steady stream means a client is misbehaving or your team has outgrown the limits.                                                 |
-| A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                                                        |
-| `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                                                               |
+| Signal                                       | Severity                                | Reasoning                                                                                                                                     |
+| -------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/health` failing for 1 minute            | page                                    | The API is down. Everything else follows.                                                                                                     |
+| `/v1/health/database` failing for 2 minutes  | page                                    | Sign-in, sync and settings all stop.                                                                                                          |
+| `/v1/health/powersync` failing for 5 minutes | page                                    | Chat still works on the device in front of the user, but nothing reaches their other devices and nothing is backed up. Users will not notice. |
+| `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed sign-in codes are the only way in under `AUTH_MODE=consumer`. Single sign-on deployments do not use them.                             |
+| `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                         |
+| API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                               |
+| A sustained rise in `429` responses          | ticket                                  | Rate limits are not configurable. A steady stream means a client is misbehaving or your team has outgrown the limits.                         |
+| A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                      |
+| `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                             |
 
 ## Logs
 
@@ -135,13 +129,11 @@ Requests to `/v1/health` and to static assets are not access-logged, so load bal
 
 ### What is never in a log
 
-- Message content, prompts and model responses. Calls to AI providers are recorded by hostname only.
-- Provider API keys, session cookies and bearer tokens.
-- The contents of any file a user attaches.
+Message content, prompts and model responses never reach a log; calls to AI providers are recorded by hostname only. Provider API keys, session cookies and bearer tokens are never logged either, and neither are the contents of any file a user attaches.
 
-One exception, and it is not a production one: if no email service is configured and the server is not running in production mode, sign-in codes and sign-in links are written to the log instead of being emailed. That is the intended local evaluation setup. Configure an email service before real users reach the deployment.
+There is one exception. If no email service is configured and the server is not running in production mode, sign-in codes and sign-in links are written to the log instead of being emailed. That is the intended local evaluation setup; configure an email service before real users reach the deployment.
 
-### Startup lines worth reading
+### Startup lines
 
 The API prints its configuration decisions when it starts. Two are easy to miss:
 
@@ -161,15 +153,14 @@ Leave `OTEL_EXPORTER_OTLP_ENDPOINT` unset and tracing is off entirely, with noth
 
 ## Not provided
 
-- **No Prometheus metrics endpoint.** There is no `/metrics`. Build dashboards from your platform's container metrics and from traces.
-- **No built-in alerting.** The endpoints are there; the polling, thresholds and paging are yours.
-- **No uptime history.** Health endpoints report the present moment and store nothing.
-- **No per-user or per-conversation telemetry on the server.** Conversations live on the user's devices, so there is no server-side view of who sent what.
-- **No aggregate usage dashboard.** Spend on the preconfigured models is recorded per request, but nothing renders it for an administrator.
-- **No backup verification.** Monitoring that your PostgreSQL backups exist and restore is your responsibility, and it is the one that matters most: it holds every account and the synced copy of every conversation.
+Thunderbolt exposes no Prometheus metrics and no `/metrics` endpoint, so dashboards have to come from your platform's container metrics and from traces. Alerting is not built in either: the endpoints are there, and the polling, thresholds and paging are yours. Health endpoints report the present moment and store nothing, so nothing on the server holds uptime history.
+
+The server keeps no view of usage. Conversations live on the user's devices, so there is no per-user or per-conversation telemetry to collect server-side, and although spend on the preconfigured models is recorded per request, nothing renders it for an administrator.
+
+Nothing verifies your backups. Monitoring that your PostgreSQL backups exist and restore is your responsibility, and those backups hold every account and the synced copy of every conversation.
 
 ## Related
 
 - [Configuration](./configuration.md) for every setting named on this page.
-- [Backup and restore](./backup-and-restore.md) for the one thing monitoring cannot replace.
+- [Backup and restore](./backup-and-restore.md) for verifying the backups themselves.
 - [Kubernetes](./kubernetes.md) and [AWS with Pulumi](./pulumi.md) for the probe settings each deployment ships with.

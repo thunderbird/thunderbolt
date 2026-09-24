@@ -15,20 +15,17 @@ the end.
 
 ## What syncs and what does not
 
-| Follows you to every device                                   | Stays on the one device                               |
-| ------------------------------------------------------------- | ----------------------------------------------------- |
-| Models, skills, agents, projects, chats, and most preferences | API keys and tokens of every kind                     |
-|                                                               | MCP servers (the server entry, not just its secret)   |
-|                                                               | Google and Microsoft authorizations                   |
-|                                                               | Theme, haptics, link-opening behaviour, speech engine |
-|                                                               | Cloud proxy, and whether this device syncs at all     |
+Models, skills, agents, projects, chats and most preferences follow you to every device. Add a model
+on your laptop and it appears on your phone, though you will be asked for the key again there: no
+credential of any kind is ever synced.
 
-A credential is never synced. Add a model on your laptop and it appears on your phone, but you will
-be asked for the key again there. MCP servers do not sync at all, because a server entry without
-its credential cannot connect.
+The rest stays on the device where you set it. That covers API keys and tokens, the MCP servers you
+add, your Google and Microsoft authorizations, the theme, haptics, link-opening behaviour and speech
+engine, the cloud proxy, and whether this device syncs at all. MCP servers are device-local in full,
+the server entry as well as its secret, because an entry without its credential cannot connect.
 
-The one way to carry device-local items to another device is the export under **Preferences → Data**,
-which includes them. See [Apps and sync](using/apps-and-sync.md).
+Those device-local items reach a second device only through the export under
+**Preferences → Data**, which includes them. See [Apps and sync](using/apps-and-sync.md).
 
 ## Models
 
@@ -49,21 +46,20 @@ install. Leave the key blank if the endpoint does not need one.
 ### Adding a model
 
 Where the provider publishes a catalog, the model list fills itself in. OpenAI, Anthropic and
-OpenRouter need a valid key before their catalog loads; you can always type the model identifier by
-hand instead.
-
-Every provider except the managed Thunderbolt models must pass **Test Connection** before the model
-can be saved. Editing a saved model shows the key as dots; leave it untouched to keep it.
+OpenRouter need a valid key before their catalog loads, and you can always type the model identifier
+by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
+before the model can be saved. Editing a saved model shows the key as dots; leave it untouched to
+keep it.
 
 ### Models your deployment provides
 
-If the operator configured managed inference, some models arrive already working and cannot be
-misconfigured by a user: no key, no URL, no connection test.
+If the operator configured managed inference, some models arrive already working, with no key, no
+URL and no connection test for a user to get wrong.
 
 Managed usage is metered per account against two rolling spending allowances, one over five hours
-and one over seven days, with a much smaller allowance for anonymous sessions than for signed-in
-accounts. A managed model is refused once an allowance is used up, and the app says so. Operators
-set the four limits; see [Configuration](self-hosting/configuration.md) and
+and one over seven days, and an anonymous session gets a much smaller allowance than a signed-in
+account. Once an allowance is used up the app refuses the managed model and says so. Operators set
+the four limits; see [Configuration](self-hosting/configuration.md) and
 [Serving models](self-hosting/models.md). Models reached with a user's own key are never metered by
 Thunderbolt.
 
@@ -73,10 +69,10 @@ direction. A chat started on a confidential model stays on confidential models.
 
 ### Editing the built-in models
 
-The models Thunderbolt ships with are ordinary rows you can rename, re-point or delete. An edit
-sticks: later app updates change only the models you have not touched. Two properties are the
-exception and never change on an existing model, whether you edit them or an update does: whether
-the model is confidential, and which provider routes it.
+The models Thunderbolt ships with are ordinary rows you can rename, re-point or delete, and your
+edit persists: later app updates change only the models you have not touched. Two properties never
+change on an existing model, whether you edit them or an update does: whether the model is
+confidential, and which provider routes it.
 
 ## Agents
 
@@ -85,13 +81,10 @@ point a chat at an external agent instead, over the open [Agent Client
 Protocol](https://agentclientprotocol.com), a published standard for connecting a chat client to an
 agent that someone else runs.
 
-Three kinds exist:
-
-| Kind                | Where it comes from                                                         |
-| ------------------- | --------------------------------------------------------------------------- |
-| Built-in            | Thunderbolt's own assistant. Always present unless the operator disables it |
-| Deployment-provided | Served by your backend, appears automatically, nothing to configure         |
-| Custom              | One you add yourself in **Settings → Agents**                               |
+Three kinds of agent can appear in the list. Thunderbolt's built-in assistant is always there unless
+the operator disables it. Alongside it you may find agents your backend serves, which appear
+automatically with nothing to configure, and any custom agent you added yourself in
+**Settings → Agents**.
 
 To add one, give it a name and either a WebSocket URL (`wss://…`) or a peer-to-peer connection
 ticket, plus an optional description. A ticket is a long code the agent prints when it starts; it
@@ -101,10 +94,10 @@ identifies the agent directly, so no URL, hostname or open inbound port is invol
 An external agent brings its own commands, which appear in the chat `/` menu alongside your skills.
 
 **Reaching an agent on your own machine.** The web app cannot connect to `localhost` or a private
-network address: browser rules force that traffic through the cloud proxy (the relay in your
-Thunderbolt backend, described under [Preferences](#preferences)), and the relay refuses private
-targets. The desktop switch for the proxy does not lift this either, for the reason given under
-[Network](#preferences), so use the peer-to-peer ticket instead of a URL.
+network address. Browser rules force that traffic through the cloud proxy in your Thunderbolt
+backend, and the relay refuses private targets; the desktop switch for the proxy does not lift the
+restriction either, for the reason given under [Preferences](#preferences). Use the peer-to-peer
+ticket instead of a URL.
 
 More detail, including what each failure message means: [Connections](using/connections.md).
 
@@ -122,51 +115,43 @@ Create one in **Settings → Skills** with four fields:
 | Description  | The only thing the model reads when deciding whether to load the skill. Be specific |
 | Instructions | The body the model receives once the skill is loaded                                |
 
-A slug is lowercase letters, digits and hyphens, up to 64 characters, with no hyphen at either end
+Slugs are lowercase letters, digits and hyphens, up to 64 characters, with no hyphen at either end
 and none doubled.
 
-The description does the work. The model sees one line per enabled skill and fetches the body only
-when it decides the skill applies, so a vague description means the skill is never used and a
-precise one costs nothing until it matters.
+The model sees one line per enabled skill and fetches the body only when it decides that skill
+applies. A vague description means the skill is never used.
 
-Skills can be enabled, disabled, and pinned as chips above the composer. Up to ten can be pinned.
-A handful of built-in skills define how Thunderbolt renders things like weather and maps in a reply:
-those can be switched off but not edited or deleted, and once unpinned cannot be pinned again.
-
-Skills sync across your devices. Edits to a built-in skill are preserved when Thunderbolt updates
-its own copies. Worked examples: [Skills](using/skills.md).
+Skills can be enabled, disabled, and pinned as chips above the composer, up to ten of them. A
+handful of built-in skills define how Thunderbolt renders things like weather and maps in a reply:
+those can be switched off but not edited or deleted, and once unpinned cannot be pinned again. Your
+edits to a built-in skill are preserved when Thunderbolt updates its own copies. Worked examples:
+[Skills](using/skills.md).
 
 ## Connections
 
 **Settings → Connections** holds two different things.
 
-**Integrations** are ready-made connections Thunderbolt supplies.
-
-| Integration | What it gives the assistant                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Thunderbolt | Web search, fetching a page, and weather. Requires Thunderbolt Pro. Without Pro the row offers Get Pro and the assistant gets none of these tools; with Pro you can switch it off here |
-| Google      | Gmail (read, search, draft) and Google Calendar, after you authorize the account                                                                                                       |
-| Microsoft   | Outlook mail and OneDrive files, after you authorize the account                                                                                                                       |
+**Integrations** are ready-made connections Thunderbolt supplies. The Thunderbolt one gives the
+assistant web search, page fetching and weather, and requires Thunderbolt Pro: without Pro the row
+offers Get Pro and the assistant gets none of those tools, and with Pro you can switch the
+integration off here. Google covers Gmail (read, search, draft) and Google Calendar; Microsoft
+covers Outlook mail and OneDrive files. Both need you to authorize the account first.
 
 Authorizing is per device, and so is switching an integration off.
 
 **MCP servers** are yours to add. [Model Context Protocol](https://modelcontextprotocol.io) is an
 open standard for exposing tools to an AI client, so an MCP server is a tool server: it publishes a
-list of things the model can do, such as searching a wiki or filing a ticket. Every enabled
-server's tools are merged into the model's toolset on each message. Thunderbolt is a client only:
-it consumes servers, it does not publish one.
+list of things the model can do, such as searching a wiki or filing a ticket. Every enabled server's
+tools are merged into the model's toolset on each message. Thunderbolt is a client only and does not
+publish a server of its own.
 
 ### Adding an MCP server
 
 Give it a name, the server URL, and a credential if it needs one. The name prefixes every tool the
-server provides, and the server cannot be saved until a connection test passes. For the credential,
-Thunderbolt will:
-
-- use a token or API key you supply, if you supply one;
-- otherwise attempt OAuth, offering **Add & Authorize** when the server supports it;
-- tell you to supply a token when the server wants OAuth but cannot issue a client automatically.
-
-Servers that need re-authorization later say so on their card.
+server provides, and the server cannot be saved until a connection test passes. Thunderbolt uses a
+token or API key when you supply one and otherwise attempts OAuth, offering **Add & Authorize**
+where the server supports it. When a server wants OAuth but cannot issue a client automatically, the
+app tells you to supply a token. Servers that need re-authorization later say so on their card.
 
 **Bulk import.** The **Advanced (JSON)** tab accepts the same `mcpServers` shape other MCP clients
 use:
@@ -184,33 +169,32 @@ use:
 
 `"type": "sse"` selects the legacy SSE transport for servers that only speak it.
 
-### MCP limitations worth knowing before you plan
+### MCP limitations
 
-- **Servers that run as a local process are not supported.** Entries with a `command` and `args`
-  are rejected on import. Run such a server behind the Thunderbolt command-line bridge and connect
-  to it peer-to-peer.
-- **`https` is required** for any public host. Plain `http` is accepted only for `localhost` and
-  private network addresses, which no released build can reach, and nothing warns you at save time.
-- **Servers and their credentials are device-local.** Adding a server on one machine does not add it
-  anywhere else. They are included in a data export, and restoring that export on another device
-  brings them across.
+- Servers that run as a local process are not supported. Entries with a `command` and `args` are
+  rejected on import. Run such a server behind the Thunderbolt command-line bridge and connect to it
+  peer-to-peer.
+- `https` is required for any public host. Plain `http` is accepted only for `localhost` and private
+  network addresses, which no released build can reach, and nothing warns you at save time.
+- Servers and their credentials are device-local. Adding a server on one machine does not add it
+  anywhere else, though a data export carries them across on restore.
 - Deleting a server deletes its stored credential with it.
 
 ## Projects
 
 A project is a workspace with durable instructions that every chat inside it inherits, plus a tool
 that lets the model search the project's other conversations. Chats stay isolated otherwise: one
-never sees another's transcript unless the model goes looking.
+never sees another's transcript unless the model goes looking. There is no project file or document
+set.
 
-Cross-chat search is keyword matching, not meaning-based. A question phrased differently from the
-original conversation can miss, so retry with the words you actually used.
-
-There is no project file or document set. See [Projects](using/projects.md).
+Cross-chat search is keyword matching rather than meaning-based, so a question phrased differently
+from the original conversation can miss. Retry with the words you actually used. See
+[Projects](using/projects.md).
 
 ## Voice
 
-Voice mode uses Thunderbolt's hosted speech engine, which runs transcription and read-aloud inside
-the same kind of verified enclave as a confidential model. Nothing needs configuring.
+Voice mode needs no configuration. It uses Thunderbolt's hosted speech engine, which runs
+transcription and read-aloud inside the same kind of verified enclave as a confidential model.
 
 Turning on **Custom voice provider** under Preferences adds a **Voice** settings page, where you can
 point transcription and read-aloud at any OpenAI-compatible speech endpoint instead: a base URL

@@ -1,6 +1,6 @@
 # Models
 
-A Thunderbolt deployment does not ship with a model. You decide where the answers come from: keys you set on the server, keys each user adds in the app, or a model server of your own.
+A Thunderbolt deployment does not ship with a model. Either you set provider keys on the server and pay for the inference yourself, or each user adds their own key in the app. The second route also covers a model server of your own, which may not need a key at all.
 
 ## Two ways to provide models
 
@@ -14,11 +14,11 @@ A Thunderbolt deployment does not ship with a model. You decide where the answer
 
 The two can coexist. Users pick per chat from whatever is available to them.
 
-## The default: no server keys
+## When no server keys are set
 
-With no provider keys configured, the deployment is bring-your-own-key only.
+Neither provider key is set by default, so a deployment is bring-your-own-key only until you set one.
 
-Three deployment-provided models are listed in the app regardless of what you configure, because the list ships with the release. Without the matching server key they appear selectable and fail when a message is sent. There is no setting that hides them, though each user can disable or delete a model in **Settings → Models**. If you do not intend to fund server-side inference, tell your users to add their own key.
+Three deployment-provided models are listed in the app regardless of what you configure, because the list ships with the release. Without the matching server key they appear selectable and fail when a message is sent. No setting hides them, though each user can disable or delete a model in **Settings → Models**. If you do not intend to fund server-side inference, tell your users to add their own key.
 
 ## Deployment-provided models
 
@@ -30,7 +30,7 @@ Set these on the API service and restart.
 | `TINFOIL_API_KEY`     | none                              | GLM 5.3 Flash and GLM 5.3, the confidential models |
 | `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | The enclave endpoint. Keep the `/v1` suffix        |
 
-The models these keys unlock:
+Those keys cover three models. The catalog is fixed by the release you are running.
 
 | Model         | Tier         | Context window   | Notes                                                                                                                                          |
 | ------------- | ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -38,7 +38,7 @@ The models these keys unlock:
 | GLM 5.3       | Confidential | 131,072 tokens   | Stronger and slower. Text only, image attachments are dropped before sending                                                                   |
 | Opus 5        | Standard     | 1,000,000 tokens | Anthropic's top reasoning model, and the only one of the three where your server sees the full request and response. Accepts image attachments |
 
-The catalog is fixed by the release you are running. Adding a fourth deployment-provided model is a change to the software, not a configuration change. You can still expose any other model to users through their own keys or a custom endpoint.
+Adding a fourth deployment-provided model is a change to the software, not a configuration change. You can still expose any other model to users through their own keys or a custom endpoint.
 
 ### Spend limits
 
@@ -53,11 +53,11 @@ Every deployment-provided request is priced and checked against two rolling wind
 
 Anonymous sessions get far less because they cost an attacker nothing to create.
 
-- Windows roll continuously. There is no monthly reset and no top-up.
-- A user over the limit sees "AI usage limit reached" with the window named, and can keep using their own keys and any custom endpoint.
-- The per-token prices used for this accounting are seeded into your database when you run the release's migrations. They approximate provider list prices and are not an invoice. Read your provider's own billing for what you actually owe.
-- Confidential usage is counted from a receipt the client posts back after it decrypts the response, because your server never sees those token counts. A client that closes mid-answer leaves that spend uncounted, so confidential totals can run low. Your server signs the account, the model and the price, so a client can only under-report its own usage.
-- Bring-your-own-key and custom-endpoint traffic is never counted.
+Windows roll continuously, with no monthly reset and no top-up. A user over the limit sees "AI usage limit reached" with the window named, and can keep using their own keys and any custom endpoint. The per-token prices used for this accounting are seeded into your database when you run the release's migrations. They approximate provider list prices and are not an invoice, so read your provider's own billing for what you actually owe.
+
+Confidential usage is counted from a receipt the client posts back after it decrypts the response, because your server never sees those token counts. A client that closes mid-answer leaves that spend uncounted, so confidential totals can run low. Your server signs the account, the model and the price, so a client can only under-report its own usage.
+
+Bring-your-own-key and custom-endpoint traffic is never counted.
 
 ## Confidential inference
 
@@ -65,19 +65,15 @@ The confidential models run inside a hardware enclave: an isolated, memory-encry
 
 In the app these models carry a **Private** badge, and a chat that uses one is called a private chat.
 
-| What the enclave path protects                                                            | What it does not                                                                                      |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Message content, in both directions, from your server and from the operators of the relay | Who is talking to the model: your server records the account, the model name, token counts and timing |
-| Message content from the inference provider's own operators                               | The fact that the conversation happened                                                               |
+A chat started on a confidential model stays confidential. Standard models are greyed out inside it, and the reverse, so a conversation cannot silently change mode mid-thread. Users start a new chat to switch.
 
-Operational notes:
+Message content is what the enclave path protects, in both directions, from your server, from the operators of the relay, and from the inference provider's own operators. The metadata around it stays visible: your server records the account, the model name, token counts and timing, which reveals who is talking to the model and the fact that the conversation happened.
 
-- A chat started on a confidential model stays confidential. Standard models are greyed out inside it, and the reverse, so a conversation cannot silently change mode mid-thread. Users start a new chat to switch.
-- Voice input and speech output use the same protected path by default, so they need `TINFOIL_API_KEY` too. Without it the built-in voice engine returns an error. Voice requests are never counted against spend limits.
-- A personal access token cannot reach confidential models. Requests made with one are refused and the user is told to sign in through the app. Set `CONFIDENTIAL_API_KEYS_ENABLED=true` to allow it, only if you have reviewed what that means for your token issuance.
-- If the enclave cannot be verified, the message fails with an error saying so. There is no fallback to an unprotected path.
+Voice input and speech output use the same protected path by default, so they need `TINFOIL_API_KEY` too. Without it the built-in voice engine returns an error. Voice requests are never counted against spend limits.
 
-Without `TINFOIL_API_KEY`, confidential requests are refused with `503 Tinfoil provider not configured`. Without `ANTHROPIC_API_KEY`, the standard tier fails less cleanly, with a generic server error.
+A personal access token cannot reach confidential models. Requests made with one are refused and the user is told to sign in through the app. Set `CONFIDENTIAL_API_KEYS_ENABLED=true` to allow it, only if you have reviewed what that means for your token issuance.
+
+If the enclave cannot be verified, the message fails with an error saying so. There is no fallback to an unprotected path. Without `TINFOIL_API_KEY`, confidential requests are refused with `503 Tinfoil provider not configured`, while a missing `ANTHROPIC_API_KEY` makes the standard tier fail less cleanly, with a generic server error.
 
 ## Bring your own key
 
@@ -91,12 +87,11 @@ Users add models in **Settings → Models**.
 | Tinfoil    | Required | No           | Yes, no key needed to list         |
 | Custom     | Optional | Required     | Only if the endpoint publishes one |
 
-What happens to the key:
+The key is stored on the device it was typed on and is never synced to other devices, so a user who adds a model on a laptop will be asked for the key again on their phone. It never reaches your database and is not part of any configuration the server publishes.
 
-- It is stored on the device it was typed on and is never synced to other devices. A user adding a model on a laptop will be asked for the key again on their phone.
-- It never reaches your database and is not part of any configuration the server publishes.
-- Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
-- Desktop and mobile relay through your API service as well. The desktop app shows a **Settings → Preferences → Network → Use Cloud Proxy** switch, but the direct path it would select is behind a build flag that no released build enables, so plan for provider traffic leaving your server rather than user devices. The switch is greyed out in the browser, which has no alternative.
+Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
+
+Desktop and mobile relay through your API service as well. The desktop app shows a **Settings → Preferences → Network → Use Cloud Proxy** switch, but the direct path it would select is behind a build flag that no released build enables, so plan for provider traffic leaving your server rather than user devices. The switch is greyed out in the browser, which has no alternative.
 
 Adding a model requires a successful **Test Connection** first. The only exception is the deployment-provided models, which have nothing for the user to verify.
 
@@ -119,10 +114,7 @@ http://localhost:1234/v1    LM Studio
 
 Anything that is not on the user's own machine is dialled over HTTPS whether or not the user typed `https://`, so an HTTP-only endpoint on a public address will not work.
 
-Two limitations:
-
-- There is no server setting that points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach.
-- A LAN-only model server cannot be used from the web app at all. Put it behind HTTPS on a resolvable name, or have the team use the desktop app.
+No server setting points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach. A LAN-only model server cannot be used from the web app at all, so put it behind HTTPS on a resolvable name, or have the team use the desktop app.
 
 ## Verify
 

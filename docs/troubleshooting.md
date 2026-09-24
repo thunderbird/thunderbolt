@@ -1,16 +1,10 @@
 # Troubleshooting
 
-Start with the three checks below: most problems are visible in one of them.
-
 ## Check these first
 
-| Check                              | What it tells you                                                                                                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `curl https://your-host/v1/health` | The API is up. Returns `200` quickly and needs no credentials.                                                                                                    |
-| `curl https://your-host/v1/config` | What the apps see: whether encryption is on, which agents are offered, the minimum app version you enforce, and the model catalog you ship. Unauthenticated JSON. |
-| Server logs                        | Every startup failure names the setting that caused it.                                                                                                           |
+Three checks account for most problems. `curl https://your-host/v1/health` needs no credentials and returns `200` quickly when the API is up. `curl https://your-host/v1/config` is unauthenticated JSON showing what the apps see: whether encryption is on, which agents are offered, the minimum app version you enforce, and the model catalog you ship.
 
-Log commands per deployment:
+The server logs name the setting behind every startup failure. The command to follow them depends on the deployment:
 
 ```bash
 docker compose logs -f backend                    # Docker Compose
@@ -28,11 +22,11 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health/mo
 
 The email probe needs a second setting of its own, `RESEND_MONITORING_API_KEY`. It is separate from the key used to send mail because the probe asks the email provider which sending domains are verified, which the sending key is not entitled to do. Without it the probe reports `not-configured` even on a deployment that sends mail perfectly well.
 
-**Settings are read once, at startup.** After changing any environment variable, restart the server. Nothing picks up a change in place.
+Settings are read once, at startup, so restart the server after changing any environment variable.
 
 ## The deployment will not start
 
-The server validates every setting on boot and exits with the name of the offending variable rather than starting in a broken state.
+Every setting is validated on boot, and a value the server rejects stops startup with the name of the offending variable.
 
 | Message                                                                          | Fix                                                                      |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -43,7 +37,7 @@ The server validates every setting on boot and exits with the name of the offend
 | `MIN_APP_VERSION must be empty or a semver string`                               | Use three dot-separated numbers such as `0.2.0`, or clear it.            |
 | `debugTranscriptUpstreamUrl and debugTranscriptUpstreamKey must be set together` | Set both, or neither.                                                    |
 
-Some messages print the setting run together in mixed case rather than as the environment variable you set: `betterAuthSecret` is `BETTER_AUTH_SECRET`, `powersyncJwtSecret` is `POWERSYNC_JWT_SECRET`. Split it at each capital letter and upper-case the result.
+Some messages name the setting in mixed case instead of as the environment variable you set: `betterAuthSecret` is `BETTER_AUTH_SECRET`, `powersyncJwtSecret` is `POWERSYNC_JWT_SECRET`. Split it at each capital letter and upper-case the result.
 
 Single sign-on adds its own required sets, and a missing member of either one stops startup with a message naming all of them:
 
@@ -65,7 +59,7 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ### Emailed sign-in codes (consumer mode)
 
-**Start here: the waitlist gate.** An address with no existing account and no approved waitlist entry receives a "you're on the list" email instead of a sign-in code, regardless of `WAITLIST_ENABLED`. Set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains, or nobody new can sign in.
+Check the waitlist gate first. An address with no existing account and no approved waitlist entry receives a "you're on the list" email instead of a sign-in code, regardless of `WAITLIST_ENABLED`. Set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains, or nobody new can sign in.
 
 ```bash
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
@@ -83,7 +77,7 @@ WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 | Desktop app sign-in with Google or Microsoft fails           | The loopback redirect URIs are not registered                                                      | Register `http://localhost:17421`, `:17422`, and `:17423` with the provider                                                                                |
 | Anonymous use is rejected                                    | `AUTH_ALLOW_ANONYMOUS` is `false`, and the client build must agree                                 | Set it on the server and build the client with `VITE_AUTH_ENABLE_ANONYMOUS`                                                                                |
 
-### The app is broken rather than the sign-in
+### When the app itself is broken
 
 Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the local-database and isolation capabilities Thunderbolt depends on only to secure origins, so a plain-HTTP hostname produces a broken app rather than an insecure one.
 
@@ -118,7 +112,7 @@ Work down this list in order. Most reports are the first item.
 
 **1. Sync is off until each device turns it on.** Sign in (anonymous sessions cannot sync), then open **Settings → Preferences → Data** and switch on **Sync This Device With Cloud**. Do this on every device.
 
-**2. The server has no sync configured.** `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` must both be set. Without them the app works, on one device at a time.
+**2. The server has no sync configured.** `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` must both be set. Without them the app works on one device at a time.
 
 **3. The secret does not match.** The backend and the sync service must hold the same signing secret, and the same key identifier if you set `POWERSYNC_JWT_KID`. Generate it base64url: a value containing `+`, `/`, or `=` is rejected by the sync service.
 
@@ -139,7 +133,7 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 **6. With encryption on, the device is waiting for approval.** A new device registers as pending and shows an approval screen. Approve it from an already trusted device under **Settings → Devices**, or enter the 24-word recovery phrase. With every trusted device lost and no recovery phrase, the encrypted history cannot be recovered, by the user or by you. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot.
 
-Then confirm the service itself is alive with `/v1/health/powersync`.
+Once those are settled, confirm the sync service is alive with `/v1/health/powersync`.
 
 ### Syncing, but something is missing
 
@@ -175,13 +169,15 @@ A model that fails only for one user is almost always their own key or endpoint.
 curl -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health/models
 ```
 
-This sends one tiny completion to each model in the catalog and reports `not-configured`, `missing-price`, `timeout`, `upstream-error`, or `no-text` per model. It spends real money on every call, so poll it every 15 minutes at most, not every 15 seconds.
+This sends one tiny completion to each model in the catalog and reports `not-configured`, `missing-price`, `timeout`, `upstream-error`, or `no-text` per model. Every call spends real money, so poll it every 15 minutes at most.
 
-### A note on egress allowlists
+### Egress allowlists
 
 Two paths reach hosts you cannot list in advance. First, a user's own provider key, or a tool server they connect over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools): those calls are relayed through your server, because a browser cannot make them directly. Second, link previews, which fetch whatever page a user pasted. A strict outbound allowlist breaks both.
 
 ## Attachments fail
+
+Images and PDFs are compressed before the size check, so a large photo often fits after shrinking.
 
 | Symptom                                                          | Cause                                                                                                                   |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -193,7 +189,7 @@ Two paths reach hosts you cannot list in advance. First, a user's own provider k
 | The attachment is gone when the chat is opened on another device | Attachment contents never sync. Open the chat on the device that sent it                                                |
 | The attachment is missing from a data export                     | Exports carry the reference, not the file                                                                               |
 
-Images and PDFs are compressed before the size check, so a large photo often fits after shrinking. Attachment contents live in the browser's storage for the app origin, so clearing site data removes them from already-sent messages.
+Attachment contents live in the browser's storage for the app origin, which means clearing site data removes them from already-sent messages.
 
 ## Voice does not work
 

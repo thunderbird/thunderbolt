@@ -1,8 +1,6 @@
 # Search and the Command Palette
 
-One box finds everything in Thunderbolt: chats, messages, projects, skills, models, agents, connections and devices. It also runs commands, so you can jump to a settings page or start a new chat without touching the mouse.
-
-Search runs on the device against an index the app builds locally. No query is sent to a server, and it works offline.
+One box finds everything in Thunderbolt: chats, messages, projects, skills, models, agents, connections and devices. It also runs commands, so you can jump to a settings page or start a new chat without touching the mouse. Search runs on the device against an index the app builds locally. No query is sent to a server, and it works offline.
 
 ## Opening it
 
@@ -34,7 +32,7 @@ Anything put in the index is stored as plain readable text on the device, so som
 
 Deleted items drop out of results immediately.
 
-Each device builds its own index from the data it holds. A device only finds what has already synced to it, and the index itself is never uploaded or shared between devices.
+Each device builds its own index from the data it holds and only finds what has already synced to it. That index is never uploaded or shared between devices.
 
 ## Commands
 
@@ -57,26 +55,24 @@ Commands match on their name and on keywords, so `mcp` finds Connections, `llm` 
 | Connection            | Settings → Connections            |
 | Device                | Settings → Devices                |
 
-Built-in models that ship with Thunderbolt open the Models list rather than an editor, because they cannot be edited. Deleting an individual item is never offered from the palette. It stays on that item's own menu, next to the rest of that item's controls.
+Built-in models that ship with Thunderbolt cannot be edited, so they open the Models list instead of an editor. The palette never offers to delete an individual item; deletion stays on that item's own menu.
 
 ## Matching and languages
 
-- **Case and accent insensitive.** `parametres` finds "Paramètres", `gerate` finds "Geräte".
-- **Prefix matching.** `invo` finds "invoice" and "invoicing". It will not match the middle of a word.
-- **Every term must match.** Two words narrow the result set rather than widen it.
-- **Japanese, Chinese, Thai, Lao, Khmer and Burmese** are matched anywhere inside a word, at any length, including one and two character queries, because those scripts do not separate words with spaces.
+- **Case and accent insensitive:** `parametres` finds "Paramètres", `gerate` finds "Geräte".
+- **Prefix matching:** `invo` finds "invoice" and "invoicing", but not the middle of a word.
+- **Every term must match:** two words narrow the result set rather than widen it.
+- **Japanese, Chinese, Thai, Lao, Khmer and Burmese:** matched anywhere inside a word, at any length, including one and two character queries, because those scripts do not separate words with spaces.
 
 The index does not follow the app's display language. Your content can mix languages freely, and switching the interface language never changes or rebuilds search results.
 
 ## Keyword search, not semantic search
 
-Thunderbolt matches words, not meaning. There is no embedding model and no vector database anywhere in the product. A query phrased differently from the original text will miss, so retry with the words you would actually have typed at the time.
+The product contains no embedding model and no vector database, so a query phrased differently from the original text will miss. Retry with the words you would actually have typed at the time.
 
 ## Searching inside a project
 
-Inside a project, the assistant can search the other chats in that same project and quote excerpts back to you, so you can ask about something discussed in a sibling thread. It uses the same local index, skips the current chat because that history is already in front of the model, and returns at most eight excerpts per search.
-
-The same limitation applies: if the model reports finding nothing, the wording may simply differ from the original conversation. See [Projects](./projects.md).
+Inside a project, the assistant can search the other chats in that same project and quote excerpts back to you, so you can ask about something discussed in a sibling thread. It uses the same local index, skips the current chat because that history is already in front of the model, and returns at most eight excerpts per search. Keyword matching still applies here: if the model reports finding nothing, the wording may simply differ from the original conversation. See [Projects](./projects.md).
 
 ## Troubleshooting
 

@@ -1,17 +1,16 @@
 # Chat
 
-Chat is the main surface in Thunderbolt: pick a model, type a prompt, attach files, get an answer with sources.
+Chat is the main surface in Thunderbolt. You pick a model, type a prompt, attach files, and get back an answer with sources.
 
-Unsent text is kept per conversation, so switching chats and coming back does not lose a draft. A stopped reply is kept as far as it got; nothing is discarded. To quote part of an answer, select the text and click **Reply**, and the passage is added to the composer as a quote chip.
+Unsent text is kept per conversation, so switching chats and coming back does not lose a draft. A stopped reply is kept as far as it got. To quote part of an answer, select the text and click **Reply**, and the passage is added to the composer as a quote chip.
 
 ## Choosing a model
 
-The model picker lists every model configured under **Settings → Models**.
+The model picker lists every model configured under **Settings → Models**. Switching models applies to the conversation you are in and becomes the default for new chats.
 
-- Switching models applies to the conversation you are in and becomes the default for new chats.
-- A model whose provider key is not configured is shown as **API key not configured** and cannot be selected.
-- Some models are marked **Private**. These run in a hardware enclave the app verifies before sending, so the server relaying the request cannot read it. A chat started on one is locked to that mode: ordinary models are greyed out inside it, and private models are greyed out in an ordinary chat. Start a new chat to switch modes. See [Models and providers](../customize.md#models).
-- If the conversation is handed to an external agent rather than a built-in model, the picker is hidden: that agent chooses its own model.
+A model whose provider key is not configured is shown as **API key not configured** and cannot be selected. If an external agent is handling the conversation instead of a built-in model, the picker is hidden: that agent chooses its own model.
+
+Some models are marked **Private**. These run in a hardware enclave the app verifies before sending, so the server relaying the request cannot read it. A chat started on one is locked to that mode: ordinary models are greyed out inside it, and private models are greyed out in an ordinary chat. Start a new chat to switch modes. See [Models and providers](../customize.md#models).
 
 Models that show their working display a collapsible **Thought for …** block above the answer. The reasoning is part of the saved message.
 
@@ -27,7 +26,7 @@ Two built-in skills change how much the model looks things up on the web:
 | `/search`   | Current events, products, places    | Up to 12              |
 | `/research` | Exhaustive, multi-source deep dives | Up to 30              |
 
-The allowance is one pool per reply, shared between searches and pages read, and repeated lookups of the same query or page are not counted twice. When it runs out the model is told and finishes with what it has, rather than failing. Each new message starts with a fresh allowance.
+The allowance is one pool per reply, shared between searches and pages read, and repeated lookups of the same query or page are not counted twice. When it runs out, the model is told and finishes with what it has. Each new message starts with a fresh allowance.
 
 Skills are managed under **Settings → Skills**, where you can write your own. See [Skills](./skills.md).
 
@@ -44,12 +43,7 @@ Attach with the paperclip, by dragging onto the composer, or by pasting a file f
 | Images       | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`    |
 | Text         | `.md`, `.markdown`, `.txt`, `.csv`, `.json` |
 
-| Limit             | Value                                        |
-| ----------------- | -------------------------------------------- |
-| Files per message | 10                                           |
-| Size per file     | 25 MB, measured after Thunderbolt shrinks it |
-
-Large photos are downscaled before the size check, so a 30 MB phone picture usually attaches instead of being rejected. PDFs are re-saved losslessly. Animated GIFs are left untouched so the animation survives.
+A message carries up to 10 files, each up to 25 MB as measured after Thunderbolt shrinks it. Large photos are downscaled before that size check, so a 30 MB phone picture usually attaches. PDFs are re-saved losslessly, and animated GIFs are left untouched so the animation survives.
 
 Anything else, including `.doc`, `.xls`, `.pptx`, audio and video, is rejected at the composer with a message naming the file.
 
@@ -57,21 +51,21 @@ Anything else, including `.doc`, `.xls`, `.pptx`, audio and video, is rejected a
 
 **File contents never leave the device except inside the request that answers your message.** Thunderbolt stores them in the browser or app's local storage and sends them to the model provider, or the external agent, that answers the message. No copy is kept on the Thunderbolt server.
 
-Three consequences worth knowing before you rely on attachments:
+Three consequences follow:
 
-- **Attachments do not follow a conversation to your other devices.** The message and the filename sync; the file itself does not. On a second device the model is told a file was attached and that it is unavailable there.
-- **Attachments are not included in a data export.** Export carries your conversations, not the files you attached to them.
-- **Nothing inside the app removes an attached file once it has been sent.** Deleting the conversation, signing out and deleting your account all leave it in local storage. Clearing site data (browser) or removing the app (desktop and mobile) is what clears it.
+- Attachments do not follow a conversation to your other devices. The message and the filename sync; the file itself does not. On a second device the model is told a file was attached and that it is unavailable there.
+- Attachments are not included in a data export. Export carries your conversations, not the files you attached to them.
+- Nothing inside the app removes an attached file once it has been sent. Deleting the conversation, signing out and deleting your account all leave it in local storage. Clearing site data (browser) or removing the app (desktop and mobile) is what clears it.
 
 ### How a file reaches the model
 
 Thunderbolt sends the file in its original form where the model supports it, and converts otherwise. Spreadsheets and plain text are always converted to text, since no provider accepts a spreadsheet directly.
 
-If a model rejects a file that was sent in its original form, Thunderbolt converts it and retries automatically: first to extracted text, then, for a PDF that holds no text to extract, to one image per page for the first 10 pages. You do not have to do anything.
+If a model rejects a file that was sent in its original form, Thunderbolt converts it and retries automatically: first to extracted text, then, for a PDF that holds no text to extract, to one image per page for the first 10 pages.
 
 After a conversion the file card offers **Resend as text** and **Resend as images** if you want to force the other form. When nothing is left to try, the error says the model could not read the file and suggests a different model.
 
-Two gaps. Scanned PDFs are not put through text recognition (OCR); they go to the model as page images instead, which needs a model that can read images. And an image a model rejects has no fallback, so the error appears straight away.
+The chain has two gaps. Scanned PDFs are not put through text recognition (OCR); they go to the model as page images instead, which needs a model that can read images. An image a model rejects has no fallback, so the error appears straight away.
 
 Only the newest message's attachments are sent at full fidelity. Files from earlier turns in the same conversation are replaced by their extracted text, which keeps a long thread from resending megabytes on every reply.
 
@@ -79,11 +73,9 @@ Only the newest message's attachments are sent at full fidelity. Files from earl
 
 Web search and page fetching come from the **Thunderbolt** connection under **Settings → Connections**, and require a Thunderbolt Pro subscription. Without Pro the assistant is never given these tools, and the connection shows Get Pro rather than a switch. With Pro you can switch it off there, and chats then cannot reach the web at all. On a self-hosted deployment search also needs a provider key on the server, so if it never returns results, check with whoever runs your deployment. See [Configuration](../self-hosting/configuration.md).
 
-When the model uses a source, the answer carries a numbered badge like `[1]` at the point it is relevant. Click a badge to see the pages behind it, each with its title and link.
+When the model uses a source, the answer carries a numbered badge like `[1]` at the point it is relevant. Click a badge to see the pages behind it, each with its title and link. Numbers are stable for the whole reply: a page found by search and then read keeps its number.
 
-- Numbers are stable for the whole reply. A page found by search and then read keeps its number.
-- Citations are saved with the message, so they still resolve when you reopen the conversation days later.
-- A source is a real URL the model retrieved. Thunderbolt does not fabricate a citation list from the model's own text.
+Citations are saved with the message, so they still resolve when you reopen the conversation days later. Every source is a real URL the model retrieved; Thunderbolt never assembles a citation list from the model's own text.
 
 Clicking a link opens it according to your **External Links** preference. See [In-App Browser](../features/webview.md).
 
@@ -91,11 +83,9 @@ Clicking a link opens it according to your **External Links** preference. See [I
 
 An artifact is a self-contained web page the model writes when a chart, table, diagram or small interactive tool answers better than prose. It appears as a card in the conversation and can be opened in a side panel. You can copy its source or download it as a single `.html` file that opens in any browser. Artifacts are saved with the conversation and sync with it.
 
-How they are contained:
+An artifact runs in an isolated frame with **no network access**. It cannot fetch data, load a remote script or stylesheet, submit a form, or read anything else in the app. Images and fonts have to be embedded in the page itself. Thunderbolt checks the page for errors before showing it, and asks the model to fix it if the check fails.
 
-- An artifact runs in an isolated frame with **no network access**. It cannot fetch data, load a remote script or stylesheet, submit a form, or read anything else in the app. Images and fonts have to be embedded in the page itself.
-- Thunderbolt checks the page for errors before showing it, and asks the model to fix it if the check fails.
-- Because the model wrote the code, never type a password, key or other secret into an artifact.
+Because the model wrote the code, never type a password, key or other secret into an artifact.
 
 ## When a reply fails
 
@@ -118,8 +108,8 @@ There is no way to edit a message you have already sent, and no button to regene
 
 A conversation is titled automatically from your first message. The `⋯` menu on a chat in the sidebar renames it, deletes it, or moves it to a project, and you can also drag a chat onto a project. **Clear all chats** at the top of the chat list deletes every conversation.
 
-**Projects** group related chats and add instructions every chat in the project inherits. A chat in a project can also search the project's other chats when the model needs earlier context. Deleting a project does not delete its chats; they are returned to the ungrouped list. See [Projects](./projects.md).
+Projects group related chats and add instructions every chat in the project inherits. A chat in a project can also search the project's other chats when the model needs earlier context. Deleting a project does not delete its chats; they are returned to the ungrouped list. See [Projects](./projects.md).
 
-**Search** (`Cmd/Ctrl + K`) covers chats, messages, models, skills, agents, connections, devices, projects and tasks, and runs commands such as "New chat". It runs entirely on the device, works offline, and never sends your query anywhere. It matches on keywords rather than meaning, so a question phrased differently from the text you are looking for may miss. Try the words you actually wrote. See [Search](./search.md).
+Search (`Cmd/Ctrl + K`) covers chats, messages, models, skills, agents, connections, devices, projects and tasks, and runs commands such as "New chat". It runs entirely on the device and works offline, so your query is never sent anywhere. Matching is on keywords rather than meaning, so a question phrased differently from the text you are looking for may miss; try the wording you used at the time. See [Search](./search.md).
 
 Conversations are stored on the device first. If sync is enabled they appear on your other devices, encrypted end to end when you turn that on. Deleting a chat removes it everywhere you are signed in.

@@ -1,6 +1,6 @@
 # Authentication
 
-Thunderbolt has one authentication mode active at a time, set by you, and every user signs in the same way.
+Thunderbolt has one authentication mode active at a time, set by you, and every user signs in the same way. There is no username-and-password sign-in, and no Google or Microsoft social login.
 
 ## Pick a method
 
@@ -12,8 +12,6 @@ Thunderbolt has one authentication mode active at a time, set by you, and every 
 
 Every deployment path (Docker Compose, Kubernetes, AWS) ships with `oidc` set and a Keycloak container preloaded with a realm and a `demo@thunderbolt.io` / `demo` user, so sign-in works on first boot. Replace that with your own provider before real users arrive.
 
-There is no username-and-password sign-in, and no Google or Microsoft social login.
-
 ## The mode is set in two places
 
 | Where     | Setting                             | Values                                     |
@@ -21,11 +19,7 @@ There is no username-and-password sign-in, and no Google or Microsoft social log
 | Server    | `AUTH_MODE`                         | `consumer`, `oidc`, `saml`                 |
 | App build | `VITE_AUTH_MODE` (a build argument) | `sso` for OIDC or SAML, unset for consumer |
 
-An unset `AUTH_MODE` falls back to `consumer`, so set it explicitly.
-
-`VITE_AUTH_MODE` is baked into the app at build time, not read at runtime. Switching between SSO and email sign-in means rebuilding the app image, not just restarting the server. Both OIDC and SAML use the same `sso` value.
-
-The server refuses to start if the mode's settings are incomplete, so a typo fails at boot rather than at someone's first sign-in.
+An unset `AUTH_MODE` falls back to `consumer`, so set it explicitly. `VITE_AUTH_MODE` is baked into the app at build time rather than read at runtime, so switching between SSO and email sign-in means rebuilding the app image. The server refuses to start if the chosen mode's settings are incomplete.
 
 ## OIDC
 
@@ -117,19 +111,15 @@ There is no Thunderbolt login form. Opening the app with no session sends the br
 
 If a user already has a Thunderbolt account with the same email address, signing in through your provider links to that existing account rather than creating a second one.
 
-**Signing out is local.** Signing out of Thunderbolt ends the Thunderbolt session but not the session your identity provider holds, so the next visit may re-authenticate silently. Ending the provider session is done at the provider.
+Signing out of Thunderbolt ends the Thunderbolt session and leaves the one your identity provider holds in place, so the next visit may re-authenticate silently. That session ends at the provider.
 
 ## Replacing the bundled Keycloak
 
 The shipped Keycloak's realm, client secret, admin password and demo user are all published in the Thunderbolt repository.
 
-| Deployment path | How to remove it                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Docker Compose  | Delete the `keycloak` service from the Compose file and set your own OIDC or SAML values.                          |
-| Kubernetes      | Point the backend settings at your provider. The demo user can be disabled with `keycloak.demoUserEnabled: false`. |
-| AWS with Pulumi | Same as Kubernetes. The AWS stack installs the same chart.                                                         |
+On Docker Compose, delete the `keycloak` service from the Compose file and set your own OIDC or SAML values. On Kubernetes, point the backend settings at your provider and disable the demo user with `keycloak.demoUserEnabled: false`. That change needs the Keycloak pod restarted, because the realm file is only read at startup. The AWS stack installs the same chart, so the Kubernetes steps apply there too.
 
-The bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup, so anything you configure in its admin console is lost when the container is replaced. Turning the demo user off on Kubernetes also needs the Keycloak pod restarted, because the realm file is only read at startup. Treat the whole thing as disposable and bring your own provider for anything beyond evaluation.
+Whichever path you are on, the bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup, so anything you configure in its admin console is lost when the container is replaced.
 
 ## Email sign-in codes
 
@@ -155,34 +145,27 @@ A code is bound to the browser that asked for it, so a code intercepted in trans
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 ```
 
-Any address at a listed domain is approved on first request; the list is read at startup, so restart the server after changing it. Approving an individual address outside those domains means editing the `waitlist` table by hand ([Users and access](../admin/users-and-access.md#approve-one-address) has the SQL). There is no admin page, API or command for it. This gate is always active in `consumer` mode, whatever `WAITLIST_ENABLED` is set to.
+Any address at a listed domain is approved on first request. The list is read at startup, so restart the server after changing it. Approving an individual address outside those domains means editing the `waitlist` table by hand, and [Users and access](../admin/users-and-access.md#approve-one-address) has the SQL. There is no admin page, API or command for it. The gate is always active in `consumer` mode, whatever `WAITLIST_ENABLED` is set to.
 
-With no email service configured the server writes the code and the sign-in link to its own logs instead of sending them. A deployment running in production mode does not do this: it refuses the sign-in request outright with an "Email service not configured" error.
+With no email service configured the server writes the code and the sign-in link to its own logs instead of sending them. In production mode it refuses the sign-in request outright with an "Email service not configured" error.
 
 ## Desktop and mobile
 
-| Method        | How it works on desktop                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OIDC or SAML  | The app opens your system browser, you authenticate there, and the browser hands the session back to the app over a local connection on the same machine. |
-| Email sign-in | Entirely inside the app.                                                                                                                                  |
+On desktop, OIDC and SAML sign-in opens your system browser: you authenticate there, and the browser hands the session back to the app over a local connection on the same machine. Email sign-in happens entirely inside the app.
 
-Desktop single sign-on needs one of the ports `17421`, `17422` or `17423` free on the user's own machine. Nothing listens on them between sign-ins, and nothing outside that machine connects to them, but a local firewall blocking all three breaks desktop sign-in with no fallback.
+That browser handoff needs one of the ports `17421`, `17422` or `17423` free on the user's own machine. A listener opens on one of them only during a sign-in, and only the same machine connects to it. A local firewall blocking all three breaks desktop sign-in, with no fallback.
 
-**Which server the apps talk to is fixed when they are built.** Pointing desktop or mobile users at your deployment means producing your own builds with your API and app URLs, and rebuilding when you change the authentication mode. The browser app has no such constraint.
+Which server the apps talk to is fixed when they are built. Pointing desktop or mobile users at your deployment means producing your own builds with your API and app URLs, and rebuilding when you change the authentication mode. The browser app has no such constraint.
 
 The sign-in link in an email opens the hosted Thunderbolt app directly on iOS and Android. For a self-hosted deployment that link opens in the browser instead, which still signs the user in.
 
 ## Other ways in
 
-| Credential            | Default  | Notes                                                                                                                                                                                                                                                                                                                 |
-| --------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Command-line sign-in  | Enabled  | `thunderbolt login` shows a code, the user approves it in the app, and the CLI receives a session. Registering the CLI as a visible, revocable device requires `CLI_DEVICE_REGISTRATION_ENABLED=true`.                                                                                                                |
-| Personal access token | Enabled  | Long-lived tokens users create for scripts and automation. 90 days by default, changeable with `API_KEY_DEFAULT_EXPIRES_IN` (in seconds), shown once at creation. Confidential models refuse a token unless `CONFIDENTIAL_API_KEYS_ENABLED=true`.                                                                     |
-| Anonymous sessions    | Disabled | `AUTH_ALLOW_ANONYMOUS=true` lets visitors try the app with no account. The app must also be built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`, or visitors still meet the sign-in wall; the build flags alone give you a button the server has no endpoint for. Not available in SSO mode. |
+Command-line sign-in is enabled by default. `thunderbolt login` shows a code, the user approves it in the app, and the CLI receives a session. Registering the CLI as a visible, revocable device requires `CLI_DEVICE_REGISTRATION_ENABLED=true`. Two settings tune the grant: `DEVICE_AUTH_EXPIRES_IN` (default `30m`) is how long an unapproved code stays valid, and `DEVICE_AUTH_INTERVAL` (default `5s`) the minimum polling gap.
 
-The command-line grant can be tuned with `DEVICE_AUTH_EXPIRES_IN` (default `30m`, how long an unapproved code stays valid) and `DEVICE_AUTH_INTERVAL` (default `5s`, the minimum polling gap).
+Personal access tokens, the long-lived tokens users create for scripts and automation, are enabled by default too. A token is shown once at creation and lasts 90 days, or whatever `API_KEY_DEFAULT_EXPIRES_IN` (in seconds) says. Confidential models refuse a token unless `CONFIDENTIAL_API_KEYS_ENABLED=true`.
 
-Anonymous sessions bypass the email allowlist by design: trying the app without an account is the point of them.
+Anonymous sessions ship disabled, and are unavailable in SSO mode. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for. An anonymous session bypasses the email allowlist by design.
 
 ## Sessions and devices
 

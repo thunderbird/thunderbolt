@@ -1,6 +1,6 @@
 # Requirements
 
-What to have ready before you deploy Thunderbolt: a host or cluster, a PostgreSQL database, a hostname with TLS, and outbound access to at least one AI provider.
+Before you deploy Thunderbolt you need a host or cluster, a PostgreSQL database, a hostname with TLS, and outbound access to at least one AI provider.
 
 > Thunderbolt is undergoing a security audit and is not production-ready. Treat these deployments as evaluation and early-testing environments.
 
@@ -8,14 +8,14 @@ What to have ready before you deploy Thunderbolt: a host or cluster, a PostgreSQ
 
 Thunderbolt is six services. The Kubernetes and AWS deployments run all six; the Docker Compose stack runs five, leaving out the marketing site.
 
-| Service        | Purpose                                                            | Required                                      |
-| -------------- | ------------------------------------------------------------------ | --------------------------------------------- |
-| Frontend       | Serves the web app and proxies API calls to the backend            | Yes                                           |
-| Backend        | API, authentication, AI provider access, sync tokens               | Yes                                           |
-| PostgreSQL     | Application data, and the staging area the sync service reads from | Yes                                           |
-| PowerSync      | The sync service. Replicates data to each signed-in device         | Yes, unless you run without multi-device sync |
-| Keycloak       | Bundled identity provider for OIDC and SAML sign-in                | No, if you bring your own identity provider   |
-| Marketing site | Static landing page, blog and docs                                 | No                                            |
+| Service        | Purpose                                                            | Required                   |
+| -------------- | ------------------------------------------------------------------ | -------------------------- |
+| Frontend       | Serves the web app and proxies API calls to the backend            | Yes                        |
+| Backend        | API, authentication, AI provider access, sync tokens               | Yes                        |
+| PostgreSQL     | Application data, and the staging area the sync service reads from | Yes                        |
+| PowerSync      | The sync service. Replicates data to each signed-in device         | Yes, for multi-device sync |
+| Keycloak       | Bundled identity provider for OIDC and SAML sign-in                | No, with your own provider |
+| Marketing site | Static landing page, blog and docs                                 | No                         |
 
 ## Deployment targets
 
@@ -25,11 +25,11 @@ Thunderbolt is six services. The Kubernetes and AWS deployments run all six; the
 | Kubernetes     | A conformant cluster, Helm 3, an ingress controller, and a default StorageClass for the database disk | Teams with an existing cluster         |
 | AWS (Pulumi)   | An AWS account, the Pulumi CLI, and AWS credentials. Creates ECS Fargate or EKS                       | Green-field AWS deployments            |
 
-The Helm chart assumes an nginx ingress controller by default. Any controller works if you set the ingress class to match.
+The Helm chart assumes an nginx ingress controller by default, and any other controller works once you set the ingress class to match.
 
 ## CPU, memory and disk
 
-Sizing below is what the reference AWS deployment reserves for each service. It is a starting point, not the result of a load test: measure your own usage before committing to a size.
+The figures below are what the reference AWS deployment reserves for each service. Treat them as a starting point: no load test produced them, so measure your own usage before committing to a size.
 
 | Service        | vCPU | Memory |
 | -------------- | ---: | -----: |
@@ -42,37 +42,33 @@ Sizing below is what the reference AWS deployment reserves for each service. It 
 
 ### Small team (roughly up to 25 people)
 
-One host running the Compose stack. 4 GB of RAM is the working minimum, 8 GB is comfortable, and 4 vCPU covers the whole stack. Allow 40 GB of disk for container images, database volumes and logs.
+One host running the Compose stack. 4 GB of RAM is the working minimum and 8 GB is comfortable; 4 vCPU covers the whole stack. Allow 40 GB of disk for container images, database volumes and logs.
 
 ### Larger deployments
 
 Move PostgreSQL to a managed database and run the rest on Kubernetes or ECS. The backend keeps no state between requests, so you scale it by adding replicas. PowerSync holds an open sync connection per signed-in device, so its load tracks device count more than message volume.
 
-PostgreSQL is the component the bundled stacks do not scale. Both run a single instance with no high-availability option, which is the main reason to move it to a managed database before real use. Only the Compose stack lets you: the Helm chart and the Pulumi project always run the PostgreSQL they deploy.
+Neither bundled stack scales PostgreSQL: both run a single instance with no high-availability option, which is the main reason to move it to a managed database before real use. Only the Compose stack lets you swap in a managed one, since the Helm chart and the Pulumi project always run the PostgreSQL they deploy.
 
 ## Database
 
-| Requirement         | Detail                                                                                                                |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Engine              | PostgreSQL. The Compose and Helm stacks run 17; the prebuilt database image used on AWS runs 18                       |
-| Logical replication | `wal_level` must be `logical`. On a managed database this is a parameter-group setting and needs a restart            |
-| Privileges          | An account that can create a role, create a publication, and create a database                                        |
-| Second database     | PowerSync keeps its sync buckets in a `powersync_storage` database on the same server                                 |
-| Replication role    | A `powersync_role` login with `REPLICATION` and `BYPASSRLS`, plus a publication named `powersync` covering all tables |
+Thunderbolt needs PostgreSQL. The Compose and Helm stacks run 17, and the prebuilt database image used on AWS runs 18.
 
-The bundled stacks create the role, publication and second database automatically on the database's first boot. Against a managed database you run that setup once by hand, and connect with `sslmode=require` if it terminates TLS. Keep `powersync_storage` itself off managed PostgreSQL 17: the sync service hangs partway through startup against RDS-managed 17 and logs no error.
+The sync service replicates logically, so `wal_level` has to be `logical`; on a managed database that is a parameter-group setting and takes effect only after a restart. It also needs three objects of its own: a `powersync_role` login with `REPLICATION` and `BYPASSRLS`, a publication named `powersync` covering all tables, and a `powersync_storage` database on the same server to hold its sync buckets. The account you install with therefore has to be able to create a role, a publication and a database.
+
+The bundled stacks create all three automatically on the database's first boot. Against a managed database you run that setup once by hand, and connect with `sslmode=require` if it terminates TLS. Keep `powersync_storage` itself off managed PostgreSQL 17: the sync service hangs partway through startup against RDS-managed 17 and logs no error.
 
 Disk grows with message and attachment volume, and the sync buckets hold their own copy of synced rows, so total usage runs ahead of the application tables alone. The Helm chart defaults the database volume to `5Gi`, which is sized for evaluation. Raise it before real use, and verify your StorageClass allows volume expansion.
 
 Thunderbolt does not store uploaded files on the server. Attachments stay on the device that added them and travel only inside the request that answers a message, so there is no S3 or blob-storage bucket to provision.
 
-There is one way to skip PostgreSQL entirely: `DATABASE_DRIVER=pglite` runs the server against an embedded database file, with `DATABASE_URL` pointing at a directory rather than a connection string. That mode is for a first look only. Multi-device sync does not work under it, because the sync service cannot replicate from it.
+You can skip PostgreSQL entirely with `DATABASE_DRIVER=pglite`, which runs the server against an embedded database file and expects `DATABASE_URL` to point at a directory rather than a connection string. The sync service cannot replicate from it, so multi-device sync does not work and the mode suits a first look only.
 
 ## TLS and DNS
 
-Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely. A plain-HTTP hostname therefore gives you a broken app, not merely an insecure one.
+Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely, so a plain-HTTP hostname breaks the app outright.
 
-The containers speak plain HTTP and expect TLS to terminate in front of them: your ingress controller, load balancer, or a reverse proxy such as Caddy or Traefik. cert-manager covers Kubernetes, and AWS Certificate Manager covers the Pulumi path.
+The containers themselves speak plain HTTP and expect TLS to terminate in front of them, at your ingress controller, load balancer, or a reverse proxy such as Caddy or Traefik. cert-manager handles the certificates on Kubernetes, and the Pulumi path uses AWS Certificate Manager.
 
 One hostname is enough. Routing is path-based by default:
 
@@ -88,9 +84,9 @@ You can instead give each service its own hostname (for example `app.`, `api.`, 
 
 ## Ports
 
-Everything a user's browser talks to needs a reachable address: the app itself, the API, the sync service, and the identity provider if you use the bundled one. Sync in particular runs as a direct browser connection, so an address that only resolves inside your container network leaves the app stuck offline.
+Everything a user's browser talks to needs an address the browser can reach: the app, the API, the sync service, and the identity provider if you use the bundled one. Sync in particular runs as a direct browser connection, so an address that only resolves inside your container network leaves the app stuck offline.
 
-On the Docker Compose stack each service is published on a host port. These are the values in the example settings file, and each is a variable you can change:
+On the Docker Compose stack each service is published on a host port, at the values in the example settings file, and each one has a variable you can override:
 
 | Service    | Host port | Override with    |
 | ---------- | --------: | ---------------- |
@@ -100,7 +96,7 @@ On the Docker Compose stack each service is published on a host port. These are 
 | PowerSync  |      8081 | `POWERSYNC_PORT` |
 | PostgreSQL |      5434 | `POSTGRES_PORT`  |
 
-On Kubernetes and AWS none of these are host ports: traffic arrives at the ingress or load balancer and is routed by path.
+Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load balancer and is routed by path.
 
 ## Outbound network access
 
@@ -121,13 +117,13 @@ On Kubernetes and AWS none of these are host ports: traffic arrives at the ingre
 
 Confidential models are the ones that run inside a hardware-isolated enclave, which the app verifies before it sends anything. See [Models and providers](./models.md) for what that means in practice.
 
-Two paths reach hosts you cannot list in advance. First, a user who supplies their own provider key, or connects a tool server over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools), has those requests forwarded by your API service, because a browser cannot call most of those endpoints itself. Second, pasting a link makes the server fetch that page to build a preview. A strict outbound allowlist will break both.
+Two paths reach hosts you cannot list in advance. A user who supplies their own provider key, or connects a tool server over MCP (the Model Context Protocol, the open standard Thunderbolt uses to plug in external tools), has those requests forwarded by your API service, because a browser cannot call most of those endpoints itself. Pasting a link also makes the server fetch that page to build a preview. A strict outbound allowlist will break both.
 
-Every published build reaches model providers through your server, including desktop and mobile. A direct device-to-provider path exists in the source but is behind a build flag that no released build enables, so plan outbound access from your server, not from user devices.
+Every published build reaches model providers through your server, desktop and mobile included. A direct device-to-provider path exists in the source, but no released build enables the flag that turns it on, so plan outbound access from your server.
 
 ## Identity
 
-Pick one before you install, because it decides which environment variables you set:
+Pick one before you install, because the choice decides which environment variables you set.
 
 | Option                 | Notes                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------- |
@@ -135,7 +131,7 @@ Pick one before you install, because it decides which environment variables you 
 | Your own OIDC provider | Needs an issuer URL, client ID and client secret                             |
 | Your own SAML provider | Needs an entry point, entity ID, issuer and signing certificate              |
 
-The published web app image is built for single sign-on, so that is the supported path for a self-hosted deployment. Signing users in with an emailed code instead is a build-time choice rather than a setting, so it means building the web app image yourself.
+The published web app image is built for single sign-on, which makes it the supported path for a self-hosted deployment. Emailed-code sign-in is a build-time choice rather than a setting, so using it means building the web app image yourself.
 
 For Google or Microsoft sign-in from the desktop app, register all three loopback redirect URIs with that provider. The app tries the ports in order and uses the first that is free, and it sends `localhost`, so a URI registered as `127.0.0.1` will not match.
 
@@ -147,11 +143,7 @@ http://localhost:17423
 
 ## Secrets to generate first
 
-| Secret                 | Rule                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`   | Any random string of 32 characters or more. Signs sessions and bearer tokens  |
-| `POWERSYNC_JWT_SECRET` | 32 characters or more, and identical on the backend and the PowerSync service |
-| AI provider key        | Not strictly required, but without one every user must add their own in-app   |
+`BETTER_AUTH_SECRET` signs sessions and bearer tokens, and takes any random string of 32 characters or more. `POWERSYNC_JWT_SECRET` has the same length rule and must be identical on the backend and the PowerSync service. An AI provider key is not strictly required, but without one every user must add their own in-app.
 
 ```bash
 openssl rand -base64 32
@@ -187,7 +179,7 @@ The published desktop and mobile apps connect to Thunderbolt's hosted service. P
 | End-to-end encryption | Off by default. Turning it on requires each device to be approved before it syncs                                                            |
 | Rate limiting         | On by default, though the bundled Compose and Helm configs switch it off. Switch it back on for anything reachable from outside your network |
 
-One caveat on the first two rows: the Kubernetes chart has no switch for either. It always installs Keycloak and the marketing site, so "leaving out Keycloak" there means pointing the API at your own provider and ignoring the unused workload.
+The Kubernetes chart has no switch for the first two rows. It always installs Keycloak and the marketing site, so leaving out Keycloak there means pointing the API at your own provider and ignoring the workload you do not use.
 
 ## Next
 

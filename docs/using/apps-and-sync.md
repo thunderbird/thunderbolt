@@ -15,50 +15,49 @@ Each install keeps its own copy of your data and works on its own. Sync is optio
 
 All of them run the same application, so the feature set does not change between them. Layout and a few platform conveniences (window controls, keyboard insets, the system tray) differ.
 
-Two things to know before a rollout:
-
-- **HTTPS is required for the web app.** It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin.
-- **Automatic desktop updates only reach the official builds.** They ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
+The web app requires HTTPS. It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin. Automatic desktop updates reach only the official builds, which ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
 
 ### Pointing the apps at your own backend
 
-The server address is fixed when a client is built. There is no field inside the app for it.
+The server address is fixed when a client is built, and there is no field inside the app for it.
 
 - **Self-hosted web**: build the web client with `VITE_THUNDERBOLT_CLOUD_URL` set to your backend, then serve it. See the [configuration reference](../self-hosting/configuration.md).
 - **Desktop and mobile**: the published builds point at the public service. To hand your team desktop or mobile apps that talk to your own backend, build and distribute them yourself.
 
 ## Data lives on the device first
 
-Every install holds a full local database. Reads and writes go there first, so the interface does not wait on the network.
-
-If sync is off, that local copy is the only copy. Chat content leaves the device only when it is sent to a model or to a tool you have connected.
+Every install holds a full local database. Reads and writes go there first, so the interface does not wait on the network. If sync is off, that local copy is the only copy, and chat content leaves the device only when it is sent to a model or to a tool you have connected.
 
 ## Turning sync on and off
 
-Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**.
+Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app turns sync on for that device; where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
 
-- A device that has never been signed in has sync off. Anonymous sessions cannot sync at all.
-- Signing in from inside the app turns sync on for that device. Where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes.
-- You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
-
-Whether the data is encrypted on the server is the operator's decision, not the user's. With encryption off, synced data is stored on the server in a form the server can read, and every device the account signs in on syncs immediately. With encryption on, each new device has to be approved before it can read anything.
+Whether the data is encrypted on the server is the operator's decision, and a user cannot change it. With encryption off, synced data is stored on the server in a form the server can read, and every device the account signs in on syncs immediately. With encryption on, each new device has to be approved before it can read anything.
 
 ## What syncs and what does not
 
-| Syncs across your devices                 | Stays on the one device                                    |
-| ----------------------------------------- | ---------------------------------------------------------- |
-| Chats and messages                        | Model API keys                                             |
-| Tasks, saved prompts, skills, automations | Tokens for connected accounts such as Google and Microsoft |
-| Projects and their instructions           | MCP server addresses and their credentials                 |
-| Model entries and per-model tuning        | External agent credentials                                 |
-| External agent entries                    | Attached file contents                                     |
-| Settings and preferences                  | The local search index and sign-in token                   |
-| The list of devices on the account        |                                                            |
+These sync across your devices:
 
-Two consequences:
+- Chats and messages
+- Tasks, saved prompts, skills, automations
+- Projects and their instructions
+- Model entries and per-model tuning
+- External agent entries
+- Settings and preferences
+- The list of devices on the account
 
-- **Credentials never sync.** A model or an external agent you add on one device appears on the others, but each device needs its own key or token entered locally. MCP servers do not appear at all on the other devices, because an address without its credential is one they could not connect to anyway. This is deliberate: a replicated secret is a secret in one more place.
-- **File attachments do not follow a chat.** The file's name travels with the message, the bytes do not. On another device the message shows the filename, and the model does not receive the file. Attached files are also absent from a data export.
+These stay on the one device:
+
+- Model API keys
+- Tokens for connected accounts such as Google and Microsoft
+- MCP server addresses and their credentials
+- External agent credentials
+- Attached file contents
+- The local search index and sign-in token
+
+Credentials never sync. A model or an external agent you add on one device appears on the others, but each device needs its own key or token entered locally. MCP servers do not appear at all on the other devices, because an address without its credential is one they could not connect to anyway.
+
+File attachments do not follow a chat. The message carries the file's name but not its bytes, so on another device the message shows the filename and the model does not receive the file. Attached files are also absent from a data export.
 
 ## Adding a device
 
@@ -69,12 +68,7 @@ Install or open Thunderbolt on the new device and sign in with the same account.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 
-Device identity:
-
-- Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows". They cannot be renamed.
-- Every tab of the same browser profile is one device. A different browser, or a different profile in the same browser, is a separate device.
-- An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit; revoked ones do not either.
-- Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in has no entry in the list.
+Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on a command line sign-in has no entry in the list.
 
 ## Approving, denying, and revoking
 
@@ -95,14 +89,10 @@ Full detail on approval, recovery keys, and revocation is in [Devices and Accoun
 
 ## Working offline
 
-| Works with no network                              | Needs the network                                                     |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| Reading and searching existing chats               | Model responses, unless the model runs on the same machine or network |
-| Writing messages, editing tasks, changing settings | Web search and other connected tools                                  |
-|                                                    | Signing in, sync itself, and approving a device                       |
+With no network you can read and search existing chats, write messages, edit tasks, and change settings. Web search and other connected tools need the network, as do signing in, sync itself, and approving a device. So do model responses, unless the model runs on the same machine or network.
 
 Changes made offline are saved locally and queued. On reconnect the device uploads them and pulls down what it missed. If the same record was changed on two devices while one was offline, the most recent write wins for that record.
 
-One browser caveat: the web app has to be fetched from the server before it can run, so a browser with no connection cannot open it cold. The desktop and mobile apps start offline.
+The web app has to be fetched from the server before it can run, so a browser with no connection cannot open it cold. The desktop and mobile apps start offline.
 
 Under **Settings → Devices**, a last seen time that has stopped moving means that device has not reconnected yet, and its queued changes are still on it.

@@ -1,16 +1,12 @@
 # Connections
 
-Thunderbolt can reach outside itself in two ways: **MCP servers**, which add tools to the assistant, and **external agents**, which replace the assistant for a chat. Both are added in Settings, and both can be restricted by whoever runs your deployment.
+Thunderbolt can reach outside itself in two ways: **MCP servers**, which add tools to the assistant so it can search a wiki, query a database or file a ticket, and **external agents**, which hand a chat to a different agent such as a coding agent. Both are added in Settings, and both can be restricted by whoever runs your deployment.
 
-| You want to                                                      | Add            | Where                      |
-| ---------------------------------------------------------------- | -------------- | -------------------------- |
-| Let the assistant search a wiki, query a database, file a ticket | An MCP server  | **Settings → Connections** |
-| Hand a chat to a different agent, such as a coding agent         | An agent       | **Settings → Agents**      |
-| Let the assistant read your mail, calendar or files              | An integration | **Settings → Connections** |
+Alongside them sit the ready-made account integrations, which let the assistant read your mail, calendar or files. MCP servers and integrations live in **Settings → Connections**. Agents live in **Settings → Agents**.
 
 ## MCP servers
 
-The Model Context Protocol (MCP) is an open standard for exposing tools to an AI assistant. A server publishes a list of tools, Thunderbolt connects to it, and those tools become available in every chat alongside the built-in ones. Thunderbolt is an MCP client only, so it consumes servers, it does not publish one.
+The Model Context Protocol (MCP) is an open standard for exposing tools to an AI assistant. A server publishes a list of tools, Thunderbolt connects to it, and those tools become available in every chat alongside the built-in ones. Thunderbolt acts only as an MCP client, so it can consume servers but does not publish one of its own.
 
 ### Adding a server
 
@@ -37,11 +33,9 @@ Once the URL looks complete, Thunderbolt dials the endpoint exactly the way a re
 
 ### Authorizing with OAuth
 
-Servers that support OAuth are handled in the app: Thunderbolt discovers the authorization server, registers itself, opens the sign-in page, and stores the resulting tokens on the device.
+Servers that support OAuth are handled in the app: Thunderbolt discovers the authorization server, registers itself, opens the sign-in page, and stores the resulting tokens on the device. Tokens refresh on their own shortly before they expire, and if a refresh is rejected the server card shows **Re-authorize**. Only one authorization can be in progress at a time; an abandoned one clears after 10 minutes.
 
-- Tokens refresh on their own shortly before they expire. If a refresh is rejected, the server card shows **Re-authorize**.
-- Only one authorization can be in progress at a time. An abandoned one clears after 10 minutes.
-- Some servers publish OAuth metadata but do not let a new client register itself. GitHub is the common example. For those, paste a personal access token in the credential field instead.
+Some servers publish OAuth metadata but do not let a new client register itself. GitHub is the common example. For those, paste a personal access token in the credential field instead.
 
 ### Importing several servers at once
 
@@ -69,19 +63,11 @@ Switch the add form to **Advanced (JSON)** and paste an existing `mcpServers` bl
 
 ### Reachability
 
-Every published build, browser and desktop and mobile alike, relays through your deployment's
-backend. That relay refuses private, internal and loopback addresses on purpose, since it would
-otherwise be a way to reach inside your network from a browser tab. So a server on
-`http://localhost:3000/mcp` is not reachable from a released build, and the bridge below is the
-supported way to use one.
+Every published build, browser and desktop and mobile alike, relays through your deployment's backend. That relay refuses private, internal and loopback addresses, since it would otherwise be a way to reach inside your network from a browser tab. A server on `http://localhost:3000/mcp` is not reachable from a released build. Bridge it instead, as below.
 
-The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it
-changes this. The direct path it selects needs a build flag that no released build enables, so
-turning it off changes nothing today.
+The add form checks something narrower: whether the address is one the device itself could reach. It accepts plain `http://` only for loopback and private addresses, and requires `https://` for anything on a public host. So `http://localhost:3000/mcp` passes both the form and the JSON importer, and is still refused in transit, with no warning at save time.
 
-The add form accepts plain `http://` only for loopback and private addresses. Anything on a public host must be `https://`.
-
-That check is about what the device could reach, not what the relay will carry: `http://localhost:3000/mcp` is accepted by the form and by the JSON importer, and still refused in transit, with no warning at save time. Bridge a local server (below) rather than entering its address.
+The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it changes this. The direct path it selects needs a build flag that no released build enables, so turning it off changes nothing today.
 
 ### Local servers
 
@@ -91,9 +77,9 @@ Servers that run as a local command cannot be added directly. Bridge one with th
 thunderbolt mcp --transport iroh -- <server-command...>
 ```
 
-The bridge prints an identity (a node ID) or a pairing ticket. Paste it into the **Server URL** field: Thunderbolt recognizes the shape, hides the transport and credential fields, and connects peer-to-peer over an encrypted link instead of over HTTP. The connection is verified the first time it is used rather than by a test.
+The bridge prints an identity (a node ID) or a pairing ticket. Paste it into the **Server URL** field: Thunderbolt recognizes the shape, hides the transport and credential fields, and connects peer-to-peer over an encrypted link instead of over HTTP. A peer-to-peer target has no test step; the connection is verified the first time it is used.
 
-For a peer-to-peer target the form shows an **Authorize this app on your bridge** panel with this app's pairing identity and the command to run on the machine hosting the bridge:
+For such a target the form shows an **Authorize this app on your bridge** panel with this app's pairing identity and the command to run on the machine hosting the bridge:
 
 ```sh
 thunderbolt iroh allow <node-id>
@@ -103,48 +89,35 @@ Bridges running on a machine signed in to your own account trust your own device
 
 ### How tools appear in chat
 
-- Every tool is prefixed with the server name, lowercased, with anything that is not a letter or digit turned into an underscore. A server named `Acme Docs` contributes `acme_docs_search`.
-- Two servers that reduce to the same prefix get a numeric suffix. A tool whose full name still collides with an existing one is skipped.
-- The assistant is told which servers are connected and how many tools each contributes.
-- Tool calls in the transcript are labelled with the server they came from.
+Every tool is prefixed with the server name, lowercased, with anything that is not a letter or digit turned into an underscore. A server named `Acme Docs` contributes `acme_docs_search`. Two servers that reduce to the same prefix get a numeric suffix; a tool whose full name still collides with an existing one is skipped. The assistant is told which servers are connected and how many tools each contributes, and tool calls in the transcript are labelled with the server they came from.
 
 ### Switching off and removing
 
-A disabled server is not connected and its tools are not offered. Deleting a server also deletes its stored credential.
-
-If a server is unreachable when you send a message, that server's tools are skipped for that message and Thunderbolt reconnects in the background. The rest of the chat is unaffected.
+A disabled server is not connected and its tools are not offered. Deleting a server also deletes its stored credential. If a server is unreachable when you send a message, that server's tools are skipped for that message and Thunderbolt reconnects in the background. The rest of the chat is unaffected.
 
 ### Where server settings are stored
 
-MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both.
-
-Signing out, deleting your account, or revoking the device erases them along with the rest of the local data.
+MCP servers and their credentials stay on the device that added them. They do **not** sync to your other devices, because a credential is exactly the kind of thing that should not be copied around by a sync service, and a server entry without its credential would not connect anyway. Add the server again on each device, or move it in a backup export, which does include both. Signing out, deleting your account, or revoking the device erases them along with the rest of the local data.
 
 ## External agents
 
-An external agent is a separate program that answers a chat instead of the built-in assistant. Thunderbolt talks to it over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), an open standard for driving an agent from a chat interface, and stays the interface: same chat window, same history, same attachments. The agent does the thinking, and its tools run on its machine, not yours.
+An external agent is a separate program that answers a chat instead of the built-in assistant. Thunderbolt talks to it over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), an open standard for driving an agent from a chat interface, and remains the interface itself: the same chat window, the same history, the same attachments. The agent does the thinking, and its tools run on its machine, not yours.
 
 Each chat keeps its own agent, picked from the selector at the top of the chat window. The selector is locked while a reply is streaming.
 
-An external agent brings its own model, so the model picker is hidden while one is selected, and it brings its own tools: your MCP servers are not offered to it. Your enabled skills are still handed over ([Skills](./skills.md)).
+An external agent brings its own model, so the model picker is hidden while one is selected, and its own tools, so your MCP servers are not offered to it. Your enabled skills are still handed over ([Skills](./skills.md)).
 
-### Three kinds
+### Where agents come from
 
-| Kind               | Where it comes from                      | Setup                                      |
-| ------------------ | ---------------------------------------- | ------------------------------------------ |
-| Built-in assistant | Thunderbolt itself                       | None                                       |
-| System agents      | Served by your deployment                | None, they appear under **System agents**  |
-| Your own agents    | Anything speaking ACP that you can reach | Added by you, listed under **Your agents** |
+The built-in assistant is part of Thunderbolt and needs no setup. Agents served by your deployment need no setup either; they appear under **System agents**. Anything else that speaks ACP and that you can reach is added by you, and shows up under **Your agents**.
 
 ### Adding your own
 
-**Settings → Agents → New Agent.** The URL is either a WebSocket endpoint (`wss://example.com/ws`) or a pairing ticket from a bridge. A bare peer identity also works if the peer is discoverable. A WebSocket endpoint must pass **Test connection** before it can be saved; a peer-to-peer target is verified on the first chat instead, because it has to be authorized on the bridge first.
+**Settings → Agents → New Agent.** The URL is either a WebSocket endpoint (`wss://example.com/ws`) or a pairing ticket from a bridge; a bare peer identity also works if the peer is discoverable. A WebSocket endpoint must pass **Test connection** before it can be saved. A peer-to-peer target is verified on the first chat instead, because it has to be authorized on the bridge first.
 
-Test connection always dials directly from the device, so a passing test proves the endpoint is alive rather than that the path a saved agent takes on web will work. The same reachability rules as MCP apply: an agent on `ws://127.0.0.1:...` is reachable from the desktop app with Cloud Proxy off, and from nowhere else. Use a peer-to-peer bridge for everything else.
+Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. The same reachability rules as MCP apply: an agent on `ws://127.0.0.1:...` is reachable from the desktop app with Cloud Proxy off, and from nowhere else. Use a peer-to-peer bridge for everything else.
 
-Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
-
-Custom agents sync to your other devices, name, URL and description together. An address that only resolves on one machine, such as a loopback bridge, will therefore appear on your other devices without working there.
+Custom agents sync to your other devices, name, URL and description together, so an address that only resolves on one machine, such as a loopback bridge, will appear on your other devices without working there. Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
 
 ### Connecting a local coding agent
 
@@ -163,13 +136,7 @@ A loopback bridge is also available (`--transport wss`, default port `8839`), pr
 
 When an agent asks permission to run a tool, the chat shows an inline prompt before anything happens. It names the action, shows the exact command or arguments, and lists any files involved.
 
-| Button                                      | Effect                                                                                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| The choices the agent itself offers         | Usually allow once, allow always, reject once and reject always. Your answer goes straight back to the agent                       |
-| **Always allow all ... actions**            | Approves this call and every later action of the same kind from this agent: editing, deleting, running a command, or moving a file |
-| **Always allow everything from this agent** | Approves this call and anything else the agent asks for                                                                            |
-
-A remembered allowance lasts until the app is reloaded or restarted. It is not written to disk and not shared with your other devices.
+The buttons the agent itself offers are usually allow once, allow always, reject once and reject always. Your answer goes straight back to the agent. Two further buttons go beyond them. **Always allow all ... actions** approves this call and every later action of the same kind from this agent, where a kind is editing, deleting, running a command, or moving a file. **Always allow everything from this agent** approves this call and anything else the agent asks for. A remembered allowance lasts until the app is reloaded or restarted; it is not written to disk and not shared with your other devices.
 
 Agents can also advertise their own commands. Those appear in the composer's slash menu while the agent is connected and disappear when it disconnects.
 
@@ -195,23 +162,19 @@ The Connections screen also lists three ready-made integrations.
 | Google      | Gmail inbox check, search and read, draft creation, Google Calendar           |
 | Microsoft   | Outlook messages, OneDrive file search and file contents                      |
 
-Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization.
-
-Drafting is as far as mail access goes: the assistant can create a draft, it cannot send one.
+Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Mail access stops at drafting: the assistant can create a draft, but cannot send one.
 
 ## What a connection can and cannot reach
 
-| Question                                          | Answer                                                                                                                                                                  |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Are MCP tool calls approved one by one?           | No. A connected, enabled server's tools run when the model calls them. Control is at the server level: enable, disable, delete                                          |
-| Are external agent tool calls approved?           | Whenever the agent asks, which is what an ACP agent does for file edits and commands. Each request prompts in the chat until you choose one of the always-allow buttons |
-| Do stored credentials go to the model?            | No. They authenticate the connection and are never part of the conversation                                                                                             |
-| Do stored credentials leave the device?           | Only to the server they belong to. MCP servers and credentials are never synced                                                                                         |
-| Can a connection reach my internal network?       | An external agent can, from the desktop app with Cloud Proxy off. Everything else is relayed, and the relay refuses private and internal addresses                      |
-| What can a bridged coding agent touch?            | The directory the bridge was launched from and everything below it. Nothing above it, and any working directory the app sends is ignored                                |
-| Can a bridged agent run arbitrary shell commands? | Not when it is the agent the Thunderbolt command-line tool serves, which has no shell tool and refuses to fetch loopback or private addresses                           |
-| Who can dial my bridge?                           | Only peer identities on its allowlist, which is your own account's devices plus anything you allowed manually                                                           |
-| How do I cut a paired machine off?                | Revoke the device in **Settings → Devices**. Live sessions close within about a minute                                                                                  |
+MCP tool calls are not approved one by one. Once a server is connected and enabled, its tools run whenever the model calls them, and your control is at the server level: enable, disable, delete. External agents work the other way round. An ACP agent asks before it edits a file or runs a command, and each request prompts in the chat until you choose one of the always-allow buttons.
+
+Stored credentials never reach the model. They authenticate the connection, are never part of the conversation, and leave the device only for the server they belong to.
+
+One path reaches inside your network: an external agent in the desktop app with Cloud Proxy off. Everything else is relayed, and the relay refuses private and internal addresses.
+
+A bridged coding agent can touch the directory the bridge was launched from and everything below it. Nothing above it is in scope, and any working directory the app sends is ignored. Whether a bridged agent can run arbitrary shell commands is up to the agent. The one the Thunderbolt command-line tool serves cannot: it has no shell tool, and it refuses to fetch loopback or private addresses.
+
+Only peer identities on a bridge's allowlist can dial it, which means your own account's devices plus anything you allowed manually. To cut a paired machine off, revoke the device in **Settings → Devices**. Live sessions close within about a minute.
 
 Peer-to-peer connections are encrypted end to end between the app and the bridge. The relay that introduces the two sides carries ciphertext and cannot read the traffic. By default these are public relays run by the authors of the underlying networking library; a deployment can point at its own instead with `VITE_IROH_RELAY_URL` when building the app and `THUNDERBOLT_IROH_RELAY_URL` for the command-line tool.
 

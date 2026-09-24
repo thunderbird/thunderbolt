@@ -12,7 +12,7 @@ Up front it normally sees only a short list of skill names and descriptions. Ful
 
 Pinned skills appear as chips above the composer, and typing `/` or `@` opens a picker that also lists any commands offered by a connected external agent. A token such as `/daily-brief` works anywhere in a message, as long as it follows a space or starts the line, and one message can carry several of them.
 
-A recognized token is highlighted in the composer. Click a token that is greyed out to enable the skill it names, or to create a skill under that name if none exists. A token that matches nothing is sent as ordinary text.
+Click a greyed-out token to enable the skill it names, or to create a skill under that name if none exists. A token that matches nothing is sent as ordinary text.
 
 ## Pinning
 
@@ -64,7 +64,7 @@ Every account starts with nine skills.
 
 Search and Research also raise the number of web lookups allowed for the message that uses them.
 
-Editable defaults behave like your own skills once you change them: your edit is kept, and later Thunderbolt releases will not overwrite it.
+Editable defaults behave like your own skills once you change them: your edit is kept, and we don't overwrite it in a later release.
 
 The other five, Weather, Link Preview, Map, Ask and Connect Integration, are display contracts: wording that tells the assistant how to render a particular kind of answer such as a weather card or a map. You can turn them off, but not rename, edit or delete them, because that wording is what makes the matching card render correctly.
 
@@ -80,4 +80,4 @@ Skills belong to one account. Sharing a skill directly with another user is not 
 
 ## Finding a skill fast
 
-Press `Cmd/Ctrl+K` and type the skill name. The box also matches text in a skill's description and instructions, so you can find one by what it does.
+`Cmd/Ctrl+K` matches a skill's description and instructions as well as its name, so you can find one by what it does rather than what it is called.

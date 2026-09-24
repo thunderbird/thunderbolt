@@ -8,7 +8,7 @@ An open-source AI client you deploy yourself. It runs on the web, macOS, Windows
 
 ### Who makes it, and how is it funded?
 
-MZLA Technologies, the entity behind Thunderbird, funded through a grant from Mozilla.
+We are MZLA Technologies, the entity behind Thunderbird, funded through a grant from Mozilla.
 
 ### Is it part of Thunderbird?
 
@@ -135,7 +135,7 @@ Override them with `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYM
 
 ### Are user API keys visible to the server?
 
-No. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync. It never reaches your server, and a user who signs in on a second device has to enter it again there. No Thunderbolt operator can read it either, since no central copy exists.
+No. A provider key, an agent credential, or a connected account's token is written to a part of the device's storage that is excluded from sync. It never reaches your server, and a user who signs in on a second device has to enter it again there. We cannot read it either. No central copy exists.
 
 ## Running it
 
@@ -146,6 +146,8 @@ No. A provider key, an agent credential, or a connected account's token is writt
 | [Docker Compose](./self-hosting/docker-compose.md) | Demos, evaluations, a single host       |
 | [Kubernetes](./self-hosting/kubernetes.md)         | Production, existing clusters           |
 | [Pulumi on AWS](./self-hosting/pulumi.md)          | Green-field AWS, infrastructure as code |
+
+We recommend starting with Docker Compose whatever you plan to run in the end. All three read the same settings.
 
 All three deploy the same five pieces: the application frontend, the backend API, a PostgreSQL database, the sync service that replicates data between devices, and Keycloak for single sign-on over OIDC or SAML. There is no external service the deployment has to call home to.
 
@@ -162,7 +164,7 @@ Every server component runs inside your network, and with a local model and no w
 - Official desktop builds check a hosted update service for new versions. Build your own or distribute installers internally if that is unacceptable.
 - Web search needs a search provider key on the backend (`EXA_API_KEY`). Leave it unset. Web search also requires Thunderbolt Pro, so it is unavailable by default on a self-hosted deployment; a Pro user can switch the **Thunderbolt** connection off under _Settings → Connections_.
 
-The project does not test air-gapped operation today, so treat it as a pilot.
+We don't test air-gapped operation today, so treat it as a pilot.
 
 ### How many devices can one account use?
 
@@ -178,7 +180,7 @@ Revocation is not a remote wipe. The next time the revoked device runs, it shows
 
 With end-to-end encryption off, signing in on a new device pulls the synced data back from your database.
 
-With it on, the 24-word recovery phrase shown once at setup is the only way back. Without that phrase, the encrypted data cannot be recovered by the user, by you, or by anyone with access to the server. Make saving it part of your onboarding.
+With it on, the 24-word recovery phrase shown once at setup is the only way back. Without that phrase, the encrypted data cannot be recovered by the user, by you, or by anyone with access to the server. We recommend making it part of your onboarding.
 
 ### What happens when a user deletes their account?
 

@@ -44,7 +44,8 @@ tool server has to be added again on each device.
 
 ## End-to-end encryption
 
-Off by default. Turn it on before your first users sign in:
+Off by default. We recommend turning it on before your first users sign in, because rows synced
+in plain text stay that way:
 
 ```ini
 E2EE_ENABLED=true
@@ -84,8 +85,8 @@ planned.
 - A user is capped at 10 trusted devices per account.
 - No cryptography audit yet.
 
-With encryption off, the server auto-trusts each device: no approval step, no recovery phrase, and
-your database holds readable conversation content.
+> With encryption off, the server auto-trusts each device: no approval step, no recovery phrase, and
+> your database holds readable conversation content.
 
 ## What leaves your deployment
 
@@ -110,9 +111,9 @@ about those turns crosses your infrastructure.
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
 
-If you turn on debug transcript forwarding, a transcript carries the whole conversation plus the
-user id and email your deployment holds. The Thunderbolt team retains it, and it survives deletion
-of the submitting account.
+> If you turn on debug transcript forwarding, a transcript carries the whole conversation plus the
+> user id and email your deployment holds. The Thunderbolt team retains it, and it survives deletion
+> of the submitting account.
 
 ## Managed models and confidential inference
 
@@ -153,7 +154,7 @@ directly and you can block the egress at your firewall. Where your server forwar
 `POSTHOG_HOST`, which defaults to PostHog's US cloud; point it at your own instance if you run
 one.
 
-Thunderbolt never collects prompts, model responses, API keys, search queries, file names, file
+We never collect prompts, model responses, API keys, search queries, file names, file
 contents, skill or agent names, or the text of anything a user wrote. Events carry event names and
 single values such as a model identifier, a provider name, a character count, and timings. URLs are
 reduced to a route pattern with query strings and fragments removed, and any property literally
@@ -203,9 +204,10 @@ user's conversations. What follows is about direct access to your own database a
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |
 
-An export file contains the user's provider API keys, tool server credentials, external agent keys
-and connected-account tokens in plain text, and it is not encrypted at rest. Treat it as a secret.
-It does not include attached file contents.
+An export file does not include attached file contents.
+
+> It does contain the user's provider API keys, tool server credentials, external agent keys and
+> connected-account tokens in plain text, and it is not encrypted at rest. Treat it as a secret.
 
 ## Hardening a deployment
 
@@ -226,7 +228,7 @@ Full variable reference: [Configuration](../self-hosting/configuration.md).
 ## Reporting a vulnerability
 
 Report privately through the
-[security advisory form](https://github.com/thunderbird/thunderbolt/security/advisories/new). Do not
+[security advisory form](https://github.com/thunderbird/thunderbolt/security/advisories/new). Don't
 open a public issue. Triage, questions, and the fix confirmation all happen in the advisory thread,
 and you are credited when it is published unless you ask otherwise.
 
@@ -237,5 +239,5 @@ server-side storage when `E2EE_ENABLED` is off. Third-party services a deploymen
 including model providers and identity providers, are out of scope here; report those to their
 owners.
 
-Test against your own deployment or your own account. Do not read other people's data or degrade
-the service for others.
+Test against your own deployment or your own account. Don't read other people's data, and don't
+degrade the service for others.

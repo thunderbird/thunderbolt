@@ -10,9 +10,9 @@ Thunderbolt runs entirely on infrastructure you control, with no vendor control 
 | [Kubernetes](./kubernetes.md)         | An existing cluster, an ingress controller, TLS, one `helm install`.                                                     | Set a replica count per service. Rolling upgrades through Helm.          | Teams that already run Kubernetes and have people who operate it.       |
 | [AWS with Pulumi](./pulumi.md)        | An AWS account and the Pulumi CLI. Builds the network and compute from zero.                                             | Same as Kubernetes if you choose EKS; managed load balancing either way. | A green-field AWS deployment you want described as code from the start. |
 
-The AWS path offers two targets from the same project: ECS Fargate (no cluster to operate) or EKS (which installs the same Helm chart Kubernetes users get).
+The AWS path offers two targets from the same project: ECS Fargate, which gives you no cluster to operate, or EKS, which installs the same Helm chart Kubernetes users get. Choose Fargate unless you already run EKS.
 
-If you are unsure, start with Docker Compose. The other paths run the same services and read the same settings, so what you learn transfers.
+We recommend starting with Docker Compose, even if you intend to run Kubernetes later. Every path runs the same services and reads the same settings, so nothing you learn is wasted.
 
 ## What a deployment contains
 
@@ -22,7 +22,7 @@ Three more pieces run alongside them. PostgreSQL holds accounts, sessions, and t
 
 Only the database and the identity provider can be replaced. Any OIDC or SAML identity provider can stand in for Keycloak. The database can be replaced on Docker Compose: drop the bundled PostgreSQL and point `DATABASE_URL` at a managed service such as Amazon RDS, after creating the replication role and publication the sync service needs. The Kubernetes chart and the AWS project do not offer that; both always run the PostgreSQL they deploy.
 
-Separately, the sync service keeps its own bookkeeping in a second database (`powersync_storage`) on the same server, and that piece is known to hang against RDS-managed PostgreSQL 17. Leave it on the PostgreSQL the deployment ships, or on an unmanaged instance.
+Separately, the sync service keeps its own bookkeeping in a second database (`powersync_storage`) on the same server. Don't put that one on managed PostgreSQL 17. The sync service hangs partway through startup against RDS-managed 17 and logs nothing to tell you why. Keep it on the PostgreSQL the deployment ships, or on an unmanaged instance.
 
 The Kubernetes and AWS paths also deploy a small static site for the landing page and these docs; Docker Compose does not, and on Kubernetes there is no switch to turn it off.
 
@@ -40,7 +40,7 @@ Each user's device keeps its own local database and reads and writes there first
 | Analytics             | Off. Nothing is sent unless you configure an analytics service, and each user still has to opt in.                                                                                                                         |
 | End-to-end encryption | Off. Turning on `E2EE_ENABLED` applies it to the whole deployment: message content is encrypted on the device, your servers hold only ciphertext, and each new device has to be approved from one the user already trusts. |
 
-Every default credential above is published in this repository. Replace the demo user and rotate all of them before anyone outside your team reaches the deployment.
+> Every credential in the table above is published in this repository. Rotate all of them and delete the demo user before anyone outside your team can reach the deployment.
 
 ## Before you start
 

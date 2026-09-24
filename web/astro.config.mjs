@@ -61,6 +61,21 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Using Thunderbolt',
+					items: [
+						{ label: 'Overview', slug: 'docs/using' },
+						{ label: 'Chat', slug: 'docs/using/chat' },
+						{ label: 'Projects', slug: 'docs/using/projects' },
+						{ label: 'Skills', slug: 'docs/using/skills' },
+						{ label: 'Connections', slug: 'docs/using/connections' },
+						{ label: 'Search', slug: 'docs/using/search' },
+						{ label: 'Voice', slug: 'docs/using/voice' },
+						{ label: 'Apps and sync', slug: 'docs/using/apps-and-sync' },
+						{ label: 'In-app browser', slug: 'docs/features/webview' },
+						{ label: 'Customize', slug: 'docs/customize' },
+					],
+				},
+				{
 					label: 'Deploy',
 					items: [
 						{ label: 'Choosing a deployment', slug: 'docs/self-hosting' },
@@ -87,21 +102,6 @@ export default defineConfig({
 						{ label: 'Users and access', slug: 'docs/admin/users-and-access' },
 						{ label: 'Devices and accounts', slug: 'docs/admin/devices' },
 						{ label: 'Security and privacy', slug: 'docs/admin/security-and-privacy' },
-					],
-				},
-				{
-					label: 'Using Thunderbolt',
-					items: [
-						{ label: 'Overview', slug: 'docs/using' },
-						{ label: 'Chat', slug: 'docs/using/chat' },
-						{ label: 'Projects', slug: 'docs/using/projects' },
-						{ label: 'Skills', slug: 'docs/using/skills' },
-						{ label: 'Connections', slug: 'docs/using/connections' },
-						{ label: 'Search', slug: 'docs/using/search' },
-						{ label: 'Voice', slug: 'docs/using/voice' },
-						{ label: 'Apps and sync', slug: 'docs/using/apps-and-sync' },
-						{ label: 'In-app browser', slug: 'docs/features/webview' },
-						{ label: 'Customize', slug: 'docs/customize' },
 					],
 				},
 			],

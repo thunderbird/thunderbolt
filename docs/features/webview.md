@@ -28,8 +28,8 @@ instead.
 
 ## Using the panel
 
-Drag the panel's left edge to resize it. The panel holds one thing at a time, so opening a page
-replaces whatever was in it, such as an attachment preview, a tool result, or an artifact.
+The panel holds one thing at a time, so opening a page replaces whatever was in it: an attachment
+preview, a tool result, or an artifact.
 
 ## Privacy
 
@@ -39,8 +39,9 @@ one. You can sign in to a site, but the session will not survive a reload or a s
 
 The page connects directly to the site, bypassing the backend proxy that carries your model and MCP
 traffic. The site sees your real IP address and the usual device details a browser reveals, such as
-screen size, operating system, and language. If you are opening sensitive pages, use a VPN, and open
-anything you need to sign in to in your real browser instead.
+screen size, operating system, and language. If you are opening sensitive pages, use a VPN.
+
+> Don't sign in to anything that matters here. Open it in your real browser instead.
 
 ## Limitations
 
@@ -51,10 +52,8 @@ page appears, on every open.
 
 ## Known issues
 
-Opening three or more pages within a few seconds can freeze the window. Let each page finish loading
-first.
-
-While a page is open it covers part of the panel's drag edge, so resizing takes a more precise grab.
+Don't open three or more pages within a few seconds; it can freeze the window. Let each one finish
+loading first.
 
 A few sites make the operating system ask for your login password to unlock its keychain, even though
 the page is in a private session. The request comes from the page, not from Thunderbolt, and you can

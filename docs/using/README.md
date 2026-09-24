@@ -4,13 +4,13 @@ Thunderbolt is a chat client for the AI models and agents you choose.
 
 ## Chats
 
-A conversation is saved on the device as you go, and its title is taken from your first message. With sync on, deleting a chat reaches the other devices on the account. A message you have already sent cannot be edited, and a reply that succeeded cannot be regenerated; ask a follow-up instead.
+A conversation is titled from your first message. A message you have already sent cannot be edited, and a reply that succeeded cannot be regenerated; ask a follow-up instead.
 
 [Chat](./chat.md) covers attachments, artifacts, citations, and what the app shows when a reply fails.
 
 ## Models and agents
 
-Each conversation keeps its own model and agent. The model picker sits in the composer and lists the models set up under Settings → Models. The agent picker sits at the top of the chat and offers the built-in Thunderbolt agent or an external agent you connected. An external agent brings its own model, so the model picker is hidden while one is selected.
+Each conversation keeps its own model and agent, picked from the composer and the chat header. An external agent brings its own model, so the model picker is hidden while one is selected.
 
 Adding models and providers is covered in [Customize](../customize.md).
 
@@ -22,7 +22,7 @@ The assistant can keyword-search the project's other conversations when it needs
 
 ## Skills
 
-A skill is a named block of instructions. Type `/` or `@` in the composer to pick one for a single message, or let the assistant load one on its own when the request calls for it. Thunderbolt ships a set of skills, and you can add your own under Settings → Skills. Pin the ones you use most, up to ten, and they appear as chips above the composer when you start a chat. See [Skills](./skills.md).
+A skill is a named block of instructions. Type `/` or `@` in the composer to pick one for a single message, or let the assistant load one on its own when the request calls for it. We ship a set of skills, and you can add your own under Settings → Skills. Pin the ones you use most, up to ten, and they appear as chips above the composer when you start a chat. See [Skills](./skills.md).
 
 ## Connections
 
@@ -34,7 +34,7 @@ Settings → Connections is where the assistant gets tools beyond the ones built
 | Google, Microsoft     | Read access to that account's mail, calendar, and files, once you sign in. Mail drafts can be created, never sent |
 | An MCP server you add | Whatever tools that server publishes, such as searching a wiki, querying a database, or filing a ticket           |
 
-MCP is the Model Context Protocol, an open standard for publishing tools to an AI assistant. You add a server by URL, and a test button lists the tools it offers before you save it. Every connection has its own on/off switch. Google and Microsoft also need whoever runs your deployment to have configured sign-in credentials for that provider.
+MCP is the Model Context Protocol, an open standard for publishing tools to an AI assistant. You add a server by URL, and a test button lists the tools it offers before you save it. Google and Microsoft also need whoever runs your deployment to have configured sign-in credentials for that provider.
 
 External agents are separate and are added under Settings → Agents. [Connections](./connections.md) covers both.
 
@@ -44,7 +44,7 @@ When the composer is empty, the send button becomes a voice button. Thunderbolt 
 
 ## Search
 
-`Cmd+K` on macOS or `Ctrl+K` elsewhere opens one box that searches chats, messages, models, skills, agents, connections, devices, projects, and tasks, and runs commands such as New chat or jumping to a settings page.
+`Cmd+K` on macOS or `Ctrl+K` elsewhere searches chats, messages, models, skills, agents, connections, devices, projects and tasks, and runs commands such as New chat.
 
 Search runs against an index on the device, so it works offline and no query leaves the machine. It matches words, not meaning: a question phrased differently from the text you are looking for will miss. See [Search](./search.md).
 

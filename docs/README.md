@@ -18,7 +18,7 @@ Thunderbolt is an open-source AI chat client that you host yourself. It runs on 
 
 ## Who it is for
 
-Thunderbolt today is aimed at **organizations deploying on-premises**. Individuals can self-host it too, but a backend is currently required for sign-in and for web search, so "install and run" means running the server stack as well. A hosted version is planned, with no release date.
+We built Thunderbolt for **organizations deploying on-premises**. Individuals can self-host it too, but a backend is currently required for sign-in and for web search, so "install and run" means running the server stack as well. A hosted version is planned, with no release date.
 
 ## What it costs
 

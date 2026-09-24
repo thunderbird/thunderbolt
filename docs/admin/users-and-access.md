@@ -19,8 +19,8 @@ rebuilding the app image as well as restarting the API. The published app image 
 so consumer mode means building that image yourself.
 [Authentication](../self-hosting/authentication.md) covers the provider settings.
 
-If your organization already runs an identity provider, use SSO. Joining, leaving, and multi-factor
-policy then stay where the rest of your accounts are.
+We recommend SSO if your organization already runs an identity provider. Joining, leaving, and
+multi-factor policy then stay where the rest of your accounts are.
 
 Consumer mode has no passwords and no "sign in with Google" button; the emailed code is the only
 credential. `GOOGLE_CLIENT_ID` and `MICROSOFT_CLIENT_ID`, if you have set them, let a signed-in user
@@ -46,8 +46,8 @@ The 15-second cooldown is held in memory by the process that served the request,
 deployment running several workers or replicas. The per-IP limit is recorded in the database and so is
 shared across them, unless you set `RATE_LIMIT_ENABLED=false`, which turns it off everywhere.
 
-Without `RESEND_API_KEY` the API never sends a sign-in email. It writes the code and link to its own
-log instead, which is enough to evaluate the deployment and leaves real users unable to sign in.
+> Without `RESEND_API_KEY` the API never sends a sign-in email. It writes the code and link to its
+> own log instead. That is enough to evaluate the deployment and leaves real users unable to sign in.
 
 ## The waitlist
 
@@ -55,7 +55,7 @@ In consumer mode, every email address that has never signed in is queued, and no
 off: `WAITLIST_ENABLED` is accepted and validated but currently has no effect, and the app build
 setting `VITE_BYPASS_WAITLIST` only hides the waitlist screen while the API still queues.
 
-**On a fresh deployment running consumer mode, nobody new can sign in until you act on this.**
+> On a fresh deployment running consumer mode, nobody new can sign in until you act on this.
 
 ### Auto-approve your own domains
 
@@ -158,8 +158,10 @@ spends their own money and is not metered here.
 If an anonymous visitor signs in later, the work already on their device carries into the new account
 and the anonymous record is removed.
 
-Anonymous visitors are never waitlist-gated. Turning anonymous access on means anyone who can reach
-the URL can use the deployment, so put it behind your network perimeter if that is not what you want.
+Anonymous visitors are never waitlist-gated.
+
+> Turning anonymous access on means anyone who can reach the URL can use the deployment. Put it
+> behind your network perimeter if that is not what you want.
 
 ## SSO deployments
 

@@ -4,7 +4,7 @@ Thunderbolt exposes one public liveness endpoint for load balancers and four tok
 
 ## Where to start
 
-Point your load balancer at `/v1/health`. It needs no token, and it gives the balancer a way to restart a wedged API process. Then set `MONITORING_TOKEN` and poll the deep probes: `/v1/health/database` and `/v1/health/powersync` every minute, `/v1/health/email` every 15 minutes. The most common real outage is the database, not the API. Sync failing is invisible to users until they open a second device, and a broken sending domain locks everyone out of email sign-in.
+Point your load balancer at `/v1/health`. It needs no token, and it gives the balancer a way to restart a wedged API process. Then set `MONITORING_TOKEN` and poll the deep probes. We recommend `/v1/health/database` and `/v1/health/powersync` every minute, and `/v1/health/email` every 15 minutes. The most common real outage is the database, not the API. Sync failing is invisible to users until they open a second device, and a broken sending domain locks everyone out of email sign-in.
 
 Ship the container logs somewhere durable too. Nothing is written to disk, so a restarted container takes its logs with it.
 
@@ -73,7 +73,7 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 ### The models probe
 
-`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. It is the only probe that costs money, so poll it no more than a few times an hour; every 15 minutes is a reasonable ceiling.
+`GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
 
 ```json
 { "status": "failed", "failures": [{ "model": "glm-5-3", "reason": "no-text" }] }
@@ -89,7 +89,9 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 Failure entries never contain the upstream response body or your credentials.
 
-**Do not alert on this endpoint unless your server holds keys for the preconfigured models.** Without `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`, every entry fails as `not-configured` and the endpoint stays red however healthy the deployment is. It also exercises only the models your deployment is configured to serve; models your users add themselves are not covered.
+The probe exercises only the models your deployment is configured to serve; models your users add themselves are not covered.
+
+> Don't alert on this endpoint unless your server holds keys for the preconfigured models. Without `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`, every entry fails as `not-configured` and the endpoint stays red however healthy the deployment is.
 
 ## What to alert on
 
@@ -123,7 +125,7 @@ Request lines use the Apache common log format with a response time appended:
 203.0.113.7 - "POST /v1/proxy HTTP/1.1" 200 OK 412ms
 ```
 
-The client address is the connecting socket unless `TRUSTED_PROXY` is set to `cloudflare` or `akamai`. Behind a load balancer and without it, every line shows the balancer's address. Do not set it unless you know exactly what sits in front of the server, because trusting the wrong header lets any client claim any IP and walk past the rate limits.
+The client address is the connecting socket unless `TRUSTED_PROXY` is set to `cloudflare` or `akamai`. Behind a load balancer and without it, every line shows the balancer's address. Don't set it unless you know exactly what sits in front of the server. Trusting the wrong header lets any client claim any IP and walk straight past the rate limits.
 
 Requests to `/v1/health` and to static assets are not access-logged, so load balancer traffic will not drown the log. The deep probes under `/v1/health/` are logged like any other request.
 
@@ -131,7 +133,9 @@ Requests to `/v1/health` and to static assets are not access-logged, so load bal
 
 Message content, prompts and model responses never reach a log; calls to AI providers are recorded by hostname only. Provider API keys, session cookies and bearer tokens are never logged either, and neither are the contents of any file a user attaches.
 
-There is one exception. If no email service is configured and the server is not running in production mode, sign-in codes and sign-in links are written to the log instead of being emailed. That is the intended local evaluation setup; configure an email service before real users reach the deployment.
+There is one exception.
+
+> If no email service is configured and the server is not running in production mode, sign-in codes and sign-in links are written to the log instead of being emailed. That is the intended local evaluation setup. Configure an email service before real users reach the deployment.
 
 ### Startup lines
 

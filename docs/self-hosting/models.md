@@ -14,11 +14,15 @@ A Thunderbolt deployment does not ship with a model. Either you set provider key
 
 The two can coexist. Users pick per chat from whatever is available to them.
 
+We recommend server keys if you are willing to fund inference. Users get a working model on first sign-in with nothing to configure, and you get spend limits, which bring-your-own-key gives you no way to apply.
+
 ## When no server keys are set
 
 Neither provider key is set by default, so a deployment is bring-your-own-key only until you set one.
 
-Three deployment-provided models are listed in the app regardless of what you configure, because the list ships with the release. Without the matching server key they appear selectable and fail when a message is sent. No setting hides them, though each user can disable or delete a model in **Settings → Models**. If you do not intend to fund server-side inference, tell your users to add their own key.
+No setting hides the deployment-provided models, though each user can disable or delete a model in **Settings → Models**. If you do not intend to fund server-side inference, tell your users to add their own key.
+
+> Three deployment-provided models are listed in the app regardless of what you configure, because the list ships with the release. Without the matching server key they look selectable and fail when a message is sent.
 
 ## Deployment-provided models
 
@@ -53,7 +57,7 @@ Every deployment-provided request is priced and checked against two rolling wind
 
 Anonymous sessions get far less because they cost an attacker nothing to create.
 
-Windows roll continuously, with no monthly reset and no top-up. A user over the limit sees "AI usage limit reached" with the window named, and can keep using their own keys and any custom endpoint. The per-token prices used for this accounting are seeded into your database when you run the release's migrations. They approximate provider list prices and are not an invoice, so read your provider's own billing for what you actually owe.
+Windows roll continuously, with no monthly reset and no top-up. A user over the limit sees "AI usage limit reached" with the window named, and can keep using their own keys and any custom endpoint. The per-token prices used for this accounting are seeded into your database when you run the release's migrations. Don't treat those figures as an invoice. They approximate provider list prices; read your provider's own billing for what you owe.
 
 Confidential usage is counted from a receipt the client posts back after it decrypts the response, because your server never sees those token counts. A client that closes mid-answer leaves that spend uncounted, so confidential totals can run low. Your server signs the account, the model and the price, so a client can only under-report its own usage.
 
@@ -71,7 +75,7 @@ Message content is what the enclave path protects, in both directions, from your
 
 Voice input and speech output use the same protected path by default, so they need `TINFOIL_API_KEY` too. Without it the built-in voice engine returns an error. Voice requests are never counted against spend limits.
 
-A personal access token cannot reach confidential models. Requests made with one are refused and the user is told to sign in through the app. Set `CONFIDENTIAL_API_KEYS_ENABLED=true` to allow it, only if you have reviewed what that means for your token issuance.
+A personal access token cannot reach confidential models. Requests made with one are refused and the user is told to sign in through the app. Don't set `CONFIDENTIAL_API_KEYS_ENABLED=true` until you have reviewed what it means for the way you issue tokens.
 
 If the enclave cannot be verified, the message fails with an error saying so. There is no fallback to an unprotected path. Without `TINFOIL_API_KEY`, confidential requests are refused with `503 Tinfoil provider not configured`, while a missing `ANTHROPIC_API_KEY` makes the standard tier fail less cleanly, with a generic server error.
 
@@ -114,7 +118,7 @@ http://localhost:1234/v1    LM Studio
 
 Anything that is not on the user's own machine is dialled over HTTPS whether or not the user typed `https://`, so an HTTP-only endpoint on a public address will not work.
 
-No server setting points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach. A LAN-only model server cannot be used from the web app at all, so put it behind HTTPS on a resolvable name, or have the team use the desktop app.
+No server setting points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach. A LAN-only model server cannot be reached from the web app at all. We recommend putting it behind HTTPS on a resolvable name; failing that, have the team use the desktop app.
 
 ## Verify
 

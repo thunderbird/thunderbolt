@@ -104,7 +104,7 @@ https://your-backend/v1/api/auth/sso/saml2/sp/metadata?providerId=sso
 Two behaviours that are not faults:
 
 - **Signing out puts the user straight back in.** The identity provider keeps its own session, so the next visit re-authenticates silently. This is normal SSO behaviour and Thunderbolt cannot end the provider's session for you.
-- **The bundled Keycloak forgets its configuration.** In the Kubernetes chart it runs in development mode with no persistent volume, so anything set in its admin console is lost on pod restart and the realm is re-imported. Use it for evaluation only.
+- **The bundled Keycloak forgets its configuration.** In the Kubernetes chart it runs in development mode with no persistent volume, so anything set in its admin console is lost on pod restart and the realm is re-imported. Don't use it past evaluation.
 
 ## Chats are not syncing between devices
 
@@ -169,7 +169,7 @@ A model that fails only for one user is almost always their own key or endpoint.
 curl -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health/models
 ```
 
-This sends one tiny completion to each model in the catalog and reports `not-configured`, `missing-price`, `timeout`, `upstream-error`, or `no-text` per model. Every call spends real money, so poll it every 15 minutes at most.
+This sends one tiny completion to each model in the catalog and reports `not-configured`, `missing-price`, `timeout`, `upstream-error`, or `no-text` per model. Don't poll it more often than every 15 minutes: every call spends real money.
 
 ### Egress allowlists
 
@@ -189,7 +189,7 @@ Images and PDFs are compressed before the size check, so a large photo often fit
 | The attachment is gone when the chat is opened on another device | Attachment contents never sync. Open the chat on the device that sent it                                                |
 | The attachment is missing from a data export                     | Exports carry the reference, not the file                                                                               |
 
-Attachment contents live in the browser's storage for the app origin, which means clearing site data removes them from already-sent messages.
+> Attachment contents live in the browser's storage for the app origin. Clearing site data removes them from messages that have already been sent.
 
 ## Voice does not work
 
@@ -228,4 +228,6 @@ The check fails closed: a client that sends no version is treated as too old. If
 ## Getting help
 
 - Open an issue at [github.com/thunderbird/thunderbolt](https://github.com/thunderbird/thunderbolt/issues) with your deployment target, the app version from **Settings → Preferences**, and the relevant server log lines.
-- Sending a debug transcript is an option only if your deployment is configured for it. Understand what it contains before enabling it: the full conversation plus the user ID and email your deployment holds, forwarded to and retained by the Thunderbolt team. See the [configuration reference](./self-hosting/configuration.md).
+- Sending a debug transcript is an option only if your deployment is configured for it. See the [configuration reference](./self-hosting/configuration.md).
+
+> Understand what a transcript contains before you enable forwarding: the full conversation plus the user ID and email your deployment holds, sent to and retained by the Thunderbolt team.

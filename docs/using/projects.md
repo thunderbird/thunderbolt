@@ -8,7 +8,7 @@ A project's instructions are always on for every chat inside it. Guidance you wa
 
 ## Create a project
 
-**Projects** in the sidebar opens the project list, and **New project** opens the form.
+**Projects → New project** in the sidebar. Four fields, one of them required.
 
 | Field        | Required | Limit             | What it does                                                    |
 | ------------ | -------- | ----------------- | --------------------------------------------------------------- |
@@ -25,7 +25,7 @@ Every message in a chat carries the project's name and instructions, alongside t
 
 ## Add chats to a project
 
-**Move to project** in a chat's action menu both adds a chat to a project and removes it from one, and on desktop you can drag a chat onto a project row in the sidebar instead. A chat belongs to at most one project.
+**Move to project** in a chat's action menu both files a chat and removes it from a project, and on desktop you can drag a chat onto a project row instead. A chat belongs to at most one project.
 
 ## Artifacts
 
@@ -33,7 +33,7 @@ Artifacts produced in a project's chats are gathered on the project page, newest
 
 ## Searching across a project's chats
 
-When a chat is in a project, ask something like "what did we decide about pricing?" and the model can look through the project's other conversations for the answer. It is a keyword search: Thunderbolt does not use embeddings or semantic search anywhere, so wording that differs from the original conversation can miss. The model is instructed to retry with synonyms, but rephrasing your question with the words you originally used is the reliable fix.
+When a chat is in a project, ask something like "what did we decide about pricing?" and the model can look through the project's other conversations for the answer. It is a keyword search: Thunderbolt does not use embeddings or semantic search anywhere, so wording that differs from the original conversation can miss. The model is instructed to retry with synonyms, but we recommend rephrasing the question with the words you originally used.
 
 - The current chat is excluded, since its history is already in view.
 - Chats outside the project are never searched.

@@ -38,7 +38,9 @@ Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When syn
 | `MIGRATIONS_DIR`     | `drizzle`  | Location of the migration files, relative to the working directory.                                                                                                         |
 | `POSTGRES_ADMIN_URL` | unset      | Admin connection used at container start to create the database named in `DATABASE_URL` if it does not exist. For shared PostgreSQL instances hosting several environments. |
 
-The embedded `pglite` driver is for evaluation and testing only. The sync service cannot replicate from it, and under this driver `DATABASE_URL` is a directory path rather than a connection string. Leave a `postgresql://` value in place and it falls back to an in-memory database with only a warning in the log, losing everything on restart.
+Don't use the embedded `pglite` driver outside evaluation and testing. The sync service cannot replicate from it, and under this driver `DATABASE_URL` is a directory path rather than a connection string.
+
+> Leave a `postgresql://` value in place under `pglite` and the API falls back to an in-memory database with only a warning in the log, losing everything on restart.
 
 ## Authentication
 
@@ -150,7 +152,9 @@ openssl rand 32 | basenc --base64url --wrap=0
 | -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `E2EE_ENABLED` | `false` | Encrypts message content on the device before it syncs, and requires each new device to be approved from one the user already trusts. |
 
-Because the servers then hold only ciphertext, an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost. Apps read the setting from the API at startup, so there is no matching client setting.
+Apps read the setting from the API at startup, so there is no matching client setting.
+
+> Because the servers then hold only ciphertext, an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
 
 ## Agents
 
@@ -208,7 +212,7 @@ Request headers need no configuration: the API echoes back whatever the browser 
 | `RATE_LIMIT_ENABLED` | `true`  | Set `false` to switch limits off. Local evaluation only.                                                                   |
 | `TRUSTED_PROXY`      | empty   | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
 
-Trusting the wrong proxy header lets any client claim any IP and walk past the limits. Leave `TRUSTED_PROXY` empty unless you know exactly what sits in front of the API.
+> Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 
 The limits themselves are not configurable:
 
@@ -245,7 +249,9 @@ Enable it only after every app your users run is new enough to recognise a comma
 | `WAITLIST_AUTO_APPROVE_DOMAINS` | none    | Comma-separated email domains approved on sight, for example `example.com,example.org`. |
 | `WAITLIST_ENABLED`              | `false` | Accepted and validated, but currently has no effect.                                    |
 
-The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. If your deployment uses email codes, **set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains**, or nobody new can sign in. Deployments on OIDC or SAML are unaffected, and so is social sign-in.
+The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. Deployments on OIDC or SAML are unaffected, and so is social sign-in.
+
+> If your deployment uses email codes, set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains. Nobody new can sign in until you do.
 
 ## Analytics and tracing
 
@@ -277,7 +283,7 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" https://api.example.com/v1/hea
 | `/v1/health/email`     | That Resend accepts your key and your sending domain is verified, 10 seconds. Sends no mail. |
 | `/v1/health/models`    | One tiny completion against every model offered, 20 seconds each.                            |
 
-Healthy is `200` with `{"status":"ok"}`, unhealthy is `503` with a short reason. Reasons never include upstream response bodies or credentials. The models check costs real money on every call, so poll it on the order of every 15 minutes, not every 15 seconds.
+Healthy is `200` with `{"status":"ok"}`, unhealthy is `503` with a short reason. Reasons never include upstream response bodies or credentials. Don't poll the models check on a tight interval: every call spends real money on a completion. We recommend 15 minutes.
 
 If `MONITORING_TOKEN` is unset these routes return `403` and run no checks. A wrong token returns `401`.
 
@@ -291,7 +297,9 @@ Users can send a conversation transcript to the Thunderbolt team for troubleshoo
 | `DEBUG_TRANSCRIPT_UPSTREAM_KEY`   | empty   | Your deployment's key, issued by the Thunderbolt team. Server-side only.                    |
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Receives transcripts from other deployments. Only the Thunderbolt-hosted service sets this. |
 
-Understand what leaves your infrastructure before enabling this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). The Thunderbolt team retains what it receives, and a transcript survives deletion of the account that submitted it. Contact the team with a deployment name to get a key.
+Contact the team with a deployment name to get a key.
+
+> Understand what leaves your infrastructure before you enable this. Credentials and API keys are stripped, but identifying details are not: a transcript carries the conversation itself, along with the user ID and email your deployment holds (both blank for anonymous users). The Thunderbolt team retains what it receives, and a transcript survives deletion of the account that submitted it.
 
 ## Frontend build settings
 

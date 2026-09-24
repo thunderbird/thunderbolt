@@ -46,7 +46,7 @@ One host running the Compose stack. 4 GB of RAM is the working minimum and 8 GB 
 
 Move PostgreSQL to a managed database and run the rest on Kubernetes or ECS. The backend keeps no state between requests, so you scale it by adding replicas. PowerSync holds an open sync connection per signed-in device, so its load tracks device count more than message volume.
 
-Neither bundled stack scales PostgreSQL: both run a single instance with no high-availability option, which is the main reason to move it to a managed database before real use. Only the Compose stack lets you swap in a managed one, since the Helm chart and the Pulumi project always run the PostgreSQL they deploy.
+Neither bundled stack scales PostgreSQL: both run a single instance with no high-availability option. We recommend moving to a managed database before anyone depends on the deployment. Only the Compose stack lets you do that, since the Helm chart and the Pulumi project always run the PostgreSQL they deploy.
 
 ## Database
 
@@ -60,7 +60,7 @@ Disk grows with message and attachment volume, and the sync buckets hold their o
 
 Thunderbolt does not store uploaded files on the server. Attachments stay on the device that added them and travel only inside the request that answers a message, so there is no S3 or blob-storage bucket to provision.
 
-You can skip PostgreSQL entirely with `DATABASE_DRIVER=pglite`, which runs the server against an embedded database file and expects `DATABASE_URL` to point at a directory rather than a connection string. The sync service cannot replicate from it, so multi-device sync does not work and the mode suits a first look only.
+You can skip PostgreSQL entirely with `DATABASE_DRIVER=pglite`, which runs the server against an embedded database file and expects `DATABASE_URL` to point at a directory rather than a connection string. Use it for a first look and nothing else. The sync service cannot replicate from it, so multi-device sync does not work.
 
 ## TLS and DNS
 

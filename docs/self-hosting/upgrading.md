@@ -4,7 +4,9 @@ There is no in-place updater and no upgrade button. You set a new version, apply
 
 ## Before you upgrade
 
-Back up the database first: schema changes are applied automatically, and going back to an old image does not undo them. Note the version you are on, because you need it to roll back. `CHANGELOG.md` in the repository lists every version and what changed in it, so read the entry for the version you are moving to. Pick an explicit version rather than `latest`, for the reason in the warning below. And expect a short interruption: each service runs a single copy by default, so restarting it is a gap in service.
+> Back up the database first. Schema changes are applied automatically, and going back to an old image does not undo them.
+
+Note the version you are on, because you need it to roll back. `CHANGELOG.md` in the repository lists every version and what changed in it, so read the entry for the version you are moving to. Pick an explicit version rather than `latest`, for the reason in the warning below. And expect a short interruption: each service runs a single copy by default, so restarting it is a gap in service.
 
 There is no endpoint that reports the running version, so read it from whichever tool you deployed with:
 
@@ -155,7 +157,7 @@ The sync service decides which data reaches a device, and it reads that from a c
 
 A rule change takes effect only when the sync service restarts. On Kubernetes, changing the configuration does not trigger that, so roll the sync deployment by hand after a chart upgrade that changes the rules.
 
-If a release adds newly synced data and only the app is upgraded, the feature works on the device it was used on and silently fails to appear on the user's other devices.
+> If a release adds newly synced data and only the app is upgraded, the feature works on the device it was used on and silently fails to appear on the user's other devices.
 
 ## Client apps
 
@@ -194,13 +196,13 @@ pulumi config set version 0.1.132 -s <stack-name>
 pulumi up -s <stack-name>
 ```
 
-Before you roll back, check whether the release you are leaving included a migration. If it did, restore the database from your pre-upgrade backup at the same time. Otherwise the older API meets a schema it does not expect.
+> Check whether the release you are leaving included a migration. If it did, restore the database from your pre-upgrade backup at the same time, or the older API meets a schema it does not expect.
 
 ## The bundled Keycloak
 
 The Keycloak that ships with the deployment runs in development mode with no storage of its own. Its realm is imported from configuration every time the container starts, and **replacing the Keycloak container discards everything configured inside Keycloak since it last started**, including users you created there and client settings you changed in its admin console. Upgrading its image replaces the container.
 
-You can live with that in two ways. Keep Keycloak's configuration in the realm file the deployment imports, so a restart reproduces it. Or point the deployment at your own identity provider instead, which upgrades never touch. See [Configuration](./configuration.md#authentication).
+We recommend pointing the deployment at your own identity provider, which upgrades never touch. If you keep the bundled one, put its configuration in the realm file the deployment imports so a restart reproduces it. See [Configuration](./configuration.md#authentication).
 
 The same applies to the bundled PostgreSQL in one narrower case: its major version is pinned, and its data directory is tied to that major version. An upgrade of Thunderbolt never changes it. Moving PostgreSQL to a new major version is a separate migration you perform yourself.
 

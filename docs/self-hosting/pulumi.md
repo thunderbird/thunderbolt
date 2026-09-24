@@ -11,6 +11,8 @@ Use this path when you want the whole deployment described as code from the star
 | **ECS Fargate** | `fargate`     | AWS-managed containers, no cluster to operate      | EFS volume                | The default. No Kubernetes knowledge needed.      |
 | **EKS**         | `k8s`         | A managed Kubernetes cluster with two worker nodes | EBS volumes (`gp3` class) | Teams who want Kubernetes and already operate it. |
 
+We recommend Fargate unless you already operate Kubernetes. It costs less at rest and leaves you no cluster to run.
+
 On EKS the project creates the cluster and then installs the Helm chart documented on the [Kubernetes](./kubernetes.md) page, which is the reference for everything after the cluster exists: chart values, hostnames, TLS, credentials, and upgrades. Only a handful of the settings on this page reach an EKS deployment. Region, target, version, the registry token, the session secret, and the public address get through; the rest configure Fargate services directly and are ignored there, so set their Helm equivalents instead.
 
 ## What gets created
@@ -78,8 +80,6 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 
 ### Rotate the defaults
 
-**Every credential you leave unset falls back to a fixed value published in this repository**, and nothing is generated for you. Set all six as secrets before anyone outside your team can reach the deployment:
-
 | Setting                 | Default if unset                      |
 | ----------------------- | ------------------------------------- |
 | `keycloakAdminPassword` | `admin`, against the username `admin` |
@@ -89,13 +89,15 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 | `betterAuthSecret`      | A published fixed string              |
 | `powersyncJwtSecret`    | A published fixed string              |
 
+> Every credential you leave unset falls back to a fixed value published in this repository, and nothing is generated for you. Set all six as secrets before anyone outside your team can reach the deployment.
+
 Keycloak also imports a demo user, `demo@thunderbolt.io` / `demo`, exactly as on the other deployment paths. Remove it in the Keycloak admin console once your own identity provider or users are in place.
 
 On EKS these settings are not passed through to the cluster. The chart applies its own defaults, which are published too and covered on the [Kubernetes](./kubernetes.md) page.
 
 ## Hostnames and TLS
 
-This section applies to the Fargate target only. By default the load balancer answers on its own AWS address over plain HTTP, and requests are routed by path: `/v1/` to the API, `/auth/` and `/realms/` to Keycloak, `/powersync/` to the sync service, everything else to the app. The marketing and docs site has no path of its own and is unreachable in this mode. That is enough to evaluate the deployment, and not enough to serve users.
+This section applies to the Fargate target only. By default the load balancer answers on its own AWS address over plain HTTP, and requests are routed by path: `/v1/` to the API, `/auth/` and `/realms/` to Keycloak, `/powersync/` to the sync service, everything else to the app. The marketing and docs site has no path of its own and is unreachable in this mode. That is enough to evaluate the deployment. Don't serve users from it.
 
 Setting any hostname switches the deployment to one subdomain per service, routed by the host name in the request:
 
@@ -159,13 +161,13 @@ Costs depend on region and usage. EKS costs more at rest than Fargate because of
 
 ## Limits to know about
 
-PostgreSQL runs as one of the containers, on EFS or EBS. There is no managed database option: moving to a service such as Amazon RDS is something you would wire up yourself, and the sync service's own bookkeeping database should not go there (see the caveat on the [self-hosting overview](./README.md)). Nothing snapshots that storage for you either, so set up backups before you store anything you care about.
+PostgreSQL runs as one of the containers, on EFS or EBS. There is no managed database option: moving to a service such as Amazon RDS is something you would wire up yourself, and don't put the sync service's own bookkeeping database there (see the caveat on the [self-hosting overview](./README.md)). Nothing snapshots that storage for you either, so set up backups before you store anything you care about.
 
 There is no high availability: one copy of each service, and one NAT gateway in one availability zone. A zone failure takes the deployment down.
 
 Nothing autoscales. Service sizes are fixed, so growing the deployment means changing them.
 
-Keycloak runs in its development mode, which is convenient for a first boot but is not a configuration to serve real users from.
+Keycloak runs in its development mode. Don't serve real users from it; point the API at your own identity provider instead.
 
 Two more Fargate specifics:
 
@@ -174,7 +176,9 @@ Two more Fargate specifics:
 
 ## Switching targets later
 
-Changing `platform` and running `pulumi up` again destroys the old compute and builds the new, reusing the network. **Your data does not come with it.** The EFS filesystem holding the database only exists on the Fargate side, so switching to EKS destroys it and the cluster starts from an empty volume. Dump anything you want to keep first.
+Changing `platform` and running `pulumi up` again destroys the old compute and builds the new, reusing the network.
+
+> Your data does not come with it. The EFS filesystem holding the database only exists on the Fargate side, so switching to EKS destroys it and the cluster starts from an empty volume. Dump anything you want to keep first.
 
 ## Tear down
 
@@ -183,4 +187,4 @@ pulumi destroy -y
 pulumi stack rm acme-prod -y
 ```
 
-This deletes the database storage along with everything else.
+> This deletes the database storage along with everything else, and Pulumi does not snapshot it on the way out.

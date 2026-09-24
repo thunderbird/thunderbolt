@@ -1,8 +1,8 @@
 # Chat
 
-Chat is the main surface in Thunderbolt. You pick a model, type a prompt, attach files, and get back an answer with sources.
+Chat is the main surface in Thunderbolt. You pick a model, a skill and any attachments, and the answer comes back with its sources.
 
-Unsent text is kept per conversation, so switching chats and coming back does not lose a draft. A stopped reply is kept as far as it got. To quote part of an answer, select the text and click **Reply**, and the passage is added to the composer as a quote chip.
+To quote part of an answer, select the text and click **Reply**. The passage is added to the composer as a quote chip.
 
 ## Choosing a model
 
@@ -32,8 +32,6 @@ Skills are managed under **Settings → Skills**, where you can write your own. 
 
 ## Attaching files
 
-Attach with the paperclip, by dragging onto the composer, or by pasting a file from the clipboard.
-
 ### Accepted types and limits
 
 | Type         | Extensions                                  |
@@ -49,7 +47,9 @@ Anything else, including `.doc`, `.xls`, `.pptx`, audio and video, is rejected a
 
 ### Where the bytes go
 
-**File contents never leave the device except inside the request that answers your message.** Thunderbolt stores them in the browser or app's local storage and sends them to the model provider, or the external agent, that answers the message. No copy is kept on the Thunderbolt server.
+Thunderbolt stores file contents in the browser or app's local storage and sends them to the model provider, or the external agent, that answers the message. No copy is kept on the Thunderbolt server.
+
+> File contents never leave the device except inside the request that answers your message.
 
 Three consequences follow:
 
@@ -75,17 +75,17 @@ Web search and page fetching come from the **Thunderbolt** connection under **Se
 
 When the model uses a source, the answer carries a numbered badge like `[1]` at the point it is relevant. Click a badge to see the pages behind it, each with its title and link. Numbers are stable for the whole reply: a page found by search and then read keeps its number.
 
-Citations are saved with the message, so they still resolve when you reopen the conversation days later. Every source is a real URL the model retrieved; Thunderbolt never assembles a citation list from the model's own text.
+Citations are saved with the message, so they still resolve when you reopen the conversation days later. Every source is a real URL the model retrieved. We never assemble a citation list from the model's own text.
 
 Clicking a link opens it according to your **External Links** preference. See [In-App Browser](../features/webview.md).
 
 ## Artifacts
 
-An artifact is a self-contained web page the model writes when a chart, table, diagram or small interactive tool answers better than prose. It appears as a card in the conversation and can be opened in a side panel. You can copy its source or download it as a single `.html` file that opens in any browser. Artifacts are saved with the conversation and sync with it.
+An artifact is a self-contained web page the model writes when a chart, table, diagram or small interactive tool answers better than prose. It appears as a card in the conversation and opens in a side panel, and you can download it as a single `.html` file. Artifacts are saved with the conversation and sync with it.
 
 An artifact runs in an isolated frame with **no network access**. It cannot fetch data, load a remote script or stylesheet, submit a form, or read anything else in the app. Images and fonts have to be embedded in the page itself. Thunderbolt checks the page for errors before showing it, and asks the model to fix it if the check fails.
 
-Because the model wrote the code, never type a password, key or other secret into an artifact.
+> An artifact is code the model wrote. Don't type a password, key or other secret into one.
 
 ## When a reply fails
 
@@ -106,10 +106,10 @@ There is no way to edit a message you have already sent, and no button to regene
 
 ## Organizing conversations
 
-A conversation is titled automatically from your first message. The `⋯` menu on a chat in the sidebar renames it, deletes it, or moves it to a project, and you can also drag a chat onto a project. **Clear all chats** at the top of the chat list deletes every conversation.
+A conversation is titled automatically from your first message. Drag a chat onto a project in the sidebar to file it there, or use **Move to project** in its `⋯` menu.
 
 Projects group related chats and add instructions every chat in the project inherits. A chat in a project can also search the project's other chats when the model needs earlier context. Deleting a project does not delete its chats; they are returned to the ungrouped list. See [Projects](./projects.md).
 
-Search (`Cmd/Ctrl + K`) covers chats, messages, models, skills, agents, connections, devices, projects and tasks, and runs commands such as "New chat". It runs entirely on the device and works offline, so your query is never sent anywhere. Matching is on keywords rather than meaning, so a question phrased differently from the text you are looking for may miss; try the wording you used at the time. See [Search](./search.md).
+Search (`Cmd/Ctrl + K`) runs entirely on the device, so your query is never sent anywhere. Matching is on keywords rather than meaning: try the wording you used at the time. See [Search](./search.md).
 
 Conversations are stored on the device first. If sync is enabled they appear on your other devices, encrypted end to end when you turn that on. Deleting a chat removes it everywhere you are signed in.

@@ -2,7 +2,7 @@
 
 One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except an AI provider, and only if you configure one.
 
-If you only want to see Thunderbolt working, [Docker Compose](./docker-compose.md) is shorter, or use the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
+If you only want to see Thunderbolt working, we recommend [Docker Compose](./docker-compose.md) or the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
 
 ## What the chart deploys
 
@@ -40,7 +40,9 @@ POWERSYNC_JWT_SECRET=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
 
 The sync secret must be **base64url** encoded, not standard base64. The same string is used to sign sync tokens and to verify them, and the verifier rejects the `+`, `/` and `=` characters that `openssl rand -base64` can emit. The decoded value must be at least 32 characters or the API will not start.
 
-The chart ships a working default for the sync secret, the two database passwords, the Keycloak administrator login, and the OpenID Connect (OIDC) client secret that Thunderbolt uses to authenticate against Keycloak. Every one of those defaults is published openly in the project's source. Override all of them before anyone outside your team can reach the deployment.
+The chart ships a working default for the sync secret, the two database passwords, the Keycloak administrator login, and the OpenID Connect (OIDC) client secret that Thunderbolt uses to authenticate against Keycloak.
+
+> Every one of those defaults is published openly in the project's source. Override all of them before anyone outside your team can reach the deployment.
 
 ## Install
 
@@ -57,9 +59,9 @@ helm install thunderbolt . \
   --set keycloak.demoUserEnabled=false
 ```
 
-Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries. Image tags default to `latest`, which is rebuilt continuously, so pin `<component>.image.tag` to a published version before you depend on the deployment. See [Upgrading](./upgrading.md).
+Each release also publishes the chart to `oci://ghcr.io/thunderbird/charts/thunderbolt`, so you can install without cloning. Every image the chart pulls is public and no pull secret is needed: the app, the API and the landing page come from `ghcr.io/thunderbird/thunderbolt/`, while PostgreSQL, Keycloak and the sync service come from their projects' own registries. Don't depend on a deployment running `latest`: the tag is rebuilt continuously. Pin `<component>.image.tag` to a published version instead. See [Upgrading](./upgrading.md).
 
-Past a handful of flags, copy the chart's `values.yaml`, which documents every option, and pass it with `-f`.
+Past a handful of flags we recommend copying the chart's `values.yaml`, which documents every option, and passing it with `-f`.
 
 ## Verify the deployment
 
@@ -112,6 +114,8 @@ The chart does not render a TLS section on the Ingress. Terminate TLS in front o
 - Terminate at a cloud load balancer that fronts the controller, or
 - Add a `tls` block to the Ingress yourself after install.
 
+We recommend the first, with cert-manager issuing the certificate. It keeps renewal out of the chart and out of your upgrade path.
+
 Whichever you choose, set `appUrl` to the `https://` URL. It decides which browser origins are allowed to call the API, where sign-in returns the user to, and the return addresses registered with Keycloak. An `appUrl` that does not match the address users actually visit produces sign-in loops rather than a clear error. Changing `appUrl` on a later upgrade restarts the API and Keycloak by itself, and Keycloak re-imports its sign-in configuration at the new address. Expect a brief interruption to sign-in while that happens.
 
 ## Values that matter
@@ -144,9 +148,11 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 
 `<component>` is one of `frontend`, `marketing`, `backend`, `postgres`, `powersync`, `keycloak`.
 
-Secret values ending in `Base64` are base64 of the raw value, not the raw value: `echo -n "your-key" | base64`. The database password must also be URL safe. A password containing `@`, `:`, `/`, `?` or `#` silently corrupts the connection string and the API will not reach the database.
+Secret values ending in `Base64` are base64 of the raw value, not the raw value: `echo -n "your-key" | base64`.
 
-Provider keys set here are held by the API, so the browser never holds them and never calls a provider directly. Users can still bring their own keys in the app instead, but some providers reject browser-origin requests, which makes a server-side key the more reliable option. Every setting the API understands is in the [configuration reference](./configuration.md).
+> Don't put `@`, `:`, `/`, `?` or `#` in the database password. It silently corrupts the connection string and the API never reaches the database.
+
+Provider keys set here are held by the API, so the browser never holds them and never calls a provider directly. Users can still bring their own keys in the app instead, but we recommend a server-side key: some providers reject browser-origin requests outright. Every setting the API understands is in the [configuration reference](./configuration.md).
 
 ## Try it on a local cluster
 
@@ -226,7 +232,7 @@ kind delete cluster --name thunderbolt
 - Back up the PostgreSQL volume. It holds accounts, sessions and the server copy of synced data.
 - Decide how users reach a model: a provider key on the server, or each user's own key.
 
-The bundled Keycloak is not production-grade. It runs in development mode with its database inside the pod and no persistent volume, so anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. For a real deployment, point Thunderbolt at your own identity provider. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
+**Don't use the bundled Keycloak past evaluation.** It runs in development mode with its database inside the pod and no persistent volume, so anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. Point Thunderbolt at your own identity provider instead. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
 
 The database is always the one the chart deploys. There is no value for pointing at an external PostgreSQL such as RDS: `postgres.sslmode` exists for a database that terminates TLS, but the connection target itself is fixed to the in-cluster instance.
 

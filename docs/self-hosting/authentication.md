@@ -10,6 +10,8 @@ Thunderbolt has one authentication mode active at a time, set by you, and every 
 | SAML single sign-on | `AUTH_MODE=saml`     | A sign-on URL, two entity IDs and a certificate | Your identity provider speaks SAML 2.0 and not OIDC.                            |
 | Email sign-in code  | `AUTH_MODE=consumer` | A transactional email service                   | You have no identity provider. Read the limitations below before choosing this. |
 
+We recommend OIDC wherever you have the choice. It is the only mode that lets a self-hosted deployment control both the sign-in experience and who gets in.
+
 Every deployment path (Docker Compose, Kubernetes, AWS) ships with `oidc` set and a Keycloak container preloaded with a realm and a `demo@thunderbolt.io` / `demo` user, so sign-in works on first boot. Replace that with your own provider before real users arrive.
 
 ## The mode is set in two places
@@ -119,7 +121,7 @@ The shipped Keycloak's realm, client secret, admin password and demo user are al
 
 On Docker Compose, delete the `keycloak` service from the Compose file and set your own OIDC or SAML values. On Kubernetes, point the backend settings at your provider and disable the demo user with `keycloak.demoUserEnabled: false`. That change needs the Keycloak pod restarted, because the realm file is only read at startup. The AWS stack installs the same chart, so the Kubernetes steps apply there too.
 
-Whichever path you are on, the bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup, so anything you configure in its admin console is lost when the container is replaced.
+> Whichever path you are on, the bundled Keycloak stores nothing outside its own container and re-imports its realm from a file on startup. Anything you configure in its admin console is lost when the container is replaced.
 
 ## Email sign-in codes
 
@@ -137,7 +139,7 @@ A code is bound to the browser that asked for it, so a code intercepted in trans
 
 ### Two limitations to know before choosing this mode
 
-**The sender address is not configurable.** Sign-in email is sent through [Resend](https://resend.com) using a fixed Thunderbolt sender domain, so a self-hosted deployment cannot currently send these emails under its own domain. Single sign-on is the supported path for self-hosting.
+**The sender address is not configurable.** Sign-in email is sent through [Resend](https://resend.com) using a fixed Thunderbolt sender domain, so a self-hosted deployment cannot currently send these emails under its own domain. We recommend single sign-on instead.
 
 **Access is gated by an allowlist, and there is no admin interface for it.** Every email address must either already have an account or be approved before it can receive a code. An unapproved address gets a "you have joined the waitlist" email instead, with no code in it. Your only configuration lever is a domain allowlist:
 
@@ -147,7 +149,9 @@ WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 
 Any address at a listed domain is approved on first request. The list is read at startup, so restart the server after changing it. Approving an individual address outside those domains means editing the `waitlist` table by hand, and [Users and access](../admin/users-and-access.md#approve-one-address) has the SQL. There is no admin page, API or command for it. The gate is always active in `consumer` mode, whatever `WAITLIST_ENABLED` is set to.
 
-With no email service configured the server writes the code and the sign-in link to its own logs instead of sending them. In production mode it refuses the sign-in request outright with an "Email service not configured" error.
+In production mode a server with no email service refuses the sign-in request outright, with an "Email service not configured" error.
+
+> Outside production mode it writes the code and the sign-in link to its own logs instead of sending them. Anyone who can read your logs can sign in as anyone.
 
 ## Desktop and mobile
 

@@ -36,7 +36,7 @@ A pending device shows an "Approve this device" screen and polls for the result,
 
 At first setup on an account, Thunderbolt generates one encryption key for the account and shows a 24 word recovery phrase that encodes it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
 
-Without it and without a trusted device, synced data is not recoverable. The server holds only ciphertext, and nobody operating the deployment can decrypt it.
+> Without it and without a trusted device, synced data is not recoverable. The server holds only ciphertext, and nobody operating the deployment can decrypt it.
 
 With encryption off there is no recovery key, because the server can read the synced data and any newly signed-in device gets it directly.
 
@@ -54,7 +54,9 @@ The device's sign-in sessions on the server are revoked, and from that point on 
 
 ### What revoking does not do
 
-Revoking is not a remote wipe: data already stored on that device stays there. If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice, so for a stolen device assume the local copy is still readable. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Rely on full-disk encryption and the device's own lock screen for that.
+If the device comes back online it shows a notice it cannot dismiss, offering to keep or delete the local copy, and either choice signs it out. The person holding the device makes that choice. Local data is stored unencrypted on the device itself; end-to-end encryption protects data in transit to and on the server, not the disk. Use full-disk encryption and the device's own lock screen for that.
+
+> Revoking is not a remote wipe. Data already on that device stays there, so for a stolen device assume the local copy is still readable.
 
 If the device never reconnects, it stops syncing and keeps what it had.
 
@@ -82,9 +84,9 @@ A separate **Delete All Local Data** control appears under **Settings → Prefer
 
 ## Deleting an account
 
-Open **Settings → Preferences → Data** and choose **Delete My Account**. There is no grace period and no undo, so export first from the same screen if the data matters: **Export Your Data** writes a JSON file of chats, tasks, prompts, skills, projects, automations, the model, agent and server entries the person added, and settings.
+Open **Settings → Preferences → Data** and choose **Delete My Account**. **Export Your Data**, on the same screen, writes a JSON file of chats, tasks, prompts, skills, projects, automations, the model, agent and server entries the person added, and settings. Attached file contents are not in it. The credentials stored on that device are, including model API keys.
 
-Attached file contents are not in that file. The credentials stored on that device are, including model API keys.
+> There is no grace period and no undo. Export first if the data matters.
 
 ### What is removed
 

@@ -65,7 +65,9 @@ Switch the add form to **Advanced (JSON)** and paste an existing `mcpServers` bl
 
 Every published build, browser and desktop and mobile alike, relays through your deployment's backend. That relay refuses private, internal and loopback addresses, since it would otherwise be a way to reach inside your network from a browser tab. A server on `http://localhost:3000/mcp` is not reachable from a released build. Bridge it instead, as below.
 
-The add form checks something narrower: whether the address is one the device itself could reach. It accepts plain `http://` only for loopback and private addresses, and requires `https://` for anything on a public host. So `http://localhost:3000/mcp` passes both the form and the JSON importer, and is still refused in transit, with no warning at save time.
+The add form checks something narrower: whether the address is one the device itself could reach. It accepts plain `http://` only for loopback and private addresses, and requires `https://` for anything on a public host.
+
+> `http://localhost:3000/mcp` passes both the form and the JSON importer and is still refused in transit, with no warning at save time.
 
 The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it changes this. The direct path it selects needs a build flag that no released build enables, so turning it off changes nothing today.
 
@@ -117,7 +119,11 @@ The built-in assistant is part of Thunderbolt and needs no setup. Agents served 
 
 Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. The same reachability rules as MCP apply: an agent on `ws://127.0.0.1:...` is reachable from the desktop app with Cloud Proxy off, and from nowhere else. Use a peer-to-peer bridge for everything else.
 
-Custom agents sync to your other devices, name, URL and description together, so an address that only resolves on one machine, such as a loopback bridge, will appear on your other devices without working there. Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
+Custom agents sync to your other devices, name, URL and description together.
+
+Deleting a custom agent removes it from Thunderbolt and changes nothing on the remote server.
+
+> An address that only resolves on one machine, such as a loopback bridge, appears on your other devices without working there.
 
 ### Connecting a local coding agent
 
@@ -137,6 +143,8 @@ A loopback bridge is also available (`--transport wss`, default port `8839`), pr
 When an agent asks permission to run a tool, the chat shows an inline prompt before anything happens. It names the action, shows the exact command or arguments, and lists any files involved.
 
 The buttons the agent itself offers are usually allow once, allow always, reject once and reject always. Your answer goes straight back to the agent. Two further buttons go beyond them. **Always allow all ... actions** approves this call and every later action of the same kind from this agent, where a kind is editing, deleting, running a command, or moving a file. **Always allow everything from this agent** approves this call and anything else the agent asks for. A remembered allowance lasts until the app is reloaded or restarted; it is not written to disk and not shared with your other devices.
+
+> **Always allow everything from this agent** is as broad as it sounds. We recommend it only for an agent you run yourself.
 
 Agents can also advertise their own commands. Those appear in the composer's slash menu while the agent is connected and disappear when it disconnects.
 

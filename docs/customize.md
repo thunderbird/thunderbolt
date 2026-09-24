@@ -48,8 +48,7 @@ install. Leave the key blank if the endpoint does not need one.
 Where the provider publishes a catalog, the model list fills itself in. OpenAI, Anthropic and
 OpenRouter need a valid key before their catalog loads, and you can always type the model identifier
 by hand instead. Every provider except the managed Thunderbolt models must pass **Test Connection**
-before the model can be saved. Editing a saved model shows the key as dots; leave it untouched to
-keep it.
+before the model can be saved.
 
 ### Models your deployment provides
 
@@ -131,7 +130,7 @@ edits to a built-in skill are preserved when Thunderbolt updates its own copies.
 
 **Settings → Connections** holds two different things.
 
-**Integrations** are ready-made connections Thunderbolt supplies. The Thunderbolt one gives the
+**Integrations** are ready-made connections we supply. The Thunderbolt one gives the
 assistant web search, page fetching and weather, and requires Thunderbolt Pro: without Pro the row
 offers Get Pro and the assistant gets none of those tools, and with Pro you can switch the
 integration off here. Google covers Gmail (read, search, draft) and Google Calendar; Microsoft
@@ -142,8 +141,8 @@ Authorizing is per device, and so is switching an integration off.
 **MCP servers** are yours to add. [Model Context Protocol](https://modelcontextprotocol.io) is an
 open standard for exposing tools to an AI client, so an MCP server is a tool server: it publishes a
 list of things the model can do, such as searching a wiki or filing a ticket. Every enabled server's
-tools are merged into the model's toolset on each message. Thunderbolt is a client only and does not
-publish a server of its own.
+tools are merged into the model's toolset on each message. We ship a client only; there is no Thunderbolt MCP
+server.
 
 ### Adding an MCP server
 
@@ -175,10 +174,13 @@ use:
   rejected on import. Run such a server behind the Thunderbolt command-line bridge and connect to it
   peer-to-peer.
 - `https` is required for any public host. Plain `http` is accepted only for `localhost` and private
-  network addresses, which no released build can reach, and nothing warns you at save time.
+  network addresses, which no released build can reach.
 - Servers and their credentials are device-local. Adding a server on one machine does not add it
   anywhere else, though a data export carries them across on restore.
 - Deleting a server deletes its stored credential with it.
+
+> A plain `http` URL saves without complaint and then never connects. Use `https` for anything that
+> is not on the machine in front of you.
 
 ## Projects
 

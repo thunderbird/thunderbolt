@@ -4,7 +4,7 @@ One box finds everything in Thunderbolt: chats, messages, projects, skills, mode
 
 ## Opening it
 
-`Cmd+K` anywhere in the app, `Ctrl+K` on Windows and Linux, or the search icon in the chat list header.
+`Cmd+K` anywhere in the app, `Ctrl+K` on Windows and Linux.
 
 ## What is searchable
 
@@ -30,8 +30,6 @@ Anything put in the index is stored as plain readable text on the device, so som
 - Settings values and model profiles
 - Saved prompts and their schedules
 
-Deleted items drop out of results immediately.
-
 Each device builds its own index from the data it holds and only finds what has already synced to it. That index is never uploaded or shared between devices.
 
 ## Commands
@@ -48,14 +46,7 @@ Commands match on their name and on keywords, so `mcp` finds Connections, `llm` 
 
 ## Where a result takes you
 
-| Result                | Opens                             |
-| --------------------- | --------------------------------- |
-| Message               | Its chat, scrolled to the message |
-| Model, Skill or Agent | The item's edit panel             |
-| Connection            | Settings → Connections            |
-| Device                | Settings → Devices                |
-
-Built-in models that ship with Thunderbolt cannot be edited, so they open the Models list instead of an editor. The palette never offers to delete an individual item; deletion stays on that item's own menu.
+A message result opens its chat scrolled to that message, and a model, skill or agent opens its edit panel. Built-in models cannot be edited, so they open the Models list instead. The palette never offers to delete an individual item; deletion stays on that item's own menu.
 
 ## Matching and languages
 
@@ -68,7 +59,7 @@ The index does not follow the app's display language. Your content can mix langu
 
 ## Keyword search, not semantic search
 
-The product contains no embedding model and no vector database, so a query phrased differently from the original text will miss. Retry with the words you would actually have typed at the time.
+We ship no embedding model and no vector database, so a query phrased differently from the original text will miss. Retry with the words you would actually have typed at the time.
 
 ## Searching inside a project
 

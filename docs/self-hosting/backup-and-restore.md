@@ -16,7 +16,7 @@ A meaningful part of each user's data is deliberately kept off the server. Read 
 | Sync bucket storage        | PostgreSQL, database `powersync_storage` | No. It is derived from the application database and rebuilds itself.               |
 | Each user's on-device data | The browser, desktop app, or phone       | Not possible from the server. See [below](#what-a-server-backup-does-not-recover). |
 
-Restore into the same version of Thunderbolt or a newer one. The API applies any pending schema migrations when it starts, so a dump from an older release comes forward on its own. (If you set `SKIP_MIGRATIONS=true` because you run migrations separately, run yours after the restore.) There is no downgrade path.
+Don't restore into an older release than the dump came from; there is no downgrade path. Forwards is fine: the API applies any pending schema migrations when it starts, so a dump from an older release comes up to date on its own. (If you set `SKIP_MIGRATIONS=true` because you run migrations separately, run yours after the restore.)
 
 ## What the database holds
 
@@ -32,7 +32,7 @@ Restore into the same version of Thunderbolt or a newer one. The API applies any
 
 Data reaches the database only for users who turn sync on. With sync off, a server backup contains their account and nothing else of theirs.
 
-Back up the whole database, not selected tables. Encrypted content, the per-device key copies that open it, and device trust are one state; restoring them from different points leaves accounts that cannot read their own data.
+**Don't back up selected tables.** Encrypted content, the per-device key copies that open it, and device trust are one state; restoring them from different points leaves accounts that cannot read their own data.
 
 ## What a server backup does NOT recover
 
@@ -78,7 +78,7 @@ kubectl exec -n thunderbolt postgres-0 -- \
 
 Adjust the user and database name if you changed `postgres.credentials` in your Helm values.
 
-The database lives on a PersistentVolumeClaim named `pg-data-postgres-0`. Volume snapshots of that claim are a reasonable second layer, but not a substitute for a dump you have verified. `helm uninstall` leaves the claim in place; deleting the namespace destroys it.
+The database lives on a PersistentVolumeClaim named `pg-data-postgres-0`. We recommend volume snapshots of that claim as a second layer, never as a replacement for a dump you have verified. `helm uninstall` leaves the claim in place; deleting the namespace destroys it.
 
 ### Managed PostgreSQL
 
@@ -90,7 +90,7 @@ If you set `DATABASE_DRIVER=pglite`, there is no PostgreSQL server and `DATABASE
 
 ## Restore
 
-Restoring replaces live data. Take a fresh dump of the current state first.
+> Restoring replaces live data. Take a fresh dump of the current state first.
 
 A dump carries the database, not the cluster. The `powersync_role` login role and the `powersync` publication the sync service replicates through are created once, by the init script that runs on a brand-new PostgreSQL data directory. Restoring into an instance that never ran it leaves the sync service unable to connect.
 
@@ -154,7 +154,7 @@ End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it i
 | Every device lost, recovery key kept         | The user enters the 24-word recovery key and reads their restored data.                                             |
 | Every device lost, recovery key lost         | The data is unrecoverable. You hold ciphertext and nothing that opens it.                                           |
 
-There is no administrative override and no key escrow: neither you nor Thunderbolt can decrypt an account whose keys are gone. Make sure users understand that the recovery key is shown once and is the only backup of their own.
+> There is no administrative override and no key escrow. Neither you nor Thunderbolt can decrypt an account whose keys are gone, and the recovery key is shown once. Make sure your users know that.
 
 ## The identity provider
 
@@ -162,13 +162,17 @@ Thunderbolt accounts reference identities in your identity provider, so its back
 
 The bundled Keycloak keeps nothing. It runs in development mode with its database inside the container and re-imports its realm every time it starts, so any user you create in its admin console, and any change you make there, is gone as soon as its container or pod is replaced. It exists so that sign-in works on first boot.
 
-For anything beyond an evaluation, point Thunderbolt at your own identity provider, or give Keycloak an external database of its own and back that up.
+For anything beyond an evaluation we recommend pointing Thunderbolt at your own identity provider. Failing that, give Keycloak an external database of its own and back that up.
 
 ## What users can back up themselves
 
 The only way to capture what never reaches the server is from the device that holds it. Under **Settings → Preferences → Data**, **Export My Data** writes out chats and messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration, and the provider keys and tool server credentials the user typed. **Import Data** reads such an export back in; anything in the file that shares an ID with existing data replaces it.
 
-Tell users that the export is plaintext JSON, including their API keys, and should be treated like a password and stored accordingly. It leaves out attached files, their encryption keys, and their Google and Microsoft connections. With end-to-end encryption on, importing on a new device still requires approving that device first.
+The export leaves out attached files, their encryption keys, and their Google and Microsoft connections.
+
+With end-to-end encryption on, importing on a new device still requires approving that device first.
+
+> The export is plaintext JSON, API keys included. Tell users to treat the file like a password.
 
 Importing on a device with sync on pushes the restored content to the user's other devices as well, so an old export can overwrite newer content everywhere. The API keys and tool server tokens in the file are the exception: they never leave the device that imported them. The app warns about this before it writes anything, and it warns again if the file was exported by a different account.
 

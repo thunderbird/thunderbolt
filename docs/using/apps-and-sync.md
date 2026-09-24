@@ -57,7 +57,9 @@ These stay on the one device:
 
 Credentials never sync. A model or an external agent you add on one device appears on the others, but each device needs its own key or token entered locally. MCP servers do not appear at all on the other devices, because an address without its credential is one they could not connect to anyway.
 
-File attachments do not follow a chat. The message carries the file's name but not its bytes, so on another device the message shows the filename and the model does not receive the file. Attached files are also absent from a data export.
+File attachments do not follow a chat. The message carries the file's name but not its bytes, so on another device the message shows the filename and the model does not receive the file.
+
+> Attached files are absent from a data export too. The only copy is on the device that added them.
 
 ## Adding a device
 
@@ -81,7 +83,11 @@ Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Win
 | **Revoke**  | Any other trusted device  | Sessions on it are ended, it stops syncing, and it can no longer decrypt synced data |
 | **Remove**  | A revoked bridge only     | Deletes the record so the same bridge can be paired again                            |
 
-Revoking is not reversible. The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out. To bring it back, sign in again and approve it as a new device. Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
+The device shows a notice it cannot dismiss, offering to keep or delete the data already on it, and either choice signs it out.
+
+Revoked entries stay visible in the list for 24 hours so the change is easy to confirm, then disappear.
+
+> Revoking is not reversible. To bring a device back, sign in again and approve it as new.
 
 Deleting the account is separate and wider: every signed-in device clears its local data the next time it reaches the server.
 

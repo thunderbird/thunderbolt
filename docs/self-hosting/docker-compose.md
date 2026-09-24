@@ -43,7 +43,7 @@ The first run builds the app and API images, pulls the other three, starts Postg
 
 Both sets of credentials are published in this repository. So are two secrets that `deploy/.env` cannot override, because they live in `deploy/docker-compose.yml`: the OIDC client secret, and `POWERSYNC_JWT_SECRET`, which the sync service verifies against the base64 copy in `PS_JWT_KEY_BASE64`.
 
-Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two secrets in the compose file, changing both halves of the JWT pair together.
+> Before anyone outside your machine can reach the deployment, create your own user, rotate the Keycloak admin password, and rotate those two secrets in the compose file, changing both halves of the JWT pair together.
 
 ## What is running
 
@@ -98,13 +98,13 @@ The `curl` goes through the app's own address, so a JSON reply means the browser
 
 ## Known limits of this setup
 
-**It assumes `localhost`.** Sign-in URLs, the API origin and the sync address are all written as `localhost` addresses. Serving this stack to other machines under a real hostname means editing those addresses in `deploy/docker-compose.yml`, not only the port settings in `deploy/.env`. Kubernetes and AWS are the supported paths for a shared deployment.
+**It assumes `localhost`.** Sign-in URLs, the API origin and the sync address are all written as `localhost` addresses. Serving this stack to other machines under a real hostname means editing those addresses in `deploy/docker-compose.yml`, not only the port settings in `deploy/.env`. For a shared deployment we recommend Kubernetes or AWS instead.
 
-**There is no TLS.** Everything is plain HTTP. Put a reverse proxy such as Caddy, nginx or Traefik in front of the app if it leaves your machine. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so a plain-HTTP hostname produces a broken app rather than an insecure one.
+**There is no TLS.** Everything is plain HTTP. Don't let this stack leave your machine without a reverse proxy such as Caddy, nginx or Traefik in front of it. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so a plain-HTTP hostname produces a broken app rather than an insecure one.
 
-**Rate limiting is off** and Keycloak runs in its development mode, neither of which is appropriate for a deployment real users can reach.
+**Rate limiting is off** and Keycloak runs in its development mode. Don't put this stack in front of real users.
 
-**PostgreSQL 17 is pinned.** The bundled database is version 17 and its data volume is mounted at the path version 17 expects. PostgreSQL 18 moved that path, so swapping the image for 18 or later refuses to start against an existing volume.
+**PostgreSQL 17 is pinned.** The bundled database is version 17 and its data volume is mounted at the path version 17 expects. Don't swap the image for 18 or later: PostgreSQL 18 moved that path, so it refuses to start against an existing volume.
 
 ## Swap in your own pieces
 
@@ -112,7 +112,7 @@ Both swaps below mean editing `deploy/docker-compose.yml` directly. The settings
 
 **Your own identity provider.** Remove the `keycloak` service, and the backend's dependency on it, from `deploy/docker-compose.yml`. Then replace the bundled OIDC values in the backend's settings with your own. For OpenID Connect (OIDC) set `AUTH_MODE` to `oidc` plus `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`; for SAML set `AUTH_MODE` to `saml` plus `SAML_ENTRY_POINT`, `SAML_ENTITY_ID`, `SAML_IDP_ISSUER` and `SAML_CERT`. Add your provider's origin to `TRUSTED_ORIGINS`. The [Configuration](./configuration.md) page documents each of these.
 
-**Managed PostgreSQL.** Point `DATABASE_URL` and the sync service's two connection strings at it, then remove the `postgres` service. The bundled database is prepared for replication on first boot and a managed one is not, so before switching you must set it up by hand: enable logical replication (`wal_level=logical`), create a role named `powersync_role` with the `REPLICATION` and `BYPASSRLS` attributes, create a publication named `powersync` covering all tables, and create a second database named `powersync_storage` for the sync service's own bookkeeping. `deploy/docker/postgres-init/01-powersync.sh` is the script that does all of this on the bundled database; run it against the managed one by hand. Read the caveat about managed PostgreSQL in the [self-hosting overview](./README.md) first: that second database is known to misbehave on managed PostgreSQL 17.
+**Managed PostgreSQL.** Point `DATABASE_URL` and the sync service's two connection strings at it, then remove the `postgres` service. The bundled database is prepared for replication on first boot and a managed one is not, so before switching you must set it up by hand: enable logical replication (`wal_level=logical`), create a role named `powersync_role` with the `REPLICATION` and `BYPASSRLS` attributes, create a publication named `powersync` covering all tables, and create a second database named `powersync_storage` for the sync service's own bookkeeping. `deploy/docker/postgres-init/01-powersync.sh` is the script that does all of this on the bundled database; run it against the managed one by hand. Don't put `powersync_storage` on managed PostgreSQL 17. The [self-hosting overview](./README.md) has the detail.
 
 ## Upgrade
 
@@ -132,6 +132,8 @@ Database migrations run automatically when the API starts, sync configuration is
 docker compose down      # stop the containers, keep all data
 docker compose down -v   # also delete the database volume, losing everything
 ```
+
+> `down -v` erases every account, conversation and setting on the server. Take a [backup](./backup-and-restore.md) first.
 
 ## Next
 

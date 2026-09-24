@@ -2,23 +2,15 @@
 
 Voice mode turns the chat composer into a spoken conversation: you talk, Thunderbolt transcribes what you said, sends it as an ordinary chat message, and reads the reply back.
 
-Audio is never stored in any form, on the device or on the server. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
+We never store audio in any form, on the device or on the server. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
 
 ## Start a voice conversation
 
-1. Open a chat and leave the composer empty. The send button becomes a voice button.
+1. Leave the composer empty. The send button becomes a voice button.
 2. Press it and allow microphone access.
 3. Speak, then pause. About one and a half seconds of silence ends your turn and sends it.
-4. Press the exit button to leave voice mode. The conversation stays in the chat.
 
 Two short tones tell you what is happening when you are not watching the screen: a rising pair when the microphone opens, a quieter falling pair when your turn is handed over.
-
-| Status      | Meaning                                                     |
-| ----------- | ----------------------------------------------------------- |
-| `Starting…` | Connecting to the speech service and opening the microphone |
-| `Listening` | Waiting for you, or recording your current utterance        |
-| `Thinking`  | Your turn was sent and the model is generating              |
-| `Speaking`  | The reply is being read aloud                               |
 
 The microphone stays open while the assistant thinks and speaks. Talking over it cancels the reply in progress and starts a new turn from what you just said.
 
@@ -60,7 +52,7 @@ If the server does not list its models, the pickers become plain text fields and
 
 The server has to expose OpenAI-shaped `/v1/audio/transcriptions` and `/v1/audio/speech`, and it has to allow cross-origin browser requests from the address Thunderbolt is served from. That second one is a CORS setting on the speech server, and getting it wrong causes most connection failures.
 
-Browsers also block mixed content, so a Thunderbolt page served over `https` cannot reach a speech server on `http://localhost`. Run Thunderbolt locally, use the desktop app, or put the speech server behind TLS.
+Browsers also block mixed content, so a Thunderbolt page served over `https` cannot reach a speech server on `http://localhost`. We recommend putting the speech server behind TLS; failing that, use the desktop app.
 
 Servers known to fit this shape include Kokoro-FastAPI, speaches and LocalAI.
 

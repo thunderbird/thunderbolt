@@ -530,6 +530,27 @@ describe('ThunderboltConnector upload encryption gate', () => {
     expect(wasCompleted()).toBe(false)
   })
 
+  it('defers the upload AND surfaces session_expired when the probe is rejected with 401', async () => {
+    // The upload gate shares the probe, and it too runs before any authed
+    // request that would otherwise report the dead session.
+    const dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
+    try {
+      fetchMock = routeCanary(() => jsonResponse({ error: 'Unauthorized' }, 401))
+      const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+      const { database, wasCompleted } = makeDatabase()
+
+      await expect(connector.uploadData(database)).rejects.toThrow(/Cannot confirm account encryption state/)
+
+      expect(uploadAttempted()).toBe(false)
+      expect(wasCompleted()).toBe(false)
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: powersyncCredentialsInvalid, detail: { reason: 'session_expired' } }),
+      )
+    } finally {
+      dispatchSpy.mockRestore()
+    }
+  })
+
   it('defers the upload when the encryption probe cannot reach the backend', async () => {
     // Offline must not be read as "account not encrypted".
     fetchMock = routeCanary(() => {
@@ -548,6 +569,7 @@ describe('ThunderboltConnector upload encryption gate', () => {
 describe('ThunderboltConnector download encryption gate', () => {
   let savedAuthMode: string | undefined
   let fetchMock: ReturnType<typeof mock>
+  let dispatchSpy: ReturnType<typeof spyOn>
 
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -563,17 +585,25 @@ describe('ThunderboltConnector download encryption gate', () => {
 
   const requestedUrls = (): string[] => fetchMock.mock.calls.map((call) => call[0] as string)
   const tokenRequested = (): boolean => requestedUrls().some((url) => url.includes('/powersync/token'))
+  const canaryRequested = (): boolean => requestedUrls().some((url) => url.includes('/encryption/canary'))
+  const invalidReasons = (): string[] =>
+    (dispatchSpy.mock.calls as [Event][])
+      .map(([event]) => event)
+      .filter((event): event is CustomEvent<{ reason: string }> => event.type === powersyncCredentialsInvalid)
+      .map((event) => event.detail.reason)
 
   beforeEach(async () => {
     savedAuthMode = import.meta.env.VITE_AUTH_MODE
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
     setAuthToken(authToken)
+    dispatchSpy = spyOn(window, 'dispatchEvent').mockImplementation(() => true)
     await clearAllKeys()
     resetCodecState()
   })
 
   afterEach(async () => {
     ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    dispatchSpy.mockRestore()
     await clearAllKeys()
     resetCodecState()
     clearAuthToken()
@@ -588,6 +618,8 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     expect(await connector.fetchCredentials()).toBeNull()
     expect(tokenRequested()).toBe(false)
+    // A set-up account is a healthy answer, not a credentials problem.
+    expect(invalidReasons()).toEqual([])
   })
 
   it('issues credentials once an AK is present, without probing', async () => {
@@ -608,6 +640,8 @@ describe('ThunderboltConnector download encryption gate', () => {
     const credentials = await connector.fetchCredentials()
 
     expect(credentials?.token).toBe('ps-token')
+    expect(canaryRequested()).toBe(true)
+    expect(invalidReasons()).toEqual([])
   })
 
   it('withholds credentials when the encryption probe fails', async () => {
@@ -617,5 +651,65 @@ describe('ThunderboltConnector download encryption gate', () => {
 
     expect(await connector.fetchCredentials()).toBeNull()
     expect(tokenRequested()).toBe(false)
+    // A 5xx says nothing about the session — inventing a reason here would pop
+    // the sign-in modal on every backend hiccup.
+    expect(invalidReasons()).toEqual([])
+  })
+
+  it('withholds credentials without invalidating when the probe cannot reach the backend', async () => {
+    fetchMock = routeCanary(() => {
+      throw new Error('network down')
+    })
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+    expect(invalidReasons()).toEqual([])
+  })
+
+  it('surfaces session_expired when the probe is rejected with 401', async () => {
+    // The gate short-circuits before `/powersync/token`, so the canary is the
+    // ONLY request a keyless device makes. Without routing its rejection to
+    // `handleCredentialsInvalidIfNeeded` the auth failure is invisible: no
+    // sign-in modal, and the device retries a dead session forever.
+    fetchMock = routeCanary(() => jsonResponse({ error: 'Unauthorized' }, 401))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+    expect(invalidReasons()).toEqual(['session_expired'])
+  })
+
+  it('surfaces device_revoked when the probe is rejected with 403 + DEVICE_DISCONNECTED', async () => {
+    fetchMock = routeCanary(() => jsonResponse({ code: 'DEVICE_DISCONNECTED' }, 403))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+    expect(invalidReasons()).toEqual(['device_revoked'])
+  })
+
+  it('withholds without invalidating for an uncoded 403', async () => {
+    // A bare 403 proves nothing about the session (a gateway, a WAF, a route
+    // guard we do not model), so it stays an unprovable `unknown` — withheld,
+    // but no modal. Only the coded 403s are an authorization verdict.
+    fetchMock = routeCanary(() => jsonResponse({ error: 'Forbidden' }, 403))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    expect(await connector.fetchCredentials()).toBeNull()
+    expect(tokenRequested()).toBe(false)
+    expect(invalidReasons()).toEqual([])
+  })
+
+  it('does not probe at all when an AK is present, so a canary 401 cannot fire', async () => {
+    await storeAK(await generateAK())
+    fetchMock = routeCanary(() => jsonResponse({ error: 'Unauthorized' }, 401))
+    const connector = new ThunderboltConnector(backendUrl, fetchMock as unknown as typeof fetch)
+
+    const credentials = await connector.fetchCredentials()
+
+    expect(credentials?.token).toBe('ps-token')
+    expect(canaryRequested()).toBe(false)
+    expect(invalidReasons()).toEqual([])
   })
 })

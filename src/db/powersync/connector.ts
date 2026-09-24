@@ -204,8 +204,20 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * `GET /encryption/canary` answers 200 with the metadata, or 404 ("Encryption
    * not set up") for an account that never enabled it.
    *
-   * A failed probe (offline, 401/403/5xx) is `unknown`, never `absent` — "not
-   * encrypted" may only be concluded from an explicit 404.
+   * A failed probe (offline, 5xx, an uncoded 403) is `unknown`, never `absent`
+   * — "not encrypted" may only be concluded from an explicit 404.
+   *
+   * A rejection is ALSO fed to {@link handleCredentialsInvalidIfNeeded}, which
+   * is the only place an auth failure on this path can surface. Both gates
+   * short-circuit before `/powersync/token`, so on a keyless device the canary
+   * is the *only* request the sync layer makes: without this, a 401 (expired
+   * session, or a revoked device whose session was dropped — the canary route
+   * is `auth: true` and has no device check of its own) would read as a bare
+   * `unknown`, the stream would be withheld, and the device would retry a dead
+   * session forever with no sign-in modal. Only the dispatch is new; the status
+   * stays `unknown`, so the fail-closed rule is untouched — and an uncoded 403
+   * still dispatches nothing, because `getCredentialsInvalidReason` reads a
+   * bare 403 as "not proof of anything".
    */
   private async probeAccountEncryption(): Promise<{ status: 'set-up' | 'absent' | 'unknown' }> {
     try {
@@ -216,10 +228,15 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       if (response.status === 404) {
         return { status: 'absent' }
       }
-      // The body (incl. `primary_key_id`) is DELIBERATELY not read: a served
-      // pointer is advisory only — the AK envelope is its trusted source
-      // (THU-890). Only the account's set-up-ness is consumed here.
-      return response.ok ? { status: 'set-up' } : { status: 'unknown' }
+      if (response.ok) {
+        // The body (incl. `primary_key_id`) is DELIBERATELY not read: a served
+        // pointer is advisory only — the AK envelope is its trusted source
+        // (THU-890). Only the account's set-up-ness is consumed here.
+        return { status: 'set-up' }
+      }
+      const body = (await response.json().catch(() => ({}))) as ErrorBody
+      handleCredentialsInvalidIfNeeded(response.status, body)
+      return { status: 'unknown' }
     } catch {
       return { status: 'unknown' }
     }

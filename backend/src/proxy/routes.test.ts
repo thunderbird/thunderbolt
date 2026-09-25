@@ -333,10 +333,16 @@ describe('createUniversalProxyRoutes', () => {
       expect(production.status).toBe(400)
       expect(mockFetch).toHaveBeenCalledTimes(1)
     } finally {
-      if (previousEnv === undefined) delete process.env.NODE_ENV
-      else process.env.NODE_ENV = previousEnv
-      if (previousHosts === undefined) delete process.env.TEST_PROXY_ALLOWED_HOSTS
-      else process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousEnv
+      }
+      if (previousHosts === undefined) {
+        delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      } else {
+        process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      }
     }
   })
 

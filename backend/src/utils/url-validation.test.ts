@@ -229,10 +229,16 @@ describe('validateAndPin', () => {
       delete process.env.TEST_PROXY_ALLOWED_HOSTS
       await expect(validateAndPin('http://127.0.0.1:9879/mcp')).rejects.toThrow(/private\/internal/)
     } finally {
-      if (previousEnv === undefined) delete process.env.NODE_ENV
-      else process.env.NODE_ENV = previousEnv
-      if (previousHosts === undefined) delete process.env.TEST_PROXY_ALLOWED_HOSTS
-      else process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousEnv
+      }
+      if (previousHosts === undefined) {
+        delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      } else {
+        process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      }
     }
   })
 

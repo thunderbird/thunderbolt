@@ -1,0 +1,21 @@
+appId: net.thunderbird.thunderbolt.dev
+---
+- launchApp:
+    clearState: true
+- assertVisible: Want early access?
+- waitForAnimationToEnd
+- tapOn:
+    text: Email
+    retryTapIfNoChange: true
+- inputText: ${EMAIL}
+- assertVisible: ${EMAIL}
+- tapOn: Continue
+- assertVisible: Check your email
+- inputText: 12345678
+- assertVisible: GLM 5.3 Flash
+- tapOn: GLM 5.3 Flash
+- tapOn: Opus 5
+- tapOn: Ask me anything…
+- inputText: Please greet me briefly.
+- tapOn: Send message
+- assertVisible: Hello from the fake provider, one word at a time.

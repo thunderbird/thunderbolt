@@ -268,7 +268,7 @@ On Linux, first start and migrate PostgreSQL, then start PowerSync using [`night
 
 ### Native iOS smoke
 
-The separate Nightly iOS job installs a bundled Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`) and boot an iPhone simulator. Start the services in one terminal; run the remaining commands in another:
+The scheduled iOS job installs a bundled Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`) and boot an iPhone simulator. Start the services in one terminal; run the remaining commands in another:
 
 ```sh
 ./e2e/native-smoke/services.sh
@@ -288,7 +288,7 @@ Find the UDID with `xcrun simctl list devices booted`. The recording is `/tmp/th
 
 ### Native Linux desktop smoke
 
-Install the Tauri Linux build packages, `webkit2gtk-driver`, `xvfb`, and `ffmpeg` listed in the [`native-linux` job](../../.github/workflows/nightly.yml), then run `cargo install tauri-driver --locked`. Install the repository and backend Bun dependencies. Start the test services in one terminal, then build and run the real desktop app in another:
+Install the Tauri Linux build packages, `webkit2gtk-driver`, `xvfb`, and `ffmpeg` listed in the scheduled `native-linux` job, then run `cargo install tauri-driver --locked`. Install the repository and backend Bun dependencies. Start the test services in one terminal, then build and run the real desktop app in another:
 
 ```sh
 ./e2e/native-smoke/services.sh
@@ -300,7 +300,7 @@ VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
 ./e2e/native-smoke/linux.sh
 ```
 
-The script starts `tauri-driver` under Xvfb when no display is set and records `/tmp/thu-886-native-smoke/linux.mp4`. Both native jobs run independently of the browser jobs. The Nightly heartbeat covers only the browser jobs; `notify` covers native failures too.
+The script starts `tauri-driver` under Xvfb when no display is set and records `/tmp/thu-886-native-smoke/linux.mp4`. Both native jobs run independently of the browser jobs. The heartbeat covers only the browser jobs; `notify` covers native failures too.
 
 ### Debugging Mock Leakage
 

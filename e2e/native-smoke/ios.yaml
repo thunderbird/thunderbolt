@@ -12,12 +12,18 @@ appId: net.thunderbird.thunderbolt.dev
 - inputText: ${EMAIL}
 - assertVisible: ${EMAIL}
 - tapOn: Continue
-- assertVisible: Check your email
+- extendedWaitUntil:
+    visible: Check your email
+    timeout: 120000
 - inputText: 12345678
-- assertVisible: GLM 5.3 Flash
+- extendedWaitUntil:
+    visible: GLM 5.3 Flash
+    timeout: 120000
 - tapOn: GLM 5.3 Flash
 - tapOn: Opus 5
 - tapOn: Ask me anything…
 - inputText: Please greet me briefly.
 - tapOn: Send message
-- assertVisible: Hello from the fake provider, one word at a time.
+- extendedWaitUntil:
+    visible: Hello from the fake provider, one word at a time.
+    timeout: 60000

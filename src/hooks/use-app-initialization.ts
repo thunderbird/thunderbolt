@@ -35,6 +35,7 @@ import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useState } from 'react'
+import { observeDbReadiness, reportDbDiagnostic } from './db-diagnostic'
 
 /**
  * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
@@ -104,43 +105,6 @@ export type DatabaseReadyResult =
   | { outcome: 'ready' }
   | { outcome: 'timed_out' }
   | { outcome: 'failed'; error: unknown }
-
-/** Emit only fixed diagnostic labels; browser errors can contain user data. */
-const reportDbDiagnostic = (
-  phase: 'readiness' | 'query',
-  outcome: 'pending' | 'ready' | 'rejected' | 'timed_out',
-  error?: Error,
-): void => {
-  if (import.meta.env.VITE_DB_DIAGNOSTIC !== 'true') {
-    return
-  }
-  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined
-  const detail =
-    error instanceof Error ? `${error.name} ${error.message} ${cause?.name ?? ''} ${cause?.message ?? ''}` : ''
-  const category = /NoModificationAllowedError|locked|busy/i.test(detail)
-    ? 'locked'
-    : /quota|storage full/i.test(detail)
-      ? 'quota'
-      : /schema|no such table|no such column/i.test(detail)
-        ? 'schema'
-        : /open|OPFS|access handle|file system/i.test(detail)
-          ? 'open'
-          : /worker|comlink/i.test(detail)
-            ? 'worker'
-            : /wasm|WebAssembly/i.test(detail)
-              ? 'wasm'
-              : /SQLITE|sqlite|SQL error/i.test(detail)
-                ? 'sqlite'
-                : 'other'
-  const errorName =
-    error instanceof Error &&
-    /^(AbortError|InvalidStateError|NoModificationAllowedError|NotAllowedError|QuotaExceededError|SQLiteError|TypeError)$/.test(
-      error.name,
-    )
-      ? error.name
-      : 'other'
-  console.warn(`[db-diagnostic] ${phase}=${outcome} category=${category} name=${errorName}`)
-}
 
 /**
  * Resolve the database's first query with a bound, so a database that never
@@ -284,16 +248,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // spinner forever, which looks identical to a slow network and hides the one
   // remedy that works — clearing the local database, which the error screen
   // offers. Reported as DATABASE_INIT_FAILED so the user gets that affordance.
-  if (import.meta.env.VITE_DB_DIAGNOSTIC === 'true') {
-    const powerSync = getPowerSyncInstance()
-    if (powerSync) {
-      reportDbDiagnostic('readiness', 'pending')
-      void powerSync.waitForReady().then(
-        () => reportDbDiagnostic('readiness', 'ready'),
-        (error) => reportDbDiagnostic('readiness', 'rejected', error instanceof Error ? error : undefined),
-      )
-    }
-  }
+  observeDbReadiness()
   reportDbDiagnostic('query', 'pending')
   const dbReady = await time('step2b_db_ready', () => waitForDatabaseReady(db))
   reportDbDiagnostic(

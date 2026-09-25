@@ -281,7 +281,23 @@ VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
 ./e2e/native-smoke/ios.sh
 ```
 
-Replace `iPhone 17e` with your booted simulator's name. The recording is `/tmp/thu-886-native-smoke/ios.mp4`. The Nightly heartbeat covers the browser jobs; the native job reports failures through `notify` without cancelling those jobs.
+Replace `iPhone 17e` with your booted simulator's name. The recording is `/tmp/thu-886-native-smoke/ios.mp4`.
+
+### Native Linux desktop smoke
+
+Install the Tauri Linux build packages, `webkit2gtk-driver`, `xvfb`, and `ffmpeg` listed in the [`native-linux` job](../../.github/workflows/nightly.yml), then run `cargo install tauri-driver --locked`. Install the repository and backend Bun dependencies. Start the test services in one terminal, then build and run the real desktop app in another:
+
+```sh
+./e2e/native-smoke/services.sh
+
+VITE_AUTH_MODE=thunderbolt VITE_SKIP_ONBOARDING=true \
+VITE_AUTH_ENABLE_ANONYMOUS=false VITE_BYPASS_WAITLIST=false \
+VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
+  bun tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
+./e2e/native-smoke/linux.sh
+```
+
+The script starts `tauri-driver` under Xvfb when no display is set and records `/tmp/thu-886-native-smoke/linux.mp4`. Both native jobs run independently of the browser jobs. The Nightly heartbeat covers only the browser jobs; `notify` covers native failures too.
 
 ### Debugging Mock Leakage
 

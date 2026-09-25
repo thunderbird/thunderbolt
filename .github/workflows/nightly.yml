@@ -198,8 +198,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  linux-spike:
-    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+  native-linux:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -220,7 +220,7 @@ jobs:
           cd backend && bun install --frozen-lockfile
           cargo install tauri-driver --locked
 
-      - name: Probe Linux native smoke three times
+      - name: Run native Linux smoke
         env:
           VITE_AUTH_MODE: thunderbolt
           VITE_SKIP_ONBOARDING: 'true'
@@ -232,18 +232,14 @@ jobs:
           services_pid=$!
           trap 'kill "$services_pid" 2>/dev/null || true' EXIT
           bun tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
-          result=0
-          for attempt in 1 2 3; do
-            ./e2e/native-smoke/linux.sh "$attempt" || result=1
-          done
-          exit "$result"
+          ./e2e/native-smoke/linux.sh
 
-      - name: Upload Linux spike videos
+      - name: Upload native Linux video
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-linux-spike-videos
-          path: /tmp/thu-886-native-smoke/linux-*.mp4
+          name: nightly-native-linux-video
+          path: /tmp/thu-886-native-smoke/linux.mp4
           if-no-files-found: ignore
           retention-days: 7
 
@@ -330,7 +326,7 @@ jobs:
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
 
   notify:
-    needs: [linux, macos, native-ios]
+    needs: [linux, macos, native-ios, native-linux]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped')) }}
     permissions:
       actions: read

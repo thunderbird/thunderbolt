@@ -37,6 +37,7 @@ try {
     timeout: 60_000,
     timeoutMsg: `The chat reply did not render: ${fakeProviderReply}`,
   })
+  await browser.pause(1000) // Keep the complete reply visible in the recording.
   console.log('Linux desktop smoke passed')
 } finally {
   await browser.deleteSession()

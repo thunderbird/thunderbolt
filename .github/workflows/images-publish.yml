@@ -92,6 +92,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # -- Multi-arch (linux/amd64 + linux/arm64) build support --
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
       # -- Build and push Docker images --
 
       - name: Build and push frontend
@@ -101,6 +109,7 @@ jobs:
           file: deploy/docker/frontend.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           build-args: |
             VITE_THUNDERBOLT_CLOUD_URL=${{ inputs.vite_backend_url || '/v1' }}
             VITE_AUTH_MODE=sso
@@ -117,6 +126,7 @@ jobs:
           file: deploy/docker/backend.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-backend:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-backend:latest', env.IMAGE_PREFIX) || '' }}
@@ -130,6 +140,7 @@ jobs:
           file: deploy/docker/postgres.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-postgres:latest', env.IMAGE_PREFIX) || '' }}
@@ -143,6 +154,7 @@ jobs:
           file: deploy/docker/keycloak.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-keycloak:latest', env.IMAGE_PREFIX) || '' }}
@@ -156,6 +168,7 @@ jobs:
           file: deploy/docker/powersync.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-powersync:latest', env.IMAGE_PREFIX) || '' }}
@@ -169,6 +182,7 @@ jobs:
           file: deploy/docker/marketing.Dockerfile
           push: true
           no-cache: true
+          platforms: linux/amd64,linux/arm64
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-marketing:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-marketing:latest', env.IMAGE_PREFIX) || '' }}

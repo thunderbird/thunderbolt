@@ -3,7 +3,13 @@
 # same validated runtime. Bun implements the node:fs globSync API that
 # @lingui/cli/api needs (Node >=22.19 equivalent), verified by building this
 # image; bump this tag and CI together.
-FROM oven/bun:1.3.14 AS build
+#
+# --platform=$BUILDPLATFORM: this stage only produces a platform-independent
+# static bundle (HTML/CSS/JS), so it runs natively on the build host instead
+# of under QEMU emulation for the target platform — faster, and sidesteps any
+# arch-specific quirks in bun's/rollup's native build tooling. Only the final
+# nginx stage below is built per target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
 
 WORKDIR /app
 

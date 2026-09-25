@@ -105,6 +105,43 @@ export type DatabaseReadyResult =
   | { outcome: 'timed_out' }
   | { outcome: 'failed'; error: unknown }
 
+/** Emit only fixed diagnostic labels; browser errors can contain user data. */
+const reportDbDiagnostic = (
+  phase: 'readiness' | 'query',
+  outcome: 'ready' | 'rejected' | 'timed_out',
+  error?: Error,
+): void => {
+  if (!import.meta.env.VITE_DB_DIAGNOSTIC) {
+    return
+  }
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined
+  const detail =
+    error instanceof Error ? `${error.name} ${error.message} ${cause?.name ?? ''} ${cause?.message ?? ''}` : ''
+  const category = /NoModificationAllowedError|locked|busy/i.test(detail)
+    ? 'locked'
+    : /quota|storage full/i.test(detail)
+      ? 'quota'
+      : /schema|no such table|no such column/i.test(detail)
+        ? 'schema'
+        : /open|OPFS|access handle|file system/i.test(detail)
+          ? 'open'
+          : /worker|comlink/i.test(detail)
+            ? 'worker'
+            : /wasm|WebAssembly/i.test(detail)
+              ? 'wasm'
+              : /SQLITE|sqlite|SQL error/i.test(detail)
+                ? 'sqlite'
+                : 'other'
+  const errorName =
+    error instanceof Error &&
+    /^(AbortError|InvalidStateError|NoModificationAllowedError|NotAllowedError|QuotaExceededError|SQLiteError|TypeError)$/.test(
+      error.name,
+    )
+      ? error.name
+      : 'other'
+  console.warn(`[THU884-DB] ${phase}=${outcome} category=${category} name=${errorName}`)
+}
+
 /**
  * Resolve the database's first query with a bound, so a database that never
  * opens reports instead of hanging. Never rejects: a query failure is returned
@@ -247,7 +284,20 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // spinner forever, which looks identical to a slow network and hides the one
   // remedy that works — clearing the local database, which the error screen
   // offers. Reported as DATABASE_INIT_FAILED so the user gets that affordance.
+  if (import.meta.env.VITE_DB_DIAGNOSTIC) {
+    void getPowerSyncInstance()
+      ?.waitForReady()
+      .then(
+        () => reportDbDiagnostic('readiness', 'ready'),
+        (error) => reportDbDiagnostic('readiness', 'rejected', error instanceof Error ? error : undefined),
+      )
+  }
   const dbReady = await time('step2b_db_ready', () => waitForDatabaseReady(db))
+  reportDbDiagnostic(
+    'query',
+    dbReady.outcome === 'failed' ? 'rejected' : dbReady.outcome,
+    dbReady.outcome === 'failed' && dbReady.error instanceof Error ? dbReady.error : undefined,
+  )
   if (dbReady.outcome !== 'ready') {
     console.error('Database did not become ready:', dbReady)
     const dbReadyError = createHandleError(

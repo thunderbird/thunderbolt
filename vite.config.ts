@@ -187,6 +187,8 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // The public CI diagnostic uploads only fixed labels from its Playwright case.
+    forwardConsole: process.env.VITE_DB_DIAGNOSTIC !== 'true',
     // Bind an explicit loopback address rather than `false`. Vite maps `false`
     // to the hostname string "localhost", which Node resolves to a SINGLE,
     // nondeterministic address family (127.0.0.1 or ::1) per listen() call. A

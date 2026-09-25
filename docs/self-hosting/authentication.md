@@ -1,6 +1,6 @@
 # Authentication
 
-Thunderbolt has one authentication mode active at a time, set by you, and every user signs in the same way. There is no username-and-password sign-in, and no Google or Microsoft social login.
+`AUTH_MODE` picks the primary sign-in path, and the app build follows it. There is no username-and-password sign-in, and no Google or Microsoft social login. The email-code endpoints stay mounted in every mode, so an SSO deployment that does not need mail should leave `RESEND_API_KEY` unset. Personal access tokens, the command-line device grant and optional anonymous sessions sit alongside the primary path.
 
 ## Pick a method
 
@@ -10,7 +10,7 @@ Thunderbolt has one authentication mode active at a time, set by you, and every 
 | SAML single sign-on | `AUTH_MODE=saml`     | A sign-on URL, two entity IDs and a certificate | Your identity provider speaks SAML 2.0 and not OIDC.                            |
 | Email sign-in code  | `AUTH_MODE=consumer` | A transactional email service                   | You have no identity provider. Read the limitations below before choosing this. |
 
-We recommend OIDC wherever you have the choice. It is the only mode that lets a self-hosted deployment control both the sign-in experience and who gets in.
+We recommend OIDC wherever you have the choice. Both SSO modes put sign-in and access control with your identity provider; OIDC is the simpler of the two to configure.
 
 Every deployment path (Docker Compose, Kubernetes, AWS) ships with `oidc` set and a Keycloak container preloaded with a realm and a `demo@thunderbolt.io` / `demo` user, so sign-in works on first boot. Replace that with your own provider before real users arrive.
 
@@ -71,14 +71,14 @@ Put **both** origins in `TRUSTED_ORIGINS`. The server validates discovery and me
 
 ### What you configure
 
-| Variable           |  Required   | What it is                                                                               |
-| ------------------ | :---------: | ---------------------------------------------------------------------------------------- |
-| `AUTH_MODE`        |     yes     | Set to `saml`                                                                            |
-| `SAML_ENTRY_POINT` |     yes     | Your provider's sign-on URL, where users are sent to authenticate                        |
-| `SAML_ENTITY_ID`   |     yes     | Thunderbolt's own entity ID. Must match the application you register with your provider. |
-| `SAML_IDP_ISSUER`  |     yes     | Your provider's entity ID. Assertions are checked against it.                            |
-| `SAML_CERT`        |     yes     | Your provider's signing certificate                                                      |
-| `TRUSTED_ORIGINS`  | in practice | Has a default, but sign-in fails unless it includes your provider's origin               |
+| Variable           | Required | What it is                                                                                        |
+| ------------------ | :------: | ------------------------------------------------------------------------------------------------- |
+| `AUTH_MODE`        |   yes    | Set to `saml`                                                                                     |
+| `SAML_ENTRY_POINT` |   yes    | Your provider's sign-on URL, where users are sent to authenticate                                 |
+| `SAML_ENTITY_ID`   |   yes    | Thunderbolt's own entity ID. Must match the application you register with your provider.          |
+| `SAML_IDP_ISSUER`  |   yes    | Your provider's entity ID. Assertions are checked against it.                                     |
+| `SAML_CERT`        |   yes    | Your provider's signing certificate                                                               |
+| `TRUSTED_ORIGINS`  |    no    | Needed only if you pass a `callbackURL` on another origin; SAML has no discovery step to validate |
 
 ```sh
 AUTH_MODE=saml
@@ -137,7 +137,7 @@ In `consumer` mode a user types an email address and receives an 8-digit code, s
 | Resend               | Re-sends the same code, so it cannot reset the attempt counter |
 | Requests per address | One every 15 seconds                                           |
 
-A code is bound to the browser that asked for it, so a code intercepted in transit is not enough to sign in somewhere else.
+Typing the code also requires a challenge token issued alongside it, so the eight digits on their own are not enough. That token is tied to the email address rather than to one browser, and the emailed link carries it, so treat the message itself as the credential.
 
 ### Two limitations to know before choosing this mode
 
@@ -171,11 +171,11 @@ Command-line sign-in is enabled by default. `thunderbolt login` shows a code, th
 
 Personal access tokens, the long-lived tokens users create for scripts and automation, are enabled by default too. A token is shown once at creation and lasts 90 days, or whatever `API_KEY_DEFAULT_EXPIRES_IN` (in seconds) says. Confidential models refuse a token unless `CONFIDENTIAL_API_KEYS_ENABLED=true`.
 
-Anonymous sessions ship disabled, and are unavailable in SSO mode. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for. An anonymous session bypasses the email allowlist by design.
+Anonymous sessions ship disabled, and an SSO-built app never offers them. The server setting is mode-independent, though: `AUTH_ALLOW_ANONYMOUS=true` mounts the anonymous sign-in endpoint whatever `AUTH_MODE` is, so leave it off on an SSO deployment. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for. An anonymous session bypasses the email allowlist by design.
 
 ## Sessions and devices
 
-A session belongs to the device that created it. Users see every signed-in device under Settings, Devices, and can revoke any of them. Revoking ends that device's sessions and stops it syncing, and the revoked device is told why the next time it reaches the server.
+A session belongs to the device that created it. With sync on, users see every signed-in device under Settings, Devices, and can revoke any of them. Without sync a device only ever sees itself, so revoking a lost one needs sync. Revoking ends that device's sessions and stops it syncing, and the revoked device is told why the next time it reaches the server.
 
 ## Troubleshooting
 

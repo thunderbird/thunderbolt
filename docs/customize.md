@@ -37,14 +37,14 @@ model of its own, chosen at its end, and ignores what you configure here.
 
 ### Providers
 
-| Provider              | API key    | Endpoint URL | Notes                                                    |
-| --------------------- | ---------- | ------------ | -------------------------------------------------------- |
-| Thunderbolt (managed) | Not needed | Not needed   | Provided by your deployment, authenticated by the server |
-| Anthropic             | Required   | Not needed   |                                                          |
-| OpenAI                | Required   | Not needed   |                                                          |
-| OpenRouter            | Required   | Not needed   |                                                          |
-| Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave    |
-| Custom                | Optional   | Required     | Any OpenAI-compatible endpoint, on-prem or local         |
+| Provider              | API key    | Endpoint URL | Notes                                                                                 |
+| --------------------- | ---------- | ------------ | ------------------------------------------------------------------------------------- |
+| Thunderbolt (managed) | Not needed | Not needed   | Provided by your deployment, authenticated by the server                              |
+| Anthropic             | Required   | Not needed   |                                                                                       |
+| OpenAI                | Required   | Not needed   |                                                                                       |
+| OpenRouter            | Required   | Not needed   |                                                                                       |
+| Tinfoil               | Required   | Not needed   | Confidential inference in a verified hardware enclave                                 |
+| Custom                | Optional   | Required     | Any OpenAI-compatible endpoint on this machine, or on an address reachable over HTTPS |
 
 The **Custom** form pre-fills `http://localhost:11434/v1`, the usual address of a local Ollama
 install. Leave the key blank if the endpoint does not need one.
@@ -202,8 +202,9 @@ from the original conversation can miss. Retry with the words you actually used.
 
 ## Voice
 
-Voice mode needs no configuration. It uses Thunderbolt's hosted speech engine, which runs
-transcription and read-aloud inside the same kind of verified enclave as a confidential model.
+Voice mode needs nothing from the user. It uses Thunderbolt's hosted speech engine, which runs
+transcription and read-aloud inside the same kind of verified enclave as a confidential model, so it
+needs the same `TINFOIL_API_KEY` on the backend.
 
 Turning on **Custom voice provider** under Preferences adds a **Voice** settings page, where you can
 point transcription and read-aloud at any OpenAI-compatible speech endpoint instead: a base URL
@@ -244,13 +245,13 @@ An operator can restrict what users are allowed to customize. These are environm
 on the backend, not in-app settings, and changing one needs a restart. Full list:
 [Configuration](self-hosting/configuration.md).
 
-| Variable                 | Default | Effect                                                                  |
-| ------------------------ | ------- | ----------------------------------------------------------------------- |
-| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the add-agent control, leaving only agents you provide    |
-| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes Thunderbolt's own assistant from the agent list          |
-| `ENABLED_AGENTS`         | empty   | Comma-separated list of the agent ids to offer. Empty means all of them |
-| `ANTHROPIC_API_KEY`      | unset   | Enables the managed direct model tier                                   |
-| `TINFOIL_API_KEY`        | unset   | Enables the managed confidential model tier                             |
+| Variable                 | Default | Effect                                                                   |
+| ------------------------ | ------- | ------------------------------------------------------------------------ |
+| `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the add-agent control, leaving only agents you provide     |
+| `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes Thunderbolt's own assistant from the agent list           |
+| `ENABLED_AGENTS`         | empty   | Comma-separated list of the agent ids to offer. Empty means all of them  |
+| `ANTHROPIC_API_KEY`      | unset   | Enables the managed direct model tier                                    |
+| `TINFOIL_API_KEY`        | unset   | Enables the managed confidential model tier, and the hosted voice engine |
 
 There is no server-side control over which models, skills or MCP servers an individual user adds
 for themselves.

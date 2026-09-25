@@ -6,7 +6,7 @@ There is no in-place updater and no upgrade button. You set a new version, apply
 
 > Back up the database first. Schema changes are applied automatically, and going back to an old image does not undo them.
 
-Note the version you are on, because you need it to roll back. `CHANGELOG.md` in the repository lists every version and what changed in it, so read the entry for the version you are moving to. Pick an explicit version rather than `latest`, for the reason in the warning below. And expect a short interruption: each service runs a single copy by default, so restarting it is a gap in service.
+Note the version you are on, because you need it to roll back. `CHANGELOG.md` in the repository lists every version and what changed in it, so read the entry for the version you are moving to. Pick an explicit version rather than `latest`, for the reason in the warning below. And expect a short interruption on Docker Compose, and on the AWS database task. The Helm path rolls one pod at a time, so it normally has none.
 
 There is no endpoint that reports the running version, so read it from whichever tool you deployed with:
 
@@ -56,7 +56,7 @@ Version numbers are not frozen, either. The images are rebuilt and republished u
 
 Within a single version, apply in this order:
 
-1. **Database:** if you run your own PostgreSQL, it must be reachable and accepting connections first. The API runs migrations before it serves anything, so an unreachable database means the container exits on startup.
+1. **Database:** if you run your own PostgreSQL, it must be reachable and accepting connections first. The API waits up to 90 seconds for it, then runs migrations, then serves; an unreachable database means the container retries for that long and exits.
 2. **Sync service:** if the release changes which data is synced, the sync service must be running the new rules before clients that expect them.
 3. **API:** applies database migrations on startup, then starts serving.
 4. **App and landing page:** static, so these can go last with no coordination.
@@ -118,11 +118,11 @@ kubectl get pods -n thunderbolt -w
 kubectl logs -n thunderbolt deploy/backend -f
 ```
 
-Helm's rolling update keeps the old API pod serving until the new one passes its readiness probe, and the new pod holds off readiness until migrations finish, so the swap is usually seamless. The AWS Fargate path is the one that drops traffic, since it replaces the task rather than overlapping it.
+Helm's rolling update keeps the old API pod serving until the new one passes its readiness probe, and the new pod holds off readiness until migrations finish, so the swap is usually seamless. On AWS the API task overlaps in the same way. The bundled PostgreSQL task does not: it is stopped before its replacement starts, since two copies cannot safely share one volume, so expect roughly 30 seconds with no database.
 
 Most values are rendered into the pod definition, so changing one rolls that deployment by itself. Values rendered into mounted configuration instead, such as the Keycloak realm or the sync rules, take effect only when the pod is replaced, which you force with `kubectl rollout restart deployment/<name> -n thunderbolt`.
 
-The database keeps its persistent volume across upgrades and across an uninstall. Deleting the volume claim is the only way to lose it.
+The database keeps its persistent volume across upgrades and across an uninstall. Deleting the claim loses it, and so does deleting the namespace.
 
 ## AWS with Pulumi
 
@@ -163,9 +163,9 @@ A rule change takes effect only when the sync service restarts. On Kubernetes, c
 
 Browsers pick up an upgrade on reload. Nothing is installed, so there is no user action beyond refreshing the page. The desktop and mobile apps upgrade separately, through their own release channels, and both are built against a fixed server address, so a self-hosted deployment needs its own builds.
 
-Data already synced to a device stays on that device through a server upgrade. Devices reconcile against the server when they reconnect.
+Data already synced to a device stays on that device through a server upgrade. Devices catch up with the server when they reconnect.
 
-A version can also change the models, skills and tasks the app ships with. Those are rows in each user's own data, reconciled on the next load: rows the user has edited or deleted are left as they are, the rest are updated. A default the new version retires outright is the exception, and is removed even if the user had customised it.
+A version can also change the models, skills and tasks the app ships with. Those are rows in each user's own data, updated on the next load: rows the user has edited or deleted are left as they are, the rest are refreshed. A **model** the new version retires is the exception: its row is soft-deleted even if the user had customised it, and its tuning profile goes with it. Retired default skills and tasks are left in place.
 
 If a release is not backwards compatible with older clients, set `MIN_APP_VERSION` to the lowest version you want to allow. Clients below it are refused with `426 Upgrade Required`. It is read once at startup, so restart the API after changing it. Leave it empty to accept any client. See [Configuration](./configuration.md#minimum-client-version).
 
@@ -200,7 +200,7 @@ pulumi up -s <stack-name>
 
 ## The bundled Keycloak
 
-The Keycloak that ships with the deployment runs in development mode with no storage of its own. Its realm is imported from configuration every time the container starts, and **replacing the Keycloak container discards everything configured inside Keycloak since it last started**, including users you created there and client settings you changed in its admin console. Upgrading its image replaces the container.
+The Keycloak that ships with the deployment runs in development mode with no storage of its own. Its realm is imported on the first boot of an empty Keycloak database, and that database lives inside the container with no volume. So **a new container or pod starts from the realm file and discards anything configured in its admin console**, including users you created there and client settings you changed. Restarting the same container keeps them. Upgrading the image replaces the container.
 
 We recommend pointing the deployment at your own identity provider, which upgrades never touch. If you keep the bundled one, put its configuration in the realm file the deployment imports so a restart reproduces it. See [Configuration](./configuration.md#authentication).
 
@@ -224,7 +224,7 @@ curl -s -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health
 curl -s -H "Authorization: Bearer $MONITORING_TOKEN" https://your-host/v1/health/models
 ```
 
-`/v1/health/models` sends a real request to every model you supply a key for, so it costs money. It is also the only check that proves inference still works after an upgrade.
+`/v1/health/models` sends a real request to every preconfigured model, so it costs money, and a model with no key on the server counts as a failure. It is the only check that proves inference still works after an upgrade.
 
 Then do the end-to-end check by hand, because the probes do not cover it:
 

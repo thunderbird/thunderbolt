@@ -6,15 +6,15 @@ Thunderbolt runs entirely on infrastructure you control, with no vendor control 
 
 ## Pick a deployment path
 
-| Path                                  | What it takes                                                                                                            | How it scales                                                            | Good for                                                                |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| [Docker Compose](./docker-compose.md) | Docker on one machine, a config file, one command. The first run builds the images on that host and takes a few minutes. | One host, one copy of each service, no redundancy.                       | Demos, evaluation, a small internal tool, a test environment.           |
-| [Kubernetes](./kubernetes.md)         | An existing cluster, an ingress controller, TLS, one `helm install`.                                                     | Set a replica count per service. Rolling upgrades through Helm.          | Teams that already run Kubernetes and have people who operate it.       |
-| [AWS with Pulumi](./pulumi.md)        | An AWS account and the Pulumi CLI. Builds the network and compute from zero.                                             | Same as Kubernetes if you choose EKS; managed load balancing either way. | A green-field AWS deployment you want described as code from the start. |
+| Path                                  | What it takes                                                                                                            | How it scales                                                             | Good for                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [Docker Compose](./docker-compose.md) | Docker on one machine, a config file, one command. The first run builds the images on that host and takes a few minutes. | One host, one copy of each service, no redundancy.                        | Demos, evaluation, a small internal tool, a test environment.           |
+| [Kubernetes](./kubernetes.md)         | An existing cluster, an ingress controller, TLS, one `helm install`.                                                     | Set a replica count per stateless service. Rolling upgrades through Helm. | Teams that already run Kubernetes and have people who operate it.       |
+| [AWS with Pulumi](./pulumi.md)        | An AWS account and the Pulumi CLI. Builds the network and compute from zero.                                             | Same as Kubernetes if you choose EKS; managed load balancing either way.  | A green-field AWS deployment you want described as code from the start. |
 
 The AWS path offers two targets from the same project: ECS Fargate, which gives you no cluster to operate, or EKS, which installs the same Helm chart Kubernetes users get. Choose Fargate unless you already run EKS.
 
-We recommend starting with Docker Compose, even if you intend to run Kubernetes later. Every path runs the same services and reads the same settings, so nothing you learn is wasted.
+We recommend starting with Docker Compose, even if you intend to run Kubernetes later. Every path runs the same API against the same environment variables, though each exposes a different subset of them, so nothing you learn is wasted.
 
 ## What a deployment contains
 
@@ -28,19 +28,19 @@ Separately, the sync service keeps its own bookkeeping in a second database (`po
 
 The Kubernetes and AWS paths also deploy a small static site for the landing page and these docs; Docker Compose does not, and on Kubernetes there is no switch to turn it off.
 
-Each user's device keeps its own local database and reads and writes there first, so the app keeps working when your server is unreachable. Sync is what brings those local databases into agreement, not where the app reads from.
+Each user's device keeps its own local database and reads and writes there first, so reading and editing keep working when your server is unreachable. Model replies, web search and link previews do not: those go through your API. Sync is what brings those local databases into agreement, not where the app reads from.
 
 ## What you get by default
 
-| Setting               | Default                                                                                                                                                                                                                    |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sign-in               | OIDC through the bundled Keycloak. SAML is also supported: switch `AUTH_MODE` to `saml` and supply your provider's details.                                                                                                |
-| Identity realm        | `thunderbolt`, imported the first time Keycloak boots.                                                                                                                                                                     |
-| Demo user             | `demo@thunderbolt.io` / `demo`                                                                                                                                                                                             |
-| Keycloak admin        | `admin` / `admin` on every path, AWS included. Set `keycloakAdminPassword` before anyone can reach the deployment.                                                                                                         |
-| Waitlist              | Off. Anyone your identity provider authenticates can sign in.                                                                                                                                                              |
-| Analytics             | Off. Nothing is sent unless you configure an analytics service, and each user still has to opt in.                                                                                                                         |
-| End-to-end encryption | Off. Turning on `E2EE_ENABLED` applies it to the whole deployment: message content is encrypted on the device, your servers hold only ciphertext, and each new device has to be approved from one the user already trusts. |
+| Setting               | Default                                                                                                                                                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in               | OIDC through the bundled Keycloak. SAML is also supported: switch `AUTH_MODE` to `saml` and supply your provider's details.                                                                                                                                |
+| Identity realm        | `thunderbolt`, imported the first time Keycloak boots.                                                                                                                                                                                                     |
+| Demo user             | `demo@thunderbolt.io` / `demo`                                                                                                                                                                                                                             |
+| Keycloak admin        | `admin` / `admin` on every path, AWS included. Set `keycloakAdminPassword` before anyone can reach the deployment.                                                                                                                                         |
+| Waitlist              | Off. Anyone your identity provider authenticates can sign in.                                                                                                                                                                                              |
+| Analytics             | Off. Nothing is sent unless you configure an analytics service, and each user still has to opt in.                                                                                                                                                         |
+| End-to-end encryption | Off. Turning on `E2EE_ENABLED` encrypts the covered content columns on the device, so your servers hold ciphertext for those; accounts, sessions and uncovered columns stay readable. Each new device has to be approved from one the user already trusts. |
 
 > Every credential in the table above is published in this repository. Rotate all of them and delete the demo user before anyone outside your team can reach the deployment.
 

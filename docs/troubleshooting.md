@@ -46,20 +46,20 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ### Other startup failures
 
-| Symptom                                                            | Cause and fix                                                                                                                                                                                                          |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compose exits immediately complaining about `BETTER_AUTH_SECRET`   | Unset in `deploy/.env`. Set it and retry. There is no default, deliberately.                                                                                                                                           |
-| `port is already allocated`                                        | Remap it in `deploy/.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT`). Port `5434` collides most often; without a `deploy/.env` the compose fallbacks are `5433` and `8080`. |
-| The sync container restarts in a loop after an upgrade or re-clone | Its database account is created only when the database volume is first initialised, so an older volume does not have it. `docker compose down -v` starts clean and erases data.                                        |
-| The image build fails on a small machine                           | The app build is the memory-hungry step. Give Docker at least 4 GB.                                                                                                                                                    |
-| On Kubernetes, `backend` and `powersync` restart once or twice     | Expected on first install. They race PostgreSQL and recover once it accepts connections. End state is every pod `1/1 Running`.                                                                                         |
-| Sign-in pages will not load right after startup                    | The bundled Keycloak is the slowest service to boot. Wait for it to report healthy.                                                                                                                                    |
+| Symptom                                                            | Cause and fix                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compose exits immediately complaining about `BETTER_AUTH_SECRET`   | Unset in `deploy/.env`. Set it and retry. There is no default, deliberately.                                                                                                                                                                                                                                      |
+| `port is already allocated`                                        | Remap it in `deploy/.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`, `POWERSYNC_PORT`, `KEYCLOAK_PORT`). Port `5434` collides most often; without a `deploy/.env` the compose fallbacks are `5433` and `8080`.                                                                                            |
+| The sync container restarts in a loop after an upgrade or re-clone | Its database account is created only when the database volume is first initialised, so an older volume does not have it. Run the missing statements from the stack's database setup script against the existing volume, reusing `POWERSYNC_DB_PASSWORD`. `docker compose down -v` also works and erases all data. |
+| The image build fails on a small machine                           | The app build is the memory-hungry step. Give Docker at least 4 GB.                                                                                                                                                                                                                                               |
+| On Kubernetes, `backend` and `powersync` restart once or twice     | Expected on first install. They race PostgreSQL and recover once it accepts connections. End state is every pod `1/1 Running`.                                                                                                                                                                                    |
+| Sign-in pages will not load right after startup                    | The bundled Keycloak is the slowest service to boot. Wait for it to report healthy.                                                                                                                                                                                                                               |
 
 ## Users cannot sign in
 
 ### Emailed sign-in codes (consumer mode)
 
-Check the waitlist gate first. An address with no existing account and no approved waitlist entry receives a "you're on the list" email instead of a sign-in code, regardless of `WAITLIST_ENABLED`. Set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains, or nobody new can sign in.
+Check the waitlist gate first. An address with no existing account and no approved waitlist entry receives a "you're on the list" email instead of a sign-in code, regardless of `WAITLIST_ENABLED`. Set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains, or approve addresses one at a time in the `waitlist` table. This applies to email-code sign-in only, and the Kubernetes and AWS targets do not expose that setting, so it has to be added to the deployment files there.
 
 ```bash
 WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
@@ -79,7 +79,7 @@ WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
 
 ### When the app itself is broken
 
-Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the local-database and isolation capabilities Thunderbolt depends on only to secure origins, so a plain-HTTP hostname produces a broken app rather than an insecure one.
+Serve the app over HTTPS anywhere other than `localhost`. Browsers grant the local-database and isolation capabilities Thunderbolt depends on only to secure origins, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
 
 ## Single sign-on fails
 
@@ -124,12 +124,12 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 **5. The database is not set up for replication.**
 
-| Requirement                                             | Note                                                                   |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Logical replication (`wal_level = logical`)             | A parameter-group change on managed databases, and it needs a restart  |
-| A replication login and a publication named `powersync` | Created automatically on the bundled database's first boot only        |
-| A second `powersync_storage` database                   | On the same server                                                     |
-| `DATABASE_DRIVER=postgres`                              | The embedded `pglite` driver cannot replicate, so sync is off entirely |
+| Requirement                                             | Note                                                                                                                                                                                        |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Logical replication (`wal_level = logical`)             | A parameter-group change on managed databases, and it needs a restart                                                                                                                       |
+| A replication login and a publication named `powersync` | Created automatically on the bundled database's first boot only                                                                                                                             |
+| A second `powersync_storage` database                   | On the same server                                                                                                                                                                          |
+| `DATABASE_DRIVER=postgres`                              | PGlite runs in-process, so the sync service has nothing to connect to. The server does not notice and keeps handing out sync tokens, so sync fails quietly rather than reporting itself off |
 
 **6. With encryption on, the device is waiting for approval.** A new device registers as pending and shows an approval screen. Approve it from an already trusted device under **Settings → Devices**, or enter the 24-word recovery phrase. With every trusted device lost and no recovery phrase, the encrypted history cannot be recovered, by the user or by you. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot.
 
@@ -153,7 +153,7 @@ Rotating `POWERSYNC_JWT_SECRET` invalidates every outstanding sync token, so eve
 | No models in the picker                  | No provider key on the server and none added in the app                                                                                   | Set a provider key, or have users add their own in **Settings → Models**                                                       |
 | `429` with `INFERENCE_QUOTA_EXCEEDED`    | The user hit a spending cap, not a request limit                                                                                          | Raise the relevant `INFERENCE_QUOTA_*` value. Caps are rolling 5 hour and 7 day windows, and much lower for anonymous sessions |
 | `429` reading "Too many requests"        | The request rate limit: 60 per minute for standard-tier inference, 100 shared between private chat, the proxy, tools, search and previews | Wait, or investigate a client retry loop                                                                                       |
-| `503` with `INFERENCE_PRICE_UNAVAILABLE` | The model has no price entry, so the server refuses to serve it                                                                           | Use one of the shipped models. A model with no price is unusable rather than free                                              |
+| `503` with `INFERENCE_PRICE_UNAVAILABLE` | A model the deployment pays for has no price on record, so the server will not meter it                                                   | Use one of the shipped models. Models on a user's own key are never price-checked                                              |
 | `503 Tinfoil provider not configured`    | `TINFOIL_API_KEY` is unset, and the confidential models are the default                                                                   | Set the key, or have users select a model they hold a key for                                                                  |
 | `403 WEB_LOGIN_REQUIRED`                 | A personal access token was used against a confidential model                                                                             | Sign in interactively, or set `CONFIDENTIAL_API_KEYS_ENABLED=true`                                                             |
 | `426 Upgrade Required`                   | The client is older than `MIN_APP_VERSION`                                                                                                | See [the desktop app will not update](#the-desktop-app-will-not-update)                                                        |
@@ -177,19 +177,19 @@ Two paths reach hosts you cannot list in advance. First, a user's own provider k
 
 ## Attachments fail
 
-Images and PDFs are compressed before the size check, so a large photo often fits after shrinking.
+Photos over 10 MB are downscaled before the size check and PDFs get a best-effort re-save, so a large photo often fits. Smaller files and GIFs are sent as they are.
 
-| Symptom                                                          | Cause                                                                                                                   |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| The file is rejected on drop or paste                            | Unsupported type. PDF, PNG, JPEG, WebP, GIF, DOCX, XLSX, Markdown, plain text, CSV, and JSON are accepted               |
-| "File too large"                                                 | The cap is 25 MB per file after compression, and 10 files per message                                                   |
-| "This model couldn't read the attached file"                     | Thunderbolt already retried: native file, then extracted text, then page images. The model cannot read it in any form   |
-| A scanned PDF comes back as gibberish or empty                   | There is no text recognition for scanned pages. They are sent as page images, so this needs a model that can see images |
-| An image is rejected with no retry                               | Images have no conversion path. A model that cannot accept images fails immediately                                     |
-| The attachment is gone when the chat is opened on another device | Attachment contents never sync. Open the chat on the device that sent it                                                |
-| The attachment is missing from a data export                     | Exports carry the reference, not the file                                                                               |
+| Symptom                                                          | Cause                                                                                                                                                     |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The file is rejected on drop or paste                            | Unsupported type. PDF, PNG, JPEG, WebP, GIF, DOCX, XLSX, Markdown, plain text, CSV, and JSON are accepted                                                 |
+| "File too large"                                                 | The cap is 25 MB per file after compression, and 10 files per message                                                                                     |
+| "This model couldn't read the attached file"                     | No delivery form is left to try. A PDF has three (the file, its text, its pages as images), a Word or Excel file has only its text, and an image has none |
+| A scanned PDF comes back as gibberish or empty                   | There is no text recognition for scanned pages. They are sent as page images, so this needs a model that can see images                                   |
+| An image is ignored rather than refused                          | Only some models accept images. The others are sent a note in its place and answer without having seen it                                                 |
+| The attachment is gone when the chat is opened on another device | Attachment contents never sync. Open the chat on the device that sent it                                                                                  |
+| The attachment is missing from a data export                     | Exports carry the reference, not the file                                                                                                                 |
 
-> Attachment contents live in the browser's storage for the app origin. Clearing site data removes them from messages that have already been sent.
+> Attachment contents live in the app's own local store. In a browser, clearing site data removes them from messages already sent. On desktop and mobile they outlast signing out, revoking the device and even deleting the account, and go only with the app's data.
 
 ## Voice does not work
 

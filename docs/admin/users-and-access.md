@@ -38,9 +38,9 @@ One message carries both an 8-digit code and a link, and either one signs the pe
 | Asking for a new code   | Refused for 15 seconds per address                                    |
 | Sign-in requests per IP | 10 per minute                                                         |
 
-The code has to be typed into the same browser or app that asked for it, so a code read over someone's
-shoulder is not on its own enough to sign in. The link in the same email carries its own
-authorization and works anywhere, so treat the message itself as the credential.
+Typing the code also requires a challenge token issued alongside it, so the eight digits on their own
+are not enough. That token is tied to the email address rather than to one browser, and the link in
+the same email carries it, so treat the message itself as the credential.
 
 The 15-second cooldown is held in memory by the process that served the request, so it is weaker on a
 deployment running several workers or replicas. The per-IP limit is recorded in the database and so is

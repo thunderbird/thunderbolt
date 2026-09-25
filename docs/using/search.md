@@ -26,7 +26,7 @@ Titles rank well above body text, so a chat called "Invoices" beats a message th
 
 Anything put in the index is stored as plain readable text on the device, so some data is deliberately kept out:
 
-- API keys, tokens and every other stored credential
+- API keys, tokens and every other stored credential. A tool server's URL is indexed, though, so a token embedded in one is not excluded
 - Settings values and model profiles
 - Saved prompts and their schedules
 

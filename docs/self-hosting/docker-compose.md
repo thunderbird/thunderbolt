@@ -100,7 +100,7 @@ The `curl` goes through the app's own address, so a JSON reply means the browser
 
 **It assumes `localhost`.** Sign-in URLs, the API origin and the sync address are all written as `localhost` addresses. Serving this stack to other machines under a real hostname means editing those addresses in `deploy/docker-compose.yml`, not only the port settings in `deploy/.env`. For a shared deployment we recommend Kubernetes or AWS instead.
 
-**There is no TLS.** Everything is plain HTTP. Don't let this stack leave your machine without a reverse proxy such as Caddy, nginx or Traefik in front of it. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so a plain-HTTP hostname produces a broken app rather than an insecure one.
+**There is no TLS.** Everything is plain HTTP. Don't let this stack leave your machine without a reverse proxy such as Caddy, nginx or Traefik in front of it. Browsers grant the local-database and isolation capabilities the app depends on only to secure origins, which means `localhost` or HTTPS and nothing in between, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
 
 **Rate limiting is off** and Keycloak runs in its development mode. Don't put this stack in front of real users.
 

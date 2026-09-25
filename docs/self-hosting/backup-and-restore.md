@@ -13,7 +13,7 @@ A meaningful part of each user's data is deliberately kept off the server. Read 
 | `POWERSYNC_JWT_SECRET`     | Your configuration or secret store       | **Yes.** The API and the sync service must keep sharing one value.                 |
 | Model provider keys        | Your configuration or secret store       | Yes, or reissue them at the provider.                                              |
 | Identity provider data     | Your own identity provider               | Yes, on its own schedule. See [the identity provider](#the-identity-provider).     |
-| Sync bucket storage        | PostgreSQL, database `powersync_storage` | No. It is derived from the application database and rebuilds itself.               |
+| Sync service storage       | PostgreSQL, database `powersync_storage` | No. It is derived from the application database and rebuilds itself.               |
 | Each user's on-device data | The browser, desktop app, or phone       | Not possible from the server. See [below](#what-a-server-backup-does-not-recover). |
 
 Don't restore into an older release than the dump came from; there is no downgrade path. Forwards is fine: the API applies any pending schema migrations when it starts, so a dump from an older release comes up to date on its own. (If you set `SKIP_MIGRATIONS=true` because you run migrations separately, run yours after the restore.)
@@ -30,7 +30,7 @@ Don't restore into an older release than the dump came from; there is no downgra
 | Personal access tokens       | Only if you issue them: the tokens used for command-line and programmatic access.                                                             |
 | Token usage and cost records | Only when the server supplies model access: what each user spent, for the per-user spending caps.                                             |
 
-Data reaches the database only for users who turn sync on. With sync off, a server backup contains their account and nothing else of theirs.
+Content reaches the database only for users who turn sync on. With sync off, a backup still holds their account, any personal access tokens they issued and their usage records, but none of their content.
 
 **Don't back up selected tables.** Encrypted content, the per-device key copies that open it, and device trust are one state; restoring them from different points leaves accounts that cannot read their own data.
 
@@ -92,7 +92,9 @@ If you set `DATABASE_DRIVER=pglite`, there is no PostgreSQL server and `DATABASE
 
 > Restoring replaces live data. Take a fresh dump of the current state first.
 
-A dump carries the database, not the cluster. The `powersync_role` login role and the `powersync` publication the sync service replicates through are created once, by the init script that runs on a brand-new PostgreSQL data directory. Restoring into an instance that never ran it leaves the sync service unable to connect.
+> A restore only removes the tables the dump knows about. Restoring an older dump under a newer release therefore leaves that release's newer tables in place, with whatever they hold, and the API then fails to start. Roll the image back to the release the dump came from, or drop the leftover tables by hand.
+
+A dump carries the database, not the cluster. The `powersync_role` login and the separate `powersync_storage` database are cluster-level, created once by the init script that runs on a brand-new PostgreSQL data directory, and a dump of `postgres` carries neither. Restoring into an instance that never ran that script leaves the sync service unable to connect.
 
 ### Docker Compose
 
@@ -145,7 +147,7 @@ Where the server supplies model access, the per-user spending caps are sums over
 
 ## End-to-end encryption and restores
 
-End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it is on, the server holds only ciphertext for message content, titles, and other user-written fields, plus a copy of the account's content key locked separately for each approved device.
+End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it is on, the server holds ciphertext for the fields on its encrypted-columns list: message content, thread and prompt titles, settings values, tasks, skills, projects, model configuration and device names. It also holds a copy of the account's content key locked separately for each approved device. A few synced fields stay readable, notably each connected agent's name, address and description.
 
 | Situation                                    | What a database restore does                                                                                        |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -160,7 +162,7 @@ End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it i
 
 Thunderbolt accounts reference identities in your identity provider, so its backups belong beside the database ones. If it reissues different identifiers for the same people, they arrive as new, empty accounts.
 
-The bundled Keycloak keeps nothing. It runs in development mode with its database inside the container and re-imports its realm every time it starts, so any user you create in its admin console, and any change you make there, is gone as soon as its container or pod is replaced. It exists so that sign-in works on first boot.
+The bundled Keycloak keeps nothing beyond the life of its container. It runs in development mode with its database inside the container, and imports its realm on the first boot of an empty one, so any user you create in its admin console, and any change you make there, is gone as soon as the container or pod is replaced. It exists so that sign-in works on first boot.
 
 For anything beyond an evaluation we recommend pointing Thunderbolt at your own identity provider. Failing that, give Keycloak an external database of its own and back that up.
 

@@ -52,11 +52,11 @@ Neither bundled stack scales PostgreSQL: both run a single instance with no high
 
 Thunderbolt needs PostgreSQL. The Compose and Helm stacks run 17, and the prebuilt database image used on AWS runs 18.
 
-The sync service replicates logically, so `wal_level` has to be `logical`; on a managed database that is a parameter-group setting and takes effect only after a restart. It also needs three objects of its own: a `powersync_role` login with `REPLICATION` and `BYPASSRLS`, a publication named `powersync` covering all tables, and a `powersync_storage` database on the same server to hold its sync buckets. The account you install with therefore has to be able to create a role, a publication and a database.
+The sync service replicates logically, so `wal_level` has to be `logical`; on a managed database that is a parameter-group setting and takes effect only after a restart. It also needs three objects of its own: a `powersync_role` login with `REPLICATION` and `BYPASSRLS`, a publication named `powersync` covering all tables, and a `powersync_storage` database on the same server for its own bookkeeping. The account you install with therefore has to be able to create a role, a publication and a database.
 
 The bundled stacks create all three automatically on the database's first boot. Against a managed database you run that setup once by hand, and connect with `sslmode=require` if it terminates TLS. Keep `powersync_storage` itself off managed PostgreSQL 17: the sync service hangs partway through startup against RDS-managed 17 and logs no error.
 
-Disk grows with message and attachment volume, and the sync buckets hold their own copy of synced rows, so total usage runs ahead of the application tables alone. The Helm chart defaults the database volume to `5Gi`, which is sized for evaluation. Raise it before real use, and verify your StorageClass allows volume expansion.
+Disk grows with message and attachment volume, and the sync service keeps its own copy of synced rows, so total usage runs ahead of the application tables alone. The Helm chart defaults the database volume to `5Gi`, which is sized for evaluation. Raise it before real use, and verify your StorageClass allows volume expansion.
 
 Thunderbolt does not store uploaded files on the server. Attachments stay on the device that added them and travel only inside the request that answers a message, so there is no S3 or blob-storage bucket to provision.
 
@@ -64,7 +64,7 @@ You can skip PostgreSQL entirely with `DATABASE_DRIVER=pglite`, which runs the s
 
 ## TLS and DNS
 
-Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely, so a plain-HTTP hostname breaks the app outright.
+Serve the app over HTTPS on anything other than `localhost`. Thunderbolt keeps each user's conversations in a database inside their browser, and browsers grant the storage and isolation features that requires only to pages served securely, so on a plain-HTTP hostname the local database falls back to memory and every reload loses the user's data.
 
 The containers themselves speak plain HTTP and expect TLS to terminate in front of them, at your ingress controller, load balancer, or a reverse proxy such as Caddy or Traefik. cert-manager handles the certificates on Kubernetes, and the Pulumi path uses AWS Certificate Manager.
 
@@ -85,7 +85,7 @@ You can instead give each service its own hostname (for example `app.`, `api.`, 
 
 ## Ports
 
-Everything a user's browser talks to needs an address the browser can reach: the app, the API, the sync service, and the identity provider if you use the bundled one. Sync in particular runs as a direct browser connection, so an address that only resolves inside your container network leaves the app stuck offline.
+Everything a user's browser talks to needs an address the browser can reach: the app, the API, the sync service, and the identity provider if you use the bundled one. Sync in particular runs as a direct browser connection, so an address that only resolves inside your container network leaves sync stuck offline while the rest of the app keeps working.
 
 On the Docker Compose stack each service is published on a host port, at the values in the example settings file, and each one has a variable you can override:
 
@@ -182,7 +182,7 @@ The published desktop and mobile apps connect to Thunderbolt's hosted service. P
 
 The Kubernetes chart has no switch for the first three rows. It always installs Keycloak and the marketing site, so leaving out Keycloak there means pointing the API at your own provider and ignoring the workload you do not use, and it sets the sync service's address unconditionally.
 
-The chart also exposes no values for transactional email, analytics, tracing or end-to-end encryption. Those are off on Kubernetes because the chart cannot set them, so turning any of them on means adding your own `backend` environment entries.
+The chart also exposes no values for transactional email, analytics, tracing or end-to-end encryption. Those are off on Kubernetes because the chart cannot set them. It has no `extraEnv` hook either, so turning any of them on means editing the chart's `backend` template rather than passing a value.
 
 ## Next
 

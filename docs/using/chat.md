@@ -69,7 +69,7 @@ Only the newest message's attachments are sent at full fidelity. Files from earl
 
 ## Web search and citations
 
-Web search and page fetching come from the **Thunderbolt** connection under **Settings → Connections**, which is on by default. Switch it off there and chats cannot reach the web at all. The tools also need a search provider key on the server, so if they never return results, check with whoever runs your deployment. See [Configuration](../self-hosting/configuration.md).
+Web search and page fetching come from the **Thunderbolt** connection under **Settings → Connections**, which is on by default. Switch it off there and the assistant loses web search and page fetching. Link previews, widgets, MCP servers and external agents keep their own network access. The tools also need a search provider key on the server, so if they never return results, check with whoever runs your deployment. See [Configuration](../self-hosting/configuration.md).
 
 When the model uses a source, the answer carries a numbered badge like `[1]` at the point it is relevant. Click a badge to see the pages behind it, each with its title and link. Numbers are stable for the whole reply: a page found by search and then read keeps its number.
 
@@ -98,7 +98,7 @@ An artifact runs in an isolated frame that cannot fetch data, load a remote scri
 
 The **context window** is the amount of text a model can hold in mind at once, and a long conversation is sent back to it in full on every turn. On desktop, a small ring in the composer shows how much of it the conversation has used; hover it for the figure. If your next message would not fit, Thunderbolt says so before sending rather than failing mid-reply.
 
-Each reply also has a built-in ceiling on how many requests it may make to the provider and how long it may run (two minutes), so a stuck loop cannot quietly spend your budget.
+Each reply also has a ceiling on how many requests it may make to the provider, and stops starting new ones after two minutes, so a retry loop cannot quietly spend your budget. It does not abort a request already in flight, and an external agent's own run time is up to the agent.
 
 There is no way to edit a message you have already sent, and no button to regenerate a reply that succeeded. Ask a follow-up, or start a new chat.
 

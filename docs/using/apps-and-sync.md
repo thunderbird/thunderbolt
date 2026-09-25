@@ -13,7 +13,7 @@ Each install keeps its own copy of your data and works on its own. Sync is optio
 | iOS, Android          | Apple TestFlight and Google Play internal testing                                      | Not yet listed publicly in the app stores                                      |
 | Terminal              | `thunderbolt` command line client                                                      | Apple Silicon Macs and Linux. Installable from the desktop app, or from source |
 
-All of them run the same application, so the feature set does not change between them. Layout and a few platform conveniences (window controls, keyboard insets, the system tray) differ.
+The web, desktop and mobile apps share one codebase, so features carry across except where a platform blocks them: the in-app browser and the cloud-proxy switch are desktop-only. The terminal client is a separate coding agent rather than this app.
 
 The web app requires HTTPS. It keeps a database inside the browser and uses browser cryptography, both of which browsers only allow on a secure origin. Automatic desktop updates reach only the official builds, which ship with an update feed and a signing key. A desktop app you build yourself has neither, so you distribute new installers to your users the same way you distributed the first one.
 
@@ -91,7 +91,7 @@ Revoked entries stay visible in the list for 24 hours so the change is easy to c
 
 > Revoking is not reversible. To bring a device back, sign in again and approve it as new.
 
-Deleting the account is separate and wider: every signed-in device clears its local data the next time it reaches the server.
+Deleting the account is separate and wider: each device clears its local data the next time it is opened online. Attached files are the exception, as above, and a device never opened again keeps what it has.
 
 Full detail on approval, recovery keys, and revocation is in [Devices and Accounts](../admin/devices.md).
 

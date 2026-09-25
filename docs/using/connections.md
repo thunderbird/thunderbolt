@@ -6,7 +6,7 @@ Alongside them sit the ready-made account integrations, which let the assistant 
 
 ## MCP servers
 
-The Model Context Protocol (MCP) is an open standard for exposing tools to an AI assistant. A server publishes a list of tools, Thunderbolt connects to it, and those tools become available in every chat alongside the built-in ones. Thunderbolt acts only as an MCP client, so it can consume servers but does not publish one of its own.
+The Model Context Protocol (MCP) is an open standard for exposing tools to an AI assistant. A server publishes a list of tools, Thunderbolt connects to it, and those tools join the built-in ones in any chat answered by the built-in assistant on a tool-capable model. An external agent brings its own tools instead. Thunderbolt acts only as an MCP client, so it can consume servers but does not publish one of its own.
 
 ### Adding a server
 
@@ -60,6 +60,7 @@ Switch the add form to **Advanced (JSON)** and paste an existing `mcpServers` bl
 - `"disabled": true` imports the server switched off.
 - An `Authorization: Bearer` header becomes the stored credential. Other auth headers are ignored and the server is still imported.
 - Entries that launch a local command are rejected. See [Local servers](#local-servers).
+- Imported servers are not connection-tested. Open each one afterwards and use **Test connection**.
 
 ### Reachability
 
@@ -176,11 +177,11 @@ Web search and page fetching need `EXA_API_KEY` on the server. Without it the sw
 
 MCP tool calls are not approved one by one. Once a server is connected and enabled, its tools run whenever the model calls them, and your control is at the server level: enable, disable, delete. External agents work the other way round. An ACP agent asks before it edits a file or runs a command, and each request prompts in the chat until you choose one of the always-allow buttons.
 
-Stored credentials never reach the model. They authenticate the connection, are never part of the conversation, and leave the device only for the server they belong to.
+Stored credentials never reach the model, and are never part of the conversation. For an `http` or `sse` server the credential does transit your deployment's relay, which forwards it untouched and stores nothing; only a peer-to-peer bridge is end to end.
 
 One path reaches inside your network: an external agent in the desktop app with Cloud Proxy off. Everything else is relayed, and the relay refuses private and internal addresses.
 
-A bridged coding agent can touch the directory the bridge was launched from and everything below it. Nothing above it is in scope, and any working directory the app sends is ignored. Whether a bridged agent can run arbitrary shell commands is up to the agent. The one the Thunderbolt command-line tool serves cannot: it has no shell tool, and it refuses to fetch loopback or private addresses.
+The agent the Thunderbolt command-line tool serves is confined to the directory the bridge was launched from and everything below it, ignores any working directory the app sends, has no shell tool, and refuses to fetch loopback or private addresses. A bridged third-party agent enforces its own scope, and whether it can run shell commands is up to that agent.
 
 Only peer identities on a bridge's allowlist can dial it, which means your own account's devices plus anything you allowed manually. To cut a paired machine off, revoke the device in **Settings → Devices**. Live sessions close within about a minute.
 

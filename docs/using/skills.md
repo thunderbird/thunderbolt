@@ -1,6 +1,6 @@
 # Skills
 
-A skill is a named, reusable block of instructions. Instead of pasting the same brief into chat every time, you save it once and pull it in with `/name`. Skills live in **Settings → Skills**, stored in your account and synced to every device you sign in on.
+A skill is a named, reusable block of instructions. Instead of pasting the same brief into chat every time, you save it once and pull it in with `/name`. Skills live in **Settings → Skills**, stored in your account and synced to your other devices that have sync on.
 
 ## Two ways a skill runs
 
@@ -8,7 +8,7 @@ Type `/name` in the composer and those instructions are attached to that one mes
 
 Up front it normally sees only a short list of skill names and descriptions. Full instructions are pulled in when a skill is used, so a large library does not slow down or inflate every message.
 
-That holds only on a model with tool support. Without it there is no way to fetch a skill mid-answer, so every enabled skill's full text goes into the system prompt instead: the assistant still uses them, but a large library inflates every message.
+That holds only on a model with tool support. Without it the assistant is given the built-in display contracts and nothing else, so your own skills are never offered to it. Typing a skill's token still works.
 
 ## Using a skill in chat
 
@@ -39,7 +39,7 @@ Skills can refer to each other by token, so a longer workflow can call out to `/
 
 ## Editing, disabling and deleting
 
-Toggling a skill off keeps it in your library but hides it from the assistant and from `/` tokens. An edit applies to your next message; past chats keep the answers they already produced. Deleting a skill removes it from your library on every device.
+Toggling a skill off keeps it in your library but hides it from the assistant and from `/` tokens. An edit applies to your next message; past chats keep the answers they already produced. Deleting a skill removes it from your library on every device that syncs.
 
 Changing a slug does not rewrite tokens you have already typed into a draft, so update those by hand. If another skill mentions the one you are about to disable or delete, Thunderbolt names the skills that reference it before you confirm.
 
@@ -72,7 +72,7 @@ The other five, Weather, Link Preview, Map, Ask and Connect Integration, are dis
 
 ## Skills and external agents
 
-When you connect an external agent, Thunderbolt hands it your enabled skills so it can load them the same way. An agent that does not support that is given the instructions directly in the session instead.
+When you connect an external agent, Thunderbolt hands it the full text of every enabled skill at session setup rather than a catalog it fetches from. An agent that does not support that is given the instructions directly in the session instead.
 
 ## Privacy and portability
 

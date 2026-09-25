@@ -2,7 +2,7 @@
 
 Voice mode turns the chat composer into a spoken conversation: you talk, Thunderbolt transcribes what you said, sends it as an ordinary chat message, and reads the reply back.
 
-We never store audio in any form, on the device or on the server. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
+We never store audio in any form, on the device or on our servers. A custom speech provider is outside that promise, since the audio goes to a server you point us at. Only the transcript of what you said and the assistant's reply are saved, as normal chat messages.
 
 ## Start a voice conversation
 
@@ -20,7 +20,7 @@ A voice turn is a regular chat turn. It uses the model you have selected, the sa
 
 ## What leaves your device
 
-One audio clip goes to the speech engine per utterance, sent after you stop talking. There is no continuous microphone stream, and anything recorded while you are silent is never sent.
+One audio clip goes to the speech engine per utterance, sent after you stop talking. There is no continuous microphone stream: nothing is captured between turns, and each clip is your utterance plus a fraction of a second either side.
 
 Transcription and spoken playback do not count against your usage allowance for Thunderbolt-hosted models. The chat reply itself does, if it runs on one of those models.
 

@@ -1,6 +1,6 @@
 # Kubernetes
 
-One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except an AI provider, and only if you configure one.
+One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except registry egress for the images, and an AI provider if you configure one.
 
 If you only want to see Thunderbolt working, we recommend [Docker Compose](./docker-compose.md) or the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
 
@@ -16,7 +16,7 @@ If you only want to see Thunderbolt working, we recommend [Docker Compose](./doc
 | Marketing  | Deployment  | The landing page and these docs. Deployed unconditionally.               |
 | Ingress    | Ingress     | Routes every path to the right service.                                  |
 
-Replica counts are configurable per workload except PostgreSQL, which is always a single instance; the chart has no high-availability database option.
+Replica counts are configurable for `frontend`, `backend` and `marketing`. PostgreSQL is fixed at one instance and the chart has no high-availability database option. Keycloak and PowerSync expose a `replicas` value but must stay at one: the bundled Keycloak keeps its database inside the pod, so each replica would hold a different one, and PowerSync runs the `unified` role with a single replicator.
 
 ## Prerequisites
 

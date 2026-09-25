@@ -6,7 +6,7 @@ Thunderbolt exposes one public liveness endpoint for load balancers and four tok
 
 Point your load balancer at `/v1/health`. It needs no token, and it gives the balancer a way to restart a wedged API process. Then set `MONITORING_TOKEN` and poll the deep probes. We recommend `/v1/health/database` and `/v1/health/powersync` every minute, and `/v1/health/email` every 15 minutes. The most common real outage is the database, not the API. Sync failing is invisible to users until they open a second device, and a broken sending domain locks everyone out of email sign-in.
 
-Ship the container logs somewhere durable too. Nothing is written to disk, so a restarted container takes its logs with it.
+Ship the container logs somewhere durable too. The services write nothing to disk, so logs live only in your container platform's buffer and go when the container is removed.
 
 ## Health endpoints
 
@@ -32,7 +32,7 @@ Each supported deployment already wires these up.
 | AWS            | `/v1/health` load balancer check, every 30s                         | `/` every 30s      | `/probes/liveness` every 30s |
 | Docker Compose | Starts only once PostgreSQL and the bundled Keycloak report healthy | n/a                | n/a                          |
 
-If you put your own proxy in front, give the API service at least 30 seconds of grace on first start: it applies database migrations before it begins listening.
+If you put your own proxy in front, give the API service two minutes of grace on first start: it waits up to 90 seconds for the database, then applies migrations, then begins listening.
 
 ## Deep health checks
 
@@ -91,21 +91,21 @@ Failure entries never contain the upstream response body or your credentials.
 
 The probe exercises only the models your deployment is configured to serve; models your users add themselves are not covered.
 
-> Don't alert on this endpoint unless your server holds keys for the preconfigured models. Without `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`, every entry fails as `not-configured` and the endpoint stays red however healthy the deployment is.
+> Don't alert on this endpoint unless your server holds **both** `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. The probe walks the whole preconfigured catalog, a model with no key reports `not-configured`, and one failure fails the check, so a partly-keyed server stays red however healthy it is.
 
 ## What to alert on
 
-| Signal                                       | Severity                                | Reasoning                                                                                                                                     |
-| -------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/v1/health` failing for 1 minute            | page                                    | The API is down. Everything else follows.                                                                                                     |
-| `/v1/health/database` failing for 2 minutes  | page                                    | Sign-in, sync and settings all stop.                                                                                                          |
-| `/v1/health/powersync` failing for 5 minutes | page                                    | Chat still works on the device in front of the user, but nothing reaches their other devices and nothing is backed up. Users will not notice. |
-| `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed sign-in codes are the only way in under `AUTH_MODE=consumer`. Single sign-on deployments do not use them.                             |
-| `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                         |
-| API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                               |
-| A sustained rise in `429` responses          | ticket                                  | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                     |
-| A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                      |
-| `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                             |
+| Signal                                       | Severity                                | Reasoning                                                                                                                                                           |
+| -------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/health` failing for 1 minute            | page                                    | The API is down. Everything else follows.                                                                                                                           |
+| `/v1/health/database` failing for 2 minutes  | page                                    | Sign-in, sync and settings all stop.                                                                                                                                |
+| `/v1/health/powersync` failing for 5 minutes | page                                    | Writes still upload through the API, so new content reaches the database and your backups. Only downloads to a user's other devices stop, and they will not notice. |
+| `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed codes are the only way to create a new session under `AUTH_MODE=consumer`. Existing sessions and personal access tokens keep working.                       |
+| `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                                               |
+| API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                                                     |
+| A sustained rise in `429` responses          | ticket                                  | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                                           |
+| A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                                            |
+| `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                                                   |
 
 ## Logs
 
@@ -161,7 +161,7 @@ Thunderbolt exposes no Prometheus metrics and no `/metrics` endpoint, so dashboa
 
 Nothing aggregates usage for an administrator. Conversation rows do reach the database for every user who turns sync on, but no endpoint or dashboard summarizes them, and although spend on the preconfigured models is recorded per request, nothing renders that for an administrator either.
 
-Nothing verifies your backups. Monitoring that your PostgreSQL backups exist and restore is your responsibility, and those backups hold every account and the synced copy of every conversation.
+Nothing verifies your backups. Monitoring that your PostgreSQL backups exist and restore is your responsibility, and those backups hold every account and the synced copy of every conversation from users who turned sync on.
 
 ## Related
 

@@ -4,11 +4,11 @@ Thunderbolt's API is configured entirely through environment variables, read onc
 
 ## Start here: the minimum
 
-| Variable               | What it is                                                                                    |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`   | Random string used to sign sessions. Generate with `openssl rand -hex 32`.                    |
-| `DATABASE_URL`         | PostgreSQL connection string.                                                                 |
-| One model provider key | `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`. Without one, the API runs but cannot answer a chat. |
+| Variable               | What it is                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `BETTER_AUTH_SECRET`   | Random string used to sign sessions. Generate with `openssl rand -hex 32`.                                                           |
+| `DATABASE_URL`         | PostgreSQL connection string.                                                                                                        |
+| One model provider key | `ANTHROPIC_API_KEY` or `TINFOIL_API_KEY`. Without one the deployment-provided models fail on send, and users must add their own key. |
 
 Add `POWERSYNC_URL` and `POWERSYNC_JWT_SECRET` if you want conversations to sync between a user's devices. Everything else below has a working default.
 
@@ -74,7 +74,7 @@ Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 | `SAML_IDP_ISSUER`  | none    | Identity provider entity ID.                                                      |
 | `SAML_CERT`        | none    | Identity provider signing certificate, base64, without PEM headers.               |
 
-Under either SSO mode, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
+Under OIDC, add the identity provider's origin to `TRUSTED_ORIGINS`, not to `CORS_ORIGINS`. SAML has no discovery step, so it does not need the entry. Containerized deployments usually need two entries: the browser-facing issuer origin and the internal hostname the API uses to reach the provider.
 
 ### Google and Microsoft connections
 
@@ -187,10 +187,10 @@ A pipeline that should accept file attachments needs `"supportedContent": {"text
 
 Sign-in codes and waitlist notices are sent through Resend.
 
-| Variable                    | Default | What it does                                                                                                          |
-| --------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
-| `RESEND_API_KEY`            | none    | Sending key. Leave it unset and no mail is sent, which is fine for local evaluation but breaks sign-in in production. |
-| `RESEND_MONITORING_API_KEY` | none    | Separate full-access key used only by the email health check, so the sending key can stay send-only.                  |
+| Variable                    | Default | What it does                                                                                                                                          |
+| --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RESEND_API_KEY`            | none    | Sending key. Leave it unset and no mail is sent. Fine for local evaluation, and fine on OIDC or SAML, but it breaks email-code sign-in in production. |
+| `RESEND_MONITORING_API_KEY` | none    | Separate full-access key used only by the email health check, so the sending key can stay send-only.                                                  |
 
 Mail goes out from a Thunderbolt-owned sender address, `hello@auth.thunderbolt.io`. There is no setting to change the from address or to use your own SMTP server.
 

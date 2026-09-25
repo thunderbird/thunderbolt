@@ -9,7 +9,7 @@ operator of a deployment.
 
 Conversations live on each device first, and reach your server only once sync is on for that device. With
 sync on and encryption off you can read a user's chats from your database; with encryption on you
-cannot. Provider API keys stay on the device that entered them and never reach your server or
+cannot read them from your database, though every turn still passes through your relay in plaintext. Provider API keys stay on the device that entered them and never reach your server or
 another device. Uploaded files stay on the device too, and are sent only inside the request that
 answers that turn.
 
@@ -19,7 +19,7 @@ and a user who opts in.
 
 ## Where data lives
 
-| Data                                                            | On the device | On your server                      |
+| Data                                                            | On the device | Stored on your server               |
 | --------------------------------------------------------------- | ------------- | ----------------------------------- |
 | Chats, messages, tasks, skills, projects, automations, settings | Always        | Only when the user enables sync     |
 | Model configuration (names, endpoints, tuning)                  | Always        | Only when the user enables sync     |
@@ -64,8 +64,9 @@ setting to match.
 - A new device stays in a pending state until an already-trusted device approves it.
 - The user is shown a 24-word recovery phrase once, at setup. It is the only way back in if every
   trusted device is lost. You cannot recover it for them.
-- Revoking a device deletes its sealed copy of the content key from your server, so the device
-  cannot decrypt anything again even if its local keys survive.
+- Revoking a device deletes its sealed copy of the content key from your server, so it cannot fetch
+  the key again. That does not lock what is already there: the local database holds decrypted rows,
+  and the key stays on the device until its holder confirms the wipe.
 
 **What it covers**
 
@@ -101,21 +102,30 @@ planned.
 | Open-Meteo                                     | A place name or coordinates, for location search and weather                                                                               | Not separately configurable today                                                                                                               |
 | Resend                                         | The recipient address for sign-in codes and waitlist mail                                                                                  | Leave `RESEND_API_KEY` unset, which also disables email sign-in                                                                                 |
 | PostHog                                        | Product analytics, never prompt or response content                                                                                        | Leave `POSTHOG_API_KEY` unset                                                                                                                   |
-| The Thunderbolt team                           | Nothing, unless you configure debug transcript forwarding                                                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
+| The Thunderbolt team                           | Nothing beyond the desktop update check, unless you configure debug transcript forwarding                                                  | Leave `DEBUG_TRANSCRIPT_UPSTREAM_URL` unset, which is the default                                                                               |
+| The update feed (desktop only)                 | App version, OS, architecture and IP, shortly after each launch                                                                            | Rebuild the app with `updater.endpoints` removed                                                                                                |
 
 Requests to a user-added provider or tool server pass through your server, because a browser cannot
 call most provider APIs directly. Your server forwards the bytes and the user's credential untouched
 and stores neither. Access logs record the upstream hostname, not the full URL, so a user's browsing
-is not written into your logs. A model server on the user's own machine, such as Ollama or LM
-Studio, is the exception: your server cannot reach it, so the app calls it directly and nothing
-about those turns crosses your infrastructure.
+is not written into your logs.
+
+> Tracing is the exception. With `OTEL_EXPORTER_OTLP_ENDPOINT` set, each request's headers are
+> recorded alongside the trace, and those headers carry the forwarded credential and the full
+> upstream URL. Drop the `http.request.header.*` attributes at your collector, or leave tracing off.
+
+A model server on the user's own machine, such as Ollama or LM Studio, is the exception: the app
+calls it directly, so the prompt and reply never cross your infrastructure. The rest of the turn
+still does, including synced rows, link previews, web-search calls and analytics. The bypass covers
+loopback addresses only, so a model server elsewhere on the LAN is not included.
 
 Your server also fetches pages itself, with no user credential attached, to build link previews:
 a link a user pastes or a model returns becomes a request from your infrastructure to that site.
 
-> If you turn on debug transcript forwarding, a transcript carries the whole conversation plus the
-> user id and email your deployment holds. The Thunderbolt team retains it, and it survives deletion
-> of the submitting account.
+> With debug transcript forwarding on, a user can share one thread at a time from the chat view,
+> after an explicit consent check. A shared transcript carries the whole conversation plus the user id
+> and email your deployment holds. The Thunderbolt team retains it, and it survives deletion of the
+> submitting account.
 
 ## Managed models and confidential inference
 
@@ -157,10 +167,13 @@ directly and you can block the egress at your firewall. Where your server forwar
 one.
 
 We never collect prompts, model responses, API keys, search queries, file names, file
-contents, skill or agent names, or the text of anything a user wrote. Events carry event names and
-single values such as a model identifier, a provider name, a character count, and timings. URLs are
-reduced to a route pattern with query strings and fragments removed, and any property literally
-named `apiKey` is stripped as the last step before sending. Automatic collection is off entirely: no
+contents, skill or agent names, or the text of anything a user wrote, with two exceptions: a custom
+model's identifier is the string the user typed, and an error's stack trace is passed through as the
+runtime produced it, so it can contain a URL. Events carry event names and
+single values such as a model identifier, a provider name, a character count, and timings. Query strings and fragments are removed from the URL
+properties the app reports, `/chats/:id` is collapsed to its route pattern while other dynamic
+segments are not, and any property literally named `apiKey` is stripped as the last step before
+sending. Automatic collection is off entirely: no
 click capture, no pageviews, no session recording, no surveys, no performance capture. An error the
 app handles is reported with its code, message and stack trace.
 
@@ -185,6 +198,8 @@ user's conversations. What follows is about direct access to your own database a
 - Server logs and traces: request paths, status codes, and the hostnames of upstreams a proxied
   request reached.
 - With sync on and encryption off, everything a user synced, including message content.
+- Plaintext prompts, replies and attachments in transit, for every model except one on the user's own
+  loopback address. Encryption covers stored rows, not the relay.
 
 **You cannot see**
 

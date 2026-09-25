@@ -1,14 +1,14 @@
 # Introduction
 
-Thunderbolt is an open-source AI chat client that you host yourself. It runs on the web, macOS, Windows, Linux, iOS, and Android, and it talks to whichever AI models you choose. That can be a commercial provider on your own account, a model running on your own hardware, or a catalog your deployment serves on behalf of your users.
+Thunderbolt is an open-source AI chat client that you host yourself. It runs on the web, macOS, Windows, Linux, and on iOS and Android in preview, and it talks to whichever AI models you choose. That can be a commercial provider on your own account, a model running on your own hardware, or a catalog your deployment serves on behalf of your users.
 
 ![Thunderbolt Main Dashboard](https://raw.githubusercontent.com/thunderbird/thunderbolt/main/docs/screenshots/main.png)
 
 ## What you get
 
-**Your models.** Anthropic, OpenAI, OpenRouter, or any OpenAI-compatible endpoint, each reached with a key your users supply. [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp) cover local inference at no cost. You can also give the server its own provider keys and serve a managed catalog with per-account spend limits, so people can start chatting without holding a key at all. A key a user supplies is stored on the device that added it and is never synced. See [Models](./self-hosting/models.md).
+**Your models.** Anthropic, OpenAI, OpenRouter, or any OpenAI-compatible endpoint, each reached with a key your users supply. [Ollama](https://ollama.com/) and [llama.cpp](https://github.com/ggml-org/llama.cpp) cover local inference at no cost, on the same machine as the app. You can also give the server its own provider keys and serve a managed catalog with per-account spend limits, so people can start chatting without holding a key at all. A key a user supplies is stored on the device that added it and is never synced. See [Models](./self-hosting/models.md).
 
-**Your infrastructure.** The whole server stack runs on a single Docker host, a Kubernetes cluster, or AWS, with no SaaS control plane to call home to and no vendor account to lose access to.
+**Your infrastructure.** The whole server stack runs on a single Docker host, a Kubernetes cluster, or AWS, with no control plane of ours in the middle and no vendor account to lose access to. Three optional features do need a third-party account: emailed sign-in codes, web search, and the confidential models. Single sign-on avoids the first.
 
 **Your data.** Each device keeps its own local database and reads and writes there first. Cross-device sync is off until a user signs in, which turns it on for that device; they can switch it off again under Settings → Preferences → Data. You can switch on [end-to-end encryption](./admin/security-and-privacy.md) so the server holds only ciphertext for chat content, titles, settings and other covered fields.
 
@@ -29,7 +29,7 @@ Thunderbolt is free and open source under the Mozilla Public License 2.0, funded
 - End-to-end encryption is in preview and has not had a cryptography audit. It is off unless you turn it on.
 - Sign-in requires the backend, so the app is not yet usable fully offline. Once a user is signed in, chats, edits, and settings changes are written locally and replay when the network returns, but answering them needs a network unless the model runs on your own hardware.
 - Web search reaches an external provider. It is part of the **Thunderbolt** connection under **Settings → Connections**, on by default, and it only works when the deployment sets `EXA_API_KEY`. A user can switch the connection off there.
-- Analytics are opt-in and off by default.
+- Analytics in the app are opt-in and off by default. A deployment that configures an analytics service also records its own events for model calls it pays for.
 
 ## Where to go next
 

@@ -93,7 +93,7 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 
 Keycloak also imports a demo user, `demo@thunderbolt.io` / `demo`, exactly as on the other deployment paths. Remove it in the Keycloak admin console once your own identity provider or users are in place.
 
-On EKS these settings are not passed through to the cluster. The chart applies its own defaults, which are published too and covered on the [Kubernetes](./kubernetes.md) page.
+On EKS only `betterAuthSecret` reaches the cluster. The other five are not passed through, and the chart applies its own published defaults, covered on the [Kubernetes](./kubernetes.md) page.
 
 ## Hostnames and TLS
 

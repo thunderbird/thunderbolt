@@ -75,7 +75,7 @@ Message content is what the enclave path protects, in both directions, from your
 
 Voice input and speech output use the same protected path by default, so they need `TINFOIL_API_KEY` too. Without it the built-in voice engine returns an error. Voice requests are never counted against spend limits.
 
-A personal access token cannot reach confidential models. Requests made with one are refused and the user is told to sign in through the app. Don't set `CONFIDENTIAL_API_KEYS_ENABLED=true` until you have reviewed what it means for the way you issue tokens.
+By default a personal access token cannot reach confidential models: the request is refused and the user is told to sign in through the app. `CONFIDENTIAL_API_KEYS_ENABLED=true` lifts that, so don't set it until you have reviewed what it means for the way you issue tokens.
 
 If the enclave cannot be verified, the message fails with an error saying so. There is no fallback to an unprotected path. Without `TINFOIL_API_KEY`, confidential requests are refused with `503 Tinfoil provider not configured`, while a missing `ANTHROPIC_API_KEY` makes the standard tier fail less cleanly, with a generic server error.
 

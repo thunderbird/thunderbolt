@@ -27,7 +27,11 @@ export default defineConfig({
 		'/docs/quick-start': '/docs/self-hosting/docker-compose',
 		'/docs/multi-device-sync': '/docs/using/apps-and-sync',
 		// Contributor docs moved under docs/internals/, which repo-docs-loader.ts
-		// does not publish. Where the topic has a public successor, point there.
+		// does not publish. This map covers exactly the pages `main` published
+		// before the move, derived from `git ls-tree main docs` rather than from
+		// the current tree: most files under docs/internals/ are new on this
+		// branch and never had a public URL, so they need no entry.
+		// Where the topic has a public successor, point there.
 		'/docs/architecture/projects': '/docs/using/projects',
 		'/docs/architecture/multi-device-sync': '/docs/using/apps-and-sync',
 		'/docs/architecture/powersync-sync-middleware': '/docs/using/apps-and-sync',

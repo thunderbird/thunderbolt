@@ -91,7 +91,7 @@ Revoked entries stay visible in the list for 24 hours so the change is easy to c
 
 > Revoking is not reversible. To bring a device back, sign in again and approve it as new.
 
-Deleting the account is separate and wider: each device clears its local data the next time it is opened online. Attached files are the exception, as above, and a device never opened again keeps what it has.
+Deleting the account is separate and wider, but it does not reach every device on its own. A device with sync on that reconnects soon after clears its local data and shows an account-deleted screen. A device with sync off, or one that comes back after too long a gap, is signed out instead and keeps its local copy, so wipe those by hand. Attached files are never cleared either, as above.
 
 Full detail on approval, recovery keys, and revocation is in [Devices and Accounts](../admin/devices.md).
 

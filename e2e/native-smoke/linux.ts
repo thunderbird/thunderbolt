@@ -6,15 +6,17 @@ import { resolve } from 'node:path'
 import { remote } from 'webdriverio'
 import { fakeProviderReply } from '../fake-provider'
 
+const capabilities = {
+  browserName: 'wry',
+  'wdio:enforceWebDriverClassic': true,
+  'tauri:options': { application: resolve('src-tauri/target/debug/thunderbolt') },
+}
+
 const browser = await remote({
   hostname: '127.0.0.1',
   port: 4444,
   logLevel: 'warn',
-  capabilities: {
-    browserName: 'wry',
-    'wdio:enforceWebDriverClassic': true,
-    'tauri:options': { application: resolve('src-tauri/target/debug/thunderbolt') },
-  },
+  capabilities,
 })
 
 try {
@@ -30,7 +32,7 @@ try {
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
   await (await browser.$('//button[normalize-space()="Opus 5"]')).click()
   await composer.setValue('Please greet me briefly.')
-  await composer.keys('Enter')
+  await (await browser.$('button[aria-label="Send message"]')).click()
   await browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(fakeProviderReply), {
     timeout: 60_000,
     timeoutMsg: `The chat reply did not render: ${fakeProviderReply}`,

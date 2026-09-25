@@ -22,14 +22,17 @@ command -v WebKitWebDriver
 ffmpeg -loglevel error -y -f x11grab -framerate 15 -video_size 1600x1200 \
   -i "$DISPLAY" -c:v libx264 -pix_fmt yuv420p "/tmp/thu-886-native-smoke/linux-${1:-1}.mp4" &
 recorder_pid=$!
-export XDG_CONFIG_HOME=$(mktemp -d)
-export XDG_DATA_HOME=$(mktemp -d)
-export XDG_CACHE_HOME=$(mktemp -d)
+XDG_CONFIG_HOME=$(mktemp -d)
+XDG_DATA_HOME=$(mktemp -d)
+XDG_CACHE_HOME=$(mktemp -d)
+export XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
+# WebKitGTK otherwise paints a blank window under Xvfb.
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
 tauri-driver --port 4444 > /tmp/thu-886-native-smoke/tauri-driver.log 2>&1 &
 driver_pid=$!
 trap 'kill -INT "$recorder_pid" 2>/dev/null || true; kill "$driver_pid" 2>/dev/null || true; wait "$recorder_pid" 2>/dev/null || true; wait "$driver_pid" 2>/dev/null || true' EXIT
 
-for attempt in {1..30}; do
+for _ in {1..30}; do
   if curl -fsS http://localhost:4444/status >/dev/null; then break; fi
   sleep 1
 done

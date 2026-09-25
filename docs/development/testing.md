@@ -266,6 +266,23 @@ bunx playwright test --config playwright.nightly.config.ts
 
 On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `NIGHTLY_DATABASE_URL` and `NIGHTLY_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.nightly.config.ts`](../../playwright.nightly.config.ts) for browser selection and backend environment variables.
 
+### Native iOS smoke
+
+The separate Nightly iOS job launches the Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`), boot an iPhone simulator, and use three terminals:
+
+```sh
+./e2e/native-smoke/services.sh
+
+VITE_AUTH_MODE=thunderbolt VITE_SKIP_ONBOARDING=true \
+VITE_AUTH_ENABLE_ANONYMOUS=false VITE_BYPASS_WAITLIST=false \
+VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
+  bun tauri ios dev --config src-tauri/tauri.dev.conf.json 'iPhone 17e'
+
+./e2e/native-smoke/ios.sh
+```
+
+Replace `iPhone 17e` with your booted simulator's name. The recording is `/tmp/thu-886-native-smoke/ios.mp4`. The Nightly heartbeat covers the browser jobs; the native job reports failures through `notify` without cancelling those jobs.
+
 ### Debugging Mock Leakage
 
 If you see errors like these in CI but tests pass locally:

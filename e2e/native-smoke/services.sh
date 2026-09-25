@@ -25,4 +25,7 @@ APP_URL=http://localhost:1420 \
 CORS_ORIGINS=http://localhost:1420,http://10.0.2.2:1420,tauri://localhost,http://tauri.localhost \
 TRUSTED_ORIGINS=http://localhost:1420,http://10.0.2.2:1420,tauri://localhost,http://tauri.localhost \
 RATE_LIMIT_ENABLED=false \
-  bun src/index.ts
+  bun src/index.ts &
+backend_pid=$!
+trap 'kill "$provider_pid" "$backend_pid" 2>/dev/null || true; wait "$provider_pid" "$backend_pid" 2>/dev/null || true' EXIT
+wait "$backend_pid"

@@ -266,41 +266,9 @@ bunx playwright test --config playwright.nightly.config.ts
 
 On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `NIGHTLY_DATABASE_URL` and `NIGHTLY_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.nightly.config.ts`](../../playwright.nightly.config.ts) for browser selection and backend environment variables.
 
-### Native iOS smoke
+### Native app smoke
 
-The scheduled iOS job installs a bundled Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`) and boot an iPhone simulator. Start the services in one terminal; run the remaining commands in another:
-
-```sh
-./e2e/native-smoke/services.sh
-
-VITE_AUTH_MODE=thunderbolt VITE_SKIP_ONBOARDING=true \
-VITE_AUTH_ENABLE_ANONYMOUS=false VITE_BYPASS_WAITLIST=false \
-VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
-  bun tauri ios build --target aarch64-sim --debug --ci --no-sign \
-    --config src-tauri/tauri.dev.conf.json
-
-export IOS_SIMULATOR_UDID=your-booted-simulator-udid
-xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
-./e2e/native-smoke/ios.sh
-```
-
-Find the UDID with `xcrun simctl list devices booted`. The recording is `/tmp/thu-886-native-smoke/ios.mp4`.
-
-### Native Linux desktop smoke
-
-Install the Tauri Linux build packages, `webkit2gtk-driver`, `xvfb`, and `ffmpeg` listed in the scheduled `native-linux` job, then run `cargo install tauri-driver --locked`. Install the repository and backend Bun dependencies. Start the test services in one terminal, then build and run the real desktop app in another:
-
-```sh
-./e2e/native-smoke/services.sh
-
-VITE_AUTH_MODE=thunderbolt VITE_SKIP_ONBOARDING=true \
-VITE_AUTH_ENABLE_ANONYMOUS=false VITE_BYPASS_WAITLIST=false \
-VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
-  bun tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
-./e2e/native-smoke/linux.sh
-```
-
-The script starts `tauri-driver` under Xvfb when no display is set and records `/tmp/thu-886-native-smoke/linux.mp4`. Both native jobs run independently of the browser jobs. The heartbeat covers only the browser jobs; `notify` covers native failures too.
+The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. For manual reproduction, start [`services.sh`](../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb, and ffmpeg. Recordings are saved in `/tmp/native-smoke/`; service logs are retained as failure artifacts.
 
 ### Debugging Mock Leakage
 

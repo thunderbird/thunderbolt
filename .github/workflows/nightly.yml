@@ -220,6 +220,9 @@ jobs:
           cd backend && bun install --frozen-lockfile
           cargo install tauri-driver --locked
 
+      - name: Check native service cleanup
+        run: bash e2e/native-smoke/services.test.sh
+
       - name: Run native Linux smoke
         env:
           VITE_AUTH_MODE: thunderbolt
@@ -239,7 +242,16 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-linux-video
-          path: /tmp/thu-886-native-smoke/linux.mp4
+          path: /tmp/native-smoke/linux.mp4
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload native Linux service log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-linux-services
+          path: ${{ runner.temp }}/native-services.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -260,6 +272,9 @@ jobs:
           cd backend && bun install --frozen-lockfile
           rustup target add aarch64-apple-ios-sim
           brew install mobile-dev-inc/tap/maestro
+
+      - name: Check native service cleanup
+        run: bash e2e/native-smoke/services.test.sh
 
       - name: Boot iPhone simulator
         run: |
@@ -301,7 +316,16 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-ios-video
-          path: /tmp/thu-886-native-smoke/ios.mp4
+          path: /tmp/native-smoke/ios.mp4
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload native iOS service log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-ios-services
+          path: ${{ runner.temp }}/native-services.log
           if-no-files-found: ignore
           retention-days: 7
 

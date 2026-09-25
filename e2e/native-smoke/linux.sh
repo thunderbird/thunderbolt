@@ -12,7 +12,7 @@ if [ "$(uname -s)" != Linux ]; then
 fi
 
 cd "$(dirname "$0")/../.."
-mkdir -p /tmp/thu-886-native-smoke
+mkdir -p /tmp/native-smoke
 if [ -z "${DISPLAY:-}" ]; then
   exec xvfb-run -a -s '-screen 0 1600x1200x24' "$0"
 fi
@@ -20,7 +20,7 @@ command -v tauri-driver
 command -v WebKitWebDriver
 
 ffmpeg -loglevel error -y -f x11grab -framerate 15 -video_size 1600x1200 \
-  -i "$DISPLAY" -c:v libx264 -pix_fmt yuv420p /tmp/thu-886-native-smoke/linux.mp4 &
+  -i "$DISPLAY" -c:v libx264 -pix_fmt yuv420p /tmp/native-smoke/linux.mp4 &
 recorder_pid=$!
 XDG_CONFIG_HOME=$(mktemp -d)
 XDG_DATA_HOME=$(mktemp -d)
@@ -28,7 +28,7 @@ XDG_CACHE_HOME=$(mktemp -d)
 export XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
 # WebKitGTK otherwise paints a blank window under Xvfb.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
-tauri-driver --port 4444 > /tmp/thu-886-native-smoke/tauri-driver.log 2>&1 &
+tauri-driver --port 4444 > /tmp/native-smoke/tauri-driver.log 2>&1 &
 driver_pid=$!
 trap 'kill -INT "$recorder_pid" 2>/dev/null || true; kill "$driver_pid" 2>/dev/null || true; wait "$recorder_pid" 2>/dev/null || true; wait "$driver_pid" 2>/dev/null || true' EXIT
 

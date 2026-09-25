@@ -313,6 +313,33 @@ describe('createUniversalProxyRoutes', () => {
     expect(calledUrl).toBe(pinnedUrl('https://example.com/resource'))
   })
 
+  it('keeps only the exact test fixture on HTTP and blocks it in production', async () => {
+    const previousEnv = process.env.NODE_ENV
+    const previousHosts = process.env.TEST_PROXY_ALLOWED_HOSTS
+    try {
+      process.env.NODE_ENV = 'test'
+      process.env.TEST_PROXY_ALLOWED_HOSTS = '127.0.0.1:9879'
+      const target = 'http://127.0.0.1:9879/mcp'
+      const allowed = await drain(await app.handle(proxyRequest(target, { method: 'POST' })))
+      expect(allowed.status).toBe(200)
+      expect((mockFetch.mock.calls[0] as [string, RequestInit])[0]).toBe(target)
+
+      const otherPort = await drain(await app.handle(proxyRequest('http://127.0.0.1:9880/mcp')))
+      expect(otherPort.status).toBe(400)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+
+      process.env.NODE_ENV = 'production'
+      const production = await drain(await app.handle(proxyRequest(target)))
+      expect(production.status).toBe(400)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    } finally {
+      if (previousEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previousEnv
+      if (previousHosts === undefined) delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      else process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+    }
+  })
+
   it('returns 400 for missing X-Proxy-Target-Url header', async () => {
     const res = await drain(await app.handle(new Request('http://localhost/proxy', { method: 'GET' })))
     expect(res.status).toBe(400)

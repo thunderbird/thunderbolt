@@ -102,3 +102,9 @@ export const collectPageErrors = (page: Page): string[] => {
   })
   return errors
 }
+
+/** Send a message through the app's chat composer. */
+export const sendChatPrompt = async (page: Page, prompt: string) => {
+  await page.locator('textarea').fill(prompt)
+  await page.getByRole('button', { name: 'Send message' }).click()
+}

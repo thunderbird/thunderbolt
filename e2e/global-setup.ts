@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import { z } from 'zod'
 import { createFakeProvider } from './fake-provider'
+import { createFakeMcpServer } from './fake-mcp-server'
 import { createMockSamlIdp } from './mock-saml-idp'
 
 const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
@@ -65,11 +66,13 @@ const globalSetup = async () => {
   const samlServer = await createMockSamlIdp(mockSamlPort)
 
   const fakeProvider = await createFakeProvider(Number(process.env.FAKE_PROVIDER_PORT ?? 9878))
+  const fakeMcpServer = process.env.E2E_NIGHTLY_MCP === 'true' ? await createFakeMcpServer(9879) : undefined
 
   // Store references for teardown
   ;(globalThis as Record<string, unknown>).__oidcServer = oidcServer
   ;(globalThis as Record<string, unknown>).__samlServer = samlServer
   ;(globalThis as Record<string, unknown>).__fakeProvider = fakeProvider
+  Object.assign(globalThis, { __fakeMcpServer: fakeMcpServer })
 }
 
 export default globalSetup

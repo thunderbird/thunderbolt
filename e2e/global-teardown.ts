@@ -21,6 +21,10 @@ const globalTeardown = async () => {
   if (fakeProvider) {
     await new Promise<void>((resolve) => fakeProvider.close(() => resolve()))
   }
+  const fakeMcpServer = (globalThis as typeof globalThis & { __fakeMcpServer?: Server }).__fakeMcpServer
+  if (fakeMcpServer) {
+    await new Promise<void>((resolve) => fakeMcpServer.close(() => resolve()))
+  }
 }
 
 export default globalTeardown

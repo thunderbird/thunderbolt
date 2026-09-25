@@ -7,6 +7,7 @@ import baseConfig from './playwright.config'
 
 const isMac = (process.env.NIGHTLY_PLATFORM ?? process.platform) === 'darwin'
 process.env.E2E_NIGHTLY_WEBKIT_PERSISTENT = String(isMac)
+process.env.E2E_NIGHTLY_MCP = 'true'
 const browsers = isMac
   ? [
       { name: 'webkit-desktop', device: devices['Desktop Safari'] },
@@ -51,28 +52,44 @@ export default defineConfig({
     screenshot: 'off',
     storageState: undefined,
   },
-  projects: baseConfig.projects?.flatMap((project) =>
-    browsers.map(({ name, device }) => ({
-      ...project,
-      name: `${project.name}-${name}`,
-      use: { ...project.use, ...device, baseURL: project.use?.baseURL },
-    })),
-  ),
+  projects: [
+    ...(baseConfig.projects?.flatMap((project) =>
+      browsers.map(({ name, device }) => ({
+        ...project,
+        name: `${project.name}-${name}`,
+        use: { ...project.use, ...device, baseURL: project.use?.baseURL },
+      })),
+    ) ?? []),
+    {
+      name: `nightly-real-${browsers[0].name}`,
+      testMatch: /nightly-real-.*\.spec\.ts$/,
+      use: { ...browsers[0].device, baseURL: 'http://localhost:1421' },
+    },
+    {
+      name: `nightly-sync-${browsers[0].name}`,
+      testMatch: /nightly-sync-.*\.spec\.ts$/,
+      use: { ...browsers[0].device, baseURL: 'http://localhost:1424' },
+    },
+  ],
   webServer: webServers
     .filter((server) => server !== undefined)
     .map((server) => {
       if (!server.command?.startsWith('cd backend')) return server
+      const env = {
+        ...server.env,
+        ...databaseEnv,
+        ANTHROPIC_API_KEY:
+          server.env?.AUTH_MODE === 'consumer' ? 'e2e-fake-provider-key' : (process.env.ANTHROPIC_API_KEY ?? ''),
+        TINFOIL_API_KEY: process.env.TINFOIL_API_KEY ?? '',
+        TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL ?? '',
+        EXA_API_KEY: process.env.EXA_API_KEY ?? '',
+      }
+      if (server.env?.AUTH_MODE === 'oidc') {
+        return { ...server, env: { ...env, NODE_ENV: 'test', TEST_PROXY_ALLOWED_HOSTS: '127.0.0.1:9879' } }
+      }
       return {
         ...server,
-        env: {
-          ...server.env,
-          ...databaseEnv,
-          ANTHROPIC_API_KEY:
-            server.env?.AUTH_MODE === 'consumer' ? 'e2e-fake-provider-key' : (process.env.ANTHROPIC_API_KEY ?? ''),
-          TINFOIL_API_KEY: process.env.TINFOIL_API_KEY ?? '',
-          TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL ?? '',
-          EXA_API_KEY: process.env.EXA_API_KEY ?? '',
-        },
+        env,
       }
     }),
 })

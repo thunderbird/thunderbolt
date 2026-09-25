@@ -65,7 +65,7 @@ msgstr "{label} — すでにこのプロジェクトにあります"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
-msgstr ""
+msgstr "{modelName} は画像を読み取れません。画像に対応したモデルに切り替えるか、画像を削除してください。"
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
@@ -601,7 +601,7 @@ msgstr "サインインリクエストを確認しています…"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "Checking whether {modelName} can read images…"
-msgstr ""
+msgstr "{modelName} が画像を読み取れるか確認しています…"
 
 #: src/components/device-approval.tsx
 msgid "Checking your session."
@@ -3840,7 +3840,7 @@ msgstr "再試行"
 
 #: src/components/chat/image-support-notice.tsx
 msgid "Try anyway"
-msgstr ""
+msgstr "このまま試す"
 
 #: src/settings/voice.tsx
 msgid "TTS model"

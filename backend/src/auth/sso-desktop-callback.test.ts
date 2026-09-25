@@ -32,6 +32,36 @@ describe('SSO desktop routes in consumer mode', () => {
   })
 })
 
+describe('SSO desktop-error', () => {
+  const errorUrl = (port: number | string, query: string) =>
+    createApp().handle(new Request(`http://localhost/v1/api/auth/sso/desktop-error/${port}${query}`))
+
+  it('hands the error to the loopback server so the app stops waiting', async () => {
+    const res = await errorUrl(17421, '?error=account_not_linked&error_description=Email+already+registered')
+
+    expect(res.status).toBe(302)
+    const location = new URL(res.headers.get('location') as string)
+    expect(location.origin).toBe('http://127.0.0.1:17421')
+    expect(location.searchParams.get('error')).toBe('account_not_linked')
+    expect(location.searchParams.get('error_description')).toBe('Email already registered')
+  })
+
+  it('drops the literal "undefined" Better Auth sends when the provider gave no description', async () => {
+    const res = await errorUrl(17421, '?error=invalid_provider&error_description=undefined')
+
+    const location = new URL(res.headers.get('location') as string)
+    expect(location.searchParams.has('error_description')).toBe(false)
+    expect(location.searchParams.get('error')).toBe('invalid_provider')
+  })
+
+  it('rejects a port outside the allowed loopback range', async () => {
+    const res = await errorUrl(9999, '?error=whatever')
+
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain('Invalid loopback port')
+  })
+})
+
 describe('SSO desktop-callback', () => {
   describe('port validation', () => {
     it('rejects disallowed port', async () => {

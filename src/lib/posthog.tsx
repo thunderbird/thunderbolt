@@ -56,6 +56,41 @@ export const sanitizeUrl = (url: string): string => {
   return routeOnlyUrl
 }
 
+/**
+ * Event properties that carry a URL and so must be sanitized before send.
+ *
+ * The `$session_entry_*` family matters as much as `$current_url`: posthog-js
+ * derives it from `window.location.href` at session start and attaches it to
+ * every later event, so a session that begins on a URL carrying identity
+ * provider text (`/auth-error?error_description=…`) would otherwise ship that
+ * text with everything the user does afterwards.
+ */
+const urlProperties = [
+  '$current_url',
+  'url',
+  '$pathname',
+  '$referrer',
+  '$session_entry_url',
+  '$session_entry_pathname',
+  '$session_entry_referrer',
+] as const
+
+/**
+ * Rewrites every URL-bearing property of a PostHog property bag in place.
+ * @param properties - The event's property bag, if it has one
+ */
+const sanitizeUrlProperties = (properties: Record<string, unknown> | undefined) => {
+  if (!properties) {
+    return
+  }
+  for (const key of urlProperties) {
+    const value = properties[key]
+    if (typeof value === 'string') {
+      properties[key] = sanitizeUrl(value)
+    }
+  }
+}
+
 /** Remove API keys from a PostHog property tree before it leaves the app. */
 export const stripApiKeys = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') {
@@ -121,19 +156,9 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
             return null
           }
 
-          if (typeof event.properties?.$current_url === 'string') {
-            event.properties.$current_url = sanitizeUrl(event.properties.$current_url)
-          }
-
-          if (typeof event.properties?.url === 'string') {
-            event.properties.url = sanitizeUrl(event.properties.url)
-          }
-          if (typeof event.properties?.$pathname === 'string') {
-            event.properties.$pathname = sanitizeUrl(event.properties.$pathname)
-          }
-          if (typeof event.properties?.$referrer === 'string') {
-            event.properties.$referrer = sanitizeUrl(event.properties.$referrer)
-          }
+          sanitizeUrlProperties(event.properties)
+          sanitizeUrlProperties(event.$set)
+          sanitizeUrlProperties(event.$set_once)
 
           if (stripApiKeys(event.properties) && import.meta.env.DEV) {
             console.warn('Removed apiKey from PostHog event properties')

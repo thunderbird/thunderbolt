@@ -84,8 +84,10 @@ for (const id of widgetIds) {
       }
     } else {
       const message = page.locator('[data-quotable-message-id]').last()
-      await expectWidget(page, message.getByText('Outlook', { exact: true }), id, failures)
-      await expect(message.getByText('Google', { exact: true })).toBeVisible()
+      await expectWidget(page, message.getByRole('button', { name: 'Connect Microsoft' }), id, failures)
+      await expect(
+        message.getByRole('heading', { name: 'Thunderbolt wants to connect to Microsoft Calendar' }),
+      ).toBeVisible()
     }
   })
 }

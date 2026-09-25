@@ -63,6 +63,10 @@ msgstr[0] "# 個のスキル"
 msgid "{label} — already in this project"
 msgstr "{label} — すでにこのプロジェクトにあります"
 
+#: src/components/chat/image-support-notice.tsx
+msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
+msgstr ""
+
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
 msgid "This file contains # row exported by {importSourceEmail} on {importExportedAt}."
@@ -594,6 +598,10 @@ msgstr "更新を確認しています…"
 #: src/components/device-approval.tsx
 msgid "Checking sign-in request…"
 msgstr "サインインリクエストを確認しています…"
+
+#: src/components/chat/image-support-notice.tsx
+msgid "Checking whether {modelName} can read images…"
+msgstr ""
 
 #: src/components/device-approval.tsx
 msgid "Checking your session."
@@ -3829,6 +3837,10 @@ msgstr "信頼済みのデバイス"
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Try again"
 msgstr "再試行"
+
+#: src/components/chat/image-support-notice.tsx
+msgid "Try anyway"
+msgstr ""
 
 #: src/settings/voice.tsx
 msgid "TTS model"

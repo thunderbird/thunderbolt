@@ -49,6 +49,7 @@ import {
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
+import { getKnownImageSupport } from '@/ai/image-support'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
@@ -64,7 +65,6 @@ import { getPlatform } from '@/lib/platform'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
-import { modelSupportsImages } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
@@ -393,7 +393,7 @@ export const resolvePiModel = async (
           receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
-          supportsImages: modelSupportsImages(model),
+          supportsImages: getKnownImageSupport(model) !== 'unsupported',
         },
         thinkingLevel,
         tinfoilClient: client,
@@ -426,7 +426,7 @@ export const resolvePiModel = async (
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
-        supportsImages: modelSupportsImages(model),
+        supportsImages: getKnownImageSupport(model) !== 'unsupported',
       },
       thinkingLevel,
       tinfoilClient: client,
@@ -483,10 +483,11 @@ export const resolvePiModel = async (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
-      // Pi's openai-compat descriptor is text-only by default; without this a
-      // vision-capable hosted model (e.g. Thunderbolt Opus) has its image blocks
-      // stripped before the wire and only sees the `[Attachment: …]` text label.
-      supportsImages: modelSupportsImages(model),
+      // Pi strips image blocks from text-only descriptors. Only models known not
+      // to read images are text-only: the composer checks an unknown model before
+      // an image is sent (see use-image-support-check.ts), and an unresolved check
+      // sends the image so the provider's own rejection surfaces instead.
+      supportsImages: getKnownImageSupport(model) !== 'unsupported',
     },
     thinkingLevel,
   }

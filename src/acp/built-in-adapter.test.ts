@@ -13,7 +13,8 @@
 import '@/testing-library'
 
 import { inferenceModelHeader } from '@shared/inference-usage'
-import { describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
 import { addSkillTool, prepareAiRequestConfig, type PreparedAiRequestConfig } from '@/ai/fetch'
 import { createEvalAdapterContext } from '@/ai/eval/runner'
 import { createModel as insertModel } from '@/dal/models'
@@ -233,20 +234,30 @@ describe('harnessSignature', () => {
   })
 })
 
-describe('resolvePiModel — image capability (vendor-gated)', () => {
+describe('resolvePiModel — image capability', () => {
   const contextFor = (model: Model): AgentAdapterContext =>
     ({ selectedModel: model, getProxyFetch: () => noopFetch }) as never
   const agentCore = {} as Parameters<typeof resolvePiModel>[0]
-  const openaiModel = (vendor: string | null): Model =>
-    ({ id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', vendor, toolUsage: 1 }) as Model
+  const openaiModel = { id: 'm', name: 'M', provider: 'openai', model: 'gpt-4o', apiKey: 'sk-o', toolUsage: 1 } as Model
 
-  it('advertises image support for a vision-vendor model', async () => {
-    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel('openai')), null)
+  afterEach(() => {
+    clearImageSupportCache()
+  })
+
+  it('keeps images for a model whose support has not been detected, so the provider decides', async () => {
+    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: true })
   })
 
-  it('does not advertise image support when the vendor is unknown (custom/local)', async () => {
-    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel(null)), null)
+  it('keeps images for a model detected as reading them', async () => {
+    setCachedImageSupport(openaiModel, 'supported')
+    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel), null)
+    expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: true })
+  })
+
+  it('strips images only for a model detected as unable to read them', async () => {
+    setCachedImageSupport(openaiModel, 'unsupported')
+    const resolved = await resolvePiModel(agentCore, contextFor(openaiModel), null)
     expect(resolved?.descriptor).toMatchObject({ kind: 'openai-compat', supportsImages: false })
   })
 })
@@ -384,7 +395,7 @@ describe('resolvePiModel — Tinfoil', () => {
       apiKey: 'thunderbolt-managed',
       reasoning: true,
       contextWindow: 131_072,
-      supportsImages: false,
+      supportsImages: true,
     })
     expect(getSystemTinfoilClient).toHaveBeenCalledWith({
       trace_id: 'trace-1',

@@ -19,7 +19,16 @@ export type AvailableModel = {
   owned_by?: string
   supports_tools?: boolean
   supported_parameters?: string[]
+  /** Whether the model accepts image input. Undefined when the provider doesn't say. */
+  supports_images?: boolean
 }
+
+/** OpenRouter-style catalog rows report accepted inputs under `architecture`. */
+type ModalityCatalogRow = AvailableModel & { architecture?: { input_modalities?: string[] } }
+
+/** Read image support from `architecture.input_modalities`, leaving it unknown when absent. */
+export const readInputModalities = (row: ModalityCatalogRow): boolean | undefined =>
+  row.architecture?.input_modalities ? row.architecture.input_modalities.includes('image') : undefined
 
 export type CatalogRequest = {
   provider: Model['provider']
@@ -113,11 +122,11 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
     const response = await http.get(`${client.getBaseURL()}models`, { fetch: client.fetch }).json<{
-      data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean }>
+      data: Array<AvailableModel & { endpoints?: string[]; tool_calling?: boolean; multimodal?: boolean }>
     }>()
     return response.data
       .filter((model) => model.endpoints?.includes('/v1/chat/completions'))
-      .map((model) => ({ ...model, supports_tools: model.tool_calling === true }))
+      .map((model) => ({ ...model, supports_tools: model.tool_calling === true, supports_images: model.multimodal }))
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
@@ -128,13 +137,14 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
 
   const response = await http
     .get(endpoint, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fetch })
-    .json<{ data: AvailableModel[] }>()
+    .json<{ data: ModalityCatalogRow[] }>()
   return response.data
     .map((model) => ({
       ...model,
       supports_tools:
         model.supports_tools === true ||
         model.supported_parameters?.some((parameter) => parameter === 'tools' || parameter === 'tool_choice') === true,
+      supports_images: readInputModalities(model),
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }

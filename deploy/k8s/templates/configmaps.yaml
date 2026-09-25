@@ -49,7 +49,10 @@ data:
       jwks:
         keys:
           - kty: oct
-            k: !env POWERSYNC_JWT_SECRET_B64
+            # PowerSync only allows `!env` substitution for vars prefixed `PS_`
+            # (a security restriction — see templates/powersync.yaml for the
+            # matching container env var name).
+            k: !env PS_JWT_SECRET_B64
             alg: HS256
             kid: {{ .Values.powersync.jwt.kid }}
       telemetry:

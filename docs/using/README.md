@@ -30,11 +30,11 @@ A skill is a named block of instructions. Type `/` or `@` in the composer to pic
 
 Settings → Connections is where the assistant gets tools beyond the ones built in.
 
-| Connection            | What it adds                                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Thunderbolt           | Web search and page fetching. On by default, and inert unless your deployment sets a search provider key |
-| Google, Microsoft     | Google: mail and calendar, plus draft creation. Microsoft: Outlook mail and OneDrive files, read-only    |
-| An MCP server you add | Whatever tools that server publishes, such as searching a wiki, querying a database, or filing a ticket  |
+| Connection            | What it adds                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------- |
+| Thunderbolt           | Web search and page fetching. On by default; both need a search provider key on the server              |
+| Google, Microsoft     | Google: mail and calendar, plus draft creation. Microsoft: Outlook mail and OneDrive files, read-only   |
+| An MCP server you add | Whatever tools that server publishes, such as searching a wiki, querying a database, or filing a ticket |
 
 MCP is the Model Context Protocol, an open standard for publishing tools to an AI assistant. You add a server by URL, and a test button lists the tools it offers before you save it. Google and Microsoft also need whoever runs your deployment to have configured sign-in credentials for that provider.
 

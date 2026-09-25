@@ -214,6 +214,9 @@ jobs:
       - name: Install WebKit
         run: bunx playwright install webkit
 
+      - name: Prepare PowerSync browser worker
+        run: bunx powersync-web copy-assets --output public
+
       - name: Probe consumer database startup
         env:
           VITE_DB_DIAGNOSTIC: 'true'

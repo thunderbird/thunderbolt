@@ -259,7 +259,7 @@ jobs:
           bun install --frozen-lockfile
           cd backend && bun install --frozen-lockfile
           rustup target add aarch64-apple-ios-sim
-          brew install ios-deploy mobile-dev-inc/tap/maestro
+          brew install mobile-dev-inc/tap/maestro
 
       - name: Boot iPhone simulator
         run: |
@@ -271,13 +271,10 @@ jobs:
             if (!phone) throw new Error("No iPhone simulator available")
             console.log(phone.udid)
           ')
-          simulator_name='Thunderbolt Native Smoke'
-          xcrun simctl rename "$simulator_udid" "$simulator_name"
           if ! xcrun simctl list devices booted | grep -q "$simulator_udid"; then
             xcrun simctl boot "$simulator_udid"
           fi
           xcrun simctl bootstatus "$simulator_udid" -b
-          echo "IOS_SIMULATOR_NAME=$simulator_name" >> "$GITHUB_ENV"
           echo "IOS_SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
 
       - name: Run native iOS smoke
@@ -287,32 +284,17 @@ jobs:
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'
           VITE_BYPASS_WAITLIST: 'false'
           VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
-          VITE_DB_DIAGNOSTIC: 'true'
         run: |
           ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
           services_pid=$!
-          bun tauri ios dev --config src-tauri/tauri.dev.conf.json "$IOS_SIMULATOR_NAME" > "$RUNNER_TEMP/native-ios-build.log" 2>&1 &
-          tauri_pid=$!
-          trap 'kill "$services_pid" "$tauri_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..180}; do
-            if xcrun simctl get_app_container "$IOS_SIMULATOR_UDID" net.thunderbird.thunderbolt.dev app >/dev/null 2>&1; then
-              break
-            fi
-            if ! kill -0 "$tauri_pid"; then
-              echo "Tauri exited before simulator install (attempt $attempt)"
-              cat "$RUNNER_TEMP/native-ios-build.log"
-              exit 1
-            fi
-            sleep 5
-          done
-          if ! xcrun simctl get_app_container "$IOS_SIMULATOR_UDID" net.thunderbird.thunderbolt.dev app; then
+          trap 'kill "$services_pid" 2>/dev/null || true' EXIT
+          if ! bun tauri ios build --target aarch64-sim --debug --ci --no-sign \
+            --config src-tauri/tauri.dev.conf.json > "$RUNNER_TEMP/native-ios-build.log" 2>&1; then
             tail -100 "$RUNNER_TEMP/native-ios-build.log"
             exit 1
           fi
-          if ! ./e2e/native-smoke/ios.sh; then
-            grep -E '\[db-diagnostic\]|\[init\]' "$RUNNER_TEMP/native-ios-build.log" | tail -25 || true
-            exit 1
-          fi
+          xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
+          ./e2e/native-smoke/ios.sh
 
       - name: Upload native iOS video
         if: always()

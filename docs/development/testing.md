@@ -268,7 +268,7 @@ On Linux, first start and migrate PostgreSQL, then start PowerSync using [`night
 
 ### Native iOS smoke
 
-The separate Nightly iOS job launches the Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`), boot an iPhone simulator, and use three terminals:
+The separate Nightly iOS job installs a bundled Tauri app on a simulator, signs in with the fixed test code, sends one message to the fake provider, and uploads the recording. To run it locally, install Maestro (`brew install mobile-dev-inc/tap/maestro`) and boot an iPhone simulator. Start the services in one terminal; run the remaining commands in another:
 
 ```sh
 ./e2e/native-smoke/services.sh
@@ -276,12 +276,15 @@ The separate Nightly iOS job launches the Tauri app on a simulator, signs in wit
 VITE_AUTH_MODE=thunderbolt VITE_SKIP_ONBOARDING=true \
 VITE_AUTH_ENABLE_ANONYMOUS=false VITE_BYPASS_WAITLIST=false \
 VITE_THUNDERBOLT_CLOUD_URL=http://localhost:8000/v1 \
-  bun tauri ios dev --config src-tauri/tauri.dev.conf.json 'iPhone 17e'
+  bun tauri ios build --target aarch64-sim --debug --ci --no-sign \
+    --config src-tauri/tauri.dev.conf.json
 
+export IOS_SIMULATOR_UDID=your-booted-simulator-udid
+xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
 ./e2e/native-smoke/ios.sh
 ```
 
-Replace `iPhone 17e` with your booted simulator's name. The recording is `/tmp/thu-886-native-smoke/ios.mp4`.
+Find the UDID with `xcrun simctl list devices booted`. The recording is `/tmp/thu-886-native-smoke/ios.mp4`.
 
 ### Native Linux desktop smoke
 

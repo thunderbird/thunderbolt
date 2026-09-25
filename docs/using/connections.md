@@ -170,7 +170,7 @@ The Connections screen also lists three ready-made integrations.
 | Google      | Gmail inbox check, search and read, draft creation, Google Calendar  |
 | Microsoft   | Outlook messages, OneDrive file search and file contents             |
 
-Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Google mail access stops at drafting: the assistant can create a draft, but cannot send one. Microsoft access is read-only.
+The Thunderbolt integration is inert unless your deployment sets `EXA_API_KEY`: the switch is on, and search and page fetching return nothing. Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Google mail access stops at drafting: the assistant can create a draft, but cannot send one. Microsoft access is read-only.
 
 ## What a connection can and cannot reach
 

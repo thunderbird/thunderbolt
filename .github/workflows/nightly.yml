@@ -263,8 +263,14 @@ jobs:
 
       - name: Boot iPhone simulator
         run: |
-          simulator=$(xcrun simctl list devices available | grep -m1 -E 'iPhone.*\([0-9A-F-]{36}\)')
-          simulator_udid=$(echo "$simulator" | sed -E 's/^.*\(([0-9A-F-]{36})\).*$/\1/')
+          simulator_udid=$(xcrun simctl list -j devices available | bun -e '
+            const runtimes = Object.entries(JSON.parse(await Bun.stdin.text()).devices)
+            const devices = runtimes.filter(([name]) => name.includes(".iOS-"))
+              .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).at(-1)?.[1]
+            const phone = devices?.find(({ name }) => name.startsWith("iPhone"))
+            if (!phone) throw new Error("No iPhone simulator available")
+            console.log(phone.udid)
+          ')
           simulator_name='Thunderbolt Native Smoke'
           xcrun simctl rename "$simulator_udid" "$simulator_name"
           if ! xcrun simctl list devices booted | grep -q "$simulator_udid"; then
@@ -281,6 +287,7 @@ jobs:
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'
           VITE_BYPASS_WAITLIST: 'false'
           VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+          VITE_DB_DIAGNOSTIC: 'true'
         run: |
           ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
           services_pid=$!
@@ -302,7 +309,10 @@ jobs:
             tail -100 "$RUNNER_TEMP/native-ios-build.log"
             exit 1
           fi
-          ./e2e/native-smoke/ios.sh
+          if ! ./e2e/native-smoke/ios.sh; then
+            grep -E '\[db-diagnostic\]|\[init\]' "$RUNNER_TEMP/native-ios-build.log" | tail -25 || true
+            exit 1
+          fi
 
       - name: Upload native iOS video
         if: always()

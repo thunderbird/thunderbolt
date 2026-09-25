@@ -13,12 +13,12 @@ test('the fake MCP server lists and calls its echo tool', async () => {
     const address = server.address()
     if (!address || !('port' in address)) throw new Error('Fake MCP server has no TCP address')
     const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`))
-    const client = new Client({ name: 'nightly-probe', version: '1.0.0' })
+    const client = new Client({ name: 'test-mcp-probe', version: '1.0.0' })
     await client.connect(transport)
     try {
       expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['echo'])
       expect(await client.callTool({ name: 'echo', arguments: { message: 'blue heron' } })).toMatchObject({
-        content: [{ type: 'text', text: 'Nightly MCP result: blue heron' }],
+        content: [{ type: 'text', text: 'MCP result: blue heron' }],
       })
     } finally {
       await client.close()

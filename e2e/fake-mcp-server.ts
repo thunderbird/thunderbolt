@@ -31,7 +31,7 @@ export const createFakeMcpServer = (port: number) =>
           ? {
               protocolVersion: '2025-03-26',
               capabilities: { tools: {} },
-              serverInfo: { name: 'nightly', version: '1.0.0' },
+              serverInfo: { name: 'test-mcp', version: '1.0.0' },
             }
           : rpc.method === 'tools/list'
             ? {
@@ -48,7 +48,7 @@ export const createFakeMcpServer = (port: number) =>
                 ],
               }
             : rpc.method === 'tools/call' && rpc.params?.name === 'echo'
-              ? { content: [{ type: 'text', text: `Nightly MCP result: ${rpc.params.arguments?.message ?? ''}` }] }
+              ? { content: [{ type: 'text', text: `MCP result: ${rpc.params.arguments?.message ?? ''}` }] }
               : null
 
       response.writeHead(result ? 200 : 404, { 'Content-Type': 'application/json' })

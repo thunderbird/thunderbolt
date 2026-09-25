@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test as base } from '@playwright/test'
+import { parseDbDiagnostic } from './db-diagnostic'
 
 export { expect, type Page, type Request, type Route } from '@playwright/test'
 
@@ -39,6 +40,13 @@ const persistentWebkit = base.extend({
   page: async ({ context, baseURL }, use, testInfo) => {
     const page = context.pages()[0] ?? (await context.newPage())
     const diagnostics: string[] = []
+    const dbDiagnostics = { readiness: 'missing', query: 'missing' }
+    if (process.env.VITE_DB_DIAGNOSTIC === 'true') {
+      page.on('console', (message) => {
+        const diagnostic = parseDbDiagnostic(message.text())
+        if (diagnostic) dbDiagnostics[diagnostic.phase] = diagnostic.label
+      })
+    }
     if (baseURL) {
       // WebKit shares OPFS across persistent profiles, so clear the test origin before app boot.
       const origins = testInfo.project.name.startsWith('min-version-gate-')
@@ -77,11 +85,32 @@ const persistentWebkit = base.extend({
         diagnostics.push(`${response.status()} ${response.headers()['content-type'] ?? 'unknown'} ${url.pathname}`)
       })
     }
-    await use(page)
-    if (testInfo.status !== testInfo.expectedStatus && diagnostics.length) {
-      console.error('[e2e] resource diagnostics:', diagnostics.join(' | '))
+    try {
+      await use(page)
+    } finally {
+      if (process.env.VITE_DB_DIAGNOSTIC === 'true') {
+        await writeFile(
+          testInfo.outputPath('db-diagnostic.json'),
+          JSON.stringify({
+            status: testInfo.status,
+            retry: testInfo.retry,
+            ...dbDiagnostics,
+          }),
+        )
+      }
+      if (testInfo.status !== testInfo.expectedStatus && diagnostics.length) {
+        console.error('[e2e] resource diagnostics:', diagnostics.join(' | '))
+      }
     }
   },
+})
+
+persistentWebkit.afterEach(async ({}, testInfo) => {
+  if (process.env.VITE_DB_DIAGNOSTIC !== 'true') return
+  await writeFile(
+    testInfo.outputPath('db-diagnostic.json'),
+    JSON.stringify({ status: testInfo.status, retry: testInfo.retry, readiness: 'missing', query: 'missing' }),
+  )
 })
 
 export const test = process.env.E2E_NIGHTLY_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base

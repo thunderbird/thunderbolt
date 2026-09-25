@@ -108,10 +108,10 @@ export type DatabaseReadyResult =
 /** Emit only fixed diagnostic labels; browser errors can contain user data. */
 const reportDbDiagnostic = (
   phase: 'readiness' | 'query',
-  outcome: 'ready' | 'rejected' | 'timed_out',
+  outcome: 'pending' | 'ready' | 'rejected' | 'timed_out',
   error?: Error,
 ): void => {
-  if (!import.meta.env.VITE_DB_DIAGNOSTIC) {
+  if (import.meta.env.VITE_DB_DIAGNOSTIC !== 'true') {
     return
   }
   const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined
@@ -284,14 +284,17 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // spinner forever, which looks identical to a slow network and hides the one
   // remedy that works — clearing the local database, which the error screen
   // offers. Reported as DATABASE_INIT_FAILED so the user gets that affordance.
-  if (import.meta.env.VITE_DB_DIAGNOSTIC) {
-    void getPowerSyncInstance()
-      ?.waitForReady()
-      .then(
+  if (import.meta.env.VITE_DB_DIAGNOSTIC === 'true') {
+    const powerSync = getPowerSyncInstance()
+    if (powerSync) {
+      reportDbDiagnostic('readiness', 'pending')
+      void powerSync.waitForReady().then(
         () => reportDbDiagnostic('readiness', 'ready'),
         (error) => reportDbDiagnostic('readiness', 'rejected', error instanceof Error ? error : undefined),
       )
+    }
   }
+  reportDbDiagnostic('query', 'pending')
   const dbReady = await time('step2b_db_ready', () => waitForDatabaseReady(db))
   reportDbDiagnostic(
     'query',

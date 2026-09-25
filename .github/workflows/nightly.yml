@@ -264,8 +264,9 @@ jobs:
       - name: Boot iPhone simulator
         run: |
           simulator=$(xcrun simctl list devices available | grep -m1 -E 'iPhone.*\([0-9A-F-]{36}\)')
-          simulator_name=$(echo "$simulator" | sed -E 's/^ *//; s/ \([0-9A-F-]{36}\).*//')
           simulator_udid=$(echo "$simulator" | sed -E 's/^.*\(([0-9A-F-]{36})\).*$/\1/')
+          simulator_name='Thunderbolt Native Smoke'
+          xcrun simctl rename "$simulator_udid" "$simulator_name"
           if ! xcrun simctl list devices booted | grep -q "$simulator_udid"; then
             xcrun simctl boot "$simulator_udid"
           fi

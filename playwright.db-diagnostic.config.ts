@@ -5,8 +5,6 @@
 import { defineConfig } from '@playwright/test'
 import nightly from './playwright.nightly.config'
 
-const webServers = Array.isArray(nightly.webServer) ? nightly.webServer : [nightly.webServer]
-
 export default defineConfig({
   ...nightly,
   retries: 0,
@@ -14,6 +12,5 @@ export default defineConfig({
   projects: nightly.projects
     ?.filter((project) => project.name === 'consumer-webkit-desktop')
     .map((project) => ({ ...project, testMatch: /db-diagnostic\.case\.ts$/ })),
-  webServer: webServers.filter((server) => server?.url?.includes(':1424') || server?.url?.includes(':8005')),
   use: { ...nightly.use, trace: 'off', video: 'off' },
 })

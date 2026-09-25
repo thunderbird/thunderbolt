@@ -10,7 +10,7 @@ type RpcRequest = {
   params?: { name?: string; arguments?: { message?: string } }
 }
 
-/** Minimal Streamable HTTP MCP server for the Nightly's browser-to-proxy tool round trip. */
+/** Minimal Streamable HTTP MCP server for the browser-to-proxy tool round trip. */
 export const createFakeMcpServer = (port: number) =>
   new Promise<ReturnType<typeof createServer>>((resolve) => {
     const server = createServer(async (request, response) => {

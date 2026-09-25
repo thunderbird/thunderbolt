@@ -91,7 +91,6 @@ export const validateAndPin = async (
   const hostname = parsed.hostname
   const literalAddress = parseIpAddress(hostname)
 
-  // The Nightly's local MCP fixture is the only private target the proxy may reach.
   if (isAllowedTestProxyTarget(parsed)) {
     return [parsed.toString(), new Headers(extraHeaders)]
   }

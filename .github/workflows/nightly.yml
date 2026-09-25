@@ -268,7 +268,7 @@ jobs:
       - name: Boot iPhone simulator
         run: |
           simulator=$(xcrun simctl list devices available | grep -m1 -E 'iPhone.*\([0-9A-F-]{36}\)')
-          simulator_name=$(echo "$simulator" | sed -E 's/^ *(.+) \([0-9A-F-]{36}\) \([^)]+\)$/\1/')
+          simulator_name=$(echo "$simulator" | sed -E 's/^ *//; s/ \([0-9A-F-]{36}\).*//')
           simulator_udid=$(echo "$simulator" | sed -E 's/^.*\(([0-9A-F-]{36})\).*$/\1/')
           if ! xcrun simctl list devices booted | grep -q "$simulator_udid"; then
             xcrun simctl boot "$simulator_udid"
@@ -301,7 +301,10 @@ jobs:
             fi
             sleep 5
           done
-          xcrun simctl get_app_container "$IOS_SIMULATOR_UDID" net.thunderbird.thunderbolt.dev app
+          if ! xcrun simctl get_app_container "$IOS_SIMULATOR_UDID" net.thunderbird.thunderbolt.dev app; then
+            tail -100 "$RUNNER_TEMP/native-ios-build.log"
+            exit 1
+          fi
           ./e2e/native-smoke/ios.sh
 
       - name: Upload native iOS video

@@ -6,7 +6,7 @@ import { expect, test, type Page, type Request, type Route } from './test'
 import { collectPageErrors, loginViaOidc, openSidebarOnMobile } from './helpers'
 
 /**
- * THU-829 — the language picker, asserted on intercepted `X-App-Language`
+ * The language picker, asserted on intercepted `X-App-Language`
  * request headers rather than translated UI copy.
  *
  * Every bug this file guards against was a cross-boundary timing bug the unit
@@ -170,7 +170,7 @@ test.describe('language picker — X-App-Language', () => {
 
     // Settings hydration used to publish `en` over the boot-seeded locale, so
     // requests that beat hydration carried the wrong tag and the mirror was
-    // destroyed again on every load (THU-808). Not one request may announce
+    // destroyed again on every load. Not one request may announce
     // English — first of all not the first.
     const headers = await appLanguageHeaders(requests)
     expect(headers[0]).toBe('de')
@@ -219,7 +219,7 @@ test.describe('language picker — X-App-Language', () => {
     await page.getByRole('button', { name: de.logOut }).click()
 
     // The wipe drops the mirror and republishes the negotiated locale, so the
-    // signed-out page already renders in English (THU-808: a stale mirror used
+    // signed-out page already renders in English (a stale mirror used
     // to boot the next identity in the previous account's language). The key
     // itself reappears at once — publishing the renegotiated locale re-mirrors
     // it — so the assertion is on the value: the browser's language, not the
@@ -250,7 +250,7 @@ test.describe('language picker — fresh non-English browser, no stored setting'
 
     // The `language` setting ships as null and the schema fallback reads as
     // `en`; treating that fallback as an explicit choice used to publish
-    // English between hydration and the async seed write (THU-808). From the
+    // English between hydration and the async seed write. From the
     // very first request, negotiation must already have won.
     const headers = await appLanguageHeaders(requests)
     expect(headers[0]).toBe('de')

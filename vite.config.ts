@@ -71,7 +71,7 @@ export default defineConfig({
     // The Lingui macro is a build-time Babel transform: <Trans> from
     // @lingui/react/macro compiles into runtime <Trans id=... message=...>
     // calls here. @vitejs/plugin-react v6 is oxc-based and DROPPED its
-    // `babel` option (passing one is silently ignored — the exact THU-806
+    // `babel` option (passing one is silently ignored — the exact
     // bail-out symptom: literal <Trans> at runtime with a green build), so
     // the macro runs through @rolldown/plugin-babel instead. The Lingui
     // preset carries a code filter, so Babel only processes files that
@@ -187,6 +187,8 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // The public CI diagnostic uploads only fixed labels from its Playwright case.
+    forwardConsole: process.env.VITE_DB_DIAGNOSTIC !== 'true',
     // Bind an explicit loopback address rather than `false`. Vite maps `false`
     // to the hostname string "localhost", which Node resolves to a SINGLE,
     // nondeterministic address family (127.0.0.1 or ::1) per listen() call. A

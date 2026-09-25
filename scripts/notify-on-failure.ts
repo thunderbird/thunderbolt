@@ -310,7 +310,7 @@ export const notify = async (
   }>(
     fetchFn,
     input.linearApiKey,
-    `query Incident($teamId: String!, $title: String!) {
+    `query Incident($teamId: ID!, $title: String!) {
     issues(first: 2, filter: { team: { id: { eq: $teamId } }, title: { eq: $title }, state: { type: { nin: ["completed", "canceled"] } } }) { nodes { id url description } }
     workflowStates(first: 100, filter: { team: { id: { eq: $teamId } } }) { nodes { id name type } }
     issueLabels(first: 100, filter: { name: { eq: "Bug" } }) { nodes { id name team { id } } }

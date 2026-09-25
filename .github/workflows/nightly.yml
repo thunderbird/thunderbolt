@@ -97,7 +97,26 @@ jobs:
         run: docker restart "$POWERSYNC_CONTAINER"
 
       - name: Wait for PowerSync
-        run: curl --fail --silent --show-error --retry 30 --retry-delay 3 --retry-connrefused http://localhost:18081/probes/liveness
+        env:
+          POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
+        run: |
+          for attempt in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Status}}' "$POWERSYNC_CONTAINER")
+            if [ "$status" != running ]; then
+              echo "PowerSync stopped before readiness: $status"
+              docker inspect --format 'Exit code: {{.State.ExitCode}}, OOM killed: {{.State.OOMKilled}}, restarts: {{.RestartCount}}' "$POWERSYNC_CONTAINER"
+              exit 1
+            fi
+            if curl --fail --silent --output /dev/null --max-time 2 http://localhost:18081/probes/readiness; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'PowerSync did not become ready after 30 attempts'
+              docker inspect --format 'Status: {{.State.Status}}, exit code: {{.State.ExitCode}}, OOM killed: {{.State.OOMKilled}}, restarts: {{.RestartCount}}' "$POWERSYNC_CONTAINER"
+              exit 1
+            fi
+            sleep 3
+          done
 
       - name: Run Chromium and Firefox desktop and mobile
         env:
@@ -147,11 +166,21 @@ jobs:
 
       - name: Run WebKit desktop and iPhone
         env:
+          VITE_DB_DIAGNOSTIC: 'true'
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
         run: bunx playwright test --config playwright.nightly.config.ts
+
+      - name: Upload safe database outcomes for every WebKit attempt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-webkit-db-diagnostics
+          path: test-results/**/db-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Remove credentials and network data from trace attachments
         id: sanitize
@@ -169,29 +198,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  notify:
-    if: >-
-      always() &&
-      (needs.linux.result == 'success' || needs.linux.result == 'failure') &&
-      (needs.macos.result == 'success' || needs.macos.result == 'failure')
-    needs: [linux, macos]
-    uses: ./.github/workflows/notify-on-failure.yml
-    permissions:
-      actions: read
-      contents: read
-    with:
-      conclusion: ${{ (needs.linux.result == 'failure' || needs.macos.result == 'failure') && 'failure' || 'success' }}
-    secrets:
-      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-
   heartbeat:
     if: >-
       always() && !cancelled() &&
       (needs.linux.result == 'success' || needs.linux.result == 'failure') &&
-      (needs.macos.result == 'success' || needs.macos.result == 'failure') &&
-      needs.notify.result == 'success'
-    needs: [linux, macos, notify]
+      (needs.macos.result == 'success' || needs.macos.result == 'failure')
+    needs: [linux, macos]
     runs-on: ubuntu-latest
     steps:
       - name: Signal completed Nightly run

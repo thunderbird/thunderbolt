@@ -1,7 +1,7 @@
 name: Previews Shared Deploy
 
 # Creates or updates the long-lived `previews-shared` Pulumi stack that backs
-# the shared-stack preview model (THU-495). Runs:
+# the shared-stack preview model. Runs:
 #   - Manually via workflow_dispatch
 #   - Weekly on schedule to detect drift
 #

@@ -112,7 +112,7 @@ Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive th
 - Test likely edge cases, aiming for useful 80% coverage
 - **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped, 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or the per-workspace command below
 
-`bun run test` covers `src/` plus the `shared/` roots (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`) and a few script tests — and nothing else. The other suites each need their own command:
+`bun run test` covers `src/` plus the `shared/` roots (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`), a few script tests, and `e2e/db-diagnostic.test.ts` — and nothing else. The other suites each need their own command:
 
 | Scope                                                    | Command                                                      |
 | -------------------------------------------------------- | ------------------------------------------------------------ |

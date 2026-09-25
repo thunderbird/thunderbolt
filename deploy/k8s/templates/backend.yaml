@@ -28,6 +28,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.backend "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"

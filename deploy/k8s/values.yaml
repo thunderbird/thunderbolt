@@ -12,6 +12,13 @@ appUrl: http://localhost
 # destination — see `thunderbolt.podAnnotations` in `templates/_helpers.tpl`.
 podAnnotations: {}
 
+# -- Node selector applied to every pod in the chart. Leave empty on a
+# single-arch cluster. On a mixed-architecture cluster where the chart's own
+# images (frontend/backend/marketing) are published single-arch, set e.g.
+# `kubernetes.io/arch: amd64` to avoid an `exec format error` crash loop when
+# the scheduler happens to place a pod on an arm64 node.
+nodeSelector: {}
+
 # =============================================================================
 # Frontend
 # =============================================================================

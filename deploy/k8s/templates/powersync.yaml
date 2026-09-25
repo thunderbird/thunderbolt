@@ -28,6 +28,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.powersync "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: powersync
           image: "{{ .Values.powersync.image.repository }}:{{ .Values.powersync.image.tag }}"

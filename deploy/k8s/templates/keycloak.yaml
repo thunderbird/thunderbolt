@@ -28,6 +28,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.keycloak "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: keycloak
           image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"

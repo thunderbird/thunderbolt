@@ -5,9 +5,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import baseConfig from './playwright.config'
 
-const isMac = (process.env.NIGHTLY_PLATFORM ?? process.platform) === 'darwin'
-process.env.E2E_NIGHTLY_WEBKIT_PERSISTENT = String(isMac)
-process.env.E2E_NIGHTLY_MCP = 'true'
+const isMac = (process.env.EXTENDED_PLATFORM ?? process.platform) === 'darwin'
+process.env.E2E_EXTENDED_WEBKIT_PERSISTENT = String(isMac)
+process.env.E2E_EXTENDED_MCP = 'true'
 const browsers = isMac
   ? [
       { name: 'webkit-desktop', device: devices['Desktop Safari'] },
@@ -22,10 +22,10 @@ const browsers = isMac
 
 const webServers = Array.isArray(baseConfig.webServer) ? baseConfig.webServer : [baseConfig.webServer]
 
-/** Require real container endpoints before running the Linux Nightly suite. */
-const requiredNightlyEnv = (name: string): string => {
+/** Require real container endpoints before running the Linux extended suite. */
+const requiredExtendedEnv = (name: string): string => {
   const value = process.env[name]
-  if (!value) throw new Error(`${name} is required for Linux Nightly tests`)
+  if (!value) throw new Error(`${name} is required for Linux extended tests`)
   return value
 }
 
@@ -33,8 +33,8 @@ const databaseEnv = isMac
   ? undefined
   : {
       DATABASE_DRIVER: 'postgres',
-      DATABASE_URL: requiredNightlyEnv('NIGHTLY_DATABASE_URL'),
-      POWERSYNC_URL: requiredNightlyEnv('NIGHTLY_POWERSYNC_URL'),
+      DATABASE_URL: requiredExtendedEnv('EXTENDED_DATABASE_URL'),
+      POWERSYNC_URL: requiredExtendedEnv('EXTENDED_POWERSYNC_URL'),
       POWERSYNC_JWT_SECRET: 'enterprise-thunderbolt-powersync-jwt-default-secret',
       POWERSYNC_JWT_KID: 'enterprise-powersync',
       SKIP_MIGRATIONS: 'true',
@@ -61,12 +61,12 @@ export default defineConfig({
       })),
     ) ?? []),
     {
-      name: `nightly-real-${browsers[0].name}`,
+      name: `extended-real-${browsers[0].name}`,
       testMatch: /\/real-.*\.spec\.ts$/,
       use: { ...browsers[0].device, baseURL: 'http://localhost:1421' },
     },
     {
-      name: `nightly-sync-${browsers[0].name}`,
+      name: `extended-sync-${browsers[0].name}`,
       testMatch: /\/sync-.*\.spec\.ts$/,
       use: { ...browsers[0].device, baseURL: 'http://localhost:1424' },
     },

@@ -44,9 +44,9 @@ jobs:
           - 18081:8080
         options: --restart always
     env:
-      E2E_NIGHTLY_UNIQUE_USERS: 'true'
-      NIGHTLY_DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
-      NIGHTLY_POWERSYNC_URL: http://localhost:18081
+      E2E_EXTENDED_UNIQUE_USERS: 'true'
+      EXTENDED_DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
+      EXTENDED_POWERSYNC_URL: http://localhost:18081
       DATABASE_DRIVER: postgres
       DATABASE_URL: postgresql://postgres:postgres@localhost:15434/postgres
     steps:
@@ -124,7 +124,7 @@ jobs:
           TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-        run: bunx playwright test --config playwright.nightly.config.ts
+        run: bunx playwright test --config playwright.extended.config.ts
 
       - name: Remove credentials and network data from trace attachments
         id: sanitize
@@ -148,7 +148,7 @@ jobs:
     timeout-minutes: 120
     environment: preview
     env:
-      E2E_NIGHTLY_UNIQUE_USERS: 'true'
+      E2E_EXTENDED_UNIQUE_USERS: 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -171,7 +171,7 @@ jobs:
           TINFOIL_API_KEY: ${{ secrets.TINFOIL_API_KEY }}
           TINFOIL_ENCLAVE_URL: ${{ secrets.TINFOIL_ENCLAVE_URL }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-        run: bunx playwright test --config playwright.nightly.config.ts
+        run: bunx playwright test --config playwright.extended.config.ts
 
       - name: Upload safe database outcomes for every WebKit attempt
         if: always()

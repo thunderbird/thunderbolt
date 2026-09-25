@@ -62,12 +62,12 @@ export default defineConfig({
     ) ?? []),
     {
       name: `nightly-real-${browsers[0].name}`,
-      testMatch: /nightly-real-.*\.spec\.ts$/,
+      testMatch: /\/real-.*\.spec\.ts$/,
       use: { ...browsers[0].device, baseURL: 'http://localhost:1421' },
     },
     {
       name: `nightly-sync-${browsers[0].name}`,
-      testMatch: /nightly-sync-.*\.spec\.ts$/,
+      testMatch: /\/sync-.*\.spec\.ts$/,
       use: { ...browsers[0].device, baseURL: 'http://localhost:1424' },
     },
   ],

@@ -66,8 +66,12 @@ export const observeDbReadiness = (
   }
 
   reportDbDiagnostic('readiness', 'pending')
-  void powerSync.waitForReady().then(
-    () => reportDbDiagnostic('readiness', 'ready'),
-    (error) => reportDbDiagnostic('readiness', 'rejected', error instanceof Error ? error : undefined),
-  )
+  void (async () => {
+    try {
+      await powerSync.waitForReady()
+      reportDbDiagnostic('readiness', 'ready')
+    } catch (error) {
+      reportDbDiagnostic('readiness', 'rejected', error instanceof Error ? error : undefined)
+    }
+  })()
 }

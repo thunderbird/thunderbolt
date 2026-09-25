@@ -34,11 +34,17 @@ it('skips disabled diagnostics and observes readiness without awaiting it', asyn
     expect(warn).not.toHaveBeenCalled()
 
     import.meta.env.VITE_DB_DIAGNOSTIC = 'true'
-    const readiness = Promise.resolve()
+    const readiness = new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(observeDbReadiness(() => ({ waitForReady: () => readiness }))).toBeUndefined()
     expect(warn).toHaveBeenCalledWith('[db-diagnostic] readiness=pending category=other name=other')
+    expect(warn).not.toHaveBeenCalledWith('[db-diagnostic] readiness=ready category=other name=other')
     await readiness
     expect(warn).toHaveBeenCalledWith('[db-diagnostic] readiness=ready category=other name=other')
+
+    const rejection = Promise.reject(new Error('OPFS unavailable'))
+    expect(observeDbReadiness(() => ({ waitForReady: () => rejection }))).toBeUndefined()
+    await Promise.allSettled([rejection])
+    expect(warn).toHaveBeenCalledWith('[db-diagnostic] readiness=rejected category=open name=other')
   } finally {
     import.meta.env.VITE_DB_DIAGNOSTIC = previous
     warn.mockRestore()

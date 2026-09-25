@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { expect, test } from 'bun:test'
-import { parseDbDiagnostic } from '../e2e/db-diagnostic'
+import { parseDbDiagnostic } from './db-diagnostic'
 
 test('accepts the database outcomes emitted during startup', () => {
   const diagnostics: Array<['readiness' | 'query', string]> = [

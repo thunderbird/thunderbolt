@@ -257,8 +257,6 @@ bun run e2e:preview
 
 [`nightly.yml`](../../.github/workflows/nightly.yml) runs daily at 04:00 UTC and can be started manually with `gh workflow run nightly.yml --ref main`. Its Linux job runs Chromium and Firefox on desktop and mobile viewports against temporary PostgreSQL and PowerSync service containers (currently 200 cases). Its macOS job runs WebKit on desktop and iPhone viewports (currently 100 cases). Failure reports are sanitized before upload, with trace content and network data removed; videos are retained unchanged. This is a scheduled coverage run, not a blocking PR check. PRs still use the two-shard Chromium workflow in [`e2e.yml`](../../.github/workflows/e2e.yml).
 
-During the database investigation, macOS Nightly also uploads fixed database readiness and first-query labels for every WebKit test attempt, including passing tests and retries. Its Linear/email notifier is paused; restore that job and its heartbeat dependency manually after reviewing the diagnostic artifacts.
-
 The sanitizer is `scripts/sanitize-nightly-artifacts.ts`; run its synthetic artifact check with `bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000`. Nightly runs that check before sanitizing each report and uploads a failure report only if sanitization succeeds.
 
 The Nightly and reusable notification workflows pin Bun 1.3.14. Use that version when reproducing their CI failures locally.

@@ -79,7 +79,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-53** PGLite default driver; Postgres only when `DATABASE_DRIVER=postgres`.
 - **INV-54** `runMigrations()` before `createApp`; discovered via `process.cwd()/drizzle`.
 - **INV-55** Migration `_journal.json` MUST include new entries (else migration never runs).
-- **INV-56** CORS allowed headers must include any new custom request header (else preflight fails silently). Browser-readable response headers go in `corsExposeHeaders`.
+- **INV-56** Both CORS mounts (main API, PostHog proxy) set `allowedHeaders: true`, echoing back `Access-Control-Request-Headers` — `/v1/proxy` forwards arbitrary `X-Proxy-Passthrough-*` headers, so a static allowlist would break preflight on every new upstream header. A new custom _request_ header therefore needs no CORS change; a browser-readable _response_ header must be added to `corsExposeHeaders`.
 - **INV-57** Settings parsed once + cached (`clearSettingsCache()` for tests).
 - **INV-58** Trusted proxy headers: `cf-connecting-ip`/`true-client-ip` only; XFF/Forwarded never trusted.
 - **INV-59** Rate-limit table shared across tiers; key prefix discriminates.

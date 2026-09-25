@@ -15,7 +15,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { type ReactNode } from 'react'
 
-// Per docs/development/testing.md: do NOT mock shared modules. All app-internal hooks
+// Per docs/internals/development/testing.md: do NOT mock shared modules. All app-internal hooks
 // (useSettings, useSyncEnabledToggle, etc.) use their real implementations and run
 // against the test DB / mock HTTP client provided by createTestProvider.
 // `posthog-js` is already globally mocked by src/testing-library.ts.

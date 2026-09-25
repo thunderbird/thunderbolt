@@ -7,10 +7,18 @@
  *
  * Everything else in the voice loop — mic capture, VAD, turn detection,
  * playback, barge-in — is shared webview code that talks only to this
- * interface. Two implementations exist: an in-webview JS engine (web +
- * Windows) and a native `sherpa-onnx` engine over Tauri IPC (macOS; Linux
- * fallback). Swapping the engine never touches the realtime loop, which is
- * what makes barge-in parity automatic across surfaces.
+ * interface. Two implementations exist, both HTTP-based and both built on the
+ * shared `createAudioEngine` orchestration ({@link ./audio-engine}); they
+ * differ only in transport. The default is the Thunderbolt engine
+ * ({@link ./thunderbolt-engine}), which reaches Tinfoil's enclave-private
+ * OpenAI-compatible `/v1/audio/*` endpoints through the attested `/tinfoil`
+ * HPKE proxy. The alternative points at a user-supplied OpenAI-compatible
+ * endpoint over a plain authenticated fetch
+ * ({@link ./openai-compatible-engine}) and is only reachable when the
+ * `experimental_feature_voice` flag is on — see {@link ./router} for the
+ * selection rule. Swapping the engine never touches the realtime loop: an
+ * engine only has to forward the per-turn `AbortSignal` to its transport, so
+ * barge-in cancels an in-flight request identically on either.
  */
 
 /** Mono PCM at 16 kHz (the rate STT and VAD expect), as produced by capture. */
@@ -28,7 +36,10 @@ export type Transcript = {
   isFinal: boolean
 }
 
-/** First-run model download / warm-up progress, per model file. */
+/**
+ * Warm-up progress, per model. Nothing emits it today: `createAudioEngine`
+ * ignores `load`'s callback, and neither HTTP engine has files to fetch.
+ */
 export type EngineLoadProgress = {
   model: string
   loaded: number
@@ -36,13 +47,19 @@ export type EngineLoadProgress = {
 }
 
 export type VoiceEngine = {
-  /** Stable identifier for logging/telemetry, e.g. `webview` or `sherpa`. */
+  /** Stable engine identifier: `thunderbolt` or `openai-compatible`. */
   readonly id: string
-  /** Load and warm the models. Idempotent — safe to call more than once. */
+  /**
+   * Warm up before the first turn — the Thunderbolt engine primes enclave
+   * attestation here; the OpenAI-compatible one has nothing to do. Idempotent,
+   * since the attested client is cached ({@link ../../ai/tinfoil-client}).
+   */
   load: (onProgress?: (progress: EngineLoadProgress) => void) => Promise<void>
   /**
-   * Streaming transcription: consume 16 kHz mono PCM frames, yield partial
-   * then final transcripts. Aborting stops decoding promptly (barge-in).
+   * Consume 16 kHz mono PCM frames and yield transcripts, `isFinal` marking the
+   * committed one. Both engines transcribe a whole utterance in one batch
+   * request, so today they yield only the final result. Aborting stops the
+   * in-flight request (barge-in).
    */
   transcribe: (audio: AsyncIterable<PcmFrame>, signal?: AbortSignal) => AsyncIterable<Transcript>
   /**
@@ -51,6 +68,6 @@ export type VoiceEngine = {
    * in-flight synthesis (barge-in).
    */
   synthesize: (text: AsyncIterable<string>, signal?: AbortSignal) => AsyncIterable<AudioChunk>
-  /** Release models/sessions. */
+  /** Release engine-held resources (`createAudioEngine` closes its decode `AudioContext`). */
   dispose: () => void
 }

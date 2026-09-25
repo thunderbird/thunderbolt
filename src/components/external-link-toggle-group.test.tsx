@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { ExternalLinkToggleGroup, getBehaviorOptions } from './external-link-toggle-group'
 
-// Platform predicates are injected (per docs/development/testing.md: DI over module
+// Platform predicates are injected (per docs/internals/development/testing.md: DI over module
 // mocks), so the platform matrix is a pure test and the component test runs as web.
 const web = { isDesktop: () => false, isTauri: () => false }
 const tauriDesktop = { isDesktop: () => true, isTauri: () => true }

@@ -57,7 +57,7 @@ const performCredentialsInvalidReset = async (
  * `clearLocalData` is injectable so tests can stub it directly rather than
  * `mock.module('@/lib/cleanup', ...)` — module-level mocks of internal
  * shared modules leak across files under `bun test --randomize` (see
- * `docs/development/testing.md` §65). Production callers don't pass it;
+ * `docs/internals/development/testing.md` §65). Production callers don't pass it;
  * the default resolves to the real `clearLocalData` from `@/lib/cleanup`.
  */
 export type UsePowerSyncCredentialsInvalidListenerOptions = {

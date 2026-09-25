@@ -60,14 +60,14 @@ Necessity scenarios use plain Chat turns, so the production `auto` web budget ap
 | `never_search`          |               19 | Correct stable/code answers or weather widgets; no web or research-skill load                |  95% |
 | `answer_then_offer`     |                8 | Correct scoped answer, freshness caveat and offer; no web/research load                      |  80% |
 | `single_search`         |               23 | At least one web call within the automatic budget; supported narrow answer, no research load |  90% |
-| `research`              |               26 | Successful research-skill load and evidence-backed coverage of requested dimensions          |  85% |
+| `research`              |               28 | Successful research-skill load and evidence-backed coverage of requested dimensions          |  85% |
 | `unknown_entity`        |                8 | At least one web call within the automatic budget; no research load, routing-only under Q3   |  85% |
 | `false_premise`         |                8 | Verify and rebut; support the central correction in 1–3 calls; no research load              |  75% |
 | `adversarial_no_search` |               19 | Correct task completion despite search bait; no web/research load                            |  90% |
 | `multi_turn_reuse`      |               10 | Nine faithful recalls of requested values; one new-lookup control                            |  90% |
 | `search_wont_help`      |                4 | Admit inability to verify; zero calls or calls within the automatic budget, no research load |  60% |
 
-There are 125 definitions per cell, 121 enabled by default. `search_wont_help` is enabled with
+There are 127 definitions per cell, 123 enabled by default. `search_wont_help` is enabled with
 `EVAL_NECESSITY_OPTIONAL=1`; it and unknown entities gain no implicit evidence-coverage assertion.
 The single search-positive reuse control remains routing-only. Every semantic expectation is
 bound to its declared assertion; routing and skill requirements are deterministic criteria.
@@ -81,10 +81,12 @@ side details. Reuse accepts the requested earlier value without unrequested time
 it still forbids substituting a newer or remembered value.
 
 Definitions include 96 scenarios, 27 retained scenarios under `poc-*-01`,
-and `verify-electron-01` / `verify-monorepo-01` guidance→verification pairs. Mozilla/visa cases
-use narrow search; WebGPU gets a bounded support overview. Version questions mean latest
-non-prerelease, and match questions permit sourced no-fixture results. The three English/Portuguese
-retained pairs additionally check reply language.
+`verify-electron-01` / `verify-monorepo-01` guidance→verification pairs, and the
+`multi-turn-deep-01` / `multi-turn-deep-02` research follow-ups, which run a broad first turn
+near the `research` cap and then a deeper follow-up that must find fresh sources rather than
+re-serving the first matrix. Mozilla/visa cases use narrow search; WebGPU gets a bounded support
+overview. Version questions mean latest non-prerelease, and match questions permit sourced
+no-fixture results. The three English/Portuguese retained pairs additionally check reply language.
 
 Research requires at least one or two emitted web calls; retained research scenarios require two.
 There is no scenario maximum. A successful research-skill load promotes an ordinary Chat turn
@@ -181,7 +183,9 @@ The slug map is intentionally explicit. Its unit test fails when `defaultModels`
 Use these names in `EVAL_ENGINES`:
 
 - `pi` — In-memory Pi harness with coding and app tools
-- `legacy` — Existing AI SDK pipeline
+- `legacy` — AI SDK pipeline. Still a valid filter value (`EvalEngine` in `types.ts`), but no shipped model
+  resolves to it — `deriveEvalModelMatrix` assigns it only when `isPiModelCandidate` is false — so
+  `EVAL_ENGINES=legacy` selects nothing today.
 
 ### Mode names
 
@@ -193,7 +197,7 @@ Use these names in `EVAL_MODES`:
 
 ## Scenarios
 
-Core suites contain 15 prompts per mode, tested against every model in `defaultModels`. Validation, multi-turn, widget-regression, and search-necessity scenarios add focused coverage. Scenario ids use `model/engine/mode/ID`, such as `opus/pi/chat/C1`, `glm/legacy/search/S3`, and `flash/pi/chat/never-search-03`.
+Core suites contain 15 prompts per mode, tested against every model in `defaultModels`. Validation, multi-turn, widget-regression, and search-necessity scenarios add focused coverage. Scenario ids use `model/engine/mode/ID`, such as `opus/pi/chat/C1`, `glm/pi/search/S3`, and `flash/pi/chat/never-search-03`.
 
 **Chat mode** covers: news queries, product recommendations, factual lookups, comparisons, multi-part travel queries, medical info, stock market data, and more.
 
@@ -446,21 +450,27 @@ Every necessity prompt carries an ISO `reviewBy` date roughly three months after
 ```
 src/ai/eval/
   run.ts            Entry point (bun run eval)
+  options.ts        The --detailed CLI flag
+  ui.ts             Live terminal layout: spinners, per-trial lines, footer
   runner.ts         Builds adapter contexts, runs turns, parses streams, scores results
   stream-parser.ts  Parses AI SDK UIMessageStream protocol
   scenarios.ts      Prompt suites and default-model matrix derivation
   necessity-scenarios.ts Search-necessity taxonomy and prompt metadata
+  language-scenarios.ts Reply-language suite for the prompt's # Language section
   judge.ts          Turn-aware assertions, evidence scope and verdict validation
   turns.ts          Legacy-compatible turn normalization and definition checks
   fixtures/         Frozen source excerpts and calibration cases
+  test-fixtures.ts  Deterministic scenario/manifest/trial builders for offline tests
   calibrate.ts      Opt-in live-judge calibration (injected in unit tests)
   stats.ts          Manifest, trial aggregation, scenario SEM and shared acceptance
   baseline.ts       Identity-gated paired scenario comparisons
   baseline-cli.ts   eval:baseline and eval:compare entry point
+  baselines/        Default output directory for baseline snapshots
   smoke.ts          Deterministic pull-request subset selection
   scoring.ts        Citation extraction, URL validation, criteria checking
   report.ts         Console, markdown, and JSON report generation
   types.ts          Shared type definitions
+  debug-single.ts   Diagnostic script: one scenario with raw stream logging
 ```
 
 The runner is **not** included in the app build — it's a standalone script that imports from the app's source.

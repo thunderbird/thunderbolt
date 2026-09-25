@@ -164,11 +164,16 @@ keycloak:
   # Convenient for local/preview environments and docs walk-throughs; set to
   # `false` for production deployments. Default `true` preserves current behavior.
   #
-  # IMPORTANT: realm import is one-shot. Keycloak only imports the realm JSON
-  # on first boot of an empty database, so flipping this from `true` to `false`
-  # on an existing cluster does NOT delete a previously-imported demo user.
-  # To remove an already-imported demo user, delete it from the Keycloak admin
-  # console (Users → demo → Delete), or destroy the Keycloak storage volume.
+  # Realm import happens only on boot of an empty database, so flipping this to
+  # `false` does not remove a demo user from a running Keycloak. In THIS chart
+  # that is a restart away: `templates/keycloak.yaml` runs `start-dev
+  # --import-realm` with no `KC_DB`, so Keycloak keeps its embedded database
+  # inside the pod and the only mounted volume is the read-only realm ConfigMap.
+  # Rolling the deployment therefore starts from an empty database and re-imports
+  # the realm — which applies this flag, and equally discards anything else
+  # configured in Keycloak since the pod started. On a Keycloak backed by a
+  # persistent database, delete the user in the admin console instead
+  # (Users → demo → Delete).
   demoUserEnabled: true
   # -- Pod annotations applied to keycloak pods. Merged with top-level
   # `podAnnotations`; these win on key conflict.
@@ -187,3 +192,21 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
   # -- Set to your domain for production; leave empty for default rule
   host: ""
+  # -- Optional per-service hostnames ("preview-style" host-header routing).
+  # Every key you set gets its own ingress rule serving `/` from one service:
+  # `marketing` → marketing, `app` → frontend, `api` → backend, `auth` →
+  # keycloak, `powersync` → powersync. Leave the map empty to keep the default
+  # path-based layout, where a single host routes `/v1`, `/realms`,
+  # `/resources` and `/powersync` to their services and everything else to the
+  # frontend.
+  #
+  # The path-based rule is always rendered, so the two modes coexist: the
+  # host-header rules take precedence for the hostnames listed here and the
+  # `host` rule stays as the fallback (a catch-all when `host` is empty).
+  # See `templates/ingress.yaml`.
+  hostnames: {}
+  #   marketing: example.com
+  #   app: app.example.com
+  #   api: api.example.com
+  #   auth: auth.example.com
+  #   powersync: powersync.example.com

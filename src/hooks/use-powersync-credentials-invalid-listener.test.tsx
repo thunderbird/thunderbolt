@@ -31,7 +31,7 @@ const mockClearLocalData = mock(() => Promise.resolve())
 // reconnectSync, syncEnabledChangeEvent, isSyncEnabled) is preserved and can't break
 // dependents if this registration leaks across files under `--randomize`. Only
 // `setSyncEnabled` is overridden with a local spy the suite asserts on.
-// See docs/development/testing.md §65 and the sibling spread-mocks in use-pending-device-notification.test.tsx.
+// See docs/internals/development/testing.md §65 and the sibling spread-mocks in use-pending-device-notification.test.tsx.
 const realPowersync = await import('@/db/powersync/sync-state')
 const mockSetSyncEnabled = mock(() => Promise.resolve())
 mock.module('@/db/powersync/sync-state', () => ({

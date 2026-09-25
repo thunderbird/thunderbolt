@@ -18,7 +18,7 @@ import '@/test-utils/framer-motion-mock'
 
 // Inject `useChat` via the component's DI seam instead of a global
 // `mock.module('@ai-sdk/react')` — module mocks are process-global and leak into
-// unrelated files under `--randomize` (see docs/development/testing.md).
+// unrelated files under `--randomize` (see docs/internals/development/testing.md).
 const useChatStub = (() => ({ status: 'ready' })) as unknown as typeof useChat_default
 
 const chatListItemWithProviders = (props: ChatListItemProps) => (

@@ -4,7 +4,7 @@
 
 // Note: this test deliberately does NOT use `mock.module()`. Mocks of shared
 // modules like `@/lib/platform` or `@tauri-apps/plugin-http` would leak across
-// test files (see docs/development/testing.md). Instead, both helpers accept
+// test files (see docs/internals/development/testing.md). Instead, both helpers accept
 // `isStandalone` and a fetch override so tests can wire fakes via constructor
 // arguments — pure dependency injection.
 

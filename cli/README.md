@@ -2,7 +2,8 @@
 
 A single-binary terminal coding agent. It operates directly in your working
 directory with five tools — **bash**, **read**, **write**, **edit**, **webfetch**
-— plus provider-native web search where supported. Built on the
+— plus provider-native web search where supported. A served agent gets a
+different set (see [Tools](#tools)). Built on the
 [Pi harness](https://www.npmjs.com/package/@earendil-works/pi-agent-core) and
 talking to models from Anthropic, OpenAI, Google, xAI, and other providers.
 Give it a task as one prompt or drop into an interactive REPL; there's no daemon,
@@ -107,10 +108,15 @@ revoking this CLI from the web app also invalidates its session; run
 
 Provider configuration lives at `~/.thunderbolt/config.json`, and account
 authentication has a separate file under the same directory. Set
-`THUNDERBOLT_HOME` to move that state root. Files are written with mode `0600`
-because BYOK profiles may contain plaintext API keys. Profiles, selected models,
-and account authentication are local to this CLI installation: the CLI does not
-use PowerSync and does not sync this state to other devices.
+`THUNDERBOLT_HOME` to move that state root. Provider config, account
+authentication, the iroh identity and allowlist, and the usage-receipt outbox are
+written with mode `0600` because BYOK profiles may contain plaintext API keys.
+Persisted ACP session logs under `<THUNDERBOLT_HOME>/acp/sessions/` are the
+exception: the Pi session repo passes no mode, so they land at whatever the
+process umask allows (typically `0644` files in `0755` directories) — treat them
+as readable by other users on a shared host. Profiles, selected models, and
+account authentication are local to this CLI installation: the CLI does not use
+PowerSync and does not sync this state to other devices.
 
 Each BYOK profile has its own stable ID, label, provider, default model, and
 credential scope. Saved keys apply only to the matching provider and, for
@@ -141,9 +147,9 @@ thunderbolt
 | Command                                                                      | Purpose                                                        |
 | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `thunderbolt agent [options] [prompt]`                                       | Run coding agent; `agent` is optional/default.                 |
-| `thunderbolt config`                                                         | Manage the Thunderbolt account and local BYOK profiles.         |
-| `thunderbolt login`                                                          | Bind this CLI to a Thunderbolt account through web login.       |
-| `thunderbolt logout`                                                         | Revoke and clear the stored Thunderbolt web session.            |
+| `thunderbolt config`                                                         | Manage the Thunderbolt account and local BYOK profiles.        |
+| `thunderbolt login`                                                          | Bind this CLI to a Thunderbolt account through web login.      |
+| `thunderbolt logout`                                                         | Revoke and clear the stored Thunderbolt web session.           |
 | `thunderbolt acp serve [options]`                                            | Expose built-in coding agent as stdio ACP server.              |
 | `thunderbolt acp --transport <wss\|iroh> [--port N] -- <agent-cmd...>`       | Bridge stdio ACP agent.                                        |
 | `thunderbolt mcp --transport <wss\|iroh> [--port N] -- <server-cmd...>`      | Bridge stdio MCP server.                                       |
@@ -154,13 +160,13 @@ thunderbolt
 
 The TUI and plain REPL share these commands:
 
-| Command        | Purpose                                                        |
-| -------------- | -------------------------------------------------------------- |
-| `/providers`   | Manage the account connection and local BYOK profiles.         |
-| `/models`      | Select a model for the active provider.                        |
-| `/login`       | Bind this CLI to a Thunderbolt account through web login.      |
-| `/logout`      | Revoke and clear the stored Thunderbolt web session.           |
-| `/permissions` | Choose any tool permission mode.                               |
+| Command        | Purpose                                                   |
+| -------------- | --------------------------------------------------------- |
+| `/providers`   | Manage the account connection and local BYOK profiles.    |
+| `/models`      | Select a model for the active provider.                   |
+| `/login`       | Bind this CLI to a Thunderbolt account through web login. |
+| `/logout`      | Revoke and clear the stored Thunderbolt web session.      |
+| `/permissions` | Choose any tool permission mode.                          |
 
 While a TUI turn is running, Enter queues another message. Press ↑ to select a
 queued message, then Enter to send it immediately, Backspace/Delete to remove
@@ -169,6 +175,32 @@ it, or Esc to return to the editor; interrupting a turn keeps the queue for late
 The picker always offers `ask`, `accept-edits`, `read-only`, and `yolo`. In the
 TUI, Shift+Tab cycles through those modes in that order. `--yolo` only selects
 the initial mode; it does not limit later switching.
+
+### Tools
+
+The local agent runs with five tools — `bash`, `read`, `write`, `edit`, and
+`webfetch` — plus provider-native web search where the provider supports it.
+
+A served agent (`thunderbolt acp serve`, directly or behind a bridge) runs a
+different set: `read`, `write`, and `edit` confined to the workspace root, plus
+`webfetch` and the same provider-native web search. There is no `bash`, because
+arbitrary shell commands cannot be confined to a workspace root, so the jailed
+harness omits the tool rather than pretending to contain it. The system prompt
+is built from the live toolset, so the model is told bash is unavailable instead
+of discovering it mid-task.
+
+`acp serve` also advertises a skills capability in its `initialize` response. A
+client that sends skill definitions on `_meta` with `session/new` or
+`session/resume` gets one more tool, `skill`, which returns the full instruction
+text for any skill listed in the system prompt. Like `webfetch`, it never raises
+a permission prompt — both are read-only.
+
+`webfetch` refuses private, internal, and loopback addresses. It classifies both
+literal IPs and the DNS answer, then pins the request to the resolved address,
+so a `localhost` dev server is unreachable by design: this is an SSRF control,
+not a bug. Every redirect hop is re-validated the same way, at most five are
+followed, the request times out after 15s, and oversized responses are truncated
+(about 1.5 MB of raw body, 100,000 characters of extracted text).
 
 ### Served agent workspace
 
@@ -193,12 +225,67 @@ cd ~/dev && thunderbolt acp --transport iroh -- thunderbolt acp serve
 The agent can then reach everything under `~/dev`, but nothing above it. Files
 elsewhere on the machine are outside its workspace and unavailable.
 
+### Bridge security
+
+The `wss` bridge listens on loopback only and gates every WebSocket upgrade on
+three independent checks. The request path must be exactly `/` (anything else is
+a 404), the `Origin` header must be an allowed app origin (403), and the `token`
+query parameter must match the bridge's per-run secret (401, compared in
+constant time). WebSocket upgrades bypass CORS and each connection spawns a
+coding agent on the host, so without these checks any page the user happens to
+be visiting could drive that agent — and the ACP permission gate is no defence
+against a client that approves itself.
+
+The allowed origins are `http://localhost:1420`, `tauri://localhost`, and
+`http://tauri.localhost` — the Vite dev server plus the native Tauri webview
+origins. `THUNDERBOLT_APP_ORIGIN` adds comma-separated origins to that set; it
+does not replace it.
+
+The token is 256 bits of CSPRNG entropy minted at startup and printed as part of
+the advertised URL (`ws://127.0.0.1:<port>/?token=<token>`), so pasting that URL
+into the app is all the client needs. It is regenerated on every start: a bridge
+URL saved in the app stops working once the bridge restarts, and the new one has
+to be copied again.
+
+Both transports cap concurrently live bridged subprocesses at 16. The upgrade
+gates authorize a connection, not a session, so an authorized client holding
+many connections open would otherwise spawn unbounded agents. Over the cap a new
+`wss` socket is closed with code `1013` ("bridge at capacity") and a new iroh
+connection is refused, in both cases without spawning.
+
+### iroh bridge trust
+
+An iroh bridge admits a peer on either of two layers.
+
+The manual allowlist is what `thunderbolt iroh allow <nodeid>` writes. It is the
+only gate when the CLI has no account credential, and it stays the path for
+cross-account and CI peers.
+
+Same-account auto-trust activates when the CLI has a stored web session or a
+`THUNDERBOLT_TOKEN`. The bridge registers its own NodeId with the backend as an
+account device named after the host, primes an allowlist from
+`GET /devices/allowlist` before accepting any connection, and admits any NodeId
+on it with no `iroh allow` step. A 45s heartbeat refreshes that list and closes
+any live session whose peer has since been revoked, so revoking a device in the
+app takes effect within one interval. If the refreshed list no longer contains
+the bridge's own NodeId, the account has revoked this device: auto-trust turns
+off and same-account sessions are torn down, while manually allowed peers
+survive. Pairing that bridge again means removing it in Settings → Devices
+first.
+
+Auto-trust is best-effort. A missing credential, a cloud URL that is not a
+secure transport, or a failed registration or allowlist fetch disables it for
+that run rather than failing startup, leaving the manual allowlist in force.
+The startup banner reports which mode is live:
+`same-account auto-trust: on (backend allowlist, 45s heartbeat)` or
+`same-account auto-trust: off (manual allowlist only)`.
+
 ### Agent and `acp serve` flags
 
 | Flag                 | Description                                                                |
 | -------------------- | -------------------------------------------------------------------------- |
 | `-m`, `--model <id>` | Provider model id (provider-specific default).                             |
-| `--provider <id>`    | Profile ID or unique provider/label shorthand for this process.           |
+| `--provider <id>`    | Profile ID or unique provider/label shorthand for this process.            |
 | `--base-url <url>`   | Custom endpoint URL (required for `openai-compat`).                        |
 | `--api-key <key>`    | Compatibility-only provider key override; may leak via shell history.      |
 | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (default: `medium`). |
@@ -258,33 +345,40 @@ credential cannot be forwarded automatically to an arbitrary custom URL.
 
 ### Environment
 
-| Variable                                     | Description                                                                                                     |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                                                                   |
-| `OPENAI_API_KEY`                             | OpenAI API key.                                                                                                 |
-| `GEMINI_API_KEY`                             | Google Gemini API key.                                                                                          |
-| `XAI_API_KEY`                                | xAI API key.                                                                                                    |
-| `DEEPSEEK_API_KEY`                           | DeepSeek API key.                                                                                               |
-| `ZAI_API_KEY`                                | Z.AI API key.                                                                                                   |
-| `MISTRAL_API_KEY`                            | Mistral API key.                                                                                                |
-| `GROQ_API_KEY`                               | Groq API key.                                                                                                   |
-| `OPENROUTER_API_KEY`                         | OpenRouter API key.                                                                                             |
-| `MOONSHOT_API_KEY`                           | Moonshot AI API key.                                                                                            |
-| `MINIMAX_API_KEY`                            | MiniMax API key.                                                                                                |
-| `CEREBRAS_API_KEY`                           | Cerebras API key.                                                                                               |
-| `TOGETHER_API_KEY`                           | Together API key.                                                                                               |
-| `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                              |
-| `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                      |
-| `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`). |
-| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env. |
-| `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).        |
+| Variable                                     | Description                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` | Anthropic credentials, checked in that order.                                                                                                                                                                                                                                                              |
+| `OPENAI_API_KEY`                             | OpenAI API key.                                                                                                                                                                                                                                                                                            |
+| `GEMINI_API_KEY`                             | Google Gemini API key.                                                                                                                                                                                                                                                                                     |
+| `XAI_API_KEY`                                | xAI API key.                                                                                                                                                                                                                                                                                               |
+| `DEEPSEEK_API_KEY`                           | DeepSeek API key.                                                                                                                                                                                                                                                                                          |
+| `ZAI_API_KEY`                                | Z.AI API key.                                                                                                                                                                                                                                                                                              |
+| `MISTRAL_API_KEY`                            | Mistral API key.                                                                                                                                                                                                                                                                                           |
+| `GROQ_API_KEY`                               | Groq API key.                                                                                                                                                                                                                                                                                              |
+| `OPENROUTER_API_KEY`                         | OpenRouter API key.                                                                                                                                                                                                                                                                                        |
+| `MOONSHOT_API_KEY`                           | Moonshot AI API key.                                                                                                                                                                                                                                                                                       |
+| `MINIMAX_API_KEY`                            | MiniMax API key.                                                                                                                                                                                                                                                                                           |
+| `CEREBRAS_API_KEY`                           | Cerebras API key.                                                                                                                                                                                                                                                                                          |
+| `TOGETHER_API_KEY`                           | Together API key.                                                                                                                                                                                                                                                                                          |
+| `FIREWORKS_API_KEY`                          | Fireworks API key.                                                                                                                                                                                                                                                                                         |
+| `THUNDERBOLT_OPENAI_COMPAT_KEY`              | Dedicated fallback key for arbitrary `openai-compat` URLs.                                                                                                                                                                                                                                                 |
+| `THUNDERBOLT_HOME`                           | CLI state root containing provider config, account auth, iroh identity/allowlist, and ACP sessions (default: `~/.thunderbolt`).                                                                                                                                                                            |
+| `THUNDERBOLT_CLOUD_URL`                      | Thunderbolt backend the CLI talks to (local-build default: `http://localhost:8000/v1`). Point it at your cloud or self-hosted `…/v1` base before `thunderbolt login`; the URL is persisted alongside the credential, so later commands need no env.                                                        |
+| `THUNDERBOLT_APP_URL`                        | Thunderbolt app base used in bridge pairing instructions (local-build default: `http://localhost:1420`).                                                                                                                                                                                                   |
 | `THUNDERBOLT_TOKEN`                          | Personal access token for headless direct managed inference and bridges only. It cannot use confidential models, bind a CLI device, or be cleared by `thunderbolt logout`; remove it from the environment or revoke it in the web account. Resolves the backend from `THUNDERBOLT_CLOUD_URL` on every run. |
-| `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                    |
-| `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                  |
-| `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                             |
-| `NO_COLOR`                                   | Disable terminal color when set.                                                                                |
+| `THUNDERBOLT_IROH_RELAY_URL`                 | Self-hosted iroh-relay WSS URL; unset uses n0 public relays.                                                                                                                                                                                                                                               |
+| `THUNDERBOLT_APP_ORIGIN`                     | Extra comma-separated allowed browser origins for WSS bridges.                                                                                                                                                                                                                                             |
+| `THUNDERBOLT_NO_TUI`                         | Force plain readline REPL when set.                                                                                                                                                                                                                                                                        |
+| `NO_COLOR`                                   | Disable terminal color when set; color is also off when stdout is not a TTY.                                                                                                                                                                                                                               |
+| `COLORTERM`                                  | `truecolor` or `24bit` selects 24-bit color; any other value falls back to 256-color output.                                                                                                                                                                                                               |
 
-Official release binaries bake production cloud and app defaults; runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win.
+Official release binaries bake their production cloud and app defaults at build
+time: `.github/workflows/cli-release.yml` `--define`s `THUNDERBOLT_BUILD_CLOUD_URL`
+and `THUNDERBOLT_BUILD_APP_URL` into the binary, so those two are build inputs
+rather than runtime settings — setting either in the environment of a release
+binary has no effect, because the substitution already happened at compile time.
+Runtime `THUNDERBOLT_CLOUD_URL` and `THUNDERBOLT_APP_URL` overrides still win
+over the baked defaults.
 
 `THUNDERBOLT_TOKEN` takes precedence over a stored web session for the current
 process. PATs support direct managed models only. Confidential models require

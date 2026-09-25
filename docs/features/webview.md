@@ -1,114 +1,80 @@
-# WebView
+# In-App Browser
 
-> ⚠️ **Experimental Feature**: This feature has not undergone extensive privacy or security evaluations and may be placed behind a preview feature flag before public release.
->
-> **Platform Availability**: Only works in desktop and mobile apps—not in web browsers (requires Tauri's native WebView APIs).
->
-> **Testing Status**: Only tested on macOS. Other platforms (Windows, Linux, iOS, Android) are untested.
+Thunderbolt can open a web page in a panel beside the chat, so you can read a linked source without
+leaving the conversation.
 
-## Overview
+> **Experimental.** The in-app browser has not had a full privacy or security review. It is tested on
+> macOS only. Windows and Linux are expected to work but are untested.
 
-The WebView feature displays web pages directly in the application sidebar using native browser components.
+## Availability
 
-Where a link in the AI assistant opens is a user preference — **External Links** in Settings → Preferences, backed by `externalLinkBehavior` in the device-local settings store:
+The panel is part of the desktop app. In the iOS and Android apps a link opens in the OS browser, and
+in a web browser it opens in a new tab.
 
-| Value           | Behavior                                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------- |
-| `ask` (default) | Show a confirmation dialog naming the URL, offering the sidebar WebView (desktop) or an external open         |
-| `sidebar`       | Open in the sidebar WebView immediately. Desktop only — degrades to `ask` where the side panel is unavailable |
-| `browser`       | Open in the OS browser (or a new tab on web) immediately, with no confirmation                                |
+## Opening a page
 
-**Platform engines:**
+What a link in an assistant reply does depends on your **External Links** preference in
+Settings → Preferences.
 
-- **macOS**: WebKit (WKWebView) ✅ _Tested_
-- **Windows**: Microsoft Edge WebView2 (Chromium) ⚠️ _Untested_
-- **Linux**: WebKit (webkit2gtk) ⚠️ _Untested_
-- **iOS**: WebKit (WKWebView) ⚠️ _Untested_
-- **Android**: WebView ⚠️ _Untested_
+| Setting           | What a link click does                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ask** (default) | Shows a dialog with the full URL. On the desktop app you can pick the side panel or your browser; everywhere else it confirms opening in your browser |
+| **Sidebar**       | Opens in the side panel immediately. Desktop app only                                                                                                 |
+| **Browser**       | Opens in your default browser (a new tab on the web) with no confirmation                                                                             |
 
-## Privacy & Incognito Mode
+Each device keeps its own copy of this preference, and on the web **Browser** is shown as **New
+tab**. Only `http` and `https` links open in the panel. A link using any other scheme is inert: clicking it
+does nothing.
 
-WebViews run in **incognito mode** by default (`incognito: true`). Following [Tauri's recommended architecture](https://v1.tauri.app/v1/references/architecture/process-model/), **a new WebView is created each time** you open a page and destroyed when closed.
+## Using the panel
 
-> **Note**: Incognito mode is not supported on all operating systems. Android is known to not support it—on unsupported platforms, the WebView will fall back to normal mode with data persistence.
+The panel holds one thing at a time, so opening a page replaces whatever was in it: an attachment
+preview, a cited source, a tool result, or an artifact.
 
-**Benefits:**
+The divider between the chat and the panel resizes it, and the width is remembered. An open page
+covers the divider's right half, so drag from the side nearest the chat.
 
-- No browsing history, cookies, or cache persisted to disk
-- No data leakage between page loads
-- Blocks WebCrypto API keychain access
+## Privacy
 
-**Trade-offs:**
+Pages open in a private session. Nothing from the page is written to disk, and each page you open
+starts from a clean state, with no cookies, logins, or stored preferences carried over from the last
+one. You can sign in to a site, and the session lasts until you close the page or open another one in the panel. The next visit starts signed out.
 
-- **No login persistence**: You can log in, but sessions won't persist between page loads (you'll need to log in again each time)
-- **Performance cost**: WebView creation/destruction is slow and resource-intensive
-- **IP exposure**: Unlike the main AI experience (which uses a backend proxy), WebView pages expose your IP address and fingerprintable device information directly to websites
+The page connects directly to the site, bypassing the backend proxy that carries your model and MCP
+traffic. The site sees your real IP address and the usual device details a browser reveals, such as
+screen size, operating system, and language. If you are opening sensitive pages, use a VPN.
 
-**Recommendations:**
-
-- Use a VPN when browsing sensitive content
-- Open authenticated sites in your external browser with privacy extensions
-- Be aware each page exposes your identity to that website
+> Don't sign in to anything that matters here. Open it in your real browser instead.
 
 ## Limitations
 
-- **No browser extensions**: No ad blockers, password managers, or privacy tools (fundamental WebView limitation)
-- **No cross-page state**: Each page starts fresh
-- **Slower than browser**: Creating WebViews has noticeable startup delay
+Extensions do not run in the panel, which rules out ad blockers, password managers, and privacy
+extensions. The panel shows one page at a time and keeps no history: there are no tabs, and no back,
+forward, or bookmark controls. It is also slower than a browser. There is a visible delay before a
+page appears, on every open.
 
-## Known Issues
+## Known issues
 
-### 1. Drag Handle Overlap
+Don't open three or more pages within a few seconds; it can freeze the window. Let each one finish
+loading first.
 
-WebView overlaps the sidebar drag handle by ~2px, making resizing slightly harder.
+A few sites make the operating system ask for your login password to unlock its keychain, even though
+the page is in a private session. The request comes from the page, not from Thunderbolt, and you can
+dismiss it.
 
-### 2. Window Freezing with Rapid Page Loads
+## Rendering engine
 
-Opening 3+ pages in rapid succession causes the entire window to freeze (possible race condition or memory leak). **Workaround**: Wait for each page to load before opening another.
+The panel uses the browser engine your operating system provides, so page rendering matches that
+engine rather than Firefox or your default browser.
 
-**Investigating**: Race conditions in WebView lifecycle, resource exhaustion, event listener cleanup issues.
+| Platform | Engine                             |
+| -------- | ---------------------------------- |
+| macOS    | WebKit                             |
+| Windows  | Microsoft Edge WebView2 (Chromium) |
+| Linux    | WebKitGTK                          |
 
-### 3. System Password Prompt for WebCrypto
+## Planned
 
-Some websites using WebCrypto API trigger an OS-level system prompt asking for the user's password to access keychain storage. This occurs even with incognito mode enabled and can be disruptive and confusing.
-
-**Investigating**: May require additional WebView configuration or Tauri-level sandboxing to prevent keychain access attempts.
-
-## Technical Implementation
-
-**Frontend:**
-
-- `src/content-view/use-sidebar-webview.ts` - Lifecycle management
-- `src/content-view/sidebar-webview.tsx` - UI component
-
-**Backend (Tauri):**
-
-- Requires `unstable` feature flag in `Cargo.toml`
-- Permissions in `src-tauri/capabilities/default.json`
-
-**Configuration:**
-
-```typescript
-const webviewOptions: WebviewOptions = {
-  url: config.url,
-  x: Math.floor(rect.left) + borderOffset,
-  y: webviewTop,
-  width: Math.floor(rect.width) - borderOffset,
-  height: webviewHeight,
-  incognito: true, // Privacy mode
-}
-
-// Unique label prevents conflicts
-const webviewLabel = `sidebar-webview-${Date.now()}`
-const webview = new Webview(windowRef.current, webviewLabel, webviewOptions)
-```
-
-## Future Improvements
-
-- Feature flag for opt-in testing
-- VPN integration or detection
-- WebView pooling/reuse for better performance
-- Content filtering/ad blocking at Tauri level
-- Security audit before public release
-
-**Feedback**: Report issues or suggestions to the development team.
+- A security and privacy review before the feature leaves experimental status.
+- Content and ad filtering inside the panel.
+- Faster opens.

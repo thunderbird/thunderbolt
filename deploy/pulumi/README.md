@@ -18,15 +18,15 @@ pulumi up
 
 ## Platforms
 
-| Platform | Creates | Persistence | Best For |
-|----------|---------|-------------|----------|
-| `fargate` | VPC, ECS, ALB, EFS, Cloud Map | EFS | Serverless |
-| `k8s` | VPC, EKS, EBS CSI, nginx-ingress | EBS gp3 PVCs | Kubernetes teams |
+| Platform  | Creates                          | Persistence  | Best For         |
+| --------- | -------------------------------- | ------------ | ---------------- |
+| `fargate` | VPC, ECS, ALB, EFS, Cloud Map    | EFS          | Serverless       |
+| `k8s`     | VPC, EKS, EBS CSI, nginx-ingress | EBS gp3 PVCs | Kubernetes teams |
 
 ## Project Structure
 
 ```
-index.ts              # Entry point — branches on platform config
+index.ts              # Entry point — branches on platform config and stack shape
 src/
   vpc.ts              # VPC, subnets, NAT, security groups (shared)
   # Fargate
@@ -35,15 +35,25 @@ src/
   alb.ts              # ALB + path-based routing
   storage.ts          # EFS + access points
   discovery.ts        # Cloud Map DNS (thunderbolt.local)
+  dns.ts              # Cloudflare CNAMEs for the stack's hostnames
+  # Preview stacks
+  shared.ts           # `previews-shared` stack — long-lived VPC/ALB/postgres/keycloak/powersync
+  per-pr-stack.ts     # Slim `preview-pr-<n>` stack — app services only, shared infra via StackReference
   # EKS
   eks.ts              # EKS cluster, EBS CSI, Helm chart, nginx-ingress
 ```
 
+`index.ts` picks one of three shapes: the shared preview stack, a per-PR stack that
+reads it through a `StackReference` (when `sharedStackName` is set), or the monolithic
+stack every other stack name still uses.
+
 ## Required Secrets (GitHub Actions)
 
-| Secret | Description |
-|--------|-------------|
-| `AWS_DEPLOY_ROLE_ARN` | IAM role for OIDC-based AWS auth |
-| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud API token |
-| `PULUMI_CONFIG_PASSPHRASE` | Stack config encryption passphrase |
-| `GHCR_PAT` | GitHub PAT for pulling private images |
+| Secret                | Description                           |
+| --------------------- | ------------------------------------- |
+| `AWS_DEPLOY_ROLE_ARN` | IAM role for OIDC-based AWS auth      |
+| `PULUMI_ACCESS_TOKEN` | Pulumi Cloud API token                |
+| `GHCR_PAT`            | GitHub PAT for pulling private images |
+
+Stack config and state are encrypted by Pulumi Cloud, which `PULUMI_ACCESS_TOKEN`
+authenticates against — there is no local secrets provider and no passphrase to set.

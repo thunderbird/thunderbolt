@@ -13,7 +13,7 @@ Bootstrap the Thunderbolt dev environment. Accepts an optional argument via $ARG
   4. `make status` — confirm containers are healthy
 
 - **`all`:** Run the standard bootstrap above, then also:
-  5. `make run` — start backend (:8000) and frontend (:5173) dev servers
+  5. `make run` — start backend (:8000) and frontend (:1420) dev servers. Vite is pinned to 1420 with `strictPort` (Tauri expects a fixed port), so it fails rather than falling back; 5173 is only the port thunderbot's isolated Docker stack publishes.
 
 - **Matches `THU-\d+`** (Linear ticket): Create a worktree for the ticket branch first using `/thunderin <id>`, then run the standard bootstrap inside that worktree.
 

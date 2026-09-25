@@ -164,11 +164,11 @@ If the list cannot be fetched while you are offline, the agents you already had 
 
 The Connections screen also lists three ready-made integrations.
 
-| Provider    | What it adds                                                                  |
-| ----------- | ----------------------------------------------------------------------------- |
-| Thunderbolt | Web search and fetching the contents of a public page. Requires a Pro account |
-| Google      | Gmail inbox check, search and read, draft creation, Google Calendar           |
-| Microsoft   | Outlook messages, OneDrive file search and file contents                      |
+| Provider    | What it adds                                                         |
+| ----------- | -------------------------------------------------------------------- |
+| Thunderbolt | Web search and fetching the contents of a public page. On by default |
+| Google      | Gmail inbox check, search and read, draft creation, Google Calendar  |
+| Microsoft   | Outlook messages, OneDrive file search and file contents             |
 
 Google and Microsoft require your deployment to have OAuth credentials configured for that provider (`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`). Disconnecting an integration removes the stored authorization. Google mail access stops at drafting: the assistant can create a draft, but cannot send one. Microsoft access is read-only.
 

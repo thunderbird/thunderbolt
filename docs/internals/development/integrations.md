@@ -3,16 +3,18 @@
 An _integration_ is a third-party account the user connects so the model can act on data outside
 Thunderbolt. Three live in [`src/integrations/`](../../../src/integrations):
 
-| Provider                                 | Scopes requested                                                                        | Tools                                                                                                                  |
-| ---------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Google** (Gmail + Calendar)            | `gmail.readonly`, `gmail.compose`, `calendar.readonly`, plus `openid`/`email`/`profile` | `google_check_inbox`, `google_search_emails`, `google_get_email`, `google_draft_email`, `google_check_calendar`        |
-| **Microsoft** (Outlook mail + OneDrive)  | `https://graph.microsoft.com/mail.read`, `User.Read`, `offline_access`                  | `microsoft_list_messages`, `microsoft_get_message`, `microsoft_search_onedrive`, `microsoft_get_onedrive_file_content` |
-| **Thunderbolt Pro** (web search + fetch) | none (backend-hosted, no OAuth account of its own)                                      | `search`, `fetch_content`                                                                                              |
+| Provider                                | Scopes requested                                                                        | Tools                                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Google** (Gmail + Calendar)           | `gmail.readonly`, `gmail.compose`, `calendar.readonly`, plus `openid`/`email`/`profile` | `google_check_inbox`, `google_search_emails`, `google_get_email`, `google_draft_email`, `google_check_calendar`        |
+| **Microsoft** (Outlook mail + OneDrive) | `https://graph.microsoft.com/mail.read`, `User.Read`, `offline_access`                  | `microsoft_list_messages`, `microsoft_get_message`, `microsoft_search_onedrive`, `microsoft_get_onedrive_file_content` |
+| **Thunderbolt** (web search + fetch)    | none (backend-hosted, no OAuth account of its own)                                      | `search`, `fetch_content`                                                                                              |
 
 Scopes: [`google/auth.ts:37`](../../../src/integrations/google/auth.ts),
 [`microsoft/auth.ts:37`](../../../src/integrations/microsoft/auth.ts). Tool tables:
 [`google/tools.ts:546`](../../../src/integrations/google/tools.ts),
-[`microsoft/tools.ts:335`](../../../src/integrations/microsoft/tools.ts).
+[`microsoft/tools.ts:335`](../../../src/integrations/microsoft/tools.ts),
+[`thunderbolt-pro/tools.ts`](../../../src/integrations/thunderbolt-pro/tools.ts). That directory
+name is historical; nothing gates on a subscription tier.
 
 Each provider directory exports a `createConfigs` factory returning `ToolConfig[]`;
 `getAvailableTools` ([`src/lib/tools.ts:39`](../../../src/lib/tools.ts)) decides per provider, at send

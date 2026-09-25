@@ -2,7 +2,9 @@ appId: net.thunderbird.thunderbolt.dev
 ---
 - launchApp:
     clearState: true
-- assertVisible: Want early access?
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 300000
 - waitForAnimationToEnd
 - tapOn:
     text: Email

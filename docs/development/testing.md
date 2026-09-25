@@ -255,7 +255,7 @@ bun run e2e:preview
 
 ### Nightly E2E
 
-[`nightly.yml`](../../.github/workflows/nightly.yml) runs daily at 04:00 UTC and can be started manually with `gh workflow run nightly.yml --ref main`. Its Linux job runs Chromium and Firefox on desktop and mobile viewports against temporary PostgreSQL and PowerSync service containers (currently 200 cases). Its macOS job runs WebKit on desktop and iPhone viewports (currently 100 cases). Failure reports are sanitized before upload, with trace content and network data removed; videos are retained unchanged. This is a scheduled coverage run, not a blocking PR check. PRs still use the two-shard Chromium workflow in [`e2e.yml`](../../.github/workflows/e2e.yml).
+[`nightly.yml`](../../.github/workflows/nightly.yml) runs daily at 04:00 UTC and can be started manually with `gh workflow run nightly.yml --ref main`. Its Linux job runs Chromium and Firefox on desktop and mobile viewports against temporary PostgreSQL and PowerSync service containers. Its macOS job runs WebKit on desktop and iPhone viewports. Failure reports are sanitized before upload, with trace content and network data removed; videos are retained unchanged. This is a scheduled coverage run, not a blocking PR check. PRs still use the two-shard Chromium workflow in [`e2e.yml`](../../.github/workflows/e2e.yml).
 
 The sanitizer is `scripts/sanitize-nightly-artifacts.ts`; run its synthetic artifact check with `bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000`. Nightly runs that check before sanitizing each report and uploads a failure report only if sanitization succeeds.
 
@@ -270,6 +270,16 @@ bunx playwright install chromium firefox
 docker compose -f deploy/nightly-compose.yml up -d --build --wait postgres
 (cd backend && DATABASE_DRIVER=postgres DATABASE_URL="postgresql://postgres:postgres@${NIGHTLY_HOST}:${NIGHTLY_POSTGRES_PORT:-15434}/postgres" bunx drizzle-kit migrate)
 docker compose -f deploy/nightly-compose.yml up -d --build --wait powersync
+for attempt in $(seq 1 30); do
+  if curl --fail --silent --output /dev/null --max-time 2 "http://${NIGHTLY_HOST}:${NIGHTLY_POWERSYNC_PORT:-18081}/probes/readiness"; then
+    break
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    echo 'PowerSync did not become ready after 30 attempts' >&2
+    exit 1
+  fi
+  sleep 3
+done
 NIGHTLY_DATABASE_URL="postgresql://postgres:postgres@${NIGHTLY_HOST}:${NIGHTLY_POSTGRES_PORT:-15434}/postgres" \
 NIGHTLY_POWERSYNC_URL="http://${NIGHTLY_HOST}:${NIGHTLY_POWERSYNC_PORT:-18081}" \
 NIGHTLY_PLATFORM=linux \
@@ -282,7 +292,7 @@ On a Mac running the app locally, `bunx playwright test --config playwright.nigh
 
 ### CI failure and recovery alerts
 
-Release, Nightly Images, Preview Cleanup, and Previews Shared Deploy notify after completed scheduled or manually dispatched runs. The regular E2E workflow notifies only for pushes to `main`; PR runs never send alerts. On the first failure, the notifier opens a Thunderbolt Linear issue in Backlog with the Bug label and emails `ALERT_RECIPIENTS` through Resend. Later failures update that issue. Recovery closes an open issue and emails `ALERT_RECIPIENTS`; success with no open issue is quiet. The notifier needs repository secrets `LINEAR_API_KEY` and `RESEND_API_KEY`, plus the `ALERT_RECIPIENTS` repository variable. During the Nightly database investigation, Nightly E2E sends its `BETTERSTACK_HEARTBEAT_URL` ping after both test jobs finish, whether they succeed or fail, while its notifier is paused.
+Release, Nightly Images, Preview Cleanup, and Previews Shared Deploy notify after completed scheduled or manually dispatched runs. The regular E2E workflow notifies only for pushes to `main`; PR runs never send alerts. On the first failure, the notifier opens a Thunderbolt Linear issue in Backlog with the Bug label and emails `ALERT_RECIPIENTS` through Resend. Later failures update that issue. Recovery closes an open issue and emails `ALERT_RECIPIENTS`; success with no open issue is quiet. The notifier needs repository secrets `LINEAR_API_KEY` and `RESEND_API_KEY`, plus the `ALERT_RECIPIENTS` repository variable. Nightly E2E currently sends a heartbeat after both test jobs finish, including failed runs; it does not call the notifier in this revision.
 
 Recovery requires a completed run of the monitored scope and a success newer than the latest recorded failure. Release requires every platform and the CLI to succeed, so a single-platform dispatch cannot close a nightly incident. Previews Shared Deploy monitors the `previews-shared` stack; manual runs against another stack do not affect its incident. Preview Cleanup dry runs cannot recover an incident; a real run must finish its scan and any required destruction successfully. Failures in those workflows still alert under their workflow conditions. `scripts/notify-on-failure.test.ts` runs in the normal `bun run test` suite and its CI `test:5x` variant.
 

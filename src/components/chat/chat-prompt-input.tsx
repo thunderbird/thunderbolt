@@ -65,6 +65,9 @@ import { VoiceModeComposer } from '@/voice/ui/voice-mode-composer'
 import { useVoiceSession } from '@/voice/ui/use-voice-session'
 import { FileCard } from './file-card'
 import { loadChatMessageList } from './chat-messages-loader'
+import { isBuiltInAgent } from '@/defaults/agents'
+import { ImageSupportNotice } from './image-support-notice'
+import { useImageSupportCheck as useImageSupportCheck_default } from './use-image-support-check'
 
 /** Max size for a chat attachment stored locally and sent to the agent. */
 const maxAttachmentBytes = 25 * 1024 * 1024
@@ -177,6 +180,7 @@ type ChatPromptInputProps = {
   useEnabledSkills?: typeof useEnabledSkills_default
   /** Inject for tests that need to drive the unavailable-agent fallback. */
   isAgentAvailable?: typeof isAgentAvailable_default
+  useImageSupportCheck?: typeof useImageSupportCheck_default
 }
 
 export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputProps>(
@@ -191,6 +195,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       useLibrarySkills = useLibrarySkills_default,
       useEnabledSkills = useEnabledSkills_default,
       isAgentAvailable = isAgentAvailable_default,
+      useImageSupportCheck = useImageSupportCheck_default,
     },
     ref,
   ) => {
@@ -294,6 +299,15 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
+    const modelName = selectedModel.name
+    const imageSupport = useImageSupportCheck({
+      model: selectedModel,
+      attachments,
+      messages,
+      enabled: isBuiltInAgent(selectedAgent),
+    })
+    // Hold the send while the model's image support is being checked or rules out the attached image.
+    const imageSupportBlocksSend = imageSupport.notice !== undefined
     // Quote-reply passages pulled in from the "Reply" button on a response. Held
     // in a per-thread store (not local state) so that button — which lives deep
     // in the message list — can add to the composer without prop-drilling.
@@ -593,7 +607,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       try {
         // Prevent submitting while a turn is in flight, or with no text, attachments, or quotes.
         const textToSend = normalizedInput.trim()
-        if (isBusy || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
+        if (isBusy || imageSupportBlocksSend || (!textToSend && attachments.length === 0 && quotes.length === 0)) {
           return
         }
 
@@ -840,6 +854,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
                   </div>
                 </m.div>
               )}
+              {imageSupport.notice && (
+                <ImageSupportNotice
+                  key="image-support"
+                  status={imageSupport.notice}
+                  modelName={modelName}
+                  onTryAnyway={imageSupport.tryAnyway}
+                />
+              )}
             </AnimatePresence>
           </div>
           <PromptInput
@@ -885,7 +907,9 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
             showSubmitButton
             onSubmit={handleSubmit}
             // Allow sending an attachment even with no typed text (matches the Enter behavior).
-            canSubmit={input.trim().length > 0 || attachments.length > 0 || quotes.length > 0}
+            canSubmit={
+              !imageSupportBlocksSend && (input.trim().length > 0 || attachments.length > 0 || quotes.length > 0)
+            }
             isLoading={isBusy || isConnecting}
             isStreaming={isBusy}
             isStopping={isStopping}

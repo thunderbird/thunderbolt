@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'bun:test'
 import { defaultModels } from '@shared/defaults/models'
-import { canFetchCatalog, catalogRequestKey, isFetchableCatalogUrl, thunderboltModelCatalog } from './model-catalog'
+import {
+  canFetchCatalog,
+  catalogRequestKey,
+  isFetchableCatalogUrl,
+  readInputModalities,
+  thunderboltModelCatalog,
+} from './model-catalog'
 
 describe('model catalog policy', () => {
   it('derives Thunderbolt choices from shipped defaults', () => {
@@ -54,6 +60,18 @@ describe('model catalog policy', () => {
     it('allows credential-free providers unconditionally', () => {
       expect(canFetchCatalog({ provider: 'thunderbolt' })).toBe(true)
       expect(canFetchCatalog({ provider: 'tinfoil' })).toBe(true)
+    })
+  })
+
+  describe('readInputModalities', () => {
+    it('reports image support from the listed input modalities', () => {
+      expect(readInputModalities({ id: 'a', architecture: { input_modalities: ['text', 'image'] } })).toBe(true)
+      expect(readInputModalities({ id: 'b', architecture: { input_modalities: ['text'] } })).toBe(false)
+    })
+
+    it('leaves support unknown when the catalog lists no modalities', () => {
+      expect(readInputModalities({ id: 'c' })).toBeUndefined()
+      expect(readInputModalities({ id: 'd', architecture: {} })).toBeUndefined()
     })
   })
 })

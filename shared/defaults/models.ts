@@ -36,22 +36,6 @@ export type SharedModel = {
 }
 
 /**
- * Vendors whose models accept image input. The built-in Pi openai-compat
- * transport can't know an arbitrary custom endpoint's capabilities, so it
- * advertises text-only by default and strips image blocks. For the providers we
- * host/control we instead key image support off the model's `vendor` — otherwise
- * images are silently dropped before reaching a vision-capable hosted model
- * (e.g. Thunderbolt-hosted Opus, `vendor: 'anthropic'`).
- */
-export const imageCapableVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
-
-const imageCapableModels = new Set(['glm-5-3-flash'])
-
-/** Whether a model accepts images based on its vendor or known model slug. */
-export const modelSupportsImages = ({ vendor, model }: Pick<SharedModel, 'vendor' | 'model'>): boolean =>
-  (vendor != null && imageCapableVendors.has(vendor)) || imageCapableModels.has(model)
-
-/**
  * Compute hash of user-editable fields for a model.
  * Includes deletedAt to treat soft-delete as a user configuration choice.
  */
@@ -161,6 +145,50 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelGlm53Flash,
   defaultModelGlm53,
 ] as const
+
+/** Whether a model reads image attachments. */
+export type ImageSupport = 'supported' | 'unsupported'
+
+/** The model fields that decide image support. The row id is excluded on purpose:
+ *  editing a row's URL or model slug points it at a different model. */
+export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' | 'vendor'>
+
+/**
+ * Image support of every shipped default, keyed by default id. Declared rather
+ * than detected because the CLI can't detect it; the app uses it to skip
+ * detection. `models.test.ts` fails if a default ships without an entry. Not
+ * synced, so changing it needs no version bump.
+ */
+export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = {
+  [defaultModelOpus5.id]: 'supported',
+  [defaultModelGlm53Flash.id]: 'supported',
+  [defaultModelGlm53.id]: 'unsupported',
+}
+
+/** Vendors whose Thunderbolt-hosted models all accept images. */
+const imageCapableManagedVendors: ReadonlySet<string> = new Set(['anthropic', 'openai', 'google'])
+
+/**
+ * Image support known without asking anyone: the shipped defaults (and any row on
+ * the same provider and model slug), every Claude model on the native Anthropic
+ * provider, and Thunderbolt-hosted models from vision vendors. Everything else
+ * needs detection, which only the app can do.
+ */
+export const staticImageSupport = (model: ImageSupportModel): ImageSupport | undefined => {
+  const shipped = defaultModels.find(
+    (candidate) => candidate.provider === model.provider && candidate.model === model.model,
+  )
+  if (shipped) {
+    return defaultModelImageSupport[shipped.id]
+  }
+  if (model.provider === 'anthropic') {
+    return 'supported'
+  }
+  if (model.provider === 'thunderbolt' && model.vendor && imageCapableManagedVendors.has(model.vendor)) {
+    return 'supported'
+  }
+  return undefined
+}
 
 /**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`

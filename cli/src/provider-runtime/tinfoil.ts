@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { modelSupportsImages, type SharedModel } from '../../../shared/defaults/models.ts'
+import { staticImageSupport, type SharedModel } from '../../../shared/defaults/models.ts'
 import {
   buildConfidentialModel,
   isConfidentialModelError,
@@ -132,7 +132,9 @@ export const createTinfoilBinding = async (options: CreateTinfoilBindingOptions)
     receipts,
     reasoning: true,
     contextWindow: options.model.contextWindow ?? undefined,
-    supportsImages: modelSupportsImages(options.model),
+    // Unlike the app, the CLI can't detect support or block an image with an
+    // explanation, so it sends images only to models known to read them.
+    supportsImages: staticImageSupport(options.model) === 'supported',
   })
   const provider = built.models.getProvider(providerId)
   if (!provider) throw new Error('Tinfoil provider construction failed.')

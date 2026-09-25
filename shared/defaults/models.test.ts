@@ -5,14 +5,16 @@
 import { describe, expect, test } from 'bun:test'
 import { hashValues } from '../lib/hash'
 import {
-  defaultModelGlm53Flash,
   defaultModelGlm53,
+  defaultModelGlm53Flash,
   defaultModelId,
+  defaultModelImageSupport,
   defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
   hashModel,
-  modelSupportsImages,
+  type ImageSupportModel,
+  staticImageSupport,
 } from './models'
 
 /**
@@ -96,23 +98,49 @@ describe('defaultModels version snapshot', () => {
       expect(model.contextWindow).toBeGreaterThan(0)
     }
   })
+
+  test('declares image support for every shipped default (the CLI can’t detect it)', () => {
+    for (const model of defaultModels) {
+      expect({ model: model.model, support: defaultModelImageSupport[model.id] }).toEqual({
+        model: model.model,
+        support: expect.stringMatching(/^(supported|unsupported)$/),
+      })
+    }
+  })
 })
 
-describe('modelSupportsImages', () => {
-  test('supports images for GLM 5.3 Flash but not GLM 5.3', () => {
-    expect(modelSupportsImages(defaultModelGlm53Flash)).toBe(true)
-    expect(modelSupportsImages(defaultModelGlm53)).toBe(false)
+describe('staticImageSupport', () => {
+  const model = (overrides: Partial<ImageSupportModel>): ImageSupportModel => ({
+    provider: 'custom',
+    model: 'llava',
+    url: 'http://localhost:11434/v1',
+    vendor: null,
+    ...overrides,
   })
 
-  test('true for known vision vendors', () => {
-    expect(modelSupportsImages({ vendor: 'anthropic', model: 'custom' })).toBe(true)
-    expect(modelSupportsImages({ vendor: 'openai', model: 'custom' })).toBe(true)
-    expect(modelSupportsImages({ vendor: 'google', model: 'custom' })).toBe(true)
+  test('answers for the shipped defaults from their declarations', () => {
+    expect(staticImageSupport(defaultModelOpus5)).toBe('supported')
+    expect(staticImageSupport(defaultModelGlm53Flash)).toBe('supported')
+    expect(staticImageSupport(defaultModelGlm53)).toBe('unsupported')
   })
 
-  test('false for unknown or absent vendors (no guessing for custom/local)', () => {
-    expect(modelSupportsImages({ vendor: null, model: 'custom' })).toBe(false)
-    expect(modelSupportsImages({ vendor: 'ollama', model: 'custom' })).toBe(false)
-    expect(modelSupportsImages({ vendor: '', model: 'custom' })).toBe(false)
+  test('applies a default’s declaration to any row on the same provider and model', () => {
+    // A user-added Tinfoil row (personal key, no vendor) serving the same upstream model.
+    expect(staticImageSupport(model({ provider: 'tinfoil', model: 'glm-5-3', url: null }))).toBe('unsupported')
+  })
+
+  test('treats every native Anthropic model as reading images', () => {
+    expect(staticImageSupport(model({ provider: 'anthropic', model: 'claude-sonnet-5', url: null }))).toBe('supported')
+  })
+
+  test('treats other Thunderbolt-hosted models from vision vendors as reading images', () => {
+    expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'gpt-5', vendor: 'openai' }))).toBe('supported')
+  })
+
+  test('leaves everything else to detection', () => {
+    expect(staticImageSupport(model({}))).toBeUndefined()
+    expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'glm', vendor: 'zhipu' }))).toBeUndefined()
+    // A vendor only vouches for models Thunderbolt hosts; Tinfoil serves text-only models from vision vendors.
+    expect(staticImageSupport(model({ provider: 'tinfoil', model: 'gpt-oss-120b', vendor: 'openai' }))).toBeUndefined()
   })
 })

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { disposeAllAdapters } from '@/acp/adapter-cache'
+import { clearImageSupportCache } from '@/ai/image-support'
 import { clearIrohClientSecret } from '@/acp/iroh/iroh-transport'
 import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { clearActiveLocale } from '@/i18n/active-locale'
@@ -74,6 +75,8 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
     // language. Tied to the database rather than to `clearAuth` because a caller
     // that keeps the database keeps the row the mirror agrees with.
     clearActiveLocale()
+    // Detection results describe this account's models, so they go with the database.
+    clearImageSupportCache()
   }
 
   if (clearAuth) {

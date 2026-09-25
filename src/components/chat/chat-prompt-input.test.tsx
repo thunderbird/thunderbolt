@@ -21,6 +21,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { CreateItemProvider } from '@/components/create-item/context'
 import { getClock } from '@/testing-library'
 import { ChatPromptInput, type ChatPromptInputRef } from './chat-prompt-input'
+import type { ImageSupportCheck } from './use-image-support-check'
 
 // The real blob store uses IndexedDB, which isn't available in the test env.
 // Back it with an in-memory Map so the attach path (put → chip render) works.
@@ -615,6 +616,67 @@ describe('ChatPromptInput', () => {
       await flushAttachments()
 
       expect(screen.getByText(/isn't a supported file type/)).toBeInTheDocument()
+    })
+
+    describe('image support gate', () => {
+      /** Render with a fixed image-support check, attach an image, and type a prompt. */
+      const renderWithImage = async (check: ImageSupportCheck) => {
+        const { mockUseChat, mockChatInstance } = setupStore()
+        const { container } = render(
+          <ChatPromptInput
+            useChat={mockUseChat}
+            useIsMobile={createMockUseIsMobile()}
+            useImageSupportCheck={() => check}
+          />,
+          { wrapper: TestWrapper },
+        )
+        const textarea = screen.getByPlaceholderText('Ask me anything…') as HTMLTextAreaElement
+        const file = new File(['data'], 'birds.jpeg', { type: 'image/jpeg' })
+        pasteItems(textarea, [{ kind: 'file', type: 'image/jpeg', getAsFile: () => file }])
+        await flushAttachments()
+        fireEvent.change(textarea, { target: { value: 'Tell me about this image' } })
+        const submit = async () => {
+          await act(async () => {
+            fireEvent.submit(container.querySelector('form')!)
+          })
+        }
+        return { sendMessage: mockChatInstance.sendMessage, submit }
+      }
+
+      it('blocks the send and says why when the model can’t read images', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: 'unsupported', tryAnyway: undefined })
+
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          "Test Model can't read images. Switch to a model that can, or remove the image.",
+        )
+        expect(screen.queryByRole('button', { name: 'Try anyway' })).toBeNull()
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('offers to try anyway when detection made the call', async () => {
+        const tryAnyway = mock(() => {})
+        await renderWithImage({ notice: 'unsupported', tryAnyway })
+
+        fireEvent.click(screen.getByRole('button', { name: 'Try anyway' }))
+        expect(tryAnyway).toHaveBeenCalledTimes(1)
+      })
+
+      it('holds the send while the model is being checked', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: 'checking', tryAnyway: undefined })
+
+        expect(screen.getByText('Checking whether Test Model can read images…')).toBeInTheDocument()
+        await submit()
+        expect(sendMessage).not.toHaveBeenCalled()
+      })
+
+      it('sends the image when nothing rules it out', async () => {
+        const { sendMessage, submit } = await renderWithImage({ notice: undefined, tryAnyway: undefined })
+
+        expect(screen.queryByText(/can't read images|Checking whether/)).toBeNull()
+        await submit()
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
     })
   })
 

@@ -47,6 +47,7 @@ import type { Session as PiSession, ToolCallResult } from '@earendil-works/pi-ag
 import { isReadOnlyAgentTool, resolveToolPermission } from '../../../shared/agent-tool-permissions.ts'
 import { readWireSkills, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
 import { cliVersion } from '../cli.ts'
+import { renderHtmlToolName } from '../agent/render-html.ts'
 import { cleanupFailure, collectCleanupErrors } from '../agent/cleanup-errors.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { CommandSyntaxServeConfig, HarnessConfig } from '../agent/types.ts'
@@ -55,15 +56,14 @@ import type { HarnessRuntime, PreparedPiBinding, ProviderRuntime } from '../prov
 import { prepareProviderBinding } from '../provider-runtime/provider-stage.ts'
 import { createHarnessToAcpTranslator, toAcpStopReason, toToolKind } from './harness-to-acp.ts'
 import type { SessionStore } from './session-store.ts'
+import { emptyAgentConfig, type AgentConfig } from '../agent/agent-config.ts'
+import { emptyMcpRuntime, type McpRuntime } from '../agent/mcp.ts'
 
 /**
  * The frozen {@link HarnessRuntime} operations the ACP agent drives. Keeping the
  * surface narrow lets tests exercise the round-trip with no API key.
  */
-export type ServeHarness = Pick<
-  HarnessRuntime,
-  'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'
->
+export type ServeHarness = Pick<HarnessRuntime, 'subscribe' | 'registerToolCallGate' | 'prompt' | 'abort' | 'dispose'>
 
 /** Builds a {@link ServeHarness} for one disk-backed Pi session. */
 export type BuildServeHarness = (
@@ -155,11 +155,20 @@ const attachAcpPermissionGate = (
   sessionId: SessionId,
   yolo: boolean,
   workspaceRoot: string,
+  trustedToolNames: ReadonlySet<string>,
 ): void => {
   const sessionAllowed = new Set<string>()
 
   harness.registerToolCallGate(async ({ toolCallId, toolName, input }) => {
-    if (toolName === 'webfetch' || toolName === 'skill') return undefined
+    // `render_html` produces nothing on this host — it returns a document to
+    // the client that asked for it, which renders it sandboxed. Gating it would
+    // put a permission prompt in front of every chart the user just requested.
+    if (toolName === 'webfetch' || toolName === 'skill' || toolName === renderHtmlToolName) return undefined
+    // Operator-granted trust for a whole MCP server. On a shared agent the
+    // prompt lands on whichever teammate is connected, so leaving an untrusted
+    // server gated means a write is authorised by someone who chose to be
+    // there — not by whoever happened to open a session first.
+    if (trustedToolNames.has(toolName)) return undefined
     if (isReadOnlyAgentTool(toolName)) {
       const path =
         typeof input === 'object' && input !== null && 'path' in input && typeof input.path === 'string'
@@ -197,6 +206,8 @@ export const createHarnessAgent = (
   store: SessionStore,
   runtime: ProviderRuntime,
   buildServeHarness: BuildServeHarness = createHarnessRuntime,
+  agentConfig: AgentConfig = emptyAgentConfig,
+  mcp: McpRuntime = emptyMcpRuntime,
 ): Agent => {
   const sessions = new Map<SessionId, Session>()
   const trustedWorkspace = realpath(config.cwd)
@@ -246,13 +257,31 @@ export const createHarnessAgent = (
     authMethods: [],
   })
 
+  /** Union of agent-owned and client-sent skills, agent-owned taking precedence. */
+  const mergeSkills = (
+    owned: readonly SkillDefinition[],
+    wire: readonly SkillDefinition[],
+  ): readonly SkillDefinition[] => {
+    const names = new Set(owned.map((skill) => skill.name))
+    return [...owned, ...wire.filter((skill) => !names.has(skill.name))]
+  }
+
   /** Per-session harness config rooted at server-owned launch directory. */
-  const harnessConfigFor = (workspaceRoot: string, skills: readonly SkillDefinition[]): HarnessConfig => ({
+  const harnessConfigFor = (workspaceRoot: string, wireSkills: readonly SkillDefinition[]): HarnessConfig => ({
     cwd: workspaceRoot,
     workspaceRoot,
     thinking: config.thinking,
     announceModel: true,
-    skills,
+    // Agent-owned skills win on a name collision. A hosted agent exists so its
+    // operator decides what it can do; letting a connecting client shadow a
+    // configured skill by reusing its name would hand that decision to whoever
+    // connects. Client skills the agent has no opinion on still come through,
+    // so a personal skill keeps working alongside the team's.
+    skills: mergeSkills(agentConfig.skills, wireSkills),
+    mcpTools: mcp.tools,
+    // An ACP client renders what it is handed, so a served agent can answer with
+    // an artifact instead of a file under a workspace no one can open.
+    artifacts: true,
   })
 
   /** Build the harness on `session`, wire its run events + permission gate to the
@@ -287,7 +316,7 @@ export const createHarnessAgent = (
     const candidate: Session = { harness, unsubscribe: () => {} }
     try {
       candidate.unsubscribe = harness.subscribe((event) => translator.handle(event))
-      attachAcpPermissionGate(harness, conn, sessionId, config.yolo, workspaceRoot)
+      attachAcpPermissionGate(harness, conn, sessionId, config.yolo, workspaceRoot, mcp.trustedToolNames)
     } catch (error) {
       return rejectWiring(candidate, toError(error))
     }

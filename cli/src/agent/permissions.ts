@@ -57,6 +57,11 @@ const summarize = (toolName: string, input: Record<string, unknown>): string => 
  * rest of the session, and `deny` blocks it with an error tool result. Read-only
  * tools are always allowed.
  *
+ * This is the local CLI's gate. MCP tools never reach it: `createMcpRuntime` is
+ * called only from `acp serve`, whose sessions go through
+ * `attachAcpPermissionGate` instead. Per-server `trustTools` therefore belongs
+ * there, not here — an option on this gate would be unreachable.
+ *
  * @param target - the narrow runtime gate registration surface
  * @param opts.getMode - returns the live permission mode
  * @param opts.ask - prompt used to ask the user for a decision

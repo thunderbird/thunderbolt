@@ -218,6 +218,13 @@
       "when": 1789155227424,
       "tag": "0030_debug_transcripts",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789155227425,
+      "tag": "0031_seed-opus-5-5-price",
+      "breakpoints": true
     }
   ]
 }

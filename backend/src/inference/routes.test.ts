@@ -93,7 +93,7 @@ describe('Inference Routes', () => {
 
   describe('POST /chat/completions', () => {
     const validRequestBody = {
-      model: 'opus-5',
+      model: 'opus-5-5',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       temperature: 0.7,
@@ -104,7 +104,7 @@ describe('Inference Routes', () => {
       if (rejection === 'missing-price') {
         await database
           .delete(inferencePrices)
-          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
+          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5-5'`)
         return
       }
 
@@ -112,7 +112,7 @@ describe('Inference Routes', () => {
         id: 'telemetry-quota-usage',
         userId: 'test-user',
         provider: 'anthropic',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
@@ -155,7 +155,7 @@ describe('Inference Routes', () => {
       expect(response.headers.get('Connection')).toBe('keep-alive')
 
       expect(mockCreateCompletion).toHaveBeenCalledWith({
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         messages: validRequestBody.messages,
         tools: undefined,
         tool_choice: undefined,
@@ -185,7 +185,7 @@ describe('Inference Routes', () => {
       )
     })
 
-    it('should route Opus 5 to the Anthropic provider', async () => {
+    it('should route Opus 5.5 to the Anthropic provider', async () => {
       const mockCompletion = createMockStream()
       mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
 
@@ -201,16 +201,16 @@ describe('Inference Routes', () => {
       expect(getInferenceClientMock).toHaveBeenCalledWith('anthropic')
       expect(mockCreateCompletion).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
         }),
       )
     })
 
     it('declares stream-usage support for the direct model', () => {
       expect(managedDirectRuntimes).toEqual({
-        'opus-5': {
+        'opus-5-5': {
           provider: 'anthropic',
-          internalName: 'claude-opus-5',
+          internalName: 'claude-opus-5-5',
           omitTemperature: true,
           supportsStreamUsage: true,
         },
@@ -329,7 +329,7 @@ describe('Inference Routes', () => {
     it('returns a minimal 503 before client construction when the canonical price is missing', async () => {
       await database
         .delete(inferencePrices)
-        .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
+        .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5-5'`)
 
       const response = await app.handle(
         new Request('http://localhost/chat/completions', {
@@ -364,7 +364,7 @@ describe('Inference Routes', () => {
             id: `usage-${userId}`,
             userId,
             provider: 'anthropic',
-            model: 'claude-opus-5',
+            model: 'claude-opus-5-5',
             promptTokens: 0,
             completionTokens: 0,
             totalTokens: 0,
@@ -411,7 +411,7 @@ describe('Inference Routes', () => {
           id: 'both-window-recent',
           userId,
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
@@ -421,7 +421,7 @@ describe('Inference Routes', () => {
           id: 'both-window-older',
           userId,
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
@@ -491,7 +491,7 @@ describe('Inference Routes', () => {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
             provider: 'anthropic',
-            model: 'opus-5',
+            model: 'opus-5-5',
             status,
             preMs: 20,
             upstreamMs: null,
@@ -587,7 +587,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 400,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'context_length',
         errorType: 'invalid_request_error',
         errorCode: 'context_length_exceeded',
@@ -627,7 +627,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 500,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'unknown',
         errorType: undefined,
         errorCode: undefined,
@@ -673,7 +673,7 @@ describe('Inference Routes', () => {
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...validRequestBody, model: 'opus-5' }),
+          body: JSON.stringify({ ...validRequestBody, model: 'opus-5-5' }),
         }),
       )
 
@@ -683,7 +683,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 529,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'upstream_error',
         errorType: 'overloaded_error',
         errorCode: undefined,
@@ -769,7 +769,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 500,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'connection',
         errorType: undefined,
         errorCode: undefined,
@@ -780,7 +780,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_connection_timeout',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           route: '/chat/completions',
         },
         message: 'Connection timeout to inference provider',
@@ -823,7 +823,7 @@ describe('Inference Routes', () => {
       expect(captureInferenceErrorMock).toHaveBeenCalledWith({
         provider: 'anthropic',
         status: 500,
-        model: 'opus-5',
+        model: 'opus-5-5',
         errorKind: 'connection',
         errorType: undefined,
         errorCode: undefined,
@@ -834,7 +834,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_connection_failed',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           route: '/chat/completions',
         },
         message: 'Failed to connect to inference provider',
@@ -918,7 +918,7 @@ describe('Inference Routes', () => {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
             provider: 'anthropic',
-            model: 'opus-5',
+            model: 'opus-5-5',
             status: 200,
             preMs: 20,
             upstreamMs: 50,
@@ -963,7 +963,7 @@ describe('Inference Routes', () => {
             event: 'inference_proxy_latency',
             route: '/chat/completions',
             provider: 'anthropic',
-            model: 'opus-5',
+            model: 'opus-5-5',
             status: 500,
             preMs: 30,
             upstreamMs: 80,
@@ -1020,20 +1020,20 @@ describe('Inference Routes', () => {
 
     it.each([
       {
-        publicModel: 'opus-5',
+        publicModel: 'opus-5-5',
         provider: 'anthropic',
-        internalName: 'claude-opus-5',
+        internalName: 'claude-opus-5-5',
         userId: 'test-user',
         isAnonymous: false,
-        expectedCost: 85_000n,
+        expectedCost: 68_000n,
       },
       {
-        publicModel: 'opus-5',
+        publicModel: 'opus-5-5',
         provider: 'anthropic',
-        internalName: 'claude-opus-5',
+        internalName: 'claude-opus-5-5',
         userId: 'anonymous-route-user',
         isAnonymous: true,
-        expectedCost: 85_000n,
+        expectedCost: 68_000n,
       },
     ] as const)(
       'records $publicModel usage with canonical identity for the authenticated user',
@@ -1094,7 +1094,7 @@ describe('Inference Routes', () => {
         await database
           .update(inferencePrices)
           .set({ inputNanoUsdPerToken: 9_000n, outputNanoUsdPerToken: 11_000n })
-          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5'`)
+          .where(sql`${inferencePrices.provider} = 'anthropic' and ${inferencePrices.model} = 'claude-opus-5-5'`)
         return createMockStream([{ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }])
       })
 
@@ -1108,7 +1108,7 @@ describe('Inference Routes', () => {
       await response.text()
 
       const [row] = await database.select().from(inferenceUsage)
-      expect(row.costNanoUsd).toBe(85_000n)
+      expect(row.costNanoUsd).toBe(68_000n)
     })
 
     it.each([
@@ -1149,7 +1149,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_usage_missing',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           route: '/chat/completions',
         },
         message: 'Inference usage missing',
@@ -1195,7 +1195,7 @@ describe('Inference Routes', () => {
           context: expect.objectContaining({
             event: 'inference_usage_completed',
             provider: 'anthropic',
-            model: 'claude-opus-5',
+            model: 'claude-opus-5-5',
             transport: 'direct',
           }),
           message: 'Inference usage completed',
@@ -1205,7 +1205,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_usage_callback_failed',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           route: '/chat/completions',
         },
         message: 'Inference usage callback failed',
@@ -1252,7 +1252,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_usage_completed',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           eventId: row.id,
           transport: 'direct',
         },
@@ -1262,7 +1262,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_usage_inserted',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           eventId: row.id,
           outcome: 'inserted',
         },
@@ -1321,7 +1321,7 @@ describe('Inference Routes', () => {
         id: eventId,
         userId: 'test-user',
         provider: 'anthropic',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         promptTokens: 1,
         completionTokens: 1,
         totalTokens: 2,
@@ -1366,7 +1366,7 @@ describe('Inference Routes', () => {
         context: {
           event: 'inference_usage_inserted',
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           eventId,
           outcome: 'duplicate',
         },
@@ -1490,7 +1490,7 @@ describe('Inference Routes', () => {
               posthogDistinctId: 'test-user',
               posthogProperties: expect.objectContaining({
                 model_provider: 'anthropic',
-                model: 'claude-opus-5',
+                model: 'claude-opus-5-5',
               }),
             }),
           )
@@ -1515,7 +1515,7 @@ describe('Inference Routes', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'opus-5',
+            model: 'opus-5-5',
             messages: [{ role: 'user', content: 'Hello' }],
             stream: true,
           }),
@@ -1545,7 +1545,7 @@ describe('Inference Routes', () => {
         new Request('http://localhost/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'opus-5', messages, stream: true }),
+          body: JSON.stringify({ model: 'opus-5-5', messages, stream: true }),
         }),
       )
 

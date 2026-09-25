@@ -84,9 +84,9 @@ export const hashModel = (model: SharedModel): string => {
  */
 export const defaultModelOpus5: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 5',
+  name: 'Opus 5.5',
   provider: 'thunderbolt',
-  model: 'opus-5',
+  model: 'opus-5-5',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
@@ -154,7 +154,7 @@ export const defaultModelGlm53: SharedModel = {
  * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
  * from this list. User-edited copies survive but may reference unavailable
  * upstream models and return errors when used.
- * The backend accepts `glm-5-2` and `deepseek-v4-flash` for older clients.
+ * The backend accepts `opus-5`, `glm-5-2` and `deepseek-v4-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
   defaultModelOpus5,
@@ -172,4 +172,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 9
+export const defaultModelsVersion = 10

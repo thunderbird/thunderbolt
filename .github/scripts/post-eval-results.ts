@@ -13,7 +13,7 @@ type GithubComment = { id: number; body: string | null; user: { login: string } 
 type RunGh = (args: string[]) => Promise<string>
 const workflowCommentAuthor = 'github-actions[bot]'
 
-const modelNames: Record<string, string> = { opus: 'Opus 5', flash: 'GLM 5.3 Flash', glm: 'GLM 5.3' }
+const modelNames: Record<string, string> = { opus: 'Opus 5.5', flash: 'GLM 5.3 Flash', glm: 'GLM 5.3' }
 const failureLimit = 20
 const percent = (value: number | null) => (value === null ? '—' : `${(value * 100).toFixed(1)}%`)
 

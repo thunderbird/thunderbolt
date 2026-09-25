@@ -5,7 +5,7 @@
 /** Accept only fixed database labels from browser console output. */
 export const parseDbDiagnostic = (message: string): { phase: 'readiness' | 'query'; label: string } | null => {
   const match =
-    /^\[THU884-DB\] (readiness|query)=(pending|ready|rejected|timed_out) category=(locked|quota|schema|open|worker|wasm|sqlite|other) name=(AbortError|InvalidStateError|NoModificationAllowedError|NotAllowedError|QuotaExceededError|SQLiteError|TypeError|other)$/.exec(
+    /^\[db-diagnostic\] (readiness|query)=(pending|ready|rejected|timed_out) category=(locked|quota|schema|open|worker|wasm|sqlite|other) name=(AbortError|InvalidStateError|NoModificationAllowedError|NotAllowedError|QuotaExceededError|SQLiteError|TypeError|other)$/.exec(
       message,
     )
   if (!match) return null

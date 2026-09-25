@@ -71,7 +71,7 @@ export default defineConfig({
     // The Lingui macro is a build-time Babel transform: <Trans> from
     // @lingui/react/macro compiles into runtime <Trans id=... message=...>
     // calls here. @vitejs/plugin-react v6 is oxc-based and DROPPED its
-    // `babel` option (passing one is silently ignored — the exact THU-806
+    // `babel` option (passing one is silently ignored — the exact
     // bail-out symptom: literal <Trans> at runtime with a green build), so
     // the macro runs through @rolldown/plugin-babel instead. The Lingui
     // preset carries a code filter, so Babel only processes files that

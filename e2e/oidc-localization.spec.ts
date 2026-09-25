@@ -56,7 +56,7 @@ test.describe('localization — unit defaults', () => {
   })
 
   test('never falls back to US units', async ({ page }) => {
-    // The pre-THU-810 behaviour: no location meant an authenticated round trip
+    // Previously, no location meant an authenticated round trip
     // that defaulted to `US`, so a German browser landed on imperial and
     // Fahrenheit whatever the locale said.
     await loginViaOidc(page)

@@ -40,7 +40,7 @@ import { useCallback, useEffect, useState } from 'react'
  * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
  * of `waitForInitialSync` see the primitive `InitialSyncOutcome`; the init
  * orchestration additionally reports `'skipped_returning'` when the
- * returning-boot fast path bypassed the wait (THU-677).
+ * returning-boot fast path bypassed the wait.
  */
 export type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
 
@@ -139,7 +139,7 @@ const reportDbDiagnostic = (
     )
       ? error.name
       : 'other'
-  console.warn(`[THU884-DB] ${phase}=${outcome} category=${category} name=${errorName}`)
+  console.warn(`[db-diagnostic] ${phase}=${outcome} category=${category} name=${errorName}`)
 }
 
 /**
@@ -314,7 +314,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: dbReadyError }
   }
 
-  // Step 2d: Build the unified full-text search index (THU-766). Idempotent —
+  // Step 2d: Build the unified full-text search index. Idempotent —
   // rebuilds only when missing or the schema version bumped. Runs against the
   // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
   // bun-sqlite in tests) return null here and skip it. Non-critical: a failed

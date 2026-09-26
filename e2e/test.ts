@@ -113,4 +113,17 @@ persistentWebkit.afterEach(async ({}, testInfo) => {
   )
 })
 
-export const test = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
+const browserTest = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
+
+export const test = browserTest.extend({
+  page: async ({ page }, use, testInfo) => {
+    if (!testInfo.project.name.startsWith('extended-real-')) {
+      // Ordinary UI tests don't exercise attestation. WebKit reports native CORS
+      // failures as pageerrors even when the prewarm promise is caught.
+      await page.route('https://atc.tinfoil.sh/attestation', (route) =>
+        route.fulfill({ status: 503, json: { error: 'Attestation is disabled in this test project' } }),
+      )
+    }
+    await use(page)
+  },
+})

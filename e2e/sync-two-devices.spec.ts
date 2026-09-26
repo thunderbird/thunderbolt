@@ -15,7 +15,7 @@ test.skip(process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true', 'PowerSync runs
 const enableCloudSync = async (page: Page) => {
   await page.goto('/settings/preferences')
   const toggle = page.getByRole('switch', { name: 'Sync This Device With Cloud' })
-  await toggle.check()
+  await toggle.click()
   await expect(toggle).toBeChecked()
   await page.goto('/')
   await expect(page.locator('textarea')).toBeVisible()

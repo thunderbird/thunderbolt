@@ -4,6 +4,8 @@
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 import path from 'path'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { createServer, loadConfigFromFile } from 'vite'
 
 const ROOT = path.resolve(import.meta.dirname)
@@ -54,9 +56,7 @@ describe('vite server.fs allowlist', () => {
         // Check both directions: the sensitive dir is an allowed path (or child),
         // AND no allowed path is a subdirectory of the sensitive dir.
         const isAllowed =
-          allowed === targetDir ||
-          targetDir.startsWith(allowed + path.sep) ||
-          allowed.startsWith(targetDir + path.sep)
+          allowed === targetDir || targetDir.startsWith(allowed + path.sep) || allowed.startsWith(targetDir + path.sep)
         expect(isAllowed).toBe(false)
       }
     })
@@ -78,3 +78,38 @@ describe('vite server.fs allowlist', () => {
     expect(resolvedAllow).toContain(path.resolve(ROOT, 'node_modules'))
   })
 })
+
+for (const command of ['serve', 'build']) {
+  it(`PowerSync worker assets exist before Vite initializes ${command}`, async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'thunderbolt-vite-assets-'))
+    try {
+      // A subprocess isolates cwd and Vite from the frontend test preloads.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '--eval',
+          `import config from ${JSON.stringify(path.join(import.meta.dir, 'vite.config.ts'))}
+           import { resolveConfig } from ${JSON.stringify(import.meta.resolve('vite'))}
+           process.chdir(${JSON.stringify(root)})
+           await resolveConfig({
+             configFile: false,
+             plugins: config.plugins.filter(plugin => plugin?.name === 'copy-powersync-assets'),
+           }, ${JSON.stringify(command)})`,
+        ],
+        {
+          cwd: import.meta.dir,
+          env: {
+            ...process.env,
+            PATH: `${path.join(import.meta.dir, 'node_modules/.bin')}${path.delimiter}${process.env.PATH}`,
+          },
+          stdout: 'ignore',
+          stderr: 'inherit',
+        },
+      )
+      expect(await child.exited).toBe(0)
+      expect(await Bun.file(path.join(root, 'public/@powersync/worker/WASQLiteDB.umd.js')).exists()).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}

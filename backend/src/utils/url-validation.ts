@@ -64,6 +64,12 @@ export const validateSafeUrl = (url: string): { valid: boolean; error?: string }
 
 const maxRedirects = 5
 
+/** Permit one exact local proxy fixture only while the backend runs tests. */
+export const isAllowedTestProxyTarget = (url: URL): boolean =>
+  process.env.NODE_ENV === 'test' &&
+  (url.protocol === 'http:' || url.protocol === 'https:') &&
+  (process.env.TEST_PROXY_ALLOWED_HOSTS ?? '').split(',').includes(url.host)
+
 /**
  * Resolves a URL's hostname via DNS, validates all resolved IPs against the
  * private address blocklist, and returns a fetch-ready [pinnedUrl, headers] pair.
@@ -84,6 +90,10 @@ export const validateAndPin = async (
   parsed.password = ''
   const hostname = parsed.hostname
   const literalAddress = parseIpAddress(hostname)
+
+  if (isAllowedTestProxyTarget(parsed)) {
+    return [parsed.toString(), new Headers(extraHeaders)]
+  }
 
   if (literalAddress) {
     if (isPrivateOrInternalAddress(literalAddress)) {

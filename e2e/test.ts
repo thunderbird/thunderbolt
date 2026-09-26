@@ -12,7 +12,7 @@ export { expect, type Page, type Request, type Route } from '@playwright/test'
 
 const persistentWebkit = base.extend({
   context: async ({ playwright }, use, testInfo) => {
-    const profile = await mkdtemp(join(tmpdir(), 'thunderbolt-nightly-webkit-'))
+    const profile = await mkdtemp(join(tmpdir(), 'thunderbolt-extended-webkit-'))
     const videoDir = testInfo.outputPath('videos')
     try {
       await mkdir(videoDir, { recursive: true })
@@ -113,4 +113,4 @@ persistentWebkit.afterEach(async ({}, testInfo) => {
   )
 })
 
-export const test = process.env.E2E_NIGHTLY_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
+export const test = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base

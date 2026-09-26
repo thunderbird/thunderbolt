@@ -237,7 +237,7 @@ The consumer backend runs with `NODE_ENV=test`. Only in that environment does th
 ### Writing New Specs
 
 - Use `loginViaOidc(page)`, `loginViaSaml(page)`, or `loginViaEmailCode(page)` for tests that need an authenticated user.
-- Name each spec to match a project's `testMatch`, such as `consumer-*.spec.ts`, `oidc-*.spec.ts`, or `saml-*.spec.ts`. Run `bun run e2e:check-collected` to verify collection. Its script, `scripts/check-e2e-specs-collected.ts`, checks the union of `playwright.config.ts`, `playwright.preview.config.ts`, and `playwright.nightly.config.ts`; CI runs it in `.github/workflows/e2e.yml` and fails if any spec is uncollected.
+- Name each spec to match a project's `testMatch`, such as `consumer-*.spec.ts`, `oidc-*.spec.ts`, or `saml-*.spec.ts`. Run `bun run e2e:check-collected` to verify collection. Its script, `scripts/check-e2e-specs-collected.ts`, checks the union of `playwright.config.ts`, `playwright.preview.config.ts`, and `playwright.extended.config.ts`; CI runs it in `.github/workflows/e2e.yml` and fails if any spec is uncollected.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
 - Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
 
@@ -257,14 +257,14 @@ bun run e2e:preview
 
 [`nightly.yml`](../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, using PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit with in-memory test backends. The regular PR workflow, [`e2e.yml`](../../.github/workflows/e2e.yml), runs Chromium.
 
-On a Mac, install WebKit and run the Nightly config from the repository root:
+On a Mac, install WebKit and run the extended config from the repository root:
 
 ```sh
 bunx playwright install webkit
-bunx playwright test --config playwright.nightly.config.ts
+bunx playwright test --config playwright.extended.config.ts
 ```
 
-On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `NIGHTLY_DATABASE_URL` and `NIGHTLY_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.nightly.config.ts`](../../playwright.nightly.config.ts) for browser selection and backend environment variables.
+On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `EXTENDED_DATABASE_URL` and `EXTENDED_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.extended.config.ts`](../../playwright.extended.config.ts) for browser selection and backend environment variables.
 
 ### Native app smoke
 

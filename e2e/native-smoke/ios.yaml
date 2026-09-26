@@ -1,0 +1,29 @@
+appId: net.thunderbird.thunderbolt.dev
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: Want early access?
+    timeout: 300000
+- waitForAnimationToEnd
+- tapOn:
+    text: Email
+    retryTapIfNoChange: true
+- inputText: ${EMAIL}
+- assertVisible: ${EMAIL}
+- tapOn: Continue
+- extendedWaitUntil:
+    visible: Check your email
+    timeout: 120000
+- inputText: 12345678
+- extendedWaitUntil:
+    visible: GLM 5.3 Flash
+    timeout: 120000
+- tapOn: GLM 5.3 Flash
+- tapOn: Opus 5
+- tapOn: Ask me anything…
+- inputText: Please greet me briefly.
+- tapOn: Send message
+- extendedWaitUntil:
+    visible: Hello from the fake provider, one word at a time.
+    timeout: 60000

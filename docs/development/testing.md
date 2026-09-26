@@ -266,6 +266,10 @@ bunx playwright test --config playwright.extended.config.ts
 
 On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `EXTENDED_DATABASE_URL` and `EXTENDED_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.extended.config.ts`](../../playwright.extended.config.ts) for browser selection and backend environment variables.
 
+### Native app smoke
+
+The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. For manual reproduction, start [`services.sh`](../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb, and ffmpeg. Recordings are saved in `/tmp/native-smoke/`; service logs are retained as failure artifacts.
+
 ### Debugging Mock Leakage
 
 If you see errors like these in CI but tests pass locally:

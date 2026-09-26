@@ -198,6 +198,137 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  native-linux:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install Linux drivers and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            build-essential curl wget file pkg-config libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev \
+            webkit2gtk-driver xvfb ffmpeg
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+          cargo install tauri-driver --locked
+
+      - name: Check native service cleanup
+        run: bash e2e/native-smoke/services.test.sh
+
+      - name: Run native Linux smoke
+        env:
+          VITE_AUTH_MODE: thunderbolt
+          VITE_SKIP_ONBOARDING: 'true'
+          VITE_AUTH_ENABLE_ANONYMOUS: 'false'
+          VITE_BYPASS_WAITLIST: 'false'
+          VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+        run: |
+          ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
+          services_pid=$!
+          trap 'kill "$services_pid" 2>/dev/null || true' EXIT
+          bun tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json
+          ./e2e/native-smoke/linux.sh
+
+      - name: Upload native Linux video
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-linux-video
+          path: /tmp/native-smoke/linux.mp4
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload native Linux service log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-linux-services
+          path: ${{ runner.temp }}/native-services.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  native-ios:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies and iOS driver
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+          rustup target add aarch64-apple-ios-sim
+          brew install mobile-dev-inc/tap/maestro
+
+      - name: Check native service cleanup
+        run: bash e2e/native-smoke/services.test.sh
+
+      - name: Boot iPhone simulator
+        run: |
+          simulator_udid=$(xcrun simctl list -j devices available | bun -e '
+            const runtimes = Object.entries(JSON.parse(await Bun.stdin.text()).devices)
+            const devices = runtimes.filter(([name]) => name.includes(".iOS-"))
+              .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).at(-1)?.[1]
+            const phone = devices?.find(({ name }) => name.startsWith("iPhone"))
+            if (!phone) throw new Error("No iPhone simulator available")
+            console.log(phone.udid)
+          ')
+          if ! xcrun simctl list devices booted | grep -q "$simulator_udid"; then
+            xcrun simctl boot "$simulator_udid"
+          fi
+          xcrun simctl bootstatus "$simulator_udid" -b
+          echo "IOS_SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
+
+      - name: Run native iOS smoke
+        env:
+          VITE_AUTH_MODE: thunderbolt
+          VITE_SKIP_ONBOARDING: 'true'
+          VITE_AUTH_ENABLE_ANONYMOUS: 'false'
+          VITE_BYPASS_WAITLIST: 'false'
+          VITE_THUNDERBOLT_CLOUD_URL: http://localhost:8000/v1
+        run: |
+          ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
+          services_pid=$!
+          trap 'kill "$services_pid" 2>/dev/null || true' EXIT
+          if ! bun tauri ios build --target aarch64-sim --debug --ci --no-sign \
+            --config src-tauri/tauri.dev.conf.json > "$RUNNER_TEMP/native-ios-build.log" 2>&1; then
+            tail -100 "$RUNNER_TEMP/native-ios-build.log"
+            exit 1
+          fi
+          xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
+          ./e2e/native-smoke/ios.sh
+
+      - name: Upload native iOS video
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-ios-video
+          path: /tmp/native-smoke/ios.mp4
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload native iOS service log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-ios-services
+          path: ${{ runner.temp }}/native-services.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   heartbeat:
     if: >-
       always() && !cancelled() &&
@@ -210,3 +341,16 @@ jobs:
         env:
           HEARTBEAT_URL: ${{ secrets.BETTERSTACK_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
+
+  notify:
+    needs: [linux, macos, native-ios, native-linux]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped')) }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

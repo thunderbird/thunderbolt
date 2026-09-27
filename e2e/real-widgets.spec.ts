@@ -54,7 +54,7 @@ for (const id of widgetIds) {
     await page.getByRole('button', { name: defaultModelOpus5.name, exact: true }).click()
     const prompt =
       id === 'WIDGET_LINK_PREVIEW'
-        ? `${widgetPrompts[id]} Use ${linkUrl} directly and show its link preview; do not search.`
+        ? `Show a link preview for ${linkUrl}. Use only this URL; do not search or suggest other links.`
         : widgetPrompts[id]
     await sendChatPrompt(page, prompt)
 

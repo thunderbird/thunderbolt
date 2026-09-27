@@ -13,16 +13,26 @@ for (const model of defaultModels) {
     const streams: string[] = []
     await loginViaOidc(page)
     await page.getByTestId('model-selector-trigger').click()
-    await page.getByRole('button', { name: model.name, exact: true }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button')
+      .filter({ has: page.getByText(model.name, { exact: true }) })
+      .click()
 
     page.on('response', (response) => {
-      if (response.request().method() !== 'POST') return
+      if (response.request().method() !== 'POST' || !response.ok()) return
       const path = new URL(response.url()).pathname
       const headers = response.headers()
+      // Tinfoil streams authenticated EHBP frames, not plaintext SSE on the wire.
+      const encryptedStream =
+        model.provider === 'tinfoil' &&
+        /\/v1\/tinfoil\/(?:v1\/)?chat\/completions$/.test(path) &&
+        Boolean(headers['ehbp-response-nonce'])
       if (
-        /\/chat\/v1\/messages$|\/v1\/proxy$/.test(path) &&
-        (headers['content-type']?.includes('text/event-stream') ||
-          headers['x-proxy-passthrough-content-type']?.includes('text/event-stream'))
+        encryptedStream ||
+        (/\/chat\/v1\/messages$|\/v1\/proxy$/.test(path) &&
+          (headers['content-type']?.includes('text/event-stream') ||
+            headers['x-proxy-passthrough-content-type']?.includes('text/event-stream')))
       ) {
         streams.push(response.url())
       }

@@ -11,7 +11,7 @@ const mockTrackEvent = mock(() => {})
 // Partial mock: spread the REAL module so every other export (incl. reconnectSync,
 // which sidebar-footer.tsx consumes for real) survives if this registration
 // leaks across files under `--randomize`. Only `setSyncEnabled` is overridden with
-// the local spy this suite asserts on. See docs/development/testing.md §65.
+// the local spy this suite asserts on. See docs/internals/development/testing.md §65.
 const realPowersync = await import('@/db/powersync/sync-state')
 mock.module('@/db/powersync/sync-state', () => ({
   ...realPowersync,
@@ -20,7 +20,7 @@ mock.module('@/db/powersync/sync-state', () => ({
 
 // Spread the REAL modules so every untouched export survives if these
 // registrations leak across files under `--randomize`; only the symbols this
-// suite drives are overridden. See docs/development/testing.md §65.
+// suite drives are overridden. See docs/internals/development/testing.md §65.
 const realPosthog = await import('@/lib/posthog')
 mock.module('@/lib/posthog', () => ({
   ...realPosthog,

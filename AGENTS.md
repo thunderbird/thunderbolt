@@ -1,3 +1,25 @@
+## Repository layout
+
+Each workspace below has its own dependencies and its own checks; there is no single command that builds or tests the lot.
+
+| Directory            | What it is                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/`               | The React app — chat, settings, PowerSync database layer, search, widgets.                                                                 |
+| `shared/`            | Code imported by more than one workspace. `shared/agent-core` (the in-browser adapter around the npm Pi package) has its own test command. |
+| `backend/`           | The Elysia API: auth, proxy, PowerSync tokens, transactional email, Drizzle schema and migrations.                                         |
+| `cli/`               | The single-binary terminal coding agent. Its own `package.json` and `bun.lock`, released by `cli-release.yml`.                             |
+| `crates/`            | `thunderbolt-acp-client`, a relay-only iroh client compiled to wasm; the built artifact is committed at `src/acp/iroh/pkg`.                |
+| `src-tauri/`         | The Tauri (Rust) shell for the desktop and mobile builds.                                                                                  |
+| `web/`               | The public Astro site — landing, blog, and the Starlight docs.                                                                             |
+| `e2e/`               | Playwright specs (SSO, proxy, ACP, version gate) run against a real backend.                                                               |
+| `deploy/`            | Self-hosting: Docker Compose, the Helm chart, and the Pulumi AWS stacks.                                                                   |
+| `powersync-service/` | Docker Compose PowerSync stack for local development, including its sync rules.                                                            |
+| `scripts/`           | Repo automation — releases, license headers, migration bundling, `thunderdoctor`.                                                          |
+| `docs/`              | Architecture and development docs.                                                                                                         |
+| `public/`            | Static assets served by Vite.                                                                                                              |
+
+`cli`, `agent-core`, `wasm-artifact` and `rust` are separate path-gated jobs in `.github/workflows/ci.yml`, so a change in one of those trees is not covered by the frontend job. The `wasm-artifact` job fails the build when `crates/` changed without a regenerated `src/acp/iroh/pkg`, and verifies the committed artifacts against `CHECKSUMS.txt` — rebuild with `crates/thunderbolt-acp-client/build.sh` and commit the output in the same change.
+
 ## Core Principles
 
 - **Bias towards tasteful simplicity** - favor elegant, readable, maintainable solutions that add minimal complexity. Avoid over-engineering, premature optimization, and defensive coding patterns that obscure intent.
@@ -28,7 +50,7 @@
 - Use `bun` instead of `npm`
 - Use `bun test` instead of `vitest`
 - Install latest versions: `bun add <package>@latest`
-- Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — use `getHttpClient()` for authenticated backend calls, `http` for external APIs
+- Use the app's `HttpClient` (`src/lib/http.ts`) instead of bare `fetch` — `useHttpClient()` (`src/contexts/http-client-context.tsx`) for authenticated backend calls in React, `createAuthenticatedClient()` when you need to build one yourself, `http` for external APIs, and `getAuthenticatedHeaders()` (`src/lib/auth-token.ts`) for non-React callers that can't hold a client (e.g. the PowerSync connector)
 - Generate Drizzle migrations with `bun db generate` - never manually create SQL files
 - Never manually run `git add`, `git commit`, or `git push` — always use `/thunderpush`
 - Use `resolve-library-id` and `get-library-docs` tools for library documentation (if unavailable, request access)
@@ -71,21 +93,36 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 
 - Chat (`ChatLayout`, `ChatDetailPage`) — the landing page must feel instant.
 - Layouts (`SettingsLayout`, `WaitlistLayout`) — chrome around their pages. Lazy-loading a layout creates a sequential waterfall (layout chunk → page chunk) before anything paints, and the layouts themselves are tiny.
+- `WaitlistPage` — one screen hosted directly by the static `WaitlistLayout`, so splitting it buys the same waterfall for a payload smaller than the chunk overhead.
 - Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
 
 **Lazy (`React.lazy(() => import(...))`):**
 
-- All settings/admin pages (`PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `ConnectionsPage`, dev-only routes).
-- Secondary features (`TasksPage`, `AutomationsPage`).
-- `WaitlistPage` and SSO flows (only hit by a subset of users).
+- Settings/admin pages (`Settings`, `PreferencesSettingsPage`, `ModelsPage`, `DevicesSettingsPage`, `ConnectionsPage`, `SkillsPage`, `AgentsSettingsPage`, `VoiceSettingsPage`, dev-only routes).
+- Secondary features (`TasksPage`, `ProjectsPage`) and the CLI `DeviceApproval` page, which is only reached from a QR code or link.
+- SSO flows (`SsoRedirect`) — deployments without SSO shouldn't pay the bundle size or the attack surface.
 
 When adding a new route, default to lazy unless the route is on the chat/landing critical path. Pair the lazy import with a content-area `<Suspense fallback={...}>` placed around the relevant `<Outlet />` (see `src/layout/main-layout.tsx` and `src/settings/layout.tsx`) so the sidebar/nav stays mounted while the chunk loads.
+
+Declare the loader in the `routeChunkLoaders` map in `src/app.tsx` and derive the component with `lazy(routeChunkLoaders.<key>)`. That map is the single source for both `lazy()` and `preloadAllRouteChunks`, which warms every chunk from local disk right after first paint on the Tauri apps while the web build keeps true lazy loading. A route written as a bare `lazy(() => import(...))` is therefore lazy but never prefetched — leave one outside the map only when the chunk should stay cold, and say why inline: `VoiceSettingsPage` is feature-flagged and hidden by default, `SsoRedirect` is enterprise-only, and the dev-only routes are `import.meta.env.DEV`-guarded so Vite eliminates them from production builds.
 
 ## Testing
 
 - Create test files as `<file>.test.ts` next to source files
 - Test likely edge cases, aiming for useful 80% coverage
-- **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped to `src/` + `shared/` with a 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or `bun run test:backend` for backend tests
+- **Never run bare `bun test` at the repo root** — it discovers every `*.test.*` file in the repo, including `backend/` tests that open real connections (test DB, WebSocket e2e) and hang forever without their services running, and it applies no timeout. Use `bun run test` (scoped, 5s per-test timeout, finishes in ~15s), `bun test <path> --timeout 5000` for a specific file/folder, or the per-workspace command below
+
+`bun run test` covers `src/` plus the `shared/` roots (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/`), a few script tests, and `e2e/db-diagnostic.test.ts` — and nothing else. The other suites each need their own command:
+
+| Scope                                                    | Command                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| `src/` + `shared/` roots                                 | `bun run test`                                               |
+| `shared/agent-core` (nested, outside frontend discovery) | `bun run test:agent-core`, `bun run test:agent-core:browser` |
+| `backend/`                                               | `bun run test:backend`                                       |
+| `cli/`                                                   | `cd cli && bun run test`                                     |
+| Playwright specs in `e2e/`                               | `bun run e2e`                                                |
+
+`cli` and `agent-core` are separate path-gated CI jobs, so a change there that you only exercised through `bun run test` has not been tested at all. The backend job runs `src/proxy/ws-e2e.test.ts` and `src/haystack/routes.test.ts` in a segregated step (same-process WebSocket event delivery is flaky under 5× reruns); `bun run test:backend:ws` runs that pair locally. Full details in [docs/internals/development/testing.md](docs/internals/development/testing.md).
 
 ## After Each Task
 
@@ -95,19 +132,13 @@ When adding a new route, default to lazy unless the route is on the chat/landing
 
 ## PowerSync and synced tables
 
-See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.
+See [docs/internals/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md) for: synced table requirements, adding, removing and extending a table (frontend + backend + schema + sync-rule configs + production), the `devices` table, and the backend token/upload/revoke API. The user-facing side — what each device does when an account is deleted or a device revoked — is in [docs/internals/architecture/delete-account-and-revoke-device.md](docs/internals/architecture/delete-account-and-revoke-device.md).
 
-See [docs/architecture/powersync-sync-middleware.md](docs/architecture/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
+See [docs/internals/architecture/powersync-sync-middleware.md](docs/internals/architecture/powersync-sync-middleware.md) for: sync data transformation middleware, custom SharedWorker (multi-tab + encryption), and adding new transformers.
 
-See [docs/architecture/e2e-encryption.md](docs/architecture/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
+See [docs/internals/architecture/e2e-encryption.md](docs/internals/architecture/e2e-encryption.md) for: E2E encryption architecture, key hierarchy, device approval flows, encrypted columns configuration, API endpoints, and user flows.
 
-**Deploying new synced tables (two-PR process):**
-
-1. **PR 1 (backend + sync rules):** Backend schema, Drizzle migration, `shared/powersync-tables.ts`, and all three sync-rule configs (`powersync-service/config/config.yaml`, `deploy/config/powersync-config.yaml`, and `deploy/k8s/templates/configmaps.yaml`). Merge → run migration → wait for `images-publish.yml` to publish the new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image → **roll the Render `powersync` service to the new tag** (dashboard → Manual Deploy → Deploy latest reference).
-2. **PR 2 (frontend + everything else):** Frontend schema, DAL, defaults, reconciliation, and any UI/logic. Merge only after PR 1's image is live on Render.
-
-Deploying frontend before the sync rules are updated causes silent sync failure — the table works locally but won't replicate across devices.
-See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).
+**Deploying new synced tables is a two-PR process, in this order:** PR 1 carries the backend schema, the Drizzle migration, `shared/powersync-tables.ts` and all three sync-rule configs, and is merged, migrated and rolled out to the Render `powersync` service first; PR 2 carries the frontend schema and everything else and merges only once PR 1's image is live. Merging the frontend first causes silent sync failure — the table works locally but won't replicate across devices. The full procedure (which configs, which sync bucket, the `user_id`-index-only rule, and how to remove a table) is in [docs/internals/architecture/powersync-account-devices.md](docs/internals/architecture/powersync-account-devices.md#pr-flow-for-adding-tables).
 
 **Backend migrations checklist:** When adding a new migration, always verify that `backend/drizzle/meta/_journal.json` includes the new entry. Drizzle discovers pending migrations via the journal — if the SQL file and snapshot exist but the journal entry is missing, the migration will never run. This is easy to miss when cherry-picking migration files across branches.
 
@@ -115,7 +146,7 @@ See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync
 
 **FTS search index couples to PowerSync's internal tables:** `src/search/fts-setup.ts` builds the unified `search_index` (THU-766) by attaching SQLite triggers to PowerSync's internal backing tables (`table.internalName`, i.e. `ps_data__*` / `ps_data_local__*`) and reading their JSON `data` blob via `json_extract(data, '$.<snake_case_column>')`. Both the table naming and the blob layout are undocumented `@powersync/web` implementation details. A PowerSync upgrade that renames or restructures them breaks search **silently** — no TypeScript error, and often no runtime error (the index just goes empty/stale). When upgrading `@powersync/web`, verify the internal table names and `data` blob shape still hold. The trigger-count self-heal in `createSearchIndex` (rebuilds when the expected triggers are missing) mitigates PowerSync dropping/recreating those tables at runtime, but not a shape change; bump `searchIndexVersion` to force a rebuild when the registry or FTS schema changes.
 
-**FTS tokenization is deliberately locale-independent:** the index is built with `tokenize = 'unicode61 remove_diacritics 2'` and nothing in `src/search/` reads the app locale. The index holds *user content*, whose language is independent of the UI language and routinely mixed within one account, so keying the tokenizer on the locale would be wrong for most rows — and a language change must never rebuild the index. Scripts unicode61 cannot tokenize (Japanese, Chinese, Thai, Lao, Khmer, Myanmar) are matched with `LIKE` at query time instead, routed per term by `src/search/query-plan.ts` (whose `Intl.Segmenter` instances come from `src/lib/segmenter.ts` — shared with chat-title generation, and keyed on the content's own script rather than the app locale for the same reason); a parallel `trigram` index was measured and rejected (~2.2× the source text in extra storage, and it silently drops terms shorter than three characters from a MATCH). The porter stemmer was removed — it indexes stems while queries append a `*` prefix, so prefixes longer than the stem stopped matching and the palette blanked out mid-word. `src/search/fold.ts` mirrors the tokenizer's folding in JS so `highlight.tsx` marks what actually matched; both use locale-independent case folding on purpose.
+**FTS tokenization is deliberately locale-independent:** the index is built with `tokenize = 'unicode61 remove_diacritics 2'` and nothing in `src/search/` reads the app locale. The index holds _user content_, whose language is independent of the UI language and routinely mixed within one account, so keying the tokenizer on the locale would be wrong for most rows — and a language change must never rebuild the index. Scripts unicode61 cannot tokenize (Japanese, Chinese, Thai, Lao, Khmer, Myanmar) are matched with `LIKE` at query time instead, routed per term by `src/search/query-plan.ts` (whose `Intl.Segmenter` instances come from `src/lib/segmenter.ts` — shared with chat-title generation, and keyed on the content's own script rather than the app locale for the same reason); a parallel `trigram` index was measured and rejected (~2.2× the source text in extra storage, and it silently drops terms shorter than three characters from a MATCH). The porter stemmer was removed — it indexes stems while queries append a `*` prefix, so prefixes longer than the stem stopped matching and the palette blanked out mid-word. `src/search/fold.ts` mirrors the tokenizer's folding in JS so `highlight.tsx` marks what actually matched; both use locale-independent case folding on purpose.
 
 ## Reconciled defaults and version bumps
 
@@ -131,6 +162,8 @@ Files that ship a version constant today:
 `src/defaults/model-profiles.ts` is also reconciled but does not carry its own version — profiles ride the models gate (`insertMissing: true`, `canOverwrite: modelsGate.canOverwrite`), so bumping `defaultModelsVersion` covers profile changes too.
 
 **When you change any default in one of these files, bump the version constant.** A colocated snapshot test (e.g. `shared/defaults/models.test.ts`, `src/defaults/skills.test.ts`) fails on any content change without a matching version bump and tells you exactly what to update.
+
+**Models have a second channel.** `shared/defaults/models.ts` is the floor, not the last word: `pickModelsDefaults` (`src/lib/pick-defaults.ts`) prefers the `defaults.models` payload cached from `/config` whenever its declared version is strictly higher than `defaultModelsVersion`, so the server can ship a lineup change without a client build — and a device whose cached config declares a higher version ignores a local bump. Rollback is monotonic: retract a bad server set by publishing a _higher_ version carrying the reverted content, never a lower one. A payload that shares no model id with `defaultModels` is rejected with a console warning, because `cleanupRemovedDefaults` would otherwise see every bundled row as retired and soft-delete the lot; an OTA set must keep at least one bundled id. `src/hooks/use-app-initialization.ts` feeds the picked value to both the returning-boot probe and `reconcileDefaults` so the two agree on the version this boot targets.
 
 ## CORS and API headers
 
@@ -151,10 +184,13 @@ The backend enforces a minimum app version via `createAppVersionMiddleware` (mou
 
 The project overrides Tailwind's CSS theme variables in `/src/index.css` `:root` with responsive mobile/desktop values that switch at the 768px breakpoint. Use standard Tailwind classes — **do NOT** use `var()` syntax for properties that have Tailwind equivalents.
 
+The Tauri desktop app is exempt at every window width. `src/index.tsx` puts `.force-desktop` on `<html>` before first render, the mobile block is written `@media (width < 768px) { :root:not(.force-desktop) { … } }`, and the `sm`/`md`/`max-sm`/`max-md` variants are redefined around the same class — the window's 500px minimum width (`minWidth` in `src-tauri/tauri.conf.json`) sits below both breakpoints, so a narrow desktop window still gets desktop sizing. Write mobile styles with the standard variants, which already account for this; never key mobile behaviour off a raw `@media (width < 768px)` query, and use `useIsMobile` (`src/hooks/use-mobile.ts`) for the JS half rather than your own `matchMedia`.
+
 **Standard Tailwind classes (responsive via theme overrides):**
 
 - Border radius: `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`, `rounded-3xl`
-- Spacing: Use standard Tailwind spacing (`px-2`, `px-3`, `py-1.5`, `gap-2`, etc.)
+
+Spacing is **not** in that set — there is no `--spacing` override, so `px-3` is 12px on every viewport. Use plain Tailwind spacing (`px-2`, `py-1.5`, `gap-2`) and reach for `max-md:` when a touch viewport needs more room.
 
 **Border-radius tiers (concentric — pick by nesting depth, not by taste):**
 
@@ -262,21 +298,21 @@ Judge seedability **per setting**, not across the group — a user who picks a c
 
 The client sends the **already-resolved** locale — a single tag, not a preference list — on every app-backend request (`src/lib/http.ts`, `src/lib/auth-token.ts`, `src/contexts/auth-context.tsx`). The backend forwards rather than re-negotiates. Two backend paths read it: link previews (below) and transactional email (`resolveEmailLocale`, next section).
 
-- **The backend validates it against `negotiableLocales`, never trusts it.** `matchExactLocale` (`shared/i18n/locales.ts`) returns the set's *own* tag or null, so a client-controlled string can never reach an outbound request. That is what makes it safe for `backend/src/utils/accept-language.ts` to build the `Accept-Language` we present to arbitrary third-party pages when generating link previews (THU-823). Matching is exact on purpose — no base-language fallback, unlike `matchLocale`, which negotiates *browser* tags.
+- **The backend validates it against `negotiableLocales`, never trusts it.** `matchExactLocale` (`shared/i18n/locales.ts`) returns the set's _own_ tag or null, so a client-controlled string can never reach an outbound request. That is what makes it safe for `backend/src/utils/accept-language.ts` to build the `Accept-Language` we present to arbitrary third-party pages when generating link previews (THU-823). Matching is exact on purpose — no base-language fallback, unlike `matchLocale`, which negotiates _browser_ tags.
 - **`negotiableLocales` lives in `shared/i18n/locales.ts` because both ends trust it.** Don't re-derive it from `appLocales`: that set includes the `en-XA` pseudo-locale, so filtering it yourself is how the pseudo-locale leaks into a real code path. The module stays free of runtime imports so the Lingui CLI can load it outside Vite.
 - **It is an outer-hop header, exactly like `X-App-Version`.** It must never become a `/v1/proxy` passthrough header, or it would leak to external LLM/MCP upstreams — hence its entry in `skipHeaders` (`src/lib/proxy-fetch.ts`).
 
-Geocoding (`/v1/locations`) is deliberately *not* on this path — it takes an explicit language argument instead, because the call site sometimes needs English on purpose to keep location matching stable (see THU-847).
+Geocoding (`/v1/locations`) is deliberately _not_ on this path — it takes an explicit language argument instead, because the call site sometimes needs English on purpose to keep location matching stable (see THU-847).
 
 ### Transactional email (backend)
 
 The four templates in `backend/src/emails/` (plus `email-layout.tsx`, which is shared chrome) are the main place the backend authors user-facing prose. Most other responses return a code the client translates at its display boundary — but not all: the 429 in `backend/src/waitlist/routes.ts` sends English `message` text that `use-sign-in-form-state.ts` renders verbatim, so a German user can still get a German email and an English toast from one click. THU-824 did not cover that. The email setup has its own Lingui wiring, and it differs from the frontend's in three ways that will bite if you assume otherwise.
 
-**No macros. Ever.** Bun has no Babel pass, so `@lingui/react/macro` and `@lingui/core/macro` resolve to Lingui's stub and throw when called. `shouldSkipEmail()` returns true whenever `RESEND_API_KEY` is unset (the usual dev setup) or `NODE_ENV === 'test'` — it never checks for `development` as such — so the send helpers are skipped in exactly the environments where you would notice, and a macro there surfaces first *in production, on the sign-in path*. `render.test.tsx` renders the templates directly and would catch a macro in one of them, but nothing covers the send helpers. Backend copy therefore goes through the plain runtime, `i18n._({ id: 'English text' })`, and `backend/eslint.config.js` bans the macro specifiers outright. Extraction is unaffected: `@lingui/babel-plugin-extract-messages` matches `i18n._` by identifier name, so a parameter named `i18n` extracts exactly like the imported singleton.
+**No macros. Ever.** Bun has no Babel pass, so `@lingui/react/macro` and `@lingui/core/macro` resolve to Lingui's stub and throw when called. `shouldSkipEmail()` returns true whenever `RESEND_API_KEY` is unset (the usual dev setup) or `NODE_ENV === 'test'` — it never checks for `development` as such — so the send helpers are skipped in exactly the environments where you would notice, and a macro there surfaces first _in production, on the sign-in path_. `render.test.tsx` renders the templates directly and would catch a macro in one of them, but nothing covers the send helpers. Backend copy therefore goes through the plain runtime, `i18n._({ id: 'English text' })`, and `backend/eslint.config.js` bans the macro specifiers outright. Extraction is unaffected: `@lingui/babel-plugin-extract-messages` matches `i18n._` by identifier name, so a parameter named `i18n` extracts exactly like the imported singleton.
 
 **A second catalog and a compile step.** `backend/lingui.config.ts` owns `backend/src/emails/locales/{locale}/messages.po` — separate from the root config because `lingui compile` has no per-catalog filter, only `--config`. `compileNamespace: 'ts'` emits a `messages.ts` beside each `.po`, and that is what the backend imports: without Vite there is no `.po` loader. Both files are committed — nothing in the backend's dev, build, or deploy path runs Lingui, so a gitignored catalog is a missing import on a fresh clone. `bun run i18n:extract` refreshes both catalogs and recompiles; CI's `i18n:check` gates both. The generated files are excluded by `backend/.prettierignore` and skipped by `scripts/license-headers.ts`. `.github/workflows/ci.yml` lists `backend/src/emails/**` in its localization path filter, without which `i18n:check` never runs on a backend-email-only PR, and its backend test glob matches `*.test.tsx` so `render.test.tsx` actually executes.
 
-**The locale comes from `X-App-Language`, not a persisted column** (THU-824). Every send happens inside a request made by the recipient's own client, and three of the four emails go to people who have no `user` row yet — a `user.locale` column would be `NULL` for exactly those recipients. The synced `language` setting is no help either: `settings.value` is listed in `encryptedColumnsMap`, so on any E2EE-enabled deployment it is unreadable server-side (E2EE is opt-in and off by default, but the design has to hold for the users who turn it on). `resolveEmailLocale` validates the header against the shipped locales rather than re-negotiating: the client already resolved a tag, so `de-AT` is an English email, not a German one. It also refuses `en-XA` — `/v1/waitlist/join` is unauthenticated and takes the recipient from the body, so honouring the pseudo-locale over the wire would let anyone mail a third party gibberish; the preview and the render tests reach it through `getEmailI18n` directly. Better Auth hands `sendVerificationOTP` the endpoint context; read it with `ctx.getHeader('X-App-Language')`, which covers both the `headers` and `request` call shapes. A **server-side** `auth.api.sendVerificationOTP({ body })` call has no context of its own, so pass the header explicitly or the email silently falls back to English. Pass *only* that header, never the caller's inbound bag (see `sendApprovedMagicLinkEmail` in `backend/src/waitlist/routes.ts`): forwarding cookies and `authorization` across an internal boundary is bad enough, and a stray `x-api-key` alone trips the api-key plugin's before-hook and fails the send.
+**The locale comes from `X-App-Language`, not a persisted column** (THU-824). Every send happens inside a request made by the recipient's own client, and three of the four emails go to people who have no `user` row yet — a `user.locale` column would be `NULL` for exactly those recipients. The synced `language` setting is no help either: `settings.value` is listed in `encryptedColumnsMap`, so on any E2EE-enabled deployment it is unreadable server-side (E2EE is opt-in and off by default, but the design has to hold for the users who turn it on). `resolveEmailLocale` validates the header against the shipped locales rather than re-negotiating: the client already resolved a tag, so `de-AT` is an English email, not a German one. It also refuses `en-XA` — `/v1/waitlist/join` is unauthenticated and takes the recipient from the body, so honouring the pseudo-locale over the wire would let anyone mail a third party gibberish; the preview and the render tests reach it through `getEmailI18n` directly. Better Auth hands `sendVerificationOTP` the endpoint context; read it with `ctx.getHeader('X-App-Language')`, which covers both the `headers` and `request` call shapes. A **server-side** `auth.api.sendVerificationOTP({ body })` call has no context of its own, so pass the header explicitly or the email silently falls back to English. Pass _only_ that header, never the caller's inbound bag (see `sendApprovedMagicLinkEmail` in `backend/src/waitlist/routes.ts`): forwarding cookies and `authorization` across an internal boundary is bad enough, and a stray `x-api-key` alone trips the api-key plugin's before-hook and fails the send.
 
 Build per-locale `I18n` instances with `getEmailI18n(locale)`, never a module-global `i18n.activate()` — the backend serves concurrent requests and one shared active locale would let one request's language leak into another's email.
 
@@ -285,7 +321,7 @@ Build per-locale `I18n` instances with `getEmailI18n(locale)`, never a module-gl
 - **No `select` / `selectOrdinal`.** The `po-gettext` catalog format cannot express them (see the rationale in `lingui.config.ts`). Plurals use `<Plural>` / `plural()`, which map to native gettext plural forms.
 - **Don't reword while extracting.** The English source _is_ the id, so a copy edit orphans its translations — and 30 Playwright selectors in `e2e/` match on English text. Copy changes belong in their own commit.
 - **Thrown Errors stay English; the display boundary translates.** Localizing internal control flow buys nothing. Code-mapped user copy (`otp-error-messages.ts`) is display, not control flow, and is translated.
-- **Model-facing text stays English**: widget contracts in `src/widgets/*/instructions.ts`, skill instructions, system prompts, and the citation/widget schema messages. One language means no translation drift in behaviour-critical prompts. The model's *replies* are a separate question — the `# Language` section in `src/ai/prompt.ts` directs it to answer in the conversation's language, falling back to the app language. That is an instruction, not a translation: the prompt body it sits in stays English, and so does the injected date, which formats with `sourceLocale` for the same reason.
+- **Model-facing text stays English**: widget contracts in `src/widgets/*/instructions.ts`, skill instructions, system prompts, and the citation/widget schema messages. One language means no translation drift in behaviour-critical prompts. The model's _replies_ are a separate question — the `# Language` section in `src/ai/prompt.ts` directs it to answer in the conversation's language, falling back to the app language. That is an instruction, not a translation: the prompt body it sits in stays English, and so does the injected date, which formats with `sourceLocale` for the same reason.
 - **Dev-only surfaces are excluded** in `lingui.config.ts` (`src/devtools/**`, `src/settings/dev-settings.tsx`).
 - **`label`/`description` on synced default rows** (skills, tasks, automations, agents, models) are reconciled by content hash — translating them breaks reconciliation across devices. Leave them alone; THU-811 owns that problem.
 

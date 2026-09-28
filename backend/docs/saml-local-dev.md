@@ -1,30 +1,28 @@
 # SAML Authentication
 
-This guide covers running and testing the SAML 2.0 authentication flow locally. This is an auth mode for enterprise self-hosted deployments where users sign in through their organization's SAML identity provider (Keycloak, Okta, Microsoft Entra ID, etc.).
-
-For OIDC authentication, see [oidc-local-dev.md](./oidc-local-dev.md).
+Local setup for SAML 2.0, the auth mode for enterprise self-hosted deployments where users sign in through their organization's IdP (Keycloak, Okta, Entra ID). For OIDC, see [oidc-local-dev.md](./oidc-local-dev.md).
 
 ## How it works
 
-In SAML mode (`AUTH_MODE=saml`), the app has no login page. Unauthenticated users are immediately redirected through a chain:
+`AUTH_MODE=saml` removes the login page. Unauthenticated users are redirected through a chain:
 
-1. App detects no session, redirects to backend's SSO sign-in endpoint
-2. Backend generates a SAML AuthnRequest and redirects to the IdP's SSO URL
-3. User authenticates with their identity provider (corporate SSO)
-4. IdP POSTs a signed SAML assertion back to the backend's ACS endpoint
-5. Backend validates the assertion, creates/updates user + session
-6. Backend redirects to frontend — user is authenticated
+1. App detects no session, redirects to the backend's SSO sign-in endpoint
+2. Backend generates a SAML AuthnRequest, redirects to the IdP's SSO URL
+3. User authenticates with the IdP
+4. IdP POSTs a signed assertion to the backend's ACS endpoint
+5. Backend validates it, creates/updates user + session
+6. Backend redirects to the frontend, authenticated
 
-Any SAML 2.0-compliant provider works. The implementation uses the `@better-auth/sso` plugin with the `samlify` library.
+Any SAML 2.0-compliant provider works. Built on `@better-auth/sso` with `samlify`.
 
 ## Quick start (Keycloak example)
 
-### 1. Start Keycloak with pre-configured realm
+### 1. Start Keycloak with the pre-configured realm
 
-The `docs/mozilla-realm.json` file contains a ready-to-go realm with both OIDC and SAML clients plus test users. Mount it on startup so there's zero manual setup:
+`docs/mozilla-realm.json` holds a realm with OIDC and SAML clients plus test users. Mount it on startup:
 
 ```sh
-cd backend  # run from backend/ so the volume mount path resolves correctly
+cd backend  # the volume mount path resolves relative to backend/
 docker run -d \
   --name keycloak \
   -p 8180:8080 \
@@ -35,17 +33,11 @@ docker run -d \
   start-dev --import-realm
 ```
 
-This creates:
-- **Realm**: `mozilla`
-- **OIDC client**: `thunderbolt-app` (for OIDC mode)
-- **SAML client**: `thunderbolt-saml-sp` (for SAML mode)
-- **Users**: `mitchell@mozilla.org` / `password`, `laura@mozilla.org` / `password`
-
-Keycloak admin panel is at http://localhost:8180 (login: `admin` / `admin`).
+Realm `mozilla`, OIDC client `thunderbolt-app`, SAML client `thunderbolt-saml-sp`, users `mitchell@mozilla.org` and `laura@mozilla.org` (both `password`). Admin panel: http://localhost:8180 (`admin` / `admin`).
 
 ### 2. Extract the IdP signing certificate
 
-The SAML flow requires the IdP's signing certificate to validate assertions. Extract it from Keycloak's SAML descriptor:
+Assertions are validated against it. Pull it from Keycloak's SAML descriptor:
 
 ```sh
 # Option A: with xmllint (if installed)
@@ -60,7 +52,7 @@ curl -s http://localhost:8180/realms/mozilla/protocol/saml/descriptor \
 # Option C: Keycloak admin UI -> Realm Settings -> Keys -> RSA certificate -> copy
 ```
 
-Copy the certificate value (base64 string, no BEGIN/END markers).
+Copy the raw base64 value, no BEGIN/END markers.
 
 ### 3. Set environment variables
 
@@ -81,42 +73,43 @@ TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 
 ```sh
 VITE_AUTH_MODE=sso
-# Make sure VITE_BYPASS_WAITLIST is NOT set (or set to false) — it skips the auth gate entirely
+# VITE_BYPASS_WAITLIST must NOT be set (or set to false): it skips the auth gate entirely
 ```
 
 ### 4. Start backend and frontend
 
 ```sh
-# Terminal 1 — backend
-cd backend && bun dev
-
-# Terminal 2 — frontend
-bun dev
+cd backend && bun dev  # terminal 1
+bun dev                # terminal 2
 ```
 
-Open http://localhost:1420 — you should be redirected to Keycloak's login page for the "mozilla" realm. Sign in as `mitchell@mozilla.org` / `password`.
+Open http://localhost:1420, land on Keycloak's `mozilla` realm login, sign in as `mitchell@mozilla.org` / `password`.
 
-## SP Metadata
+## SP metadata
 
-The backend exposes Service Provider metadata at:
+The backend serves SP metadata that enterprise admins point their IdP at:
 
 ```
 http://localhost:8000/v1/api/auth/sso/saml2/sp/metadata?providerId=sso
 ```
 
-Enterprise admins can use this to configure their IdP.
-
 ## Using a different SAML provider
 
-The implementation is provider-agnostic. To use Okta, Entra ID, or any other SAML 2.0 provider, set the three env vars:
+Provider-agnostic. Set all four vars; `backend/src/auth/auth.ts` throws at startup if any is missing.
 
 ```sh
 SAML_ENTRY_POINT=https://your-idp.example.com/sso/saml
-SAML_ENTITY_ID=https://your-idp.example.com
+SAML_ENTITY_ID=thunderbolt-saml-sp
+SAML_IDP_ISSUER=https://your-idp.example.com
 SAML_CERT=<idp-signing-certificate-base64>
 ```
 
-You'll need to register the ACS URL with the provider:
+| Var               | Meaning                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `SAML_ENTITY_ID`  | The _Service Provider's_ entity ID, as published in the SP metadata above. Must match the client/application ID registered in the IdP. |
+| `SAML_IDP_ISSUER` | The IdP's own entity ID. Assertions are validated against it.                                                                          |
+
+Register the ACS URL with the provider:
 
 ```
 https://<your-backend>/v1/api/auth/sso/saml2/sp/acs/sso
@@ -124,27 +117,27 @@ https://<your-backend>/v1/api/auth/sso/saml2/sp/acs/sso
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true` | Remove it or set to `false`, restart frontend |
-| App loads normally, no redirect to IdP | Stale auth session from a previous login | Clear site data (DevTools → Application → Storage → Clear site data) |
-| `discovery_untrusted_origin` error | IdP origin not in `TRUSTED_ORIGINS` | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env` |
-| Keycloak not reachable | Container not running | Run `docker ps \| grep keycloak` and start it if needed |
-| SAML ACS returns error | Wrong ACS URL in Keycloak SAML client | Ensure `saml_assertion_consumer_url_post` matches `/v1/api/auth/sso/saml2/sp/acs/sso` |
-| Invalid certificate error | Certificate has PEM headers or wrong format | Use the raw base64 string without `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` |
+| Symptom                                | Cause                                       | Fix                                                                                           |
+| -------------------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| App loads normally, no redirect to IdP | `VITE_BYPASS_WAITLIST` is set to `true`     | Remove it or set to `false`, restart frontend                                                 |
+| App loads normally, no redirect to IdP | Stale auth session from a previous login    | Clear site data (DevTools → Application → Storage → Clear site data)                          |
+| `discovery_untrusted_origin` error     | IdP origin not in `TRUSTED_ORIGINS`         | Add `http://localhost:8180` to `TRUSTED_ORIGINS` in `backend/.env`                            |
+| Keycloak not reachable                 | Container not running                       | Run `docker ps \| grep keycloak` and start it if needed                                       |
+| SAML ACS returns error                 | Wrong ACS URL in Keycloak SAML client       | Ensure `saml_assertion_consumer_url_post` matches `/v1/api/auth/sso/saml2/sp/acs/sso`         |
+| Invalid certificate error              | Certificate has PEM headers or wrong format | Use the raw base64 string without `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` |
 
 ## SAML logout
 
-Most SAML providers maintain their own session. Logging out of Thunderbolt alone won't clear the provider session — the user will be silently re-authenticated on the next visit. This is expected SSO behavior.
+Providers keep their own session, so signing out of Thunderbolt alone re-authenticates the user silently on the next visit. Expected SSO behavior.
 
-## Files overview
+## Files
 
-| File | Purpose |
-|------|---------|
-| `backend/src/auth/auth.ts` | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=saml` |
-| `backend/src/config/settings.ts` | `authMode`, `samlEntryPoint`, `samlIssuer`, `samlCert` env vars |
-| `backend/src/auth/saml-integration.test.ts` | SAML integration tests |
-| `backend/docs/mozilla-realm.json` | Pre-configured Keycloak realm with SAML client |
-| `src/lib/auth-mode.ts` | `isSsoMode()` — reads `VITE_AUTH_MODE` |
-| `src/app.tsx` | `SsoRedirect` component, conditional routing for SSO vs consumer mode |
-| `src/contexts/auth-context.tsx` | `credentials: 'include'` in SSO mode for cookie-based session bootstrap |
+| File                                        | Purpose                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `backend/src/auth/auth.ts`                  | Conditionally adds `@better-auth/sso` plugin when `AUTH_MODE=saml`                 |
+| `backend/src/config/settings.ts`            | `authMode`, `samlEntryPoint`, `samlEntityId`, `samlIdpIssuer`, `samlCert` env vars |
+| `backend/src/auth/saml-integration.test.ts` | SAML integration tests                                                             |
+| `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm with SAML client                                     |
+| `src/lib/auth-mode.ts`                      | `isSsoMode()` reads `VITE_AUTH_MODE`                                               |
+| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode              |
+| `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap            |

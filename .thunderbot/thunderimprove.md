@@ -72,7 +72,7 @@ Read `CLAUDE.md` at the project root. If not found, warn and continue with gener
 
 | Signal | Type Check Command | Test Command |
 |--------|-------------------|-------------|
-| `bun.lockb` or `bunfig.toml` | `bun tsc --noEmit` | `bun test` |
+| `bun.lock`, `bun.lockb`, or `bunfig.toml` | `bun tsc --noEmit` | `bun run test` |
 | `package-lock.json` | `npx tsc --noEmit` | `npm test` |
 | `yarn.lock` | `yarn tsc --noEmit` | `yarn test` |
 | `Cargo.toml` | `cargo check` | `cargo test` |
@@ -80,6 +80,8 @@ Read `CLAUDE.md` at the project root. If not found, warn and continue with gener
 | None detected | Skip | Skip |
 
 Store as `TYPE_CHECK_CMD` and `TEST_CMD`.
+
+Prefer the repo's own `test` script over the raw runner. A bare `bun test` at a repo root walks the whole tree and applies neither a per-test timeout nor `--randomize`; in this repo it also picks up `shared/agent-core/`, which has its own runner, and it only avoids the connection-opening backend suites because `bunfig.toml` ignores `backend/**` — a guard that silently does nothing on Bun below 1.3.11. Fall back to `bun test` only when `package.json` defines no `test` script.
 
 ### 0.5 Detect privacy priority
 

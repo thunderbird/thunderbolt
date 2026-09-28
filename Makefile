@@ -25,6 +25,7 @@ help:
 	@echo ""
 	@echo "  Setup:"
 	@echo "    make setup           - Install frontend + backend dependencies and agent symlinks"
+	@echo "    make install         - Frontend dependencies only (bun install)"
 	@echo "    make doctor          - Verify dev tools, env files, and mobile SDKs"
 	@echo "    make doctor-q        - Quiet doctor (only prints issues)"
 	@echo ""
@@ -39,6 +40,7 @@ help:
 	@echo "    make dev-desktop     - Backend + Tauri desktop shell"
 	@echo "    make dev-ios         - Backend + Tauri on first booted iOS simulator"
 	@echo "    make dev-android     - Backend + Tauri on Android emulator (re-inits gen/android)"
+	@echo "    make dev-android-init - Re-init gen/android for the .dev identifier"
 	@echo ""
 	@echo "  Build:"
 	@echo "    make build           - Vite production build (web)"
@@ -49,6 +51,11 @@ help:
 	@echo "    make clean           - Remove dist, target, node_modules"
 	@echo ""
 	@echo "  Quality:"
+	@echo "    make check           - type-check + lint + format-check + license check"
+	@echo "    make test            - Frontend test suite, then backend"
+	@echo "    make type-check      - TypeScript only"
+	@echo "    make lint            - ESLint over src + shared"
+	@echo "    make lint-fix        - ESLint with --fix"
 	@echo "    make format          - Format frontend, backend, Rust"
 	@echo "    make format-check    - Check formatting"
 	@echo ""
@@ -85,7 +92,7 @@ setup: setup-symlinks
 		echo "$(YELLOW)! Rust is not installed; skipping optional sccache installation$(NC)"; \
 	fi
 # Playwright does not publish Ubuntu 26.04 ARM64 builds yet; its Ubuntu 24.04 build is ABI-compatible.
-	@echo "$(BLUE)→ Installing Playwright Chromium (for make e2e tests)...$(NC)"
+	@echo "$(BLUE)→ Installing Playwright Chromium (used by bun run e2e)...$(NC)"
 	@if [ "$$(uname -s)" = "Linux" ] \
 		&& { [ "$$(uname -m)" = "aarch64" ] || [ "$$(uname -m)" = "arm64" ]; } \
 		&& [ -r /etc/os-release ] \
@@ -110,7 +117,9 @@ build-desktop:
 	bun install
 	bun tauri build
 
-# Build desktop app with specific target
+# Parameterised variants of `build-desktop`. Both fail without TARGET (and BUNDLES),
+# so they are building blocks for a caller that supplies them rather than entry
+# points a human types — deliberately left out of `make help`.
 build-desktop-target:
 	bun install
 	bun tauri build --target $(TARGET)

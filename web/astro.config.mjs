@@ -8,6 +8,9 @@ import react from '@astrojs/react';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 
+const repoBlobUrl = 'https://github.com/thunderbird/thunderbolt/blob/main';
+const repoTreeUrl = 'https://github.com/thunderbird/thunderbolt/tree/main';
+
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://thunderbolt.io',
@@ -19,6 +22,37 @@ export default defineConfig({
 		'/docs/kubernetes': '/docs/self-hosting/kubernetes',
 		'/docs/docker-compose': '/docs/self-hosting/docker-compose',
 		'/docs/pulumi': '/docs/self-hosting/pulumi',
+		// Old root-level docs duplicated by maintained pages elsewhere in /docs/.
+		'/docs/introduction': '/docs',
+		'/docs/quick-start': '/docs/self-hosting/docker-compose',
+		'/docs/multi-device-sync': '/docs/using/apps-and-sync',
+		// Contributor docs moved under docs/internals/, which repo-docs-loader.ts
+		// does not publish. This map covers exactly the pages `main` published
+		// before the move, derived from `git ls-tree main docs` rather than from
+		// the current tree: most files under docs/internals/ are new on this
+		// branch and never had a public URL, so they need no entry.
+		// Where the topic has a public successor, point there.
+		'/docs/architecture/projects': '/docs/using/projects',
+		'/docs/architecture/multi-device-sync': '/docs/using/apps-and-sync',
+		'/docs/architecture/powersync-sync-middleware': '/docs/using/apps-and-sync',
+		'/docs/architecture/e2e-encryption': '/docs/admin/security-and-privacy',
+		'/docs/architecture/delete-account-and-revoke-device': '/docs/admin/devices',
+		'/docs/architecture/powersync-account-devices': '/docs/admin/devices',
+		'/docs/development/quick-start': '/docs/self-hosting/docker-compose',
+		// The rest have no public counterpart, so they go to the source file on
+		// GitHub — where repo-docs-loader.ts already sends in-page links to
+		// anything outside the published tree.
+		'/docs/architecture': `${repoTreeUrl}/docs/internals/architecture`,
+		'/docs/architecture/composite-primary-keys-and-default-data': `${repoBlobUrl}/docs/internals/architecture/composite-primary-keys-and-default-data.md`,
+		'/docs/architecture/export-format': `${repoBlobUrl}/docs/internals/architecture/export-format.md`,
+		'/docs/architecture/iroh-relay-self-hosting': `${repoBlobUrl}/docs/internals/architecture/iroh-relay-self-hosting.md`,
+		'/docs/development/mobile-setup': `${repoBlobUrl}/docs/internals/development/mobile-setup.md`,
+		'/docs/development/testing': `${repoBlobUrl}/docs/internals/development/testing.md`,
+		'/docs/dev-tooling/storybook': `${repoBlobUrl}/docs/internals/dev-tooling/storybook.md`,
+		'/docs/dev-tooling/vite-bundle-analyzer': `${repoBlobUrl}/docs/internals/dev-tooling/vite-bundle-analyzer.md`,
+		'/docs/dev-tooling/local-cdn-for-app-update-testing': `${repoBlobUrl}/docs/internals/dev-tooling/local-cdn-for-app-update-testing.md`,
+		'/docs/features/tauri-signing-keys': `${repoBlobUrl}/docs/internals/tauri-signing-keys.md`,
+		'/docs/features/widgets': `${repoBlobUrl}/docs/internals/widgets.md`,
 	},
 	integrations: [
 		react(),
@@ -49,74 +83,55 @@ export default defineConfig({
 			},
 			sidebar: [
 				{
-					label: 'Getting Started',
+					label: 'Start Here',
 					items: [
-						{ label: 'Introduction', slug: 'docs' },
-						{ label: 'Customize', slug: 'docs/customize' },
+						{ label: 'What is Thunderbolt?', slug: 'docs' },
 						{ label: 'FAQ', slug: 'docs/faq' },
+						{ label: 'Troubleshooting', slug: 'docs/troubleshooting' },
 					],
 				},
 				{
-					label: 'Self-Hosting',
+					label: 'Using Thunderbolt',
 					items: [
-						{ label: 'Overview', slug: 'docs/self-hosting' },
-						{ label: 'Configuration', slug: 'docs/self-hosting/configuration' },
+						{ label: 'Overview', slug: 'docs/using' },
+						{ label: 'Chat', slug: 'docs/using/chat' },
+						{ label: 'Projects', slug: 'docs/using/projects' },
+						{ label: 'Skills', slug: 'docs/using/skills' },
+						{ label: 'Connections', slug: 'docs/using/connections' },
+						{ label: 'Search', slug: 'docs/using/search' },
+						{ label: 'Voice', slug: 'docs/using/voice' },
+						{ label: 'Apps and sync', slug: 'docs/using/apps-and-sync' },
+						{ label: 'In-app browser', slug: 'docs/features/webview' },
+						{ label: 'Customize', slug: 'docs/customize' },
+					],
+				},
+				{
+					label: 'Deploy',
+					items: [
+						{ label: 'Choosing a deployment', slug: 'docs/self-hosting' },
+						{ label: 'Requirements', slug: 'docs/self-hosting/requirements' },
 						{ label: 'Docker Compose', slug: 'docs/self-hosting/docker-compose' },
 						{ label: 'Kubernetes', slug: 'docs/self-hosting/kubernetes' },
-						{ label: 'Pulumi (AWS)', slug: 'docs/self-hosting/pulumi' },
+						{ label: 'AWS with Pulumi', slug: 'docs/self-hosting/pulumi' },
+						{ label: 'Upgrading', slug: 'docs/self-hosting/upgrading' },
+						{ label: 'Backup and restore', slug: 'docs/self-hosting/backup-and-restore' },
+						{ label: 'Monitoring', slug: 'docs/self-hosting/monitoring' },
 					],
 				},
 				{
-					label: 'Features',
+					label: 'Configure',
 					items: [
-						{ label: 'Projects', slug: 'docs/architecture/projects' },
-						{ label: 'Widgets', slug: 'docs/features/widgets' },
-						{
-							label: 'Data Syncing',
-							collapsed: true,
-							items: [
-								{ label: 'Architecture', slug: 'docs/architecture' },
-								{ label: 'Multi-Device Sync', slug: 'docs/architecture/multi-device-sync' },
-								{ label: 'End-to-End Encryption', slug: 'docs/architecture/e2e-encryption' },
-								{
-									label: 'PowerSync · Account & Devices',
-									slug: 'docs/architecture/powersync-account-devices',
-								},
-								{
-									label: 'PowerSync · Sync Middleware',
-									slug: 'docs/architecture/powersync-sync-middleware',
-								},
-								{
-									label: 'Composite Primary Keys & Default Data',
-									slug: 'docs/architecture/composite-primary-keys-and-default-data',
-								},
-								{
-									label: 'Delete Account & Revoke Device',
-									slug: 'docs/architecture/delete-account-and-revoke-device',
-								},
-							],
-						},
-						{ label: 'WebView', slug: 'docs/features/webview' },
+						{ label: 'Settings reference', slug: 'docs/self-hosting/configuration' },
+						{ label: 'Authentication', slug: 'docs/self-hosting/authentication' },
+						{ label: 'Models and inference', slug: 'docs/self-hosting/models' },
 					],
 				},
 				{
-					label: 'Development',
+					label: 'Administer',
 					items: [
-						{ label: 'Quick Start', slug: 'docs/development/quick-start' },
-						{ label: 'Mobile Setup', slug: 'docs/development/mobile-setup' },
-						{ label: 'Testing', slug: 'docs/development/testing' },
-					],
-				},
-				{
-					label: 'Dev Tooling',
-					items: [
-						{ label: 'Tauri Signing Keys', slug: 'docs/features/tauri-signing-keys' },
-						{ label: 'Storybook', slug: 'docs/dev-tooling/storybook' },
-						{ label: 'Vite Bundle Analyzer', slug: 'docs/dev-tooling/vite-bundle-analyzer' },
-						{
-							label: 'Local CDN for App Updates',
-							slug: 'docs/dev-tooling/local-cdn-for-app-update-testing',
-						},
+						{ label: 'Users and access', slug: 'docs/admin/users-and-access' },
+						{ label: 'Devices and accounts', slug: 'docs/admin/devices' },
+						{ label: 'Security and privacy', slug: 'docs/admin/security-and-privacy' },
 					],
 				},
 			],

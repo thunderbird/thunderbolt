@@ -214,6 +214,34 @@ const testLookup: DnsLookup = (host) => {
 }
 
 describe('validateAndPin', () => {
+  it('allows only the exact test host and port in the test environment', async () => {
+    const previousEnv = process.env.NODE_ENV
+    const previousHosts = process.env.TEST_PROXY_ALLOWED_HOSTS
+    try {
+      process.env.NODE_ENV = 'test'
+      process.env.TEST_PROXY_ALLOWED_HOSTS = '127.0.0.1:9879'
+      expect((await validateAndPin('http://127.0.0.1:9879/mcp'))[0]).toBe('http://127.0.0.1:9879/mcp')
+      await expect(validateAndPin('http://127.0.0.1:9880/mcp')).rejects.toThrow(/private\/internal/)
+      await expect(validateAndPin('http://127.0.0.2:9879/mcp')).rejects.toThrow(/private\/internal/)
+      process.env.NODE_ENV = 'production'
+      await expect(validateAndPin('http://127.0.0.1:9879/mcp')).rejects.toThrow(/private\/internal/)
+      process.env.NODE_ENV = 'test'
+      delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      await expect(validateAndPin('http://127.0.0.1:9879/mcp')).rejects.toThrow(/private\/internal/)
+    } finally {
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousEnv
+      }
+      if (previousHosts === undefined) {
+        delete process.env.TEST_PROXY_ALLOWED_HOSTS
+      } else {
+        process.env.TEST_PROXY_ALLOWED_HOSTS = previousHosts
+      }
+    }
+  })
+
   it('blocks a public hostname that resolves to a private/metadata address (DNS rebinding)', async () => {
     await expect(validateAndPin('http://rebind.test/latest/meta-data/', undefined, testLookup)).rejects.toThrow(
       /private\/internal address 169\.254\.169\.254/,

@@ -51,6 +51,23 @@ annotations:
 {{- end -}}
 
 {{/*
+Node selector block. Renders the full `nodeSelector:` YAML key (or nothing,
+if `.Values.nodeSelector` is empty). Useful to pin workloads to matching nodes
+on a mixed-architecture cluster, e.g. `kubernetes.io/arch: amd64` when the
+chart's own images are published single-arch but the cluster also schedules
+onto arm64 nodes.
+
+Usage:
+  {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
+*/}}
+{{- define "thunderbolt.nodeSelector" -}}
+{{- with .Values.nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Resources block. Renders the full `resources:` YAML key (or nothing, if the
 component has no `resources` set).
 

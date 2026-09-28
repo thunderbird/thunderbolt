@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
@@ -56,7 +56,7 @@ test.describe('localization — unit defaults', () => {
   })
 
   test('never falls back to US units', async ({ page }) => {
-    // The pre-THU-810 behaviour: no location meant an authenticated round trip
+    // Previously, no location meant an authenticated round trip
     // that defaulted to `US`, so a German browser landed on imperial and
     // Fahrenheit whatever the locale said.
     await loginViaOidc(page)
@@ -100,9 +100,12 @@ test.describe('localization — language switching', () => {
    * claiming coverage for.
    */
   test('re-labels the unit rows without a reload', async ({ page }) => {
+    // WebKit normalizes en-IE to en-GB; the app reads navigator.languages for region defaults.
+    await page.addInitScript(() => Object.defineProperty(navigator, 'languages', { get: () => ['en-IE'] }))
     await loginViaOidc(page)
     await openLocalizationSettings(page)
 
+    expect(await page.evaluate(() => navigator.languages[0])).toBe('en-IE')
     await expect(page.getByTestId('distance-unit')).toHaveText('Metric (km)')
 
     await page.getByLabel('Language').click()

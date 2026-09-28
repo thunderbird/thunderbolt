@@ -248,7 +248,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
       // the `wouldOverwriteUserValue` branch below, which already treats a
       // filled-in null-default row as at target. For non-settings tables
       // `value` is `undefined` rather than `null`, so this never fires.
-      if ((defaultItem as any).value === null) {
+      if ((defaultItem as { value?: unknown }).value === null) {
         continue
       }
 

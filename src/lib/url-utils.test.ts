@@ -61,6 +61,9 @@ describe('resolveAbsoluteBackendUrl', () => {
     expect(resolveAbsoluteBackendUrl('http://localhost:8000/v1', 'https://ignored.example.com')).toBe(
       'http://localhost:8000/v1',
     )
+    expect(
+      resolveAbsoluteBackendUrl('https://api-pr-123.preview.thunderbolt.io/v1', 'https://ignored.example.com'),
+    ).toBe('https://api-pr-123.preview.thunderbolt.io/v1')
   })
 
   it('strips every trailing slash, not just the last one', () => {
@@ -72,6 +75,9 @@ describe('resolveAbsoluteBackendUrl', () => {
     window.location.href = 'https://app.example.com/settings/models'
     try {
       expect(resolveAbsoluteBackendUrl('/v1')).toBe('https://app.example.com/v1')
+      // Resolves against the origin, not the current route, so the same
+      // setting points at one backend wherever the user happens to be.
+      expect(resolveAbsoluteBackendUrl('v1')).toBe('https://app.example.com/v1')
     } finally {
       window.location.href = previousHref
     }

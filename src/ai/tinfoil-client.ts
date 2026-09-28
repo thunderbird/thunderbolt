@@ -4,9 +4,9 @@
 
 import { getUserCacheSecret } from '@/lib/auth-token'
 import { getErrorName } from '@/lib/error-utils'
-import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { trackEvent } from '@/lib/posthog'
 import { withDeadline } from '@/lib/timeout'
+import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Model } from '@/types'
 import type { SecureClient } from 'tinfoil'

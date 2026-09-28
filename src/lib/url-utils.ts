@@ -24,7 +24,8 @@ export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, 
  * Resolve a configured backend URL to an absolute one.
  *
  * `VITE_THUNDERBOLT_CLOUD_URL` is a relative path on same-origin deployments
- * (`/v1`, the Helm chart's default) so one image can serve any hostname.
+ * (`/v1`, the frontend image's build-arg default) so one image can serve any
+ * hostname. It is also editable at runtime from the dev settings page.
  * `fetch` and the OpenAI-compatible clients resolve that against the page
  * themselves, but callers that hand the value to an SDK need an absolute one.
  * An already-absolute value passes through, because `new URL` ignores the base

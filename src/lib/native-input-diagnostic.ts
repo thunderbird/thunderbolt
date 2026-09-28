@@ -7,9 +7,9 @@ import { mkdir, writeTextFile } from '@tauri-apps/plugin-fs'
 
 type ProbeDetail = Record<string, string | number | boolean>
 
-/** Temporary native-only probe: records geometry and event metadata, never field contents. */
+/** Temporary native-only probe: records passive event and focus metadata, never field contents. */
 export const startNativeInputDiagnostic = () => {
-  const state = { sequence: 0, generation: 0, input: null as HTMLInputElement | null, geometry: '' }
+  const state = { sequence: 0, generation: 0, input: null as HTMLInputElement | null }
   const ready = mkdir('native-input-probe', { baseDir: BaseDirectory.AppData, recursive: true })
 
   const record = async (kind: string, detail: ProbeDetail = {}) => {
@@ -17,7 +17,6 @@ export const startNativeInputDiagnostic = () => {
       return
     }
     const input = document.querySelector<HTMLInputElement>('input[type="email"]')
-    const rect = input?.getBoundingClientRect()
     const entry = {
       kind,
       sequence: state.sequence++,
@@ -26,13 +25,8 @@ export const startNativeInputDiagnostic = () => {
       present: Boolean(input),
       focused: document.activeElement === input,
       activeTag: document.activeElement?.tagName ?? '',
+      disabled: input?.disabled ?? false,
       valueLength: input?.value.length ?? -1,
-      bodyPointerEvents: getComputedStyle(document.body).pointerEvents,
-      x: rect?.x ?? -1,
-      y: rect?.y ?? -1,
-      width: rect?.width ?? -1,
-      height: rect?.height ?? -1,
-      viewportHeight: window.visualViewport?.height ?? -1,
       ...detail,
     }
     try {
@@ -48,35 +42,38 @@ export const startNativeInputDiagnostic = () => {
 
   const observer = new MutationObserver(() => {
     const input = document.querySelector<HTMLInputElement>('input[type="email"]')
-    const rect = input?.getBoundingClientRect()
-    const geometry = rect ? `${rect.x},${rect.y},${rect.width},${rect.height}` : ''
     if (input !== state.input) {
       state.generation += 1
       state.input = input
       void record(input ? 'field-mounted' : 'field-removed')
-    } else if (geometry !== state.geometry) {
-      void record('field-moved')
     }
-    state.geometry = geometry
   })
   observer.observe(document.body, {
     childList: true,
     subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style'],
   })
-  for (const kind of ['pointerdown', 'pointerup', 'focusin', 'focusout', 'beforeinput', 'input']) {
+  for (const kind of [
+    'pointerdown',
+    'pointerup',
+    'pointercancel',
+    'click',
+    'focusin',
+    'focusout',
+    'beforeinput',
+    'input',
+  ]) {
     document.addEventListener(
       kind,
       (event) => {
         void record(kind, {
           targetTag: event.target instanceof Element ? event.target.tagName : '',
           trusted: event.isTrusted,
-          clientX: event instanceof PointerEvent ? event.clientX : -1,
-          clientY: event instanceof PointerEvent ? event.clientY : -1,
+          eventTime: event.timeStamp,
+          clientX: event instanceof MouseEvent ? event.clientX : -1,
+          clientY: event instanceof MouseEvent ? event.clientY : -1,
         })
       },
-      true,
+      { capture: true, passive: true },
     )
   }
   window.visualViewport?.addEventListener('resize', () => void record('viewport-resize'))

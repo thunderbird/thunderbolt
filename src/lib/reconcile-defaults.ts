@@ -234,6 +234,24 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const existing = existingByKey.get(keyValue)
 
     if (!existing) {
+      // A null-valued default means the app has no opinion and something else
+      // supplies the value — `language` from the browser, the unit settings
+      // from the region, `preferred_name` and `location_*` from the user.
+      // Absent IS the target state for those, so don't lay down a placeholder
+      // row. The placeholder is what turns the eventual seed into an UPDATE,
+      // which PowerSync uploads as a PATCH — outside the create-only guard
+      // that stops a fresh device overwriting an established one (GH #1299).
+      // With no row to update, that first seed is an INSERT and the guard
+      // covers it.
+      //
+      // `everyBundleRowAtTarget` deliberately stays true: same reasoning as
+      // the `wouldOverwriteUserValue` branch below, which already treats a
+      // filled-in null-default row as at target. For non-settings tables
+      // `value` is `undefined` rather than `null`, so this never fires.
+      if ((defaultItem as any).value === null) {
+        continue
+      }
+
       // Row missing locally: only seed when we're allowed to. For most tables
       // that mirrors `canOverwrite` (ghost-insert protection). Tables that opt
       // into `insertMissing: true` seed regardless because their row must

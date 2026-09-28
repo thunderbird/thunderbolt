@@ -62,8 +62,20 @@ type PowerSyncOperation = {
    * device seeded `user_has_completed_onboarding = false` offline and, on
    * enabling sync, overwrote the already-onboarded value on every other device.
    *
-   * Only PUT honours it. PATCH and DELETE target a row the client has already
-   * seen, so they stay unconditional and a deliberate edit always propagates.
+   * Only PUT honours it — because PUT is the op with no user intent behind it.
+   * PowerSync emits PUT from INSERT and PATCH from UPDATE, so a PUT is a row
+   * the device made up, while a PATCH is someone editing a row in front of
+   * them. Constraining PATCH would swallow deliberate offline edits, including
+   * resetting a setting to its default, which rewrites the row to content
+   * byte-identical to a fresh seed.
+   *
+   * That does mean a pre-first-sync PATCH is not fully informed either: the
+   * device is editing its own seeded copy of a bundled default, not the
+   * account's version, so a soft-delete or edit there propagates onto whatever
+   * the account actually stored under that deterministic id. Accepted
+   * deliberately — losing a real edit is worse than propagating one made
+   * against a stale view. See the "Known gap" note in
+   * docs/architecture/powersync-account-devices.md.
    */
   ifAbsent?: boolean
 }

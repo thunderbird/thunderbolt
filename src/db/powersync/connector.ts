@@ -86,7 +86,10 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
  * deliberate edit to an existing row — including resetting a setting back to
  * its default, which produces content identical to a fresh seed — is a PATCH.
  * Leaving PATCH unconditional is what keeps every intentional change
- * propagating.
+ * propagating — at the cost that a pre-first-sync PATCH is not fully informed
+ * either, since the device is editing its own seeded copy rather than the
+ * account's. See the "Known gap" note in
+ * docs/architecture/powersync-account-devices.md.
  *
  * The window closes for good once `hasSynced` flips: from then on the device
  * knows what the account holds, and normal last-writer-wins applies.

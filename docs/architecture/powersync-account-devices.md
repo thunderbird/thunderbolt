@@ -212,16 +212,35 @@ Two properties keep the rule safe:
   anything — the row is created. Dropping it instead would leave the device holding rows the
   server has never heard of, and the first `PATCH` against one of those would miss, return 400,
   and wedge the upload queue permanently.
-- **Only `PUT` is constrained.** PowerSync emits `PUT` from `INSERT` statements and `PATCH` from
-  `UPDATE` statements (`UpdateType` in `@powersync/common`), so a deliberate edit to a row that
-  already exists locally is always a `PATCH` and always propagates. That specifically covers
-  resetting a setting back to its default (`resetSettingToDefault`), which rewrites the row to
-  content byte-identical to a fresh seed — any content-based rule would swallow it.
+- **Only `PUT` is constrained**, because `PUT` is the op with no user intent behind it. PowerSync
+  emits `PUT` from `INSERT` statements and `PATCH` from `UPDATE` statements (`UpdateType` in
+  `@powersync/common`), so a `PUT` is a row the device made up while a `PATCH` is someone editing
+  a row in front of them. That is what keeps resetting a setting to its default
+  (`resetSettingToDefault`) working — it rewrites the row to content byte-identical to a fresh
+  seed, so any content-based rule would swallow it.
 
-**Known gap:** settings whose row reconcile seeds as `null` and a hook fills in later —
-`language` (`useAppLanguage`) and the four unit settings (`useUnitDefaults`) — reach the server as
-`PATCH`, because the row already exists locally. They are therefore _not_ covered, and a new
-device can still overwrite an established device's chosen language or units on first sync.
+**Known gap — pre-first-sync `PATCH`es are not fully informed either.** The rule guards writes
+that carry no intent; it does not, and deliberately cannot, guard writes that do. Before its first
+sync a device is editing its own seeded copy of a bundled default rather than the account's
+version, so any `PATCH` it issues against a deterministic id lands on whatever the account
+actually stored there. Two instances:
+
+- **Auto-seeded settings — fixed.** `language` (`useAppLanguage`) and the four unit settings
+  (`useUnitDefaults`) ship as `null` and are filled in from the browser or the region at boot.
+  Reconcile used to pre-create those rows, which made the fill-in an `UPDATE` → `PATCH` and put
+  it outside the guard, so a new device could overwrite an established device's chosen language
+  or units. Reconcile now **skips inserting null-valued defaults** — absent is the target state
+  for them — so the first write is an `INSERT` → `PUT` and the guard covers it. Two things depend
+  on that row and were adjusted with it: `everyBundleRowAtTarget` treats an absent null-default
+  row as at target (so the version marker still advances), and `isSettingModified` treats an
+  unstamped row for a null-default key as modified (the pre-created row was what carried the
+  `defaultHash` stamp behind the reset affordance). Only new installs benefit — devices that
+  already created those rows keep them, and their next seed is still a `PATCH`.
+- **Edits and soft-deletes of bundled defaults.** Soft-delete is `update(...).set({ deletedAt })`,
+  so removing a default skill or model on a fresh device before enabling sync propagates that
+  `deletedAt` onto the account's row — possibly a customized version the user has on another
+  device. Accepted: constraining `PATCH` would lose real offline edits, which is worse than
+  propagating one made against a stale view.
 
 #### Which device runs onboarding
 

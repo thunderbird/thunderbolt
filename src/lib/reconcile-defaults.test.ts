@@ -389,16 +389,24 @@ describe('seedPrompts', () => {
   })
 })
 
+/**
+ * Defaults the app actually has an opinion about. A null-valued default means
+ * something else supplies the value (browser language, region units, the user),
+ * and reconcile deliberately leaves those rows absent so the eventual seed is
+ * an INSERT — see the null-default branch in `reconcileDefaultsForTable`.
+ */
+const valuedDefaultSettings = defaultSettings.filter((s) => s.value !== null)
+const nullDefaultSettings = defaultSettings.filter((s) => s.value === null)
+
 describe('reconcileDefaultsForTable', () => {
   test('inserts new defaults on first run', async () => {
     const db = getDb()
     await reconcileDefaultsForTable(db, settingsTable, defaultSettings, hashSetting, { keyField: 'key' })
 
     const settings = await db.select().from(settingsTable)
-    // Should have all default settings plus anonymous_id
-    expect(settings.length).toBeGreaterThanOrEqual(defaultSettings.length)
+    expect(settings.length).toBeGreaterThanOrEqual(valuedDefaultSettings.length)
 
-    for (const defaultSetting of defaultSettings) {
+    for (const defaultSetting of valuedDefaultSettings) {
       const inserted = settings.find((s) => s.key === defaultSetting.key)
       expect(inserted).toBeDefined()
       // Verify hash was computed during seed
@@ -1800,9 +1808,26 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const db = getDb()
       await reconcileDefaults(db)
 
-      for (const bundle of defaultSettings) {
+      for (const bundle of valuedDefaultSettings) {
         const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
         expect(row).toBeDefined()
+      }
+      expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
+    })
+
+    test('leaves null-valued defaults absent so their first seed is an INSERT', async () => {
+      // The row is what turns a later seed (browser language, region units)
+      // into an UPDATE, which uploads as a PATCH and escapes the create-only
+      // guard that stops a fresh device overwriting an established one
+      // (GH #1299). No row means that seed is an INSERT, which the guard
+      // covers. The marker must still advance — absent IS the target state.
+      const db = getDb()
+      await reconcileDefaults(db)
+
+      expect(nullDefaultSettings.length).toBeGreaterThan(0)
+      for (const bundle of nullDefaultSettings) {
+        const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
+        expect(row).toBeUndefined()
       }
       expect(await readStoredVersion('defaults_version.settings')).toBe(defaultSettingsVersion)
     })
@@ -1889,7 +1914,10 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
       const db = getDb()
 
       // Seed the bundle defaults so the pre-THU-677 device has all rows.
+      // Reconcile no longer lays down null-valued rows, so create the one this
+      // test edits the way an older build would have.
       await reconcileDefaults(db)
+      await db.insert(settingsTable).values({ key: 'preferred_name', value: null })
 
       // Simulate the pre-THU-677 state: settings marker doesn't exist yet.
       await db.delete(settingsTable).where(eq(settingsTable.key, 'defaults_version.settings'))
@@ -1928,12 +1956,12 @@ describe('reconcileDefaults per-table version gates (THU-677)', () => {
     // `advanceVersionMarker`. If `hasAnySettingsRow` were read inline before
     // the settings block instead of at the top of the transaction, those
     // earlier marker writes would flip the probe to `true` on a fresh install
-    // and the settings gate would refuse to seed. Every default settings row
-    // and the settings marker must land on this pass.
+    // and the settings gate would refuse to seed. Every valued default settings
+    // row and the settings marker must land on this pass.
     const db = getDb()
     await reconcileDefaults(db)
 
-    for (const bundle of defaultSettings) {
+    for (const bundle of valuedDefaultSettings) {
       const row = await db.select().from(settingsTable).where(eq(settingsTable.key, bundle.key)).get()
       expect(row).toBeDefined()
     }

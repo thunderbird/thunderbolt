@@ -5,8 +5,8 @@
 import type { Page } from '@playwright/test'
 import { defaultModelOpus5 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
-import { loginViaEmailCode, openSidebarOnMobile, sendChatPrompt } from './helpers'
-import { expect, test } from './test'
+import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile, sendChatPrompt } from './helpers'
+import { expect, isolateProviderRequests, test } from './test'
 
 test.slow()
 test.skip(process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true', 'PowerSync runs only in the Linux extended suite')
@@ -21,7 +21,12 @@ const enableCloudSync = async (page: Page) => {
   await expect(page.locator('textarea')).toBeVisible()
 }
 
-test('a chat created on one device appears on another without reloading', async ({ page, browser, baseURL }) => {
+test('a chat created on one device appears on another without reloading', async ({
+  page,
+  browser,
+  baseURL,
+}, testInfo) => {
+  const errors = collectPageErrors(page)
   if (!baseURL) throw new Error('Extended sync project needs a baseURL')
   page.on('requestfailed', (request) => {
     if (new URL(request.url()).pathname === '/v1/waitlist/join') {
@@ -43,7 +48,9 @@ test('a chat created on one device appears on another without reloading', async 
     },
   })
   try {
+    await isolateProviderRequests(otherDevice, testInfo.project.name)
     const secondPage = await otherDevice.newPage()
+    const secondErrors = collectPageErrors(secondPage)
     await secondPage.goto('/')
     await expect(secondPage.locator('textarea')).toBeVisible()
     await enableCloudSync(page)
@@ -60,6 +67,8 @@ test('a chat created on one device appears on another without reloading', async 
 
     await openSidebarOnMobile(secondPage)
     await expect(secondPage.getByText(title, { exact: true })).toBeVisible({ timeout: 60_000 })
+    expect(errors).toEqual([])
+    expect(secondErrors).toEqual([])
   } finally {
     await otherDevice.close()
   }

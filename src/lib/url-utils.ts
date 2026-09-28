@@ -19,3 +19,16 @@ export const isSafeUrl = (url: string): boolean => {
 
 /** Remove only trailing slashes from a backend URL. */
 export const normalizeBackendUrl = (url: string): string => url.replace(/\/+$/, '')
+
+/**
+ * Resolve a configured backend URL to an absolute one.
+ *
+ * `VITE_THUNDERBOLT_CLOUD_URL` is a relative path on same-origin deployments
+ * (`/v1`, the Helm chart's default) so one image can serve any hostname.
+ * `fetch` and the OpenAI-compatible clients resolve that against the page
+ * themselves, but callers that hand the value to an SDK need an absolute one.
+ * An already-absolute value passes through, because `new URL` ignores the base
+ * when the first argument is absolute.
+ */
+export const resolveAbsoluteBackendUrl = (url: string, origin: string = window.location.origin): string =>
+  normalizeBackendUrl(new URL(url, origin).toString())

@@ -148,35 +148,73 @@ See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-
 ### Changing Postgres storage after install
 
 `postgres.storage` and `postgres.storageClassName` both render into the
-StatefulSet's `volumeClaimTemplates`, which Kubernetes does not allow you to
-change on an existing object. Setting either on a release that already exists
-makes `helm upgrade` fail, and it does not move data that is already on disk.
+StatefulSet's `volumeClaimTemplates`, which Kubernetes will not let you change
+on an existing object, so `helm upgrade` fails outright. The two need very
+different remedies, and only one of them touches your data.
 
-Both are therefore new-install settings. To change one on a live deployment,
-take a dump first and restore into the new volume:
+**Resizing the volume (`postgres.storage`) is not destructive.** Delete the
+StatefulSet while leaving its pod and claim in place, then upgrade: the claim
+keeps its identity and the data stays where it is.
 
 ```bash
-# 1. Dump the current database.
+kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
+helm upgrade thunderbolt . -n thunderbolt --reuse-values --set postgres.storage=10Gi
+```
+
+That updates the template. On a StorageClass with `allowVolumeExpansion: true`,
+which is the default on the major clouds, grow the existing disk too:
+
+```bash
+kubectl patch pvc pg-data-postgres-0 -n thunderbolt \
+  -p '{"spec":{"resources":{"requests":{"storage":"10Gi"}}}}'
+```
+
+**Changing the StorageClass is destructive**, because the new class provisions a
+new volume and nothing copies the old one across. Budget downtime, and treat the
+dump as your only copy.
+
+```bash
+# 1. Stop anything that writes, then dump, then verify the dump is readable.
+kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=0
 kubectl exec -n thunderbolt postgres-0 -- \
   pg_dump -U postgres -Fc postgres > thunderbolt.dump
+pg_restore --list thunderbolt.dump > /dev/null && echo "dump OK"
 
-# 2. Drop the StatefulSet and its claim. The orphaned pod still mounts the
+# 2. Keep the old volume even if the class reclaims it, as a fallback.
+kubectl patch pv "$(kubectl get pvc pg-data-postgres-0 -n thunderbolt \
+  -o jsonpath='{.spec.volumeName}')" \
+  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+
+# 3. Remove the StatefulSet and its claim. The orphaned pod still mounts the
 #    volume, so it has to go before the claim will delete rather than hang.
 kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
 kubectl delete pod postgres-0 -n thunderbolt
 kubectl delete pvc pg-data-postgres-0 -n thunderbolt
 
-# 3. Recreate it on the new class.
+# 4. Recreate on the new class, with the writers still down. The upgrade resets
+#    both replica counts, so pin them to 0 here.
 helm upgrade thunderbolt . -n thunderbolt --reuse-values \
-  --set postgres.storageClassName=<class>
+  --set postgres.storageClassName=<class> \
+  --set backend.replicas=0 --set powersync.replicas=0
 
-# 4. Keep writers off the empty database while it is restored. Do this after
-#    the upgrade, which puts both replica counts back to 1.
-kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=0
+# 5. Wait for the new volume to bind and Postgres to finish initialising.
+#    Provisioning takes a minute or two on a cloud StorageClass.
+kubectl rollout status statefulset/postgres -n thunderbolt --timeout=10m
+
+# 6. Restore, and only bring the writers back if it succeeded.
 kubectl exec -i -n thunderbolt postgres-0 -- \
   pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
-kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=1
+helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+  --set postgres.storageClassName=<class>
 ```
+
+Do not skip step 5. `helm upgrade` returns as soon as the objects are accepted,
+long before the volume is bound, and a `pg_restore` against a pod that is still
+starting fails in ways that are easy to miss.
+
+The sync service's own `powersync_storage` database is deliberately not in the
+dump. It rebuilds itself from the application database, so after this every
+client does one full re-sync.
 
 ## Templates
 

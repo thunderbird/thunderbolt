@@ -77,7 +77,7 @@ spec:
     - metadata:
         name: pg-data
       spec:
-        {{- if eq .Values.postgres.storageClassName "-" }}
+        {{- if eq (.Values.postgres.storageClassName | toString) "-" }}
         storageClassName: ""
         {{- else if .Values.postgres.storageClassName }}
         storageClassName: {{ .Values.postgres.storageClassName | quote }}

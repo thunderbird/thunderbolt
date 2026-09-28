@@ -100,10 +100,10 @@ postgres:
   # node-local volume can't reschedule once its node is gone, permanently
   # stranding Postgres.
   #
-  # New installs only. A StatefulSet's volumeClaimTemplates cannot be changed
-  # after creation, so setting this on an existing release makes `helm upgrade`
-  # fail and does not move the data. See deploy/k8s/README.md for the
-  # recreate-and-restore procedure. The same applies to `storage` above.
+  # A StatefulSet's volumeClaimTemplates cannot be changed after creation, so
+  # setting this on an existing release makes `helm upgrade` fail. Changing the
+  # class means a new volume and a dump/restore; resizing `storage` above does
+  # not. Both procedures are in deploy/k8s/README.md.
   storageClassName: ""
   credentials:
     user: postgres

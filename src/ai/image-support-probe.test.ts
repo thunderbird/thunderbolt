@@ -93,6 +93,14 @@ describe('probeImageSupport', () => {
     expect(requests[1].init.signal).toBe(signal)
   })
 
+  it('treats 415 and 422 rejections like a 400', async () => {
+    for (const status of [415, 422]) {
+      const { requests, getProxyFetch } = createFetch(new Response('', { status }), completion({ content: 'ok' }))
+      expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('unsupported')
+      expect(requests).toHaveLength(2)
+    }
+  })
+
   it('stays inconclusive when the provider rejects plain text too', async () => {
     const { getProxyFetch } = createFetch(new Response('', { status: 400 }), new Response('', { status: 400 }))
     await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
@@ -115,6 +123,37 @@ describe('probeImageSupport', () => {
     await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
       ImageSupportInconclusiveError,
     )
+  })
+
+  describe('transport failures, which throw the underlying error (never cached either way)', () => {
+    /** A proxy fetch built from a custom implementation. */
+    const fetchFrom = (impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
+      const fetch = Object.assign(impl, { preconnect: async () => true }) as FetchFn
+      return () => fetch
+    }
+
+    it('lets a network error through', async () => {
+      const getProxyFetch = fetchFrom(async () => {
+        throw new TypeError('Failed to fetch')
+      })
+      await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(TypeError)
+    })
+
+    it('stops at the caller’s deadline', async () => {
+      const getProxyFetch = fetchFrom(async (_input, init) => {
+        init?.signal?.throwIfAborted()
+        return completion({ content: 'green' })
+      })
+      const expired = AbortSignal.abort(new DOMException('The check took too long', 'TimeoutError'))
+      await expect(probeImageSupport(customModel(), getProxyFetch, expired)).rejects.toMatchObject({
+        name: 'TimeoutError',
+      })
+    })
+
+    it('lets a reply that isn’t JSON through', async () => {
+      const { getProxyFetch } = createFetch(new Response('<html>gateway error</html>', { status: 200 }))
+      await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(SyntaxError)
+    })
   })
 
   it('stays inconclusive without a request when the model has no OpenAI-compatible connection', async () => {

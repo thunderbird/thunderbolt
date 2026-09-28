@@ -11,9 +11,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } fr
 import { RevokedDeviceModal } from './revoked-device-modal'
 
 const mockClearLocalData = mock(() => Promise.resolve())
-mock.module('@/lib/cleanup', () => ({
-  clearLocalData: mockClearLocalData,
-}))
 
 describe('RevokedDeviceModal', () => {
   let mockReplace: ReturnType<typeof spyOn>
@@ -35,7 +32,7 @@ describe('RevokedDeviceModal', () => {
   })
 
   const renderModal = (props: Partial<{ open: boolean }> = {}) =>
-    render(<RevokedDeviceModal open={props.open ?? true} />, {
+    render(<RevokedDeviceModal open={props.open ?? true} clearLocalData={mockClearLocalData} />, {
       wrapper: createTestProvider(),
     })
 

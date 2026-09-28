@@ -524,6 +524,37 @@ describe('resolvePiModel — Tinfoil', () => {
     )
   })
 
+  describe('image support', () => {
+    afterEach(() => {
+      clearImageSupportCache()
+    })
+
+    it('strips images for a managed model declared text-only (GLM 5.3)', async () => {
+      const getSystemTinfoilClient = mock(async () => createSecureClient())
+      const resolved = await resolvePiModel(
+        tinfoilAgentCore,
+        tinfoilContext(tinfoilModel({ model: 'glm-5-3' })),
+        null,
+        {
+          getSystemTinfoilClient,
+        },
+      )
+      expect(requireDescriptor(resolved, 'confidential')).toMatchObject({ modelId: 'glm-5-3', supportsImages: false })
+    })
+
+    it('strips images for a BYOK model detected as text-only', async () => {
+      const getTinfoilClient = mock(async () => createSecureClient())
+      const model = tinfoilModel({ id: 'user-model', model: 'private-model', vendor: null, isSystem: 0, apiKey: 'k' })
+      setCachedImageSupport(model, 'unsupported')
+
+      const resolved = await resolvePiModel(tinfoilAgentCore, tinfoilContext(model), null, { getTinfoilClient })
+      expect(requireDescriptor(resolved, 'openai-compat')).toMatchObject({
+        modelId: 'private-model',
+        supportsImages: false,
+      })
+    })
+  })
+
   it('surfaces attestation failure without invoking the legacy fetch', async () => {
     const error = new Error('Tinfoil attestation failed: endpoint unavailable')
     const model = tinfoilModel()

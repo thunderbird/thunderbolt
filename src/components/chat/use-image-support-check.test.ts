@@ -166,6 +166,33 @@ describe('useImageSupportCheck', () => {
     })
   })
 
+  it('checks again when the user switches to a model that hasn’t been checked', async () => {
+    setCachedImageSupport(model, 'supported')
+    const other = { ...model, id: 'm2', name: 'Other VLM', model: 'qwen-vl' } as Model
+    const { detect } = deferredDetect()
+    const { result, rerender } = renderHook(
+      ({ selected }: { selected: Model }) =>
+        useImageSupportCheck({
+          model: selected,
+          attachments: [image],
+          messages: [],
+          hasDraft: true,
+          enabled: true,
+          detect,
+        }),
+      { wrapper: createQueryTestWrapper(), initialProps: { selected: model } },
+    )
+    await flush()
+    expect(result.current.notice).toBeUndefined()
+    expect(detect).not.toHaveBeenCalled()
+
+    rerender({ selected: other })
+    await flush()
+    expect(detect).toHaveBeenCalledTimes(1)
+    expect(detect).toHaveBeenCalledWith(expect.objectContaining({ model: 'qwen-vl' }), expect.any(Function))
+    expect(result.current.notice).toBe('checking')
+  })
+
   describe('try anyway', () => {
     it('lets the user overrule a detected verdict, and remembers it', async () => {
       setCachedImageSupport(model, 'unsupported')

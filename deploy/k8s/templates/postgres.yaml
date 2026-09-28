@@ -77,8 +77,10 @@ spec:
     - metadata:
         name: pg-data
       spec:
-        {{- with .Values.postgres.storageClassName }}
-        storageClassName: {{ . | quote }}
+        {{- if eq .Values.postgres.storageClassName "-" }}
+        storageClassName: ""
+        {{- else if .Values.postgres.storageClassName }}
+        storageClassName: {{ .Values.postgres.storageClassName | quote }}
         {{- end }}
         accessModes: ["ReadWriteOnce"]
         resources:

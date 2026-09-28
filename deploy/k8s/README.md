@@ -140,10 +140,37 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.host` | `""` | Set to your hostname for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
-| `postgres.storageClassName` | `""` (uses cluster default) | StorageClass for the Postgres PVC — set explicitly on clusters with a node-local default or node churn |
+| `postgres.storageClassName` | `""` (uses cluster default) | StorageClass for the Postgres PVC. Set explicitly on clusters with a node-local default or node churn; `"-"` binds a PV you provisioned yourself. New installs only, see below |
 | `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
 
 See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
+
+### Changing Postgres storage after install
+
+`postgres.storage` and `postgres.storageClassName` both render into the
+StatefulSet's `volumeClaimTemplates`, which Kubernetes does not allow you to
+change on an existing object. Setting either on a release that already exists
+makes `helm upgrade` fail, and it does not move data that is already on disk.
+
+Both are therefore new-install settings. To change one on a live deployment,
+take a dump first and restore into the new volume:
+
+```bash
+kubectl exec -n thunderbolt postgres-0 -- \
+  pg_dump -U postgres -Fc postgres > thunderbolt.dump
+
+kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
+kubectl delete pvc pg-data-postgres-0 -n thunderbolt
+
+helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+  --set postgres.storageClassName=<class>
+
+kubectl exec -i -n thunderbolt postgres-0 -- \
+  pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
+```
+
+Scale the `backend` and `powersync` deployments to zero before the restore and
+back up afterwards, so nothing writes to the database while it is half-restored.
 
 ## Templates
 

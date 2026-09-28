@@ -94,9 +94,16 @@ postgres:
     repository: postgres
     tag: 17-alpine
   storage: 5Gi
-  # -- StorageClass for the Postgres PVC. Empty uses the cluster's default.
-  # Set this explicitly if that default is node-local: a node-local volume
-  # can't reschedule once its node is gone, permanently stranding Postgres.
+  # -- StorageClass for the Postgres PVC. Empty uses the cluster's default;
+  # "-" disables dynamic provisioning so the claim binds a PV you created
+  # yourself. Set this explicitly if the cluster default is node-local: a
+  # node-local volume can't reschedule once its node is gone, permanently
+  # stranding Postgres.
+  #
+  # New installs only. A StatefulSet's volumeClaimTemplates cannot be changed
+  # after creation, so setting this on an existing release makes `helm upgrade`
+  # fail and does not move the data. See deploy/k8s/README.md for the
+  # recreate-and-restore procedure. The same applies to `storage` above.
   storageClassName: ""
   credentials:
     user: postgres

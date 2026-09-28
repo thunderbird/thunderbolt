@@ -67,9 +67,11 @@ describe('probeImageSupport', () => {
     expect(new Headers(requests[0].init.headers).has('Authorization')).toBe(false)
   })
 
-  it('reads the answer from reasoning when the content is empty', async () => {
-    const { getProxyFetch } = createFetch(completion({ content: '', reasoning_content: 'The square is green' }))
-    expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('supported')
+  it('ignores reasoning, where a text-only model can guess the color', async () => {
+    const { getProxyFetch } = createFetch(completion({ content: '', reasoning_content: 'Maybe it is green?' }))
+    await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
+      ImageSupportInconclusiveError,
+    )
   })
 
   it('reports no support when the server accepts the image but the model never sees it', async () => {

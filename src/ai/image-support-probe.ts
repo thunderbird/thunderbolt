@@ -26,23 +26,17 @@ export class ImageSupportInconclusiveError extends Error {
 const contentRejectionStatuses: ReadonlySet<number> = new Set([400, 415, 422])
 
 const completionSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z.object({ content: z.string().nullish(), reasoning_content: z.string().nullish() }),
-      }),
-    )
-    .min(1),
+  choices: z.array(z.object({ message: z.object({ content: z.string().nullish() }) })).min(1),
 })
 
-/** The text a chat completion answered with, falling back to its reasoning, or '' when it has neither. */
+/**
+ * The text a chat completion answered with, or '' when it has none. Reasoning is
+ * ignored on purpose: a text-only model can guess "green" while thinking out loud,
+ * which would wrongly mark it as reading images.
+ */
 const completionText = (body: unknown): string => {
   const parsed = completionSchema.safeParse(body)
-  if (!parsed.success) {
-    return ''
-  }
-  const { content, reasoning_content: reasoning } = parsed.data.choices[0].message
-  return content?.trim() || reasoning?.trim() || ''
+  return parsed.success ? (parsed.data.choices[0].message.content?.trim() ?? '') : ''
 }
 
 type ProbeContent = string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>

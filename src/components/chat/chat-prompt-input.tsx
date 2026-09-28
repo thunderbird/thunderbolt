@@ -299,15 +299,6 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const [input, setInput, clearDraft] = useDraftInput(draftKey, { persist: !isNewChat })
     const [attachments, setAttachments] = useState<AttachmentData[]>([])
     const [attachError, setAttachError] = useState<string | null>(null)
-    const modelName = selectedModel.name
-    const imageSupport = useImageSupportCheck({
-      model: selectedModel,
-      attachments,
-      messages,
-      enabled: isBuiltInAgent(selectedAgent),
-    })
-    // Hold the send while the model's image support is being checked or rules out the attached image.
-    const imageSupportBlocksSend = imageSupport.notice !== undefined
     // Quote-reply passages pulled in from the "Reply" button on a response. Held
     // in a per-thread store (not local state) so that button — which lives deep
     // in the message list — can add to the composer without prop-drilling.
@@ -315,6 +306,16 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const removeQuote = usePendingQuotesStore((s) => s.removeQuote)
     const setQuotes = usePendingQuotesStore((s) => s.setQuotes)
     const clearQuotes = usePendingQuotesStore((s) => s.clearQuotes)
+    const modelName = selectedModel.name
+    const imageSupport = useImageSupportCheck({
+      model: selectedModel,
+      attachments,
+      messages,
+      hasDraft: input.trim().length > 0 || attachments.length > 0 || quotes.length > 0,
+      enabled: isBuiltInAgent(selectedAgent),
+    })
+    // Hold the send while the model's image support is being checked or rules out the attached image.
+    const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask

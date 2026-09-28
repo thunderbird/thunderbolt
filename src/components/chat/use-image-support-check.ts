@@ -41,6 +41,9 @@ type UseImageSupportCheckOptions = {
   /** The thread so far. A live agent session resends its earlier images on every
    *  turn, so a thread with images needs a verdict even when the draft has none. */
   messages: ThunderboltUIMessage[]
+  /** Whether the user has started a message. Thread images alone wait for this, so
+   *  opening an old thread doesn't spend a probe the user may never need. */
+  hasDraft: boolean
   /** False for agents that deliver files themselves, which skips the check. */
   enabled: boolean
   /** Test seam for the detection call. */
@@ -48,17 +51,19 @@ type UseImageSupportCheckOptions = {
 }
 
 /**
- * Checks whether the selected model can read images, starting as soon as the
- * draft or the thread contains one. Runs at most once per model per device (see
- * `image-support.ts`), and again when the user switches to a model that hasn't
- * been checked. The send is held while checking; a verdict of "unsupported" blocks
- * it only when the draft itself has an image, since history images are simply
- * dropped for such models. A check that can't reach a verdict lets the send go ahead.
+ * Checks whether the selected model can read images, starting as soon as an
+ * image is attached, or once the user starts a message in a thread that already
+ * has one. Runs at most once per model per device (see `image-support.ts`), and
+ * again when the user switches to a model that hasn't been checked. The send is
+ * held while checking; a verdict of "unsupported" blocks it only when the draft
+ * itself has an image, since history images are simply dropped for such models.
+ * A check that can't reach a verdict lets the send go ahead.
  */
 export const useImageSupportCheck = ({
   model,
   attachments,
   messages,
+  hasDraft,
   enabled,
   detect = detectOnDemand,
 }: UseImageSupportCheckOptions): ImageSupportCheck => {
@@ -70,7 +75,7 @@ export const useImageSupportCheck = ({
     () => messages.some((message) => getAttachments(message).some(isImageAttachment)),
     [messages],
   )
-  const needed = enabled && (draftHasImage || historyHasImage)
+  const needed = enabled && (draftHasImage || (historyHasImage && hasDraft))
 
   const query = useQuery({
     queryKey,

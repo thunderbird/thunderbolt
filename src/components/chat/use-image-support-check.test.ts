@@ -48,9 +48,13 @@ const deferredDetect = () => {
 }
 
 const renderCheck = (options: Partial<Parameters<typeof useImageSupportCheck>[0]>) =>
-  renderHook(() => useImageSupportCheck({ model, attachments: [image], messages: [], enabled: true, ...options }), {
-    wrapper: createQueryTestWrapper(),
-  })
+  renderHook(
+    () =>
+      useImageSupportCheck({ model, attachments: [image], messages: [], hasDraft: true, enabled: true, ...options }),
+    {
+      wrapper: createQueryTestWrapper(),
+    },
+  )
 
 describe('isImageAttachment', () => {
   it('matches images sent as raw bytes', () => {
@@ -139,9 +143,17 @@ describe('useImageSupportCheck', () => {
   })
 
   describe('thread history', () => {
-    it('checks a model when only earlier messages carry images', async () => {
+    it('waits for the user to start a message before checking a thread’s earlier images', async () => {
       const { detect } = deferredDetect()
-      const { result } = renderCheck({ attachments: [], messages: threadWithImage, detect })
+      const { result } = renderCheck({ attachments: [], messages: threadWithImage, hasDraft: false, detect })
+      await flush()
+      expect(detect).not.toHaveBeenCalled()
+      expect(result.current.notice).toBeUndefined()
+    })
+
+    it('checks a thread’s earlier images once the user starts a message', async () => {
+      const { detect } = deferredDetect()
+      const { result } = renderCheck({ attachments: [], messages: threadWithImage, hasDraft: true, detect })
       await flush()
       expect(detect).toHaveBeenCalledTimes(1)
       expect(result.current.notice).toBe('checking')

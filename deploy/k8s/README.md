@@ -202,11 +202,14 @@ helm upgrade thunderbolt . -n thunderbolt --reuse-values \
 #    Provisioning takes a minute or two on a cloud StorageClass.
 kubectl rollout status statefulset/postgres -n thunderbolt --timeout=10m
 
-# 6. Restore, and only bring the writers back if it succeeded.
+# 6. Restore, and only bring the writers back if it succeeded. Step 4 saved
+#    replicas=0 into the release, so --reuse-values alone would leave them
+#    stopped: pass the counts you were running before.
 kubectl exec -i -n thunderbolt postgres-0 -- \
   pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
 helm upgrade thunderbolt . -n thunderbolt --reuse-values \
-  --set postgres.storageClassName=<class>
+  --set postgres.storageClassName=<class> \
+  --set backend.replicas=1 --set powersync.replicas=1
 ```
 
 Do not skip step 5. `helm upgrade` returns as soon as the objects are accepted,

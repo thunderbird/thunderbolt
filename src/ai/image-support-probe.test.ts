@@ -29,6 +29,8 @@ const createFetch = (...responses: Response[]) => {
 const completion = (message: { content?: string | null; reasoning_content?: string }) =>
   Response.json({ choices: [{ message }] })
 
+const signal = new AbortController().signal
+
 // A non-loopback custom endpoint goes through the (injected) proxy fetch.
 const customModel = (overrides: Partial<Model> = {}): Model =>
   ({
@@ -45,7 +47,7 @@ describe('probeImageSupport', () => {
   it('reports support when the model names the image color', async () => {
     const { requests, getProxyFetch } = createFetch(completion({ content: 'Green.' }))
 
-    expect(await probeImageSupport(customModel(), getProxyFetch)).toBe('supported')
+    expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('supported')
 
     expect(requests).toHaveLength(1)
     const [request] = requests
@@ -61,18 +63,18 @@ describe('probeImageSupport', () => {
 
   it('sends no Authorization header to a keyless endpoint', async () => {
     const { requests, getProxyFetch } = createFetch(completion({ content: 'green' }))
-    await probeImageSupport(customModel({ apiKey: null }), getProxyFetch)
+    await probeImageSupport(customModel({ apiKey: null }), getProxyFetch, signal)
     expect(new Headers(requests[0].init.headers).has('Authorization')).toBe(false)
   })
 
   it('reads the answer from reasoning when the content is empty', async () => {
     const { getProxyFetch } = createFetch(completion({ content: '', reasoning_content: 'The square is green' }))
-    expect(await probeImageSupport(customModel(), getProxyFetch)).toBe('supported')
+    expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('supported')
   })
 
   it('reports no support when the server accepts the image but the model never sees it', async () => {
     const { getProxyFetch } = createFetch(completion({ content: "I can't see images." }))
-    expect(await probeImageSupport(customModel(), getProxyFetch)).toBe('unsupported')
+    expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('unsupported')
   })
 
   it('reports no support when the provider rejects the image but accepts plain text', async () => {
@@ -81,22 +83,25 @@ describe('probeImageSupport', () => {
       completion({ content: 'ok' }),
     )
 
-    expect(await probeImageSupport(customModel(), getProxyFetch)).toBe('unsupported')
+    expect(await probeImageSupport(customModel(), getProxyFetch, signal)).toBe('unsupported')
     expect(requests).toHaveLength(2)
     expect(requests[1].body.messages[0].content).toBeTypeOf('string')
-    // One deadline covers both requests, capping how long the composer holds the send.
-    expect(requests[1].init.signal).toBe(requests[0].init.signal)
+    // The caller's deadline covers both requests, capping how long the composer holds the send.
+    expect(requests[0].init.signal).toBe(signal)
+    expect(requests[1].init.signal).toBe(signal)
   })
 
   it('stays inconclusive when the provider rejects plain text too', async () => {
     const { getProxyFetch } = createFetch(new Response('', { status: 400 }), new Response('', { status: 400 }))
-    await expect(probeImageSupport(customModel(), getProxyFetch)).rejects.toBeInstanceOf(ImageSupportInconclusiveError)
+    await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
+      ImageSupportInconclusiveError,
+    )
   })
 
   it('stays inconclusive on auth, rate-limit, and server errors without a follow-up request', async () => {
     for (const status of [401, 403, 404, 429, 500]) {
       const { requests, getProxyFetch } = createFetch(new Response('', { status }))
-      await expect(probeImageSupport(customModel(), getProxyFetch)).rejects.toBeInstanceOf(
+      await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
         ImageSupportInconclusiveError,
       )
       expect(requests).toHaveLength(1)
@@ -105,13 +110,17 @@ describe('probeImageSupport', () => {
 
   it('stays inconclusive when the completion carries no answer', async () => {
     const { getProxyFetch } = createFetch(completion({ content: null }))
-    await expect(probeImageSupport(customModel(), getProxyFetch)).rejects.toBeInstanceOf(ImageSupportInconclusiveError)
+    await expect(probeImageSupport(customModel(), getProxyFetch, signal)).rejects.toBeInstanceOf(
+      ImageSupportInconclusiveError,
+    )
   })
 
   it('stays inconclusive without a request when the model has no OpenAI-compatible connection', async () => {
     const { requests, getProxyFetch } = createFetch()
     const keylessOpenAi = customModel({ provider: 'openai', url: null, apiKey: null })
-    await expect(probeImageSupport(keylessOpenAi, getProxyFetch)).rejects.toBeInstanceOf(ImageSupportInconclusiveError)
+    await expect(probeImageSupport(keylessOpenAi, getProxyFetch, signal)).rejects.toBeInstanceOf(
+      ImageSupportInconclusiveError,
+    )
     expect(requests).toHaveLength(0)
   })
 })

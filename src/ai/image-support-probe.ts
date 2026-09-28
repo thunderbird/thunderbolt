@@ -14,10 +14,6 @@ const probeImageDataUrl =
 
 const probeQuestion = 'What color is this image? Answer in English with one word.'
 
-/** Upper bound on the whole probe, follow-up included, generous enough for a cold local model to load.
- *  The composer holds the send for this long at most. */
-export const probeTimeoutMs = 30_000
-
 /** The probe couldn't reach a verdict (auth, network, timeout, server error). Never cached. */
 export class ImageSupportInconclusiveError extends Error {
   constructor(message: string) {
@@ -76,16 +72,20 @@ const postChatCompletion = (
  *
  * @param model - the model to test, with its connection settings and api key
  * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @param signal - the caller's deadline, shared by the probe and its follow-up
  * @returns whether the model read the image
  * @throws {ImageSupportInconclusiveError} when no verdict is possible (the caller must not cache it)
  */
-export const probeImageSupport = async (model: Model, getProxyFetch: () => FetchFn): Promise<ImageSupport> => {
+export const probeImageSupport = async (
+  model: Model,
+  getProxyFetch: () => FetchFn,
+  signal: AbortSignal,
+): Promise<ImageSupport> => {
   const connection = resolveOpenAiCompatConnection(model, getProxyFetch)
   if (!connection) {
     throw new ImageSupportInconclusiveError(`No OpenAI-compatible connection for provider "${model.provider}"`)
   }
 
-  const signal = AbortSignal.timeout(probeTimeoutMs)
   const response = await postChatCompletion(
     connection,
     model.model,

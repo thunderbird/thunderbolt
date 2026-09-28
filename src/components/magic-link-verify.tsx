@@ -17,6 +17,7 @@ import { msg } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
+import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
 
@@ -77,6 +78,12 @@ export const MagicLinkVerify = () => {
           setState({ status: 'error', message: i18n._(getOtpErrorMessage(result.error, 'link')) })
           return
         }
+
+        // Must happen here, on the sign-in response: `isNew` is retired inside
+        // this request, so the refetch below already reports false. Omitting
+        // this is why signing in via the emailed link redid onboarding and
+        // then overwrote the real value on every other device (GH #1299).
+        await markOnboardedForReturningUser(result.data?.user)
 
         // Refetch session to update the auth client cache
         // This ensures the sidebar and other components see the new session immediately

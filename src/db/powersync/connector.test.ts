@@ -7,7 +7,12 @@ import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { AbstractPowerSyncDatabase } from '@powersync/web'
-import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
+import {
+  handleCredentialsInvalidIfNeeded,
+  isCreateOnlyWrite,
+  powersyncCredentialsInvalid,
+  ThunderboltConnector,
+} from './connector'
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
@@ -334,5 +339,83 @@ describe('ThunderboltConnector', () => {
     } finally {
       errorSpy.mockRestore()
     }
+  })
+})
+
+describe('isCreateOnlyWrite', () => {
+  it('marks a PUT queued before the first sync as create-only', () => {
+    // GH #1299: this is the seeded `user_has_completed_onboarding = false` a
+    // fresh device queues at boot. It must not beat the account's real value.
+    expect(isCreateOnlyWrite('PUT', false)).toBe(true)
+  })
+
+  it('leaves a PUT unconditional once the device has synced', () => {
+    expect(isCreateOnlyWrite('PUT', true)).toBe(false)
+  })
+
+  it('never constrains PATCH, so resetting a setting to its default still propagates', () => {
+    // A reset writes content identical to a fresh seed, hash included, so any
+    // content-based rule would swallow it. It reaches the server as a PATCH
+    // (the row already exists locally), which this rule deliberately ignores.
+    expect(isCreateOnlyWrite('PATCH', false)).toBe(false)
+    expect(isCreateOnlyWrite('PATCH', true)).toBe(false)
+  })
+
+  it('never constrains DELETE', () => {
+    expect(isCreateOnlyWrite('DELETE', false)).toBe(false)
+    expect(isCreateOnlyWrite('DELETE', true)).toBe(false)
+  })
+})
+
+describe('ThunderboltConnector.uploadData', () => {
+  const crudEntry = (op: string, id: string) => ({ op, table: 'settings', id, opData: { value: 'false' } })
+
+  const stubDatabase = (hasSynced: boolean, crud: ReturnType<typeof crudEntry>[]) =>
+    ({
+      currentStatus: { hasSynced },
+      getNextCrudTransaction: async () => ({ crud, complete: async () => {} }),
+    }) as unknown as AbstractPowerSyncDatabase
+
+  const uploadedOperations = (fetchSpy: ReturnType<typeof mock>) => {
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    return (JSON.parse(init.body as string) as { operations: Record<string, unknown>[] }).operations
+  }
+
+  beforeEach(() => {
+    setAuthToken(authToken)
+  })
+
+  afterEach(() => {
+    clearAuthToken()
+  })
+
+  it('tags PUTs queued before the first sync as create-only (GH #1299)', async () => {
+    const fetchSpy = mock(async () => Response.json({ success: true }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(false, [crudEntry('PUT', 'user_has_completed_onboarding')]))
+
+    expect(uploadedOperations(fetchSpy)[0].ifAbsent).toBe(true)
+  })
+
+  it('leaves the payload unchanged once the device has synced', async () => {
+    const fetchSpy = mock(async () => Response.json({ success: true }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(true, [crudEntry('PUT', 'user_has_completed_onboarding')]))
+
+    // Absent rather than `false`: an established device must send exactly what
+    // previous builds sent, so the new field only appears in the window it is
+    // needed for.
+    expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
+  })
+
+  it('never tags a PATCH, so an edit made before the first sync still wins', async () => {
+    const fetchSpy = mock(async () => Response.json({ success: true }))
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(false, [crudEntry('PATCH', 'currency')]))
+
+    expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
   })
 })

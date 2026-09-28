@@ -58,7 +58,7 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
    - [powersync-service/config/config.yaml](../../powersync-service/config/config.yaml) — local docker-compose.
    - [deploy/config/powersync-config.yaml](../../deploy/config/powersync-config.yaml) — baked into the `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; used by preview stacks (Pulumi) and prod on Render.
    - [deploy/k8s/templates/configmaps.yaml](../../deploy/k8s/templates/configmaps.yaml) — Helm-rendered config for the enterprise k8s deploy path.
-   Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
+     Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
 6. Run migrations for frontend and backend as needed.
 
 ### PR Flow for Adding Tables
@@ -188,6 +188,61 @@ Summary for client:
 - **403** with `DEVICE_DISCONNECTED` → this device revoked (reset).
 - **409** with `DEVICE_ID_TAKEN` → device id already registered to another user; reset to get a fresh device id.
 - **401** → generic auth failure.
+
+#### Create-only writes (`ifAbsent`)
+
+An operation may carry `ifAbsent: true`. Only `PUT` honours it: the row is inserted when absent
+and left untouched when present, instead of the usual upsert.
+
+The client sets it on every `PUT` it uploads **before the device has completed its first sync**
+(`isCreateOnlyWrite` in `src/db/powersync/connector.ts`, gated on `currentStatus.hasSynced`).
+Until that first sync the device has never seen the account's state, so every row it holds is one
+it invented locally — the bundled defaults and the seeded settings keys, all with deterministic
+ids that collide with whatever another device already stored. Those writes are guesses, and a
+guess must not beat a stored value.
+
+This is GH #1299: sync is off by default, so a second device seeds
+`user_has_completed_onboarding = false` at boot, and the moment the user enables sync that seed
+uploaded straight over the already-onboarded value on every other device.
+
+Two properties keep the rule safe:
+
+- **The op is still sent.** It is not dropped client-side. When the account genuinely lacks the
+  row — the common case, since sync is off by default and most accounts have never uploaded
+  anything — the row is created. Dropping it instead would leave the device holding rows the
+  server has never heard of, and the first `PATCH` against one of those would miss, return 400,
+  and wedge the upload queue permanently.
+- **Only `PUT` is constrained.** PowerSync emits `PUT` from `INSERT` statements and `PATCH` from
+  `UPDATE` statements (`UpdateType` in `@powersync/common`), so a deliberate edit to a row that
+  already exists locally is always a `PATCH` and always propagates. That specifically covers
+  resetting a setting back to its default (`resetSettingToDefault`), which rewrites the row to
+  content byte-identical to a fresh seed — any content-based rule would swallow it.
+
+**Known gap:** settings whose row reconcile seeds as `null` and a hook fills in later —
+`language` (`useAppLanguage`) and the four unit settings (`useUnitDefaults`) — reach the server as
+`PATCH`, because the row already exists locally. They are therefore _not_ covered, and a new
+device can still overwrite an established device's chosen language or units on first sync.
+
+#### Which device runs onboarding
+
+Sync is off by default, so a device signing in to an account that already exists cannot read the
+synced `user_has_completed_onboarding` setting — all it has is the `false` reconcile seeded at
+boot. `markOnboardedForReturningUser` (`src/lib/returning-user-onboarding.ts`) treats "the account
+already existed" as "onboarding already happened" and writes the setting locally.
+
+**It must be called from every sign-in entry point.** Reaching only the sign-in modal and the
+waitlist page is GH #1299: the magic-link path left the seeded `false` in place, so the user redid
+onboarding there and then uploaded that `false` over the real value on every other device.
+
+The `isNew` flag it reads has to come from the sign-in **response**, never from `useSession()`.
+The backend retires the flag inside the sign-in request (`markUserNotNew` in the auth `after`
+hook), and Better Auth's session atom is fed solely by `/get-session` — so every session read
+reports `false` and cannot distinguish a fresh signup from a returning sign-in.
+
+**Not covered:** SSO. It leaves via a full page navigation and returns through a browser reload,
+so there is no in-app sign-in response to read, and `markUserNotNew` never runs on that path
+anyway (it is gated to `/sign-in/email-otp`), leaving the flag stuck at its `true` default for SSO
+accounts. An SSO user therefore still sees onboarding on each new device until they enable sync.
 
 ### Revoke Device (`POST /v1/account/devices/:id/revoke`)
 

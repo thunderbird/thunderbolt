@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
+import { isNewAuthUser, markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
@@ -84,7 +84,6 @@ type UseWaitlistStateOptions = {
 export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
-  const { data: session } = authClient.useSession()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -118,10 +117,6 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
 
     await analytics.captureAnonId(authClient)
 
-    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
-    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
-    const wasAnonymous = session?.user?.isAnonymous === true
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
@@ -139,7 +134,7 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      await onSignInSuccess(isNewUser, wasAnonymous)
+      await markOnboardedForReturningUser(result.data.user)
       analytics.onPromotionSuccess(result.data.user.id)
 
       if (!isNewUser) {

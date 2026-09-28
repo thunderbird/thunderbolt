@@ -72,6 +72,29 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 }
 
 /**
+ * Whether a queued write may create a row but must never overwrite one.
+ *
+ * Before a device completes its first sync it has never seen the account's
+ * state, so every row it holds is one it invented locally — the bundled
+ * defaults, the seeded settings keys. Those are guesses, not assertions, and a
+ * guess must not beat a value another device already stored. GH #1299: a second
+ * device seeded `user_has_completed_onboarding = false` while offline and, on
+ * enabling sync, overwrote the already-onboarded value everywhere.
+ *
+ * Scoped to PUT on purpose. PowerSync emits PUT only for a row that did not
+ * exist locally (`UpdateType`: PUT from INSERT, PATCH from UPDATE), so a
+ * deliberate edit to an existing row — including resetting a setting back to
+ * its default, which produces content identical to a fresh seed — is a PATCH.
+ * Leaving PATCH unconditional is what keeps every intentional change
+ * propagating.
+ *
+ * The window closes for good once `hasSynced` flips: from then on the device
+ * knows what the account holds, and normal last-writer-wins applies.
+ */
+export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
+  op === 'PUT' && !hasSynced
+
+/**
  * PowerSync connector that handles authentication and data upload.
  * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
  * - uploadData: Sends local changes to the backend for persistence (requires auth)
@@ -169,17 +192,24 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       return // No changes to upload
     }
 
+    const hasSynced = database.currentStatus?.hasSynced ?? false
+
     try {
       // Convert CRUD operations to our API format (encrypt encrypted columns)
       const operations = await Promise.all(
-        transaction.crud.map((op) =>
-          encodeForUpload({
-            op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
+        transaction.crud.map((op) => {
+          const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          return encodeForUpload({
+            op: opName,
             type: op.table,
             id: op.id,
             data: op.opData,
-          }),
-        ),
+            // Omitted rather than sent as `false` so post-first-sync uploads —
+            // every write by an established device — stay byte-identical to
+            // what previous builds sent.
+            ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
+          })
+        }),
       )
 
       console.info(`Uploading ${operations.length} operations to backend`)

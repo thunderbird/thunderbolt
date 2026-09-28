@@ -53,6 +53,19 @@ type PowerSyncOperation = {
   type: string
   id: string
   data?: Record<string, unknown>
+  /**
+   * Create-only PUT: insert the row when it is absent, never overwrite an
+   * existing one. Clients set it on writes queued before the device completed
+   * its first sync — at that point the device has never seen the account's
+   * state, so a row it invented locally (a bundled default, a settings key)
+   * cannot be more authoritative than one already stored. GH #1299: a new
+   * device seeded `user_has_completed_onboarding = false` offline and, on
+   * enabling sync, overwrote the already-onboarded value on every other device.
+   *
+   * Only PUT honours it. PATCH and DELETE target a row the client has already
+   * seen, so they stay unconditional and a deliberate edit always propagates.
+   */
+  ifAbsent?: boolean
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
@@ -141,14 +154,14 @@ export const applyOperation = async (
       delete updateSet.userId
 
       const insertQuery = database.insert(table).values(schemaValues as never)
-      if (Object.keys(updateSet).length > 0) {
+      if (op.ifAbsent || Object.keys(updateSet).length === 0) {
+        await insertQuery.onConflictDoNothing({ target: conflictTarget })
+      } else {
         await insertQuery.onConflictDoUpdate({
           target: conflictTarget,
           set: updateSet as never,
           setWhere: eq(tableWithUserId.userId, userId),
         })
-      } else {
-        await insertQuery.onConflictDoNothing({ target: conflictTarget })
       }
       return true
     }

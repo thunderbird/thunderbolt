@@ -1218,6 +1218,50 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userId)
     })
 
+    it('honours ifAbsent on the wire: create-only PUT cannot overwrite (GH #1299)', async () => {
+      const userId = 'user-upload-if-absent'
+      const now = new Date()
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'If Absent User',
+        email: 'upload-if-absent@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-upload-if-absent',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-upload-if-absent',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('test-device-id', userId)
+
+      const upload = (data: Record<string, unknown>, ifAbsent?: boolean) =>
+        app.handle(
+          new Request('http://localhost/powersync/upload', {
+            method: 'PUT',
+            headers: uploadHeaders('bearer-upload-if-absent'),
+            body: JSON.stringify({
+              operations: [{ op: 'PUT' as const, type: 'settings', id: 'onboarding', data, ...{ ifAbsent } }],
+            }),
+          }),
+        )
+
+      expect((await upload({ value: 'true' })).status).toBe(200)
+
+      // The seeded default a second device queues offline. It must reach the
+      // route (so the row is created where absent) and be refused where not.
+      const seeded = await upload({ value: 'false' }, true)
+
+      expect(seeded.status).toBe(200)
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onboarding'))
+      expect(rows[0]?.value).toBe('true')
+    })
+
     it('ignores user_id and id in PUT payload, always uses session user', async () => {
       const userId = 'user-put-owns-row'
       const now = new Date()

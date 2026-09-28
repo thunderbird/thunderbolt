@@ -52,10 +52,9 @@ annotations:
 
 {{/*
 Node selector block. Renders the full `nodeSelector:` YAML key (or nothing,
-if `.Values.nodeSelector` is empty). Useful to pin workloads to matching nodes
-on a mixed-architecture cluster, e.g. `kubernetes.io/arch: amd64` when the
-chart's own images are published single-arch but the cluster also schedules
-onto arm64 nodes.
+if `.Values.nodeSelector` is empty). Useful to pin workloads to a particular
+node pool, e.g. `kubernetes.io/arch: amd64` to keep them off arm64 nodes, or a
+label of your own for a dedicated pool.
 
 Usage:
   {{- include "thunderbolt.nodeSelector" . | nindent 6 }}

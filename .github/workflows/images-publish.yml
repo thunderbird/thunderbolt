@@ -120,8 +120,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           build-args: |
@@ -141,8 +141,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
@@ -159,8 +159,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
@@ -177,8 +177,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
@@ -195,8 +195,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
@@ -213,8 +213,8 @@ jobs:
           push: true
           no-cache: true
           # Buildx's container driver attaches provenance attestations by
-          # default, which changes the published manifest shape. Keep the
-          # plain manifest the previous docker driver produced.
+          # default. Suppress them so the index carries only the two platform
+          # manifests, matching what the previous docker driver published.
           provenance: false
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |

@@ -298,7 +298,6 @@ jobs:
       - name: Run native iOS smoke
         id: smoke
         env:
-          VITE_NATIVE_INPUT_DIAGNOSTIC: 'true'
           VITE_AUTH_MODE: thunderbolt
           VITE_SKIP_ONBOARDING: 'true'
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'

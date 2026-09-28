@@ -156,21 +156,27 @@ Both are therefore new-install settings. To change one on a live deployment,
 take a dump first and restore into the new volume:
 
 ```bash
+# 1. Dump the current database.
 kubectl exec -n thunderbolt postgres-0 -- \
   pg_dump -U postgres -Fc postgres > thunderbolt.dump
 
+# 2. Drop the StatefulSet and its claim. The orphaned pod still mounts the
+#    volume, so it has to go before the claim will delete rather than hang.
 kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
+kubectl delete pod postgres-0 -n thunderbolt
 kubectl delete pvc pg-data-postgres-0 -n thunderbolt
 
+# 3. Recreate it on the new class.
 helm upgrade thunderbolt . -n thunderbolt --reuse-values \
   --set postgres.storageClassName=<class>
 
+# 4. Keep writers off the empty database while it is restored. Do this after
+#    the upgrade, which puts both replica counts back to 1.
+kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=0
 kubectl exec -i -n thunderbolt postgres-0 -- \
   pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
+kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=1
 ```
-
-Scale the `backend` and `powersync` deployments to zero before the restore and
-back up afterwards, so nothing writes to the database while it is half-restored.
 
 ## Templates
 

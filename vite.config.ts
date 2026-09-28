@@ -62,9 +62,9 @@ export default defineConfig({
   plugins: [
     {
       name: 'copy-powersync-assets',
-      // Vite indexes public files before buildStart, so workers must already exist.
-      configResolved() {
-        execSync('powersync-web copy-assets --output public', { stdio: 'inherit' })
+      apply: 'build',
+      buildStart() {
+        execSync(pkg.scripts['copy:assets'], { stdio: 'inherit' })
       },
     },
     tailwindcss(),

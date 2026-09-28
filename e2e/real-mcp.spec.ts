@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultModelOpus5 } from '../shared/defaults/models'
-import { loginViaOidc, sendChatPrompt } from './helpers'
+import { collectPageErrors, loginViaOidc, sendChatPrompt } from './helpers'
 import { expect, test } from './test'
 
 test.slow()
@@ -11,6 +11,7 @@ test.slow()
 const mcpUrl = 'http://127.0.0.1:9879/mcp'
 
 test('the model calls an MCP tool through the proxy and displays its result', async ({ page }) => {
+  const errors = collectPageErrors(page)
   const toolCalls: string[] = []
   page.on('request', (request) => {
     if (
@@ -30,6 +31,8 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await expect(page.getByText('Connection successful!')).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: 'Add Server' }).click()
   await page.getByRole('button', { name: 'Open Test Echo', exact: true }).click()
+  // Like the probe, readiness includes initialization and tool discovery on this fresh connection.
+  await expect(page.getByRole('button', { name: /Available Tools/ })).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Connected', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: /Available Tools/ }).click()
   await expect(page.getByText('echo', { exact: true })).toBeVisible()
@@ -45,6 +48,11 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   expect(toolCalls.some((body) => body.includes(marker))).toBe(true)
   await expect(page.locator('.tool-invocation-card')).toBeVisible()
   await page.locator('.tool-invocation-card').getByRole('button').first().click()
-  await page.locator('.tool-invocation-card').getByRole('button', { name: /Test Echo.*echo/i }).click()
+  await page
+    .locator('.tool-invocation-card')
+    .getByRole('region')
+    .getByRole('button', { name: /Test Echo.*echo/i })
+    .click()
   await expect(page.getByText(`MCP result: ${marker}`, { exact: false })).toBeVisible()
+  expect(errors).toHaveLength(0)
 })

@@ -91,7 +91,7 @@ The Ingress routes by path under a single hostname. Set `ingress.enabled=false` 
 
 Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is how the local walkthrough works on `localhost`.
 
-> The `/powersync/` rule renders, but sync does not work through it. The chart sets `POWERSYNC_URL` to the in-cluster `http://powersync:8080` and offers no value to change it, so that is the address the browser is handed; the Ingress does not strip the path prefix either. Multi-device sync needs `ingress.hostnames.powersync` below.
+> The `/powersync/` rule strips its prefix correctly, but sync still does not work through it: the chart sets `POWERSYNC_URL` to the in-cluster `http://powersync:8080` and offers no value to change it, so that is the address the browser is handed. Multi-device sync needs `ingress.hostnames.powersync` below.
 
 If you would rather give each service its own hostname, set any of the five keys under `ingress.hostnames`:
 

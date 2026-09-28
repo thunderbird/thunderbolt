@@ -81,7 +81,7 @@ The AWS Fargate load balancer uses a different set: `/v1/`, `/auth/`, `/realms/`
 
 You can instead give each service its own hostname (for example `app.`, `api.`, `auth.`, `powersync.`). Both layouts can be configured at once, with per-service hostnames taking precedence.
 
-> Multi-device sync needs the per-service hostname. The chart renders a `/powersync/` path rule, but it hands the browser the in-cluster `http://powersync:8080` address and does not strip the path prefix, so sync only works once you set `ingress.hostnames.powersync`.
+> Multi-device sync needs the per-service hostname. The chart's `/powersync/` path rule routes correctly, but it hands the browser the in-cluster `http://powersync:8080` address, so sync only works once you set `ingress.hostnames.powersync`.
 
 ## Ports
 

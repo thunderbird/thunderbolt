@@ -22,10 +22,10 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.22.1",
-    "@earendil-works/pi-agent-core": "0.80.7",
-    "@earendil-works/pi-ai": "0.80.7",
-    "@earendil-works/pi-coding-agent": "0.80.7",
-    "@earendil-works/pi-tui": "0.80.7",
+    "@earendil-works/pi-agent-core": "0.82.1",
+    "@earendil-works/pi-ai": "0.82.1",
+    "@earendil-works/pi-coding-agent": "0.82.1",
+    "@earendil-works/pi-tui": "0.82.1",
     "@number0/iroh": "1.0.0",
     "qrcode-terminal": "0.12.0",
     "tinfoil": "1.2.1"

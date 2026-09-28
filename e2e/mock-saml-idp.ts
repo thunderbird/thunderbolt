@@ -85,13 +85,6 @@ export const createMockSamlIdp = async (port: number) => {
           { extract: { request: { id: requestId } } },
           'post',
           testUser,
-          // samlify types this parameter as a CustomTagReplacement callback
-          // `(template: string) => BindingContext`, not the template string we
-          // pass, so the attribute statement is likely never injected. Left as-is
-          // rather than fixed here: the SAML specs pass without it, and changing
-          // what the mock IdP asserts belongs with someone verifying those flows.
-          // @ts-expect-error samlify expects a CustomTagReplacement callback
-          createAttributeTemplate(testUser),
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)
@@ -126,14 +119,3 @@ export const createMockSamlIdp = async (port: number) => {
 
 const escapeHtml = (str: string) =>
   str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-/**
- * Build a custom SAML attribute statement with the test user's claims.
- */
-const createAttributeTemplate = (user: typeof testUser) =>
-  `<saml:AttributeStatement>
-    <saml:Attribute Name="email"><saml:AttributeValue xsi:type="xs:string">${user.email}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="displayName"><saml:AttributeValue xsi:type="xs:string">${user.displayName}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="givenName"><saml:AttributeValue xsi:type="xs:string">${user.givenName}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="surname"><saml:AttributeValue xsi:type="xs:string">${user.surname}</saml:AttributeValue></saml:Attribute>
-  </saml:AttributeStatement>`

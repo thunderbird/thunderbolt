@@ -4,6 +4,27 @@
 
 import { expect, type Page } from '@playwright/test'
 
+// Matches testSignInOtp in backend/src/auth/otp-constants.ts (NODE_ENV=test only).
+const e2eSignInCode = '12345678'
+
+/**
+ * Request an email code through the entry page, complete verification, and
+ * wait for the authenticated chat UI (onboarding is disabled in the e2e config).
+ */
+export const loginViaEmailCode = async (page: Page) => {
+  const email = `e2e-${crypto.randomUUID()}@thunderbolt.test`
+  // Returning users can see this dialog after the chat has already rendered.
+  await page.addLocatorHandler(page.getByRole('dialog', { name: 'Welcome', exact: true }), async (dialog) => {
+    await dialog.getByRole('button', { name: 'Continue', exact: true }).click()
+  })
+  await page.goto('/')
+  await page.getByPlaceholder('Email', { exact: true }).fill(email)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.locator('input[autocomplete="one-time-code"]').fill(e2eSignInCode)
+  await expect(page.locator('textarea')).toBeVisible({ timeout: 30_000 })
+  return email
+}
+
 /**
  * Navigate to the app root, let the SSO flow complete naturally through
  * the mock identity provider, and wait for the authenticated chat UI to render.
@@ -31,6 +52,19 @@ export const loginViaSaml = async (page: Page) => {
   await expect(textarea).toBeVisible({ timeout: 30_000 })
 }
 
+/** Open the chat sidebar when the mobile drawer is closed; desktop already renders it. */
+export const openSidebarOnMobile = async (page: Page) => {
+  if ((page.viewportSize()?.width ?? 768) >= 768) {
+    return
+  }
+  const openDrawer = page.locator('[data-slot="sidebar"][data-mobile="true"][data-open]')
+  if (await openDrawer.count()) {
+    return
+  }
+  await page.locator('[data-slot="create-item-layout"] header').first().getByRole('button').first().click()
+  await expect(openDrawer).toBeVisible()
+}
+
 /**
  * Open the account popover, click "Log out", confirm in the modal, and wait
  * for the signed-out landing page to appear.
@@ -38,11 +72,9 @@ export const loginViaSaml = async (page: Page) => {
  * Expects the caller to have already authenticated (e.g. via loginViaOidc / loginViaSaml).
  */
 export const logoutViaSidebar = async (page: Page, option: 'keep' | 'delete' = 'keep') => {
-  // Open account popover in sidebar footer
+  await openSidebarOnMobile(page)
   const accountTrigger = page.locator('[data-sidebar="footer"]').getByRole('button').first()
   await accountTrigger.click()
-
-  // Click "Log out" menu item
   await page.getByText('Log out', { exact: true }).click()
 
   // Pick the data option if "delete" is requested (default is "keep")
@@ -73,4 +105,10 @@ export const collectPageErrors = (page: Page): string[] => {
     }
   })
   return errors
+}
+
+/** Send a message through the app's chat composer. */
+export const sendChatPrompt = async (page: Page, prompt: string) => {
+  await page.locator('textarea').fill(prompt)
+  await page.getByRole('button', { name: 'Send message' }).click()
 }

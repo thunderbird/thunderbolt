@@ -5,7 +5,7 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { ensureHttps, validateAndPin, type DnsLookup } from '@/utils/url-validation'
+import { ensureHttps, isAllowedTestProxyTarget, validateAndPin, type DnsLookup } from '@/utils/url-validation'
 import {
   droppedResponseHeaders,
   finalUrlHeader,
@@ -56,6 +56,10 @@ const textResponse = (status: number, body: string): Response =>
 
 /** Auto-upgrade `http://` URLs to `https://` and reject all other non-https schemes. */
 const normaliseTargetUrl = (raw: string): URL | { error: string } => {
+  const parsed = URL.canParse(raw) ? new URL(raw) : null
+  if (parsed && isAllowedTestProxyTarget(parsed)) {
+    return parsed
+  }
   const upgraded = ensureHttps(raw)
   if (!upgraded) {
     try {

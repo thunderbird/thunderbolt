@@ -168,7 +168,7 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
   const { i18n, t } = useLingui()
   const formatters = useFormatters()
   const authClient = useAuth()
-  const { isMobile, setOpenMobile, state } = useSidebar()
+  const { isMobile, closeMobileSidebar, setOpenMobile, state } = useSidebar()
   const { openSignInModal } = useSignInModal()
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -190,10 +190,14 @@ export const SidebarFooter = ({ className }: SidebarFooterProps) => {
 
   const createNewChat = useCreateNewChat()
 
-  const handleNewChat = () => {
+  // Close the drawer before navigating, like the chats rail's own "New chat"
+  // row: the drawer traps focus while it animates out, so navigating first
+  // would leave the new chat's composer unable to take focus (and mounting
+  // the destination mid-animation is what makes the close visibly jank).
+  const handleNewChat = async () => {
     triggerImpact('light')
+    await closeMobileSidebar()
     createNewChat()
-    setOpenMobile(false)
   }
 
   const { data: session, isPending } = authClient.useSession()

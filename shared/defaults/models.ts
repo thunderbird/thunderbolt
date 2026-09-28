@@ -90,7 +90,7 @@ export const defaultModelOpus5: SharedModel = {
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
-  contextWindow: 200_000,
+  contextWindow: 1_000_000,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 1,
@@ -172,4 +172,4 @@ export const defaultModels: ReadonlyArray<SharedModel> = [
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 7
+export const defaultModelsVersion = 9

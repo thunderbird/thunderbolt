@@ -258,11 +258,13 @@ export type OpenAiCompatConnection = {
  *
  * @param modelConfig - the model whose connection to resolve
  * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @param backendFetch - transport for authenticated backend requests
  * @returns the connection, or `null` when unsupported/unconfigured
  */
 export const resolveOpenAiCompatConnection = (
   modelConfig: Model,
   getProxyFetch: () => FetchFn,
+  backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection | null => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
@@ -276,12 +278,14 @@ export const resolveOpenAiCompatConnection = (
       const ssoFetch: typeof fetch = Object.assign(
         (input: RequestInfo | URL, init?: RequestInit) => {
           const headers = new Headers(init?.headers)
-          headers.delete('authorization')
-          return fetch(input, { ...init, headers, credentials: 'include' })
+          if (!hasRealToken) {
+            headers.delete('authorization')
+          }
+          return backendFetch(input, { ...init, headers, credentials: 'include' })
         },
-        { preconnect: fetch.preconnect },
+        { preconnect: backendFetch.preconnect },
       )
-      const providerFetch: FetchFn = withAppVersionHeader(sso && !hasRealToken ? ssoFetch : fetch)
+      const providerFetch: FetchFn = withAppVersionHeader(sso ? ssoFetch : backendFetch)
       return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
     }
     case 'openai':
@@ -316,6 +320,43 @@ export const resolveOpenAiCompatConnection = (
   }
 }
 
+/**
+ * Derive a native Messages connection from Thunderbolt's shared auth policy.
+ * Anthropic SDKs send `x-api-key`; the backend instead expects the same
+ * bearer/cookie credential used by the OpenAI-compatible managed route.
+ */
+export const resolveManagedAnthropicConnection = (
+  modelConfig: Model,
+  getProxyFetch: () => FetchFn,
+  client: 'anthropic-sdk' | 'ai-sdk' = 'anthropic-sdk',
+  backendFetch: FetchFn = fetch,
+): OpenAiCompatConnection => {
+  const connection = resolveOpenAiCompatConnection(modelConfig, getProxyFetch, backendFetch)
+  if (!connection) {
+    throw new Error('No connection resolved for managed Anthropic model')
+  }
+  const managedFetch: FetchFn = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers)
+      const apiKey = headers.get('x-api-key')
+      headers.delete('x-api-key')
+      if (apiKey && apiKey !== 'thunderbolt') {
+        headers.set('Authorization', `Bearer ${apiKey}`)
+      } else {
+        headers.delete('Authorization')
+      }
+      return connection.fetch(input, { ...init, headers })
+    },
+    { preconnect: connection.fetch.preconnect },
+  )
+  const sdkPath = client === 'ai-sdk' ? '/v1' : ''
+  return {
+    baseURL: `${connection.baseURL.replace(/\/$/, '')}/chat${sdkPath}`,
+    apiKey: connection.apiKey,
+    fetch: managedFetch,
+  }
+}
+
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
@@ -323,6 +364,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
+      if (modelConfig.vendor === 'anthropic') {
+        const connection = resolveManagedAnthropicConnection(modelConfig, getProxyFetch, 'ai-sdk')
+        const provider = createAnthropic(connection)
+        return provider(modelConfig.model)
+      }
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
       // client and getAuthToken() returns null.  The AI SDKs require an apiKey

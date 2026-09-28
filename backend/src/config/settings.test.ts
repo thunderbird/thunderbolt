@@ -15,6 +15,34 @@ import {
 } from './settings'
 
 describe('Config Settings', () => {
+  describe('Anthropic base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.ANTHROPIC_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.ANTHROPIC_BASE_URL
+      } else {
+        process.env.ANTHROPIC_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Anthropic endpoint when the override is unset', () => {
+      delete process.env.ANTHROPIC_BASE_URL
+      expect(getSettings().anthropicBaseUrl).toBe('https://api.anthropic.com')
+    })
+
+    it('honours ANTHROPIC_BASE_URL', () => {
+      process.env.ANTHROPIC_BASE_URL = 'http://localhost:9878'
+      expect(getSettings().anthropicBaseUrl).toBe('http://localhost:9878')
+    })
+  })
+
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
@@ -202,6 +230,26 @@ describe('Config Settings', () => {
   })
 
   describe('Settings validation and defaults', () => {
+    it('loads the Resend monitoring API key and defaults to empty when unset', () => {
+      const originalValue = process.env.RESEND_MONITORING_API_KEY
+      try {
+        delete process.env.RESEND_MONITORING_API_KEY
+        clearSettingsCache()
+        expect(getSettings().resendMonitoringApiKey).toBe('')
+
+        process.env.RESEND_MONITORING_API_KEY = 'test-resend-monitoring-key'
+        clearSettingsCache()
+        expect(getSettings().resendMonitoringApiKey).toBe('test-resend-monitoring-key')
+      } finally {
+        if (originalValue === undefined) {
+          delete process.env.RESEND_MONITORING_API_KEY
+        } else {
+          process.env.RESEND_MONITORING_API_KEY = originalValue
+        }
+        clearSettingsCache()
+      }
+    })
+
     it('keeps CLI device registration disabled unless explicitly enabled', () => {
       const originalValue = process.env.CLI_DEVICE_REGISTRATION_ENABLED
       try {

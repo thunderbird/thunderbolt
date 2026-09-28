@@ -36,7 +36,16 @@ import { getTurnActivity } from '@/chats/turn-activity'
 import { useDraftInput } from '@/hooks/use-draft-input'
 import { AnimatePresence, m } from 'framer-motion'
 import { AlertCircle, Loader2, X } from 'lucide-react'
-import { type ClipboardEvent, forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  type ClipboardEvent,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation as useLocation_default, useNavigate as useNavigate_default } from 'react-router'
 import { ChatAddMenu } from './chat-add-menu'
 import { ChatSkillsBar } from './chat-skills-bar'
@@ -45,6 +54,7 @@ import { ContextUsageIndicator } from '../context-usage-indicator'
 import { PromptInput } from '../ui/prompt-input'
 import { ChatModelPicker } from './chat-model-picker'
 import { buildAttachmentPart } from '@/lib/attachments'
+import { collapseTextSelectionToEnd } from '@/lib/focus'
 import { buildQuotePart } from '@/lib/quotes'
 import { QuoteChip } from './quote-chip'
 import { deleteAttachment, putAttachment } from '@/lib/file-blob-storage'
@@ -61,8 +71,8 @@ const maxAttachmentBytes = 25 * 1024 * 1024
 const maxAttachmentCount = 10
 
 /** Mime types accepted as attachments. PDFs and images deliver natively to
- *  capable models; plain-text types (txt / md / csv / json) deliver as text;
- *  docx (and a native file a model rejects) auto-remediate to text/images. */
+ *  capable models; plain-text types (txt / md / csv / json) and xlsx deliver as
+ *  text; docx (and a native file a model rejects) auto-remediate to text/images. */
 const acceptedAttachmentMimeTypes = new Set([
   'application/pdf',
   'image/png',
@@ -70,6 +80,7 @@ const acceptedAttachmentMimeTypes = new Set([
   'image/webp',
   'image/gif',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/markdown',
   'text/plain',
   'text/csv',
@@ -86,6 +97,7 @@ const acceptedAttachmentExtensions = [
   '.webp',
   '.gif',
   '.docx',
+  '.xlsx',
   '.md',
   '.markdown',
   '.txt',
@@ -416,6 +428,34 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
         }
       })
     }
+
+    // Composer-focus request from the "New chat" entry points
+    // (`useCreateNewChat`), in the same consume-once router-state shape as
+    // `runSkill` above. It exists because mount-time `autoFocus` can't serve
+    // that tap: starting a chat from `/chats/new` reuses this composer, so
+    // there is no mount to focus on, and starting one from the mobile drawer
+    // focuses while the drawer still owns focus. Deferring a frame lets this
+    // focus win over the drawer's own focus management — the same reason
+    // `useAutofocusOnMount` defers — and programmatic focus raises the
+    // keyboard in the native apps (the WKContentView swizzle in main.mm).
+    const focusRequested = (location.state as { focusComposer?: boolean } | null)?.focusComposer === true
+    useEffect(() => {
+      if (!focusRequested) {
+        return
+      }
+      const frame = requestAnimationFrame(() => {
+        // Queried from the form rather than read off `textareaRef`: that ref
+        // is filled during render, and the mount render runs before the form
+        // ref itself is set.
+        const textarea = formRef.current?.querySelector('textarea') ?? null
+        textarea?.focus()
+        collapseTextSelectionToEnd(textarea)
+        // Consume the request so a back/forward navigation can't re-raise the
+        // keyboard over a chat the user came to read.
+        navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+      })
+      return () => cancelAnimationFrame(frame)
+    }, [focusRequested, navigate, location.pathname, location.search])
 
     // Map of enabled-skill slug → instruction. Shared by the overflow
     // estimate below and the send-time resolver in `ai/fetch.ts` (via

@@ -45,6 +45,7 @@
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
+  resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
@@ -65,7 +66,7 @@ import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { modelSupportsImages } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
-import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
 import type { SecureClient } from 'tinfoil'
 import {
@@ -90,10 +91,10 @@ type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
  *  its isolated OPFS workspace persist across the thread's turns. */
 type HarnessRecord = {
   readonly harness: AgentHarness
-  /** The thread's isolated workspace dir ({@link workspaceDirFor}); removed on dispose. */
-  readonly workspaceDir: string
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
-  readonly baseTools: AgentTool[]
+  readonly baseTools: AgentHarnessTool<undefined>[]
+  /** Removes the thread's workspace without exposing the harness's private environment. */
+  readonly removeWorkspace: () => Promise<void>
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
   /** Mutable transport cell read by the attached receipt lifecycle. */
@@ -445,6 +446,25 @@ export const resolvePiModel = async (
       thinkingLevel,
     }
   }
+  if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
+    const catalogModelId = `claude-${model.model}`
+    if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
+      return null
+    }
+    const connection = resolveManagedAnthropicConnection(model, context.getProxyFetch)
+    return {
+      descriptor: {
+        kind: 'anthropic',
+        modelId: model.model,
+        catalogModelId,
+        baseURL: connection.baseURL,
+        contextWindow: model.contextWindow ?? undefined,
+        apiKey: connection.apiKey,
+        fetch: connection.fetch,
+      },
+      thinkingLevel,
+    }
+  }
   const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
   // Pi's openai-completions client requires a bearer key (it throws on an empty
   // one with no auth header). A `custom` model pointing at a no-auth local
@@ -513,7 +533,7 @@ export const harnessSignature = (
   const clientId = resolved.tinfoilClient ? tinfoilClientId(resolved.tinfoilClient) : ''
   const model =
     d.kind === 'anthropic'
-      ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
+      ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
@@ -555,8 +575,8 @@ const buildHarnessRecord = async (
   })
   return {
     harness,
-    workspaceDir: agentCore.workspaceDirFor(context.threadId),
     baseTools: harness.getTools(),
+    removeWorkspace: () => agentCore.removeAgentWorkspace(context.threadId),
     systemPrompt,
     receiptHttpClient: resolved.receiptHttpClient,
   }
@@ -686,7 +706,7 @@ const abortHarness = async (record: HarnessRecord): Promise<void> => {
  *  (`force`), and a benign idle-abort error is swallowed. */
 const disposeHarness = async (record: HarnessRecord): Promise<void> => {
   await abortHarness(record)
-  await record.harness.env.remove(record.workspaceDir, { recursive: true, force: true })
+  await record.removeWorkspace()
 }
 
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the

@@ -44,6 +44,7 @@ export const normalizeModelDefault = (model: SharedModel): SharedModel => {
     ...model,
     model: lineage.target.model,
     name: lineage.legacyNames.includes(model.name) ? lineage.target.name : model.name,
+    contextWindow: lineage.target.contextWindow,
     // vendor/description are server-owned metadata (outside the edit hash). A
     // lineage that changes vendor (deepseek → zhipu for Flash) must carry it, or
     // the reused row resolves Pi compatibility against the stale vendor and every
@@ -73,6 +74,7 @@ export const upgradeModelDefaults = async (db: AnyDrizzleDatabase): Promise<void
         name: migratedModel.name,
         vendor: migratedModel.vendor,
         description: migratedModel.description,
+        contextWindow: isIntact ? migratedModel.contextWindow : existingModel.contextWindow,
         defaultHash: isIntact ? hashModel(migratedModel) : existing.defaultHash,
       })
       .where(eq(modelsTable.id, target.id))

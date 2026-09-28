@@ -62,9 +62,8 @@ export default defineConfig({
   plugins: [
     {
       name: 'copy-powersync-assets',
-      apply: 'build',
       buildStart() {
-        execSync(pkg.scripts['copy:assets'], { stdio: 'inherit' })
+        execSync('powersync-web copy-assets --output public', { stdio: 'inherit' })
       },
     },
     tailwindcss(),

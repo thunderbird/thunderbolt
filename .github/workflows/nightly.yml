@@ -298,6 +298,7 @@ jobs:
       - name: Run native iOS smoke
         id: smoke
         env:
+          VITE_NATIVE_INPUT_DIAGNOSTIC: 'true'
           VITE_AUTH_MODE: thunderbolt
           VITE_SKIP_ONBOARDING: 'true'
           VITE_AUTH_ENABLE_ANONYMOUS: 'false'
@@ -314,7 +315,33 @@ jobs:
           fi
           xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
           echo 'attempted=true' >> "$GITHUB_OUTPUT"
+          if pgrep -x Simulator >/dev/null; then echo before=present; else echo before=absent; fi > "$RUNNER_TEMP/simulator-gui.txt"
           ./e2e/native-smoke/ios.sh
+
+      - name: Collect temporary native input probe
+        if: always() && steps.smoke.outputs.attempted == 'true'
+        run: |
+          if pgrep -x Simulator >/dev/null; then echo after=present; else echo after=absent; fi >> "$RUNNER_TEMP/simulator-gui.txt"
+          data_dir=$(xcrun simctl get_app_container "$IOS_SIMULATOR_UDID" net.thunderbird.thunderbolt.dev data)
+          probe=$(find "$data_dir" -type f -name native-input-probe.jsonl -print -quit)
+          if [ -n "$probe" ]; then cp "$probe" "$RUNNER_TEMP/native-input-probe.jsonl"; fi
+          for log in /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/logs/device-xctest.log; do
+            if [ -f "$log" ]; then
+              awk '/Tapping |Tapping took|request: POST \/touch|request: POST \/inputText|Checking existence of .*Keyboard|Text input duration/ { print }' "$log" >> "$RUNNER_TEMP/native-input-driver.log"
+            fi
+          done
+
+      - name: Upload temporary native input probe
+        if: always() && steps.smoke.outputs.attempted == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-input-probe
+          path: |
+            ${{ runner.temp }}/native-input-probe.jsonl
+            ${{ runner.temp }}/native-input-driver.log
+            ${{ runner.temp }}/simulator-gui.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload native iOS video
         if: always()

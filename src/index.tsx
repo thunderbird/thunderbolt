@@ -10,8 +10,13 @@ import './index.css'
 import { activateLocale, getActiveLocale } from './i18n'
 import { markBundleEvaluated } from './lib/init-timing'
 import { initializeLinkInterception } from './lib/intercept-links'
+import { startNativeInputDiagnostic } from './lib/native-input-diagnostic'
 import { isMacDesktop, isMobile as isPlatformMobile, isTauri, isTauriDesktop } from './lib/platform'
 import { handlePostUpdateRedirect } from './lib/post-update-redirect'
+
+if (import.meta.env.VITE_NATIVE_INPUT_DIAGNOSTIC === 'true' && isTauri()) {
+  startNativeInputDiagnostic()
+}
 
 // The macOS desktop window is transparent with a native blur layer behind it
 // (see src-tauri/src/lib.rs). This class makes the body transparent and the

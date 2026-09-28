@@ -67,15 +67,32 @@ spec:
             - name: DATABASE_URL
               value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}?sslmode={{ .Values.postgres.sslmode | default "disable" }}"
             {{- $external := ne (.Values.oidc.issuer | default "") "" }}
+            {{- /*
+              Three misconfigurations render cleanly and then fail at first
+              sign-in, so reject them here instead. Keycloak off with no issuer
+              would point the backend at a Service that no longer exists; a
+              discovery URL without an issuer leaves the provider's origin out
+              of TRUSTED_ORIGINS and Better Auth rejects it; and an external
+              issuer without its own credentials would silently fall back to the
+              bundled Keycloak client, whose secret is published in this repo.
+            */}}
+            {{- if and (not .Values.keycloak.enabled) (not $external) }}
+              {{- fail "keycloak.enabled=false requires oidc.issuer: the backend has no identity provider to point at." }}
+            {{- end }}
+            {{- if and (.Values.oidc.discoveryUrl) (not $external) }}
+              {{- fail "oidc.discoveryUrl requires oidc.issuer: without it the provider's origin is never added to TRUSTED_ORIGINS and sign-in fails." }}
+            {{- end }}
+            {{- if $external }}
+              {{- if not .Values.oidc.clientId }}{{- fail "oidc.issuer requires oidc.clientId: the bundled Keycloak client id is not valid at an external provider." }}{{- end }}
+              {{- if not .Values.oidc.clientSecretBase64 }}{{- fail "oidc.issuer requires oidc.clientSecretBase64: the bundled Keycloak client secret is published in this repository and must not be sent to your provider." }}{{- end }}
+            {{- end }}
             {{- $issuer := ternary .Values.oidc.issuer (printf "%s/realms/thunderbolt" .Values.appUrl) $external }}
             {{- $keycloakDiscovery := printf "http://keycloak:%v/realms/thunderbolt/.well-known/openid-configuration" .Values.keycloak.service.port }}
             {{- /*
-              The backend's own fallback (`${issuer}/.well-known/openid-configuration`)
-              naively concatenates without stripping a trailing slash, which 404s
-              against any issuer that has one (OIDC Discovery §4.1 requires stripping
-              it — several providers, Authentik included, publish issuer URLs with a
-              trailing slash). Compute it correctly here instead of relying on that
-              fallback.
+              Set explicitly rather than left to the backend, which needs the
+              internal address for the bundled Keycloak. Trailing slashes are
+              stripped, as OIDC Discovery requires: several providers, Authentik
+              among them, publish issuer URLs with one.
             */}}
             {{- $externalDiscovery := printf "%s/.well-known/openid-configuration" (trimSuffix "/" .Values.oidc.issuer) }}
             {{- $discovery := .Values.oidc.discoveryUrl | default (ternary $externalDiscovery $keycloakDiscovery $external) }}

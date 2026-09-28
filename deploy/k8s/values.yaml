@@ -81,9 +81,16 @@ backend:
     thunderboltInferenceUrl: ""
     # -- Browser-facing PowerSync URL. Empty follows the configured ingress
     # mode: `ingress.hostnames.powersync` when that is set, otherwise
-    # `<appUrl>/powersync` (the chart's own path-based route). Set this only to
-    # override both, for example when sync is fronted by something else.
+    # `<appUrl>/powersync` (the chart's own path-based route). The scheme is
+    # inherited from `appUrl`, so set this explicitly if sync is served over
+    # https while the app is not. Set it to override both, for example when
+    # sync is fronted by something else.
     powersyncUrl: ""
+    # -- Address the backend itself uses to probe PowerSync for
+    # /v1/health/powersync. Empty uses the in-cluster service. Point it at the
+    # same place as `powersyncUrl` if you run PowerSync outside the cluster,
+    # otherwise the probe reports on a service nothing is using.
+    powersyncInternalUrl: ""
   # -- Base64-encoded AI provider keys. Empty defaults disable each provider
   # (backend zod schema treats empty string as "not configured").
   # Generate each with: echo -n "<your-key>" | base64

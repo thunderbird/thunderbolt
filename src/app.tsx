@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { I18nProvider } from '@lingui/react'
+import { useLingui } from '@lingui/react/macro'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
@@ -296,6 +297,34 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * The seamless v1→v2 migration's one-time phrase dialog.
+ *
+ * Its own component purely so the copy can go through `useLingui`: `App`
+ * renders the `I18nProvider`, so a hook call there would read the context from
+ * ABOVE it and never follow a language change.
+ */
+const MigrationRecoveryKeyDialog = ({
+  open,
+  recoveryKey,
+  onDone,
+}: {
+  open: boolean
+  recoveryKey: string
+  onDone: () => void
+}) => {
+  const { t } = useLingui()
+  return (
+    <RecoveryKeyDialog
+      open={open}
+      recoveryKey={recoveryKey}
+      title={t`Save your new recovery phrase`}
+      description={t`Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again.`}
+      onDone={onDone}
+    />
+  )
+}
+
 export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
@@ -383,8 +412,21 @@ export const App = () => {
                                     never got the chance to render. Must live
                                     INSIDE HttpClientProvider: it rotates the key
                                     through the http client, and `useHttpClient`
-                                    throws outside its provider. */}
-                                <UnsavedRecoveryPhrasePrompt />
+                                    throws outside its provider.
+
+                                    NOT rendered while the migration dialog is
+                                    showing a phrase. Both read the same pending
+                                    flag, and the migration marks it the moment
+                                    it mints — but this subtree only mounts once
+                                    `initData` resolves, which races the
+                                    fire-and-forget `runEncryptionInit`. Lose
+                                    that race and the prompt mounts with the
+                                    flag already set and tells the user the
+                                    phrase "was never saved" on top of the
+                                    dialog displaying it. The prompt's own
+                                    mount-time snapshot cannot see this — only
+                                    the parent holding both can. */}
+                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
                               </ExternalLinkDialogProvider>
                             </ContentViewProvider>
                           </HapticsProvider>
@@ -416,11 +458,9 @@ export const App = () => {
               phrase once. Blocked while the upgrade screen owns the viewport; the
               phrase is not lost in that case, because the mint marked it pending
               and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
-          <RecoveryKeyDialog
+          <MigrationRecoveryKeyDialog
             open={migrationRecoveryKey != null && !upgradeRequired}
             recoveryKey={migrationRecoveryKey ?? ''}
-            title="Save your new recovery phrase"
-            description="Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
             onDone={clearMigrationRecoveryKey}
           />
         </LazyMotion>

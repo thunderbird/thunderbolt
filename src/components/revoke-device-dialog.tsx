@@ -41,14 +41,6 @@ type RevokeDeviceDialogProps = {
  * is not just inconsistent: someone revoking a lost or stolen device would
  * believe its contents were wiped when they were not.
  */
-/**
- * The `trusted` copy must not promise remote erasure. Revocation cuts the
- * device's server access; the data already on its disk is untouched, and that
- * device's own "Device access revoked" modal asks whether to keep or delete the
- * local copy — defaulting to KEEP (`revoked-device-modal.tsx`). Saying otherwise
- * is not just inconsistent: someone revoking a lost or stolen device would
- * believe its contents were wiped when they were not.
- */
 const descriptions = {
   trusted: msg`The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working.`,
   pending: msg`This will deny the device access to your encrypted data. The device will need to set up sync again.`,

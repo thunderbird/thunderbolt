@@ -4,6 +4,7 @@
 
 import { useHttpClient } from '@/contexts'
 import { isE2eeReady } from '@/hooks/use-e2ee-ready'
+import { lockoutPendingKey } from '@/hooks/use-lockout-pending'
 import { refreshAK, revokeDeviceAndRotate, revokeDeviceWithProof } from '@/services/encryption'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -57,6 +58,6 @@ export const useRevokeDevice = (deps: UseRevokeDeviceDeps = {}) => {
     // On settled, not on error: a revocation whose response was lost looks like
     // a failure here and like a success on the server, and the owed-lockout list
     // is what resolves that — so re-read it either way.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['lockout-pending'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: lockoutPendingKey }),
   })
 }

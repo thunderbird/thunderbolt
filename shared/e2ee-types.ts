@@ -70,8 +70,16 @@ export type KeyId = string
  */
 export const keyIdPattern = '^(0|[1-9][0-9]{0,14})$'
 
+/**
+ * Compiled once: the string form stays exported for the backend's `t.String`
+ * schemas, but this predicate sits on the encode/decode hot path (every
+ * `resolvePrimaryKeyId`, every wire-value classification) and must not build a
+ * RegExp per call.
+ */
+const keyIdRegExp = new RegExp(keyIdPattern)
+
 /** Whether `keyId` is a well-formed mintable key_id (see `keyIdPattern`). */
-export const isMintableKeyId = (keyId: string): boolean => new RegExp(keyIdPattern).test(keyId)
+export const isMintableKeyId = (keyId: string): boolean => keyIdRegExp.test(keyId)
 
 /**
  * The key_id minted at first-device setup and the default primary.

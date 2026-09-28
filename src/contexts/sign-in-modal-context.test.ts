@@ -47,6 +47,6 @@ describe('shouldPromptReEnrollment', () => {
   it('propagates a readiness-check failure so the caller can log it', async () => {
     const deps = eligible({ needsWizard: () => Promise.reject(new Error('idb unavailable')) })
 
-    expect(shouldPromptReEnrollment(deps)).rejects.toThrow('idb unavailable')
+    await expect(shouldPromptReEnrollment(deps)).rejects.toThrow('idb unavailable')
   })
 })

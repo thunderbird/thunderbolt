@@ -842,6 +842,10 @@ export const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
   return btoa(binary)
 }
 
+/** Encode bytes as unpadded base64url (JWK field encoding, RFC 7515 §2). */
+export const uint8ArrayToBase64Url = (bytes: Uint8Array): string =>
+  uint8ArrayToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
 /** Decode a base64 string into bytes. */
 export const base64ToUint8Array = (base64: string): Uint8Array<ArrayBuffer> =>
   new Uint8Array(Array.from(atob(base64), (c) => c.charCodeAt(0)))

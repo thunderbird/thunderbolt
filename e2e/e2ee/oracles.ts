@@ -20,7 +20,7 @@
  * by design.
  */
 
-import { encPrefix, encryptedColumnsMap } from '../../shared/e2ee-types'
+import { encPrefix, encV2Prefix, encryptedColumnsMap, keyIdPattern, legacyKeyId } from '../../shared/e2ee-types'
 import { powersyncTableNames } from '../../shared/powersync-tables'
 import { sql } from './db'
 
@@ -218,6 +218,38 @@ export type UnencryptedValue = EncryptedColumn & {
 }
 
 /**
+ * Does a stored value actually parse as the encryption wire format?
+ *
+ * Deliberately NOT `value.startsWith(encPrefix)`: a server holding
+ * `__enc:v2:` followed by anything at all would pass that, so the oracle would
+ * certify a cell as encrypted on the strength of a prefix the server itself
+ * chose. The grammar is re-stated here rather than imported from
+ * `src/db/encryption/wire-format.ts` on purpose — an oracle that reuses the
+ * parser it is auditing goes blind in exactly the ways that parser does.
+ *
+ * v2: `__enc:v2:<key_id>:<iv>:<ct>` — key_id in the mintable grammar or the
+ *     reserved `v1` slot, non-empty base64 iv and ciphertext, no stray `:`.
+ * v1: `__enc:<iv>:<ct>` — two non-empty base64 segments.
+ */
+const isWellFormedCiphertext = (value: string): boolean => {
+  const base64 = /^[A-Za-z0-9+/]+=*$/
+  if (value.startsWith(encV2Prefix)) {
+    const [keyId, iv, ciphertext, ...extra] = value.slice(encV2Prefix.length).split(':')
+    return (
+      extra.length === 0 &&
+      (new RegExp(keyIdPattern).test(keyId) || keyId === legacyKeyId) &&
+      base64.test(iv ?? '') &&
+      base64.test(ciphertext ?? '')
+    )
+  }
+  if (!value.startsWith(encPrefix)) {
+    return false
+  }
+  const [iv, ciphertext, ...extra] = value.slice(encPrefix.length).split(':')
+  return extra.length === 0 && base64.test(iv ?? '') && base64.test(ciphertext ?? '')
+}
+
+/**
  * Every configured column that holds a value must be ciphertext. Complements the
  * marker scan: it needs no knowledge of what was written, so it catches a
  * write-through whose plaintext we never thought to look for.
@@ -234,7 +266,7 @@ export const findUnencryptedValues = async (userId: string): Promise<Unencrypted
   for (const target of scanned) {
     const rows = await readColumn(target, userId)
     for (const row of rows) {
-      if (row.value === null || row.value === '' || row.value.startsWith(encPrefix)) {
+      if (row.value === null || row.value === '' || isWellFormedCiphertext(row.value)) {
         continue
       }
       found.push({ ...target, rowId: row.id, value: preview(row.value) })

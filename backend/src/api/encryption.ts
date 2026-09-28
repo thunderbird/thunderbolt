@@ -47,8 +47,9 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import { consumeStepUpOtp, mintStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
+import { consumeStepUpOtp, requestStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
 import { resolveEmailLocale } from '@/emails/i18n'
+import { safeErrorHandler } from '@/middleware/error-handling'
 import {
   type ChallengeOperation,
   type RecoverySlotRequest,
@@ -387,9 +388,13 @@ const mapEncryptionError = (err: unknown, set: { status?: number | string }): { 
  * for why that namespace matters and what it costs us.
  */
 
-/** Rotate-per-request, so the cooldown is what caps both email volume and the guess rate. */
-const stepUpRequestCooldownMs = 30_000
-const lastStepUpRequestAt = new Map<string, number>()
+/**
+ * Internal control-flow signal for `POST /devices`: the registration upsert
+ * matched no row, so another user holds this device id. Thrown rather than
+ * returned purely so the enclosing transaction rolls back — it never escapes
+ * the handler, which converts it to the same 409 as before.
+ */
+class DeviceIdTakenError extends Error {}
 
 /** Security emails ride committed transactions — a send failure is logged, never surfaced. */
 const notifyBestEffort = (label: string, send: Promise<void>): void => {
@@ -403,6 +408,10 @@ export const createEncryptionRoutes = (
   notifications: SecurityNotifications = securityNotifications,
 ) =>
   new Elysia()
+    // Parity with every sibling route plugin (`account.ts`, `powersync.ts`).
+    // This file throws from ~28 sites, several outside a `mapEncryptionError`
+    // try — without this they return Elysia's default 500 body, stack included.
+    .onError(safeErrorHandler)
     .use(createAuthMacro(auth))
     .post(
       '/encryption/step-up/request',
@@ -417,20 +426,21 @@ export const createEncryptionRoutes = (
           set.status = 403
           return { error: 'Only trusted devices can request a step-up code' }
         }
-        const last = lastStepUpRequestAt.get(userId)
-        if (last != null && Date.now() - last < stepUpRequestCooldownMs) {
-          set.status = 429
-          return { error: 'A code was just sent — wait a moment before requesting another' }
-        }
         try {
-          const otp = await mintStepUpOtp(database, sessionUser!.email)
+          // The cooldown is enforced inside the mint's transaction, against the
+          // outstanding row's own `createdAt` — shared across replicas and
+          // atomic. See `requestStepUpOtp`.
+          const stepUp = await requestStepUpOtp(database, sessionUser!.email)
+          if (stepUp.status === 'cooling-down') {
+            set.status = 429
+            return { error: 'A code was just sent — wait a moment before requesting another' }
+          }
           await notifications.sendStepUpCode({
             email: sessionUser!.email,
-            code: otp,
+            code: stepUp.code,
             deviceName: caller.device.name ?? 'Unknown device',
             locale: resolveEmailLocale(request.headers.get('X-App-Language')),
           })
-          lastStepUpRequestAt.set(userId, Date.now())
           return { ok: true as const }
         } catch (err) {
           return mapEncryptionError(err, set)
@@ -491,48 +501,65 @@ export const createEncryptionRoutes = (
           // Pre-encryption device (no publicKey): fall through to register with publicKey
         }
 
-        // Wrap limit check + registration in a transaction to prevent TOCTOU race
+        // The transaction alone does NOT make the limit check atomic — under
+        // READ COMMITTED two concurrent registrations both read a count below
+        // the cap and both insert. The advisory lock is what serializes them,
+        // and it is the same lock `/devices/bridge` and `/encryption/rotate`
+        // take, so a registration cannot interleave with a rotation either.
         const deviceName = name || 'Unknown device'
-        const result = await database.transaction(async (tx) => {
-          const txDb: QueryableDatabase = tx
+        const result = await database
+          .transaction((tx) =>
+            withUserDeviceRegistrationLock(tx, userId, async () => {
+              const txDb: QueryableDatabase = tx
 
-          // Re-check device inside transaction to close race window
-          const freshDevice = await getDeviceById(txDb, deviceId)
-          if (!freshDevice) {
-            const activeCount = await countActiveDevices(txDb, userId)
-            if (activeCount >= maxActiveDevicesPerUser) {
-              return { limitReached: true as const }
+              // Re-check device inside transaction to close race window
+              const freshDevice = await getDeviceById(txDb, deviceId)
+              if (!freshDevice) {
+                const activeCount = await countActiveDevices(txDb, userId)
+                if (activeCount >= maxActiveDevicesPerUser) {
+                  return { limitReached: true as const }
+                }
+              }
+
+              // Bind the session to this device BEFORE creating the row, so a session
+              // already bound to a different device (e.g. a CLI device-grant session)
+              // is rejected without leaving an orphan pending row. The bind is
+              // conflict-aware: it only takes when the session is unbound or already
+              // points here (THU-873 pins the caller to `session.deviceId`).
+              const binding = await linkSessionToDevice(txDb, session.id, deviceId, userId)
+              if (binding.status === 'conflict') {
+                return { bindingConflict: true as const }
+              }
+              if (binding.status === 'invalid-session') {
+                return { invalidSession: true as const }
+              }
+
+              const registered = await registerDevice(txDb, {
+                id: deviceId,
+                userId,
+                name: deviceName,
+                publicKey,
+                mlkemPublicKey,
+              })
+
+              // If upsert returned no rows, another user claimed this device ID.
+              // THROWN rather than returned: the bind above already wrote, and
+              // returning would COMMIT a session bound to a device this caller
+              // was refused — leaving the session pointing at an id it can never
+              // register, with no way out but re-authenticating.
+              if (registered.length === 0 || registered[0].userId !== userId) {
+                throw new DeviceIdTakenError()
+              }
+
+              return { ok: true as const, pendingSince: registered[0].lastSeen }
+            }),
+          )
+          .catch((err: unknown) => {
+            if (err instanceof DeviceIdTakenError) {
+              return { taken: true as const }
             }
-          }
-
-          // Bind the session to this device BEFORE creating the row, so a session
-          // already bound to a different device (e.g. a CLI device-grant session)
-          // is rejected without leaving an orphan pending row. The bind is
-          // conflict-aware: it only takes when the session is unbound or already
-          // points here (THU-873 pins the caller to `session.deviceId`).
-          const binding = await linkSessionToDevice(txDb, session.id, deviceId, userId)
-          if (binding.status === 'conflict') {
-            return { bindingConflict: true as const }
-          }
-          if (binding.status === 'invalid-session') {
-            return { invalidSession: true as const }
-          }
-
-          const registered = await registerDevice(txDb, {
-            id: deviceId,
-            userId,
-            name: deviceName,
-            publicKey,
-            mlkemPublicKey,
+            throw err
           })
-
-          // If upsert returned no rows, another user claimed this device ID
-          if (registered.length === 0 || registered[0].userId !== userId) {
-            return { taken: true as const }
-          }
-
-          return { ok: true as const, pendingSince: registered[0].lastSeen }
-        })
 
         if ('limitReached' in result) {
           set.status = 422

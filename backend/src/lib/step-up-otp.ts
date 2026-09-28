@@ -5,9 +5,9 @@
 import { timingSafeEqual } from 'node:crypto'
 
 import { otpExpiryMs } from '@/auth/otp-constants'
-import type { db as DbType } from '@/db/client'
+import type { QueryableDatabase, db as DbType } from '@/db/client'
 import { verification } from '@/db/auth-schema'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 
 /**
  * Step-up verification codes for a recovery-phrase change (THU-875).
@@ -96,19 +96,66 @@ const splitStoredOtp = (value: string): { code: string; attempts: number } => {
  * those conditions a fresh random code per request is strictly better: a
  * guesser never accumulates attempts against one fixed target.
  */
-export const mintStepUpOtp = async (database: typeof DbType, email: string): Promise<string> => {
+const writeFreshOtp = async (tx: QueryableDatabase, identifier: string): Promise<string> => {
   const code = generateStepUpOtp()
-  const identifier = stepUpIdentifier(email)
-  await database.transaction(async (tx) => {
-    await tx.delete(verification).where(eq(verification.identifier, identifier))
-    await tx.insert(verification).values({
-      id: crypto.randomUUID(),
-      identifier,
-      value: `${code}:0`,
-      expiresAt: new Date(Date.now() + stepUpOtpExpiryMs),
-    })
+  await tx.delete(verification).where(eq(verification.identifier, identifier))
+  await tx.insert(verification).values({
+    id: crypto.randomUUID(),
+    identifier,
+    value: `${code}:0`,
+    expiresAt: new Date(Date.now() + stepUpOtpExpiryMs),
   })
   return code
+}
+
+export const mintStepUpOtp = async (database: typeof DbType, email: string): Promise<string> =>
+  database.transaction((tx) => writeFreshOtp(tx, stepUpIdentifier(email)))
+
+/**
+ * Minimum spacing between two emailed codes for one account. Caps both the
+ * volume of mail a still-trusted attacker can aim at the owner and the rate at
+ * which codes can be rotated out from under them.
+ */
+export const stepUpRequestCooldownMs = 30_000
+
+export type StepUpRequest = { status: 'sent'; code: string } | { status: 'cooling-down' }
+
+/**
+ * The route's entry point: enforce the cooldown and mint, atomically.
+ *
+ * The cooldown was an in-process `Map<userId, timestamp>` written AFTER the
+ * email send, which failed three ways. It was per-replica, so the real spacing
+ * was 30s ÷ instances. It was check-then-act across a network call, so two
+ * concurrent requests both passed — and since every mint deletes the
+ * outstanding row, the user got two emails of which the first was already dead,
+ * and spending attempts on it charged them against the second. And it never
+ * evicted.
+ *
+ * The outstanding row's own `createdAt` answers all three: it is shared by
+ * every replica, and it expires on its own. The advisory lock is what makes it
+ * atomic — `FOR UPDATE` would not, because the first request for an account
+ * has no row to lock.
+ *
+ * Note the ordering consequence: the cooldown now starts at the MINT, not at a
+ * successful send, so if the mail provider fails the caller waits it out rather
+ * than retrying immediately. That is the correct direction — the previous code
+ * left a live code behind with no cooldown recorded at all.
+ */
+export const requestStepUpOtp = async (database: typeof DbType, email: string): Promise<StepUpRequest> => {
+  const identifier = stepUpIdentifier(email)
+  return database.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identifier})::bigint)`)
+    const [outstanding] = await tx
+      .select({ createdAt: verification.createdAt })
+      .from(verification)
+      .where(eq(verification.identifier, identifier))
+      .orderBy(desc(verification.createdAt))
+      .limit(1)
+    if (outstanding && Date.now() - outstanding.createdAt.getTime() < stepUpRequestCooldownMs) {
+      return { status: 'cooling-down' as const }
+    }
+    return { status: 'sent' as const, code: await writeFreshOtp(tx, identifier) }
+  })
 }
 
 /**

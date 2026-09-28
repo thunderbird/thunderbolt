@@ -145,6 +145,8 @@ const {
   rotateAccountKey,
   changeRecoveryPhrase,
   revokeDeviceAndRotate,
+  finishDeviceLockout,
+  LockoutIncompleteError,
   RecoveryAnchorError,
   MissingRecoverySlotError,
   RotationStaleError,
@@ -926,6 +928,25 @@ describe('encryption service (v2)', () => {
       return newAK
     }
 
+    it('refuses an empty served keyring instead of pruning every staged DEK', async () => {
+      // Withholding the keyring is a documented DoS; DELETING the local copies
+      // on the strength of one response is not. The staged blobs are also what
+      // a poisoned keyring is repaired from (THU-871), so this is the one
+      // "served nothing" case that must not be treated as "nothing to keep".
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      expect(storedDEKs.size).toBeGreaterThan(0)
+
+      const before = new Map(storedDEKs)
+      server.wrappedKeys.clear()
+      await stageKeyring(clientFor(server))
+
+      expect([...storedDEKs]).toEqual([...before])
+    })
+
     it('adopts the rotated AK instead of staging a keyring the stored AK cannot open', async () => {
       const server = createFakeServer()
       const kp = await generateFullKeyPair()
@@ -1441,6 +1462,25 @@ describe('encryption service (v2)', () => {
       ).rejects.toBeInstanceOf(RotationStaleError)
     })
 
+    it('does NOT treat a 401 as "someone rotated first"', async () => {
+      // A session that expired mid-rotation is not evidence that the keyring
+      // moved. Reading it as staleness ran `refreshAKForRotation` — a
+      // server-driven key adoption — inside the emergency cut, and then told
+      // the user to retry something guaranteed to fail the same way.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.rotateStatus = 401
+
+      await expect(
+        rotateAccountKey(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.not.toBeInstanceOf(RotationStaleError)
+    })
+
     it('builds envelopes from the server list, skipping a trusted keyless bridge', async () => {
       // No `listTrustedDevices` seam here on purpose: this exercises the real
       // path, which asks the server who must be covered instead of reading the
@@ -1499,6 +1539,25 @@ describe('encryption service (v2)', () => {
       })
 
       expect(newPhrase.split(' ')).toHaveLength(24)
+    })
+  })
+
+  describe('finishDeviceLockout', () => {
+    it('tags its failure post-cut, so the UI cannot report "nothing was changed"', async () => {
+      // This function only ever runs after a revocation already committed, so a
+      // bare error here reaches `describeRevokeFailure` as an unknown cause and
+      // renders "Nothing was changed. The device was not revoked." — false on
+      // every run. The tag is what makes the message state the real outcome.
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV2Account(server, kp, await generateDEK(true))
+      await checkApprovalAndUnwrap(clientFor(server))
+      server.rotateStatus = 500
+
+      // The TYPE only: which sentence that produces is `revoke-failure.test.ts`'s
+      // to assert, and it already does for this exact error.
+      await expect(finishDeviceLockout(clientFor(server))).rejects.toBeInstanceOf(LockoutIncompleteError)
     })
   })
 

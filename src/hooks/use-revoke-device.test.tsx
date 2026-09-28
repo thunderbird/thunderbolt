@@ -5,7 +5,7 @@
 import 'fake-indexeddb/auto'
 import type { HttpClient } from '@/contexts'
 import { HttpClientProvider } from '@/contexts/http-client-context'
-import { generateAK, storeAK, storeDEK } from '@/crypto'
+import { clearAllKeys, generateAK, storeAK, storeDEK } from '@/crypto'
 import { createMockHttpClient } from '@/test-utils/http-client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
@@ -29,6 +29,12 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 describe('useRevokeDevice', () => {
   beforeEach(async () => {
     await deleteKeyDatabase()
+    // This file reaches key storage through the `@/crypto` barrel, so it may be
+    // bound to the Map-backed mock another test file leaked (bun's mock.module
+    // is global per worker) — which dropping the IndexedDB does not touch.
+    // Without this, whether a staged DEK survives into the next file depends on
+    // test order. Same guard the encryption config/upload-encoder suites carry.
+    await clearAllKeys()
   })
 
   afterEach(cleanup)

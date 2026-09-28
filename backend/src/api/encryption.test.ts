@@ -290,6 +290,16 @@ describe('Encryption API', () => {
       expect(response.status).toBe(200)
       const body = await response.json()
       expect(body.trusted).toBe(false)
+
+      // The positive half of the invariant the two refusal tests below assert:
+      // an ACCEPTED registration does bind. Without this pair, deleting
+      // `linkSessionToDevice` from the route outright would leave every
+      // `deviceId).toBeNull()` assertion passing.
+      const [callerSession] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.id, `session-${p('u4')}`))
+      expect(callerSession.deviceId).toBe(p('d-pending'))
     })
 
     it('returns 409 when deviceId belongs to different user', async () => {
@@ -311,6 +321,16 @@ describe('Encryption API', () => {
       expect(response.status).toBe(409)
       const body = await response.json()
       expect(body.error).toBe('Device ID already taken')
+
+      // A REFUSED registration must not bind the caller's session. The bind is
+      // written before the row, so every refusal path has to either run before
+      // it or roll it back — a session left pointing at a device it may never
+      // register can only be freed by re-authenticating.
+      const [callerSession] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.id, `session-${p('u5b')}`))
+      expect(callerSession.deviceId).toBeNull()
     })
 
     it('returns 403 when re-registering a revoked device', async () => {
@@ -331,6 +351,13 @@ describe('Encryption API', () => {
       expect(response.status).toBe(403)
       const body = await response.json()
       expect(body.error).toBe('Device has been revoked')
+
+      // Same invariant as the 409 above: refused means nothing was bound.
+      const [callerSession] = await db
+        .select()
+        .from(sessionTable)
+        .where(eq(sessionTable.id, `session-${p('u6')}`))
+      expect(callerSession.deviceId).toBeNull()
     })
 
     it('uses "Unknown device" for empty or >100 char name', async () => {

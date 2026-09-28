@@ -10,7 +10,7 @@ import { kdfAlgorithm, kdfHash, kdfIterations, kdfSaltLength } from '@shared/e2e
 
 import { KeyDerivationError, ValidationError } from './errors'
 import type { StoredKeyPair } from './key-storage'
-import { base64ToUint8Array, importPublicKey, uint8ArrayToBase64 } from './primitives'
+import { base64ToUint8Array, importPublicKey, uint8ArrayToBase64, uint8ArrayToBase64Url } from './primitives'
 
 const seedLength = 32 // bytes → 24 BIP-39 words
 
@@ -68,10 +68,6 @@ const expandSubSeed = async (masterKey: CryptoKey, info: Uint8Array, byteLength:
     ),
   )
 
-/** base64url-encode without padding (JWK field encoding, RFC 7515 §2). */
-const toBase64Url = (bytes: Uint8Array): string =>
-  uint8ArrayToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-
 /**
  * Import a raw P-256 scalar as a WebCrypto ECDH private key. WebCrypto cannot
  * seed-derive EC keys, so the scalar comes from noble and is handed back through
@@ -83,9 +79,9 @@ const importEcdhPrivateKey = async (privateScalar: Uint8Array, publicKeyRaw: Uin
     {
       kty: 'EC',
       crv: ecdhCurve,
-      d: toBase64Url(privateScalar),
-      x: toBase64Url(publicKeyRaw.slice(1, 33)),
-      y: toBase64Url(publicKeyRaw.slice(33, 65)),
+      d: uint8ArrayToBase64Url(privateScalar),
+      x: uint8ArrayToBase64Url(publicKeyRaw.slice(1, 33)),
+      y: uint8ArrayToBase64Url(publicKeyRaw.slice(33, 65)),
       ext: false,
     },
     { name: 'ECDH', namedCurve: ecdhCurve },

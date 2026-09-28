@@ -971,6 +971,10 @@ msgstr "URL kopieren"
 msgid "Could not bind the pairing code"
 msgstr "Der Kopplungscode konnte nicht gebunden werden"
 
+#: src/settings/devices.tsx
+msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "Verbindung zum Agenten nicht möglich."
@@ -3021,6 +3025,7 @@ msgstr "Änderungen speichern"
 msgid "Save failed"
 msgstr "Speichern fehlgeschlagen"
 
+#: src/app.tsx
 #: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Save your new recovery phrase"
@@ -4447,6 +4452,10 @@ msgstr "Ihre Chats und Einstellungen bleiben für das nächste Mal auf diesem Ge
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Ihre Chats und Einstellungen bleiben für die Offline-Nutzung auf diesem Gerät."
+
+#: src/app.tsx
+msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+msgstr ""
 
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."

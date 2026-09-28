@@ -6,7 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { verification } from '@/db/auth-schema'
 import { createTestDb } from '@/test-utils/db'
-import { consumeStepUpOtp, mintStepUpOtp, stepUpIdentifier, stepUpOtpLength, verifyStepUpOtp } from './step-up-otp'
+import {
+  consumeStepUpOtp,
+  mintStepUpOtp,
+  requestStepUpOtp,
+  stepUpIdentifier,
+  stepUpOtpLength,
+  verifyStepUpOtp,
+} from './step-up-otp'
 
 describe('step-up OTP (THU-875)', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
@@ -50,6 +57,44 @@ describe('step-up OTP (THU-875)', () => {
 
     it('normalises case, so a differently-cased session email finds its own row', () => {
       expect(stepUpIdentifier('Step-Up@Example.COM')).toBe(stepUpIdentifier(email))
+    })
+  })
+
+  describe('requestStepUpOtp', () => {
+    // A fresh address per test, deliberately. `database.transaction` issues a
+    // real COMMIT on this harness's single shared connection, which ends the
+    // outer transaction `createTestDb` opened — so its `ROLLBACK` does not
+    // undo rows written through one, and an account's rows outlive the test
+    // that made them. The mint-only tests below never noticed because every
+    // mint deletes the identifier's rows first; a cooldown check reads them.
+    const freshEmail = (label: string) => `step-up-${label}@example.com`
+
+    it('refuses a second request inside the cooldown, leaving the first code alive', async () => {
+      const cooldownEmail = freshEmail('cooldown')
+      const first = await requestStepUpOtp(db, cooldownEmail)
+      expect(first.status).toBe('sent')
+
+      const second = await requestStepUpOtp(db, cooldownEmail)
+      expect(second.status).toBe('cooling-down')
+
+      // The old Map-based gate recorded the cooldown only after the email went
+      // out, so a second request got through and its mint DELETED this row —
+      // the user held a code that could never verify.
+      expect(first.status === 'sent' && (await verifyStepUpOtp(db, cooldownEmail, first.code))).toBe('valid')
+    })
+
+    // NOT tested here: that the advisory lock serializes genuinely concurrent
+    // requests. This harness runs every test inside one `BEGIN` on a single
+    // shared connection (`test-utils/db.ts`), so `database.transaction` is a
+    // savepoint, `Promise.all` interleaves statements on one session rather
+    // than running them in parallel, and a session re-acquires its own
+    // advisory lock freely. Such a test would pass with the lock removed. The
+    // same limit applies to `withUserDeviceRegistrationLock` and to
+    // `verifyStepUpOtp`'s `FOR UPDATE`, neither of which is covered either.
+
+    it('scopes the cooldown to one account', async () => {
+      expect((await requestStepUpOtp(db, freshEmail('scope-a'))).status).toBe('sent')
+      expect((await requestStepUpOtp(db, freshEmail('scope-b'))).status).toBe('sent')
     })
   })
 

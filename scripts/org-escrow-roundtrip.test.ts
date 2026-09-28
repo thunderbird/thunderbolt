@@ -193,7 +193,7 @@ describe('org escrow round trip (keygen → frontend wrap → decrypt tool)', ()
     const ak = await generateAk()
     const envelope = await wrapAkForOrg(ak, rightKeypair.publicKey)
 
-    expect(unwrapEscrowedAK(parseOrgEnvelope(envelope), wrongKeypair.privateKey)).rejects.toThrow(
+    await expect(unwrapEscrowedAK(parseOrgEnvelope(envelope), wrongKeypair.privateKey)).rejects.toThrow(
       /private key does not match the escrow envelope/,
     )
   })

@@ -9,7 +9,9 @@ import { finishDeviceLockout } from '@/services/encryption'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-const lockoutPendingKey = ['lockout-pending'] as const
+/** Query key for the owed-lockout list. Exported so sibling hooks that
+ *  invalidate it cannot drift from the hook that owns it. */
+export const lockoutPendingKey = ['lockout-pending'] as const
 
 /**
  * Revoked devices whose AK rotation never landed, so the account key they hold
@@ -28,16 +30,23 @@ export const useLockoutPending = () => {
   const httpClient = useHttpClient()
   const isReady = useE2eeReady()
 
-  const { data } = useQuery({
+  const { data, error } = useQuery({
     queryKey: lockoutPendingKey,
     queryFn: () => fetchLockoutPending(httpClient),
     enabled: isReady,
   })
 
+  // `error` is returned rather than dropped: an empty set means "nothing owed",
+  // and a failed fetch must not be able to say that. The one fact the devices
+  // page cannot read from the synced table is exactly the one this answers, so
+  // silently reporting "all clear" on a 403 or a 500 hides a device that still
+  // holds a live account key.
+  //
   // Memoized on the query data: a fresh Set every render is a new identity, so
   // any consumer that puts this in a dependency array re-runs forever even
   // though the server answer never changed.
-  return useMemo(() => new Set(data?.device_ids ?? []), [data])
+  const deviceIds = useMemo(() => new Set(data?.device_ids ?? []), [data])
+  return { deviceIds, error }
 }
 
 /**

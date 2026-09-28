@@ -138,6 +138,15 @@ export class RotationStaleError extends Error {
 }
 
 /**
+ * The statuses `POST /encryption/rotate` answers when this device's view of the
+ * keyring is out of date: 400 from the coverage assertions (the submitted set
+ * no longer matches the server's) and 409 from a minted key_id that already
+ * exists. Every other 4xx means something else entirely and must not be read as
+ * "someone rotated first" — see the call site.
+ */
+const rotationStaleStatuses = new Set([400, 409])
+
+/**
  * Thrown when this device's key material is too stale to derive the current
  * signing key (the served canary does not open under the local AK) on a path
  * that DELIBERATELY does not refresh — device revocation (THU-872). Refreshing
@@ -774,6 +783,18 @@ const keyringUnwrapsUnderLocalAK = async (keyring: FetchedKeyring): Promise<bool
  *   have moved, so it is deliberately left alone.
  */
 const applyKeyring = async (keyring: FetchedKeyring, adoptedPrimaryKeyId?: KeyId): Promise<void> => {
+  // An empty keyring is never a legitimate state for an account that has one:
+  // DEK "0" is minted at setup and retained for the life of the account. Left
+  // unguarded it is DESTRUCTIVE rather than merely withholding — the currency
+  // probe treats "nothing to unwrap" as current (`keyringUnwrapsUnderLocalAK`
+  // returns true with no probe row), so the prune below would delete every
+  // staged blob this device holds, including the only local copies a poisoned
+  // keyring is repaired from (THU-871). Withholding is a documented DoS;
+  // destroying local state on the strength of one response is not.
+  if (keyring.keys.length === 0) {
+    console.error('[e2ee] refused an empty keyring — keeping the staged DEKs this device already holds')
+    return
+  }
   // Witness DEK "0" BEFORE the staging below, so an established device mints
   // from the blob it already held rather than the one now arriving.
   await reconcileKeyringAnchor()
@@ -1497,11 +1518,15 @@ const runAKRotation = async (
         throw new StepUpVerificationError(body.code, { cause: err })
       }
     }
-    if (err instanceof HttpError && err.response.status >= 400 && err.response.status < 500) {
+    if (err instanceof HttpError && rotationStaleStatuses.has(err.response.status)) {
       // Stale local state (concurrent rotation / device change) — re-fetch our
-      // envelope + keyring so the caller can rebuild and retry. This 4xx fires
-      // precisely when another device rotated first, which is also exactly when
-      // a torn envelope/keyring read is likely — hence the tolerant variant.
+      // envelope + keyring so the caller can rebuild and retry. These are the
+      // only two statuses the rotate route answers for staleness, and the set
+      // is deliberately exact rather than "any 4xx": a 401, 426 or 429 is not
+      // evidence that anyone rotated, and treating one as such runs a
+      // server-driven key fetch inside the emergency cut — the dependency
+      // THU-887 removed — and then tells the user to retry something that will
+      // fail the same way.
       await refreshAKForRotation(httpClient)
       throw new RotationStaleError({ cause: err })
     }
@@ -1518,12 +1543,6 @@ const runAKRotation = async (
   try {
     await storeAK(await reimportAsNonExtractable(newAK))
     await stageWrappedDEKs(newPrimaryKey ? [...wrappedKeys, newPrimaryKey] : wrappedKeys)
-    // Store the committed epoch so `ensureV2Encryption` can tell a current AK
-    // from a stale one at boot — the signal that lets a device left behind by a
-    // failed adoption re-adopt on next launch instead of encoding under the old
-    // primary forever. A staging failure below skips this, leaving the local
-    // version behind the server's, which is exactly the "re-adopt me" signal.
-    await storeKeyVersion(committedKeyVersion)
     invalidateKeyringCache()
     if (newPrimaryKey) {
       await storePrimaryKeyId(newPrimaryKey.keyId)
@@ -1532,6 +1551,13 @@ const runAKRotation = async (
       // primary for the rest of the session even though the server moved on.
       resetCodecState()
     }
+    // Store the committed epoch LAST, so it means "every local write above
+    // landed". `ensureV2Encryption` reads it at boot to tell a current AK from a
+    // stale one; writing it before the pointer meant a failed pointer write left
+    // the device self-consistently on the OLD primary with the epoch already
+    // current — the "re-adopt me" signal consumed, the repair skipped, and new
+    // writes sealed under the DEK the just-revoked device holds.
+    await storeKeyVersion(committedKeyVersion)
   } catch (err) {
     // The server committed the new epoch but this device did not adopt it. It
     // must NOT be left self-consistent on the OLD epoch: it would keep encoding
@@ -1685,8 +1711,18 @@ export const revokeDeviceAndRotate = async (
  * every rotation mints a keyring row — inventing a denial-of-service to fix a
  * visibility bug.
  */
-export const finishDeviceLockout = (httpClient: HttpClient): Promise<void> =>
-  rotateAccountKey(httpClient, { mintNewPrimary: true })
+export const finishDeviceLockout = async (httpClient: HttpClient): Promise<void> => {
+  // Tagged for the same reason as the rotation half of `revokeDeviceAndRotate`,
+  // and it matters MORE here: this path exists only because a cut already
+  // committed, so an untagged failure reaches `describeRevokeFailure` as an
+  // unknown error and is reported as "Nothing was changed. The device was not
+  // revoked." — false on every run of this function.
+  try {
+    await rotateAccountKey(httpClient, { mintNewPrimary: true })
+  } catch (err) {
+    throw new LockoutIncompleteError({ cause: err })
+  }
+}
 
 // =============================================================================
 // WS4 — Migrator (v1 → v2)

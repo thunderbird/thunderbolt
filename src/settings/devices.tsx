@@ -335,7 +335,9 @@ export default function DevicesSettingsPage() {
       // evidence: a device whose lockout rotation never landed still holds a
       // usable account key, so hiding it would hide the one thing the user needs
       // to act on (THU-887). It stays until the rotation actually happens.
-      return awaitingLockout.has(d.id) || Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
+      return (
+        awaitingLockout.deviceIds.has(d.id) || Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
+      )
     }
     return !!d.trusted
   })
@@ -396,6 +398,14 @@ export default function DevicesSettingsPage() {
       {removeMutation.error && (
         <p className="text-sm text-destructive" role="alert">
           {removeMutation.error.message}
+        </p>
+      )}
+
+      {/* Without this, a failed fetch is indistinguishable from "nothing owed"
+          — the page would quietly claim every revoked device is locked out. */}
+      {awaitingLockout.error && (
+        <p className="text-sm text-destructive" role="alert">
+          <Trans>Could not check whether a removed device still holds your account key. Reload to try again.</Trans>
         </p>
       )}
 
@@ -461,7 +471,7 @@ export default function DevicesSettingsPage() {
                   isRevokingThisDevice={isMutatingDevice(revokeMutation, device.id)}
                   isRemovePending={removeMutation.isPending}
                   isRemovingThisDevice={isMutatingDevice(removeMutation, device.id)}
-                  isAwaitingLockout={awaitingLockout.has(device.id)}
+                  isAwaitingLockout={awaitingLockout.deviceIds.has(device.id)}
                   isFinishingLockout={finishLockoutMutation.isPending}
                   onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
                   onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}

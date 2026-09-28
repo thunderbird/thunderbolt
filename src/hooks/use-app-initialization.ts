@@ -12,6 +12,7 @@ import { startKeyRequestResponder } from '@/db/encryption'
 import { ensureSessionBound, ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
 import { fetchEncryptionMetadata } from '@/api/encryption'
 import { getKeyPair } from '@/crypto'
+import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
 import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
@@ -166,6 +167,13 @@ export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
     }
   } catch (error) {
     console.warn('[init] E2EE migration/follow check failed:', error)
+  } finally {
+    // In `finally`, and unconditionally: "settled" means this device's
+    // encryption state is now decided, which is equally true of the no-keypair
+    // return and of a failure. A settings page mounted while this was still
+    // running read `false` and, before `useE2eeReady` became a query, kept it
+    // forever.
+    dispatchE2eeProvisioningSettled()
   }
 }
 

@@ -199,7 +199,7 @@ describe('encode', () => {
 
   it('throws when called without an EncryptionContext', async () => {
     await setupKeyring(['0'], '0')
-    expect(codec.encode('x')).rejects.toThrow('EncryptionContext')
+    await expect(codec.encode('x')).rejects.toThrow('EncryptionContext')
   })
 
   it('fails open before setup: passes plaintext through when no keys exist', async () => {
@@ -212,7 +212,7 @@ describe('encode', () => {
 
     await clearAllKeys()
     invalidateKeyringCache()
-    expect(codec.encode('second', ctx)).rejects.toThrow('refusing to upload plaintext')
+    await expect(codec.encode('second', ctx)).rejects.toThrow('refusing to upload plaintext')
   })
 
   it('resetCodecState clears the setup flag so encode fails open again', async () => {

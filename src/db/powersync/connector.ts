@@ -9,6 +9,7 @@ import { normalizeBackendUrl } from '@/lib/url-utils'
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/web'
 import { encodeForUpload, postKeysSyncMessage } from '@/db/encryption'
 import { getAK, getPrimaryKeyId } from '@/crypto'
+import { initialKeyId } from '@shared/e2ee-types'
 import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 
 /**
@@ -297,7 +298,7 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
    * runtimes) must not turn a defer into a crash.
    */
   private requestPointerAdoption(): void {
-    postKeysSyncMessage({ type: 'key-request', keyId: '0', reason: 'unknown-key' })
+    postKeysSyncMessage({ type: 'key-request', keyId: initialKeyId, reason: 'unknown-key' })
   }
 
   /**

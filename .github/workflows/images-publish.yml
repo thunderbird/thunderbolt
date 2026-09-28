@@ -15,6 +15,11 @@ on:
         description: 'Override for VITE_THUNDERBOLT_CLOUD_URL build arg (frontend image). Default is /v1 (same-origin path). For preview stacks with cross-origin subdomains set this to e.g. https://api-pr-123.preview.thunderbolt.io/v1.'
         type: string
         required: false
+      platforms:
+        description: 'Target platforms for the image builds. Defaults to amd64 + arm64; callers that only consume one (preview stacks run on amd64 Fargate) should pass just that to skip the emulated build.'
+        type: string
+        required: false
+        default: 'linux/amd64,linux/arm64'
     outputs:
       version:
         description: 'The tag the images were published with'
@@ -29,6 +34,11 @@ on:
         description: 'Override for VITE_THUNDERBOLT_CLOUD_URL'
         type: string
         required: false
+      platforms:
+        description: 'Target platforms for the image builds'
+        type: string
+        required: false
+        default: 'linux/amd64,linux/arm64'
   push:
     branches: [main]
     paths:
@@ -109,7 +119,11 @@ jobs:
           file: deploy/docker/frontend.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           build-args: |
             VITE_THUNDERBOLT_CLOUD_URL=${{ inputs.vite_backend_url || '/v1' }}
             VITE_AUTH_MODE=sso
@@ -126,7 +140,11 @@ jobs:
           file: deploy/docker/backend.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-backend:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-backend:latest', env.IMAGE_PREFIX) || '' }}
@@ -140,7 +158,11 @@ jobs:
           file: deploy/docker/postgres.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-postgres:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-postgres:latest', env.IMAGE_PREFIX) || '' }}
@@ -154,7 +176,11 @@ jobs:
           file: deploy/docker/keycloak.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-keycloak:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-keycloak:latest', env.IMAGE_PREFIX) || '' }}
@@ -168,7 +194,11 @@ jobs:
           file: deploy/docker/powersync.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-powersync:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-powersync:latest', env.IMAGE_PREFIX) || '' }}
@@ -182,7 +212,11 @@ jobs:
           file: deploy/docker/marketing.Dockerfile
           push: true
           no-cache: true
-          platforms: linux/amd64,linux/arm64
+          # Buildx's container driver attaches provenance attestations by
+          # default, which changes the published manifest shape. Keep the
+          # plain manifest the previous docker driver produced.
+          provenance: false
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/thunderbolt-marketing:${{ steps.version.outputs.version }}
             ${{ steps.version.outputs.publish_latest == 'true' && format('{0}/thunderbolt-marketing:latest', env.IMAGE_PREFIX) || '' }}

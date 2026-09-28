@@ -12,8 +12,17 @@ import { getAnthropicOpenAIBaseUrl } from './client'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
 export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price' | 'not-configured'
-export type ModelProbeFailure = { model: string; reason: ModelProbeFailureReason }
+export type ModelProbeFailure = {
+  model: string
+  reason: ModelProbeFailureReason
+  provider: string
+  upstreamModel: string
+  elapsedMs: number
+  stage: 'configuration' | 'price' | 'attestation' | 'completion'
+  upstreamStatus?: number
+}
 export type ModelProbeDeps = {
+  models?: readonly SharedModel[]
   database: InferenceDatabase
   settings: Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'tinfoilApiKey'>
   /** Transport for the Anthropic OpenAI-compatible client (tests inject a fake). */
@@ -39,35 +48,39 @@ const createConfidentialTransport = async () => {
   return { fetch: secure.fetch, baseURL: secure.getBaseURL()! }
 }
 
-/** Probe every shipped catalog model once; returns the failing ones (empty = all healthy). */
+/** Probe the selected catalog models (all by default) once; returns the failing ones (empty = all healthy). */
 export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelProbeFailure[]> => {
   const { database, settings, fetchFn, timeoutMs = modelProbeTimeoutMs, concurrency = modelProbeConcurrency } = deps
   let confidentialTransport: Promise<NonNullable<ModelProbeDeps['confidentialTransport']>> | undefined
   const probe = async (model: SharedModel): Promise<ModelProbeFailure | null> => {
+    const started = performance.now()
+    let stage: ModelProbeFailure['stage'] = 'configuration'
+    let upstreamStatus: number | undefined
+    const runtime = model.provider === 'thunderbolt' ? resolveManagedDirectRuntime(model.model) : undefined
+    const identity = runtime
+      ? { provider: runtime.provider, model: runtime.internalName }
+      : model.provider === 'tinfoil' && model.isConfidential === 1
+        ? resolveConfidentialManagedModel(model.model)
+        : undefined
     const fail = (reason: ModelProbeFailureReason, error?: unknown): ModelProbeFailure => {
-      deps.logger?.warn(
-        {
-          event: 'deep_health_model_probe_failed',
-          model: model.model,
-          reason,
-          ...(error instanceof Error ? { errorName: error.name } : {}),
-          ...(error instanceof OpenAI.APIError && error.status !== undefined ? { status: error.status } : {}),
-        },
-        'Model health probe failed',
-      )
-      return { model: model.model, reason }
+      const status = error instanceof OpenAI.APIError ? error.status : upstreamStatus
+      const failure: ModelProbeFailure = {
+        model: model.model,
+        reason,
+        provider: identity?.provider ?? model.provider,
+        upstreamModel: identity?.model ?? model.model,
+        elapsedMs: Math.round(performance.now() - started),
+        stage,
+        ...(status === undefined ? {} : { upstreamStatus: status }),
+      }
+      deps.logger?.warn({ event: 'deep_health_model_probe_failed', ...failure }, 'Model health probe failed')
+      return failure
     }
     const signal = AbortSignal.timeout(timeoutMs)
     const deadline = Promise.withResolvers<never>()
     const abort = () => deadline.reject(signal.reason)
     signal.addEventListener('abort', abort, { once: true })
     try {
-      const runtime = model.provider === 'thunderbolt' ? resolveManagedDirectRuntime(model.model) : undefined
-      const identity = runtime
-        ? { provider: runtime.provider, model: runtime.internalName }
-        : model.provider === 'tinfoil' && model.isConfidential === 1
-          ? resolveConfidentialManagedModel(model.model)
-          : undefined
       if (!identity) {
         return fail('upstream-error')
       }
@@ -75,15 +88,18 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       if (!apiKey.trim()) {
         return fail('not-configured')
       }
+      stage = 'price'
       if (!(await Promise.race([loadInferencePrice(database, identity), deadline.promise]))) {
         return fail('missing-price')
       }
       signal.throwIfAborted()
+      stage = runtime || deps.confidentialTransport ? 'completion' : 'attestation'
       const transport = runtime
         ? { fetch: fetchFn, baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl) }
         : (deps.confidentialTransport ??
           (await Promise.race([(confidentialTransport ??= createConfidentialTransport()), deadline.promise])))
       signal.throwIfAborted()
+      stage = 'completion'
       const client = new OpenAI({
         apiKey,
         ...transport,
@@ -99,12 +115,12 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
         request.thinking = { type: 'disabled' }
       }
       // SDK attestation cannot be cancelled; bound the wait. Its key-rotation recovery is not a completion retry.
-      const response = await Promise.race([client.chat.completions.create(request, { signal }), deadline.promise])
-      const content = response.choices[0]?.message?.content as
-        | string
-        | { type: string; text?: string }[]
-        | null
-        | undefined
+      const { data, response } = await Promise.race([
+        client.chat.completions.create(request, { signal }).withResponse(),
+        deadline.promise,
+      ])
+      upstreamStatus = response.status
+      const content = data.choices[0]?.message?.content as string | { type: string; text?: string }[] | null | undefined
       const text = Array.isArray(content)
         ? content
             .filter((part) => part.type === 'text')
@@ -118,7 +134,7 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       signal.removeEventListener('abort', abort)
     }
   }
-  const queue = defaultModels.entries()
+  const queue = (deps.models ?? defaultModels).entries()
   const results: (ModelProbeFailure | null)[] = []
   await Promise.all(
     Array.from({ length: concurrency }, async () => {

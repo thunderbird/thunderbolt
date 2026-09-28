@@ -27,7 +27,7 @@ bun run e2e
 bun run e2e:headed   # with a visible browser
 ```
 
-**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit).
+**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit). It runs `bun test --cwd=e2e db-diagnostic.test.ts` separately because root `bunfig.toml` excludes `e2e/**` from Bun discovery; Playwright collects only `*.spec.ts` files.
 
 **`shared/agent-core` is the app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package**, not that package itself. Its nested unit tests sit outside frontend test discovery, so they are intentionally **not** part of `bun run test`. Run them with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate). In CI, the dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs the 5x unit gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes. The CLI imports the npm Pi package directly and imports the OpenAI-compatible and confidential-model builders plus receipt lifecycle from `shared/agent-core`, unit-tested by `bun run test:agent-core`; its integration coverage remains in the CLI suite.
 
@@ -183,7 +183,7 @@ The Playwright suite in [`e2e/`](../../e2e) covers OIDC and SAML sign-in and ses
 | Min-version gate pair | `1423` / `8004` | SSO frontend, OIDC backend with `MIN_APP_VERSION=99.0.0`  |
 | Consumer pair         | `1424` / `8005` | Email-code sign-in, consumer backend with `NODE_ENV=test` |
 
-Each test starts with a fresh `storageState` so stale IndexedDB / OPFS data from a previous run can't leak between specs. `e2e/global-setup.ts` starts the mock IdPs and fake provider; `e2e/global-teardown.ts` stops them.
+Regular PR tests start with fresh browser contexts and `storageState`. Nightly WebKit uses persistent profiles for OPFS support and clears OPFS on the test frontend origins before each case, since WebKit can share OPFS between separate profiles. `e2e/global-setup.ts` starts the mock IdPs and fake provider; `e2e/global-teardown.ts` stops them.
 
 ### Fake provider
 
@@ -204,6 +204,7 @@ The consumer backend runs with `NODE_ENV=test`. Only in that environment does th
 - **`loginViaOidc(page)`** — navigates to `/`, follows `AuthGate → /sso-redirect → mock IdP → backend callback → session`, and waits for the chat textarea to render. The mock IdP auto-approves, so there's no username/password to type.
 - **`loginViaSaml(page)`** — follows the SAML redirect through the mock IdP and waits for the chat textarea.
 - **`loginViaEmailCode(page)`** — requests a sign-in code for a unique test email, enters the fixed code, waits for the chat textarea, and returns the email.
+- **`openSidebarOnMobile(page)`** — opens the mobile drawer before a test selects sidebar content; desktop needs no action.
 - **`collectPageErrors(page)`** — subscribes to `pageerror` and returns an errors array, filtering Tauri-only noise (`__TAURI__`, `convertFileSrc`, etc.) that the web build surfaces harmlessly.
 
 ### Current Specs
@@ -236,7 +237,7 @@ The consumer backend runs with `NODE_ENV=test`. Only in that environment does th
 ### Writing New Specs
 
 - Use `loginViaOidc(page)`, `loginViaSaml(page)`, or `loginViaEmailCode(page)` for tests that need an authenticated user.
-- Name each spec to match a project's `testMatch`, such as `consumer-*.spec.ts`, `oidc-*.spec.ts`, or `saml-*.spec.ts`. Run `bun run e2e:check-collected` to verify collection. Its script, `scripts/check-e2e-specs-collected.ts`, checks the union of `playwright.config.ts` and `playwright.preview.config.ts`; CI runs it in `.github/workflows/e2e.yml` and fails if any spec is uncollected.
+- Name each spec to match a project's `testMatch`, such as `consumer-*.spec.ts`, `oidc-*.spec.ts`, or `saml-*.spec.ts`. Run `bun run e2e:check-collected` to verify collection. Its script, `scripts/check-e2e-specs-collected.ts`, checks the union of `playwright.config.ts`, `playwright.preview.config.ts`, and `playwright.extended.config.ts`; CI runs it in `.github/workflows/e2e.yml` and fails if any spec is uncollected.
 - Call `collectPageErrors(page)` and assert the array is empty at the end of the test to catch regressions that only surface as uncaught exceptions.
 - Keep each spec scoped to a single user-visible flow. The suite is a smoke test, not a full regression matrix — favour unit tests for branching logic and rely on e2e for "does the whole thing boot".
 
@@ -251,6 +252,23 @@ PREVIEW_APP_URL=https://app-pr-N.preview.thunderbolt.io \
 PREVIEW_API_URL=https://api-pr-N.preview.thunderbolt.io \
 bun run e2e:preview
 ```
+
+### Nightly E2E
+
+[`nightly.yml`](../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, using PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit with in-memory test backends. The regular PR workflow, [`e2e.yml`](../../.github/workflows/e2e.yml), runs Chromium.
+
+On a Mac, install WebKit and run the extended config from the repository root:
+
+```sh
+bunx playwright install webkit
+bunx playwright test --config playwright.extended.config.ts
+```
+
+On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `EXTENDED_DATABASE_URL` and `EXTENDED_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.extended.config.ts`](../../playwright.extended.config.ts) for browser selection and backend environment variables.
+
+### Native app smoke
+
+The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. For manual reproduction, start [`services.sh`](../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb, and ffmpeg. Recordings are saved in `/tmp/native-smoke/`; service logs are retained as failure artifacts.
 
 ### Debugging Mock Leakage
 

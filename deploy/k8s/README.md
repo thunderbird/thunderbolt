@@ -137,6 +137,7 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `backend.env.cliDeviceRegistrationEnabled` | `"false"` | Server-owned CLI device registration gate |
 | `marketing.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image |
 | `imagePullSecrets` | `[]` | Registry pull secrets (leave empty for the public images) |
+| `nodeSelector` | `{}` | Node selector applied to every pod (e.g. `kubernetes.io/arch: amd64` on a mixed-arch cluster) |
 | `ingress.enabled` | `true` | Create Ingress resource |
 | `ingress.host` | `""` | Set to your hostname for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |

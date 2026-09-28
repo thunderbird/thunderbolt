@@ -288,7 +288,7 @@ Each anchor records a breakage:
 
 - Name the file to match its project: `oidc-*`, `acp-*`, `proxy-*`, `saml-*`, `min-version-gate`, `artifact-*`. A file matching no pattern is silently never run.
 - Start any test needing an authenticated user with `loginViaOidc(page)`, `loginViaSaml(page)` or `loginViaEmailCode(page)`.
-- Run `bun run e2e:check-collected` after adding a spec. [`scripts/check-e2e-specs-collected.ts`](../../../scripts/check-e2e-specs-collected.ts) checks the union of [`playwright.config.ts`](../../../playwright.config.ts), [`playwright.preview.config.ts`](../../../playwright.preview.config.ts) and [`playwright.nightly.config.ts`](../../../playwright.nightly.config.ts), and CI fails on an uncollected spec, which is what stops a silently-never-run file from shipping.
+- Run `bun run e2e:check-collected` after adding a spec. [`scripts/check-e2e-specs-collected.ts`](../../../scripts/check-e2e-specs-collected.ts) checks the union of [`playwright.config.ts`](../../../playwright.config.ts), [`playwright.preview.config.ts`](../../../playwright.preview.config.ts) and [`playwright.extended.config.ts`](../../../playwright.extended.config.ts), and CI fails on an uncollected spec, which is what stops a silently-never-run file from shipping.
 - Call `collectPageErrors(page)` and assert the array is empty at the end; some regressions surface only as uncaught exceptions.
 - Keep each spec to one user-visible flow. The suite is a smoke test, not a regression matrix: unit-test branching logic, use e2e for "does the whole thing boot".
 
@@ -296,14 +296,18 @@ Each anchor records a breakage:
 
 [`nightly.yml`](../../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, against PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit against in-memory test backends. The PR workflow, [`e2e.yml`](../../../.github/workflows/e2e.yml), runs Chromium only.
 
-On a Mac, install WebKit and run the Nightly config from the repository root:
+On a Mac, install WebKit and run the extended config from the repository root:
 
 ```sh
 bunx playwright install webkit
-bunx playwright test --config playwright.nightly.config.ts
+bunx playwright test --config playwright.extended.config.ts
 ```
 
-On Linux, start and migrate PostgreSQL first, then start PowerSync using [`nightly-compose.yml`](../../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../../.github/workflows/nightly.yml). Point `NIGHTLY_DATABASE_URL` and `NIGHTLY_POWERSYNC_URL` at those services before running the same Playwright command. [`playwright.nightly.config.ts`](../../../playwright.nightly.config.ts) holds the browser selection and the backend environment variables.
+On Linux, start and migrate PostgreSQL first, then start PowerSync using [`nightly-compose.yml`](../../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../../.github/workflows/nightly.yml). Point `EXTENDED_DATABASE_URL` and `EXTENDED_POWERSYNC_URL` at those services before running the same Playwright command. [`playwright.extended.config.ts`](../../../playwright.extended.config.ts) holds the browser selection and the backend environment variables.
+
+### Native app smoke
+
+The native jobs install a Tauri app, sign in with the fixed test code, and send one message to the local fake provider. To reproduce by hand, start [`services.sh`](../../../e2e/native-smoke/services.sh), then follow the build and install steps in the `native-ios` or `native-linux` workflow job. Run [`ios.sh`](../../../e2e/native-smoke/ios.sh) with Maestro and a booted iPhone simulator, or [`linux.sh`](../../../e2e/native-smoke/linux.sh) with `tauri-driver`, WebKitWebDriver, Xvfb and ffmpeg. Recordings land in `/tmp/native-smoke/`, and service logs are kept as failure artifacts.
 
 ### Preview Smoke
 

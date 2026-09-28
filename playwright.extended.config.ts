@@ -5,8 +5,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import baseConfig from './playwright.config'
 
-const isMac = (process.env.NIGHTLY_PLATFORM ?? process.platform) === 'darwin'
-process.env.E2E_NIGHTLY_WEBKIT_PERSISTENT = String(isMac)
+const isMac = (process.env.EXTENDED_PLATFORM ?? process.platform) === 'darwin'
+process.env.E2E_EXTENDED_WEBKIT_PERSISTENT = String(isMac)
+process.env.E2E_EXTENDED_MCP = 'true'
 const browsers = isMac
   ? [
       { name: 'webkit-desktop', device: devices['Desktop Safari'] },
@@ -21,10 +22,10 @@ const browsers = isMac
 
 const webServers = Array.isArray(baseConfig.webServer) ? baseConfig.webServer : [baseConfig.webServer]
 
-/** Require real container endpoints before running the Linux Nightly suite. */
-const requiredNightlyEnv = (name: string): string => {
+/** Require real container endpoints before running the Linux extended suite. */
+const requiredExtendedEnv = (name: string): string => {
   const value = process.env[name]
-  if (!value) throw new Error(`${name} is required for Linux Nightly tests`)
+  if (!value) throw new Error(`${name} is required for Linux extended tests`)
   return value
 }
 
@@ -32,8 +33,8 @@ const databaseEnv = isMac
   ? undefined
   : {
       DATABASE_DRIVER: 'postgres',
-      DATABASE_URL: requiredNightlyEnv('NIGHTLY_DATABASE_URL'),
-      POWERSYNC_URL: requiredNightlyEnv('NIGHTLY_POWERSYNC_URL'),
+      DATABASE_URL: requiredExtendedEnv('EXTENDED_DATABASE_URL'),
+      POWERSYNC_URL: requiredExtendedEnv('EXTENDED_POWERSYNC_URL'),
       POWERSYNC_JWT_SECRET: 'enterprise-thunderbolt-powersync-jwt-default-secret',
       POWERSYNC_JWT_KID: 'enterprise-powersync',
       SKIP_MIGRATIONS: 'true',
@@ -51,28 +52,44 @@ export default defineConfig({
     screenshot: 'off',
     storageState: undefined,
   },
-  projects: baseConfig.projects?.flatMap((project) =>
-    browsers.map(({ name, device }) => ({
-      ...project,
-      name: `${project.name}-${name}`,
-      use: { ...project.use, ...device, baseURL: project.use?.baseURL },
-    })),
-  ),
+  projects: [
+    ...(baseConfig.projects?.flatMap((project) =>
+      browsers.map(({ name, device }) => ({
+        ...project,
+        name: `${project.name}-${name}`,
+        use: { ...project.use, ...device, baseURL: project.use?.baseURL },
+      })),
+    ) ?? []),
+    {
+      name: `extended-real-${browsers[0].name}`,
+      testMatch: /\/real-.*\.spec\.ts$/,
+      use: { ...browsers[0].device, baseURL: 'http://localhost:1421' },
+    },
+    {
+      name: `extended-sync-${browsers[0].name}`,
+      testMatch: /\/sync-.*\.spec\.ts$/,
+      use: { ...browsers[0].device, baseURL: 'http://localhost:1424' },
+    },
+  ],
   webServer: webServers
     .filter((server) => server !== undefined)
     .map((server) => {
       if (!server.command?.startsWith('cd backend')) return server
+      const env = {
+        ...server.env,
+        ...databaseEnv,
+        ANTHROPIC_API_KEY:
+          server.env?.AUTH_MODE === 'consumer' ? 'e2e-fake-provider-key' : (process.env.ANTHROPIC_API_KEY ?? ''),
+        TINFOIL_API_KEY: process.env.TINFOIL_API_KEY ?? '',
+        TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL ?? '',
+        EXA_API_KEY: process.env.EXA_API_KEY ?? '',
+      }
+      if (server.env?.AUTH_MODE === 'oidc') {
+        return { ...server, env: { ...env, NODE_ENV: 'test', TEST_PROXY_ALLOWED_HOSTS: '127.0.0.1:9879' } }
+      }
       return {
         ...server,
-        env: {
-          ...server.env,
-          ...databaseEnv,
-          ANTHROPIC_API_KEY:
-            server.env?.AUTH_MODE === 'consumer' ? 'e2e-fake-provider-key' : (process.env.ANTHROPIC_API_KEY ?? ''),
-          TINFOIL_API_KEY: process.env.TINFOIL_API_KEY ?? '',
-          TINFOIL_ENCLAVE_URL: process.env.TINFOIL_ENCLAVE_URL ?? '',
-          EXA_API_KEY: process.env.EXA_API_KEY ?? '',
-        },
+        env,
       }
     }),
 })

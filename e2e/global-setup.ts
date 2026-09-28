@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import { z } from 'zod'
 import { createFakeProvider } from './fake-provider'
+import { createFakeMcpServer } from './fake-mcp-server'
 import { createMockSamlIdp } from './mock-saml-idp'
 
 const mockOidcPort = Number(process.env.MOCK_OIDC_PORT ?? 9876)
@@ -19,7 +20,7 @@ const mockSamlPort = Number(process.env.MOCK_SAML_PORT ?? 9877)
 const identityClaims = z.object({ sub: z.string(), email: z.email() })
 
 const globalSetup = async () => {
-  const uniqueUsers = process.env.E2E_NIGHTLY_UNIQUE_USERS === 'true'
+  const uniqueUsers = process.env.E2E_EXTENDED_UNIQUE_USERS === 'true'
   // --- Mock OIDC server ---
   const oidcServer = new OAuth2Server()
   await oidcServer.issuer.keys.generate('RS256')
@@ -65,11 +66,13 @@ const globalSetup = async () => {
   const samlServer = await createMockSamlIdp(mockSamlPort)
 
   const fakeProvider = await createFakeProvider(Number(process.env.FAKE_PROVIDER_PORT ?? 9878))
+  const fakeMcpServer = process.env.E2E_EXTENDED_MCP === 'true' ? await createFakeMcpServer(9879) : undefined
 
   // Store references for teardown
   ;(globalThis as Record<string, unknown>).__oidcServer = oidcServer
   ;(globalThis as Record<string, unknown>).__samlServer = samlServer
   ;(globalThis as Record<string, unknown>).__fakeProvider = fakeProvider
+  Object.assign(globalThis, { __fakeMcpServer: fakeMcpServer })
 }
 
 export default globalSetup

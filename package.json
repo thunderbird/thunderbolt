@@ -237,7 +237,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "vite-bundle-analyzer": "^1.2.1",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.4",
+    "webdriverio": "^9.31.9"
   },
   "overrides": {
     "semver": "^7.7.3"

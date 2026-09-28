@@ -20,8 +20,8 @@ const listSpecFiles = async (config: string): Promise<string[]> => {
   const result = await Bun.$`bunx playwright test --config ${config} --list --reporter=json`
     .env({
       ...process.env,
-      NIGHTLY_DATABASE_URL: process.env.NIGHTLY_DATABASE_URL ?? 'postgresql://unused:unused@invalid.test/postgres',
-      NIGHTLY_POWERSYNC_URL: process.env.NIGHTLY_POWERSYNC_URL ?? 'http://invalid.test:8080',
+      EXTENDED_DATABASE_URL: process.env.EXTENDED_DATABASE_URL ?? 'postgresql://unused:unused@invalid.test/postgres',
+      EXTENDED_POWERSYNC_URL: process.env.EXTENDED_POWERSYNC_URL ?? 'http://invalid.test:8080',
     })
     .quiet()
   const report: JSONReport = result.json()
@@ -30,7 +30,7 @@ const listSpecFiles = async (config: string): Promise<string[]> => {
 
 if (import.meta.main) {
   const collectedFiles = await Promise.all(
-    ['playwright.config.ts', 'playwright.preview.config.ts', 'playwright.nightly.config.ts'].map(listSpecFiles),
+    ['playwright.config.ts', 'playwright.preview.config.ts', 'playwright.extended.config.ts'].map(listSpecFiles),
   )
   const specFiles = Array.from(new Bun.Glob('e2e/**/*.spec.ts').scanSync())
   const uncollected = findUncollectedSpecs(specFiles, collectedFiles.flat())

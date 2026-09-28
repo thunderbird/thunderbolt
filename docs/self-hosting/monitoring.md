@@ -75,6 +75,13 @@ The email probe asks the provider for your verified sending domains, so it needs
 
 `GET /v1/health/models` sends one small request to every model Thunderbolt ships preconfigured, three at a time, with a 20 second deadline each and no retries. Don't poll it more than a few times an hour: it is the only probe that spends money. We recommend every 15 minutes.
 
+Add `?model=` to probe one model instead of the whole catalog. An unknown name returns `404`.
+
+```bash
+curl -H "Authorization: Bearer $MONITORING_TOKEN" \
+  "https://thunderbolt.example.com/v1/health/models?model=glm-5-3"
+```
+
 ```json
 { "status": "failed", "failures": [{ "model": "glm-5-3", "reason": "no-text" }] }
 ```
@@ -87,11 +94,11 @@ The email probe asks the provider for your verified sending domains, so it needs
 | `missing-price`  | The model has no price on record, so the server refuses requests for it. |
 | `not-configured` | No provider key is set on the server for that model.                     |
 
-Failure entries never contain the upstream response body or your credentials.
+Each failure also reports which provider it went to, how long it took, how far it got, and the status the provider returned. Failure entries never contain the upstream response body or your credentials.
 
 The probe exercises only the models your deployment is configured to serve; models your users add themselves are not covered.
 
-> Don't alert on this endpoint unless your server holds **both** `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY`. The probe walks the whole preconfigured catalog, a model with no key reports `not-configured`, and one failure fails the check, so a partly-keyed server stays red however healthy it is.
+> Without `?model=`, the probe walks the whole preconfigured catalog, a model with no key reports `not-configured`, and one failure fails the check. A server holding only one of `ANTHROPIC_API_KEY` and `TINFOIL_API_KEY` therefore stays red however healthy it is. Alert per model instead, on the ones you actually serve.
 
 ## What to alert on
 

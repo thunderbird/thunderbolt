@@ -177,13 +177,52 @@ Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 | `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
 | `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
 
-Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
+Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns a `failures` array, described below. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 
 An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
 
 The email probe uses a separate Resend Full access key in `RESEND_MONITORING_API_KEY` to read the domain list and requires the sending domain from `emailFrom` to be verified. The sending key `RESEND_API_KEY` may stay sending-only. A missing monitoring key returns `503` with reason `not-configured`; an invalid, sending-only, or forbidden monitoring key returns `rejected` (upstream HTTP 400/401/403); a missing or unverified sending domain, including a malformed response, returns `domain-unverified`. Missing PowerSync configuration also returns `503` with reason `not-configured`.
 
-Each models call costs one tiny completion per catalog model with a price row, without retries. BetterStack polls this route every 15 minutes in production.
+Use `/v1/health/models?model=<catalog slug>` to probe exactly one shipped catalog model. Omitting `model` preserves the aggregate probe of the whole catalog. An unknown or empty selector returns `404 {"error":"Unknown catalog model"}` after token authorization, without database or provider work. Accepted selectors come from `shared/defaults/models.ts`, excluding legacy inference aliases.
+
+Each model failure preserves `model` (catalog slug) and `reason`, with these diagnostics:
+
+| Field            | Meaning                                                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `provider`       | Actual upstream provider: `anthropic` or `tinfoil`                                                                                                           |
+| `upstreamModel`  | Provider model ID, e.g. `claude-opus-5` for `opus-5`                                                                                                         |
+| `elapsedMs`      | Rounded total milliseconds from this model's probe start to failure, including price lookup and initialization; excludes time waiting for a concurrency slot |
+| `stage`          | Operation being awaited: `configuration`, `price`, `attestation` (Tinfoil `secure.ready()` initialization), or `completion`                                  |
+| `upstreamStatus` | HTTP status exposed by the provider SDK, including `200` for an empty completion; omitted when unavailable, never inferred from error text                   |
+
+For example, an upstream rate limit returns HTTP 503 with:
+
+```json
+{
+  "status": "failed",
+  "failures": [
+    {
+      "model": "opus-5",
+      "reason": "upstream-error",
+      "provider": "anthropic",
+      "upstreamModel": "claude-opus-5",
+      "elapsedMs": 321,
+      "stage": "completion",
+      "upstreamStatus": 429
+    }
+  ]
+}
+```
+
+Stages describe what the backend can observe. Tinfoil's encrypted fetch may internally reattest, so a `completion` failure does not rule out attestation trouble inside the SDK. Responses and probe logs omit raw errors, credentials, prompts, request headers, upstream response bodies, and completion text. Success remains `{"status":"ok"}`.
+
+Each models call costs one tiny completion per selected model with configured credentials and a price row, without retries. Configure three separate BetterStack HTTP monitors manually, each every **15 minutes**, using your backend origin and the bearer header above:
+
+- `https://<backend-origin>/v1/health/models?model=opus-5`
+- `https://<backend-origin>/v1/health/models?model=glm-5-3-flash`
+- `https://<backend-origin>/v1/health/models?model=glm-5-3`
+
+Set each monitor's request timeout **above the 20-second per-model deadline** (for example, 30 seconds), so the backend can return its failure JSON before the monitor times out. The aggregate URL remains available; polling it alongside all three selectors duplicates paid probes. The backend retains provider credentials and probe logic; BetterStack only checks HTTP success.
 
 ## Frontend Build Args
 

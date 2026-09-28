@@ -293,6 +293,7 @@ jobs:
           echo "IOS_SIMULATOR_UDID=$simulator_udid" >> "$GITHUB_ENV"
 
       - name: Run native iOS smoke
+        id: smoke
         env:
           VITE_AUTH_MODE: thunderbolt
           VITE_SKIP_ONBOARDING: 'true'
@@ -309,6 +310,7 @@ jobs:
             exit 1
           fi
           xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
+          echo 'attempted=true' >> "$GITHUB_OUTPUT"
           ./e2e/native-smoke/ios.sh
 
       - name: Upload native iOS video
@@ -330,7 +332,7 @@ jobs:
           retention-days: 7
 
       - name: Upload native iOS failure diagnostics
-        if: failure()
+        if: failure() && steps.smoke.outputs.attempted == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-ios-diagnostics

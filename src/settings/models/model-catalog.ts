@@ -27,7 +27,7 @@ export type AvailableModel = {
 type ModalityCatalogRow = AvailableModel & { architecture?: { input_modalities?: string[] } }
 
 /** Read image support from `architecture.input_modalities`, leaving it unknown when absent. */
-export const readInputModalities = (row: ModalityCatalogRow): boolean | undefined =>
+export const catalogRowSupportsImages = (row: ModalityCatalogRow): boolean | undefined =>
   row.architecture?.input_modalities ? row.architecture.input_modalities.includes('image') : undefined
 
 export type CatalogRequest = {
@@ -144,7 +144,7 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
       supports_tools:
         model.supports_tools === true ||
         model.supported_parameters?.some((parameter) => parameter === 'tools' || parameter === 'tool_choice') === true,
-      supports_images: readInputModalities(model),
+      supports_images: catalogRowSupportsImages(model),
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }

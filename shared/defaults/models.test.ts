@@ -13,6 +13,7 @@ import {
   defaultModels,
   defaultModelsVersion,
   hashModel,
+  isKnownToReadImages,
   type ImageSupportModel,
   staticImageSupport,
 } from './models'
@@ -135,6 +136,12 @@ describe('staticImageSupport', () => {
 
   test('treats other Thunderbolt-hosted models from vision vendors as reading images', () => {
     expect(staticImageSupport(model({ provider: 'thunderbolt', model: 'gpt-5', vendor: 'openai' }))).toBe('supported')
+  })
+
+  test('isKnownToReadImages sends images only on a known "supported"', () => {
+    expect(isKnownToReadImages(defaultModelGlm53Flash)).toBe(true)
+    expect(isKnownToReadImages(defaultModelGlm53)).toBe(false)
+    expect(isKnownToReadImages(model({}))).toBe(false)
   })
 
   test('leaves everything else to detection', () => {

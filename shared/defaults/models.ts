@@ -191,6 +191,13 @@ export const staticImageSupport = (model: ImageSupportModel): ImageSupport | und
 }
 
 /**
+ * Whether to send images to a model when support can't be detected and a blocked
+ * image can't be explained, as in the CLI: only to models known to read them.
+ * The app detects the rest instead, and strips only models known not to.
+ */
+export const isKnownToReadImages = (model: ImageSupportModel): boolean => staticImageSupport(model) === 'supported'
+
+/**
  * Monotonic version of the shipped defaults. Bump every time `defaultModels`
  * changes in any way. The reconciler uses this as the ordering signal to
  * decide which device's defaults win in a multi-device sync group:

@@ -11,7 +11,8 @@ import { clearImageSupportCache, getCachedImageSupport, setCachedImageSupport } 
 import { detectImageSupport } from './image-support-detection'
 import { ImageSupportInconclusiveError } from './image-support-probe'
 
-const getProxyFetch = () => (async () => new Response('')) as unknown as FetchFn
+const proxyFetch: FetchFn = Object.assign(async () => new Response(''), { preconnect: async () => true })
+const getProxyFetch = () => proxyFetch
 
 const makeModel = (overrides: Partial<Model> = {}): Model =>
   ({

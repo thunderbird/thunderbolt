@@ -8,7 +8,7 @@ import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
-  readInputModalities,
+  catalogRowSupportsImages,
   thunderboltModelCatalog,
 } from './model-catalog'
 
@@ -63,15 +63,15 @@ describe('model catalog policy', () => {
     })
   })
 
-  describe('readInputModalities', () => {
+  describe('catalogRowSupportsImages', () => {
     it('reports image support from the listed input modalities', () => {
-      expect(readInputModalities({ id: 'a', architecture: { input_modalities: ['text', 'image'] } })).toBe(true)
-      expect(readInputModalities({ id: 'b', architecture: { input_modalities: ['text'] } })).toBe(false)
+      expect(catalogRowSupportsImages({ id: 'a', architecture: { input_modalities: ['text', 'image'] } })).toBe(true)
+      expect(catalogRowSupportsImages({ id: 'b', architecture: { input_modalities: ['text'] } })).toBe(false)
     })
 
     it('leaves support unknown when the catalog lists no modalities', () => {
-      expect(readInputModalities({ id: 'c' })).toBeUndefined()
-      expect(readInputModalities({ id: 'd', architecture: {} })).toBeUndefined()
+      expect(catalogRowSupportsImages({ id: 'c' })).toBeUndefined()
+      expect(catalogRowSupportsImages({ id: 'd', architecture: {} })).toBeUndefined()
     })
   })
 })

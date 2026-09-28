@@ -46,16 +46,18 @@ const postChatCompletion = (
   modelId: string,
   content: ProbeContent,
   signal: AbortSignal,
-) =>
-  connection.fetch(`${connection.baseURL.replace(/\/+$/, '')}/chat/completions`, {
+) => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (connection.apiKey) {
+    headers.Authorization = `Bearer ${connection.apiKey}`
+  }
+  return connection.fetch(`${connection.baseURL.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {}),
-    },
+    headers,
     body: JSON.stringify({ model: modelId, messages: [{ role: 'user', content }], stream: false }),
     signal,
   })
+}
 
 /**
  * Ask a model what color a solid green image is, over the same OpenAI-compatible
@@ -68,7 +70,10 @@ const postChatCompletion = (
  * @param getProxyFetch - lazily resolved universal proxy fetch
  * @param signal - the caller's deadline, shared by the probe and its follow-up
  * @returns whether the model read the image
- * @throws {ImageSupportInconclusiveError} when no verdict is possible (the caller must not cache it)
+ * @throws {ImageSupportInconclusiveError} when the provider answers but no verdict is possible
+ *   (no connection, an auth/rate-limit/server status, an empty answer, a failed follow-up)
+ * @throws the underlying error on a network failure, the deadline, or a reply that isn't JSON.
+ *   Either way the caller must not cache anything.
  */
 export const probeImageSupport = async (
   model: Model,
@@ -94,6 +99,8 @@ export const probeImageSupport = async (
     if (!answer) {
       throw new ImageSupportInconclusiveError('Probe completion carried no answer')
     }
+    // Deliberately literal: "lime", "verde", or a hex code counts as unsupported
+    // and is cached. The composer's "Try anyway" is the escape hatch for that.
     return /\bgreen\b/i.test(answer) ? 'supported' : 'unsupported'
   }
   if (!contentRejectionStatuses.has(response.status)) {

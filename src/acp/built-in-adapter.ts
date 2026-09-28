@@ -342,6 +342,11 @@ export const resolvePiModel = async (
 ): Promise<ResolvedPiModel | null> => {
   const model = context.selectedModel
   const thinkingLevel = deriveThinkingLevel(profile)
+  // Pi strips image blocks from text-only descriptors. Only models known not to
+  // read images are text-only: the composer checks an unknown model before an
+  // image is sent (see use-image-support-check.ts), and an unresolved check sends
+  // the image so the provider's own rejection surfaces instead.
+  const supportsImages = getKnownImageSupport(model) !== 'unsupported'
   if (model.provider === 'tinfoil') {
     if (model.isSystem === 1) {
       const acquireSystemClient = options.getSystemTinfoilClient ?? getSystemTinfoilClient
@@ -393,7 +398,7 @@ export const resolvePiModel = async (
           receipts,
           reasoning: true,
           contextWindow: model.contextWindow ?? undefined,
-          supportsImages: getKnownImageSupport(model) !== 'unsupported',
+          supportsImages,
         },
         thinkingLevel,
         tinfoilClient: client,
@@ -426,7 +431,7 @@ export const resolvePiModel = async (
         fetch,
         reasoning: hasExplicitReasoning(profile),
         contextWindow: model.contextWindow ?? undefined,
-        supportsImages: getKnownImageSupport(model) !== 'unsupported',
+        supportsImages,
       },
       thinkingLevel,
       tinfoilClient: client,
@@ -483,11 +488,7 @@ export const resolvePiModel = async (
       fetch: connection.fetch,
       reasoning: hasExplicitReasoning(profile),
       contextWindow: model.contextWindow ?? undefined,
-      // Pi strips image blocks from text-only descriptors. Only models known not
-      // to read images are text-only: the composer checks an unknown model before
-      // an image is sent (see use-image-support-check.ts), and an unresolved check
-      // sends the image so the provider's own rejection surfaces instead.
-      supportsImages: getKnownImageSupport(model) !== 'unsupported',
+      supportsImages,
     },
     thinkingLevel,
   }

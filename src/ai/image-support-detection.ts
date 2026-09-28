@@ -70,7 +70,8 @@ const catalogImageSupport = async (
  * @param getProxyFetch - lazily resolved universal proxy fetch
  * @param options - the deadline, plus seams for the catalog and probe calls
  * @returns whether the model reads images
- * @throws when no verdict is possible (nothing is cached; the send should go ahead)
+ * @throws when no verdict is possible. Nothing is cached, so the send goes ahead
+ *   and the check runs again after a reload or a composer remount.
  */
 export const detectImageSupport = async (
   model: Model,

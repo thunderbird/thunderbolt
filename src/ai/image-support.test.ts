@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ImageSupportModel } from '@shared/defaults/models'
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import {
   clearImageSupportCache,
   getCachedImageSupport,
@@ -49,11 +49,14 @@ describe('image support cache', () => {
     expect(getCachedImageSupport(model())).toBeUndefined()
   })
 
-  it('ignores a corrupted or foreign stored value', () => {
+  it('ignores a corrupted or foreign stored value, and says so', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
     localStorage.setItem('thunderbolt_image_support', '{not json')
     expect(getCachedImageSupport(model())).toBeUndefined()
     localStorage.setItem('thunderbolt_image_support', JSON.stringify({ anything: 'maybe' }))
     expect(getCachedImageSupport(model())).toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
   })
 })
 

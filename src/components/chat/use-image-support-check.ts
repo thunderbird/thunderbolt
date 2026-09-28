@@ -57,7 +57,8 @@ type UseImageSupportCheckOptions = {
  * again when the user switches to a model that hasn't been checked. The send is
  * held while checking; a verdict of "unsupported" blocks it only when the draft
  * itself has an image, since history images are simply dropped for such models.
- * A check that can't reach a verdict lets the send go ahead.
+ * A check that can't reach a verdict lets the send go ahead. That outcome isn't
+ * cached, so it runs again after a reload or a composer remount (not on focus).
  */
 export const useImageSupportCheck = ({
   model,
@@ -70,12 +71,12 @@ export const useImageSupportCheck = ({
   const getProxyFetch = useProxyFetchGetter()
   const queryClient = useQueryClient()
   const queryKey = ['image-support', imageSupportKey(model)]
-  const draftHasImage = attachments.some(isImageAttachment)
-  const historyHasImage = useMemo(
+  const hasDraftImage = attachments.some(isImageAttachment)
+  const hasHistoryImage = useMemo(
     () => messages.some((message) => getAttachments(message).some(isImageAttachment)),
     [messages],
   )
-  const needed = enabled && (draftHasImage || (historyHasImage && hasDraft))
+  const isCheckNeeded = enabled && (hasDraftImage || (hasHistoryImage && hasDraft))
 
   const query = useQuery({
     queryKey,
@@ -87,30 +88,30 @@ export const useImageSupportCheck = ({
         throw error
       }
     },
-    enabled: needed,
+    enabled: isCheckNeeded,
     initialData: () => getKnownImageSupport(model),
     staleTime: Infinity,
     retry: false,
     // A failed check has no data, so Query treats it as stale regardless of
     // staleTime. Without these, every window focus would re-run the probe, which
-    // can be two paid inference calls.
+    // can be a paid inference call.
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
 
-  if (!needed) {
+  if (!isCheckNeeded) {
     return noCheck
   }
   if (!query.data) {
     return query.isError ? noCheck : { notice: 'checking', tryAnyway: undefined }
   }
-  if (query.data === 'supported' || !draftHasImage) {
+  if (query.data === 'supported' || !hasDraftImage) {
     return noCheck
   }
-  const overridable = staticImageSupport(model) === undefined
+  const isOverridable = staticImageSupport(model) === undefined
   return {
     notice: 'unsupported',
-    tryAnyway: overridable
+    tryAnyway: isOverridable
       ? () => {
           setCachedImageSupport(model, 'supported')
           queryClient.setQueryData(queryKey, 'supported')

@@ -30,8 +30,13 @@ const readCache = (): Record<string, ImageSupport> => {
   }
   try {
     const parsed = cacheSchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : {}
-  } catch {
+    if (parsed.success) {
+      return parsed.data
+    }
+    console.warn('Ignoring an image-support cache with an unexpected shape', parsed.error)
+    return {}
+  } catch (error) {
+    console.warn('Ignoring an unreadable image-support cache', error)
     return {}
   }
 }
@@ -44,8 +49,9 @@ export const getCachedImageSupport = (model: ImageSupportModel): ImageSupport | 
 export const setCachedImageSupport = (model: ImageSupportModel, support: ImageSupport): void => {
   try {
     localStorage.setItem(storageKey, JSON.stringify({ ...readCache(), [imageSupportKey(model)]: support }))
-  } catch {
-    // Quota exceeded or storage unavailable.
+  } catch (error) {
+    // Quota exceeded or storage unavailable; the model is simply checked again later.
+    console.warn('Could not save an image-support result', error)
   }
 }
 

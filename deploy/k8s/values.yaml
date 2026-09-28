@@ -79,9 +79,10 @@ backend:
     cliDeviceRegistrationEnabled: "false"
     # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
     thunderboltInferenceUrl: ""
-    # -- Browser-facing PowerSync URL. Empty defaults to `<appUrl>/powersync`
-    # (the chart's own path-based ingress route). Override this when using
-    # host-header ingress mode (`ingress.hostnames.powersync`).
+    # -- Browser-facing PowerSync URL. Empty follows the configured ingress
+    # mode: `ingress.hostnames.powersync` when that is set, otherwise
+    # `<appUrl>/powersync` (the chart's own path-based route). Set this only to
+    # override both, for example when sync is fronted by something else.
     powersyncUrl: ""
   # -- Base64-encoded AI provider keys. Empty defaults disable each provider
   # (backend zod schema treats empty string as "not configured").

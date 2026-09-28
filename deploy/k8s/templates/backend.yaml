@@ -102,13 +102,21 @@ spec:
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
             # POWERSYNC_URL is echoed straight to the browser for real-time sync, so it
-            # must be browser-reachable — unlike every other in-cluster service URL on
-            # this page, it can NOT be the internal DNS name. Defaults to the app's own
-            # path-based ingress route (see templates/ingress.yaml's `/powersync` rule);
-            # override with `backend.env.powersyncUrl` for host-header ingress mode
-            # (`ingress.hostnames.powersync`).
+            # must be browser-reachable. Unlike every other in-cluster service URL on
+            # this page, it can NOT be the internal DNS name. It follows whichever
+            # ingress mode is configured: the dedicated hostname when one is set, and
+            # otherwise the app's own path-based route (templates/ingress.yaml strips
+            # the `/powersync` prefix). `backend.env.powersyncUrl` overrides both.
+            {{- $psHost := dig "hostnames" "powersync" "" .Values.ingress }}
+            {{- $psScheme := (urlParse .Values.appUrl).scheme | default "http" }}
+            {{- $psDefault := ternary (printf "%s://%s" $psScheme $psHost) (printf "%s/powersync" (trimSuffix "/" .Values.appUrl)) (ne $psHost "") }}
             - name: POWERSYNC_URL
-              value: {{ .Values.backend.env.powersyncUrl | default (printf "%s/powersync" .Values.appUrl) | quote }}
+              value: {{ .Values.backend.env.powersyncUrl | default $psDefault | quote }}
+            # Server-side target for GET /v1/health/powersync. POWERSYNC_URL now points
+            # at the public ingress, which this pod should not have to hairpin through,
+            # so the probe keeps using the in-cluster service.
+            - name: POWERSYNC_INTERNAL_URL
+              value: "http://powersync:{{ .Values.powersync.service.port }}"
             - name: POWERSYNC_JWT_SECRET
               valueFrom:
                 secretKeyRef:

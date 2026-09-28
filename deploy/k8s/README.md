@@ -142,8 +142,31 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `ingress.host` | `""` | Set to your hostname for production |
 | `postgres.storage` | `5Gi` | Postgres PVC size |
 | `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
+| `keycloak.enabled` | `true` | Deploy the bundled Keycloak. Set `false` when using an external `oidc.issuer` |
+| `oidc.issuer` | `""` | External IdP issuer URL (leave empty to use the bundled Keycloak) |
+| `oidc.discoveryUrl` | `""` | Override the discovery document URL when it differs from `<issuer>/.well-known/openid-configuration` |
+| `oidc.clientId` | `""` | External IdP client ID |
+| `oidc.clientSecretBase64` | `""` | Base64-encoded external IdP client secret |
 
 See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
+
+### Using an external identity provider
+
+Set `keycloak.enabled=false` and the `oidc.*` values instead. Whatever OIDC
+provider you use, register this callback URL with it:
+
+```
+<appUrl>/v1/api/auth/sso/callback/sso
+```
+
+```bash
+helm upgrade thunderbolt . -n thunderbolt \
+  --reuse-values \
+  --set keycloak.enabled=false \
+  --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
+  --set oidc.clientId=<client-id> \
+  --set oidc.clientSecretBase64=$(echo -n '<client-secret>' | base64)
+```
 
 ## Templates
 

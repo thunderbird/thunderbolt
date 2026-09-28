@@ -66,14 +66,30 @@ spec:
                   key: postgres-password
             - name: DATABASE_URL
               value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}?sslmode={{ .Values.postgres.sslmode | default "disable" }}"
-            # OIDC_ISSUER must equal what Keycloak puts in the `iss` claim of issued tokens —
-            # i.e. the browser-facing URL. The backend reaches Keycloak in-cluster via OIDC_DISCOVERY_URL.
+            {{- $external := ne (.Values.oidc.issuer | default "") "" }}
+            {{- $issuer := ternary .Values.oidc.issuer (printf "%s/realms/thunderbolt" .Values.appUrl) $external }}
+            {{- $keycloakDiscovery := printf "http://keycloak:%v/realms/thunderbolt/.well-known/openid-configuration" .Values.keycloak.service.port }}
+            {{- /*
+              The backend's own fallback (`${issuer}/.well-known/openid-configuration`)
+              naively concatenates without stripping a trailing slash, which 404s
+              against any issuer that has one (OIDC Discovery §4.1 requires stripping
+              it — several providers, Authentik included, publish issuer URLs with a
+              trailing slash). Compute it correctly here instead of relying on that
+              fallback.
+            */}}
+            {{- $externalDiscovery := printf "%s/.well-known/openid-configuration" (trimSuffix "/" .Values.oidc.issuer) }}
+            {{- $discovery := .Values.oidc.discoveryUrl | default (ternary $externalDiscovery $keycloakDiscovery $external) }}
+            # OIDC_ISSUER must equal the `issuer` field of the provider's discovery
+            # document byte-for-byte, i.e. the browser-facing URL. When the backend
+            # reaches the provider at a different hostname than the browser does
+            # (e.g. the bundled in-cluster Keycloak), OIDC_DISCOVERY_URL carries
+            # that internal address instead.
             - name: OIDC_ISSUER
-              value: "{{ .Values.appUrl }}/realms/thunderbolt"
+              value: {{ $issuer | quote }}
             - name: OIDC_DISCOVERY_URL
-              value: "http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration"
+              value: {{ $discovery | quote }}
             - name: OIDC_CLIENT_ID
-              value: {{ .Values.keycloak.oidc.clientId }}
+              value: {{ .Values.oidc.clientId | default .Values.keycloak.oidc.clientId | quote }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -88,9 +104,20 @@ spec:
               value: {{ .Values.appUrl }}
             - name: APP_URL
               value: {{ .Values.appUrl }}
-            # The internal Keycloak hostname is included so Better Auth's SSO plugin
-            # trusts OIDC_DISCOVERY_URL when fetching the discovery doc server-to-server
-            # (see backend/src/auth/auth.ts where `trustedOrigins` is consumed).
+            {{- $origins := list .Values.appUrl }}
+            {{- if $external }}
+            {{- $u := urlParse .Values.oidc.issuer }}
+            {{- $origins = append $origins (printf "%s://%s" $u.scheme $u.host) }}
+            {{- if .Values.oidc.discoveryUrl }}
+            {{- $d := urlParse .Values.oidc.discoveryUrl }}
+            {{- $origins = append $origins (printf "%s://%s" $d.scheme $d.host) }}
+            {{- end }}
+            {{- else }}
+            {{- $origins = append $origins (printf "http://keycloak:%v" .Values.keycloak.service.port) }}
+            {{- end }}
+            # The identity provider's origin must be trusted so Better Auth's SSO
+            # plugin accepts its discovery/token/jwks endpoints when fetching them
+            # server-to-server (see backend/src/auth/auth.ts, `trustedOrigins`).
             #
             # CSRF protection is not weakened by this entry: the `Origin` request header
             # is on the Fetch-spec Forbidden Header list, so JS in a browser cannot forge
@@ -98,7 +125,7 @@ spec:
             # Primary CSRF defenses (SameSite cookies + `X-Challenge-Token` custom header
             # on sensitive endpoints) are unaffected.
             - name: TRUSTED_ORIGINS
-              value: "{{ .Values.appUrl }},http://keycloak:8080"
+              value: {{ concat $origins (.Values.oidc.extraTrustedOrigins | default list) | uniq | join "," | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
             - name: POWERSYNC_URL

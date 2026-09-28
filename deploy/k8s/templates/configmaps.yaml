@@ -57,6 +57,7 @@ data:
             kid: {{ .Values.powersync.jwt.kid }}
       telemetry:
         disable_telemetry_sharing: true
+{{- if .Values.keycloak.enabled }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -111,6 +112,7 @@ data:
         {{- end }}
       ]
     }
+{{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap

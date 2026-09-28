@@ -20,6 +20,29 @@ podAnnotations: {}
 nodeSelector: {}
 
 # =============================================================================
+# OIDC identity provider
+# =============================================================================
+# Leave `issuer` empty to use the bundled Keycloak below. To bring your own
+# provider (Okta, Auth0, Entra ID, Authentik, ...), set `issuer`/`clientId`/
+# `clientSecretBase64` here and `keycloak.enabled: false`.
+oidc:
+  # -- Issuer URL. Must equal the `issuer` field of the provider's discovery
+  # document byte-for-byte, or sign-in fails with `issuer_mismatch`.
+  issuer: ""
+  # -- Discovery document URL. Empty derives
+  # `<issuer>/.well-known/openid-configuration`. Set this only when the
+  # backend reaches the provider at a different hostname than the browser does.
+  discoveryUrl: ""
+  clientId: ""
+  # -- Base64-encoded client secret. Generate with: echo -n "<secret>" | base64
+  clientSecretBase64: ""
+  # -- Additional origins to trust when validating the provider's discovered
+  # endpoints. The issuer's own (and discoveryUrl's own, if set) origin is
+  # added automatically; add entries here only for providers that serve
+  # endpoints from more than one hostname.
+  extraTrustedOrigins: []
+
+# =============================================================================
 # Frontend
 # =============================================================================
 frontend:
@@ -151,9 +174,12 @@ powersync:
   resources: {}
 
 # =============================================================================
-# Keycloak (OIDC Identity Provider)
+# Keycloak (bundled OIDC Identity Provider)
 # =============================================================================
 keycloak:
+  # -- Deploy the bundled Keycloak. Set to `false` when `oidc.issuer` points
+  # at an external provider instead.
+  enabled: true
   image:
     repository: quay.io/keycloak/keycloak
     tag: "26.0"

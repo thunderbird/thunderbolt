@@ -107,6 +107,36 @@ describe('deep health', () => {
     expect(await response.json()).toEqual({ status: 'failed', reason: 'timeout' })
   })
 
+  it('powersync probes the internal URL when one is set, not the browser-facing one', async () => {
+    const targets: string[] = []
+    const fetchFn = async (input: RequestInfo | URL) => {
+      targets.push(String(input))
+      return new Response(null, { status: 200 })
+    }
+    const response = await createHealthRoutes({
+      settings: { ...settings, powersyncInternalUrl: 'http://powersync:8080' },
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('powersync'))
+    expect(response.status).toBe(200)
+    expect(targets).toEqual(['http://powersync:8080/probes/liveness'])
+  })
+
+  it('powersync falls back to the browser-facing URL when no internal one is set', async () => {
+    const targets: string[] = []
+    const fetchFn = async (input: RequestInfo | URL) => {
+      targets.push(String(input))
+      return new Response(null, { status: 200 })
+    }
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('powersync'))
+    expect(response.status).toBe(200)
+    expect(targets).toEqual(['https://sync.example.com/probes/liveness'])
+  })
+
   for (const route of ['powersync', 'email'] as const) {
     it(`${route} cancels the upstream request at its deadline`, async () => {
       const signals: AbortSignal[] = []

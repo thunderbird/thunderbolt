@@ -12,11 +12,10 @@ appUrl: http://localhost
 # destination — see `thunderbolt.podAnnotations` in `templates/_helpers.tpl`.
 podAnnotations: {}
 
-# -- Node selector applied to every pod in the chart. Leave empty on a
-# single-arch cluster. On a mixed-architecture cluster where the chart's own
-# images (frontend/backend/marketing) are published single-arch, set e.g.
-# `kubernetes.io/arch: amd64` to avoid an `exec format error` crash loop when
-# the scheduler happens to place a pod on an arm64 node.
+# -- Node selector applied to every pod in the chart. The published images are
+# built for amd64 and arm64, so a mixed-architecture cluster needs nothing here.
+# Set it to pin workloads to a particular node pool, e.g.
+# `kubernetes.io/arch: amd64`, or a label of your own.
 nodeSelector: {}
 
 # =============================================================================
@@ -102,6 +101,18 @@ backend:
     cliDeviceRegistrationEnabled: "false"
     # -- Thunderbolt inference gateway URL (plaintext; empty disables the provider)
     thunderboltInferenceUrl: ""
+    # -- Browser-facing PowerSync URL. Empty follows the configured ingress
+    # mode: `ingress.hostnames.powersync` when that is set, otherwise
+    # `<appUrl>/powersync` (the chart's own path-based route). The scheme is
+    # inherited from `appUrl`, so set this explicitly if sync is served over
+    # https while the app is not. Set it to override both, for example when
+    # sync is fronted by something else.
+    powersyncUrl: ""
+    # -- Address the backend itself uses to probe PowerSync for
+    # /v1/health/powersync. Empty uses the in-cluster service. Point it at the
+    # same place as `powersyncUrl` if you run PowerSync outside the cluster,
+    # otherwise the probe reports on a service nothing is using.
+    powersyncInternalUrl: ""
   # -- Base64-encoded AI provider keys. Empty defaults disable each provider
   # (backend zod schema treats empty string as "not configured").
   # Generate each with: echo -n "<your-key>" | base64
@@ -124,6 +135,17 @@ postgres:
     repository: postgres
     tag: 17-alpine
   storage: 5Gi
+  # -- StorageClass for the Postgres PVC. Empty uses the cluster's default;
+  # "-" disables dynamic provisioning so the claim binds a PV you created
+  # yourself. Set this explicitly if the cluster default is node-local: a
+  # node-local volume can't reschedule once its node is gone, permanently
+  # stranding Postgres.
+  #
+  # A StatefulSet's volumeClaimTemplates cannot be changed after creation, so
+  # setting this on an existing release makes `helm upgrade` fail. Changing the
+  # class means a new volume and a dump/restore; resizing `storage` above does
+  # not. Both procedures are in deploy/k8s/README.md.
+  storageClassName: ""
   credentials:
     user: postgres
     database: postgres

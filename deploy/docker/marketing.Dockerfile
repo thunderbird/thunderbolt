@@ -2,7 +2,13 @@
 #
 # The docs content is loaded from the repo's root-level `docs/` directory via
 # `web/src/loaders/repo-docs-loader.ts` — needs to be available at build time.
-FROM oven/bun:latest AS build
+#
+# --platform=$BUILDPLATFORM: the build output is platform-independent static
+# assets (Astro also invokes `sharp` here for image optimization, whose
+# native binary only needs to match the build host, not the target image), so
+# this stage runs natively instead of under QEMU emulation for the target
+# platform. Only the final nginx stage below is built per target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:latest AS build
 
 WORKDIR /app
 

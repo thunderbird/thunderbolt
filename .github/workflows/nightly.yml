@@ -339,7 +339,7 @@ jobs:
             /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/screen-hierarchy/*.json
             /tmp/native-smoke/maestro-debug/.maestro/tests/*/ios/screenshots/*.png
           include-hidden-files: true
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 7
 
   heartbeat:

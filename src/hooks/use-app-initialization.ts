@@ -35,12 +35,13 @@ import type { Window } from '@tauri-apps/api/window'
 import type { PostHog } from 'posthog-js'
 import { sql } from 'drizzle-orm'
 import { useCallback, useEffect, useState } from 'react'
+import { observeDbReadiness, reportDbDiagnostic } from './db-diagnostic'
 
 /**
  * Wider outcome type reported in the `app_init_timing` PostHog event. Callers
  * of `waitForInitialSync` see the primitive `InitialSyncOutcome`; the init
  * orchestration additionally reports `'skipped_returning'` when the
- * returning-boot fast path bypassed the wait (THU-677).
+ * returning-boot fast path bypassed the wait.
  */
 export type InitTimingSyncOutcome = InitialSyncOutcome | 'skipped_returning'
 
@@ -247,7 +248,14 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
   // spinner forever, which looks identical to a slow network and hides the one
   // remedy that works — clearing the local database, which the error screen
   // offers. Reported as DATABASE_INIT_FAILED so the user gets that affordance.
+  observeDbReadiness()
+  reportDbDiagnostic('query', 'pending')
   const dbReady = await time('step2b_db_ready', () => waitForDatabaseReady(db))
+  reportDbDiagnostic(
+    'query',
+    dbReady.outcome === 'failed' ? 'rejected' : dbReady.outcome,
+    dbReady.outcome === 'failed' && dbReady.error instanceof Error ? dbReady.error : undefined,
+  )
   if (dbReady.outcome !== 'ready') {
     console.error('Database did not become ready:', dbReady)
     const dbReadyError = createHandleError(
@@ -261,7 +269,7 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
     return { success: false, error: dbReadyError }
   }
 
-  // Step 2d: Build the unified full-text search index (THU-766). Idempotent —
+  // Step 2d: Build the unified full-text search index. Idempotent —
   // rebuilds only when missing or the schema version bumped. Runs against the
   // raw SQLite handle, which only PowerSync exposes; other backends (e.g.
   // bun-sqlite in tests) return null here and skip it. Non-critical: a failed

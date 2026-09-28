@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test'
 import { collectPageErrors, loginViaOidc } from './helpers'
 
 /**
@@ -65,7 +65,7 @@ test.describe('ACP system agent discovery', () => {
     // The detail panel for a system agent is read-only: no ⋯ management menu
     // (which is where Remove lives for custom agents).
     await systemRow.getByRole('button', { name: 'Open RAG Chat' }).click()
-    await expect(page.getByRole('button', { name: 'Close details' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Close(?: details)?$/ })).toBeVisible()
     await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
 
     expect(errors).toHaveLength(0)

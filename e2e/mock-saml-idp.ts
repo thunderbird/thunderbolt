@@ -83,7 +83,6 @@ export const createMockSamlIdp = async (port: number) => {
           { extract: { request: { id: requestId } } },
           'post',
           TEST_USER,
-          createAttributeTemplate(TEST_USER),
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)
@@ -118,14 +117,3 @@ export const createMockSamlIdp = async (port: number) => {
 
 const escapeHtml = (str: string) =>
   str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-/**
- * Build a custom SAML attribute statement with the test user's claims.
- */
-const createAttributeTemplate = (user: typeof TEST_USER) =>
-  `<saml:AttributeStatement>
-    <saml:Attribute Name="email"><saml:AttributeValue xsi:type="xs:string">${user.email}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="displayName"><saml:AttributeValue xsi:type="xs:string">${user.displayName}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="givenName"><saml:AttributeValue xsi:type="xs:string">${user.givenName}</saml:AttributeValue></saml:Attribute>
-    <saml:Attribute Name="surname"><saml:AttributeValue xsi:type="xs:string">${user.surname}</saml:AttributeValue></saml:Attribute>
-  </saml:AttributeStatement>`

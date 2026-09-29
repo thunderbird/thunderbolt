@@ -53,6 +53,8 @@ const powersyncSettings: Settings = {
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
   e2eeEnabled: true,
+  passkeyRpId: '',
+  passkeyRpName: 'Thunderbolt',
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',

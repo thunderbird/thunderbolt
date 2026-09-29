@@ -21,6 +21,9 @@ export const createConfigRoutes = (settings: Settings) =>
   new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
     e2eeEnabled: settings.e2eeEnabled,
     debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
+    // Present + true only when the deployment configured a Relying Party ID —
+    // the frontend hides all passkey UI otherwise (kill switch for the POC).
+    ...(settings.passkeyRpId ? { passkeyEnabled: true } : {}),
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
     builtInAgentEnabled: !settings.disableBuiltInAgent,

@@ -20,6 +20,7 @@
     "@agentclientprotocol/sdk": "^0.22.1",
     "@anthropic-ai/sdk": "^0.127.0",
     "@better-auth/api-key": "^1.6.9",
+    "@better-auth/passkey": "1.6.9",
     "@better-auth/sso": "^1.6.9",
     "@electric-sql/pglite": "^0.5.4",
     "@elysiajs/cors": "^1.4.0",

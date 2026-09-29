@@ -58,6 +58,16 @@ describe('Config Routes', () => {
       expect(body.minAppVersion).toBe('0.2.0')
     })
 
+    it('omits passkeyEnabled when no RP ID is configured', async () => {
+      const { body } = await fetchConfig(createTestSettings({ passkeyRpId: '' }))
+      expect(body.passkeyEnabled).toBeUndefined()
+    })
+
+    it('exposes passkeyEnabled: true when an RP ID is configured', async () => {
+      const { body } = await fetchConfig(createTestSettings({ passkeyRpId: 'localhost' }))
+      expect(body.passkeyEnabled).toBe(true)
+    })
+
     it('does not require authentication', async () => {
       const { status } = await fetchConfig(createTestSettings())
       expect(status).toBe(200)

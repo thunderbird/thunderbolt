@@ -8,6 +8,19 @@ import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
+/**
+ * Derive a WebAuthn Relying Party ID (a bare hostname) from the app URL. The RP ID
+ * must equal the web origin's host (or a parent of it), so the app's own URL is the
+ * correct default for every deployment — dev, prod, and self-hosted alike.
+ */
+const rpIdFromAppUrl = (appUrl: string): string => {
+  try {
+    return new URL(appUrl).hostname
+  } catch {
+    return ''
+  }
+}
+
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
@@ -109,6 +122,16 @@ const settingsSchema = z
     // E2E encryption — when true, devices must complete the trust flow before syncing
     e2eeEnabled: z.boolean().default(false),
 
+    // Passkey (WebAuthn) sign-in — THU-790. A non-empty Relying Party ID registers
+    // the passkey plugin and surfaces `passkeyEnabled` on GET /v1/config. When unset
+    // it derives from APP_URL's hostname (see env mapping), so every deployment gets
+    // the correct value for free: `localhost` in dev, `app.thunderbolt.io` in prod,
+    // a self-hoster's own domain otherwise. The RP ID is permanent per deployment:
+    // changing it orphans every registered credential. Set PASSKEY_RP_ID explicitly
+    // only to override the derived host (e.g. use an apex to share across subdomains).
+    passkeyRpId: z.string().trim().default(''),
+    passkeyRpName: z.string().trim().default('Thunderbolt'),
+
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
     // Relay role: where this deployment forwards user transcripts, and its client key.
@@ -203,6 +226,7 @@ export type Settings = z.infer<typeof settingsSchema>
  */
 const parseSettings = (): Settings => {
   const isDevelopment = process.env.NODE_ENV === 'development'
+  const appUrl = process.env.APP_URL || 'http://localhost:1420'
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -232,7 +256,7 @@ const parseSettings = (): Settings => {
     apiKeyDefaultExpiresInSeconds: process.env.API_KEY_DEFAULT_EXPIRES_IN,
     logLevel: (process.env.LOG_LEVEL || 'INFO').toUpperCase(),
     port: process.env.PORT || '8000',
-    appUrl: process.env.APP_URL || 'http://localhost:1420',
+    appUrl,
     posthogHost: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
     posthogApiKey: process.env.POSTHOG_API_KEY || '',
     waitlistEnabled: process.env.WAITLIST_ENABLED === 'true',
@@ -251,6 +275,8 @@ const parseSettings = (): Settings => {
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
     e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    passkeyRpId: process.env.PASSKEY_RP_ID || rpIdFromAppUrl(appUrl),
+    passkeyRpName: process.env.PASSKEY_RP_NAME || 'Thunderbolt',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
     debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',

@@ -30,13 +30,13 @@ export type ModelProbeDeps = {
   /** Attested Tinfoil transport; defaults to a fresh SecureClient per run. */
   confidentialTransport?: { fetch: typeof fetch; baseURL: string }
   logger?: { warn: (context: Record<string, string | number>, message: string) => void }
-  /** Per-model deadline, default 20_000. */
+  /** Per-model deadline, default 30_000. */
   timeoutMs?: number
   /** Max models probed at once, default 3. */
   concurrency?: number
 }
 
-const modelProbeTimeoutMs = 20_000
+const modelProbeTimeoutMs = 30_000
 const modelProbeConcurrency = 3
 // A 256-token ceiling leaves room for reasoning models to answer; smaller budgets returned no text live.
 const modelProbeMaxTokens = 256

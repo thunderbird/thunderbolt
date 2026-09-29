@@ -83,7 +83,7 @@ const getCloseSurface = () => document.querySelector<HTMLElement>('[data-sidebar
 /** Puts a single finger down on `target`, arming (but not starting) a drag.
  *  Defaults to the left edge, the only place an opening swipe may start. */
 const touchDown = (target: HTMLElement, clientX = 10) =>
-  fireEvent.pointerDown(target, { pointerType: 'touch', pointerId: 1, clientX, clientY: 100 })
+  fireEvent.pointerDown(target, { pointerType: 'touch', isPrimary: true, pointerId: 1, clientX, clientY: 100 })
 
 /** Fires a native touchstart; returns false when the sidebar claimed the touch. */
 const edgeTouchStart = (target: HTMLElement, clientX: number, fingers = 1) =>
@@ -359,6 +359,23 @@ describe('MobileSidebar', () => {
 
     touchDown(getCloseSurface(), 200)
     fireEvent.pointerMove(window, { pointerId: 1, clientX: 160, clientY: 105 })
+
+    expect(dragControlsStartSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the armed gesture when an unrelated finger lands or lifts', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    touchDown(getMain())
+    fireEvent.pointerDown(getMain(), {
+      pointerType: 'touch',
+      isPrimary: false,
+      pointerId: 2,
+      clientX: 10,
+      clientY: 100,
+    })
+    fireEvent.pointerUp(window, { pointerId: 2 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 11, clientY: 108 })
 
     expect(dragControlsStartSpy).toHaveBeenCalledTimes(1)
   })

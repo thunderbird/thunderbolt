@@ -328,6 +328,7 @@ export const useMobileSidebarState = ({
     if (
       !enabled ||
       event.pointerType !== 'touch' ||
+      !event.isPrimary ||
       !canArmSidebarSwipe(event.clientX, targetOpenRef.current) ||
       !canStartSidebarDrag(event.target, event.currentTarget)
     ) {
@@ -379,6 +380,13 @@ export const useMobileSidebarState = ({
     const clearPendingSwipe = () => {
       pendingSwipeRef.current = null
     }
+    // Only the finger that armed the gesture may end it — an unrelated
+    // pointer lifting mid-swipe must not throw the armed drag away.
+    const releasePendingSwipe = (event: PointerEvent) => {
+      if (pendingSwipeRef.current?.pointerId === event.pointerId) {
+        clearPendingSwipe()
+      }
+    }
     const resolvePendingSwipe = (event: PointerEvent) => {
       const pending = pendingSwipeRef.current
       if (!pending || event.pointerId !== pending.pointerId) {
@@ -401,13 +409,13 @@ export const useMobileSidebarState = ({
       dragControls.start(event, { distanceThreshold: 0 })
     }
     window.addEventListener('pointermove', resolvePendingSwipe, { passive: true })
-    window.addEventListener('pointerup', clearPendingSwipe)
-    window.addEventListener('pointercancel', clearPendingSwipe)
+    window.addEventListener('pointerup', releasePendingSwipe)
+    window.addEventListener('pointercancel', releasePendingSwipe)
     return () => {
       clearPendingSwipe()
       window.removeEventListener('pointermove', resolvePendingSwipe)
-      window.removeEventListener('pointerup', clearPendingSwipe)
-      window.removeEventListener('pointercancel', clearPendingSwipe)
+      window.removeEventListener('pointerup', releasePendingSwipe)
+      window.removeEventListener('pointercancel', releasePendingSwipe)
     }
   }, [dragControls, enabled])
 

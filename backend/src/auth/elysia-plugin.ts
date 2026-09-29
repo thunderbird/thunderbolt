@@ -42,6 +42,40 @@ export const createAuthMacro = (auth: Auth) =>
     },
   })
 
+const sessionCookiePrefix = 'better-auth.session_token='
+
+/**
+ * Passkey ceremonies run with `credentials: 'include'` (the WebAuthn challenge
+ * needs its cookie), which also sends any Better Auth session cookie the browser
+ * still holds. This app authenticates passkey routes by bearer token, so that
+ * session cookie is only ever stale — and Better Auth resolves the FIRST cookie
+ * of a duplicated name while the bearer plugin appends its token cookie LAST, so
+ * the stale one wins and a valid bearer request 401s (THU-790). No Better Auth
+ * `before` hook can undo this (the bearer plugin rebuilds the cookie from the
+ * original request headers), so strip the stale session cookie here, before the
+ * handler sees the request. Scoped to passkey routes carrying a bearer token, so
+ * cookie-authenticated flows (SSO) are untouched.
+ */
+export const stripStaleSessionCookie = (request: Request): Request => {
+  const authorization = request.headers.get('authorization')
+  const cookie = request.headers.get('cookie')
+  if (!cookie?.includes(sessionCookiePrefix) || !authorization?.toLowerCase().startsWith('bearer ')) {
+    return request
+  }
+  const filtered = cookie
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part && !part.startsWith(sessionCookiePrefix))
+    .join('; ')
+  const headers = new Headers(request.headers)
+  if (filtered) {
+    headers.set('cookie', filtered)
+  } else {
+    headers.delete('cookie')
+  }
+  return new Request(request, { headers })
+}
+
 /** Create a Better Auth plugin for Elysia with the provided database. */
 export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: AnyElysia) => {
   const auth = createAuth(database)
@@ -52,7 +86,12 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   }
   // Use .all() instead of .mount() — Elysia's mount() short-circuits the
   // request pipeline before onBeforeHandle, silently bypassing rate limiting.
-  plugin.all('/*', ({ request }) => auth.handler(request), { parse: 'none' })
+  plugin.all(
+    '/*',
+    ({ request }) =>
+      auth.handler(new URL(request.url).pathname.includes('/passkey/') ? stripStaleSessionCookie(request) : request),
+    { parse: 'none' },
+  )
 
   return { plugin, auth }
 }

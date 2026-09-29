@@ -71,3 +71,36 @@ describe('createSkillTool', () => {
     ])
   })
 })
+
+it('notifies synchronously with the resolved name only after a successful load', async () => {
+  const loaded: string[] = []
+  const skills = selectEnabledSkillDefinitions([
+    ...storedSkills,
+    { name: 'research', description: 'Research', instruction: 'Research instructions', enabled: 1 },
+  ])
+  const skill = createSkillTool(skills, (name) => loaded.push(name))
+  const first = skill.execute!({ name: 'daily-brief' }, toolCallOptions)
+  expect(loaded).toEqual(['daily-brief'])
+  await first
+  await expect(skill.execute!({ name: 'missing' }, toolCallOptions)).rejects.toThrow('not found')
+  expect(loaded).toEqual(['daily-brief'])
+  const research = skill.execute!({ name: ' /research ' }, toolCallOptions)
+  expect(loaded).toEqual(['daily-brief', 'research'])
+  expect(await research).toBe('Research instructions')
+})
+
+it.each(['', '   '])('does not notify for disabled or empty instructions (%j)', async (instruction) => {
+  for (const enabled of [0, 1]) {
+    const loaded: string[] = []
+    const skill = createSkillTool(
+      selectEnabledSkillDefinitions([{ name: 'research', description: 'Research', instruction, enabled }]),
+      (name) => loaded.push(name),
+    )
+    if (enabled) {
+      expect(await skill.execute!({ name: 'research' }, toolCallOptions)).toBe(instruction)
+    } else {
+      await expect(skill.execute!({ name: 'research' }, toolCallOptions)).rejects.toThrow('disabled')
+    }
+    expect(loaded).toEqual([])
+  }
+})

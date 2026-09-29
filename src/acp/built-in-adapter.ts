@@ -45,6 +45,7 @@
 import {
   aiFetchStreamingResponse,
   prepareAiRequestConfig,
+  resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
@@ -65,7 +66,7 @@ import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
 import { modelSupportsImages } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
-import type { AgentHarness, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
+import type { AgentHarness, AgentHarnessTool, ThinkingLevel } from '@earendil-works/pi-agent-core'
 import { z } from 'zod'
 import type { SecureClient } from 'tinfoil'
 import {
@@ -90,10 +91,10 @@ type CurrentHttpClient = { current: AgentAdapterContext['httpClient'] }
  *  its isolated OPFS workspace persist across the thread's turns. */
 type HarnessRecord = {
   readonly harness: AgentHarness
-  /** The thread's isolated workspace dir ({@link workspaceDirFor}); removed on dispose. */
-  readonly workspaceDir: string
   /** Coding tools owned by agent-core; app/MCP tools are replaced every send. */
-  readonly baseTools: AgentTool[]
+  readonly baseTools: AgentHarnessTool<undefined>[]
+  /** Removes the thread's workspace without exposing the harness's private environment. */
+  readonly removeWorkspace: () => Promise<void>
   /** Mutable prompt cell read by the harness's per-turn system-prompt callback. */
   readonly systemPrompt: { current: string }
   /** Mutable transport cell read by the attached receipt lifecycle. */
@@ -445,6 +446,25 @@ export const resolvePiModel = async (
       thinkingLevel,
     }
   }
+  if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
+    const catalogModelId = `claude-${model.model}`
+    if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
+      return null
+    }
+    const connection = resolveManagedAnthropicConnection(model, context.getProxyFetch)
+    return {
+      descriptor: {
+        kind: 'anthropic',
+        modelId: model.model,
+        catalogModelId,
+        baseURL: connection.baseURL,
+        contextWindow: model.contextWindow ?? undefined,
+        apiKey: connection.apiKey,
+        fetch: connection.fetch,
+      },
+      thinkingLevel,
+    }
+  }
   const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
   // Pi's openai-completions client requires a bearer key (it throws on an empty
   // one with no auth header). A `custom` model pointing at a no-auth local
@@ -513,7 +533,7 @@ export const harnessSignature = (
   const clientId = resolved.tinfoilClient ? tinfoilClientId(resolved.tinfoilClient) : ''
   const model =
     d.kind === 'anthropic'
-      ? `anthropic|${d.modelId}|${hashSecret(d.apiKey)}`
+      ? `anthropic|${d.modelId}|${d.catalogModelId ?? ''}|${d.baseURL ?? ''}|${d.contextWindow ?? ''}|${hashSecret(d.apiKey)}`
       : `${d.kind}|${d.providerId}|${d.modelId}|${vendor}|${d.baseURL}|${hashSecret(d.apiKey)}|${d.reasoning}|${d.contextWindow ?? ''}|${d.supportsImages}|${clientId}`
   return `${model}|${resolved.thinkingLevel}|${stableSystemPrompt}|regenerate:${regenerationRevision}`
 }
@@ -555,8 +575,8 @@ const buildHarnessRecord = async (
   })
   return {
     harness,
-    workspaceDir: agentCore.workspaceDirFor(context.threadId),
     baseTools: harness.getTools(),
+    removeWorkspace: () => agentCore.removeAgentWorkspace(context.threadId),
     systemPrompt,
     receiptHttpClient: resolved.receiptHttpClient,
   }
@@ -579,29 +599,66 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
-/** Remove web capabilities and request completion once the live turn first denies a call. */
+/** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
     return () => undefined
   }
-  let notified = false
-  return harness.on('tool_result', async () => {
-    if (notified || !webToolBudget.probe.exhaustedAttempts) {
-      return undefined
+  const eligibleWebTools = harness
+    .getActiveTools()
+    .map(({ name }) => name)
+    .filter((name) => webToolNames.has(name))
+  let floored = false
+  let seenDenials = 0
+  let pending: Promise<undefined> = Promise.resolve(undefined)
+  let steeringMode: ReturnType<AgentHarness['getSteeringMode']> | undefined
+  const restoreSteeringMode = async () => {
+    if (steeringMode !== undefined) {
+      const original = steeringMode
+      steeringMode = undefined
+      await harness.setSteeringMode(original)
     }
-    // Result hooks can overlap for parallel calls; claim notification before yielding.
-    notified = true
-    await harness.setActiveTools(
-      harness
-        .getActiveTools()
-        .map(({ name }) => name)
-        .filter((name) => !webToolNames.has(name)),
-    )
-    await harness.steer(
-      'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
-    )
     return undefined
+  }
+  const removeProviderHook = harness.on('before_provider_request', restoreSteeringMode)
+  const removeResultHook = harness.on('tool_result', () => {
+    const previous = pending
+    pending = (async () => {
+      await previous
+      const active = harness.getActiveTools().map(({ name }) => name)
+      if (!active.length) {
+        return undefined
+      }
+      const { isExhausted, exhaustedAttempts } = webToolBudget.probe
+      if (!isExhausted) {
+        seenDenials = exhaustedAttempts
+      }
+      if (isExhausted && exhaustedAttempts > seenDenials && !floored) {
+        floored = true
+        seenDenials = exhaustedAttempts
+        await harness.setActiveTools(active.filter((name) => !webToolNames.has(name)))
+        await harness.steer(
+          'The web tool budget is exhausted. Complete the requested deliverable using the available evidence and remaining non-web capabilities. Disclose coverage gaps rather than claiming unsupported completeness.',
+        )
+      } else if (!isExhausted && floored && eligibleWebTools.length) {
+        floored = false
+        await harness.setActiveTools([...new Set([...active, ...eligibleWebTools])])
+        // Flush a queued old stop together with its correction, preserving other queued input.
+        steeringMode ??= harness.getSteeringMode()
+        await harness.setSteeringMode('all')
+        await harness.steer(
+          'The research skill expanded this turn’s web budget. This supersedes the earlier budget-exhaustion instruction: web tools are available again. Continue the requested research within the remaining budget, then synthesize the results.',
+        )
+      }
+      return undefined
+    })()
+    return pending
   })
+  return () => {
+    removeResultHook()
+    removeProviderHook()
+    void restoreSteeringMode()
+  }
 }
 
 /** Return the thread's cached harness, building it on first use and REBUILDING it
@@ -649,7 +706,7 @@ const abortHarness = async (record: HarnessRecord): Promise<void> => {
  *  (`force`), and a benign idle-abort error is swallowed. */
 const disposeHarness = async (record: HarnessRecord): Promise<void> => {
   await abortHarness(record)
-  await record.harness.env.remove(record.workspaceDir, { recursive: true, force: true })
+  await record.removeWorkspace()
 }
 
 /** Dispose every cached harness and clear the cache. Fire-and-forget so the

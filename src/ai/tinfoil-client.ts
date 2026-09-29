@@ -6,6 +6,7 @@ import { getUserCacheSecret } from '@/lib/auth-token'
 import { getErrorName } from '@/lib/error-utils'
 import { trackEvent } from '@/lib/posthog'
 import { withDeadline } from '@/lib/timeout'
+import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { getLocalSetting } from '@/stores/local-settings-store'
 import type { Model } from '@/types'
 import type { SecureClient } from 'tinfoil'
@@ -194,7 +195,11 @@ const lifecycle = createTinfoilClientLifecycle({
     if (type === 'user') {
       return new SecureClient({ userCacheSecret: getUserCacheSecret() })
     }
-    return new SecureClient({ baseURL: `${cloudUrl}/tinfoil`, userCacheSecret: getUserCacheSecret() })
+    return new SecureClient({
+      // SecureClient rejects a relative baseURL with a ConfigurationError.
+      baseURL: `${resolveAbsoluteBackendUrl(cloudUrl)}/tinfoil`,
+      userCacheSecret: getUserCacheSecret(),
+    })
   },
   getCloudUrl: () => getLocalSetting('cloudUrl'),
 })

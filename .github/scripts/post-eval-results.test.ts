@@ -6,125 +6,28 @@ import { describe, expect, mock, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { wilsonScoreInterval } from '../../src/ai/eval/stats'
+import { evalCommentMarker, renderEvalComment, upsertEvalComment } from './post-eval-results'
+import { aggregateEvalMetrics } from '../../src/ai/eval/stats'
+import { getScenarios } from '../../src/ai/eval/scenarios'
+import { getNecessityScenarios } from '../../src/ai/eval/necessity-scenarios'
+import { getLanguageScenarios } from '../../src/ai/eval/language-scenarios'
+import { selectSmokeScenarios } from '../../src/ai/eval/smoke'
+import { fixtureManifest, fixtureMetrics, fixtureScenario } from '../../src/ai/eval/test-fixtures'
 import type { EvalBaseline } from '../../src/ai/eval/baseline'
-import type { EvalMetrics, EvalMetricsGroup } from '../../src/ai/eval/types'
-import {
-  diagnoseEvalGroup,
-  evalCommentMarker,
-  renderEvalComment,
-  upsertEvalComment,
-} from './post-eval-results'
 
 const renderOptions = {
-  artifactUrl: 'https://github.example/artifacts/123',
-  runUrl: 'https://github.example/actions/runs/456',
-  commitSha: '06c20766f00d',
-  informational: true,
+  artifactUrl: 'https://example.test/artifact',
+  runUrl: 'https://example.test/run',
+  commitSha: '123456789',
 }
-
-const group = (): EvalMetricsGroup => ({
-  model: 'opus',
-  engine: 'pi',
-  scenarios: {
-    C1: {
-      prompt: 'What are the top stories today?',
-      category: 'core',
-      passed: false,
-      webToolCalls: 0,
-      duplicateWebToolCalls: 0,
-      sampleCount: 1,
-      passedSampleCount: 0,
-      errorSampleCount: 0,
-      isNegativeControl: false,
-      reviewBy: null,
-      failures: ['Insufficient citations: 0 found, 1 required'],
-    },
-    'never-search-01': {
-      prompt: 'What year did the Berlin Wall fall?',
-      category: 'never_search',
-      passed: false,
-      webToolCalls: 1,
-      duplicateWebToolCalls: 0,
-      sampleCount: 1,
-      passedSampleCount: 0,
-      errorSampleCount: 0,
-      isNegativeControl: false,
-      reviewBy: '2026-11-04',
-      failures: ['Too many web tool calls: 1 (max: 0)'],
-    },
-  },
-  categories: {
-    never_search: {
-      passed: 0,
-      total: 1,
-      rate: 0,
-      wilson: wilsonScoreInterval(0, 1),
-      threshold: 0.95,
-      gatePassed: false,
-    },
-  },
-  headline: {
-    unnecessarySearchRate: {
-      count: 1,
-      total: 1,
-      rate: 1,
-      threshold: 0.05,
-      gatePassed: false,
-    },
-    missedSearchRate: {
-      count: 0,
-      total: 0,
-      rate: 0,
-      threshold: 0.05,
-      gatePassed: false,
-    },
-    meanWebCallsNoSearchExpected: 1,
-  },
-})
-
-const metrics = (): EvalMetrics => ({
-  schemaVersion: 3,
-  generatedAt: '2026-08-04T12:00:00.000Z',
-  groups: { 'opus/pi': group() },
-})
-
-const baseline = (): EvalBaseline => {
-  const baselineGroup = group()
-  baselineGroup.categories.never_search = {
-    passed: 10,
-    total: 10,
-    rate: 1,
-    wilson: wilsonScoreInterval(10, 10),
-    threshold: 0.95,
-    gatePassed: true,
-  }
-  baselineGroup.headline.unnecessarySearchRate = {
-    count: 0,
-    total: 10,
-    rate: 0,
-    threshold: 0.05,
-    gatePassed: true,
-  }
-  baselineGroup.headline.missedSearchRate = {
-    count: 1,
-    total: 10,
-    rate: 0.1,
-    threshold: 0.05,
-    gatePassed: false,
-  }
-  baselineGroup.headline.meanWebCallsNoSearchExpected = 0
-  baselineGroup.scenarios.C1 = {
-    ...baselineGroup.scenarios.C1,
-    passed: true,
-    passedSampleCount: 1,
-    failures: [],
-  }
+const baseline = (passes = 3): EvalBaseline => {
+  const metrics = fixtureMetrics(passes)
   return {
-    schemaVersion: 2,
-    generatedAt: '2026-08-03T12:00:00.000Z',
+    schemaVersion: 4,
+    generatedAt: metrics.generatedAt,
     groupKey: 'opus/pi',
-    group: baselineGroup,
+    manifest: metrics.manifest,
+    group: metrics.groups['opus/pi'],
   }
 }
 
@@ -165,201 +68,109 @@ describe('command lifecycle', () => {
 })
 
 describe('renderEvalComment', () => {
-  test('renders the approved human-readable layout without a baseline', () => {
-    const comment = renderEvalComment(metrics(), {}, renderOptions)
-
-    expect(comment).toStartWith(evalCommentMarker)
-    expect(comment).toContain(
-      '## AI Evals — ⚠️ models miss the search policy in known ways; nothing here blocks your PR',
+  test('leads with per-cell acceptance and explicit missing-baseline status', () => {
+    const comment = renderEvalComment(fixtureMetrics(), {}, renderOptions)
+    expect(comment).toContain(evalCommentMarker)
+    expect(comment).toContain('| Cell | Acceptance |')
+    expect(comment).toContain('Acceptance exit: 0')
+    expect(comment).toContain('not comparable: baseline absent')
+    expect(comment).toContain('[Artifacts]')
+    expect(comment).toContain('informational')
+  })
+  test('shows paired changes without Wilson significance claims', () => {
+    const comment = renderEvalComment(fixtureMetrics(2), { 'opus/pi': baseline() }, renderOptions)
+    expect(comment).toContain('-0.333333')
+    expect(comment).toContain('Acceptance exit: 1')
+    expect(comment).not.toContain('significant')
+    expect(comment).not.toContain('Wilson')
+  })
+  test('quality improvement does not hide a failing current gate', () => {
+    const comment = renderEvalComment(
+      fixtureMetrics(2),
+      { 'opus/pi': baseline(1) },
+      { ...renderOptions, informational: false },
     )
-    expect(comment).toContain('**TL;DR:** No baseline exists yet')
-    expect(comment).toContain('### Should I care?')
-    expect(comment).toContain('| Did my PR make AI behavior worse? | **Unknown yet** — no baseline to compare against |')
-    expect(comment).toContain('### What the models did (2 scenarios each)')
-    expect(comment).toContain('| Opus 5 (`pi`) | ❌ 0/1 | ❌ 0/1 |')
-    expect(comment).toContain('<details open>')
-    expect(comment).toContain('<summary>❌ Exactly what failed, in plain words (2 scenarios)</summary>')
-    expect(comment).toContain('Asked *"What are the top stories today?"*')
-    expect(comment).toContain('Asked *"What year did the Berlin Wall fall?"*')
-    expect(comment).toContain('Expected: answer from stable knowledge without searching.')
-    expect(comment).toContain('<summary>📊 Full numbers (gates, categories, headline rates)</summary>')
-    expect(comment).toContain('| Unnecessary search | 100.0% | no baseline | failed |')
-    expect(comment).toContain('| never_search | 0/1 (0.0%) | no baseline | failed |')
-    expect(comment).toContain('<summary>❓ How to read this report</summary>')
-    expect(comment).toContain('[Full report](https://github.example/actions/runs/456)')
-    expect(comment).toContain('[Artifacts](https://github.example/artifacts/123)')
-    expect(comment).toContain('commit `06c2076` · smoke suite (1 scenario per category, k=1)')
+    expect(comment).toContain('0.333333')
+    expect(comment).toContain('Acceptance exit: 1')
+    expect(comment).toContain('enforced')
   })
-
-  test('reports baseline deltas without claiming significance for overlapping intervals', () => {
-    const comment = renderEvalComment(metrics(), { 'opus/pi': baseline() }, renderOptions)
-
-    expect(comment).toContain('## AI Evals — ✅ no significant AI behavior regressions detected')
-    expect(comment).toContain('| Opus 5 (`pi`) | ❌ 0/1 | ❌ 0/1 | 0 🟢 1 🔴 |')
-    expect(comment).toContain('| Unnecessary search | 100.0% | (+100.0pp) | failed |')
-    expect(comment).toContain('| Missed search | 0.0% | (-10.0pp) | failed |')
-    expect(comment).toContain('| never_search | 0/1 (0.0%) | (-100.0pp) | failed |')
-    expect(comment).not.toContain('not significant')
+  test('prints all treatment fields side by side even when identity differs', () => {
+    const metrics = fixtureMetrics()
+    metrics.manifest.providerKind = 'exa'
+    metrics.manifest.treatment.WEB_BUDGET_PROMOTION = '1'
+    const comment = renderEvalComment(metrics, { 'opus/pi': baseline() }, renderOptions)
+    for (const field of ['generationRevision', 'systemPromptVersion', 'WEB_BUDGET_PROMOTION'])
+      expect(comment).toContain(`| ${field} |`)
+    expect(comment).toContain('not comparable: providerKind')
+    expect(comment).toContain('| WEB_BUDGET_PROMOTION | "0" | "1" |')
   })
-
-  test('leads with significant regressions and shows scenario-level change counts', () => {
-    const currentGroup = group()
-    currentGroup.scenarios = {
-      C1: { ...currentGroup.scenarios.C1, passed: true, passedSampleCount: 1, failures: [] },
-      ...Object.fromEntries(
-        Array.from({ length: 12 }, (_, index) => [
-          `never-search-${String(index + 1).padStart(2, '0')}`,
-          {
-            ...currentGroup.scenarios['never-search-01'],
-            prompt: `Stable question ${index + 1}`,
-            passed: false,
-            passedSampleCount: 0,
-            failures: ['Too many web tool calls: 1 (max: 0)'],
-          },
-        ]),
-      ),
-    }
-    currentGroup.categories.never_search = {
-      passed: 0,
-      total: 12,
-      rate: 0,
-      wilson: wilsonScoreInterval(0, 12),
-      threshold: 0.95,
-      gatePassed: false,
-    }
-    currentGroup.headline.unnecessarySearchRate = {
-      count: 12,
-      total: 12,
-      rate: 1,
-      threshold: 0.05,
-      gatePassed: false,
-    }
-    const baselineGroup = structuredClone(currentGroup)
-    baselineGroup.scenarios = Object.fromEntries(
-      Object.entries(currentGroup.scenarios).map(([scenarioId, scenario]) => [
-        scenarioId,
-        { ...scenario, passed: true, passedSampleCount: 1, failures: [], webToolCalls: 0 },
-      ]),
-    )
-    baselineGroup.categories.never_search = {
-      passed: 12,
-      total: 12,
-      rate: 1,
-      wilson: wilsonScoreInterval(12, 12),
-      threshold: 0.95,
-      gatePassed: true,
-    }
-    baselineGroup.headline.unnecessarySearchRate = {
-      count: 0,
-      total: 12,
-      rate: 0,
-      threshold: 0.05,
-      gatePassed: true,
-    }
-    const current: EvalMetrics = {
-      schemaVersion: 3,
-      generatedAt: '2026-08-04T12:00:00.000Z',
-      groups: { 'opus/pi': currentGroup },
-    }
-    const comparisonBaseline: EvalBaseline = {
-      schemaVersion: 2,
-      generatedAt: '2026-08-03T12:00:00.000Z',
-      groupKey: 'opus/pi',
-      group: baselineGroup,
-    }
-
-    const comment = renderEvalComment(current, { 'opus/pi': comparisonBaseline }, renderOptions)
-
-    expect(comment).toContain('## AI Evals — ❌ 2 significant search-policy regressions need attention')
-    expect(comment).toContain('| Opus 5 (`pi`) | ✅ 1/1 | ❌ 0/1 | 0 🟢 12 🔴 |')
-    expect(comment).toContain('(+100.0pp) — **significant regression**')
+  test('reports absent metrics with an actionable message', () => {
+    expect(renderEvalComment(null, {}, renderOptions)).toContain('Check the workflow logs')
   })
-
-  test('renders an actionable message when the eval fails before metrics are written', () => {
-    const comment = renderEvalComment(null, {}, renderOptions)
-
-    expect(comment).toContain('## AI Evals — ❌ eval metrics were not produced')
-    expect(comment).toContain('Eval metrics were not produced. Check the workflow logs and report artifact.')
-    expect(comment).toContain('[Full report](https://github.example/actions/runs/456)')
+  test('partial runs cannot present themselves as definition-of-done evidence', () => {
+    const metrics = fixtureMetrics()
+    metrics.manifest.partial = true
+    expect(renderEvalComment(metrics, {}, renderOptions)).toContain('partial; not definition-of-done evidence')
   })
-
-  test('caps the plain-words failure list at twenty scenarios', () => {
-    const cappedGroup = group()
-    cappedGroup.scenarios = Object.fromEntries(
-      Array.from({ length: 22 }, (_, index) => [
-        `single-search-${String(index + 1).padStart(2, '0')}`,
-        {
-          ...cappedGroup.scenarios['never-search-01'],
-          prompt: `Current fact ${index + 1}?`,
-          category: 'single_search' as const,
-          webToolCalls: 0,
-          failures: ['Too few web tool calls: 0 (min: 1)'],
-        },
-      ]),
-    )
-    cappedGroup.categories = {
-      single_search: {
-        passed: 0,
-        total: 22,
-        rate: 0,
-        wilson: wilsonScoreInterval(0, 22),
-        threshold: 0.9,
-        gatePassed: false,
-      },
+  test('old-schema baselines are explicitly not comparable', () => {
+    expect(
+      renderEvalComment(fixtureMetrics(), { 'opus/pi': { ...baseline(), schemaVersion: 3 } }, renderOptions),
+    ).toContain('not comparable: schemaVersion')
+  })
+  test('redacts the synthetic auth token from PR comments too', () => {
+    const previous = process.env.EVAL_AUTH_TOKEN
+    const marker = 'synthetic-EVAL_AUTH_TOKEN-pr-marker'
+    process.env.EVAL_AUTH_TOKEN = marker
+    try {
+      const metrics = fixtureMetrics(2)
+      metrics.groups['opus/pi'].scenarios[fixtureScenario().id].failures = [marker]
+      expect(renderEvalComment(metrics, {}, renderOptions)).not.toContain(marker)
+    } finally {
+      if (previous === undefined) delete process.env.EVAL_AUTH_TOKEN
+      else process.env.EVAL_AUTH_TOKEN = previous
     }
-    const cappedMetrics: EvalMetrics = {
-      schemaVersion: 3,
-      generatedAt: '2026-08-04T12:00:00.000Z',
-      groups: { 'opus/pi': cappedGroup },
-    }
-
-    const comment = renderEvalComment(cappedMetrics, {}, renderOptions)
-
-    expect(comment.match(/^- Asked /gm)).toHaveLength(20)
-    expect(comment).toContain('…and 2 more — see full numbers.')
   })
 })
 
-describe('diagnoseEvalGroup', () => {
-  const withFailures = (failures: string[]): EvalMetricsGroup => {
-    const value = group()
-    value.scenarios = Object.fromEntries(
-      failures.map((failure, index) => [
-        `failure-${index}`,
-        {
-          ...value.scenarios['never-search-01'],
-          prompt: `Prompt ${index}`,
-          failures: [failure],
-        },
-      ]),
-    )
-    return value
+test.each([false, true])('I2: real default matrix comment is bounded (smoke=%s)', (smoke) => {
+  const all = [...getScenarios(), ...getNecessityScenarios(), ...getLanguageScenarios()]
+  const scenarios = smoke ? selectSmokeScenarios(all) : all
+  const manifest = fixtureManifest(scenarios, smoke ? 1 : 3)
+  manifest.suites = ['core', 'necessity', 'language']
+  manifest.smoke = smoke
+  manifest.partial = smoke
+  manifest.preflight = { error: 'unbounded-preflight-must-stay-in-artifacts'.repeat(2000) }
+  manifest.treatment.systemPromptVersion = 'large-treatment'.repeat(5000)
+  const metrics = aggregateEvalMetrics(manifest, [])
+  for (const group of Object.values(metrics.groups)) {
+    for (const scenario of Object.values(group.scenarios)) scenario.failures = ['long diagnostic '.repeat(2000)]
   }
-
-  test('summarizes too-few, too-many, judge, mixed, and passing failure mixes', () => {
-    expect(
-      diagnoseEvalGroup(
-        withFailures(['Too few web tool calls: 0 (min: 1)', 'Too few web tool calls: 0 (min: 1)']),
-      ),
-    ).toBe('Answers from memory when it should search')
-    expect(
-      diagnoseEvalGroup(
-        withFailures(['Too many web tool calls: 3 (max: 2)', 'Too many web tool calls: 4 (max: 2)']),
-      ),
-    ).toBe('Searches more than the budget allows')
-    expect(diagnoseEvalGroup(withFailures(['Judge rejected premise rebuttal: The premise was repeated']))).toBe(
-      'Does not reliably rebut false premises',
-    )
-    expect(
-      diagnoseEvalGroup(withFailures(['Too few web tool calls: 0 (min: 1)', 'Empty response — no text output produced'])),
-    ).toBe('Mixed failures; see the details below')
-
-    const passing = group()
-    passing.scenarios = {
-      C1: { ...passing.scenarios.C1, passed: true, failures: [] },
-    }
-    expect(diagnoseEvalGroup(passing)).toBe('No failed scenarios in this run')
-  })
+  const baselines = Object.fromEntries(
+    Object.entries(metrics.groups).map(([groupKey, group]) => [
+      groupKey,
+      {
+        schemaVersion: 4,
+        generatedAt: metrics.generatedAt,
+        groupKey,
+        manifest,
+        group,
+      },
+    ]),
+  )
+  const comment = renderEvalComment(metrics, baselines, renderOptions)
+  expect(manifest.cells).toHaveLength(3)
+  expect(scenarios.length).toBeGreaterThan(smoke ? 20 : 500)
+  expect(comment.length).toBeLessThan(65_536)
+  expect(comment.match(/Prompt:/g)).toHaveLength(20)
+  expect(comment).toContain('Expected:')
+  expect(comment).toContain('Observed:')
+  expect(comment).toContain('more diagnostics in the full report')
+  expect(comment).toContain('Opus 5')
+  expect(comment).toContain('GLM 5.3 Flash')
+  expect(comment).toContain('manifest artifacts')
+  expect(comment).not.toContain('rubricHash')
+  expect(comment).not.toContain('unbounded-preflight-must-stay-in-artifacts')
+  expect(comment).not.toContain('| Scenario |')
 })
 
 describe('upsertEvalComment', () => {
@@ -368,9 +179,7 @@ describe('upsertEvalComment', () => {
       if (args.includes('--method')) {
         return '{}'
       }
-      return JSON.stringify([
-        [{ id: 99, body: `old\n${evalCommentMarker}`, user: { login: 'github-actions[bot]' } }],
-      ])
+      return JSON.stringify([[{ id: 99, body: `old\n${evalCommentMarker}`, user: { login: 'github-actions[bot]' } }]])
     })
 
     await upsertEvalComment({
@@ -417,4 +226,27 @@ describe('upsertEvalComment', () => {
     expect(runGh.mock.calls[1][0]).toContain('repos/thunderbird/thunderbolt/issues/42/comments')
     expect(runGh.mock.calls[1][0]).toContain('POST')
   })
+})
+
+test('missing required cells render a non-passing report instead of crashing', () => {
+  const metrics = fixtureMetrics()
+  metrics.groups = {}
+  const comment = renderEvalComment(metrics, {}, renderOptions)
+  expect(comment).toContain('Acceptance exit: 1')
+  expect(comment).toContain('Required cell absent')
+})
+
+test.each([true, false])('expected diagnostics include semantic assertions and research loading=%s', (research) => {
+  const metrics = fixtureMetrics(2)
+  Object.assign(metrics.manifest.scenarios[0].scenario.criteria, {
+    expectEvidenceCoverage: true,
+    expectReuseFidelity: true,
+    expectSearchOffer: true,
+    expectResearchSkill: research,
+  })
+  const comment = renderEvalComment(metrics, {}, renderOptions)
+  expect(comment).toContain('support and cover the answer with source evidence')
+  expect(comment).toContain('faithfully reuse the earlier answer')
+  expect(comment).toContain('answer with a freshness caveat, then offer to verify')
+  expect(comment).toContain(research ? '; load the research skill' : '; do not load the research skill')
 })

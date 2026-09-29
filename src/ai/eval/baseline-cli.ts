@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs'
 import { compareMetricsToBaselines, loadBaselineFiles, writeBaselineFiles } from './baseline'
+import { serializeArtifact } from './stats'
 import { evalModels } from './scenarios'
 import type { EvalMetrics } from './types'
 
@@ -17,22 +18,25 @@ const main = () => {
   const baselineDirectory = baselineArgument ?? process.env.EVAL_BASELINE_DIR ?? defaultBaselineDirectory
   const metrics = JSON.parse(readFileSync(metricsPath, 'utf8')) as EvalMetrics
 
+  if (metrics.schemaVersion !== 4) {
+    throw new Error('not comparable: schemaVersion')
+  }
+
   if (command === 'generate') {
     const written = writeBaselineFiles(metrics, baselineDirectory, expectedGroupKeys)
     process.stdout.write(`Wrote ${written.length} eval baseline file${written.length === 1 ? '' : 's'}.\n`)
-    return
+    return 0
   }
 
   if (command === 'compare') {
-    process.stdout.write(
-      `${JSON.stringify(compareMetricsToBaselines(metrics, loadBaselineFiles(baselineDirectory)), null, 2)}\n`,
-    )
-    return
+    const comparison = compareMetricsToBaselines(metrics, loadBaselineFiles(baselineDirectory))
+    process.stdout.write(`${serializeArtifact(comparison, undefined, 2)}\n`)
+    return comparison.acceptance.exitCode
   }
 
   throw new Error('Usage: baseline-cli.ts <generate|compare> [metrics-path] [baseline-directory]')
 }
 
 if (import.meta.main) {
-  main()
+  process.exit(main())
 }

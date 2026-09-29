@@ -11,6 +11,7 @@ import {
   type SharedModel,
 } from '@shared/defaults/models'
 import type { EvalCriteria, EvalEngine, EvalScenario } from './types'
+import { widgetPrompts } from './widget-prompts'
 
 export type EvalModel = {
   id: string
@@ -220,7 +221,7 @@ const researchPrompts = [
 
 // ──────────────────────────────────────────────
 // Validation Set — different prompts, same criteria philosophy
-// Used to verify 100% is real, not overfit to the original prompts
+// Checks generalization beyond the core prompts
 // ──────────────────────────────────────────────
 
 const validationChatPrompts = [
@@ -353,22 +354,22 @@ const multiTurnChatPrompts: PromptDef[] = [
 const widgetChatPrompts: PromptDef[] = [
   {
     id: 'WIDGET_WEATHER_FORECAST',
-    prompt: "What's the weather like in Berlin this weekend?",
+    prompt: widgetPrompts.WIDGET_WEATHER_FORECAST,
     criteria: { mustProduceOutput: true, mustUseWidget: 'weather-forecast' },
   },
   {
     id: 'WIDGET_CONNECT_INTEGRATION',
-    prompt: 'What meetings do I have on my Outlook calendar today?',
+    prompt: widgetPrompts.WIDGET_CONNECT_INTEGRATION,
     criteria: { mustProduceOutput: true, mustUseWidget: 'connect-integration' },
   },
   {
     id: 'WIDGET_ASK',
-    prompt: 'Quiz me with one multiple-choice question about email protocols.',
+    prompt: widgetPrompts.WIDGET_ASK,
     criteria: { mustProduceOutput: true, mustUseWidget: 'ask' },
   },
   {
     id: 'WIDGET_MAP',
-    prompt: 'Plot Seattle, Portland, and San Francisco together so I can compare their locations.',
+    prompt: widgetPrompts.WIDGET_MAP,
     criteria: { mustProduceOutput: true, mustUseWidget: 'map' },
   },
   {
@@ -386,7 +387,7 @@ const widgetChatPrompts: PromptDef[] = [
 const widgetSearchPrompts: PromptDef[] = [
   {
     id: 'WIDGET_LINK_PREVIEW',
-    prompt: 'Find me three beginner-friendly TypeScript tutorials.',
+    prompt: widgetPrompts.WIDGET_LINK_PREVIEW,
     criteria: { ...searchCriteria, mustUseWidget: 'link-preview' },
   },
 ]
@@ -395,7 +396,10 @@ const widgetSearchPrompts: PromptDef[] = [
 // Scenario Generation
 // ──────────────────────────────────────────────
 
-type PromptDef = { id: string; prompt: string; followUps?: string[]; criteria?: EvalCriteria }
+type PromptDef = Pick<
+  EvalScenario,
+  'id' | 'prompt' | 'followUps' | 'expectation' | 'promptCriteria' | 'promptExpectation'
+> & { criteria?: EvalCriteria }
 
 const buildScenarios = (
   prompts: PromptDef[],
@@ -410,6 +414,9 @@ const buildScenarios = (
       modeName,
       prompt: p.prompt,
       followUps: p.followUps,
+      expectation: p.expectation,
+      promptCriteria: p.promptCriteria,
+      promptExpectation: p.promptExpectation,
       criteria: p.criteria ?? defaultCriteria,
     })),
   )

@@ -2,6 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { execFileSync } from 'node:child_process'
+import { dirname } from 'node:path'
+import { getModel } from '@/dal/models'
+import { getDb } from '@/db/database'
+import { createClient } from '@/lib/http'
+import { getLocalSetting } from '@/stores/local-settings-store'
 import { createBuiltInAdapter } from '@/acp/built-in-adapter'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { builtInAgent } from '@/defaults/agents'
@@ -11,10 +17,20 @@ import { settableLocales } from '@/i18n/resolve-locale'
 import { Storage } from 'happy-dom'
 import { getLanguageScenarios } from './language-scenarios'
 import { getNecessityScenarios } from './necessity-scenarios'
-import { detailed, verbose } from './options'
-import { generateReport } from './report'
+import { detailed } from './options'
+import { appendTrial, generateReport, startTrialJournal } from './report'
+import {
+  acceptEval,
+  aggregateEvalMetrics,
+  createManifest,
+  getSystemPromptVersion,
+  positiveFinite,
+  serializeArtifact,
+} from './stats'
+import { judgeModels, judgePromptVersion } from './judge'
+import type { EvalTrial } from './types'
 import { runPool } from './runner'
-import { getScenarios } from './scenarios'
+import { getModelId, getScenarios } from './scenarios'
 import { getScenarioSampleCount, selectSmokeScenarios } from './smoke'
 import { initLayout, printFooter, restoreConsole, silenceConsole, teardownLayout } from './ui'
 
@@ -51,6 +67,8 @@ const applyAppLanguage = (requested: string | undefined) => {
 }
 
 const main = async (): Promise<number> => {
+  positiveFinite(process.env.EVAL_TIMEOUT, 600000, 'EVAL_TIMEOUT')
+  positiveFinite(process.env.EVAL_JUDGE_TIMEOUT, 60000, 'EVAL_JUDGE_TIMEOUT')
   const authToken = process.env.EVAL_AUTH_TOKEN
   if (authToken) {
     setAuthToken(authToken)
@@ -59,8 +77,12 @@ const main = async (): Promise<number> => {
   const modelFilter = process.env.EVAL_MODELS?.split(',').map((s) => s.trim())
   const modeFilter = process.env.EVAL_MODES?.split(',').map((s) => s.trim())
   const engineFilter = process.env.EVAL_ENGINES?.split(',').map((s) => s.trim())
-  const scenarioParallel = parseInt(process.env.EVAL_SCENARIO_PARALLEL ?? '3')
-  const necessitySamples = parseInt(process.env.EVAL_SAMPLES ?? '3')
+  const scenarioFilter = process.env.EVAL_SCENARIOS?.split(',').map((s) => s.trim())
+  const scenarioParallel = positiveFinite(process.env.EVAL_SCENARIO_PARALLEL, 3, 'EVAL_SCENARIO_PARALLEL')
+  if (!Number.isInteger(scenarioParallel)) {
+    throw new Error('EVAL_SCENARIO_PARALLEL must be an integer')
+  }
+  const necessitySamples = Number(process.env.EVAL_SAMPLES ?? '3')
   const smoke = process.env.EVAL_SMOKE === '1'
   const suites = resolveSuites(process.env.EVAL_SUITES)
   if (!Number.isInteger(necessitySamples) || necessitySamples < 1) {
@@ -80,7 +102,17 @@ const main = async (): Promise<number> => {
     ...(includeSuite('necessity') && chatScenariosIncluded ? getNecessityScenarios(modelFilter, engineFilter) : []),
     ...(includeSuite('language') && chatScenariosIncluded ? getLanguageScenarios(modelFilter, engineFilter) : []),
   ]
-  const scenarios = smoke ? selectSmokeScenarios(filteredScenarios) : filteredScenarios
+  if (scenarioFilter) {
+    const availableIds = new Set(filteredScenarios.map(({ id }) => id.split('/').at(-1)))
+    const unknown = scenarioFilter.filter((id) => !availableIds.has(id))
+    if (unknown.length > 0) {
+      throw new Error(`Unknown EVAL_SCENARIOS for selected filters: ${unknown.join(', ')}`)
+    }
+  }
+  const selectedScenarios = scenarioFilter
+    ? filteredScenarios.filter(({ id }) => scenarioFilter.includes(id.split('/').at(-1)!))
+    : filteredScenarios
+  const scenarios = smoke ? selectSmokeScenarios(selectedScenarios) : selectedScenarios
 
   if (scenarios.length === 0) {
     console.error('No scenarios matched the filters.')
@@ -88,36 +120,87 @@ const main = async (): Promise<number> => {
     console.error(`  EVAL_MODES=${process.env.EVAL_MODES ?? '(all)'}`)
     console.error(`  EVAL_ENGINES=${process.env.EVAL_ENGINES ?? '(all)'}`)
     console.error(`  EVAL_SUITES=${suites.join(',')}`)
+    console.error(`  EVAL_SCENARIOS=${process.env.EVAL_SCENARIOS ?? '(all)'}`)
     console.error(`  EVAL_LANGUAGE=${getActiveLocale()}`)
     return 1
   }
 
+  await setupTestDatabase()
+  const cells = await Promise.all(
+    [...new Map(scenarios.map((scenario) => [`${scenario.modelName}/${scenario.engineName}`, scenario])).entries()].map(
+      async ([key, scenario]) => {
+        const model = await getModel(getDb(), getModelId(scenario.modelName))
+        if (!model) {
+          throw new Error(`Eval model missing: ${scenario.modelName}`)
+        }
+        return { key, model: scenario.modelName, engine: scenario.engineName, modelId: model.model }
+      },
+    ),
+  )
+  const manifest = createManifest(
+    scenarios,
+    {
+      cells,
+      suites: [...suites],
+      samples: necessitySamples,
+      scenarioConcurrency: Math.min(scenarioParallel, scenarios.length),
+      judgeModelId: judgeModels.opus.model,
+      judgePromptVersion,
+      providerKind: 'unknown',
+      preflight: null,
+      treatment: {
+        generationRevision: {
+          commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+          overlayCommit: process.env.EVAL_OVERLAY_COMMIT ?? null,
+        },
+        systemPromptVersion: getSystemPromptVersion(),
+        WEB_BUDGET_PROMOTION: process.env.WEB_BUDGET_PROMOTION ?? 'unset',
+      },
+    },
+    process.env,
+  )
+  const outputPath = process.env.EVAL_OUTPUT ?? 'evals/eval-results.md'
+  const trials: EvalTrial[] = []
   const adapter = createBuiltInAdapter(builtInAgent)
-  const runScenarios = async () => {
-    await setupTestDatabase()
-    if (!verbose) {
-      silenceConsole()
-    }
-    initLayout(scenarios, scenarioParallel)
-
-    try {
-      return await runPool(scenarios, scenarioParallel, adapter, (scenario) =>
-        getScenarioSampleCount(scenario, necessitySamples, smoke),
-      )
-    } finally {
-      printFooter()
-      teardownLayout()
-      restoreConsole()
-      adapter.disconnect()
-      await teardownTestDatabase()
-    }
+  const state = { harnessCrashed: false }
+  // The manifest exists even if preflight or the first trajectory fails.
+  const journalPath = startTrialJournal(manifest, dirname(outputPath))
+  try {
+    const config = await createClient({ prefixUrl: getLocalSetting('cloudUrl') })
+      .get('config', { timeout: 5000 })
+      .json<Record<string, unknown>>()
+    manifest.providerKind = typeof config.webToolsProvider === 'string' ? config.webToolsProvider : 'unknown'
+    manifest.preflight = JSON.parse(serializeArtifact(config)) as unknown
+    startTrialJournal(manifest, dirname(outputPath))
+    silenceConsole()
+    initLayout(
+      scenarios,
+      scenarioParallel,
+      manifest.scenarios.reduce((sum, { planned }) => sum + planned, 0),
+    )
+    await runPool(
+      scenarios,
+      scenarioParallel,
+      adapter,
+      (scenario) => getScenarioSampleCount(scenario, necessitySamples, smoke),
+      (trial) => {
+        appendTrial(journalPath, trial)
+        trials.push(trial)
+      },
+    )
+  } catch (error) {
+    state.harnessCrashed = true
+    console.error(JSON.parse(serializeArtifact(String(error))))
+  } finally {
+    printFooter()
+    teardownLayout()
+    restoreConsole()
+    adapter.disconnect()
+    await teardownTestDatabase()
   }
-  const results = await runScenarios()
-
-  generateReport(results, detailed)
-
-  const failCount = results.filter((r) => !r.passed).length
-  return failCount > 0 ? 1 : 0
+  const metrics = aggregateEvalMetrics(manifest, trials, undefined, state.harnessCrashed)
+  generateReport(metrics, detailed, outputPath)
+  return acceptEval(metrics).exitCode
 }
 
 // Register only the browser API Zustand needs; happy-dom's fetch buffers
@@ -126,4 +209,9 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   value: new Storage(),
 })
-process.exit(await main())
+try {
+  process.exit(await main())
+} catch (error) {
+  console.error(JSON.parse(serializeArtifact(String(error))))
+  process.exit(2)
+}

@@ -44,14 +44,16 @@ export type LinkPreviewParams = z.infer<typeof linkPreviewSchema>
 
 /**
  * Data type for search results returned by the universal search API. Shape
- * matches `GET /v1/search` — only the four fields that the app actually
- * renders, all HTTPS-only.
+ * matches `GET /v1/search`; URLs are HTTPS-only, and evidence metadata is
+ * optional for compatibility with older backends.
  */
 export type SearchResultData = {
   title: string
   pageUrl: string
   faviconUrl: string | null
   previewImageUrl: string | null
+  snippet?: string
+  publishedDate?: string | null
   /** Optional source index assigned client-side when results are merged into a chat. */
   sourceIndex?: number
 }
@@ -71,7 +73,7 @@ export type FetchContentData = {
   favicon: string | null
   image: string | null
   author: string | null
-  published_date: string | null
+  publishedDate?: string | null
   sourceIndex?: number
 } | null
 

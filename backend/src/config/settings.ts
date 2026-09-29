@@ -19,6 +19,8 @@ const settingsSchema = z
     // API Keys
     fireworksApiKey: z.string().default(''),
     anthropicApiKey: z.string().default(''),
+    anthropicBaseUrl: z.string().default('https://api.anthropic.com'),
+    resendMonitoringApiKey: z.string().default(''),
     exaApiKey: z.string().default(''),
     tinfoilApiKey: z.string().default(''),
     // Include the `/v1` API prefix — Tinfoil's OpenAI-compatible endpoints live
@@ -90,6 +92,7 @@ const settingsSchema = z
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
+    powersyncInternalUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
@@ -348,6 +351,8 @@ const parseSettings = (): Settings => {
   const env = {
     fireworksApiKey: process.env.FIREWORKS_API_KEY || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+    resendMonitoringApiKey: process.env.RESEND_MONITORING_API_KEY || '',
     exaApiKey: process.env.EXA_API_KEY || '',
     tinfoilApiKey: process.env.TINFOIL_API_KEY || '',
     tinfoilEnclaveUrl: process.env.TINFOIL_ENCLAVE_URL || 'https://inference.tinfoil.sh/v1',
@@ -413,6 +418,12 @@ const parseSettings = (): Settings => {
     // `powersyncTokenExpirySeconds` passes `|| '3600'` instead and so never
     // reaches its schema default; this is the shape to copy, not that one.)
     miniAppTokenExpirySeconds: process.env.MINI_APP_TOKEN_EXPIRY_SECONDS,
+    // Server-side probe target. `POWERSYNC_URL` is browser-facing, so on a
+    // cluster it points at the public ingress and is not the best address for
+    // this pod to dial. Set this to the in-cluster service URL to keep
+    // `/v1/health/powersync` on the internal network; it falls back to the
+    // public URL so single-host deployments need no extra setting.
+    powersyncInternalUrl: process.env.POWERSYNC_INTERNAL_URL || '',
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),

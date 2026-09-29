@@ -2,39 +2,46 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { mock } from 'bun:test'
-import * as authUtils from '@/auth/utils'
-import * as waitlistUtils from '@/waitlist/utils'
 import { clearSettingsCache } from '@/config/settings'
-
-// Mock only the email-sending functions, preserve all other exports
-const mockSendSignInEmail = mock(() => Promise.resolve())
-const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
-const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
-
-mock.module('@/auth/utils', () => ({
-  ...authUtils,
-  sendSignInEmail: mockSendSignInEmail,
-}))
-
-mock.module('@/waitlist/utils', () => ({
-  ...waitlistUtils,
-  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
-  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
-  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
-}))
-
-// Import after mocks are set up
 import { user, verification } from '@/db/auth-schema'
 import { otpChallenge } from '@/db/schema'
 import { waitlist } from '@/db/schema'
-import { challengeTokenHeader } from '@/auth/otp-constants'
-import { createAuth } from '@/auth/auth'
+import { challengeTokenHeader, testSignInOtp } from '@/auth/otp-constants'
+import { createAuth, signInOtpOptions } from '@/auth/auth'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
+import { createOtpGenerator } from '@/test-utils/otp-generator'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq, like } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+const mockSendSignInEmail = mock(() => Promise.resolve())
+const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
+const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
+const emailDeps = {
+  sendSignInEmail: mockSendSignInEmail,
+  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
+  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
+}
+const waitlistEmailService = {
+  sendJoinedEmail: mockSendWaitlistJoinedEmail,
+  sendReminderEmail: () => Promise.resolve(),
+}
+
+describe('sign-in OTP options', () => {
+  it('prefers an injected generator over the fixed test code', () => {
+    const generateSignInOtp = createOtpGenerator()
+    expect(signInOtpOptions({ generateSignInOtp, nodeEnv: 'test' }).generateOTP?.()).toBe('00000001')
+  })
+
+  it('uses the fixed code in tests without an injected generator', () => {
+    expect(signInOtpOptions({ nodeEnv: 'test' }).generateOTP?.()).toBe(testSignInOtp)
+  })
+
+  it.each(['production', 'development', '', undefined])('does not install a generator in %s', (nodeEnv) => {
+    expect(signInOtpOptions({ nodeEnv })).not.toHaveProperty('generateOTP')
+  })
+})
 
 describe('OTP Security Hardening', () => {
   let auth: ReturnType<typeof createAuth>
@@ -96,8 +103,8 @@ describe('OTP Security Hardening', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
-    app = await createApp({ database: db, otpCooldownMs: 0 })
+    auth = createAuth(db, emailDeps)
+    app = await createApp({ database: db, auth, waitlistEmailService, otpCooldownMs: 0 })
   })
 
   afterEach(async () => {
@@ -112,6 +119,19 @@ describe('OTP Security Hardening', () => {
   // Measure 1: 8-digit OTP
   // ---------------------------------------------------------------------------
   describe('Measure 1: 8-digit OTP', () => {
+    it('emails the fixed test code for an HTTP sign-in request', async () => {
+      const email = 'fixed-test-otp@example.com'
+      await insertApprovedWaitlist(email)
+      const captureEmail = mock((_args: { otp: string }) => Promise.resolve())
+      const testAuth = createAuth(db, { ...emailDeps, sendSignInEmail: captureEmail })
+      const testApp = await createApp({ database: db, auth: testAuth, waitlistEmailService, otpCooldownMs: 0 })
+
+      const response = await postWaitlistJoin(email, testApp)
+
+      expect(response.status).toBe(200)
+      expect(captureEmail.mock.calls.at(-1)?.[0].otp).toBe(testSignInOtp)
+    })
+
     it('should generate an OTP that is exactly 8 digits', async () => {
       await insertApprovedWaitlist('otp-len@example.com')
       await auth.api.sendVerificationOTP({ body: { email: 'otp-len@example.com', type: 'sign-in' } })
@@ -207,40 +227,31 @@ describe('OTP Security Hardening', () => {
       }
     })
 
-    it('should allow requesting a new code after exhaustion, and old code is invalid', async () => {
+    it('should reject an exhausted code and allow sign-in after requesting another', async () => {
+      auth = createAuth(db, { ...emailDeps, generateSignInOtp: createOtpGenerator() })
       const email = 'attempts-regen@example.com'
       await insertExistingUser(email)
       await insertApprovedWaitlist(email)
-      const { otp: oldOtp, challengeToken } = await sendOtpWithChallenge(email)
+      const { otp, challengeToken } = await sendOtpWithChallenge(email)
 
-      // Exhaust all 3 attempts
       for (let i = 0; i < 3; i++) {
-        try {
-          await signInWithChallenge(email, '00000000', challengeToken)
-        } catch {
-          // Expected
-        }
+        await expect(signInWithChallenge(email, '00000000', challengeToken)).rejects.toMatchObject({
+          body: { code: 'INVALID_OTP' },
+        })
       }
+      await expect(signInWithChallenge(email, otp, challengeToken)).rejects.toMatchObject({
+        body: { code: 'TOO_MANY_ATTEMPTS' },
+      })
+      await expect(signInWithChallenge(email, otp, challengeToken)).rejects.toMatchObject({
+        body: { code: 'INVALID_OTP' },
+      })
 
-      // Request a new code with a fresh challenge token
-      mockSendSignInEmail.mockClear()
       const { otp: newOtp, challengeToken: newToken } = await sendOtpWithChallenge(email)
-
-      // New OTP should be different (old one was exhausted, resend generates fresh)
-      expect(newOtp).not.toBe(oldOtp)
-
-      // Old OTP should NOT work
-      let oldWorked = false
-      try {
-        const result = await signInWithChallenge(email, oldOtp, newToken)
-        oldWorked = result.user !== undefined
-      } catch {
-        // Expected
-      }
-      expect(oldWorked).toBe(false)
-
-      const freshToken = await createTestChallenge(db, email)
-      const result = await signInWithChallenge(email, newOtp, freshToken)
+      expect(newOtp).not.toBe(otp)
+      await expect(signInWithChallenge(email, otp, newToken)).rejects.toMatchObject({
+        body: { code: 'INVALID_OTP' },
+      })
+      const result = await signInWithChallenge(email, newOtp, newToken)
       expect(result.user).toBeDefined()
     })
   })
@@ -250,7 +261,7 @@ describe('OTP Security Hardening', () => {
   // ---------------------------------------------------------------------------
   describe('Measure 3: 15s cooldown', () => {
     it('should reject second /waitlist/join for same email within cooldown', async () => {
-      const cooldownApp = await createApp({ database: db, otpCooldownMs: 15_000 })
+      const cooldownApp = await createApp({ database: db, auth, waitlistEmailService, otpCooldownMs: 15_000 })
       await insertApprovedWaitlist('cooldown@example.com')
 
       const first = await postWaitlistJoin('cooldown@example.com', cooldownApp)
@@ -261,7 +272,7 @@ describe('OTP Security Hardening', () => {
     })
 
     it('should succeed after cooldown expires', async () => {
-      const shortCooldownApp = await createApp({ database: db, otpCooldownMs: 1 })
+      const shortCooldownApp = await createApp({ database: db, auth, waitlistEmailService, otpCooldownMs: 1 })
       await insertApprovedWaitlist('cooldown-expire@example.com')
 
       const first = await postWaitlistJoin('cooldown-expire@example.com', shortCooldownApp)
@@ -274,7 +285,7 @@ describe('OTP Security Hardening', () => {
     })
 
     it('should block concurrent requests for same email (race condition defense)', async () => {
-      const cooldownApp = await createApp({ database: db, otpCooldownMs: 15_000 })
+      const cooldownApp = await createApp({ database: db, auth, waitlistEmailService, otpCooldownMs: 15_000 })
       await insertApprovedWaitlist('race@example.com')
 
       // Fire two requests concurrently for the same email
@@ -289,7 +300,7 @@ describe('OTP Security Hardening', () => {
     })
 
     it('should not block different emails during cooldown', async () => {
-      const cooldownApp = await createApp({ database: db, otpCooldownMs: 15_000 })
+      const cooldownApp = await createApp({ database: db, auth, waitlistEmailService, otpCooldownMs: 15_000 })
       await insertApprovedWaitlist('email-a@example.com')
       await insertApprovedWaitlist('email-b@example.com')
 

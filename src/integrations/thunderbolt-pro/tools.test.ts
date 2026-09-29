@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { loadCalibrationFixtures } from '@/ai/eval/fixtures'
+import { createToolset } from '@/lib/tools'
+import { toPiAgentTools } from '@shared/agent-core/mcp-tools'
 import { createClient, type HttpClient } from '@/lib/http'
 import type { SourceMetadata } from '@/types/source'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
@@ -80,7 +83,7 @@ describe('Thunderbolt Pro Tools', () => {
           favicon: 'https://example.com/favicon.ico',
           image: 'https://example.com/image.jpg',
           author: 'John Doe',
-          published_date: '2024-01-01T10:00:00Z',
+          publishedDate: '2024-01-01T10:00:00Z',
         },
         success: true,
       }
@@ -105,7 +108,7 @@ describe('Thunderbolt Pro Tools', () => {
           favicon: null,
           image: null,
           author: null,
-          published_date: null,
+          publishedDate: null,
         },
         success: true,
       }
@@ -245,7 +248,7 @@ describe('createConfigs source collector', () => {
       favicon: 'https://example.com/fav.ico',
       image: null,
       author: 'Jane Doe',
-      published_date: '2024-06-15',
+      publishedDate: '2024-06-15',
     })
     const sourceCollector: SourceMetadata[] = []
     const configs = createConfigs(dummyHttpClient, sourceCollector)
@@ -274,7 +277,7 @@ describe('createConfigs source collector', () => {
       favicon: 'https://example.com/fav.ico',
       image: 'https://example.com/hero.jpg',
       author: 'Jane Doe',
-      published_date: '2024-06-15',
+      publishedDate: '2024-06-15',
     })
     const configs = createConfigs(dummyHttpClient, sourceCollector)
 
@@ -298,7 +301,7 @@ describe('createConfigs source collector', () => {
       favicon: null,
       image: null,
       author: null,
-      published_date: null,
+      publishedDate: null,
     })
     const sourceCollector: SourceMetadata[] = []
     const configs = createConfigs(dummyHttpClient, sourceCollector)
@@ -321,4 +324,50 @@ describe('createConfigs source collector', () => {
     expect(result[0].sourceIndex).toBe(1)
     expect(result[1].sourceIndex).toBe(2)
   })
+})
+
+it('passes search snippets and canonical publication dates from the API to model results and sources', async () => {
+  const sourceCollector: SourceMetadata[] = []
+  const client = createMockHttpClient({
+    results: [
+      {
+        title: 'Article',
+        pageUrl: 'https://source.test/article',
+        faviconUrl: null,
+        previewImageUrl: null,
+        snippet: 'Supported fact.',
+        publishedDate: '2026-09-01',
+      },
+    ],
+  })
+  const config = createConfigs(client, sourceCollector).find(({ name }) => name === 'search')!
+  const result = await config.execute({ query: 'query', max_results: 1 })
+  expect(result).toMatchObject([{ sourceIndex: 1, snippet: 'Supported fact.', publishedDate: '2026-09-01' }])
+  expect(sourceCollector).toMatchObject([{ index: 1, description: 'Supported fact.', publishedDate: '2026-09-01' }])
+})
+
+it('surfaces a failed fetch as a Pi tool failure without registering a source', async () => {
+  const sources: SourceMetadata[] = []
+  const client = createMockHttpClient({
+    success: false,
+    data: null,
+    error: 'Source did not load or returned no usable text.',
+  })
+  const tools = await toPiAgentTools(createToolset(createConfigs(client, sources)))
+  const fetchTool = tools.find(({ name }) => name === 'fetch_content')!
+  await expect(fetchTool.execute('fetch-1', { url: 'https://source.test' })).rejects.toThrow('Source did not load')
+  expect(sources).toEqual([])
+})
+
+it('passes the technical-404 negative-control fixture through as model content', async () => {
+  const fixture = loadCalibrationFixtures().find(({ id }) => id === 'valid-technical-page-about-404')!
+  const evidence = fixture.conversation[0].evidence[0]
+  const sources: SourceMetadata[] = []
+  const tools = await toPiAgentTools(
+    createToolset(createConfigs(createMockHttpClient({ success: true, data: evidence }), sources)),
+  )
+  const fetchTool = tools.find(({ name }) => name === 'fetch_content')!
+  const result = await fetchTool.execute('fetch-1', { url: evidence.url })
+  expect(result.content).toEqual([{ type: 'text', text: expect.stringContaining(evidence.text) }])
+  expect(sources).toMatchObject([{ index: 1, url: evidence.url }])
 })

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
+import { webToolCaps } from '../web-tool-budget'
 import { getLanguageScenarios } from './language-scenarios'
 import { categoryGateThresholds } from './stats'
 
@@ -56,8 +57,8 @@ describe('language scenarios', () => {
 
     expect(withMinToolCalls.map(({ id }) => localId(id))).toEqual(['language-sticky-search-01'])
     expect(withMinToolCalls[0].criteria.minToolCalls).toBe(1)
-    // Chat's `auto` budget is two calls; a scenario that spends it produces no prose to judge.
-    expect(withMinToolCalls[0].criteria.maxToolCalls).toBe(2)
+    // Keep the scenario's ceiling aligned with Chat's automatic web budget.
+    expect(withMinToolCalls[0].criteria.maxToolCalls).toBe(webToolCaps.auto)
   })
 
   test('carries a stickiness scenario that pastes foreign-language content mid-thread', () => {

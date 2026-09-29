@@ -9,6 +9,7 @@
  */
 
 import { createTurnBudget, maxRequestsPerTurn, type TurnBudget } from '@/ai/retry-budget'
+import { webToolCaps } from '@/ai/web-tool-budget'
 import { createTurnTelemetry, type TurnTelemetryPayload } from '@/ai/turn-telemetry'
 import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
@@ -197,6 +198,47 @@ describe('createAgentRoutingFetch — connection status', () => {
 
   afterEach(() => {
     resetStore()
+  })
+
+  it.each([
+    ['/research latest', 'research', 30],
+    ['/search latest', 'search', 12],
+    ['An ordinary question', 'auto', 5],
+  ] as const)('sets the turn budget and preserves exhaustion guidance for %s', async (text, intent, cap) => {
+    const adapter: AgentAdapter = {
+      ...makeAdapter(builtInAgent),
+      fetch: async (_init, context) => {
+        const budget = context.webToolBudget!
+        for (let call = 0; call < cap; call++) {
+          await budget.execute('search', { query: String(call) }, async () => call)
+        }
+        const denial = await budget.execute('search', { query: 'denied' }, async () => 'must not execute')
+        return Response.json({
+          intent: budget.intent,
+          initialCap: budget.initialCap,
+          cap: budget.cap,
+          promoted: budget.promoted,
+          denial,
+        })
+      },
+    }
+    const fetch = createAgentRoutingFetch(sessionId, async () => {}, httpClient, getProxyFetch, {
+      getOrConnectAdapter: async () => adapter,
+    })
+    const response = await fetch('https://backend.test', {
+      body: JSON.stringify({ messages: [{ id: 'user', role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+    expect(await response.json()).toEqual({
+      intent,
+      initialCap: cap,
+      cap,
+      promoted: false,
+      denial: {
+        status: 'budget_exhausted',
+        message:
+          'Per-turn web tool budget reached. Answer now from the results already gathered. If coverage is insufficient, tell the user they can ask you to search more or use /research.',
+      },
+    })
   })
 
   it('transitions connecting → ready when connectToAgent resolves', async () => {
@@ -486,7 +528,7 @@ describe('createChatInstance — retry policy', () => {
     // Two halves of one invariant, asserted together because each masks the
     // other's regression: kept, the shell renders an empty-turn recovery spinner
     // nothing will recover; dropped without the `stopRequested` gate, the now
-    // trailing user message makes the SDK re-send the stopped turn (THU-791).
+    // trailing user message makes the SDK re-send the stopped turn.
     expect(instance.messages).toHaveLength(1)
     expect(instance.messages[0]!.role).toBe('user')
     expect(wouldAutoSend()).toBe(false)
@@ -562,7 +604,7 @@ describe('createChatInstance — retry policy', () => {
 
     // Dropping the shell leaves the user message trailing — the exact shape
     // useChatAutomation auto-runs. The flag must survive the turn settling
-    // (THU-791: without it, Stop restarts the turn it cancelled).
+    // so Stop cannot restart the turn it cancelled.
     expect(useChatStore.getState().sessions.get(sessionId)?.stopping).toBe(true)
 
     await instance.sendMessage({ text: 'again' })
@@ -599,7 +641,7 @@ describe('createChatInstance — retry policy', () => {
     await finishAborted()
 
     // Left streaming, the reasoning part keeps its spinner running after the stop
-    // (reasoning-group.tsx) even though the turn has settled (THU-791).
+    // (reasoning-group.tsx) even though the turn has settled.
     const last = instance.messages[instance.messages.length - 1] as { parts: Array<{ state?: string }> }
     expect(last.parts[0]!.state).toBe('done')
   })
@@ -1321,7 +1363,7 @@ describe('createChatInstance — retry policy', () => {
 })
 
 /** Exercise routing, SDK transcript mutation and retry callbacks with only the agent response injected. */
-const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable') => {
+const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unavailable', promote = false) => {
   const attempts: Array<NonNullable<AgentAdapterContext['webToolBudget']>> = []
   const adapter: AgentAdapter = {
     ...makeAdapter(builtInAgent),
@@ -1329,6 +1371,9 @@ const createWebRetryChat = (webCalls: number, errorText = '503: temporarily unav
       const budget = context.webToolBudget!
       attempts.push(budget)
       if (attempts.length === 1) {
+        if (promote) {
+          budget.promote('research')
+        }
         for (let call = 0; call < webCalls; call++) {
           await budget.execute('search', { query: `query ${call}` }, async () => ({ title: `source ${call}` }))
         }
@@ -1367,7 +1412,7 @@ describe('logical-turn web retry state through the SDK', () => {
   it('keeps an exhausted partial response before automatic regeneration can truncate it; manual Retry starts fresh', async () => {
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
     try {
-      const { instance, attempts } = createWebRetryChat(2)
+      const { instance, attempts } = createWebRetryChat(webToolCaps.auto)
       await instance.sendMessage({ text: 'Research a topic' })
       const partial = [...instance.messages]
       await getClock().tickAsync(5000)
@@ -1397,11 +1442,38 @@ describe('logical-turn web retry state through the SDK', () => {
       await getClock().tickAsync(5000)
       expect(attempts).toHaveLength(2)
       expect(attempts[1]).toBe(attempts[0])
-      await attempts[1]!.execute('search', { query: 'remaining' }, async () => 'source')
+      for (let call = 1; call < webToolCaps.auto; call++) {
+        await attempts[1]!.execute('search', { query: `remaining ${call}` }, async () => 'source')
+      }
       expect(attempts[1]!.probe.isExhausted).toBe(true)
       await instance.sendMessage({ text: 'A new question' })
       expect(attempts[2]).not.toBe(attempts[0])
       expect(attempts[2]!.probe.isExhausted).toBe(false)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('preserves promotion, consumed calls and cache on automatic retry but starts a new turn at auto', async () => {
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { instance, attempts } = createWebRetryChat(1, '503: temporarily unavailable', true)
+      await instance.sendMessage({ text: 'Research a topic' })
+      await getClock().tickAsync(5000)
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]).toBe(attempts[0])
+      expect(attempts[1].cap).toBe(30)
+      expect(attempts[1].consumed).toBe(1)
+      expect(
+        await attempts[1].execute('search', { query: 'query 0' }, async () => {
+          throw new Error('must be cached')
+        }),
+      ).toEqual({ title: 'source 0' })
+      expect(attempts[1].consumed).toBe(1)
+      await instance.sendMessage({ text: 'A new ordinary question' })
+      expect(attempts[2].cap).toBe(webToolCaps.auto)
+      expect(attempts[2].consumed).toBe(0)
+      expect(attempts[2].promoted).toBe(false)
     } finally {
       consoleError.mockRestore()
     }

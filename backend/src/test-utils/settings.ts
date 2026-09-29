@@ -12,6 +12,8 @@ import type { Settings } from '@/config/settings'
 export const createTestSettings = (overrides: Partial<Settings> = {}): Settings => ({
   fireworksApiKey: '',
   anthropicApiKey: '',
+  anthropicBaseUrl: 'https://api.anthropic.com',
+  resendMonitoringApiKey: '',
   exaApiKey: '',
   tinfoilApiKey: '',
   tinfoilEnclaveUrl: 'https://inference.tinfoil.sh/v1',
@@ -45,6 +47,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   powersyncUrl: '',
   miniApps: '',
   miniAppTokenExpirySeconds: 300,
+  powersyncInternalUrl: '',
   powersyncJwtKid: '',
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,

@@ -2,284 +2,127 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { appendFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { aggregateEvalMetrics } from './stats'
-import type { EvalMetrics, EvalResult, EvalSummary } from './types'
+import { acceptEval, serializeArtifact } from './stats'
+import type { EvalManifest, EvalMetrics, EvalTrial } from './types'
 
-const rateEmoji = (rate: number) => (rate >= 80 ? '🟢' : rate >= 50 ? '🟡' : '🔴')
+const percent = (rate: number | null) => (rate === null ? '—' : `${(rate * 100).toFixed(1)}%`)
 
-const formatDate = (date: Date) =>
-  date.toLocaleString('en-US', {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
-
-const timestamp = () => {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
-}
-
-const formatPercent = (rate: number) => `${(rate * 100).toFixed(1)}%`
-const gateVerdict = (passed: boolean) => (passed ? '✅ pass' : '❌ fail')
-
-/** Generate summary statistics from results */
-export const summarize = (results: EvalResult[]): EvalSummary => {
-  const total = results.length
-  const passed = results.filter((r) => r.passed).length
-
-  const byModel: EvalSummary['byModel'] = {}
-  const byEngine: EvalSummary['byEngine'] = {}
-  const byMode: EvalSummary['byMode'] = {}
-
-  for (const r of results) {
-    const model = r.scenario.modelName
-    const engine = r.scenario.engineName
-    const mode = r.scenario.modeName
-
-    byModel[model] ??= { total: 0, passed: 0, passRate: 0 }
-    byModel[model].total++
-    if (r.passed) {
-      byModel[model].passed++
+/** Render the same manifest-driven acceptance and numbers for terminal, Markdown and PR comments. */
+export const renderMetricsReport = (metrics: EvalMetrics, detailed = false): string => {
+  const acceptance = acceptEval(metrics)
+  const lines = [
+    `# Eval Report — ${acceptance.exitCode === 0 ? 'pass' : 'non-passing'} (exit ${acceptance.exitCode})${acceptance.partial ? ' — partial; not definition-of-done evidence' : ''}`,
+    '',
+    '| Cell | Acceptance | Post-retry errors | First-attempt errors (generation / judge) | Tool infra / misuse |',
+    '|---|---|---|---|---|',
+    ...metrics.manifest.cells.map(({ key }) => {
+      const group = metrics.groups[key]
+      const decision = acceptance.cells[key]
+      if (!group) {
+        return `| ${key} | absent | — | — | — |`
+      }
+      const reliability = group.reliability
+      return `| ${key} | ${decision.exitCode === 0 ? 'pass' : `exit ${decision.exitCode}`} | ${reliability.errors}/${reliability.planned} (${percent(reliability.rate)}) | ${percent(reliability.firstAttemptErrorRate)} (${reliability.firstAttemptGenerationErrors}/${reliability.planned} / ${reliability.firstAttemptJudgeErrors}/${reliability.planned}) | ${percent(reliability.toolInfraErrorRate)} / ${percent(reliability.toolMisuseRate)} |`
+    }),
+    '',
+    `Pooled post-retry error rate (diagnostic only): ${percent(metrics.pooledErrorRate)}. Per-cell gate: ≤10%.`,
+    '',
+    ...acceptance.reasons.map((reason) => `- ${reason}`),
+    '',
+    '## Category quality and search headlines',
+    '',
+  ]
+  for (const [key, group] of Object.entries(metrics.groups)) {
+    lines.push(
+      `### ${key}`,
+      '',
+      '| Category | State | Quality | Valid / planned | 95% SEM | pass^3 (coverage) | End-to-end | Gate |',
+      '|---|---|---|---|---|---|---|---|',
+    )
+    for (const [category, stats] of Object.entries(group.categories)) {
+      const interval = stats.interval
+      const uncertainty = interval
+        ? `±${percent(interval.margin)}; ${interval.label}${interval.flagged ? '; low-information interval' : ''}`
+        : '—'
+      lines.push(
+        `| ${category} | ${stats.state} | ${percent(stats.rate)} | ${stats.valid}/${stats.planned} | ${uncertainty} | ${stats.pass3 ? `${percent(stats.pass3.rate)} (${stats.pass3.eligible}/${stats.pass3.required})` : 'omitted'} | ${percent(stats.endToEnd)} | ≥${percent(stats.threshold)} |`,
+      )
     }
-
-    byEngine[engine] ??= { total: 0, passed: 0, passRate: 0 }
-    byEngine[engine].total++
-    if (r.passed) {
-      byEngine[engine].passed++
+    lines.push('', '| Headline | State | Count / valid | Rate |', '|---|---|---|---|')
+    for (const [name, metric] of [
+      ['Unnecessary-search rate', group.headline.unnecessarySearchRate],
+      ['Missed-search rate', group.headline.missedSearchRate],
+    ] as const) {
+      lines.push(`| ${name} | ${metric.state} | ${metric.count}/${metric.total} | ${percent(metric.rate)} |`)
     }
-
-    byMode[mode] ??= { total: 0, passed: 0, passRate: 0 }
-    byMode[mode].total++
-    if (r.passed) {
-      byMode[mode].passed++
-    }
-  }
-
-  const rate = (p: number, t: number) => (t === 0 ? 0 : Math.round((p / t) * 100))
-
-  for (const stats of Object.values(byModel)) {
-    stats.passRate = rate(stats.passed, stats.total)
-  }
-  for (const stats of Object.values(byEngine)) {
-    stats.passRate = rate(stats.passed, stats.total)
-  }
-  for (const stats of Object.values(byMode)) {
-    stats.passRate = rate(stats.passed, stats.total)
-  }
-
-  return { total, passed, failed: total - passed, passRate: rate(passed, total), byModel, byEngine, byMode }
-}
-
-/** Print a console summary with colors */
-export const printConsoleReport = (results: EvalResult[], summary: EvalSummary) => {
-  const g = '\x1b[32m'
-  const r = '\x1b[31m'
-  const y = '\x1b[33m'
-  const b = '\x1b[1m'
-  const reset = '\x1b[0m'
-
-  console.log('\n' + '='.repeat(60))
-  console.log(`${b}EVAL REPORT${reset}`)
-  console.log('='.repeat(60))
-
-  console.log(`\n${b}Overall:${reset} ${summary.passed}/${summary.total} passed (${summary.passRate}%)`)
-
-  console.log(`\n${b}By Model:${reset}`)
-  for (const [model, stats] of Object.entries(summary.byModel)) {
-    const color = stats.passRate >= 80 ? g : stats.passRate >= 50 ? y : r
-    console.log(`  ${color}${model}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
-  }
-
-  console.log(`\n${b}By Engine:${reset}`)
-  for (const [engine, stats] of Object.entries(summary.byEngine)) {
-    const color = stats.passRate >= 80 ? g : stats.passRate >= 50 ? y : r
-    console.log(`  ${color}${engine}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
-  }
-
-  console.log(`\n${b}By Mode:${reset}`)
-  for (const [mode, stats] of Object.entries(summary.byMode)) {
-    const color = stats.passRate >= 80 ? g : stats.passRate >= 50 ? y : r
-    console.log(`  ${color}${mode}: ${stats.passed}/${stats.total} (${stats.passRate}%)${reset}`)
-  }
-
-  const failures = results.filter((r) => !r.passed)
-  if (failures.length > 0) {
-    console.log(`\n${b}${r}Failures (${failures.length}):${reset}`)
-    for (const f of failures) {
-      console.log(`  ${r}FAIL${reset} ${f.scenario.id}`)
-      for (const reason of f.failures) {
-        console.log(`    - ${reason}`)
+    lines.push(
+      '',
+      `Mean web calls, no-search expected: ${group.headline.meanWebCallsNoSearchExpected ?? '—'}. Scored turn not reached: ${group.scoredTurnNotReached}. Core any-failure rule: ${group.corePassed ? 'pass' : 'non-passing'}.`,
+      '',
+      '| Scenario | c / f / e / n | Behaviour (completeness) |',
+      '|---|---|---|',
+    )
+    for (const [id, scenario] of Object.entries(group.scenarios)) {
+      lines.push(
+        `| ${id} | ${scenario.c}/${scenario.f}/${scenario.e}/${scenario.n} | ${scenario.behaviour} (${scenario.completeness}) |`,
+      )
+      if (detailed && (scenario.f || scenario.e)) {
+        lines.push('', `Prompt: ${scenario.prompt}`, ...scenario.failures.map((failure) => `- ${failure}`), '')
       }
     }
+    lines.push('')
   }
-
-  console.log('\n' + '='.repeat(60))
-}
-
-const buildNecessityLines = (results: EvalResult[], metrics: EvalMetrics, now: Date): string[] => {
-  if (!results.some(({ scenario }) => scenario.category)) {
-    return []
-  }
-  const lines = ['## Search Necessity Gate', '']
-  for (const [groupKey, group] of Object.entries(metrics.groups)) {
+  const overdue = metrics.manifest.scenarios.filter(
+    ({ scenario }) => scenario.reviewBy && scenario.reviewBy < metrics.generatedAt.slice(0, 10),
+  )
+  if (overdue.length) {
     lines.push(
-      `### ${groupKey}`,
+      '### Past-due review dates',
       '',
-      '| Category | Passed | Rate | Wilson 95% | Gate | Verdict |',
-      '|----------|:------:|:----:|:----------:|:----:|:-------:|',
-      ...Object.entries(group.categories).map(
-        ([category, stats]) =>
-          `| ${category} | ${stats.passed}/${stats.total} | ${formatPercent(stats.rate)} | ${formatPercent(stats.wilson.lower)}–${formatPercent(stats.wilson.upper)} | ≥${formatPercent(stats.threshold)} | ${gateVerdict(stats.gatePassed)} |`,
-      ),
-      '',
-      '| Headline metric | Result | Gate | Verdict |',
-      '|-----------------|:------:|:----:|:-------:|',
-      `| Unnecessary-search rate | ${group.headline.unnecessarySearchRate.count}/${group.headline.unnecessarySearchRate.total} (${formatPercent(group.headline.unnecessarySearchRate.rate)}) | ≤${formatPercent(group.headline.unnecessarySearchRate.threshold)} | ${gateVerdict(group.headline.unnecessarySearchRate.gatePassed)} |`,
-      `| Missed-search rate | ${group.headline.missedSearchRate.count}/${group.headline.missedSearchRate.total} (${formatPercent(group.headline.missedSearchRate.rate)}) | ≤${formatPercent(group.headline.missedSearchRate.threshold)} | ${gateVerdict(group.headline.missedSearchRate.gatePassed)} |`,
-      `| Mean web calls per no-search-expected prompt | ${group.headline.meanWebCallsNoSearchExpected.toFixed(3)} | — | — |`,
+      ...overdue.map(({ scenario }) => `- ${scenario.id} (${scenario.reviewBy})`),
       '',
     )
   }
-
-  const today = now.toISOString().slice(0, 10)
-  const overdue = [
-    ...new Set(
-      results
-        .filter(({ scenario }) => scenario.reviewBy && scenario.reviewBy < today)
-        .map(({ scenario }) => `${scenario.id} (${scenario.reviewBy})`),
-    ),
-  ]
-  if (overdue.length > 0) {
-    lines.push('### Past-due review dates', '', ...overdue.map((warning) => `- ⚠️ ${warning}`), '')
-  }
-  return lines
+  lines.push('## Run manifest', '', '```json', serializeArtifact(metrics.manifest, undefined, 2), '```', '')
+  return JSON.parse(serializeArtifact(lines.join('\n'))) as string
 }
 
-/** Write machine-readable modal outcomes and aggregates beside the markdown report. */
-export const writeMetricsReport = (
-  results: EvalResult[],
-  markdownPath: string,
-  generatedAt = new Date().toISOString(),
-): string => {
-  const outputPath = join(dirname(markdownPath), 'eval-metrics.json')
+/** Start a fresh append-only journal before execution; completed trials survive a later crash. */
+export const startTrialJournal = (manifest: EvalManifest, directory: string): string => {
+  mkdirSync(directory, { recursive: true })
+  const path = join(directory, 'eval-trials.jsonl')
+  writeFileSync(path, `${serializeArtifact({ schemaVersion: 4, manifest })}\n`)
+  return path
+}
+
+/** Append exactly one completed trial, with credentials removed before writing. */
+export const appendTrial = (path: string, trial: EvalTrial): void => {
+  appendFileSync(path, `${serializeArtifact(trial)}\n`)
+}
+
+/** Write the manifest, every trial and aggregates beside the human-readable report. */
+export const writeMetricsReport = (metrics: EvalMetrics, markdownPath: string): string => {
+  const path = join(dirname(markdownPath), 'eval-metrics.json')
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, `${serializeArtifact(metrics, undefined, 2)}\n`)
+  return path
+}
+
+/** Write a report using the shared acceptance policy. */
+export const writeMarkdownReport = (metrics: EvalMetrics, outputPath: string, detailed = false): void => {
   mkdirSync(dirname(outputPath), { recursive: true })
-  writeFileSync(outputPath, `${JSON.stringify(aggregateEvalMetrics(results, generatedAt), null, 2)}\n`, 'utf-8')
-  return outputPath
+  writeFileSync(outputPath, renderMetricsReport(metrics, detailed))
 }
 
-/** Write a markdown report file. When `detailed` is true, includes a Failures section with prompts and reasons. */
-export const writeMarkdownReport = (
-  results: EvalResult[],
-  summary: EvalSummary,
-  outputPath: string,
-  detailed: boolean,
-  now = new Date(),
-) => {
-  const models = [...new Set(results.map((r) => r.scenario.modelName))].join(', ')
-  const engines = [...new Set(results.map((r) => r.scenario.engineName))].join(', ')
-  const modes = [...new Set(results.map((r) => r.scenario.modeName))].join(', ')
-  const totalDuration = results.reduce((sum, r) => sum + r.durationMs, 0)
-
-  const lines: string[] = [
-    `# ${rateEmoji(summary.passRate)} Eval Report — ${summary.passRate}% pass rate`,
-    '',
-    `> **${formatDate(now)}** | ${summary.total} scenarios | ${(totalDuration / 1000).toFixed(0)}s total`,
-    '>',
-    `> Models: \`${models}\` | Engines: \`${engines}\` | Modes: \`${modes}\``,
-    '',
-    '---',
-    '',
-    '## Overview',
-    '',
-    `| | Passed | Failed | Total | Rate |`,
-    `|---|:---:|:---:|:---:|:---:|`,
-    `| **All** | ${summary.passed} | ${summary.failed} | ${summary.total} | ${rateEmoji(summary.passRate)} **${summary.passRate}%** |`,
-    '',
-    '### By Model',
-    '',
-    '| Model | Passed | Failed | Total | Rate |',
-    '|-------|:---:|:---:|:---:|:---:|',
-    ...Object.entries(summary.byModel).map(
-      ([model, s]) =>
-        `| ${model} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
-    ),
-    '',
-    '### By Engine',
-    '',
-    '| Engine | Passed | Failed | Total | Rate |',
-    '|--------|:---:|:---:|:---:|:---:|',
-    ...Object.entries(summary.byEngine).map(
-      ([engine, s]) =>
-        `| ${engine} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
-    ),
-    '',
-    '### By Mode',
-    '',
-    '| Mode | Passed | Failed | Total | Rate |',
-    '|------|:---:|:---:|:---:|:---:|',
-    ...Object.entries(summary.byMode).map(
-      ([mode, s]) =>
-        `| ${mode} | ${s.passed} | ${s.total - s.passed} | ${s.total} | ${rateEmoji(s.passRate)} ${s.passRate}% |`,
-    ),
-    '',
-    '---',
-    '',
-    ...buildNecessityLines(results, aggregateEvalMetrics(results, now.toISOString()), now),
-    ...(results.some(({ scenario }) => scenario.category) ? ['---', ''] : []),
-    '## Results',
-    '',
-    '| | Scenario | Citations | Widgets | Links | Web calls | Dups | Samples | Errors | Chars | Time |',
-    '|---|----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|',
-    ...results.map((r) => {
-      const icon = r.passed ? '✅' : '❌'
-      return `| ${icon} | ${r.scenario.id} | ${r.citations.length} | ${r.widgets.length} | ${r.linkPreviewUrls.length} | ${r.toolCallCount} | ${r.duplicateToolCallCount} | ${r.passedSampleCount ?? Number(r.passed)}/${r.sampleCount ?? 1} | ${r.errorSampleCount ?? Number(Boolean(r.error))} | ${r.responseLength} | ${(r.durationMs / 1000).toFixed(1)}s |`
-    }),
-    '',
-  ]
-
-  if (detailed) {
-    const failures = results.filter((r) => !r.passed)
-    if (failures.length > 0) {
-      lines.push('---', '', '## Failures', '')
-      for (const f of failures) {
-        lines.push(
-          `### ❌ ${f.scenario.id}`,
-          '',
-          '| Field | Value |',
-          '|-------|-------|',
-          `| **Prompt** | ${f.scenario.prompt} |`,
-          `| **Duration** | ${(f.durationMs / 1000).toFixed(1)}s |`,
-          ...(f.error ? [`| **Error** | \`${f.error}\` |`] : []),
-          '',
-          '**Failure reasons:**',
-          '',
-          ...f.failures.map((reason) => `- ${reason}`),
-          '',
-        )
-      }
-    }
-  }
-
-  mkdirSync(dirname(outputPath), { recursive: true })
-  writeFileSync(outputPath, lines.join('\n'), 'utf-8')
-  console.log(`\nReport saved to: ${outputPath}`)
-}
-
-/** Generate both console and file reports */
-export const generateReport = (results: EvalResult[], detailed = false) => {
-  const summary = summarize(results)
-  printConsoleReport(results, summary)
-
-  const outputPath = process.env.EVAL_OUTPUT ?? `evals/eval-results-${timestamp()}.md`
-  const now = new Date()
-  writeMarkdownReport(results, summary, outputPath, detailed, now)
-  const metricsPath = writeMetricsReport(results, outputPath, now.toISOString())
-  console.log(`Metrics saved to: ${metricsPath}`)
+/** Publish local report artifacts and print the same per-cell verdicts. */
+export const generateReport = (
+  metrics: EvalMetrics,
+  detailed = false,
+  outputPath = process.env.EVAL_OUTPUT ?? 'evals/eval-results.md',
+): void => {
+  writeMarkdownReport(metrics, outputPath, detailed)
+  writeMetricsReport(metrics, outputPath)
+  console.log(renderMetricsReport(metrics))
 }

@@ -34,12 +34,20 @@ const sse = [
 const context: Context = { messages: [{ role: 'user', content: 'hi', timestamp: 0 }] }
 
 type CapturedBody = {
+  model?: string
   max_tokens?: number
+  messages?: Array<{ role?: string; content?: unknown }>
   thinking?: { type: string; budget_tokens?: number }
   output_config?: { effort?: string }
 }
 
-type DriveResult = { body: CapturedBody | null; headers: Headers | null; injectedCalls: number }
+type DriveResult = {
+  body: CapturedBody | null
+  headers: Headers | null
+  injectedCalls: number
+  model: { contextWindow: number; compat?: { supportsToolReferences?: boolean } }
+  url: string
+}
 
 /** Build the model and drive `streamSimple`, capturing the request body the SDK
  *  emits through the injected fetch. `entry` selects which provider entrypoint to
@@ -48,24 +56,33 @@ const drive = async (
   modelId: string,
   options: SimpleStreamOptions,
   entry: 'streamSimple' | 'stream' = 'streamSimple',
+  managed?: { baseURL: string; catalogModelId: string; contextWindow?: number },
 ): Promise<DriveResult> => {
   let body: CapturedBody | null = null
   let headers: Headers | null = null
   let injectedCalls = 0
-  const injectedFetch: AgentFetch = async (_input, init) => {
+  let url = ''
+  const injectedFetch: AgentFetch = async (input, init) => {
     injectedCalls += 1
+    url = input instanceof Request ? input.url : input.toString()
     headers = init?.headers ? new Headers(init.headers) : null
     body = init?.body ? (JSON.parse(init.body as string) as CapturedBody) : null
     return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
 
-  const { models, model } = buildAnthropicModel({ apiKey: 'test-key', fetch: injectedFetch, modelId })
+  const { models, model } = buildAnthropicModel({
+    apiKey: 'test-key',
+    fetch: injectedFetch,
+    modelId,
+    ...managed,
+  })
   const provider = models.getProvider('anthropic')
   if (!provider) {
     throw new Error('anthropic provider not registered')
   }
 
-  const stream = provider[entry](model, context, options)
+  const stream =
+    entry === 'streamSimple' ? models.streamSimple(model, context, options) : provider.stream(model, context, options)
   try {
     for await (const event of stream) {
       void event
@@ -73,7 +90,7 @@ const drive = async (
   } catch {
     // Stream-parse hiccups are irrelevant; the captured request body is the contract.
   }
-  return { body, headers, injectedCalls }
+  return { body, headers, injectedCalls, model, url }
 }
 
 describe('isKnownAnthropicModel', () => {
@@ -101,6 +118,23 @@ describe('buildAnthropicModel — resolution', () => {
     expect(model.id).toBe('claude-opus-4-8')
     expect(model.baseUrl).toBe('https://api.anthropic.com')
     expect(models.getProvider('anthropic')).toBeTruthy()
+  })
+
+  it('uses the native Messages API and enables prompt caching for a managed wire alias', async () => {
+    const { body, model, url } = await drive('opus-5', {} as SimpleStreamOptions, 'streamSimple', {
+      baseURL: 'https://cloud.example/v1/chat',
+      catalogModelId: 'claude-opus-5',
+      contextWindow: 200_000,
+    })
+
+    expect(new URL(url).pathname).toBe('/v1/chat/v1/messages')
+    expect(body?.model).toBe('opus-5')
+    expect(model.contextWindow).toBe(200_000)
+    expect(model.compat?.supportsToolReferences).toBe(true)
+    expect(body?.messages?.at(-1)).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: 'hi', cache_control: { type: 'ephemeral' } }],
+    })
   })
 })
 
@@ -134,20 +168,20 @@ describe('buildAnthropicModel — streamSimple request shaping', () => {
   })
 
   it('uses ENABLED thinking with a level-sized budget for a non-adaptive model', async () => {
-    const high = await drive('claude-opus-4-1', { reasoning: 'high' } as SimpleStreamOptions)
+    const high = await drive('claude-haiku-4-5', { reasoning: 'high' } as SimpleStreamOptions)
     expect(high.body?.thinking).toMatchObject({ type: 'enabled', budget_tokens: 16384 })
     expect(high.body?.thinking?.type).not.toBe('adaptive')
     // Budget tracks the reasoning level, not the model.
-    const low = await drive('claude-opus-4-1', { reasoning: 'low' } as SimpleStreamOptions)
+    const low = await drive('claude-haiku-4-5', { reasoning: 'low' } as SimpleStreamOptions)
     expect(low.body?.thinking).toMatchObject({ type: 'enabled', budget_tokens: 2048 })
     // No caller cap → clamped to the model's own max_tokens.
-    expect(high.body?.max_tokens).toBe(32000)
+    expect(high.body?.max_tokens).toBe(64000)
   })
 
   it('forwards a caller maxTokens cap into the thinking-budget math (cap + budget)', async () => {
     // Proves the bridge carries the caller's `maxTokens` through buildBaseOptions
     // into adjustMaxTokensForThinking — 1000 cap + 16384 high budget = 17384.
-    const { body } = await drive('claude-opus-4-1', { reasoning: 'high', maxTokens: 1000 } as SimpleStreamOptions)
+    const { body } = await drive('claude-haiku-4-5', { reasoning: 'high', maxTokens: 1000 } as SimpleStreamOptions)
     expect(body?.max_tokens).toBe(17384)
     expect(body?.thinking?.budget_tokens).toBe(16384)
   })

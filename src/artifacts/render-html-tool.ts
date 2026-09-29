@@ -67,6 +67,11 @@ const renderHtmlOutputSchema = z.union([
  * unverified and rendered nothing. The symptom was a card that flashed while
  * the input streamed and then vanished, on some models and not others, with
  * `{"ok":true}` sitting in the tool result the whole time.
+ *
+ * `details` is also where a **remote ACP agent**'s verdict lands: it returns a
+ * pi `AgentToolResult`, which the ACP layer forwards verbatim as `rawOutput`
+ * (`cli/src/acp/harness-to-acp.ts`). Reading only the top level left every
+ * hosted agent's artifact rendering as an ordinary tool call.
  */
 export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined => {
   const output = part.output

@@ -45,13 +45,13 @@ import {
   type ProviderStreams,
   createModels,
   createProvider,
-  envApiKeyAuth,
   hasApi,
 } from '@earendil-works/pi-ai'
 import {
   stream as openaiStream,
   streamSimple as openaiStreamSimple,
 } from '@earendil-works/pi-ai/api/openai-completions'
+import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Fetch shape used by OpenAI's client, which dispatches a serialized URL. */
 export type OpenAiCompatFetch = (input: string | URL, init?: RequestInit) => Promise<Response>
@@ -180,9 +180,8 @@ export const buildOpenAiCompatModel = (
       id: opts.providerId,
       name: opts.providerId,
       baseUrl: opts.baseURL,
-      // Advisory only: the real credential rides on the per-call options above.
-      // An empty env list makes resolution a graceful no-op in the browser.
-      auth: { apiKey: envApiKeyAuth(`${opts.providerId} API key`, []) },
+      // Resolve the application-owned key without relying on browser environment variables.
+      auth: { apiKey: boundApiKeyAuth(`${opts.providerId} API key`, opts.apiKey) },
       models: [model],
       api,
     }),

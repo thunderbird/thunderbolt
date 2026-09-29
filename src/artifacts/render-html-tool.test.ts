@@ -61,6 +61,16 @@ describe('renderHtmlOutput', () => {
     expect(renderHtmlOutput(part(wrapped))).toEqual({ ok: true })
   })
 
+  /*
+   * The same `details` position, arrived at from the other direction: a remote
+   * ACP agent returns a pi `AgentToolResult` that `cli/src/acp/harness-to-acp.ts`
+   * forwards verbatim as `rawOutput`, with nothing parseable in the text block.
+   */
+  it('unwraps the pi AgentToolResult a remote ACP agent returns', () => {
+    const wrapped = { content: [{ type: 'text', text: 'done' }], details: { ok: true } }
+    expect(renderHtmlOutput(part(wrapped))).toEqual({ ok: true })
+  })
+
   it('falls back to the serialised text block when details are absent', () => {
     const wrapped = { content: [{ type: 'text', text: '{"ok":false,"errors":["bad css"]}' }] }
     expect(renderHtmlOutput(part(wrapped))).toEqual({ ok: false, errors: ['bad css'] })
@@ -73,6 +83,12 @@ describe('renderHtmlOutput', () => {
   /** Must degrade, not throw — this runs during render. */
   it('returns undefined for a text block that is not JSON', () => {
     expect(renderHtmlOutput(part({ content: [{ type: 'text', text: 'rendered!' }] }))).toBeUndefined()
+  })
+
+  it('returns undefined when no verdict sits in either position', () => {
+    expect(renderHtmlOutput(part('done'))).toBeUndefined()
+    expect(renderHtmlOutput(part({ content: [] }))).toBeUndefined()
+    expect(renderHtmlOutput(part({ details: { note: 'no ok field' } }))).toBeUndefined()
   })
 })
 

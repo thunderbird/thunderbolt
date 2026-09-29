@@ -42,12 +42,12 @@ import {
   type ThinkingLevel,
   createModels,
   createProvider,
-  envApiKeyAuth,
   hasApi,
 } from '@earendil-works/pi-ai'
 import { stream as anthropicStream } from '@earendil-works/pi-ai/api/anthropic-messages'
 import { adjustMaxTokensForThinking, buildBaseOptions } from '@earendil-works/pi-ai/api/simple-options'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
+import { boundApiKeyAuth } from './bound-api-key-auth.ts'
 
 /** Provider id of the resolved model; matches Pi's built-in anthropic provider. */
 const provider = 'anthropic'
@@ -72,9 +72,14 @@ export type AgentFetch = (input: RequestInfo | URL, init?: RequestInit) => Promi
 export type BuildAnthropicModelOptions = {
   /** Anthropic API key (used to build the SDK client; HTTP still flows through `fetch`). */
   readonly apiKey: string
+  /** Optional Messages API base URL for a managed Anthropic proxy. */
+  readonly baseURL?: string
+  /** Optional Pi catalog id when `modelId` is a managed public alias. */
+  readonly catalogModelId?: string
+  readonly contextWindow?: number
   /** The fetch implementation every request is routed through (e.g. the app's proxy fetch). */
   readonly fetch: AgentFetch
-  /** Anthropic model id to resolve, e.g. `claude-opus-4-8`. */
+  /** Anthropic model id sent on the wire, e.g. `claude-opus-4-8` or `opus-5`. */
   readonly modelId: string
 }
 
@@ -181,11 +186,21 @@ const createAnthropicClient = (model: Model<typeof apiId>, opts: BuildAnthropicM
  * @returns the wired provider collection and the resolved model
  * @throws if `opts.modelId` is not in Pi's built-in Anthropic catalog
  */
-export const buildAnthropicModel = (opts: BuildAnthropicModelOptions): { models: Models; model: Model<Api> } => {
+export const buildAnthropicModel = (
+  opts: BuildAnthropicModelOptions,
+): { models: Models; model: Model<typeof apiId> } => {
   const catalog = builtinModels()
-  const resolved = catalog.getModel(provider, opts.modelId)
-  if (!resolved || !hasApi(resolved, apiId)) {
-    throw new Error(`Unknown Anthropic model "${opts.modelId}".`)
+  const catalogModelId = opts.catalogModelId ?? opts.modelId
+  const catalogModel = catalog.getModel(provider, catalogModelId)
+  if (!catalogModel || !hasApi(catalogModel, apiId)) {
+    throw new Error(`Unknown Anthropic model "${catalogModelId}".`)
+  }
+  const resolved: Model<typeof apiId> = {
+    ...catalogModel,
+    id: opts.modelId,
+    baseUrl: opts.baseURL ?? catalogModel.baseUrl,
+    contextWindow: opts.contextWindow ?? catalogModel.contextWindow,
+    compat: opts.catalogModelId ? { ...catalogModel.compat, supportsToolReferences: true } : catalogModel.compat,
   }
 
   const client = createAnthropicClient(resolved, opts)
@@ -207,7 +222,7 @@ export const buildAnthropicModel = (opts: BuildAnthropicModelOptions): { models:
       // (`opts.apiKey`, bound for the session). This descriptor lets Pi's
       // status/credential-store reporting recognize the provider; the resolved
       // key never reaches the wire because the injected client is used as-is.
-      auth: { apiKey: envApiKeyAuth('Anthropic API key', ['ANTHROPIC_API_KEY']) },
+      auth: { apiKey: boundApiKeyAuth('Anthropic API key', opts.apiKey) },
       models: [resolved],
       api,
     }),

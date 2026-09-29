@@ -148,15 +148,14 @@ afterEach(async () => {
 })
 
 describe('CLI provider dependency alignment', () => {
-  test('pins every Pi package to 0.80.7', () => {
+  test('pins every Pi package to 0.82.1', () => {
     expect(packageManifest.dependencies).toMatchObject({
-      '@earendil-works/pi-agent-core': '0.80.7',
-      '@earendil-works/pi-ai': '0.80.7',
-      '@earendil-works/pi-coding-agent': '0.80.7',
-      '@earendil-works/pi-tui': '0.80.7',
+      '@earendil-works/pi-agent-core': '0.82.1',
+      '@earendil-works/pi-ai': '0.82.1',
+      '@earendil-works/pi-coding-agent': '0.82.1',
+      '@earendil-works/pi-tui': '0.82.1',
     })
   })
-
 })
 
 describe('HarnessRuntime', () => {

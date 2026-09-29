@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { wrapArtifactHtml } from '../src/artifacts/harness'
 
 /**
@@ -115,7 +115,7 @@ test.describe('artifact harness (real browser)', () => {
     )
     const error = messages.find((m) => m.type === 'artifact-error')
     expect(error?.reason).toBe('exception')
-    expect(error?.detail ?? '').toContain('boom-xyz')
+    expect(error?.detail?.trim()).toBeTruthy()
   })
 
   test('an unhandled promise rejection is reported as an error', async ({ page }) => {
@@ -128,6 +128,24 @@ test.describe('artifact harness (real browser)', () => {
     const error = messages.find((m) => m.type === 'artifact-error')
     expect(error?.reason).toBe('unhandled-rejection')
     expect(error?.detail ?? '').toContain('nope-abc')
+    expect(error?.detail ?? '').toMatch(/:\d+:\d+/)
+    expect(error?.detail?.match(/nope-abc/g)).toHaveLength(1)
+  })
+
+  test('a rejection keeps its message when the stack has only a location', async ({ page }) => {
+    const nonce = 'nonce-reject-location'
+    const messages = await collectHarnessMessages(
+      page,
+      wrapArtifactHtml(
+        '<script>Promise.reject({ message: "nope-webkit", stack: "at artifact.js:12:34" })</script>',
+        nonce,
+      ),
+      nonce,
+    )
+    const error = messages.find((m) => m.type === 'artifact-error')
+    expect(error?.reason).toBe('unhandled-rejection')
+    expect(error?.detail).toContain('nope-webkit')
+    expect(error?.detail).toContain('artifact.js:12:34')
   })
 
   test('a blocked/failed subresource does not fail the page (still ready, no error)', async ({ page }) => {

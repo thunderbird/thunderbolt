@@ -17,6 +17,7 @@ import { createProjectSearchTool } from '@/projects/project-search-tool'
 import { createTurnBudget, createTurnBudgetExhaustedError, type TurnBudgetConsumer } from '@/ai/retry-budget'
 import type { TurnTelemetry } from '@/ai/turn-telemetry'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
+import { resolveSkillWebToolIntent } from '@/ai/turn-web-budget'
 import {
   buildStepOverrides,
   extractTextFromMessages,
@@ -265,11 +266,13 @@ export type OpenAiCompatConnection = {
  *
  * @param modelConfig - the model whose connection to resolve
  * @param getProxyFetch - lazily resolved universal proxy fetch
+ * @param backendFetch - transport for authenticated backend requests
  * @returns the connection, or `null` when unsupported/unconfigured
  */
 export const resolveOpenAiCompatConnection = (
   modelConfig: Model,
   getProxyFetch: () => FetchFn,
+  backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection | null => {
   switch (modelConfig.provider) {
     case 'thunderbolt': {
@@ -283,12 +286,14 @@ export const resolveOpenAiCompatConnection = (
       const ssoFetch: typeof fetch = Object.assign(
         (input: RequestInfo | URL, init?: RequestInit) => {
           const headers = new Headers(init?.headers)
-          headers.delete('authorization')
-          return fetch(input, { ...init, headers, credentials: 'include' })
+          if (!hasRealToken) {
+            headers.delete('authorization')
+          }
+          return backendFetch(input, { ...init, headers, credentials: 'include' })
         },
-        { preconnect: fetch.preconnect },
+        { preconnect: backendFetch.preconnect },
       )
-      const providerFetch: FetchFn = withAppVersionHeader(sso && !hasRealToken ? ssoFetch : fetch)
+      const providerFetch: FetchFn = withAppVersionHeader(sso ? ssoFetch : backendFetch)
       return { baseURL: cloudUrl, apiKey: token, fetch: providerFetch }
     }
     case 'openai':
@@ -308,7 +313,7 @@ export const resolveOpenAiCompatConnection = (
       // container sees. Everything else — RFC1918 LAN IPs, `host.docker.internal`,
       // mDNS `.local`, public endpoints — stays on the proxy path (browser
       // blocks non-loopback http from https origins as mixed content, and
-      // public Custom endpoints rely on the proxy for CORS bypass; THU-424).
+      // public Custom endpoints rely on the proxy for CORS bypass).
       const baseURL = normalizeOpenAiBaseUrl(modelConfig.url)
       const hostname = URL.canParse(baseURL) ? new URL(baseURL).hostname : ''
       const providerFetch: FetchFn = isLoopbackHost(hostname) ? baseFetch : getProxyFetch()
@@ -323,6 +328,43 @@ export const resolveOpenAiCompatConnection = (
   }
 }
 
+/**
+ * Derive a native Messages connection from Thunderbolt's shared auth policy.
+ * Anthropic SDKs send `x-api-key`; the backend instead expects the same
+ * bearer/cookie credential used by the OpenAI-compatible managed route.
+ */
+export const resolveManagedAnthropicConnection = (
+  modelConfig: Model,
+  getProxyFetch: () => FetchFn,
+  client: 'anthropic-sdk' | 'ai-sdk' = 'anthropic-sdk',
+  backendFetch: FetchFn = fetch,
+): OpenAiCompatConnection => {
+  const connection = resolveOpenAiCompatConnection(modelConfig, getProxyFetch, backendFetch)
+  if (!connection) {
+    throw new Error('No connection resolved for managed Anthropic model')
+  }
+  const managedFetch: FetchFn = Object.assign(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers)
+      const apiKey = headers.get('x-api-key')
+      headers.delete('x-api-key')
+      if (apiKey && apiKey !== 'thunderbolt') {
+        headers.set('Authorization', `Bearer ${apiKey}`)
+      } else {
+        headers.delete('Authorization')
+      }
+      return connection.fetch(input, { ...init, headers })
+    },
+    { preconnect: connection.fetch.preconnect },
+  )
+  const sdkPath = client === 'ai-sdk' ? '/v1' : ''
+  return {
+    baseURL: `${connection.baseURL.replace(/\/$/, '')}/chat${sdkPath}`,
+    apiKey: connection.apiKey,
+    fetch: managedFetch,
+  }
+}
+
 export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
@@ -330,6 +372,11 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   // (e.g. cloudUrl, proxy_enabled toggle) is picked up.
   switch (modelConfig.provider) {
     case 'thunderbolt': {
+      if (modelConfig.vendor === 'anthropic') {
+        const connection = resolveManagedAnthropicConnection(modelConfig, getProxyFetch, 'ai-sdk')
+        const provider = createAnthropic(connection)
+        return provider(modelConfig.model)
+      }
       // SSO web flow authenticates via session cookies — the SSO callback is a
       // browser redirect, not an XHR, so `set-auth-token` never reaches the
       // client and getAuthToken() returns null.  The AI SDKs require an apiKey
@@ -452,9 +499,12 @@ export const addSkillTool = (
   toolset: Record<string, Tool>,
   skills: readonly SkillDefinition[],
   supportsTools: boolean,
+  webToolBudget?: WebToolBudget,
 ): Record<string, Tool> => {
   if (supportsTools) {
-    toolset.skill = createSkillTool(skills)
+    toolset.skill = createSkillTool(skills, (name) => {
+      webToolBudget?.promote(resolveSkillWebToolIntent(name))
+    })
   }
   return toolset
 }
@@ -511,7 +561,12 @@ export const prepareAiRequestConfig = async ({
   const availableTools = supportsTools
     ? await getAvailableTools(httpClient, sourceCollector, { settings, integrationStatus })
     : []
-  const appToolset = addSkillTool(createToolset(availableTools, toolCallCache, webToolBudget), skills, supportsTools)
+  const appToolset = addSkillTool(
+    createToolset(availableTools, toolCallCache, webToolBudget),
+    skills,
+    supportsTools,
+    webToolBudget,
+  )
   // Cross-chat recall is a tool, not an injection: it costs nothing when unused
   // and leaves the cacheable stable prompt untouched. Only registered when there
   // is actually something to search.

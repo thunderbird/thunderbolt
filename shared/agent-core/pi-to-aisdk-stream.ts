@@ -19,6 +19,7 @@
  *   message_end                         → close any open text/reasoning part
  *   tool_execution_start                → tool-input-start + tool-input-available
  *   tool_execution_end                  → tool-output-available | tool-output-error
+ *   turn_end                            → message-metadata (usage)
  *   turn_end (stopReason === 'error')   → error (carrying message.errorMessage)
  *   turn_end                            → finish-step
  *   agent_end                           → finish
@@ -37,6 +38,7 @@
  */
 
 import type { AgentEvent, AgentHarness, AgentHarnessEvent } from '@earendil-works/pi-agent-core'
+import type { AssistantMessage, Usage } from '@earendil-works/pi-ai'
 
 const encoder = new TextEncoder()
 
@@ -101,6 +103,24 @@ const toolErrorText = (result: unknown): string => {
   }
   return JSON.stringify(result ?? {})
 }
+
+/**
+ * Maps Pi usage to the AI SDK `LanguageModelV2Usage` shape the app persists.
+ * `inputTokens` is the full prompt (uncached + cache write + cache read), so
+ * `totalTokens` matches what the context-usage indicator reads as the thread's
+ * consumed context; `cachedInputTokens` carries the cache-read subset.
+ */
+const toAiSdkUsage = (usage: Usage): Record<string, number> => ({
+  inputTokens: usage.input + usage.cacheRead + usage.cacheWrite,
+  outputTokens: usage.output,
+  totalTokens: usage.totalTokens,
+  cachedInputTokens: usage.cacheRead,
+  ...(usage.reasoning !== undefined && { reasoningTokens: usage.reasoning }),
+})
+
+/** Narrows a turn's terminal message to an assistant message carrying usage. */
+const hasUsage = (message: unknown): message is AssistantMessage =>
+  typeof message === 'object' && message !== null && 'usage' in message
 
 /** Stateful per-run translator. `handle` ingests harness events; `finish`
  *  guarantees a well-formed terminal sequence even when the run never reaches
@@ -322,8 +342,11 @@ const createPiTranslator = (
       }
       case 'turn_end': {
         closeOpenParts()
-        emitMetadata(metadata.settled?.())
         const { message } = event
+        if (hasUsage(message)) {
+          emitMetadata({ usage: toAiSdkUsage(message.usage) })
+        }
+        emitMetadata(metadata.settled?.())
         if ('stopReason' in message && message.stopReason === 'error') {
           emit({ type: 'error', errorText: message.errorMessage ?? 'the request failed' })
         }

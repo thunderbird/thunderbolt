@@ -2,38 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { mock } from 'bun:test'
-import * as authUtils from '@/auth/utils'
-import * as waitlistUtils from '@/waitlist/utils'
 import { clearSettingsCache } from '@/config/settings'
-
-// Mock only the email-sending functions, preserve all other exports
-const mockSendSignInEmail = mock(() => Promise.resolve())
-const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
-const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
-
-mock.module('@/auth/utils', () => ({
-  ...authUtils,
-  sendSignInEmail: mockSendSignInEmail,
-}))
-
-mock.module('@/waitlist/utils', () => ({
-  ...waitlistUtils,
-  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
-  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
-  sendWaitlistReminderEmail: mock(() => Promise.resolve()),
-}))
-
-// Now import the rest
 import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth } from '@/auth/auth'
 import { normalizeEmail } from '@/lib/email'
 import { createTestDb } from '@/test-utils/db'
+import { createOtpGenerator } from '@/test-utils/otp-generator'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+
+const mockSendSignInEmail = mock(() => Promise.resolve())
+const mockSendWaitlistNotReadyEmail = mock(() => Promise.resolve())
+const mockSendWaitlistJoinedEmail = mock(() => Promise.resolve())
+const emailDeps = {
+  sendSignInEmail: mockSendSignInEmail,
+  sendWaitlistNotReadyEmail: mockSendWaitlistNotReadyEmail,
+  sendWaitlistJoinedEmail: mockSendWaitlistJoinedEmail,
+}
 
 describe('Auth Waitlist Integration', () => {
   let auth: ReturnType<typeof createAuth>
@@ -48,7 +36,7 @@ describe('Auth Waitlist Integration', () => {
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
-    auth = createAuth(db)
+    auth = createAuth(db, emailDeps)
   })
 
   afterEach(async () => {
@@ -262,6 +250,8 @@ describe('Auth Waitlist Integration', () => {
 
   describe('OTP resend strategy (reuse)', () => {
     it('should reuse the same OTP on repeated sends instead of generating a new one', async () => {
+      const generateSignInOtp = mock(createOtpGenerator())
+      auth = createAuth(db, { ...emailDeps, generateSignInOtp })
       const email = 'reuse-test@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -288,6 +278,7 @@ describe('Auth Waitlist Integration', () => {
       const secondOtp = secondCall[0].otp
 
       expect(secondOtp).toBe(firstOtp)
+      expect(generateSignInOtp).toHaveBeenCalledTimes(1)
     })
 
     it('should not reset attempt counter when OTP is resent', async () => {
@@ -404,6 +395,7 @@ describe('Auth Waitlist Integration', () => {
       // Better Auth falls through to generate a fresh OTP with counter=0.
       // This is mitigated by the 15s cooldown on /waitlist/join and will be
       // further addressed by proof-of-work (THU-113).
+      auth = createAuth(db, { ...emailDeps, generateSignInOtp: createOtpGenerator() })
       const email = 'exhausted-resend@example.com'
       await db.insert(user).values({
         id: crypto.randomUUID(),
@@ -435,6 +427,20 @@ describe('Auth Waitlist Integration', () => {
         }
       }
 
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        }),
+      ).rejects.toMatchObject({ body: { code: 'TOO_MANY_ATTEMPTS' } })
+
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
+          headers: new Headers({ [challengeTokenHeader]: challengeToken }),
+        }),
+      ).rejects.toMatchObject({ body: { code: 'INVALID_OTP' } })
+
       // Resend after exhaustion — generates a fresh OTP with counter=0
       mockSendSignInEmail.mockClear()
       await auth.api.sendVerificationOTP({
@@ -442,23 +448,21 @@ describe('Auth Waitlist Integration', () => {
       })
       const secondCall = mockSendSignInEmail.mock.calls[0] as unknown as [{ otp: string }]
       const freshOtp = secondCall[0].otp
-
-      // Fresh OTP is different (counter was exhausted, so "reuse" fell through)
       expect(freshOtp).not.toBe(firstOtp)
 
-      // The fresh OTP works — counter was reset to 0.
+      // The fresh OTP works after rejecting the old code.
       const freshChallengeToken = await createTestChallenge(db, email)
-      let signInSucceeded = false
-      try {
-        await auth.api.signInEmailOTP({
-          body: { email, otp: freshOtp },
+      await expect(
+        auth.api.signInEmailOTP({
+          body: { email, otp: firstOtp },
           headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
-        })
-        signInSucceeded = true
-      } catch {
-        // Unexpected failure
-      }
-      expect(signInSucceeded).toBe(true)
+        }),
+      ).rejects.toMatchObject({ body: { code: 'INVALID_OTP' } })
+      const result = await auth.api.signInEmailOTP({
+        body: { email, otp: freshOtp },
+        headers: new Headers({ [challengeTokenHeader]: freshChallengeToken }),
+      })
+      expect(result.user.email).toBe(email)
     })
   })
 })

@@ -1,6 +1,6 @@
 # Configuration
 
-Thunderbolt's backend is configured through environment variables. The schema lives at [backend/src/config/settings.ts](../backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
+Thunderbolt's backend is configured through environment variables. The schema lives at [backend/src/config/settings.ts](../../backend/src/config/settings.ts) and is validated with Zod on startup — misconfiguration fails loud, not silent.
 
 Copy the example to a `.env` file and customize:
 
@@ -38,13 +38,14 @@ Consumer mode uses [Better Auth](https://better-auth.com)'s magic-link flow by d
 
 Set any subset; the app exposes each provider whose key is present.
 
-| Variable                        | Description                                 |
-| ------------------------------- | ------------------------------------------- |
-| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                          |
-| `FIREWORKS_API_KEY`             | Fireworks                                   |
-| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)     |
-| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint |
-| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint       |
+| Variable                        | Description                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`             | Anthropic (Claude)                                                                                                                       |
+| `ANTHROPIC_BASE_URL`            | Optional API root (no `/v1`); leave unset in production (default: `https://api.anthropic.com`). Tests point it at a local fake provider. |
+| `FIREWORKS_API_KEY`             | Fireworks                                                                                                                                |
+| `EXA_API_KEY`                   | Exa search (for web-grounded retrieval)                                                                                                  |
+| `THUNDERBOLT_INFERENCE_URL`     | Custom OpenAI-compatible inference endpoint                                                                                              |
+| `THUNDERBOLT_INFERENCE_API_KEY` | Key for the custom inference endpoint                                                                                                    |
 
 User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not as backend env vars. For local inference, point `THUNDERBOLT_INFERENCE_URL` at an Ollama or llama.cpp server.
 
@@ -52,7 +53,8 @@ User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not 
 
 | Variable                         | Default | Required         | Description                                                               |
 | -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service (e.g. `http://localhost:8080` for local dev) |
+| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service **as the browser reaches it**. It is handed to every client, so an address that only resolves inside your network leaves sync offline |
+| `POWERSYNC_INTERNAL_URL`         | —       | no               | Address the server itself uses to probe PowerSync for `/v1/health/powersync`. Defaults to `POWERSYNC_URL`; set it when the public URL is not reachable from inside the cluster |
 | `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
 | `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
 | `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                    |
@@ -61,15 +63,15 @@ The JWT secret must match the `k` value the PowerSync service loads at runtime. 
 
 ## CORS
 
-| Variable                 | Default                                                          | Description                                                                        |
-| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                                      |
-| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                                                  |
-| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                                               |
-| `CORS_ALLOW_HEADERS`     | _(see [settings.ts](../backend/src/config/settings.ts))_         | Allowed request headers. **Add any new `X-*` header you introduce in the client.** |
-| `CORS_EXPOSE_HEADERS`    | _(see `settings.ts`)_                                            | Response headers exposed to the client                                             |
+| Variable                 | Default                                                          | Description                                                   |
+| ------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------- |
+| `CORS_ORIGINS`           | `http://localhost:1420,tauri://localhost,http://tauri.localhost` | Exact-match allowed origins (comma-separated)                 |
+| `CORS_ALLOW_CREDENTIALS` | `true`                                                           | Whether browsers may send cookies                             |
+| `CORS_ALLOW_METHODS`     | `GET,POST,PUT,DELETE,PATCH,OPTIONS`                              | Allowed HTTP methods                                          |
+| `CORS_ALLOW_HEADERS`     | `""`                                                             | Retained for compatibility; production CORS mounts ignore it. |
+| `CORS_EXPOSE_HEADERS`    | _(see [settings.ts](../../backend/src/config/settings.ts))_      | Response headers readable by cross-origin browser code        |
 
-When you add a new custom header to a client request (e.g. `X-Device-ID`), you **must** add it to `CORS_ALLOW_HEADERS` — otherwise browser preflight fails and the request never reaches your handler.
+Production CORS mounts use `allowedHeaders: true` to echo `Access-Control-Request-Headers`, so new client request headers need no allowlist change. Add response headers to `CORS_EXPOSE_HEADERS` when cross-origin browser code needs to read them.
 
 ## Analytics
 
@@ -78,7 +80,7 @@ When you add a new custom header to a client request (e.g. `X-Device-ID`), you *
 | `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                    |
 | `POSTHOG_API_KEY` | —                          | Leave unset to disable server-side analytics |
 
-See [TELEMETRY.md](../TELEMETRY.md) in the repo for the full list of events the client emits.
+See [TELEMETRY.md](../../TELEMETRY.md) in the repo for the full list of events the client emits.
 
 ## Debug Transcripts
 
@@ -156,13 +158,33 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 
 ## General
 
-| Variable           | Default                 | Description                                                           |
-| ------------------ | ----------------------- | --------------------------------------------------------------------- |
-| `PORT`             | `8000`                  | HTTP port the backend listens on                                      |
-| `APP_URL`          | `http://localhost:1420` | Public URL where the frontend is served                               |
-| `LOG_LEVEL`        | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                               |
-| `SWAGGER_ENABLED`  | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production) |
-| `MONITORING_TOKEN` | —                       | Shared secret for authenticated `/health` checks                      |
+| Variable                    | Default                 | Description                                                                                                    |
+| --------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `8000`                  | HTTP port the backend listens on                                                                               |
+| `APP_URL`                   | `http://localhost:1420` | Public URL where the frontend is served                                                                        |
+| `LOG_LEVEL`                 | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                                                                        |
+| `SWAGGER_ENABLED`           | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production)                                          |
+| `MONITORING_TOKEN`          | —                       | Bearer token for deep health routes under `/v1/health/`                                                        |
+| `RESEND_MONITORING_API_KEY` | —                       | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
+
+### Deep health
+
+Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
+
+| Route                  | Dependency exercised                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `/v1/health/database`  | A trivial database query (5-second deadline)                                                                 |
+| `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds)                                                          |
+| `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
+| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (30 seconds per model, concurrency 3) |
+
+Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
+
+An unset token returns `403 {"error":"Monitoring token not configured"}`; a missing or incorrect bearer returns `401 {"error":"Unauthorized"}`. Rejected calls run no probes. The unconditional, unauthenticated `/v1/health` remains available for load balancers and liveness probes.
+
+The email probe uses a separate Resend Full access key in `RESEND_MONITORING_API_KEY` to read the domain list and requires the sending domain from `emailFrom` to be verified. The sending key `RESEND_API_KEY` may stay sending-only. A missing monitoring key returns `503` with reason `not-configured`; an invalid, sending-only, or forbidden monitoring key returns `rejected` (upstream HTTP 400/401/403); a missing or unverified sending domain, including a malformed response, returns `domain-unverified`. Missing PowerSync configuration also returns `503` with reason `not-configured`.
+
+Each models call costs one tiny completion per catalog model with a price row, without retries. BetterStack polls this route every 15 minutes in production.
 
 ## Frontend Build Args
 

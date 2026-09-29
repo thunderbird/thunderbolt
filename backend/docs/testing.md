@@ -4,12 +4,12 @@ This guide explains how to write unit/integration tests for the backend using `b
 
 ## Overview
 
-We use an integration testing pattern where each test runs against a PGlite in-memory database instance. We rely on **Dependency Injection** to pass the test database instance to the application, avoiding the need for module mocking.
+Tests that use the database run against PGlite (in-memory PostgreSQL). We rely on **Dependency Injection** to pass the test database instance to the application, avoiding the need for module mocking. Pure unit tests do not need a database transaction.
 
 For performance and isolation:
 - We reuse a single PGlite instance across all tests (keeps WASM loaded)
 - We run migrations once during test preload (before any tests run)
-- Each test runs inside a transaction that gets rolled back in `afterEach`
+- Tests using `createTestDb()` run inside a transaction that gets rolled back in `afterEach`
 - Global `fetch` is mocked to prevent accidental network calls
 
 **Performance:** All tests are fast (~10-30ms) because PGlite initialization happens during the preload phase, completely outside of test execution.
@@ -94,7 +94,7 @@ describe('My API', () => {
 })
 ```
 
-**Important:** Always call `cleanup()` in `afterEach` to rollback the transaction and maintain test isolation.
+**Important:** If a test calls `createTestDb()`, call `cleanup()` in `afterEach` to roll back its transaction. Pure unit tests should not call `createTestDb()` just to open a transaction.
 
 ## Mocking External Services
 

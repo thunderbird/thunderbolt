@@ -279,6 +279,9 @@ jobs:
       - name: Check native service cleanup
         run: bash e2e/native-smoke/services.test.sh
 
+      - name: Check resource collector
+        run: python3 e2e/native-smoke/resources.test.py
+
       - name: Boot iPhone simulator
         run: |
           simulator_udid=$(xcrun simctl list -j devices available | bun -e '
@@ -306,15 +309,29 @@ jobs:
         run: |
           ./e2e/native-smoke/services.sh > "$RUNNER_TEMP/native-services.log" 2>&1 &
           services_pid=$!
-          trap 'kill "$services_pid" 2>/dev/null || true' EXIT
+          source e2e/native-smoke/resources.sh || echo '::warning::Resource collector startup failed'
+          trap 'status=$?; resource_stop "$status" || true; kill "$services_pid" 2>/dev/null || true; exit "$status"' EXIT
+          resource_marker build_start
           if ! bun tauri ios build --target aarch64-sim --debug --ci --no-sign \
             --config src-tauri/tauri.dev.conf.json > "$RUNNER_TEMP/native-ios-build.log" 2>&1; then
             tail -100 "$RUNNER_TEMP/native-ios-build.log"
             exit 1
           fi
+          resource_marker install_start
           xcrun simctl install "$IOS_SIMULATOR_UDID" 'src-tauri/gen/apple/build/arm64-sim/Thunderbolt Dev.app'
           echo 'attempted=true' >> "$GITHUB_OUTPUT"
+          resource_marker smoke_start
           ./e2e/native-smoke/ios.sh
+          resource_marker smoke_end
+
+      - name: Upload native iOS resources
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-ios-resources
+          path: ${{ runner.temp }}/native-ios-resources/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload native iOS video
         if: always()

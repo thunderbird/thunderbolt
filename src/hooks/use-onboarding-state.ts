@@ -11,10 +11,12 @@ import { useEffect, useReducer } from 'react'
 import { useIntegrationStatus } from './use-integration-status'
 import { useSettings } from './use-settings'
 
-type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6
+type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-/** Total wizard steps; the last one is the celebration, which ends the wizard. */
-export const onboardingStepCount = 6
+/** Total wizard steps; the last one is the celebration, which ends the wizard.
+ *  Step 6 is the passkey step (THU-790), appended before the celebration so the
+ *  earlier steps keep their numbers. */
+export const onboardingStepCount = 7
 
 type OnboardingState = {
   currentStep: OnboardingStep

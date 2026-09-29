@@ -29,7 +29,7 @@ resource_stop() {
 }
 
 mkdir -p "$resource_dir" || return 1
-python3 "$(dirname "${BASH_SOURCE[0]}")/resources.py" "$resource_dir" "$$" \
+bun "$(dirname "${BASH_SOURCE[0]}")/resources.ts" "$resource_dir" "$$" \
   > "$resource_dir/collector.log" 2>&1 &
 resource_pid=$!
 trap 'exit 143' TERM

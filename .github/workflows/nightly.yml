@@ -280,7 +280,7 @@ jobs:
         run: bash e2e/native-smoke/services.test.sh
 
       - name: Check resource collector
-        run: python3 e2e/native-smoke/resources.test.py
+        run: bun test --cwd=e2e/native-smoke resources.test.ts --timeout 5000
 
       - name: Boot iPhone simulator
         run: |

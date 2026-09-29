@@ -95,6 +95,7 @@ const routeChunkLoaders = {
   preferences: () => import('@/settings/preferences'),
   models: () => import('@/settings/models'),
   devices: () => import('@/settings/devices'),
+  passkeys: () => import('@/settings/passkeys'),
   connections: () => import('@/settings/connections'),
   skills: () => import('@/settings/skills'),
   agents: () => import('@/routes/settings/agents'),
@@ -109,6 +110,7 @@ const Settings = lazy(routeChunkLoaders.settings)
 const PreferencesSettingsPage = lazy(routeChunkLoaders.preferences)
 const ModelsPage = lazy(routeChunkLoaders.models)
 const DevicesSettingsPage = lazy(routeChunkLoaders.devices)
+const PasskeysSettingsPage = lazy(routeChunkLoaders.passkeys)
 const ConnectionsPage = lazy(routeChunkLoaders.connections)
 const SkillsPage = lazy(routeChunkLoaders.skills)
 const AgentsSettingsPage = lazy(routeChunkLoaders.agents)
@@ -270,6 +272,7 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="models" element={<ModelsPage />} />
               {experimentalFeatureVoice.value && <Route path="voice" element={<VoiceSettingsPage />} />}
               <Route path="devices" element={<DevicesSettingsPage />} />
+              <Route path="passkeys" element={<PasskeysSettingsPage />} />
               <Route path="connections" element={<ConnectionsPage />} />
               {/* Legacy routes — MCP servers and integrations merged into Connections. */}
               <Route path="mcp-servers" element={<Navigate to="/settings/connections" replace />} />

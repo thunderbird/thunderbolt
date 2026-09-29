@@ -16,6 +16,7 @@ describe('navigationCommands', () => {
       '/settings/voice',
       '/settings/preferences',
       '/settings/devices',
+      '/settings/passkeys',
       '/tasks',
       '/settings/dev-settings',
       '/message-simulator',
@@ -28,6 +29,7 @@ describe('navigationCommands', () => {
     expect(gateFor('/tasks')).toBe('tasks')
     expect(gateFor('/settings/dev-settings')).toBe('dev')
     expect(gateFor('/message-simulator')).toBe('dev')
+    expect(gateFor('/settings/passkeys')).toBe('passkey')
     expect(gateFor('/settings/agents')).toBeUndefined()
     expect(gateFor('/settings/preferences')).toBeUndefined()
   })

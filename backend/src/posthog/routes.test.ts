@@ -68,4 +68,21 @@ describe('PostHog Proxy Routes', () => {
     expect(response.headers.get('content-disposition')).toBe('attachment')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
   })
+
+  it('adds the project key as a bearer token only on the OTLP traces path', async () => {
+    const forwardedAuthorization = async (path: string) => {
+      mockFetch.mockClear()
+      await app.handle(
+        new Request(`http://localhost/posthog/${path}`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer client' },
+        }),
+      )
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+      return new Headers(init.headers).get('authorization')
+    }
+
+    expect(await forwardedAuthorization('i/v0/ai/otel')).toBe('Bearer test-key')
+    expect(await forwardedAuthorization('batch')).toBeNull()
+  })
 })

@@ -62,7 +62,7 @@ afterAll(async () => {
   await teardownTestDatabase()
   // bun's mock.module is process-global; clear the client so later test
   // files don't inherit our stubbed posthog.
-  resetPosthogClient()
+  await resetPosthogClient()
 })
 
 describe('analytics sanitizeUrl', () => {
@@ -106,8 +106,8 @@ describe('analytics sanitizeUrl', () => {
 })
 
 describe('analytics before_send sanitization', () => {
-  beforeEach(() => {
-    resetPosthogClient()
+  beforeEach(async () => {
+    await resetPosthogClient()
     mockPosthogInit.mockReset()
     mockCaptureException.mockReset()
   })
@@ -199,8 +199,8 @@ describe('analytics before_send sanitization', () => {
 })
 
 describe('trackError test cases', () => {
-  beforeEach(() => {
-    resetPosthogClient()
+  beforeEach(async () => {
+    await resetPosthogClient()
     mockCaptureException.mockReset()
     mockPosthogInit.mockReset()
   })

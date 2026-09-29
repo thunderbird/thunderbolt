@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { describe, expect, it } from 'bun:test'
 import { createTurnTelemetry } from './turn-telemetry'
 
@@ -117,5 +119,68 @@ describe('createTurnTelemetry', () => {
       provider: 'anthropic',
     })
     expect(telemetry.buildPayload('success')).not.toHaveProperty('error_class')
+  })
+})
+
+describe('turn spans', () => {
+  const setUp = () => {
+    const exporter = new InMemorySpanExporter()
+    const tracer = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }).getTracer('test')
+    return { exporter, telemetry: createTurnTelemetry({ now: () => 0, generateId: () => 'unused', tracer }) }
+  }
+
+  it('reports the invoke_agent span trace id as trace_id and exposes its traceparent', () => {
+    const { exporter, telemetry } = setUp()
+
+    const payload = telemetry.buildPayload('success')
+    telemetry.endSpan('success')
+
+    const [span] = exporter.getFinishedSpans()
+    const { traceId, spanId } = span.spanContext()
+    expect(payload.trace_id).toBe(traceId)
+    expect(telemetry.traceparent).toBe(`00-${traceId}-${spanId}-01`)
+  })
+
+  it('ends a failed turn span with the error class and ERROR status', () => {
+    const { exporter, telemetry } = setUp()
+
+    telemetry.setDimensions({ engine: 'pi', modelId: 'm1', modelName: 'claude-opus-5', provider: 'thunderbolt' })
+    telemetry.recordError('rate_limit')
+    telemetry.endSpan('error')
+
+    const [span] = exporter.getFinishedSpans()
+    expect(span.name).toBe('invoke_agent thunderbolt')
+    expect(span.kind).toBe(SpanKind.INTERNAL)
+    expect(span.status.code).toBe(SpanStatusCode.ERROR)
+    expect(span.attributes).toEqual({
+      'gen_ai.operation.name': 'invoke_agent',
+      'gen_ai.agent.name': 'thunderbolt',
+      'gen_ai.request.model': 'claude-opus-5',
+      'gen_ai.provider.name': 'thunderbolt',
+      'thunderbolt.engine': 'pi',
+      'thunderbolt.outcome': 'error',
+      'error.type': 'rate_limit',
+    })
+  })
+
+  it('clamps a tool span that would start before its turn span to the turn start', () => {
+    const exporter = new InMemorySpanExporter()
+    const tracer = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }).getTracer('test')
+    const time = { current: 1_000 }
+    const telemetry = createTurnTelemetry({ now: () => time.current, tracer })
+
+    time.current = 1_005
+    telemetry.recordTool('search', 50)
+
+    const [toolSpan] = exporter.getFinishedSpans()
+    const [seconds, nanoseconds] = toolSpan.duration
+    expect(seconds * 1_000 + nanoseconds / 1e6).toBeCloseTo(5, 3)
+  })
+
+  it('keeps the generated trace id and sends no traceparent without a tracer provider', () => {
+    const telemetry = createTurnTelemetry({ generateId: () => 'trace-1' })
+
+    expect(telemetry.traceId).toBe('trace-1')
+    expect(telemetry.traceparent).toBeUndefined()
   })
 })

@@ -49,6 +49,25 @@ describe('createProxyFetch — Hosted mode', () => {
     expect(calls[0].headers.get('x-proxy-passthrough-mcp-session-id')).toBe('sess-1')
   })
 
+  it('never promotes trace context headers to the external upstream', async () => {
+    const calls: Headers[] = []
+    const fakeFetch = (async (input: RequestInfo | URL) => {
+      calls.push(new Headers((input as Request).headers))
+      return new Response('ok')
+    }) as typeof fetch
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'http://localhost:8000/v1',
+      fetchImpl: fakeFetch,
+      isStandalone: () => false,
+    })
+
+    await proxyFetch('https://api.openai.com/v1/chat/completions', {
+      headers: { traceparent: '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01', tracestate: 'a=b' },
+    })
+
+    expect([...calls[0].keys()].filter((key) => key.includes('trace'))).toEqual([])
+  })
+
   it('unwraps X-Proxy-Passthrough-* response headers into normal-looking headers', async () => {
     const fakeFetch = (async () =>
       new Response('ok', {

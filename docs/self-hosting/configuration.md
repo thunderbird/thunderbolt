@@ -82,6 +82,8 @@ Production CORS mounts use `allowedHeaders: true` to echo `Access-Control-Reques
 
 Setting `POSTHOG_API_KEY` also turns on OpenTelemetry tracing for managed LLM calls. The backend exports one span per call to `${POSTHOG_HOST}/i/v0/ai/otel`, where PostHog shows it as an LLM generation. Only allowlisted metadata is sent, never prompts or responses. Changes need a backend restart.
 
+The same key also lets the app send its own turn and tool spans. They go through the backend's `/v1/posthog` proxy, which adds the key as the bearer token for PostHog's OTLP endpoint. No new variable is needed.
+
 See [TELEMETRY.md](../../TELEMETRY.md) in the repo for the full list of events the client emits and the span attributes the backend sends.
 
 ## Debug Transcripts

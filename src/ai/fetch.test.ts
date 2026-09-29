@@ -45,6 +45,7 @@ import {
   sanitizeToolPrefix,
   selectPromptSkillDefinitions,
   withAppVersionHeader,
+  withTraceparent,
 } from './fetch'
 
 /** Capturing fetch (same shape as `stubProxyFetch`): records the last
@@ -686,6 +687,31 @@ describe('resolveManagedAnthropicConnection', () => {
       }
     },
   )
+})
+
+describe('withTraceparent', () => {
+  const traceparent = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01'
+
+  it('sends traceparent on the managed backend fetch and never on a proxied BYOK fetch', async () => {
+    const backend = capturingFetch()
+    const proxy = capturingFetch()
+    const traced = withTraceparent(traceparent, backend.fn)
+
+    await resolveOpenAiCompatConnection({ provider: 'thunderbolt' } as Model, () => proxy.fn, traced)!.fetch(
+      'https://cloud.example.com/v1/chat/completions',
+    )
+    await resolveOpenAiCompatConnection({ provider: 'openai', apiKey: 'sk' } as Model, () => proxy.fn, traced)!.fetch(
+      'https://api.openai.com/v1/chat/completions',
+    )
+
+    expect(new Headers(backend.received()?.init?.headers).get('traceparent')).toBe(traceparent)
+    expect(new Headers(proxy.received()?.init?.headers).has('traceparent')).toBe(false)
+  })
+
+  it('returns the base fetch untouched without a traceparent', () => {
+    const base = capturingFetch()
+    expect(withTraceparent(undefined, base.fn)).toBe(base.fn)
+  })
 })
 
 // The `thunderbolt` provider fetch POSTs directly to our backend, bypassing the

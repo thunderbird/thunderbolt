@@ -121,6 +121,24 @@ export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
   return wrapped
 }
 
+/**
+ * Wrap a fetch so every request carries the turn's W3C `traceparent`, making the backend's
+ * generation spans children of the client turn span. Pass it only as the managed `backendFetch`
+ * (our `/chat/*` routes); BYOK, proxy, and Tinfoil calls must never receive it.
+ */
+export const withTraceparent = (traceparent: string | undefined, base: FetchFn = fetch): FetchFn => {
+  if (!traceparent) {
+    return base
+  }
+  const wrapped: FetchFn = (input, init) => {
+    const headers = new Headers(init?.headers)
+    headers.set('traceparent', traceparent)
+    return base(input, { ...init, headers })
+  }
+  wrapped.preconnect = base.preconnect
+  return wrapped
+}
+
 export const ollama = createOpenAI({
   baseURL: 'http://localhost:11434/v1',
   // compatibility: 'compatible',
@@ -357,7 +375,7 @@ export const resolveManagedAnthropicConnection = (
   }
 }
 
-export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn) => {
+export const createModel = async (modelConfig: Model, getProxyFetch: () => FetchFn, backendFetch: FetchFn = fetch) => {
   // The thunderbolt provider goes through its own SSO-aware fetch below; all
   // other providers route through the universal proxy. We resolve the proxy
   // fetch lazily so a settings change between chat creation and this call
@@ -365,7 +383,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
   switch (modelConfig.provider) {
     case 'thunderbolt': {
       if (modelConfig.vendor === 'anthropic') {
-        const connection = resolveManagedAnthropicConnection(modelConfig, getProxyFetch, 'ai-sdk')
+        const connection = resolveManagedAnthropicConnection(modelConfig, getProxyFetch, 'ai-sdk', backendFetch)
         const provider = createAnthropic(connection)
         return provider(modelConfig.model)
       }
@@ -382,7 +400,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // Authorization header because WKWebView can't send cross-origin cookies.
       // The connection (baseURL/apiKey/SSO-fetch) lives in
       // resolveOpenAiCompatConnection so the Pi harness reuses the same logic.
-      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch)
+      const conn = resolveOpenAiCompatConnection(modelConfig, getProxyFetch, backendFetch)
       if (!conn) {
         throw new Error('No connection resolved for thunderbolt provider')
       }
@@ -722,7 +740,7 @@ export const aiFetchStreamingResponse = async ({
   const activeNudges = getNudgeMessagesFromProfile(profile)
 
   try {
-    const baseModel = await createModel(model, getProxyFetch)
+    const baseModel = await createModel(model, getProxyFetch, withTraceparent(telemetry?.traceparent))
 
     const wrappedModel = wrapLanguageModel({
       providerId: model.provider,

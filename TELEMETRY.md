@@ -152,6 +152,21 @@ The span is named `chat {model}` (for example `chat claude-opus-5`) and has kind
 
 Setting `OTEL_EXPORTER_OTLP_ENDPOINT` sends the same spans, plus HTTP request spans, to a generic OTLP collector. That export is unfiltered.
 
+### Turn and tool spans (client)
+
+Once PostHog is initialized, the app also emits OpenTelemetry spans for each built-in turn. It exports them to `${cloudUrl}/posthog/i/v0/ai/otel`. The backend proxy adds `Authorization: Bearer <POSTHOG_API_KEY>` on that path only. The spans use the same allowlist as the backend (`shared/telemetry/gen-ai.ts`), and the resource is only `service.name=thunderbolt-app`.
+
+- **`invoke_agent thunderbolt`** (INTERNAL, the trace root): starts when the turn starts and ends when `chat_turn_completed` is sent (success, error, retries exhausted, or abort). Attributes: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name=thunderbolt`, `gen_ai.request.model` (model slug), `gen_ai.provider.name`, `thunderbolt.engine`, `thunderbolt.outcome` (`success`, `error`, or `abort`), and `posthog.distinct_id` (the posthog-js anonymous id). A failed turn adds `error.type` (the payload's `error_class`) and has status `ERROR`.
+- **`execute_tool {name}`** (INTERNAL, child of the turn span): one per tool call that has a recorded duration, at the same point that fills `tools` in `chat_turn_completed`. Attributes: `gen_ai.operation.name=execute_tool`, `gen_ai.tool.name`, `gen_ai.tool.type=function`, `posthog.distinct_id`, and `error.type=tool_error` on failure. MCP tools use the fixed name `mcp`. The span ends when the turn completes and is back-dated by the tool's duration, so its length is right but its position in the turn is approximate.
+
+**Trace id.** The span's trace id is a uuidv7 without dashes (32 hex characters). `trace_id` in the chat events uses this same value, so events and spans join on it. Without a tracer provider (no PostHog key) `trace_id` stays a dashed uuidv7.
+
+**Trace propagation.** The app sends a W3C `traceparent` header for the turn span only on the managed `/v1/chat/completions` and `/v1/chat/v1/messages` calls, so the backend's `chat` spans become children of the turn. BYOK, universal-proxy, and Tinfoil calls never get it, and `traceparent`/`tracestate` are never forwarded through `/v1/proxy`.
+
+**Consent.** The span processor drops every span while posthog-js is opted out, so the Data collection toggle in Settings controls spans exactly like events.
+
+**Never emitted:** prompts, responses, tool arguments or results, MCP server or tool names, and error messages.
+
 ### Implementation
 
 Events are tracked using the `trackEvent` function from `src/lib/posthog.tsx`:

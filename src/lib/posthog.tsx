@@ -15,10 +15,13 @@ import { createContext, useContext, type ReactNode } from 'react'
 let posthogClient: PostHog | null = null
 
 /**
- * Reset the PostHog client - for testing only
+ * Reset the PostHog client and unregister the tracer provider - for testing only
  */
-export const resetPosthogClient = () => {
+export const resetPosthogClient = async () => {
   posthogClient = null
+  // Dynamic so the tracing SDK stays out of the entry chunk.
+  const { stopTracing } = await import('./tracing')
+  await stopTracing()
 }
 
 /**
@@ -101,7 +104,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
     const apiHost = `${cloudUrl}/posthog`
 
     if (!posthogClient) {
-      const { default: posthog } = await import('posthog-js')
+      const [{ default: posthog }, { startTracing }] = await Promise.all([import('posthog-js'), import('./tracing')])
       posthogClient = posthog.init(apiKey, {
         opt_out_capturing_by_default: !dataCollection,
         api_host: apiHost,
@@ -142,6 +145,7 @@ export const initPosthog = async (httpClient?: HttpClient): Promise<HandleResult
           return event
         },
       }) as PostHog
+      startTracing(posthogClient, apiHost)
     }
 
     return { success: true, data: posthogClient }

@@ -49,7 +49,8 @@ trap 'status=$?; resource_stop "$status" || true; exit "$status"' EXIT
 resource_marker smoke_start
 while [ ! -f "$RUNNER_TEMP/finish" ]; do sleep 0.1; done
 exit "$1"
-''', "check", str(status)], cwd=root, env=environment)
+''', "check", str(status)], cwd=root, env=environment,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             metrics = output / "native-ios-resources/metrics.jsonl"
             try:
                 deadline = time.monotonic() + 10
@@ -64,7 +65,9 @@ exit "$1"
                     shell.terminate()
                 else:
                     (output / "finish").touch()
-                assert shell.wait(timeout=5) == status
+                stdout, stderr = shell.communicate(timeout=5)
+                assert shell.returncode == status, stderr
+                assert ("::warning::iOS resource collection incomplete" in stdout) == (mode != "normal")
                 records = [json.loads(line) for line in metrics.read_text().splitlines()]
                 assert all(datetime.datetime.fromisoformat(row["timestamp"]).tzinfo for row in records)
                 assert any(row["kind"] == "sample" for row in records)

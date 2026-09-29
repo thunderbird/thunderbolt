@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { useAuth } from '@/contexts'
 import { otpLength, privacyPolicyUrl, termsOfServiceUrl } from '@/lib/constants'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
+import { Fingerprint } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useWaitlistState } from './use-waitlist-state'
 import { WaitlistCard } from './waitlist-card'
@@ -34,6 +36,7 @@ export const WaitlistPage = () => {
 
   const isVerifying = state.status === 'verifying'
   const email = state.email
+  const passkeyAvailable = usePasskeyAvailable()
 
   if (state.status === 'checkEmail' || state.status === 'verifying') {
     return (
@@ -134,6 +137,29 @@ export const WaitlistPage = () => {
             >
               <Trans>Continue</Trans>
             </Button>
+
+            {passkeyAvailable && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">
+                    <Trans>or</Trans>
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  isLoading={state.passkeyPending}
+                  onClick={actions.handlePasskeySignIn}
+                  className="h-[46px] w-full rounded-xl text-base font-medium"
+                >
+                  <Fingerprint className="mr-2 h-4 w-4" />
+                  <Trans>Sign in with passkey</Trans>
+                </Button>
+              </>
+            )}
           </form>
         </div>
 

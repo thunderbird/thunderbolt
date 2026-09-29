@@ -12,12 +12,14 @@ import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { updateSettings } from '@/dal'
 import { getDb, getDatabaseInstance } from '@/db/database'
+import { isPasskeyCancellation, signInWithPasskey } from '@/lib/passkey'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
 const sendFailed = msg`Failed to send verification code. Please check your connection.`
 const resendFailed = msg`Failed to resend verification code. Please check your connection.`
 const verifyFailed = msg`Verification failed. Please try again.`
+const passkeyFailed = msg`Passkey sign-in failed. Please try again or use your email.`
 
 /** Extract a user-facing error message from an HttpError response body, or return the fallback. */
 const getServerErrorMessage = async (error: unknown, fallback: string): Promise<string> => {
@@ -43,6 +45,9 @@ type State = {
   challengeToken: string
   status: FormStatus
   errorMessage: string
+  /** Passkey ceremony in progress. Kept separate from `status` so the email step
+   *  stays rendered (a `verifying` status would route to the OTP UI). */
+  passkeyPending: boolean
 }
 
 type Action =
@@ -57,6 +62,9 @@ type Action =
   | { type: 'RESET' }
   | { type: 'GO_BACK' }
   | { type: 'SET_ERROR'; payload: string }
+  | { type: 'PASSKEY_START' }
+  | { type: 'PASSKEY_ERROR'; payload: string }
+  | { type: 'PASSKEY_CANCEL' }
 
 const initialState: State = {
   email: '',
@@ -64,6 +72,7 @@ const initialState: State = {
   challengeToken: '',
   status: 'idle',
   errorMessage: '',
+  passkeyPending: false,
 }
 
 const reducer = (state: State, action: Action): State => {
@@ -90,6 +99,12 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, status: 'idle', otp: '', errorMessage: '' }
     case 'SET_ERROR':
       return { ...state, errorMessage: action.payload }
+    case 'PASSKEY_START':
+      return { ...state, status: 'idle', passkeyPending: true, errorMessage: '' }
+    case 'PASSKEY_ERROR':
+      return { ...state, status: 'error', passkeyPending: false, errorMessage: action.payload }
+    case 'PASSKEY_CANCEL':
+      return { ...state, status: 'idle', passkeyPending: false, errorMessage: '' }
     default:
       return state
   }
@@ -250,6 +265,37 @@ export const useSignInFormState = ({
     }
   }
 
+  const handlePasskeySignIn = async () => {
+    await analytics.captureAnonId(authClient)
+
+    // Snapshot BEFORE the ceremony resolves — mirrors the OTP path so an
+    // anonymous → real promotion keeps its queued local writes.
+    const wasAnonymous = session?.user?.isAnonymous === true
+
+    dispatch({ type: 'PASSKEY_START' })
+
+    try {
+      const { userId } = await signInWithPasskey(authClient)
+
+      // Passkey sign-in is authentication, never registration, so the user is
+      // never new — pass false to keep the promotion housekeeping correct.
+      await onSignInSuccess(false, wasAnonymous)
+
+      if (userId) {
+        analytics.onPromotionSuccess(userId)
+      }
+
+      dispatch({ type: 'VERIFY_SUCCESS' })
+    } catch (error) {
+      if (isPasskeyCancellation(error)) {
+        dispatch({ type: 'PASSKEY_CANCEL' })
+        return
+      }
+      console.error('Passkey sign-in error:', error)
+      dispatch({ type: 'PASSKEY_ERROR', payload: i18n._(passkeyFailed) })
+    }
+  }
+
   const handleCancel = () => {
     dispatch({ type: 'RESET' })
     onCancel?.()
@@ -287,6 +333,7 @@ export const useSignInFormState = ({
     actions: {
       handleSubmit,
       handleOtpComplete,
+      handlePasskeySignIn,
       handleCancel,
       handleResend,
       goBack,

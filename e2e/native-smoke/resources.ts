@@ -78,8 +78,15 @@ export const runCollector = async (directory: string, owner: number, queryTimeou
     signal.throwIfAborted()
     const start = performance.now()
     try {
-      const child = Bun.spawn(command, { detached: true, stdout: 'pipe', stderr: 'ignore' })
-      const abort = () => killQuery(child.pid)
+      const child = Bun.spawn(command, { detached: true, stdout: 'pipe', stderr: 'pipe' })
+      let killed = false
+      const abort = () => {
+        if (killed) {
+          return
+        }
+        killQuery(child.pid)
+        killed = true
+      }
       let timedOut = false
       const timeout = setTimeout(() => {
         timedOut = true
@@ -88,9 +95,11 @@ export const runCollector = async (directory: string, owner: number, queryTimeou
       signal.addEventListener('abort', abort, { once: true })
       try {
         const output = new Response(child.stdout).text()
+        const errorOutput = new Response(child.stderr).text()
         const code = await child.exited
-        killQuery(child.pid)
+        abort()
         const stdout = (await output).trim()
+        const stderr = (await errorOutput).trim().slice(0, 2048)
         const resource = child.resourceUsage()
         const cpuSeconds = resource ? Number(resource.cpuTime.total) / 1_000_000 : null
         queryCpuSeconds = queryCpuSeconds === null || cpuSeconds === null ? null : queryCpuSeconds + cpuSeconds
@@ -101,7 +110,7 @@ export const runCollector = async (directory: string, owner: number, queryTimeou
           throw new Error('timeout')
         }
         if (code !== 0) {
-          throw new Error(`exit ${code}`)
+          throw new Error(`exit ${code}: ${stderr}`)
         }
         if (!stdout) {
           throw new Error('empty output')
@@ -118,7 +127,7 @@ export const runCollector = async (directory: string, owner: number, queryTimeou
       } finally {
         clearTimeout(timeout)
         signal.removeEventListener('abort', abort)
-        killQuery(child.pid)
+        abort()
         await child.exited
       }
     } catch (error) {

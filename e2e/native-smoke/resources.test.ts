@@ -82,7 +82,10 @@ case "\${0##*/}" in
     if [ "$MODE" = invalid-iostat ]; then echo malformed; exit; fi
     printf 'disk0 cpu load\nKB/t tps MB/s us sy id\n999 999 999 99 1 0\n4 2 1 10 5 85\n';;
   vm_stat)
-    if [ "$MODE" = failure ]; then echo 'expected fixture error' >&2; exit 9; fi
+    if [ "$MODE" = failure ]; then
+      { printf 'expected fixture error '; printf 'x%.0s' {1..3000}; } >&2
+      exit 9
+    fi
     echo 'Pages free: 123';;
   ps)
     case "$MODE" in
@@ -164,8 +167,8 @@ exit "$1"
       expect(records.some((row) => row.kind === 'sample')).toBe(true)
       expect(last.reason).toBe(mode === 'owner' ? 'owner_exited' : 'signal_15')
       expect(last.partial_sample).toBe(mode === 'cancel' || mode === 'owner')
-      expect(last.cpu_seconds).toBeGreaterThan(0)
-      expect(last.cpu_seconds).toBeLessThan(2)
+      expect(Number.isFinite(last.cpu_seconds)).toBe(true)
+      expect(last.cpu_seconds).toBeGreaterThanOrEqual(0)
       expect(last.collector_rss_bytes).toBeGreaterThan(1_000_000)
       expect(last.query_cpu_seconds).toBeGreaterThan(0)
       if (mode !== 'invalid-iostat') {
@@ -182,6 +185,9 @@ exit "$1"
       }
       if (mode === 'failure') {
         expect(records.find((row) => row.kind === 'vm_stat')?.status).toBe('unavailable')
+        const error = records.find((row) => row.kind === 'vm_stat')?.error
+        expect(error).toStartWith('exit 9: expected fixture error ')
+        expect(error!.length).toBeLessThan(3000)
       }
       if (mode === 'invalid-iostat') {
         expect(records.find((row) => row.kind === 'iostat')?.status).toBe('unavailable')

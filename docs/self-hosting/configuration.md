@@ -51,13 +51,13 @@ User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not 
 
 ## PowerSync
 
-| Variable                         | Default | Required         | Description                                                               |
-| -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service **as the browser reaches it**. It is handed to every client, so an address that only resolves inside your network leaves sync offline |
+| Variable                         | Default | Required         | Description                                                                                                                                                                    |
+| -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service **as the browser reaches it**. It is handed to every client, so an address that only resolves inside your network leaves sync offline             |
 | `POWERSYNC_INTERNAL_URL`         | —       | no               | Address the server itself uses to probe PowerSync for `/v1/health/powersync`. Defaults to `POWERSYNC_URL`; set it when the public URL is not reachable from inside the cluster |
-| `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
-| `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                    |
+| `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**                                                                                                                |
+| `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation                                                                                                            |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                                                                                                                         |
 
 The JWT secret must match the `k` value the PowerSync service loads at runtime. For self-hosted deploys, `deploy/config/powersync-config.yaml` reads it from the `PS_JWT_KEY_BASE64` env var (base64 of the raw secret); `POWERSYNC_JWT_KID` on the backend must match `PS_JWT_KID` set on the PowerSync service. For local dev, both values are baked into `powersync-service/config/config.yaml`.
 
@@ -75,12 +75,14 @@ Production CORS mounts use `allowedHeaders: true` to echo `Access-Control-Reques
 
 ## Analytics
 
-| Variable          | Default                    | Description                                  |
-| ----------------- | -------------------------- | -------------------------------------------- |
-| `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                    |
-| `POSTHOG_API_KEY` | —                          | Leave unset to disable server-side analytics |
+| Variable          | Default                    | Description                                                                 |
+| ----------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `POSTHOG_HOST`    | `https://us.i.posthog.com` | PostHog instance hostname                                                   |
+| `POSTHOG_API_KEY` | —                          | Leave unset to disable server-side analytics and LLM generation span export |
 
-See [TELEMETRY.md](../../TELEMETRY.md) in the repo for the full list of events the client emits.
+Setting `POSTHOG_API_KEY` also turns on OpenTelemetry tracing for managed LLM calls. The backend exports one span per call to `${POSTHOG_HOST}/i/v0/ai/otel`, where PostHog shows it as an LLM generation. Only allowlisted metadata is sent, never prompts or responses. Changes need a backend restart.
+
+See [TELEMETRY.md](../../TELEMETRY.md) in the repo for the full list of events the client emits and the span attributes the backend sends.
 
 ## Debug Transcripts
 
@@ -147,7 +149,7 @@ implement.
 
 ## OpenTelemetry (Optional)
 
-OpenTelemetry traces are enabled automatically when these are set. Not part of the Zod schema — the backend reads them from `process.env` directly.
+OpenTelemetry traces are enabled automatically when these are set. Not part of the Zod schema — the backend reads them from `process.env` directly. This exporter works independently of the PostHog span export described under [Analytics](#analytics); both can be on at once.
 
 | Variable                      | Description                                                 |
 | ----------------------------- | ----------------------------------------------------------- |

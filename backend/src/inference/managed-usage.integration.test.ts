@@ -213,7 +213,6 @@ it('preserves one anonymous web-session quota across direct and confidential tra
             auth,
             database,
             fetchFn: fetchFixture,
-            isPostHogConfiguredFn: () => false,
           }),
         )
       const authenticatedJsonHeaders = {

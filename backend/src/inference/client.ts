@@ -3,19 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { getSettings } from '@/config/settings'
-import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { elapsedMs } from '@/utils/timing'
 import Anthropic from '@anthropic-ai/sdk'
-import { OpenAI as PostHogOpenAI } from '@posthog/ai'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import OpenAI from 'openai'
-import type { PostHog } from 'posthog-node'
 import type { ManagedInferenceIdentity } from './usage-ledger'
 
 export type InferenceProvider = 'fireworks' | 'anthropic' | 'tinfoil'
 
 export type InferenceClient = {
-  client: OpenAI | PostHogOpenAI
+  client: OpenAI
   provider: InferenceProvider
 }
 
@@ -93,8 +90,6 @@ export const logInferenceSafely = (
 }
 
 export type InferenceClientOptions = {
-  /** Caller-owned analytics client; never stored in the provider cache. */
-  posthogClient?: PostHog
   fetchFn?: typeof fetch
   logger?: InferenceLogger
   /** Monotonic clock used for upstream-attempt instrumentation. */
@@ -202,20 +197,20 @@ export const createInferenceFetch = ({
 /**
  * Lazily initialized Fireworks client
  */
-let fireworksClient: OpenAI | PostHogOpenAI | null = null
+let fireworksClient: OpenAI | null = null
 
 /**
  * Lazily initialized Anthropic client
  */
-let anthropicClient: OpenAI | PostHogOpenAI | null = null
+let anthropicClient: OpenAI | null = null
 let anthropicMessagesClient: Anthropic | null = null
 
 /**
  * Get the Fireworks AI client
  */
-const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn, posthogClient } = options
-  if (fireworksClient && !fetchFn && !posthogClient) {
+const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI => {
+  const { fetchFn, logger, nowFn } = options
+  if (fireworksClient && !fetchFn) {
     return fireworksClient
   }
 
@@ -225,21 +220,14 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
     throw new Error('Fireworks API key not configured')
   }
 
-  const params = {
+  const client = new OpenAI({
     apiKey: settings.fireworksApiKey,
     baseURL: 'https://api.fireworks.ai/inference/v1',
     fetch: createInferenceFetch({ provider: 'fireworks', fetchFn, logger, nowFn }),
     // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
-  }
+  })
 
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: posthogClient ?? getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  if (!fetchFn && !posthogClient) {
+  if (!fetchFn) {
     fireworksClient = client
   }
 
@@ -252,9 +240,9 @@ export const getAnthropicOpenAIBaseUrl = (root: string): string => `${root.repla
 /**
  * Get the Anthropic AI client using OpenAI-compatible API
  */
-const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn, posthogClient } = options
-  if (anthropicClient && !fetchFn && !posthogClient) {
+const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI => {
+  const { fetchFn, logger, nowFn } = options
+  if (anthropicClient && !fetchFn) {
     return anthropicClient
   }
 
@@ -264,20 +252,13 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
     throw new Error('Anthropic API key not configured')
   }
 
-  const params = {
+  const client = new OpenAI({
     apiKey: settings.anthropicApiKey,
     baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl),
     fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
-  }
+  })
 
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: posthogClient ?? getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  if (!fetchFn && !posthogClient) {
+  if (!fetchFn) {
     anthropicClient = client
   }
 
@@ -321,7 +302,7 @@ export const getInferenceClient = (
   const clientMap = {
     anthropic: () => getAnthropicClient(options),
     fireworks: () => getFireworksClient(options),
-  } satisfies Record<Exclude<InferenceProvider, 'tinfoil'>, () => OpenAI | PostHogOpenAI>
+  } satisfies Record<Exclude<InferenceProvider, 'tinfoil'>, () => OpenAI>
 
   const client = clientMap[provider]()
 

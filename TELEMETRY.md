@@ -116,6 +116,42 @@ Diagnostic events for debugging sync issues (especially iOS). All events include
 - `sync_upload_error` - CRUD upload failed (with `error`, `operation_count`)
 - `sync_status_change` - PowerSync connected↔disconnected transition (with `prev_connected`, `ms_since_last_change`)
 
+### LLM generation spans (backend)
+
+When `POSTHOG_API_KEY` is set, the backend emits one OpenTelemetry span per managed LLM call on `POST /v1/chat/completions` and `POST /v1/chat/v1/messages`. It exports them to PostHog's OTLP endpoint (`${POSTHOG_HOST}/i/v0/ai/otel`), where each span becomes an `$ai_generation` event. Attribute names follow the OpenTelemetry GenAI conventions and live in `shared/telemetry/gen-ai.ts`.
+
+The span is named `chat {model}` (for example `chat claude-opus-5`) and has kind `CLIENT`. It starts before the upstream request and ends when the stream finishes, fails, or the client cancels.
+
+| Attribute                                  | Meaning                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `gen_ai.operation.name`                    | Always `chat`                                                                                                |
+| `gen_ai.provider.name`                     | The provider serving the call: `anthropic` (the spec value), otherwise our internal name such as `fireworks` |
+| `gen_ai.request.model`                     | Upstream model we asked for                                                                                  |
+| `gen_ai.response.model`                    | Model the upstream says it used, when reported                                                               |
+| `gen_ai.request.stream`                    | Always `true`                                                                                                |
+| `gen_ai.response.finish_reasons`           | Why the model stopped (`stop`, `end_turn`, ...), when reported                                               |
+| `gen_ai.response.time_to_first_chunk`      | Seconds from span start to the first upstream chunk                                                          |
+| `gen_ai.usage.input_tokens`                | All input tokens, cached ones included                                                                       |
+| `gen_ai.usage.output_tokens`               | Output tokens                                                                                                |
+| `gen_ai.usage.cache_read.input_tokens`     | Input tokens read from the prompt cache                                                                      |
+| `gen_ai.usage.cache_write.input_tokens`    | Input tokens written to the prompt cache (current spec name)                                                 |
+| `gen_ai.usage.cache_creation.input_tokens` | Same value as above, under the older name PostHog uses for pricing                                           |
+| `gen_ai.usage.reasoning.output_tokens`     | Reasoning tokens, when the OpenAI-shaped upstream reports them                                               |
+| `error.type`                               | Error class on failure (for example `rate_limit`, `bad_request`); the span status is `ERROR`                 |
+| `server.address`                           | Hostname of the upstream API the call actually went to (for example `api.anthropic.com`)                     |
+| `posthog.distinct_id`                      | The user ID, so the generation joins the user's other PostHog events                                         |
+| `$ai_cache_reporting_exclusive`            | Always `false`, because input tokens include cached tokens                                                   |
+| `$ai_total_cost_usd`                       | The cost recorded in our usage ledger, in US dollars                                                         |
+| `thunderbolt.endpoint`                     | The route path that served the call                                                                          |
+
+**Trace parent.** If the request has a valid W3C `traceparent` header, the span becomes a child of that trace. An invalid header is ignored and the span starts a new trace. The span is never a child of the backend's HTTP request span, because PostHog drops non-GenAI spans and the generation would point at a missing parent.
+
+**Allowlist.** Before export, the backend drops every span without `gen_ai.operation.name` and strips every attribute not in the table above. The OpenTelemetry resource is replaced by `service.name` alone, so host, process, and command-line details never leave the server. PostHog has no privacy mode on this path and stores whatever it receives, so the allowlist is the privacy boundary.
+
+**Never emitted:** prompts, responses, system instructions, tool definitions, tool call arguments or results, API keys, and raw provider error messages.
+
+Setting `OTEL_EXPORTER_OTLP_ENDPOINT` sends the same spans, plus HTTP request spans, to a generic OTLP collector. That export is unfiltered.
+
 ### Implementation
 
 Events are tracked using the `trackEvent` function from `src/lib/posthog.tsx`:

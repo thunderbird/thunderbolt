@@ -8,37 +8,6 @@ import { PostHog } from 'posthog-node'
 
 let phClient: PostHog | null = null
 
-const aiErrorKeys = ['name', 'status', 'statusCode', 'httpStatus', 'code', 'type', 'param', 'requestID'] as const
-
-const parseAiError = (value: string): unknown => {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Removes provider error content while preserving machine-readable identifiers.
- */
-export const redactAiError = (value: unknown): string | undefined => {
-  const error = typeof value === 'string' ? parseAiError(value) : value
-  if (error === null || typeof error !== 'object') {
-    return undefined
-  }
-
-  const errorRecord = error as Record<string, unknown>
-  const redactedEntries = aiErrorKeys
-    .filter((key) => Object.hasOwn(errorRecord, key) && errorRecord[key] !== undefined)
-    .map((key) => [key, errorRecord[key]] as const)
-
-  if (redactedEntries.length === 0) {
-    return undefined
-  }
-
-  return JSON.stringify(Object.fromEntries(redactedEntries))
-}
-
 /**
  * Initialize and get the PostHog analytics client
  * Uses lazy initialization with settings from environment
@@ -57,35 +26,8 @@ export const getPostHogClient = (fetchFn?: typeof fetch): PostHog => {
 
   const client = new PostHog(settings.posthogApiKey, {
     host: settings.posthogHost,
-    privacyMode: true,
     ...(fetchFn && { fetch: fetchFn }),
   })
-
-  // Workaround: PostHog AI library checks for `privacy_mode` property (snake_case)
-  // but PostHog Node client only stores it in `options.privacyMode`
-  // Manually set it so the AI library can detect it
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(client as any).privacy_mode = true
-
-  // THU-771: @posthog/ai bypasses privacyMode for raw provider $ai_error; redact it at our single egress seam.
-  const originalCapture: PostHog['capture'] = client.capture.bind(client)
-  client.capture = (message: Parameters<PostHog['capture']>[0]): void => {
-    const { event, properties } = message
-    if (event !== '$ai_generation' || !properties || !Object.hasOwn(properties, '$ai_error')) {
-      originalCapture(message)
-      return
-    }
-
-    const redactedProperties = { ...properties }
-    const redactedError = redactAiError(properties.$ai_error)
-    if (redactedError === undefined) {
-      delete redactedProperties.$ai_error
-    } else {
-      redactedProperties.$ai_error = redactedError
-    }
-
-    originalCapture({ ...message, properties: redactedProperties })
-  }
 
   // Only cache if no custom fetchFn was provided
   if (!fetchFn) {

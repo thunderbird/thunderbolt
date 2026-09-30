@@ -26,9 +26,10 @@ Run all three and make them pass:
 - `bunx playwright test --config playwright.qa.config.ts <spec>` (the app is already running and serves
   your working tree)
 - `bun run check`
-- `bun run test`
+- `bun run test`, plus `bun run test:backend` when you changed `backend/src/`
 
-Run the spec before you change anything too, to see it fail.
+Run the spec before you change anything too, to see it fail. `bun run test 2>&1 | grep -A8 '(fail)'` shows
+only the failures; `bun test <file> --timeout 5000` runs one test file.
 
 ## When the fix is unclear
 

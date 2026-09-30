@@ -582,7 +582,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts:*)"
+            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun test:*),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts:*)"
             --disallowedTools "Bash(git:*),WebFetch,WebSearch"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}

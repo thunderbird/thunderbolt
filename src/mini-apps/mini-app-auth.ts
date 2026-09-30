@@ -51,10 +51,16 @@ export const fetchMiniAppToken = async (
      * `auth: false`, which is the right *answer* but left nothing anywhere
      * saying why a correctly-built app never got an identity.
      *
-     * An abort is the exception: unmounting mid-mint is routine, and the frame
-     * is already gone.
+     * Unmounting mid-mint is the exception: routine, and the frame is already
+     * gone. But `signal.aborted` cannot tell that apart from the mint *timing
+     * out*, because the signal is `AbortSignal.any([lifetime, timeout])` — so a
+     * token request that took too long was silently filed as "frame already
+     * gone", which is the one failure this logging exists to catch.
+     *
+     * The error's own name is the discriminator: `AbortError` for the lifetime
+     * signal, `TimeoutError` for `AbortSignal.timeout`.
      */
-    if (signal?.aborted) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return null
     }
     console.error(`[mini-apps] ${appId}: could not mint an identity token`, error)

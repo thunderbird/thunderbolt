@@ -125,7 +125,13 @@ const tools: ThunderboltTool[] = [
   {
     name: 'set_assumption',
     description: 'Change one input of the model and recompute…',
-    inputSchema: { type: 'object', properties: {/* JSON Schema */}, required: ['key', 'value'] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        /* JSON Schema */
+      },
+      required: ['key', 'value'],
+    },
     annotations: { readOnlyHint: false, title: 'Change a model assumption' },
     execute: ({ key, value }) => {
       /* … */
@@ -138,8 +144,13 @@ const { connected } = useThunderbolt('Finance Model', tools)
 
 **`readOnlyHint` decides whether the user is asked.** Read-only tools run silently; everything else
 shows an approval prompt in Thunderbolt with the tool, its description, and the exact arguments. An
-omitted annotation means "ask" — and the _host_ enforces this from the descriptor it received, so an
-app that lies can only ever cause an extra prompt, never skip one.
+omitted annotation means "ask", so forgetting one fails safe.
+
+Be clear about what the gate buys, though. The host decides, but it decides from `readOnlyHint` —
+your word about your own tool — so **declaring a destructive tool read-only skips the prompt.** The
+gate defends against a _confused model_, not a hostile app: it stops a prompt-injected model quietly
+writing through a tool you marked as a write. It is not a boundary against the app, which can do the
+same thing directly without asking anyone.
 
 Return the consequence rather than an acknowledgement (`"Set growthRate to 9. Q4 operating income is
 now $1.2M…"`) — it saves the model a round trip while it's iterating.

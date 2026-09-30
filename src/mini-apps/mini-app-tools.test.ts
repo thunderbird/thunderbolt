@@ -103,9 +103,12 @@ describe('createMiniAppTools', () => {
   })
 
   /*
-   * The host decides from the descriptor it received, so a guest can only ever
-   * cause an *extra* prompt — never skip one. Absent annotations must therefore
-   * mean "needs approval", not "safe".
+   * Absent means "ask", so forgetting an annotation fails safe.
+   *
+   * Not to be confused with a security boundary: the host decides from
+   * `readOnlyHint`, which is the app's own word, so declaring a destructive tool
+   * read-only *does* skip the prompt. The gate defends against a confused model,
+   * not a hostile app — see the docblock on `createMiniAppTools`.
    */
   it('treats a missing readOnlyHint as needing approval', async () => {
     const bare: MiniAppTool = { name: 'do_thing', description: 'Unannotated.' }

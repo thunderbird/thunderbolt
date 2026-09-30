@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { createAuthenticatedClient } from '@/lib/http'
 import { fetchMiniAppToken } from './mini-app-auth'
 
@@ -14,6 +14,27 @@ const clientWith = (handler: (request: Request) => Response | Promise<Response>)
   })
 
 const valid = { token: 'header.payload.signature', expiresAt: new Date(Date.now() + 300_000).toISOString() }
+
+/*
+ * Whether the failure was reported.
+ *
+ * Counted rather than asserted on a mock, because the distinction under test is
+ * silence versus a diagnostic: one abort reason is routine and must stay quiet,
+ * the other is the failure the logging exists for.
+ */
+let logged = 0
+const realConsoleError = console.error
+
+beforeEach(() => {
+  logged = 0
+  console.error = () => {
+    logged += 1
+  }
+})
+
+afterEach(() => {
+  console.error = realConsoleError
+})
 
 describe('fetchMiniAppToken', () => {
   /** A cast asserted this shape without checking it, so a wrong-typed body
@@ -91,5 +112,29 @@ describe('fetchMiniAppToken', () => {
   it('returns null when the body is not JSON at all', async () => {
     const client = clientWith(() => new Response('<html>gateway</html>', { status: 200 }))
     expect(await fetchMiniAppToken(client, 'patient-journeys')).toBeNull()
+  })
+
+  /*
+   * The two aborts that used to look identical. Unmounting mid-mint is routine,
+   * so it stays quiet; a mint that timed out is the failure this logging exists
+   * to catch, and `signal.aborted` could not tell them apart because the signal
+   * is `AbortSignal.any([lifetime, timeout])`.
+   */
+  it('stays quiet when the frame went away mid-mint', async () => {
+    const client = clientWith(() => Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' })))
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(await fetchMiniAppToken(client, 'patient-journeys', controller.signal)).toBeNull()
+    expect(logged).toBe(0)
+  })
+
+  it('reports a mint that timed out, even though the signal is also aborted', async () => {
+    const client = clientWith(() => Promise.reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' })))
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(await fetchMiniAppToken(client, 'patient-journeys', controller.signal)).toBeNull()
+    expect(logged).toBeGreaterThan(0)
   })
 })

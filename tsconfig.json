@@ -13,7 +13,7 @@
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "types": ["bun"]
   },
-  "include": ["src", "shared"],
+  "include": ["src", "shared", "scripts/qa", "scripts/notify-on-failure.ts"],
   "exclude": ["src/db/bundle-migrations.ts", "src/drizzle/_migrations.ts"],
   "references": [
     {

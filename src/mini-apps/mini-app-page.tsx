@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
-import { Button, mutedIconButtonClass } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { MessageSquare, MessageSquarePlus, MousePointerClick } from 'lucide-react'
+import { MessageSquare, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
@@ -47,7 +47,6 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     attachToComposer,
     handleChatCreated,
   } = useMiniAppChatPanelState()
-  const { t } = useLingui()
   const { isMobile } = useIsMobile()
   const { pathname } = useLocation()
   /*
@@ -229,27 +228,12 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 <ContentViewHeader
                   title={app.name}
                   onClose={closeChat}
-                  actions={
-                    <>
-                      {/* The way back to a blank composer. The floating "Chat"
-                          button only appears when the panel is shut, so without
-                          this the first conversation you opened was the last one
-                          you could start. */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={mutedIconButtonClass}
-                        onClick={startNewChat}
-                        title={t`New chat`}
-                      >
-                        <MessageSquarePlus />
-                        <span className="sr-only">
-                          <Trans>New chat</Trans>
-                        </span>
-                      </Button>
-                      <MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} />
-                    </>
-                  }
+                  /* One control for one job: pick a conversation or start
+                     one. "New chat" is the first row of the menu — the floating
+                     "Chat" button only appears when the panel is shut, so
+                     without a way back to a blank composer the first
+                     conversation you opened was the last one you could start. */
+                  actions={<MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} onNewChat={startNewChat} />}
                 />
                 <div className="min-h-0 flex-1">{chatPane}</div>
               </div>

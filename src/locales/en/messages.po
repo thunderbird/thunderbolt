@@ -2326,7 +2326,7 @@ msgstr "Network request failed (the browser blocked the request or the server is
 msgid "New Agent"
 msgstr "New Agent"
 
-#: src/mini-apps/mini-app-page.tsx
+#: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "New chat"

@@ -219,8 +219,8 @@ verified like any other. The report lists cut sessions first, under "⚠️ N IN
 stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**, and shows "no summary (session cut)" under
 Coverage. A timed-out step leaves no execution file, so its cost shows as $0.00. Look at the Anthropic
 workspace's usage for the real figure. A leg that crashed, or whose explore job failed the checksum check, shows
-as **ERROR** with no findings. When every explore session ends in an error or a timeout, the report job fails, so
-`notify-on-failure` fires.
+as **ERROR** with no findings. When every explore session of the weekly charters, or of the canary leg, ends in
+an error or a timeout, `report.ts summary` exits 1 and the report job fails, so `notify-on-failure` fires.
 
 ## Promote a confirmed spec to `e2e/`
 

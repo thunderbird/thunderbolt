@@ -781,21 +781,15 @@ jobs:
           fi
           # Missing when the guard failed; report.ts needs the directory to exist.
           mkdir -p qa-out
-          bun scripts/qa/report.ts summary --out qa-out
+          # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id),
+          # while the jobs stayed green. Write both reports, then fail the step so notify-on-failure fires.
+          status=0
+          bun scripts/qa/report.ts summary --out qa-out || status=1
           if [ -d qa-out-canary ]; then
             echo '# Canary leg: c8 on a build with planted bugs, never filed' >> "$GITHUB_STEP_SUMMARY"
-            bun scripts/qa/report.ts summary --out qa-out-canary
+            bun scripts/qa/report.ts summary --out qa-out-canary || status=1
           fi
-
-      # A revoked key or a retired model id errors every session while the jobs stay green: fail so notify fires.
-      - name: Fail when no explore session worked
-        run: |
-          shopt -s nullglob
-          sessions=(qa-out*/c*/session.json)
-          if [ ${#sessions[@]} -gt 0 ] && jq -e -s 'all(.stop == "error" or .stop == "timeout")' "${sessions[@]}" > /dev/null; then
-            echo "::error::Every explore session ended in an error or a timeout."
-            exit 1
-          fi
+          exit "$status"
 
       # The dead-man switch watches the Monday run on main only, and only a run that worked.
       - name: Heartbeat

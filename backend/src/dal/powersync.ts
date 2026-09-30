@@ -56,26 +56,14 @@ type PowerSyncOperation = {
   /**
    * Create-only PUT: insert the row when it is absent, never overwrite an
    * existing one. Clients set it on writes queued before the device completed
-   * its first sync — at that point the device has never seen the account's
-   * state, so a row it invented locally (a bundled default, a settings key)
-   * cannot be more authoritative than one already stored. GH #1299: a new
-   * device seeded `user_has_completed_onboarding = false` offline and, on
-   * enabling sync, overwrote the already-onboarded value on every other device.
+   * its first sync (GH #1299).
    *
-   * Only PUT honours it — because PUT is the op with no user intent behind it.
-   * PowerSync emits PUT from INSERT and PATCH from UPDATE, so a PUT is a row
-   * the device made up, while a PATCH is someone editing a row in front of
-   * them. Constraining PATCH would swallow deliberate offline edits, including
-   * resetting a setting to its default, which rewrites the row to content
-   * byte-identical to a fresh seed.
+   * Only PUT honours it, because PUT is the op with no user intent behind it —
+   * constraining PATCH would swallow deliberate offline edits, including
+   * resetting a setting to its default.
    *
-   * That does mean a pre-first-sync PATCH is not fully informed either: the
-   * device is editing its own seeded copy of a bundled default, not the
-   * account's version, so a soft-delete or edit there propagates onto whatever
-   * the account actually stored under that deterministic id. Accepted
-   * deliberately — losing a real edit is worse than propagating one made
-   * against a stale view. See the "Known gap" note in
-   * docs/architecture/powersync-account-devices.md.
+   * Full rationale, the safety properties, and the known gaps:
+   * docs/architecture/powersync-account-devices.md — "Create-only writes".
    */
   ifAbsent?: boolean
 }
@@ -108,6 +96,29 @@ const toSchemaRecord = (
     }
   }
   return out
+}
+
+/**
+ * A PATCH or DELETE whose row does not exist for this user.
+ *
+ * Accepted rather than rejected, for the same reason as the empty-patch no-op
+ * below: a 4xx here stops the client calling `complete()`, so the operation is
+ * retried forever, the CRUD queue never drains, and — because PowerSync defers
+ * applying a checkpoint while local writes are pending — the device stops
+ * syncing in *both* directions with no client-side recovery. Dropping one
+ * unapplicable write is strictly better than bricking the account.
+ *
+ * It should not happen under current clients: every local row either arrived
+ * from the server or has a preceding PUT in the same queue. It does happen for
+ * devices carrying rows left behind by the pre-GH-#1299 `DELETE FROM ps_crud`,
+ * which removed the seeding PUTs while keeping the rows — those devices upload
+ * PATCHes for rows the account has never held. Logged so that population stays
+ * visible rather than silently discarded.
+ */
+const logMissingTarget = (op: PowerSyncOperation, userId: string): void => {
+  console.warn(
+    `[powersync] ${op.op} on ${op.type}/${op.id} matched no row for user ${userId}; accepting so the upload queue can drain`,
+  )
 }
 
 /**
@@ -203,7 +214,10 @@ export const applyOperation = async (
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
         .returning()
 
-      return patched.length > 0
+      if (patched.length === 0) {
+        logMissingTarget(op, userId)
+      }
+      return true
     }
     case 'DELETE': {
       if (uploadDenyDelete.has(tableName)) {
@@ -215,7 +229,11 @@ export const applyOperation = async (
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
         .returning()
 
-      return deleted.length > 0
+      // A delete whose row is already gone has reached its intended end state.
+      if (deleted.length === 0) {
+        logMissingTarget(op, userId)
+      }
+      return true
     }
   }
   return false

@@ -39,8 +39,9 @@ export const markOnboardedForReturningUser = async (
   user: unknown,
   // Resolved through the singleton rather than taken from React context: two
   // of the three call sites are hooks whose tests render without a provider,
-  // and the lookup belongs inside the catch below anyway.
-  getDatabase: () => AnyDrizzleDatabase = getDb,
+  // and the lookup belongs inside the catch below anyway. Named for what it
+  // returns — `getDatabaseInstance` means the PowerSync instance elsewhere.
+  getDrizzle: () => AnyDrizzleDatabase = getDb,
 ): Promise<void> => {
   if (isNewAuthUser(user)) {
     return
@@ -51,7 +52,7 @@ export const markOnboardedForReturningUser = async (
   // failed" UI even though the OTP was already consumed and the user is signed
   // in. Log and swallow.
   try {
-    await updateSettings(getDatabase(), { user_has_completed_onboarding: true })
+    await updateSettings(getDrizzle(), { user_has_completed_onboarding: true })
   } catch (error) {
     console.error('Failed to mark onboarding complete after sign-in:', error)
   }

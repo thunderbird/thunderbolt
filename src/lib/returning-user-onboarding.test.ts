@@ -7,7 +7,7 @@ import { getDb } from '@/db/database'
 import { settingsTable } from '@/db/tables'
 import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn, test } from 'bun:test'
 import { isNewAuthUser, markOnboardedForReturningUser } from './returning-user-onboarding'
 
 describe('isNewAuthUser', () => {
@@ -88,7 +88,15 @@ describe('markOnboardedForReturningUser', () => {
     const brokenDb = () => {
       throw new Error('database is gone')
     }
+    // The failure is expected here, so keep its log out of the test output —
+    // but assert it still reports, since silence is the failure mode.
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
 
-    await expect(markOnboardedForReturningUser({ id: 'u1', isNew: false }, brokenDb)).resolves.toBeUndefined()
+    try {
+      await expect(markOnboardedForReturningUser({ id: 'u1', isNew: false }, brokenDb)).resolves.toBeUndefined()
+      expect(errorSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

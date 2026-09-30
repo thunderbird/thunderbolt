@@ -6,7 +6,7 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import type { AbstractPowerSyncDatabase } from '@powersync/web'
+import { SyncStatus, type AbstractPowerSyncDatabase } from '@powersync/web'
 import {
   handleCredentialsInvalidIfNeeded,
   isCreateOnlyWrite,
@@ -219,6 +219,9 @@ describe('ThunderboltConnector', () => {
       const complete = mock(() => Promise.resolve())
       const database = Object.create(null) as AbstractPowerSyncDatabase
       database.getNextCrudTransaction = async () => ({ crud: [], haveMore: false, complete })
+      // `currentStatus` is non-optional on the real class, so the stub has to
+      // carry it — `uploadData` reads it to classify create-only writes.
+      database.currentStatus = new SyncStatus({})
       fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
       const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
 

@@ -205,6 +205,17 @@ This is GH #1299: sync is off by default, so a second device seeds
 `user_has_completed_onboarding = false` at boot, and the moment the user enables sync that seed
 uploaded straight over the already-onboarded value on every other device.
 
+`hasSynced` is a safe gate even though it is read once per CRUD transaction while uploads and
+downloads run concurrently. It derives from `ps_sync_state.last_synced_at`, written only by
+`sync_local`, which the core guards with `SELECT 1 FROM ps_crud LIMIT 1` over the whole table — so
+a checkpoint cannot be _applied_ while any write is still queued, and the flag cannot flip
+mid-drain. A download _completing_ only lands ops in `ps_oplog`. By the time the flag can flip,
+there is nothing left to send.
+
+**Deploy the backend before the client.** Elysia drops body fields it does not declare, so a
+client sending `ifAbsent` to a backend that predates it is silently ignored and the overwrite
+behaviour returns, with no error anywhere.
+
 Two properties keep the rule safe:
 
 - **The op is still sent.** It is not dropped client-side. When the account genuinely lacks the

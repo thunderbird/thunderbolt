@@ -4,7 +4,7 @@
 
 import { hashPrompt } from './automations'
 import { hashModel } from '@shared/defaults/models'
-import { defaultSettings, hashSetting } from './settings'
+import { defaultSettings, hashSetting, shipsWithoutValue } from './settings'
 import type { Model, Prompt, Setting } from '@/types'
 
 /**
@@ -29,7 +29,7 @@ export const isAutomationModified = (prompt: Prompt): boolean => {
   return currentHash !== prompt.defaultHash
 }
 
-const nullValuedDefaultKeys = new Set(defaultSettings.filter((s) => s.value === null).map((s) => s.key))
+const valuelessDefaultKeys = new Set(defaultSettings.filter(shipsWithoutValue).map((s) => s.key))
 
 /**
  * Check if a setting has been modified from its default
@@ -50,7 +50,7 @@ export const isSettingModified = (setting: Setting | undefined): boolean => {
     return false
   }
   if (!setting.defaultHash) {
-    return nullValuedDefaultKeys.has(setting.key) && setting.value !== null
+    return valuelessDefaultKeys.has(setting.key) && setting.value !== null
   }
   const currentHash = hashSetting(setting)
   return currentHash !== setting.defaultHash

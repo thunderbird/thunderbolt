@@ -72,27 +72,14 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 }
 
 /**
- * Whether a queued write may create a row but must never overwrite one.
+ * Whether a queued write may create a row but must never overwrite one: a PUT
+ * uploaded before this device has ever seen the account's state (GH #1299).
  *
- * Before a device completes its first sync it has never seen the account's
- * state, so every row it holds is one it invented locally — the bundled
- * defaults, the seeded settings keys. Those are guesses, not assertions, and a
- * guess must not beat a value another device already stored. GH #1299: a second
- * device seeded `user_has_completed_onboarding = false` while offline and, on
- * enabling sync, overwrote the already-onboarded value everywhere.
+ * Scoped to PUT because PowerSync emits PUT from INSERT and PATCH from UPDATE,
+ * so a PUT is a row the device invented while a PATCH is a deliberate edit.
  *
- * Scoped to PUT on purpose. PowerSync emits PUT only for a row that did not
- * exist locally (`UpdateType`: PUT from INSERT, PATCH from UPDATE), so a
- * deliberate edit to an existing row — including resetting a setting back to
- * its default, which produces content identical to a fresh seed — is a PATCH.
- * Leaving PATCH unconditional is what keeps every intentional change
- * propagating — at the cost that a pre-first-sync PATCH is not fully informed
- * either, since the device is editing its own seeded copy rather than the
- * account's. See the "Known gap" note in
- * docs/architecture/powersync-account-devices.md.
- *
- * The window closes for good once `hasSynced` flips: from then on the device
- * knows what the account holds, and normal last-writer-wins applies.
+ * Full rationale, the safety properties, and the known gaps:
+ * docs/architecture/powersync-account-devices.md — "Create-only writes".
  */
 export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
   op === 'PUT' && !hasSynced
@@ -195,7 +182,8 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       return // No changes to upload
     }
 
-    const hasSynced = database.currentStatus?.hasSynced ?? false
+    // `currentStatus` is always present; only `hasSynced` is optional.
+    const hasSynced = database.currentStatus.hasSynced ?? false
 
     try {
       // Convert CRUD operations to our API format (encrypt encrypted columns)
@@ -210,6 +198,10 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
             // Omitted rather than sent as `false` so post-first-sync uploads —
             // every write by an established device — stay byte-identical to
             // what previous builds sent.
+            //
+            // Operational trap, kept here rather than in the doc: deploy the
+            // backend before this client. Elysia drops body fields it does not
+            // declare, so an older backend silently ignores the flag.
             ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
           })
         }),

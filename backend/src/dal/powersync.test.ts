@@ -94,15 +94,17 @@ describe('powersync upload gate (applyOperation)', () => {
       // user-b tries to delete user-a's thread (chat_threads pk is global id)
       const ok = await applyOperation(db, { op: 'DELETE', type: 'chat_threads', id: 't-iso' }, otherUserId)
 
-      expect(ok).toBe(false)
+      // Accepted for queue liveness, but scoped by user_id, so the owner's row
+      // survives untouched — that is the property this test guards.
+      expect(ok).toBe(true)
       const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-iso'))
       expect(rows).toHaveLength(1)
       expect(rows[0].userId).toBe(userId)
     })
 
-    it('returns false when deleting a non-existent row', async () => {
+    it('accepts deleting a non-existent row — the end state already holds', async () => {
       const ok = await applyOperation(db, { op: 'DELETE', type: 'models', id: 'ghost' }, userId)
-      expect(ok).toBe(false)
+      expect(ok).toBe(true)
     })
   })
 
@@ -360,16 +362,23 @@ describe('powersync upload gate (applyOperation)', () => {
       expect(rows[0].trusted).toBe(false)
     })
 
-    it('returns false when patching a non-existent row', async () => {
+    it('accepts a patch against a non-existent row so the queue can drain', async () => {
+      // Rejecting would stop the client calling complete(), retry the batch
+      // forever, and — since PowerSync defers checkpoints while writes are
+      // pending — kill sync in both directions. Reachable for devices holding
+      // rows left by the pre-GH-#1299 `DELETE FROM ps_crud`.
       const ok = await applyOperation(
         db,
         { op: 'PATCH', type: 'chat_threads', id: 'nope', data: { title: 'X' } },
         userId,
       )
-      expect(ok).toBe(false)
+
+      expect(ok).toBe(true)
+      const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 'nope'))
+      expect(rows).toHaveLength(0)
     })
 
-    it('does not patch another user’s row and reports false', async () => {
+    it('never patches another user’s row, though it accepts the op', async () => {
       await applyOperation(db, { op: 'PUT', type: 'chat_threads', id: 't-patch-iso', data: { title: 'A' } }, userId)
 
       const ok = await applyOperation(
@@ -378,9 +387,13 @@ describe('powersync upload gate (applyOperation)', () => {
         otherUserId,
       )
 
-      expect(ok).toBe(false)
+      // Acceptance is about queue liveness, never about authority: the write
+      // is still scoped by user_id and the owner's row is untouched.
+      expect(ok).toBe(true)
       const rows = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.id, 't-patch-iso'))
+      expect(rows).toHaveLength(1)
       expect(rows[0].title).toBe('A')
+      expect(rows[0].userId).toBe(userId)
     })
 
     it('converts ISO timestamp strings to Date for timestamp columns (soft-delete)', async () => {

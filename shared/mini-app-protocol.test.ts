@@ -12,6 +12,7 @@ import {
   parseToolsList,
   maxToolDescriptionChars,
   maxToolNameChars,
+  maxToolSchemaChars,
   maxToolsPerApp,
   elementAtResultSchema,
   toolsCallResultSchema,
@@ -332,7 +333,7 @@ describe('parseToolsList', () => {
   })
 
   it('reads a well-formed list', () => {
-    expect(parseToolsList({ tools: [tool()] })).toEqual({ tools: [tool()], dropped: 0 })
+    expect(parseToolsList({ tools: [tool()] })).toEqual({ tools: [tool()], dropped: 0, envelope: 'valid' })
   })
 
   /*
@@ -379,7 +380,7 @@ describe('parseToolsList', () => {
   })
 
   it('reports an empty description as dropped rather than padding it', () => {
-    expect(parseToolsList({ tools: [tool({ description: '' })] })).toEqual({ tools: [], dropped: 1 })
+    expect(parseToolsList({ tools: [tool({ description: '' })] })).toEqual({ tools: [], dropped: 1, envelope: 'valid' })
   })
 
   /*
@@ -395,8 +396,28 @@ describe('parseToolsList', () => {
     expect(dropped).toBe(2)
   })
 
-  it('returns nothing for a reply that is not a tool list', () => {
-    expect(parseToolsList({ nope: true })).toEqual({ tools: [], dropped: 0 })
+  /*
+   * `envelope: 'invalid'` rather than looking like an app with no tools. Those
+   * were the same answer, so a reply that was not a tool list published an
+   * empty toolset in silence, while a bad descriptor *inside* a good array got
+   * logged — the diagnostic firing for the lesser problem only.
+   */
+  it('distinguishes a reply that is not a tool list from an app with no tools', () => {
+    expect(parseToolsList({ nope: true })).toEqual({ tools: [], dropped: 0, envelope: 'invalid' })
+    expect(parseToolsList({ tools: [] })).toEqual({ tools: [], dropped: 0, envelope: 'valid' })
+  })
+
+  it('drops a tool whose schema would eat the request budget', () => {
+    const huge = { type: 'object', properties: { blob: { description: 'x'.repeat(maxToolSchemaChars) } } }
+    const { tools, dropped } = parseToolsList({ tools: [tool(), tool({ name: 'big', inputSchema: huge })] })
+
+    expect(tools.map((t) => t.name)).toEqual(['set_assumption'])
+    expect(dropped).toBe(1)
+  })
+
+  it('keeps a schema comfortably inside the cap', () => {
+    const fine = { type: 'object', properties: { name: { type: 'string' } } }
+    expect(parseToolsList({ tools: [tool({ inputSchema: fine })] }).tools).toHaveLength(1)
   })
 })
 

@@ -507,6 +507,29 @@ export const maxToolDescriptionChars = 300
 export const maxToolsPerApp = 64
 
 /**
+ * Longest serialised `inputSchema` one tool may declare.
+ *
+ * Unbounded, this is forwarded verbatim into a provider tool definition, so a
+ * guest could spend megabytes of the request budget and fail the whole turn
+ * before any provider limit helped. 8KB is far more than a real argument schema
+ * needs and small enough that 64 of them cannot dominate a request.
+ */
+export const maxToolSchemaChars = 8_192
+
+/**
+ * What {@link parseToolsList} found.
+ *
+ * `envelope` distinguishes "this app has no tools" from "the reply was not a
+ * tool list", which were the same answer and are very different problems.
+ */
+export type ParsedToolsList = {
+  tools: MiniAppTool[]
+  /** Descriptors inside a valid array that were individually unusable. */
+  dropped: number
+  envelope: 'valid' | 'invalid'
+}
+
+/**
  * Longest guest tool name.
  *
  * 60 rather than WebMCP's 128: the host prefixes names with `app_` before
@@ -557,8 +580,20 @@ export const miniAppToolSchema = z.object({
    * rejected — see the reasoning there.
    */
   description: z.string().min(1).max(maxToolDescriptionChars),
-  /** JSON Schema for the arguments. Absent means the tool takes none. */
-  inputSchema: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * JSON Schema for the arguments. Absent means the tool takes none.
+   *
+   * Size-capped: it goes verbatim into a provider tool definition, so an
+   * unbounded one spends the request budget and fails the turn before any
+   * provider limit helps. Checked on the serialised form because that is what
+   * actually travels — depth and property counts are proxies for it.
+   */
+  inputSchema: z
+    .record(z.string(), z.unknown())
+    .refine((schema) => JSON.stringify(schema).length <= maxToolSchemaChars, {
+      message: `inputSchema must serialise to at most ${maxToolSchemaChars} characters`,
+    })
+    .optional(),
   annotations: z
     .object({
       /**
@@ -595,10 +630,18 @@ export type MiniAppTool = z.infer<typeof miniAppToolSchema>
  * it left the original bug intact one level up: an app advertising 65 tools
  * still lost all 65, and `dropped: 0` meant even the log stayed quiet.
  */
-export const parseToolsList = (result: unknown): { tools: MiniAppTool[]; dropped: number } => {
+export const parseToolsList = (result: unknown): ParsedToolsList => {
   const envelope = z.object({ tools: z.array(z.unknown()) }).safeParse(result)
   if (!envelope.success) {
-    return { tools: [], dropped: 0 }
+    /*
+     * Not `{ tools: [], dropped: 0 }`, which is what an app with no tools looks
+     * like. A missing or malformed reply is the failure this parser was added to
+     * report, and returning the same answer for both meant the caller published
+     * an empty toolset without the diagnostic: invalid descriptors *inside* a
+     * valid array were logged, while a reply that was not a tool list at all —
+     * or never arrived — was silent.
+     */
+    return { tools: [], dropped: 0, envelope: 'invalid' }
   }
 
   const tools: MiniAppTool[] = []
@@ -615,7 +658,7 @@ export const parseToolsList = (result: unknown): { tools: MiniAppTool[]; dropped
     }
     dropped += 1
   }
-  return { tools, dropped }
+  return { tools, dropped, envelope: 'valid' }
 }
 
 /** Guest's answer to `tools/call`. */

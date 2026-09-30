@@ -552,11 +552,11 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * cursor is over padding), unlike a malformed tool descriptor.
    */
   const queryElementAt = useCallback(
-    (point: { x: number; y: number }): Promise<MiniAppHighlightedElement | null> =>
-      request(miniAppHostMethods.elementAt, point, elementAtTimeoutMs).then((result) => {
-        const parsed = elementAtResultSchema.safeParse(result)
-        return parsed.success ? parsed.data.element : null
-      }),
+    async (point: { x: number; y: number }): Promise<MiniAppHighlightedElement | null> => {
+      const result = await request(miniAppHostMethods.elementAt, point, elementAtTimeoutMs)
+      const parsed = elementAtResultSchema.safeParse(result)
+      return parsed.success ? parsed.data.element : null
+    },
     [request],
   )
 
@@ -572,18 +572,27 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       return
     }
     let cancelled = false
-    void request(miniAppHostMethods.toolsList, {}, toolsRequestTimeoutMs).then((result) => {
+    const discover = async () => {
+      const result = await request(miniAppHostMethods.toolsList, {}, toolsRequestTimeoutMs)
       if (cancelled) {
         return
       }
-      const { tools, dropped } = parseToolsList(result)
+      const { tools, dropped, envelope } = parseToolsList(result)
+      if (envelope === 'invalid') {
+        // The app declared the capability and then answered with something that
+        // is not a tool list — or did not answer at all. Reported because an
+        // empty toolset is otherwise indistinguishable from an app that simply
+        // has no tools, which is the one thing this parser exists to tell apart.
+        console.error(`[mini-apps] ${app.id}: tools/list did not return a tool list`)
+      }
       if (dropped > 0) {
         // Loud on purpose: an app author's tool going missing is otherwise
         // indistinguishable from the model choosing not to call it.
         console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed tool descriptor(s) from tools/list`)
       }
       setTools(tools, callTool)
-    })
+    }
+    void discover()
     return () => {
       cancelled = true
     }

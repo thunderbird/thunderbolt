@@ -72,6 +72,7 @@ test-results/
 playwright-report/
 blob-report/
 qa-out*/
+qa-dist*/
 
 # Powersync
 public/@powersync/**

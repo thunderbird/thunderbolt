@@ -15,6 +15,7 @@
 import {
   contextGetResultSchema,
   elementAtResultSchema,
+  identifyResultSchema,
   isSupportedProtocolVersion,
   miniAppGuestMethods,
   miniAppHostMethods,
@@ -71,6 +72,22 @@ export const contextRequestTimeoutMs = 2_000
 
 /** A tool call blocks a model turn, so it gets more room than discovery. */
 export const toolCallTimeoutMs = 15_000
+
+/**
+ * How long the host waits for `ui/identify` after the frame fires `load`.
+ *
+ * Short, because a guest that can answer answers immediately — its bridge is
+ * already listening, and the reply is a constant. The deadline is really the
+ * budget for *silence*, which is the answer in the common case: a fresh
+ * document whose `connect()` has not run yet says nothing, and until this
+ * expires the host is still showing the previous document's state as live.
+ *
+ * Not so short that an event-loop hiccup reads as a new document. A spurious
+ * reset costs a re-handshake the guest performs anyway; a spurious *keep*
+ * leaves Select and Chat lit over a dead page, so the asymmetry favours the
+ * shorter end.
+ */
+export const identifyTimeoutMs = 500
 
 /**
  * How long the handshake will wait on the token endpoint.
@@ -297,14 +314,34 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * capability ends up declared but never consulted. */
   const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
   /*
-   * Whether the document currently in the frame has introduced itself.
+   * Whether *any* document in this frame has introduced itself yet.
    *
-   * A guest posts `initialize` from its script, which runs before the frame's
-   * `load` event reaches us — so by the time we see a load we already know
-   * whether the document that just committed handshaked, or whether we are
-   * looking at a fresh page that has said nothing.
+   * Only ever asks "is there a handshake to protect at all". Which document it
+   * belongs to is `documentIdRef`'s job, because that question cannot be
+   * answered by watching the order things arrive in — see `handleFrameLoad`.
    */
   const hasHandshakedRef = useRef(false)
+  /**
+   * The id the handshaked guest minted for its document, or `null` for a guest
+   * whose SDK predates the field.
+   *
+   * This is what makes a repeat `initialize` recognisable. React's StrictMode
+   * double-invokes the effect that calls `connect()`, so the second handshake is
+   * routine rather than exotic — and it used to read as a new document, which
+   * threw away the capabilities and the tool list and rediscovered both for a
+   * page that had not changed.
+   */
+  const documentIdRef = useRef<string | null>(null)
+  /**
+   * Counts frame loads, so a late `ui/identify` reply knows it has been
+   * overtaken.
+   *
+   * The confirmation is asynchronous and a frame can commit twice inside its
+   * deadline (a redirect chain, a user mashing reload). Without this, the first
+   * load's reply would arrive after the second load had already reset and act
+   * on a document two generations old.
+   */
+  const loadGenerationRef = useRef(0)
   // Correlation, timeouts and always-settling are shared with artifacts — see
   // `pending-requests.ts`. Only the envelope and the trust check differ.
   const [pending] = useState(() => createPendingRequests())
@@ -382,7 +419,22 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         }
         const capabilities = message.params.capabilities
         guestCapabilitiesRef.current = capabilities
-        resetGuest()
+        /*
+         * The same document introducing itself twice is not a new document. It
+         * still gets a full reply — it is waiting on one, and a second
+         * `connect()` in the same page has no idea the first one happened — but
+         * nothing is torn down and no epoch is bumped, so the tool list and the
+         * capabilities it already published survive.
+         */
+        // `||`, not `??`: an empty string is a guest with no id to give, and
+        // the protocol lets one through rather than dropping the handshake over
+        // it. Treating it as absent puts it on the same fallback path.
+        const documentId = message.params.documentId || null
+        const isRepeatHandshake = documentId !== null && documentId === documentIdRef.current
+        if (!isRepeatHandshake) {
+          resetGuest()
+        }
+        documentIdRef.current = documentId
         hasHandshakedRef.current = true
 
         // Only minted when the guest declared the capability — an app that never
@@ -417,7 +469,9 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
           ...(auth ? { auth } : {}),
         }
         post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
-        dispatch({ type: 'HANDSHAKED' })
+        if (!isRepeatHandshake) {
+          dispatch({ type: 'HANDSHAKED' })
+        }
         return
       }
 
@@ -674,18 +728,76 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * handshake timeout never re-arms, and every tool call the model makes burns
    * its full timeout against a page that will never answer.
    *
-   * The already-handshaked branch consumes the flag rather than resetting
-   * anything — that document is live, and its tool list may have landed between
-   * its `initialize` and this event.
+   * The hard part is deciding whether a handshake already in hand belongs to
+   * the document that just committed. This used to consume a one-bit flag set
+   * by the last `initialize`, on the reasoning that a guest posts it from a
+   * script that runs before `load` reaches us. That is true of a plain script
+   * and false of React, where `connect()` is called from an effect — and both
+   * orderings produce the same observable sequence:
+   *
+   * | Guest        | Sequence                          | Handshake belongs to |
+   * | ------------ | --------------------------------- | -------------------- |
+   * | plain script | `initialize` → `load`             | the new document     |
+   * | React        | `load` → `initialize` → `load`    | the *old* document   |
+   *
+   * The flag reads `true` at the second `load` in both rows, so the React app
+   * kept `ready` over a page that had said nothing — exactly the state this
+   * handler exists to prevent, one document later. No amount of ordering
+   * cleverness separates them, because the difference is *which document sent
+   * the message*, and a cross-origin `load` event carries no identity to
+   * compare against.
+   *
+   * So ask the frame instead (THU-908). `ui/identify` is delivered to whatever
+   * document is live now, which makes the answer unambiguous: it comes back with
+   * the id we are already holding, or it does not come back at all.
    */
   const handleFrameLoad = useCallback(() => {
-    if (hasHandshakedRef.current) {
+    const generation = (loadGenerationRef.current += 1)
+
+    // Nothing to protect: either this is the first document, or the last one
+    // never introduced itself.
+    if (!hasHandshakedRef.current) {
+      resetGuest()
+      dispatch({ type: 'DOCUMENT_CHANGED' })
+      return
+    }
+
+    /*
+     * A guest whose SDK predates `documentId` cannot be asked, so it keeps the
+     * old best-effort guess. Wrong for a React app that navigates, right for
+     * everything else, and strictly better than resetting a live document on
+     * every load — which is what asking a guest that will never answer would do.
+     */
+    if (documentIdRef.current === null) {
       hasHandshakedRef.current = false
       return
     }
-    resetGuest()
-    dispatch({ type: 'DOCUMENT_CHANGED' })
-  }, [resetGuest])
+
+    const confirm = async () => {
+      const result = await request(miniAppHostMethods.identify, {}, identifyTimeoutMs)
+      if (generation !== loadGenerationRef.current) {
+        // A later load already made this question obsolete, and answered its own.
+        return
+      }
+      const parsed = identifyResultSchema.safeParse(result)
+      /*
+       * Compared against the ref rather than the id captured when this started:
+       * the new document may have handshaked while we were waiting, in which
+       * case the ref has already moved to *its* id and the reply matching means
+       * the live document is the one we are talking to. Using a captured value
+       * here would reset a handshake that had just succeeded.
+       */
+      const identified = parsed.success ? parsed.data.documentId || null : null
+      if (identified !== null && identified === documentIdRef.current) {
+        return
+      }
+      hasHandshakedRef.current = false
+      documentIdRef.current = null
+      resetGuest()
+      dispatch({ type: 'DOCUMENT_CHANGED' })
+    }
+    void confirm()
+  }, [request, resetGuest])
 
   /**
    * Load the app again after it failed to arrive.
@@ -697,6 +809,16 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    */
   const reloadFrame = useCallback(() => {
     hasHandshakedRef.current = false
+    documentIdRef.current = null
+    /*
+     * Claims the generation, so a confirmation still in flight from the load
+     * this replaces cannot reset the document we are about to ask for.
+     *
+     * Not covered by `use-mini-app-bridge.test.tsx`: reassigning `src` swaps
+     * `contentWindow` in happy-dom, so the handshake that would follow fails
+     * the trust check and there is nothing left to observe.
+     */
+    loadGenerationRef.current += 1
     resetGuest()
     dispatch({ type: 'RELOAD_REQUESTED' })
     if (frameRef.current) {

@@ -431,6 +431,55 @@ describe('tools', () => {
   })
 })
 
+/**
+ * The guest mints an id for its own document, because the host cannot tell the
+ * frame's documents apart: a cross-origin `load` event carries no identity, and
+ * the order `initialize` arrives in does not imply which document sent it
+ * (THU-908).
+ */
+describe('document identity', () => {
+  it('sends a document id with the handshake', async () => {
+    await connected()
+
+    const handshake = posted.find((entry) => entry.method === 'ui/initialize')
+    const { documentId } = (handshake?.params as { documentId: string }) ?? {}
+    expect(typeof documentId).toBe('string')
+    expect(documentId.length).toBeGreaterThan(0)
+  })
+
+  it('answers ui/identify with that same id', async () => {
+    await connected()
+    const handshake = posted.find((entry) => entry.method === 'ui/initialize')
+
+    fromHost({ jsonrpc: '2.0', id: 40, method: 'ui/identify', params: {} })
+
+    expect(posted.find((entry) => entry.id === 40)?.result).toEqual({
+      documentId: (handshake?.params as { documentId: string }).documentId,
+    })
+  })
+
+  /*
+   * Answering at all is most of the signal — the host reads silence as "the
+   * document that just committed has not introduced itself" — so a second
+   * `connect()` in the same document must not invent a new identity, or a
+   * reload would look like a navigation.
+   */
+  it('keeps one id across two connections in the same document', async () => {
+    await connected()
+    const first = posted.find((entry) => entry.method === 'ui/initialize')
+    posted.length = 0
+
+    const pending = connect({ appName: 'Test App', hostOrigin })
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/initialize'), result: {} })
+    await track(pending)
+
+    const second = posted.find((entry) => entry.method === 'ui/initialize')
+    expect((second?.params as { documentId: string }).documentId).toBe(
+      (first?.params as { documentId: string }).documentId,
+    )
+  })
+})
+
 describe('readTokenClaims', () => {
   /** base64url over UTF-8, the way a real issuer encodes a payload. */
   const encodePayload = (claims: Record<string, unknown>) => {

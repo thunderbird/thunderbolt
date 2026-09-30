@@ -21,6 +21,7 @@ import {
   acceptGuestMessage,
   contextRequestTimeoutMs,
   handshakeTimeoutMs,
+  identifyTimeoutMs,
   toolCallTimeoutMs,
   maxToolsChangedPerDocument,
   toolsRequestTimeoutMs,
@@ -210,10 +211,44 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
   /** The reply to one request — the host also posts unsolicited notifications. */
   const replyTo = (id: number | string) => posted.find((message) => 'id' in message && message.id === id)
 
-  const handshake = (capabilities: Record<string, boolean> = {}, version = miniAppProtocolVersion) =>
-    send(envelope({ id: 1, method: 'ui/initialize', params: { protocolVersion: version, capabilities } }))
+  /**
+   * `documentId` defaults to a real one, because a real guest sends one — and
+   * the frame-load path behaves differently without it, on purpose. Pass `null`
+   * to model a guest on an SDK copy that predates the field.
+   */
+  const handshake = (
+    capabilities: Record<string, boolean> = {},
+    { version = miniAppProtocolVersion, documentId = 'doc-a' as string | null, id = 1 } = {},
+  ) =>
+    send(
+      envelope({
+        id,
+        method: 'ui/initialize',
+        params: { protocolVersion: version, capabilities, ...(documentId === null ? {} : { documentId }) },
+      }),
+    )
 
-  return { bridge, posted, replyTo, send, settle, elapse, envelope, handshake, unmount }
+  /** Every `ui/identify` the host has asked, oldest first. */
+  const identifyIds = () =>
+    posted
+      .filter((message) => 'method' in message && message.method === 'ui/identify')
+      .map((message) => (message as { id: number }).id)
+
+  /**
+   * Answer one `ui/identify`. Defaults to the most recent, which is the one a
+   * live document would be replying to; pass an index to answer an older one
+   * and model a reply that a later load has overtaken.
+   */
+  const answerIdentify = async (documentId: string | null, index = -1) => {
+    const ids = identifyIds()
+    const id = ids.at(index)
+    if (id === undefined) {
+      throw new Error(`the host asked ${ids.length} ui/identify requests; no index ${index}`)
+    }
+    await send(envelope({ id, result: { documentId } }))
+  }
+
+  return { bridge, posted, replyTo, send, settle, elapse, envelope, handshake, answerIdentify, identifyIds, unmount }
 }
 
 beforeEach(() => {
@@ -371,7 +406,7 @@ describe('useMiniAppBridge tool discovery', () => {
       await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
     }
 
-    await handshake()
+    await handshake({}, { documentId: 'doc-b', id: 2 })
     await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
 
     const lists = posted.filter((message) => 'method' in message && message.method === 'tools/list')
@@ -479,7 +514,7 @@ describe('useMiniAppBridge message handling', () => {
 
   it('refuses a protocol version it does not speak, and stays unready', async () => {
     const { bridge, replyTo, handshake } = mountBridge()
-    await handshake({}, 99)
+    await handshake({}, { version: 99 })
 
     expect(replyTo(1)).toMatchObject({ error: { code: miniAppRpcErrors.unsupportedProtocolVersion } })
     expect(bridge.current?.status).toBe('connecting')
@@ -650,7 +685,7 @@ describe('useMiniAppBridge message handling', () => {
    * that no longer exists; serving its tools to the model means calling functions
    * into a document that never defined them.
    */
-  it('drops the previous document state when the app handshakes again', async () => {
+  it('drops the previous document state when a different document handshakes', async () => {
     const { send, envelope, handshake } = mountBridge()
     await handshake()
     useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
@@ -658,7 +693,7 @@ describe('useMiniAppBridge message handling', () => {
     }))
     await send(envelope({ method: 'ui/notifications/error', params: { message: 'Chart failed to render' } }))
 
-    await handshake()
+    await handshake({}, { documentId: 'doc-b', id: 2 })
 
     expect(useMiniAppStore.getState().tools).toEqual([])
   })
@@ -667,9 +702,44 @@ describe('useMiniAppBridge message handling', () => {
     const { bridge, send, envelope, handshake } = mountBridge()
     await handshake()
     await send(envelope({ method: 'ui/notifications/error', params: { message: 'Chart failed to render' } }))
-    await handshake()
+    await handshake({}, { documentId: 'doc-b', id: 2 })
 
     expect(bridge.current?.runtimeError).toBeNull()
+  })
+
+  /**
+   * React's StrictMode double-invokes the effect that calls `connect()`, so one
+   * document handshaking twice is routine. It used to read as a new document:
+   * capabilities and tool list thrown away and rediscovered, for a page that had
+   * not changed (THU-908).
+   */
+  it('leaves everything in place when the same document handshakes twice', async () => {
+    const { bridge, replyTo, handshake } = mountBridge()
+    await handshake({ tools: true })
+    useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
+      content: '',
+    }))
+
+    await handshake({ tools: true }, { id: 2 })
+
+    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['refresh'])
+    expect(bridge.current?.status).toBe('ready')
+    // Still answered in full: the second `connect()` is waiting on a reply and
+    // has no idea the first one happened.
+    expect(replyTo(2)).toMatchObject({ result: { hostName: 'Thunderbolt' } })
+  })
+
+  /** A guest with no id to compare cannot be recognised, so it stays the old way. */
+  it('treats a repeat from a guest with no document id as a new document', async () => {
+    const { handshake } = mountBridge()
+    await handshake({}, { documentId: null })
+    useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
+      content: '',
+    }))
+
+    await handshake({}, { documentId: null, id: 2 })
+
+    expect(useMiniAppStore.getState().tools).toEqual([])
   })
 
   /*
@@ -677,33 +747,169 @@ describe('useMiniAppBridge message handling', () => {
    * the host keeps saying `ready` — Select and Chat stay lit over a dead document
    * and every tool call the model makes waits out its full timeout.
    */
-  it('goes back to connecting when a new document loads without handshaking', async () => {
-    const { bridge, handshake } = mountBridge()
+  it('goes back to connecting when a new document loads and does not identify', async () => {
+    const { bridge, handshake, elapse } = mountBridge()
     await handshake()
-    // The load for the document that just handshaked, then a silent one.
+
     act(() => bridge.current?.handleFrameLoad())
-    act(() => bridge.current?.handleFrameLoad())
+    await elapse(identifyTimeoutMs)
 
     expect(bridge.current?.status).toBe('connecting')
   })
 
-  it('clears a runtime error when a new document loads without handshaking', async () => {
-    const { bridge, send, envelope, handshake } = mountBridge()
+  it('clears a runtime error when a new document loads and does not identify', async () => {
+    const { bridge, send, envelope, handshake, elapse } = mountBridge()
     await handshake()
     await send(envelope({ method: 'ui/notifications/error', params: { message: 'Chart failed to render' } }))
+
     act(() => bridge.current?.handleFrameLoad())
-    act(() => bridge.current?.handleFrameLoad())
+    await elapse(identifyTimeoutMs)
 
     expect(bridge.current?.runtimeError).toBeNull()
   })
 
-  // A guest posts `initialize` from its script, which runs before the frame's
-  // load event reaches us — so the first load must not undo the handshake.
-  it('stays ready through the load event of the document that handshaked', async () => {
-    const { bridge, handshake } = mountBridge()
+  /**
+   * The ordering this used to guess at (THU-908). A plain-script guest posts
+   * `initialize` before its own `load` reaches us, so the handshake in hand
+   * really is the live document's — and it says so when asked.
+   */
+  it('stays ready when the live document identifies as the one that handshaked', async () => {
+    const { bridge, handshake, answerIdentify } = mountBridge()
     await handshake()
+
     act(() => bridge.current?.handleFrameLoad())
+    await answerIdentify('doc-a')
 
     expect(bridge.current?.status).toBe('ready')
+  })
+
+  /**
+   * The other ordering, and the case the old flag got wrong: a React guest
+   * handshakes *after* its load, so at the next load the flag said "the document
+   * that just committed handshaked" when the handshake belonged to the page that
+   * had gone away. Select and Chat stayed lit over a dead document.
+   */
+  it('resets when the live document identifies as a different one', async () => {
+    const { bridge, handshake, answerIdentify } = mountBridge()
+    await handshake()
+
+    act(() => bridge.current?.handleFrameLoad())
+    await answerIdentify('doc-b')
+
+    expect(bridge.current?.status).toBe('connecting')
+  })
+
+  /**
+   * A guest that answers but has no id to give is present without identity —
+   * an SDK copy that predates the field, reached through the `ui/identify`
+   * handler it does not have. Treated as a different document, because presence
+   * alone cannot vouch for the handshake we are holding.
+   */
+  it('resets when the live document answers without an id', async () => {
+    const { bridge, handshake, answerIdentify } = mountBridge()
+    await handshake()
+
+    act(() => bridge.current?.handleFrameLoad())
+    await answerIdentify(null)
+
+    expect(bridge.current?.status).toBe('connecting')
+  })
+
+  /**
+   * The new document can handshake while the confirmation for the old one is
+   * still in flight. Comparing the reply against the id captured when the
+   * question was asked would tear down the handshake that had just succeeded.
+   */
+  it('does not reset a document that handshaked while the confirmation was pending', async () => {
+    const { bridge, handshake, answerIdentify } = mountBridge()
+    await handshake()
+
+    act(() => bridge.current?.handleFrameLoad())
+    await handshake({}, { documentId: 'doc-b', id: 2 })
+    await answerIdentify('doc-b')
+
+    expect(bridge.current?.status).toBe('ready')
+  })
+
+  /**
+   * A frame can commit twice inside one confirmation's deadline — a redirect
+   * chain, or a user mashing reload. The first load's reply then describes a
+   * document two generations old, and acting on it would vouch for a handshake
+   * nothing has confirmed.
+   */
+  it('ignores a confirmation that a later load has overtaken', async () => {
+    const { bridge, handshake, answerIdentify, elapse } = mountBridge()
+    await handshake()
+    act(() => bridge.current?.handleFrameLoad())
+    act(() => bridge.current?.handleFrameLoad())
+
+    // The first question, answered after the second was asked.
+    await answerIdentify('doc-a', 0)
+    // The second goes unanswered, which is what decides it.
+    await elapse(identifyTimeoutMs)
+
+    expect(bridge.current?.status).toBe('connecting')
+  })
+
+  /**
+   * The same overtaking, the other way round, and the one that actually costs
+   * something: the *newer* question is answered and the older one's deadline
+   * expires afterwards. A timeout is indistinguishable from a wrong id at the
+   * parse, so without the generation check that stale expiry tears down a
+   * document a live reply had just confirmed — half a second after everything
+   * looked fine.
+   */
+  it('keeps a confirmed document when an overtaken confirmation later times out', async () => {
+    const { bridge, handshake, answerIdentify, elapse } = mountBridge()
+    await handshake()
+    act(() => bridge.current?.handleFrameLoad())
+    act(() => bridge.current?.handleFrameLoad())
+
+    await answerIdentify('doc-a')
+    await elapse(identifyTimeoutMs)
+
+    expect(bridge.current?.status).toBe('ready')
+  })
+
+  /**
+   * An empty string is a guest with no id to give. The protocol lets one
+   * through rather than dropping the handshake over it — a floor on a field
+   * riding `initialize` rejects the whole message, and the app would see only a
+   * timeout — so the host has to read it as absent at both ends.
+   */
+  it('treats an empty document id as no id at all', async () => {
+    const { bridge, posted, handshake } = mountBridge()
+    await handshake({}, { documentId: '' })
+
+    expect(bridge.current?.status).toBe('ready')
+
+    act(() => bridge.current?.handleFrameLoad())
+
+    expect(posted.some((message) => 'method' in message && message.method === 'ui/identify')).toBe(false)
+  })
+
+  /**
+   * A guest that cannot be asked keeps the old best-effort guess. Wrong for a
+   * React app that navigates, right for everything else — and strictly better
+   * than resetting a live document on every load, which is what asking a guest
+   * that will never answer would do.
+   */
+  it('falls back to the load-ordering guess for a guest with no document id', async () => {
+    const { bridge, handshake, elapse } = mountBridge()
+    await handshake({}, { documentId: null })
+
+    act(() => bridge.current?.handleFrameLoad())
+    await elapse(identifyTimeoutMs)
+
+    expect(bridge.current?.status).toBe('ready')
+  })
+
+  it('does not ask a guest with no document id to identify', async () => {
+    const { bridge, posted, handshake } = mountBridge()
+    await handshake({}, { documentId: null })
+
+    act(() => bridge.current?.handleFrameLoad())
+
+    expect(posted.some((message) => 'method' in message && message.method === 'ui/identify')).toBe(false)
   })
 })

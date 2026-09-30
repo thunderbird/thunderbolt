@@ -191,6 +191,29 @@ export const miniAppHostMethods = {
   toolsList: 'tools/list',
   /** Invoke one of them. */
   toolsCall: 'tools/call',
+  /**
+   * "Which document are you?" — asked right after the frame fires `load`.
+   *
+   * The host has to know whether the handshake it is holding belongs to the
+   * document that just committed or to the one before it, and the `load` event
+   * itself cannot say: it carries no identity, and the frame is cross-origin so
+   * there is nothing to read off it.
+   *
+   * Ordering does not answer it either, which is what made the guess this
+   * replaced unfixable. A guest posts `initialize` from `connect()`, and *when*
+   * that runs is the app's business: a plain script calls it during parse, so
+   * the handshake arrives before `load`; a React app calls it from an effect,
+   * so it arrives after. Both produce "one handshake, then a load" — in the
+   * first case from the document that just committed, in the second from the
+   * one that went away. Indistinguishable from the outside.
+   *
+   * So the host asks the live document instead, which is unambiguous because
+   * the question is delivered to whatever is in the frame *now*. An answer
+   * means the bridge the host has been talking to is still there; silence means
+   * the document that committed has not introduced itself, and the host resets
+   * and waits for it to.
+   */
+  identify: 'ui/identify',
 } as const
 
 /**
@@ -313,6 +336,34 @@ export const initializeRequestSchema = envelopeSchema.extend({
      *  it dropped `initialize` itself, so a long display name meant the app
      *  never connected and both sides only ever saw a timeout. */
     appName: clampedString(200).optional(),
+    /**
+     * An opaque id the guest mints once per *document*.
+     *
+     * Two jobs, both of which the host cannot do for itself.
+     *
+     * It makes a repeated handshake idempotent. A guest can send `initialize`
+     * twice from one document — React's StrictMode double-invokes the effect
+     * that calls `connect()`, and a guest is free to retry — and the host used
+     * to treat the second one as a new document: capabilities and tool list
+     * thrown away and rediscovered, for a page that had not changed.
+     *
+     * And it gives the frame's documents identity at all, which is what
+     * {@link miniAppHostMethods.identify} needs to answer "is the handshake I am
+     * holding the live document's?".
+     *
+     * Optional, and absence is handled rather than rejected: this rides the
+     * handshake, so a guest on an SDK copy that predates it must still be able
+     * to connect. The host falls back to its older, best-effort ordering guess
+     * for those — see `handleFrameLoad`.
+     *
+     * No `min` either, for the same reason one notch further out. A floor
+     * *rejects*, and rejecting a field on `initialize` drops the handshake
+     * itself — so a third-party guest that sends an empty string, the way a
+     * defaulted field does, would be unable to connect at all and see only a
+     * timeout. The host reads empty as absent instead, which lands it on the
+     * same fallback as a guest that sent nothing.
+     */
+    documentId: clampedString(64).optional(),
     capabilities: miniAppGuestCapabilitiesSchema,
   }),
 })
@@ -470,6 +521,7 @@ export type MiniAppHostRequest = {
   method:
     | typeof miniAppHostMethods.contextGet
     | typeof miniAppHostMethods.elementAt
+    | typeof miniAppHostMethods.identify
     | typeof miniAppHostMethods.toolsList
     | typeof miniAppHostMethods.toolsCall
   params: unknown
@@ -750,6 +802,25 @@ export const contextGetResultSchema = z.object({
 })
 
 export type ContextGetResult = z.infer<typeof contextGetResultSchema>
+
+/**
+ * Guest's answer to `ui/identify`.
+ *
+ * `null` is a real answer, not a failure: it means "a bridge is here and
+ * listening, but it has no document id to give you" — a guest on an SDK copy
+ * that predates {@link miniAppHostMethods.identify}'s companion field. The host
+ * treats that as presence without identity, which is still strictly more than
+ * the silence it would otherwise have to interpret.
+ *
+ * Unfloored like its counterpart on `initialize`, and normalised to `null` by
+ * the host, so the two ends of the comparison cannot disagree about what an
+ * empty string means.
+ */
+export const identifyResultSchema = z.object({
+  documentId: clampedString(64).nullable(),
+})
+
+export type IdentifyResult = z.infer<typeof identifyResultSchema>
 
 /** Guest's answer to `tools/call`. */
 export const toolsCallResultSchema = z.object({

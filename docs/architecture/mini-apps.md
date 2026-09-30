@@ -225,7 +225,8 @@ Everything the guest can say, all guest-initiated and all optional:
 
 | It says                              | When                                          | Reaches the model as                        |
 | ------------------------------------ | --------------------------------------------- | ------------------------------------------- |
-| `ui/initialize`                      | Once per document                             | Nothing. Capability negotiation only        |
+| `ui/initialize`                      | Once per document, with a `documentId`        | Nothing. Capability negotiation only        |
+| `ui/identify` (host → app)           | After every frame `load`                      | Nothing. Decides whose handshake is live    |
 | `ui/get-context` (host → app)        | On every `get_app_context` call               | The `get_app_context` tool's return value   |
 | `tools/list` (as a reply)            | After handshake, and on every `tools-changed` | Tool definitions, prefixed `app_`           |
 | `ui/notifications/tools-changed`     | When its tool registry moves                  | Nothing directly. Host re-runs `tools/list` |
@@ -291,6 +292,50 @@ above it is our code, and worth reading with that in mind.
    and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
 6. The app's state changed, and it publishes nothing — there is nothing to publish. The next
    `get_app_context` sees it.
+
+### Which document is in the frame
+
+The host has to know whether the handshake it is holding belongs to the document
+currently in the frame or to the one before it. Getting this wrong leaves Select and Chat
+lit over a dead page, the handshake deadline never re-armed, and every tool call the model
+makes burning its full timeout against something that will never answer.
+
+Ordering cannot answer it. A guest posts `initialize` from `connect()`, and when that runs
+is the app's business:
+
+| Guest        | Sequence                       | The handshake belongs to |
+| ------------ | ------------------------------ | ------------------------ |
+| plain script | `initialize` → `load`          | the new document         |
+| React        | `load` → `initialize` → `load` | the **old** document     |
+
+Both end in "a handshake, then a load", so the one-bit flag this replaced read the same in
+each and kept `ready` over a page that had said nothing (THU-908). No ordering rule
+separates them: the difference is _which document sent the message_, and a cross-origin
+`load` event carries no identity to compare against.
+
+So the guest mints an opaque `documentId` per document — module state, which is
+per-document by construction — and the host asks `ui/identify` after every load. That
+question is delivered to whatever is in the frame _now_, which makes the answer
+unambiguous:
+
+| The frame                   | Means                                        | Host does                  |
+| --------------------------- | -------------------------------------------- | -------------------------- |
+| replies with the id we hold | the bridge we've been talking to is still it | nothing                    |
+| replies with a different id | a document we haven't handshaked             | reset, await its handshake |
+| replies with `null`         | a bridge, but an SDK too old to have an id   | reset, await its handshake |
+| says nothing in 500ms       | no bridge running yet, or none at all        | reset, await its handshake |
+
+The asymmetry is deliberate: a spurious reset costs a re-handshake the guest performs
+anyway, while a spurious _keep_ is the bug above. A guest whose SDK predates `documentId`
+cannot be asked at all, and keeps the old best-effort guess — wrong for a React app that
+navigates, right for everything else, and better than resetting a live document on every
+load, which is what asking a guest that will never answer would do.
+
+The id earns its keep a second way: a repeat `initialize` from the same document is now
+recognisable and answered without tearing anything down. React's StrictMode
+double-invokes the effect that calls `connect()`, so this is routine rather than exotic,
+and it used to throw away the capabilities and the tool list and rediscover both for a
+page that had not changed.
 
 ## Identity
 

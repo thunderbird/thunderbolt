@@ -47,6 +47,21 @@ export const protocolMarker = 'thunderbolt-miniapp'
  */
 const protocolVersion = 3
 
+/**
+ * An id for *this document*, minted once and kept for as long as it lives.
+ *
+ * Module state, which is per-document by construction: navigating re-evaluates
+ * the module and the next page gets a different id. That is the whole property
+ * the host needs — it cannot tell the frame's documents apart on its own,
+ * because a cross-origin `load` event carries no identity.
+ *
+ * Lazy rather than eagerly assigned, so importing this module during SSR
+ * neither needs `crypto` nor mints an id nobody will send.
+ */
+let documentIdValue: string | null = null
+
+const documentId = (): string => (documentIdValue ??= crypto.randomUUID())
+
 export type MiniAppContext = {
   /** Short label for the current view. */
   title: string
@@ -537,6 +552,17 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
           post({ id: data.id, result: { context } })
           return
         }
+        if (data.method === 'ui/identify') {
+          /*
+           * "Yes, and I am this document." The host asks after every frame
+           * `load` to find out whether the handshake it holds belongs to the
+           * page now in the frame. Answering at all is most of the signal — a
+           * document whose `connect()` has not run yet cannot reply, and that
+           * silence is what tells the host to reset and wait.
+           */
+          post({ id: data.id, result: { documentId: documentId() } })
+          return
+        }
         if (data.method === 'tools/list') {
           // Voided for the same reason as `tools/call` below.
           void answerToolsList(data.id)
@@ -674,6 +700,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       {
         protocolVersion,
         appName,
+        documentId: documentId(),
         // Declared, not assumed: the host only asks for a tool list when we say we
         // have one, so an app with no tools costs no request and no timeout.
         capabilities: {

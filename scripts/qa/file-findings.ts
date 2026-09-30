@@ -32,8 +32,8 @@ export type Filed = {
   reason?: string
 }
 
-const priority = { Urgent: 1, High: 2, Medium: 3, Low: 4 } satisfies Record<Severity, number>
-const severityOrder = ['Urgent', 'High', 'Medium', 'Low'] as const
+/** Linear priority per severity; lower is more urgent, so it also sorts findings. */
+export const priority = { Urgent: 1, High: 2, Medium: 3, Low: 4 } satisfies Record<Severity, number>
 const maxNewTickets = 8
 const regressionWindowMs = 60 * 24 * 60 * 60 * 1000
 const requiredLabels = ['qa-agent', 'Bug', 'security']
@@ -128,7 +128,9 @@ export const sanitize = (text: string, max: number, runUrl?: string): string =>
 type Issue = { id: string; identifier: string; url: string }
 type Existing = Issue & { completedAt: string | null; state: { type: string } }
 type Decision = { kind: 'new' } | { kind: 'suppressed' } | { kind: 'commented' | 'regression'; issue: Existing }
-type Ctx = { fetchFn: typeof fetch; key: string; teamId: string; triageId: string; labels: Map<string, string> }
+/** What the ticket helpers shared with the fix step need. */
+export type LinearAuth = { fetchFn: typeof fetch; key: string }
+type Ctx = LinearAuth & { teamId: string; triageId: string; labels: Map<string, string> }
 
 /** Resolve team, Triage state and labels once, failing loudly on anything missing. */
 const setup = async (fetchFn: typeof fetch, key: string): Promise<Ctx> => {
@@ -203,10 +205,11 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
   return issueCreate.issue
 }
 
-const addComment = async (ctx: Ctx, issueId: string, body: string) => {
+/** Add a comment to a Linear ticket, failing loudly when Linear refuses. */
+export const addComment = async ({ fetchFn, key }: LinearAuth, issueId: string, body: string) => {
   const { commentCreate } = await linear<{ commentCreate: { success: boolean } }>(
-    ctx.fetchFn,
-    ctx.key,
+    fetchFn,
+    key,
     'mutation Comment($issueId: String!, $body: String!) { commentCreate(input: { issueId: $issueId, body: $body }) { success } }',
     { issueId, body },
   )
@@ -258,6 +261,20 @@ type Entry = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
 const modelText = (f: Finding, spec: string) =>
   [f.title, f.charter, ...f.steps, f.expected, f.actual, f.oracle.evidence, spec].join('\n')
 
+/** A finding's model-written fields as its ticket shows them: sanitized, capped, and one line for short fields. */
+export const ticketView = (f: Finding, runUrl?: string) => {
+  const clean = (text: string, max: number) => sanitize(text, max, runUrl)
+  return {
+    title: clean(f.title, 120).replace(/\s+/g, ' '),
+    area: f.area,
+    viewport: f.viewport,
+    oracle: { type: f.oracle.type, evidence: clean(f.oracle.evidence, 500) },
+    steps: f.steps.slice(0, 15).map((step) => clean(step, 300).replace(/\s+/g, ' ')),
+    expected: clean(f.expected, 500),
+    actual: clean(f.actual, 500),
+  }
+}
+
 /** Markdown body of a new ticket. Security findings carry no run link. */
 const buildBody = (
   { f, sev }: Entry,
@@ -265,22 +282,19 @@ const buildBody = (
   extra: { runUrl?: string; sha?: string; videoUrl?: string; regressionOf?: Existing },
 ): string => {
   const runUrl = f.area === 'security' ? undefined : extra.runUrl
-  const clean = (text: string, max: number) => sanitize(text, max, runUrl)
+  const view = ticketView(f, runUrl)
   return [
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
-    `**Area:** ${f.area} · **Severity:** ${sev} · **Viewport:** ${f.viewport} · **Charter:** ${clean(f.charter, 60)}`,
+    `**Area:** ${f.area} · **Severity:** ${sev} · **Viewport:** ${f.viewport} · **Charter:** ${sanitize(f.charter, 60, runUrl)}`,
     extra.sha && `**Commit:** ${extra.sha}`,
     runUrl && `**Run:** ${runUrl}`,
     '## Steps',
-    f.steps
-      .slice(0, 15)
-      .map((step, i) => `${i + 1}. ${clean(step, 300).replace(/\s+/g, ' ')}`)
-      .join('\n'),
-    `## Expected\n${clean(f.expected, 500)}`,
-    `## Actual\n${clean(f.actual, 500)}`,
-    `## Oracle: ${f.oracle.type}\n\`\`\`\n${clean(f.oracle.evidence, 500)}\n\`\`\``,
-    `## Repro spec\n\`\`\`ts\n${clean(spec, 6000)}\n\`\`\``,
+    view.steps.map((step, i) => `${i + 1}. ${step}`).join('\n'),
+    `## Expected\n${view.expected}`,
+    `## Actual\n${view.actual}`,
+    `## Oracle: ${f.oracle.type}\n\`\`\`\n${view.oracle.evidence}\n\`\`\``,
+    `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
     extra.videoUrl && `[Replay video](${extra.videoUrl})`,
   ]
     .filter(Boolean)
@@ -323,12 +337,12 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const ctx = key ? await setup(fetchFn, key) : undefined
   if (!ctx) log('No LINEAR_API_KEY: skipping Linear lookups, treating every finding as new.')
 
-  const verified = JSON.parse(await readFile(join(outDir, 'verified.json'), 'utf8')) as Verified
+  const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const entries: Entry[] = verified.confirmed.map((v) => {
     const f = findingSchema.parse(v.finding)
     return { v, f, fp: fingerprint(v.finding), sev: severity(f) }
   })
-  entries.sort((a, b) => severityOrder.indexOf(a.sev) - severityOrder.indexOf(b.sev) || a.fp.localeCompare(b.fp))
+  entries.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
 
   const filed: Filed[] = []
   const overflow: Entry[] = []
@@ -382,7 +396,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       newTickets++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
       const names = ['qa-agent', 'Bug', ...(f.area === 'security' ? ['security'] : [])]
-      const title = `${sanitize(f.title, 120).replace(/\s+/g, ' ')} [qa:${fp}]`
+      const title = `${ticketView(f).title} [qa:${fp}]`
       const video = f.area === 'security' ? undefined : v.artifacts.video
       const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
       await act(entry, regressionOf ? 'regression' : 'created', preview, async (ctx) => {
@@ -396,9 +410,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     if (overflow.length) {
       const top = overflow[0].sev
       const title = `QA agent: ${overflow.length} more finding${overflow.length > 1 ? 's' : ''} over the ${maxNewTickets}-ticket cap`
-      const lines = overflow.map(
-        ({ f, fp, sev }) => `- [qa:${fp}] ${sev} · ${f.area} · ${sanitize(f.title, 120).replace(/\s+/g, ' ')}`,
-      )
+      const lines = overflow.map(({ f, fp, sev }) => `- [qa:${fp}] ${sev} · ${f.area} · ${ticketView(f).title}`)
       const description = [runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
         .filter(Boolean)
         .join('\n\n')

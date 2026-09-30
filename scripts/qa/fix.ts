@@ -8,13 +8,21 @@ import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../notify-on-failure'
-import { type Action, type Filed, sanitize, secretPattern } from './file-findings'
-import { type Area, type Finding, findingSchema, lintReproSpec, type Severity } from './findings'
+import {
+  type Action,
+  addComment,
+  type Filed,
+  type LinearAuth,
+  priority,
+  sanitize,
+  secretPattern,
+  ticketView,
+} from './file-findings'
+import { type Area, type Finding, findingSchema, lintReproSpec } from './findings'
 import type { Verified } from './verify'
 
 const fixableAreas = new Set<Area>(['chat', 'settings', 'skills', 'projects', 'widgets', 'layout', 'i18n'])
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
-const severityOrder: Severity[] = ['Urgent', 'High', 'Medium', 'Low']
 const maxFixes = 3
 const humanRequired = 'human required'
 
@@ -56,48 +64,27 @@ const runCommand: Run = async (cmd, { env, stdin } = {}) => {
   return stdout
 }
 
-/** The two Linear writes this step makes, on tickets the filer created. */
-const linearTicket = (fetchFn: typeof fetch, key: string) => ({
-  comment: async (issueId: string, body: string) => {
-    const { commentCreate } = await linear<{ commentCreate: { success: boolean } }>(
-      fetchFn,
-      key,
-      'mutation Comment($issueId: String!, $body: String!) { commentCreate(input: { issueId: $issueId, body: $body }) { success } }',
-      { issueId, body },
-    )
-    if (!commentCreate.success) throw new Error('Linear did not add the comment')
-  },
-  markHumanRequired: async (issueId: string) => {
-    const { issueLabels } = await linear<{ issueLabels: { nodes: { id: string; team: { name: string } | null }[] } }>(
-      fetchFn,
-      key,
-      'query Label($name: String!) { issueLabels(first: 50, filter: { name: { eq: $name } }) { nodes { id team { name } } } }',
-      { name: humanRequired },
-    )
-    const label = issueLabels.nodes.find((l) => !l.team || l.team.name === 'Thunderbolt')
-    if (!label) throw new Error(`Missing Linear label: ${humanRequired}`)
+/** Label tickets the filer created `human required`, looking the label up once. */
+const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[]) => {
+  if (issueIds.length === 0) return
+  const { issueLabels } = await linear<{ issueLabels: { nodes: { id: string; team: { name: string } | null }[] } }>(
+    fetchFn,
+    key,
+    'query Label($name: String!) { issueLabels(first: 50, filter: { name: { eq: $name } }) { nodes { id team { name } } } }',
+    { name: humanRequired },
+  )
+  const label = issueLabels.nodes.find((l) => !l.team || l.team.name === 'Thunderbolt')
+  if (!label) throw new Error(`Missing Linear label: ${humanRequired}`)
+  for (const id of issueIds) {
     const { issueAddLabel } = await linear<{ issueAddLabel: { success: boolean } }>(
       fetchFn,
       key,
       'mutation AddLabel($id: String!, $labelId: String!) { issueAddLabel(id: $id, labelId: $labelId) { success } }',
-      { id: issueId, labelId: label.id },
+      { id, labelId: label.id },
     )
     if (!issueAddLabel.success) throw new Error('Linear did not add the label')
-  },
-})
-
-const readJson = async <T>(path: string) => JSON.parse(await readFile(path, 'utf8')) as T
-
-/** The finding as its ticket shows it: model-written text sanitised and capped like `file-findings.ts` does. */
-const agentView = (f: Finding): FixTask['finding'] => ({
-  title: sanitize(f.title, 120),
-  area: f.area,
-  viewport: f.viewport,
-  oracle: { type: f.oracle.type, evidence: sanitize(f.oracle.evidence, 500) },
-  steps: f.steps.slice(0, 15).map((step) => sanitize(step, 300)),
-  expected: sanitize(f.expected, 500),
-  actual: sanitize(f.actual, 500),
-})
+  }
+}
 
 export type RouteOptions = {
   outDir: string
@@ -126,14 +113,14 @@ export const route = async ({
   log = console.log,
 }: RouteOptions) => {
   if (live && !key) throw new Error('--live needs LINEAR_API_KEY')
-  const filed = await readJson<Filed[]>(join(outDir, 'filed.json'))
-  const { confirmed } = await readJson<Verified>(join(outDir, 'verified.json'))
+  const filed: Filed[] = await Bun.file(join(outDir, 'filed.json')).json()
+  const { confirmed }: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const branches = await run(['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*'])
   const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
   const plan: FixPlan = { fixes: [], humanRequired: [] }
   const tickets = filed
     .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
-    .sort((a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity))
+    .sort((a, b) => priority[a.severity] - priority[b.severity])
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)
     if (!verified) continue
@@ -146,14 +133,16 @@ export const route = async ({
     }
     const spec = join(outDir, charterDir, finding.repro_spec)
     if (plan.fixes.length === maxFixes || pending.has(fp) || !(await Bun.file(spec).exists())) continue
-    plan.fixes.push({ ...ticket, charterDir, spec, finding: agentView(finding) })
+    plan.fixes.push({ ...ticket, charterDir, spec, finding: ticketView(finding) })
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
   log(`${humanRequired}: ${plan.humanRequired.map((t) => t.fp).join(', ') || 'none'}`)
   if (!live || !key) return plan
-  const linearWrites = linearTicket(fetchFn, key)
-  for (const { issueId } of plan.humanRequired) if (issueId) await linearWrites.markHumanRequired(issueId)
+  await markHumanRequired(
+    { fetchFn, key },
+    plan.humanRequired.flatMap((t) => (t.issueId ? [t.issueId] : [])),
+  )
   return plan
 }
 
@@ -266,18 +255,18 @@ export const publish = async ({
   log = console.log,
 }: PublishOptions): Promise<PublishResult> => {
   if (live && (!key || !token)) throw new Error('--live needs LINEAR_API_KEY and GH_TOKEN')
-  const { fixes } = await readJson<FixPlan>(join(outDir, 'fix-plan.json'))
+  const { fixes }: FixPlan = await Bun.file(join(outDir, 'fix-plan.json')).json()
   const task = fixes.find((t) => t.fp === fp)
   if (!task) throw new Error(`${fp} is not in fix-plan.json`)
   const issueId = task.issueId ?? ''
   if (live && !issueId) throw new Error(`${fp} has no Linear ticket: the findings were filed in a dry run`)
-  const linearWrites = linearTicket(fetchFn, key ?? '')
+  const auth = { fetchFn, key: key ?? '' }
 
   const handOff = async (reasons: string[], body: string): Promise<PublishResult> => {
     if (!live) log(`[dry run] would comment on ${task.identifier ?? fp} and label it "${humanRequired}":\n${body}`)
     else {
-      await linearWrites.comment(issueId, body)
-      await linearWrites.markHumanRequired(issueId)
+      await addComment(auth, issueId, body)
+      await markHumanRequired(auth, [issueId])
     }
     return { outcome: 'human-required', reasons }
   }
@@ -338,7 +327,7 @@ export const publish = async ({
     { env: { GH_TOKEN: token ?? '' }, stdin: body },
   )
   const prUrl = created.trim()
-  await linearWrites.comment(issueId, `Draft fix PR: ${prUrl}`)
+  await addComment(auth, issueId, `Draft fix PR: ${prUrl}`)
   return { outcome: 'pr', branch, files, spec: spec.path, commit, prUrl }
 }
 

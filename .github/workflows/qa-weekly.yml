@@ -50,6 +50,7 @@ jobs:
     outputs:
       legs: ${{ steps.plan.outputs.legs }}
       verify: ${{ steps.plan.outputs.verify }}
+      judge: ${{ steps.plan.outputs.judge }}
       live: ${{ steps.plan.outputs.live }}
       autofix: ${{ steps.plan.outputs.autofix }}
     steps:
@@ -117,16 +118,20 @@ jobs:
                {charter: "c4-skills-projects"},
                {charter: "c5-widgets-connections", real: true},
                {charter: "c6-settings-data"},
-               {charter: "c7-two-devices", postgres: true, mcp: "qa/mcp-two-devices.json"},
+               {charter: "c7-two-devices", postgres: true, mcp: "qa/mcp-two-devices.json", artifact: "qa-sync"},
                {charter: "c8-phone", viewport: "390x844"},
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
             | map($leg + .)
             | map(select(.charter as $c | $only == [] or ($only | index($c))))')
-          # Replay and judge once per out dir, on the same kind of stack its sessions explored.
+          # Replay each artifact prefix on the kind of stack its sessions explored: pglite, or Postgres + PowerSync
+          # for c7 (sync). Sync findings share qa-out and are judged with the weekly ones.
           verify=$(jq --compact-output '
             [{name: "weekly", out: "qa-out", artifact: "qa-explore", dist: "qa-dist",
-              onboarding: any(.[]; .onboarding), postgres: any(.[]; .postgres)}]
+              onboarding: any(.[]; .onboarding), postgres: false}]
+            + if any(.[]; .artifact == "qa-sync")
+              then [{name: "sync", out: "qa-out", artifact: "qa-sync", dist: "qa-dist", onboarding: false, postgres: true}]
+              else [] end
             + if any(.[]; .artifact == "qa-canary")
               then [{name: "canary", out: "qa-out-canary", artifact: "qa-canary", dist: "qa-dist-canary", onboarding: false,
                      postgres: false}]
@@ -134,6 +139,7 @@ jobs:
           {
             echo "legs=$legs"
             echo "verify=$verify"
+            echo "judge=$(jq --compact-output 'map(select(.name != "sync"))' <<< "$verify")"
             echo "live=$LIVE"
             echo "autofix=$AUTOFIX"
           } >> "$GITHUB_OUTPUT"
@@ -460,7 +466,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: ${{ fromJSON(needs.build.outputs.verify) }}
+        leg: ${{ fromJSON(needs.build.outputs.judge) }}
     env:
       QA_OUT: ${{ matrix.leg.out }}
     steps:
@@ -473,6 +479,21 @@ jobs:
         with:
           name: qa-replay-${{ matrix.leg.name }}
           path: ${{ matrix.leg.out }}
+      - name: Download the sync replay
+        if: matrix.leg.name == 'weekly'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: qa-replay-sync # matches nothing when c7 did not run
+          path: qa-out-sync
+      # The sync leg's stack health stays with its own replay job, which fails loudly when the stack was broken.
+      - name: Add the sync candidates
+        if: matrix.leg.name == 'weekly' && hashFiles('qa-out-sync/candidates.json') != ''
+        run: |
+          jq --slurp '.[1] as $sync | .[0] | .confirmed += $sync.confirmed | .flaky += $sync.flaky
+            | .observations += $sync.observations | .dropped += $sync.dropped' \
+            qa-out/candidates.json qa-out-sync/candidates.json > "$RUNNER_TEMP/candidates.json"
+          cp -R qa-out-sync/. qa-out/
+          mv "$RUNNER_TEMP/candidates.json" qa-out/candidates.json
       - name: Judge the confirmed findings
         env:
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
@@ -513,10 +534,13 @@ jobs:
       - *setup-bun
       - *restore-bun
       - *install
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      # c7's specs and videos come from the sync replay; both land in qa-out.
+      - &download-replay
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-replay-weekly
+          pattern: 'qa-replay-{weekly,sync}'
           path: qa-out
+          merge-multiple: true
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-verified-weekly
@@ -571,10 +595,7 @@ jobs:
       - *install
       - *restore-browsers
       - *install-browsers
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: qa-replay-weekly
-          path: qa-out
+      - *download-replay
 
       - name: Start the stack on the working tree
         run: scripts/qa/stack.sh start dev
@@ -623,8 +644,9 @@ jobs:
         if: steps.fix.outcome == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-replay-weekly
+          pattern: 'qa-replay-{weekly,sync}'
           path: qa-out-verify
+          merge-multiple: true
       - name: Replay the spec on the patched code
         id: verify
         if: steps.fix.outcome == 'success'
@@ -701,10 +723,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
       # The original specs and the plan come from before the fix agent ran; only its patch comes from the fix job.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: qa-replay-weekly
-          path: qa-out
+      - *download-replay
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: qa-filed
@@ -759,7 +778,7 @@ jobs:
       - continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: '{qa-explore-*,qa-fix-session-*,qa-verified-weekly,qa-filed}'
+          pattern: '{qa-explore-*,qa-sync-*,qa-fix-session-*,qa-verified-weekly,qa-filed}'
           path: qa-out
           merge-multiple: true
       - continue-on-error: true

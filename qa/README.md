@@ -42,7 +42,8 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
    them into `session.json` with `scripts/qa/report.ts session`.
 3. **replay** (`scripts/qa/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
    observations), spec lint, then every spec runs 3 times (`playwright.qa.config.ts`) next to the control spec.
-   3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped.
+   3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
+   `qa-sync`) replay in their own leg on Postgres + PowerSync, the others on pglite; the judge takes both.
 4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`.
    The default answer is drop. Writes `verified.json`.
 5. **file** (`scripts/qa/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
@@ -259,7 +260,7 @@ Never run on GitHub (only locally, or read in the action's code):
 - the explore job's inline stop, checksum check and result upload, and the fix job's spec replay (each was run
   locally as a script under `bash -eo pipefail`, not inside Actions);
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
-- c7 (two devices, Postgres and PowerSync) and the weekly replay on Postgres + PowerSync, which have not run
+- c7 (two devices, Postgres and PowerSync) and its sync replay leg on Postgres + PowerSync, which have not run
   locally either (Docker was down during the local run).
 
 Also:

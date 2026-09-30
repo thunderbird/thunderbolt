@@ -63,7 +63,7 @@ const fakeLinear = (handlers: Handlers = {}) => {
       if (op === 'Scorecard') return { issues: { nodes: handlers.scorecard ?? [] } }
       if (op === 'CreateIssue') {
         const n = ops.filter((o) => o.op === 'CreateIssue').length
-        return { issueCreate: { success: true, issue: { id: `i${n}`, identifier: `THU-${n}`, url: `https://l/${n}` } } }
+        return { issueCreate: { success: true, issue: { id: `i${n}`, identifier: `THB-${n}`, url: `https://l/${n}` } } }
       }
       if (op === 'Comment') return { commentCreate: { success: true } }
       if (op === 'FileUpload') {
@@ -140,7 +140,7 @@ describe('dedupe', () => {
     await writeVerified([{}])
     const api = fakeLinear()
     const [entry] = await run(api.fetchFn)
-    expect(entry).toMatchObject({ action: 'created', identifier: 'THU-1', severity: 'Urgent' })
+    expect(entry).toMatchObject({ action: 'created', identifier: 'THB-1', severity: 'Urgent' })
     const [input] = created(api)
     expect(input).toMatchObject({ stateId: 'triage-id', labelIds: ['l-qa-agent', 'l-Bug'], priority: 1 })
     expect(input.title).toBe(`Chat title disappears [qa:${fp({})}]`)
@@ -152,10 +152,10 @@ describe('dedupe', () => {
 
   test('an open ticket gets a "seen again" comment', async () => {
     await writeVerified([{}])
-    const open = { id: 'o', identifier: 'THU-9', url: 'https://l/9', completedAt: null, state: { type: 'started' } }
+    const open = { id: 'o', identifier: 'THB-9', url: 'https://l/9', completedAt: null, state: { type: 'started' } }
     const api = fakeLinear({ existing: { [`[qa:${fp({})}]`]: [open] } })
     const [entry] = await run(api.fetchFn)
-    expect(entry).toMatchObject({ action: 'commented', identifier: 'THU-9' })
+    expect(entry).toMatchObject({ action: 'commented', identifier: 'THB-9' })
     expect(api.ops.find((o) => o.op === 'Comment')?.variables.body).toContain(runUrl)
     expect(api.ops.some((o) => o.op === 'CreateIssue')).toBe(false)
   })
@@ -164,7 +164,7 @@ describe('dedupe', () => {
     await writeVerified([{}])
     const done = {
       id: 'd',
-      identifier: 'THU-5',
+      identifier: 'THB-5',
       url: 'https://l/5',
       completedAt: '2026-08-20T00:00:00Z',
       state: { type: 'completed' },
@@ -173,14 +173,14 @@ describe('dedupe', () => {
     const [entry] = await run(api.fetchFn)
     expect(entry.action).toBe('regression')
     const [input] = created(api)
-    expect(input.description).toContain('THU-5')
+    expect(input.description).toContain('THB-5')
   })
 
   test('completed long ago is filed as a plain new ticket', async () => {
     await writeVerified([{}])
     const done = {
       id: 'd',
-      identifier: 'THU-5',
+      identifier: 'THB-5',
       url: 'https://l/5',
       completedAt: '2026-01-01T00:00:00Z',
       state: { type: 'completed' },
@@ -193,7 +193,7 @@ describe('dedupe', () => {
     await writeVerified([{}])
     const canceled = {
       id: 'c',
-      identifier: 'THU-2',
+      identifier: 'THB-2',
       url: 'https://l/2',
       completedAt: null,
       state: { type: 'canceled' },
@@ -250,7 +250,7 @@ describe('cap and roll-up', () => {
   })
 })
 
-describe('sanitising and refusal', () => {
+describe('sanitizing and refusal', () => {
   test.each([
     'sk-abcdefgh12345678',
     'lin_api_abc123',

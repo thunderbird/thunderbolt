@@ -82,7 +82,7 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
 export const shouldBrake = (card: Scorecard): boolean =>
   card.labelled >= brakeMinLabelled && card.precision !== null && card.precision < brakeMinPrecision
 
-// ---------- sanitising model-written text ----------
+// ---------- sanitizing model-written text ----------
 
 export const secretPattern =
   /\bsk-[\w-]{8,}|lin_(api|oauth)_\w+|gh[pousr]_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
@@ -305,17 +305,15 @@ type FileOptions = {
  */
 export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const { outDir, runUrl, sha, key, fetchFn = fetch, log = console.log, now = Date.now() } = opts
-  let live = opts.live
-  if (live && !key) throw new Error('--live needs LINEAR_API_KEY')
-  if (live && key) {
-    const card = await computeScorecard(fetchFn, key)
-    if (shouldBrake(card)) {
-      live = false
-      log(
-        `PRECISION BRAKE: ${card.labelled} triaged tickets, precision ${card.precision?.toFixed(2)} < ${brakeMinPrecision}. Forcing a dry run.`,
-      )
-    }
+  if (opts.live && !key) throw new Error('--live needs LINEAR_API_KEY')
+  const card = opts.live && key ? await computeScorecard(fetchFn, key) : undefined
+  const braked = card !== undefined && shouldBrake(card)
+  if (braked) {
+    log(
+      `PRECISION BRAKE: ${card.labelled} triaged tickets, precision ${card.precision?.toFixed(2)} < ${brakeMinPrecision}. Forcing a dry run.`,
+    )
   }
+  const live = opts.live && !braked
   const ctx = key ? await setup(fetchFn, key) : undefined
   if (!ctx) log('No LINEAR_API_KEY: skipping Linear lookups, treating every finding as new.')
 

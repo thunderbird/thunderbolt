@@ -157,7 +157,7 @@ describe('route', () => {
     expect(runs.map((r) => r.cmd)).toEqual([['git', 'ls-remote', '--heads', 'origin', 'qa-fix/*']])
   })
 
-  test('gives the fix agent the sanitised ticket fields and a runnable spec path, nothing else', async () => {
+  test('gives the fix agent the sanitized ticket fields and a runnable spec path, nothing else', async () => {
     await setup()
     const plan = await route({ outDir, live: false, run: fakeRun([], branches), log: () => {} })
     const [first] = plan.fixes
@@ -214,7 +214,9 @@ describe('route', () => {
 
   test('refuses a live run without a Linear key', async () => {
     await setup()
-    expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow('LINEAR_API_KEY')
+    await expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow(
+      'LINEAR_API_KEY',
+    )
   })
 })
 
@@ -466,6 +468,27 @@ describe('publish', () => {
     ])
   })
 
+  test('dry run: a diagnosis is only described, with no git command and no Linear call', async () => {
+    await setup()
+    await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3.')
+    const runs: RunCall[] = []
+    const calls: Call[] = []
+    const lines: string[] = []
+    const result = await publish({
+      outDir,
+      fp,
+      live: false,
+      run: fakeRun(runs),
+      fetchFn: fakeLinear(calls),
+      log: (line) => lines.push(line),
+    })
+
+    expect(result).toEqual({ outcome: 'human-required', reasons: ['the fix agent wrote a diagnosis'] })
+    expect(runs).toEqual([])
+    expect(calls).toEqual([])
+    expect(lines.join('\n')).toContain('would comment on THB-1 and label it "human required"')
+  })
+
   test('a diagnosis means no PR: the ticket gets it as a comment and the human required label', async () => {
     await setup()
     await put(join(outDir, 'fix', `${fp}.diagnosis.md`), 'Root cause in src/chat.ts:3, needs a product call.')
@@ -520,8 +543,8 @@ describe('publish', () => {
   test('refuses a live run without credentials, a ticket, or a routed fingerprint', async () => {
     await setup(false)
     const opts = { outDir, fp, run: fakeRun([]), fetchFn: fakeLinear([]), log: () => {} }
-    expect(publish({ ...opts, live: true, key: 'lin' })).rejects.toThrow('GH_TOKEN')
-    expect(publish({ ...opts, live: true, key: 'lin', token: 't' })).rejects.toThrow('no Linear ticket')
-    expect(publish({ ...opts, fp: 'ffffffff', live: false })).rejects.toThrow('not in fix-plan.json')
+    await expect(publish({ ...opts, live: true, key: 'lin' })).rejects.toThrow('GH_TOKEN')
+    await expect(publish({ ...opts, live: true, key: 'lin', token: 't' })).rejects.toThrow('no Linear ticket')
+    await expect(publish({ ...opts, fp: 'ffffffff', live: false })).rejects.toThrow('not in fix-plan.json')
   })
 })

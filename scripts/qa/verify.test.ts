@@ -67,7 +67,7 @@ const controlSpec = () => join(qaDir, 'control/repro/stack.spec.ts')
 
 /**
  * A runner that reports the given result statuses per spec file (relative to `outDir`), one Playwright spec entry
- * per run, plus the control spec's statuses. Every run carries a long, coloured error message.
+ * per run, plus the control spec's statuses. Every run carries a long, colored error message.
  */
 const fakeRunner =
   (statuses: Record<string, string[]>, calls: string[][], control = ['passed', 'passed', 'passed']): RunReplay =>
@@ -167,7 +167,7 @@ describe('replay', () => {
       },
     })
     expect(titles(result.flaky)).toEqual(['once', 'twice'])
-    // The first failed run's error, without ANSI colours and capped.
+    // The first failed run's error, without ANSI colors and capped.
     expect(result.confirmed[1].replay.error).toStartWith(
       'Test timeout of 60000ms exceeded.\nError: run 0 of c2-chat/repro/always.spec.ts\ncall log\n',
     )

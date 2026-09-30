@@ -111,7 +111,7 @@ const outcomesBySpec = (report: ReplayReport) => {
       outcome.replay.runs++
       if (result.status !== 'failed' && result.status !== 'timedOut') continue
       outcome.replay.failed++
-      // All of the run's errors (a timeout names the pending step only in the second one), without ANSI colours
+      // All of the run's errors (a timeout names the pending step only in the second one), without ANSI colors
       // and capped: enough for the judge to tell a bad locator from the asserted bug.
       outcome.replay.error ??= stripVTControlCharacters(result.errors.map((e) => e.message).join('\n')).slice(0, 1_500)
       const artifact = (name: string) => {

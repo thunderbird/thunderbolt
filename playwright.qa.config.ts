@@ -22,8 +22,8 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     ...devices['Desktop Chrome'],
-    // Defaults to the consumer pair in playwright.config.ts.
-    baseURL: process.env.QA_BASE_URL ?? 'http://localhost:1424',
+    // The consumer pair in playwright.config.ts. c1 specs switch to the onboarding build on 1425 with test.use().
+    baseURL: 'http://localhost:1424',
     video: 'on',
     trace: 'on',
   },

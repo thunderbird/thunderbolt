@@ -11,6 +11,7 @@ import {
   parseGuestResult,
   parseToolsList,
   maxToolDescriptionChars,
+  maxToolNameChars,
   maxToolsPerApp,
   elementAtResultSchema,
   toolsCallResultSchema,
@@ -352,6 +353,28 @@ describe('parseToolsList', () => {
     const { tools, dropped } = parseToolsList({ tools: [tool(), tool({ name: 'has spaces' })] })
 
     expect(tools.map((t) => t.name)).toEqual(['set_assumption'])
+    expect(dropped).toBe(1)
+  })
+
+  /*
+   * Both of these used to parse, and neither survives contact with a provider:
+   * a dot is illegal in an OpenAI function name, and `app_` + 128 characters is
+   * 132 against a cap of 64. The consequence is not a dropped tool but a
+   * rejected *request*, so one bad name took the whole turn down.
+   */
+  it('drops a name carrying a dot, which no provider will accept', () => {
+    const { tools, dropped } = parseToolsList({ tools: [tool(), tool({ name: 'app_has.dot' })] })
+
+    expect(tools.map((t) => t.name)).toEqual(['set_assumption'])
+    expect(dropped).toBe(1)
+  })
+
+  it('drops a name that would exceed the provider cap once prefixed', () => {
+    const atCap = 'a'.repeat(maxToolNameChars)
+    const overCap = 'a'.repeat(maxToolNameChars + 1)
+    const { tools, dropped } = parseToolsList({ tools: [tool({ name: atCap }), tool({ name: overCap })] })
+
+    expect(tools.map((t) => t.name)).toEqual([atCap])
     expect(dropped).toBe(1)
   })
 

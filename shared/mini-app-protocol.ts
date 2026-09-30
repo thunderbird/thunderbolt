@@ -507,23 +507,51 @@ export const maxToolDescriptionChars = 300
 export const maxToolsPerApp = 64
 
 /**
+ * Longest guest tool name.
+ *
+ * 60 rather than WebMCP's 128: the host prefixes names with `app_` before
+ * handing them to a provider, and OpenAI caps the prefixed name at 64. See the
+ * `name` field on {@link miniAppToolSchema}.
+ */
+export const maxToolNameChars = 60
+
+/**
  * A tool the app exposes. Mirrors WebMCP's tool descriptor minus `execute`,
  * which stays inside the guest — the host only ever names a tool, never holds a
  * reference to its implementation.
  */
 export const miniAppToolSchema = z.object({
-  /** WebMCP's constraint, adopted verbatim so descriptors port unchanged. */
+  /**
+   * The provider-safe intersection, not WebMCP's constraint verbatim.
+   *
+   * WebMCP allows `[a-zA-Z0-9_.-]{1,128}`. Two parts of that are unusable once
+   * the name reaches a model provider, and the failure is not a dropped tool —
+   * it is the **whole request rejected**, so one badly named tool takes the
+   * turn down with it:
+   *
+   *  - **Dots.** OpenAI function names are `[a-zA-Z0-9_-]` only. The installed
+   *    adapter forwards the name unchanged, dot included.
+   *  - **Length.** Names are prefixed `app_` before they reach the provider
+   *    (see `toToolsetName`), and OpenAI caps the *prefixed* name at 64. A
+   *    128-character guest name becomes 132.
+   *
+   * Hence 60: `app_` is four characters, so 60 + 4 is exactly the cap. Rejected
+   * here rather than rewritten host-side, because a sanitising map would need
+   * collision handling and a reverse lookup for invocation, and would show the
+   * model a name the app never declared. {@link parseToolsList} counts what it
+   * drops, so an app that trips this gets a diagnostic rather than silence.
+   */
   name: z
     .string()
     .min(1)
-    .max(128)
-    .regex(/^[a-zA-Z0-9_.-]+$/),
+    .max(maxToolNameChars)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   /*
    * Bounded tightly because this string reaches the *system* prompt, once per
-   * tool, for the life of the turn's cached prefix. At 4 000 × 64 tools an app
-   * could contribute a quarter of a megabyte of instructions sitting above our
-   * own tool policy. A one-line description of what a tool does needs nothing
-   * like that; the full schema travels separately in the tool definition.
+   * tool, for the life of the turn's cached prefix. At 300 × 64 tools an app
+   * still contributes ~19KB of instructions sitting above our own tool policy,
+   * and a one-line description of what a tool does needs nothing like that; the
+   * full schema travels separately in the tool definition.
    *
    * Over-long descriptions are truncated by {@link parseToolsList}, not
    * rejected — see the reasoning there.

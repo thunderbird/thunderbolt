@@ -51,7 +51,15 @@
 
 /** A tool your app exposes. Mirrors WebMCP's descriptor. */
 export type ThunderboltTool = {
-  /** Unique, `[a-zA-Z0-9_.-]`, 1–128 chars. WebMCP's constraint, kept verbatim. */
+  /**
+   * Unique, `[a-zA-Z0-9_-]`, 1–60 characters.
+   *
+   * Tighter than WebMCP's `[a-zA-Z0-9_.-]{1,128}`, and deliberately so. The host
+   * prefixes the name with `app_` before handing it to a model provider, and
+   * OpenAI allows no dots and caps the prefixed name at 64 — so a dot or a long
+   * name does not cost you the tool, it gets the **whole request** rejected.
+   * Names outside this range are dropped by the host with a warning.
+   */
   name: string
   /** What it does, in natural language. The model reads this to decide. */
   description: string

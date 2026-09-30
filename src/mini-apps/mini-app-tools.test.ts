@@ -5,9 +5,9 @@
 import { describe, expect, it, mock } from 'bun:test'
 import type { Tool, ToolCallOptions } from 'ai'
 import { LineChart } from 'lucide-react'
-import type { MiniAppTool } from '@shared/mini-app-protocol'
+import { maxToolNameChars, type MiniAppTool } from '@shared/mini-app-protocol'
 import type { MiniAppApprovalOutcome } from './approval-outcome'
-import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from './mini-app-tools'
+import { buildMiniAppToolsPromptSection, createMiniAppTools, miniAppToolPrefix, toToolsetName } from './mini-app-tools'
 import type { MiniAppDefinition } from './registry'
 
 const app: MiniAppDefinition = {
@@ -223,5 +223,23 @@ describe('buildMiniAppToolsPromptSection', () => {
     const readLine = section?.split('\n').find((line) => line.includes('app_get_totals'))
     expect(writeLine).toContain('asks the user')
     expect(readLine).not.toContain('asks the user')
+  })
+})
+
+/*
+ * The cross-module arithmetic behind `maxToolNameChars`.
+ *
+ * The 60-character cap in `shared/` is only correct because this module adds
+ * `app_` before the name reaches a provider, and OpenAI caps the *prefixed*
+ * name at 64. Neither file can check that alone, and getting it wrong rejects
+ * the entire request rather than the one tool — so it is pinned here, where
+ * both halves are in scope.
+ */
+describe('provider name budget', () => {
+  it('fits the longest allowed guest name into the provider cap once prefixed', () => {
+    const longest = 'a'.repeat(maxToolNameChars)
+
+    expect(toToolsetName({ name: longest, description: 'x' })).toHaveLength(64)
+    expect(`${miniAppToolPrefix}_`).toHaveLength(64 - maxToolNameChars)
   })
 })

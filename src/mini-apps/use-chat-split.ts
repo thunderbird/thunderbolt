@@ -3,19 +3,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Whether the window is wide enough to show the app and the chat side by side.
+ * Whether there is room to show the app and the chat side by side.
  *
  * The split has two floors and they are absolute, not proportional. A percentage
- * minimum is meaningless here: 20% of a 600px window is a 120px chat, which is
- * narrower than its own composer and was the jank in THU-902. So both panels get
- * a pixel minimum, and below their sum the split cannot honour either one.
+ * minimum is meaningless here: 20% of a 600px window is a 120px chat, narrower
+ * than its own composer, which was the jank in THU-902. So both panels get a
+ * pixel minimum, and below their sum the split cannot honour either one.
  *
- * `useSyncExternalStore` over `matchMedia` rather than a resize listener into
- * state: the browser already tracks this, and a stored copy is one that can be
- * wrong for a frame. Same shape as `useIsMobile`.
+ * Measured on the **element**, not the window. `matchMedia` was wrong in a way
+ * that a wide viewport hides: the route renders inside `main-layout`'s content
+ * panel, with the nav sidebar beside it and a content-view aside possibly beyond
+ * that, so the space actually available to the split is a good deal narrower
+ * than the window. At an 800px browser width with the sidebar open, the window
+ * cleared the floor while the app had barely 500px — so the Chat button stayed
+ * lit and opening it produced exactly the squeezed split the floors exist to
+ * prevent.
  */
 
-import { useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 
 /**
  * The app's floor. 360px is the content floor `main-layout` uses for the same
@@ -34,17 +39,28 @@ export const chatPanelMinWidth = 340
 /** Narrower than this and one of the two panels would be below its minimum. */
 export const chatSplitFloor = appPanelMinWidth + chatPanelMinWidth
 
-const mql = () => window.matchMedia(`(min-width: ${chatSplitFloor}px)`)
+/**
+ * Observe `element` and report whether the split fits inside it.
+ *
+ * `null` — before the ref attaches, or on a server render — answers `true` so
+ * the first paint is the ordinary layout rather than a flash of the narrow one.
+ * The observer corrects it on the same frame it attaches.
+ */
+export const useChatSplitFits = (element: HTMLElement | null): boolean => {
+  const [fits, setFits] = useState(true)
 
-const subscribe = (callback: () => void) => {
-  const mediaQuery = mql()
-  mediaQuery.addEventListener('change', callback)
-  return () => mediaQuery.removeEventListener('change', callback)
+  useEffect(() => {
+    if (!element) {
+      return
+    }
+    // `ResizeObserver` rather than a window listener: the element narrows when
+    // the sidebar expands or an aside opens, neither of which resizes the window.
+    const observer = new ResizeObserver(([entry]) => {
+      setFits(entry.contentRect.width >= chatSplitFloor)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element])
+
+  return fits
 }
-
-const getSnapshot = () => mql().matches
-
-/** Server render has no window; assume the split fits and let the client correct it. */
-const getServerSnapshot = () => true
-
-export const useChatSplitFits = (): boolean => useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)

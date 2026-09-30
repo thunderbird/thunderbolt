@@ -42,8 +42,29 @@ const wrapper =
 const setup = (initialUrl = '/apps/finance-model') =>
   renderHook(
     () => {
-      const [searchParams] = useSearchParams()
-      return { ...useMiniAppChatPanelState(), chatParam: searchParams.get('chat') }
+      const [searchParams, setSearchParams] = useSearchParams()
+      return {
+        ...useMiniAppChatPanelState(),
+        chatParam: searchParams.get('chat'),
+        /**
+         * Edit `?chat=` the way something outside this hook would — the chat
+         * sidebar navigating between threads, which happens without remounting
+         * the app route.
+         */
+        setChatParam: (chatThreadId: string | null) =>
+          setSearchParams(
+            (current) => {
+              const next = new URLSearchParams(current)
+              if (chatThreadId) {
+                next.set('chat', chatThreadId)
+              } else {
+                next.delete('chat')
+              }
+              return next
+            },
+            { replace: true },
+          ),
+      }
     },
     { wrapper: wrapper(initialUrl) },
   )
@@ -253,6 +274,43 @@ describe('promotion and history', () => {
     expect(result.current.isChatOpen).toBe(false)
     // Reopening resumes the same conversation, so the panel is open again.
     act(() => result.current.openChat())
+    expect(result.current.isChatOpen).toBe(true)
+  })
+
+  /*
+   * The panel is a view of the URL, so navigating between chats from the
+   * sidebar has to move it. Tracking open/closed as separate state read only at
+   * mount left a requested chat hidden, or an emptied query showing an open but
+   * empty panel.
+   */
+  it('opens on a chat arriving in the URL without a remount', () => {
+    const { result } = setup()
+
+    expect(result.current.isChatOpen).toBe(false)
+
+    act(() => result.current.setChatParam('thread-7'))
+
+    expect(result.current.isChatOpen).toBe(true)
+    expect(result.current.openChatId).toBe('thread-7')
+  })
+
+  it('closes when the chat leaves the URL', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    expect(result.current.isChatOpen).toBe(true)
+
+    act(() => result.current.setChatParam(null))
+
+    expect(result.current.isChatOpen).toBe(false)
+    expect(result.current.openChatId).toBeNull()
+  })
+
+  it('follows a move from one persisted chat to another', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    act(() => result.current.setChatParam('thread-2'))
+
+    expect(result.current.openChatId).toBe('thread-2')
     expect(result.current.isChatOpen).toBe(true)
   })
 

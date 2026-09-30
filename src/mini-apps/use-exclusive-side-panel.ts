@@ -28,8 +28,19 @@ export type ExclusiveSidePanel = {
 }
 
 export const useExclusiveSidePanel = ({ isChatOpen, closeChat, isAsideOpen, closeAside }: ExclusiveSidePanel): void => {
+  /*
+   * The aside's previous value starts at its current one, the chat's starts at
+   * false. Asymmetric on purpose, and it is what handles arriving with both
+   * already open — mounting with the refs seeded from the current values meant
+   * neither effect saw a rising edge, so the two panels sat there competing for
+   * the same space forever.
+   *
+   * Seeding the chat at false makes it the apparent newcomer, so the aside
+   * yields. That is the right way round: the chat panel's open state is the
+   * user's own, held in `?chat=`, while the aside is transient.
+   */
   const previousAsideOpen = useRef(isAsideOpen)
-  const previousChatOpen = useRef(isChatOpen)
+  const previousChatOpen = useRef(false)
 
   useEffect(() => {
     const asideJustOpened = isAsideOpen && !previousAsideOpen.current

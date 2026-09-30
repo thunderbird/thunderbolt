@@ -25,11 +25,12 @@ import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 
 export type MiniAppChatPanelState = {
   /**
-   * Whether the panel is on screen.
+   * Whether the panel is on screen, which is exactly "there is a chat to show".
    *
-   * Tracked rather than derived from `openChatId !== null`, because the id goes
-   * briefly null while a draft is promoted into the URL and the layout must not
-   * notice. See the comment on `isOpen` below.
+   * Derived, so it follows navigation: `?chat=` changing from the sidebar opens
+   * the panel on that chat, and an emptied query closes it. The one render where
+   * the id would otherwise blink — a draft being promoted into the URL — is
+   * bridged by `localChatId` rather than by a second copy of this flag.
    */
   isChatOpen: boolean
   /** The conversation on screen, or null when the panel is closed. */
@@ -82,24 +83,41 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
    */
   const [searchParams, setSearchParams] = useSearchParams()
   const [draftChatId, setDraftChatId] = useState<string | null>(null)
-  const openChatId = draftChatId ?? searchParams.get('chat')
+  /*
+   * The id on screen while the URL does not carry it yet.
+   *
+   * This exists for one render. Promoting a draft clears `draftChatId` and calls
+   * `setSearchParams`, and the router applies the new query a render later — so
+   * for that render both sources read null, the panel unmounted and remounted,
+   * and remounting re-applied the `ResizablePanel` `defaultSize` and threw away
+   * whatever width the user had dragged to (THU-905).
+   *
+   * It bridges that gap, which is all it does. An earlier fix tracked open/
+   * closed as its own state instead, and that state then could not follow
+   * navigation: `?chat=` changing from the sidebar without a remount left a
+   * requested chat hidden, or an emptied query showing an open, empty panel.
+   * Openness is derived again, and the gap is closed at the source.
+   */
+  const [localChatId, setLocalChatId] = useState<string | null>(null)
 
   /*
-   * Open/closed as its own state, not `openChatId !== null`.
-   *
-   * Promoting a draft into the URL clears `draftChatId` and calls
-   * `setSearchParams`, and the router applies the new query a render later. For
-   * that one render both sources read null, so an `openChatId !== null` gate
-   * unmounts the panel and remounts it immediately afterwards — which re-applies
-   * the `ResizablePanel` `defaultSize` and throws away whatever width the user
-   * had dragged to. It reproduced as "the chat sidebar changes width after the
-   * first message, but not every time", the timing depending on whether the two
-   * updates landed in one render (THU-905).
-   *
-   * The id may blink; whether the panel is on screen is a decision the user
-   * made, so it is stored as one.
+   * The URL wins. It is the addressable truth, so navigation is always
+   * reflected, and `localChatId` only answers while the URL is mid-flight.
    */
-  const [isOpen, setIsOpen] = useState(searchParams.get('chat') !== null)
+  const chatParam = searchParams.get('chat')
+  const openChatId = chatParam ?? localChatId
+
+  /*
+   * Release the bridge as soon as the router has caught up.
+   *
+   * Adjusting state during render, which is the pattern React prescribes for
+   * exactly this — the alternative is an effect that lands a frame late. It
+   * cannot loop: clearing makes the condition false. Holding it any longer
+   * would make it a second, stale source of truth, which is the bug above.
+   */
+  if (localChatId !== null && chatParam === localChatId) {
+    setLocalChatId(null)
+  }
 
   /*
    * Read through refs, not dependencies. `openChat` is handed to the bridge,
@@ -151,8 +169,8 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   const showPersistedChat = useCallback(
     (chatThreadId: string) => {
       setDraftChatId(null)
+      setLocalChatId(chatThreadId)
       setOpenChatParam(chatThreadId)
-      setIsOpen(true)
     },
     [setOpenChatParam],
   )
@@ -184,8 +202,8 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
         return
       }
       setDraftChatId(chatThreadId)
+      setLocalChatId(chatThreadId)
       setOpenChatParam(null)
-      setIsOpen(true)
     },
     [showPersistedChat, setOpenChatParam],
   )
@@ -214,7 +232,6 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
       const closed = lastChatRef.current
       const existing = openChatIdRef.current ?? closed?.id ?? null
       if (existing) {
-        setIsOpen(true)
         if (prompt) {
           setPendingPrompt(existing, prompt)
         }
@@ -267,8 +284,8 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     const closing = openChatIdRef.current
     lastChatRef.current = closing ? { id: closing, hasRow: hasChatRow(closing, draftChatIdRef.current !== null) } : null
     setDraftChatId(null)
+    setLocalChatId(null)
     setOpenChatParam(null)
-    setIsOpen(false)
   }, [setOpenChatParam])
 
   /**
@@ -305,7 +322,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   )
 
   return {
-    isChatOpen: isOpen,
+    isChatOpen: openChatId !== null,
     openChatId,
     draftChatId,
     openChat,

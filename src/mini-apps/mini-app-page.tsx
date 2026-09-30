@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { MessageSquare, MousePointerClick } from 'lucide-react'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
 import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
 import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
@@ -61,13 +61,18 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * Below the combined floor the split cannot honour both minimums, so the chat
    * closes rather than squeezing to an unusable width (THU-902).
    *
-   * An effect, and one of the legitimate kinds: `useChatSplitFits` subscribes to
-   * `matchMedia`, and the response is to change state that lives in another
-   * hook. Doing it during render is illegal, and deriving it instead — merely
-   * hiding the panel while keeping it open — would leave the floating Chat
-   * button offering to reopen into a layout that still cannot hold it.
+   * An effect, and one of the legitimate kinds: `useChatSplitFits` observes the
+   * element, and the response is to change state that lives in another hook.
+   * Doing it during render is illegal, and deriving it instead — merely hiding
+   * the panel while keeping it open — would leave the floating Chat button
+   * offering to reopen into a layout that still cannot hold it.
    */
-  const splitFits = useChatSplitFits()
+  /*
+   * State, not a ref: the hook has to re-subscribe when the element attaches,
+   * and a ref's assignment does not re-render.
+   */
+  const [splitContainer, setSplitContainer] = useState<HTMLDivElement | null>(null)
+  const splitFits = useChatSplitFits(splitContainer)
   useEffect(() => {
     if (!splitFits && isChatOpen) {
       closeChat()
@@ -158,7 +163,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
      * would sit on top of the app's own controls rather than over a scrim it
      * can fade against.
      */
-    <div className={cn('flex h-full w-full flex-col', insetForHeader && 'pt-[var(--header-inset)]')}>
+    <div
+      ref={setSplitContainer}
+      className={cn('flex h-full w-full flex-col', insetForHeader && 'pt-[var(--header-inset)]')}
+    >
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel
           id="mini-app"

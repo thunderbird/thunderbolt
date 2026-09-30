@@ -27,11 +27,30 @@ const setup = (initial: { isChatOpen: boolean; isAsideOpen: boolean }) => {
 }
 
 describe('useExclusiveSidePanel', () => {
-  it('leaves a lone panel alone', () => {
+  /*
+   * Opening an app chat from the sidebar while an aside is already up mounts
+   * this hook with both open. Seeded from the current values, neither effect saw
+   * a rising edge and the two sat there competing for the same space.
+   */
+  it('resolves arriving with both already open', () => {
+    const { closeChat, closeAside } = setup({ isChatOpen: true, isAsideOpen: true })
+
+    expect(closeAside).toHaveBeenCalledTimes(1)
+    expect(closeChat).not.toHaveBeenCalled()
+  })
+
+  it('leaves a lone chat alone at mount', () => {
     const { closeChat, closeAside } = setup({ isChatOpen: true, isAsideOpen: false })
 
-    expect(closeChat).not.toHaveBeenCalled()
     expect(closeAside).not.toHaveBeenCalled()
+    expect(closeChat).not.toHaveBeenCalled()
+  })
+
+  it('leaves a lone aside alone at mount', () => {
+    const { closeChat, closeAside } = setup({ isChatOpen: false, isAsideOpen: true })
+
+    expect(closeAside).not.toHaveBeenCalled()
+    expect(closeChat).not.toHaveBeenCalled()
   })
 
   it('closes the chat when the aside opens over it', () => {

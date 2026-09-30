@@ -27,6 +27,7 @@ import { useMiniAppBridge } from './use-mini-app-bridge'
 import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
 import { useMiniAppChatPanelState } from './use-mini-app-chat-panel-state'
+import { appPanelMinWidth, chatPanelMinWidth, useChatSplitFits } from './use-chat-split'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
 const appPanelSize = '66%'
@@ -55,6 +56,23 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * the scrim or floats below a bar that isn't there.
    */
   const insetForHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
+  /*
+   * Below the combined floor the split cannot honour both minimums, so the chat
+   * closes rather than squeezing to an unusable width (THU-902).
+   *
+   * An effect, and one of the legitimate kinds: `useChatSplitFits` subscribes to
+   * `matchMedia`, and the response is to change state that lives in another
+   * hook. Doing it during render is illegal, and deriving it instead — merely
+   * hiding the panel while keeping it open — would leave the floating Chat
+   * button offering to reopen into a layout that still cannot hold it.
+   */
+  const splitFits = useChatSplitFits()
+  useEffect(() => {
+    if (!splitFits && isChatOpen) {
+      closeChat()
+    }
+  }, [splitFits, isChatOpen, closeChat])
+
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)
   const closeApp = useMiniAppStore((state) => state.closeApp)
@@ -136,7 +154,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
      */
     <div className={cn('flex h-full w-full flex-col', insetForHeader && 'pt-[var(--header-inset)]')}>
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel id="mini-app" defaultSize={isChatOpen ? appPanelSize : '100%'} minSize="30%">
+        <ResizablePanel
+          id="mini-app"
+          defaultSize={isChatOpen ? appPanelSize : '100%'}
+          minSize={`${appPanelMinWidth}px`}
+        >
           <div className="relative flex flex-col h-full">
             <MiniAppFrame
               app={app}
@@ -178,7 +200,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                   <MousePointerClick className="size-[var(--icon-size-sm)]" />
                   <Trans>Select</Trans>
                 </Button>
-                {!isChatOpen && (
+                {!isChatOpen && splitFits && (
                   <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
                     <MessageSquare className="size-[var(--icon-size-sm)]" />
                     <Trans>Chat</Trans>
@@ -191,7 +213,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
         {isChatOpen && (
           <>
             <ResizableHandle withHandle />
-            <ResizablePanel id="mini-app-chat" defaultSize={chatPanelSize} minSize="20%">
+            <ResizablePanel id="mini-app-chat" defaultSize={chatPanelSize} minSize={`${chatPanelMinWidth}px`}>
               <div className="flex h-full min-h-0 flex-col">
                 {/* The same header every other side panel uses, rather than a
                     strip of our own: it already carries the round close button,

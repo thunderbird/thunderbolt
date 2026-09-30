@@ -325,7 +325,7 @@ jobs:
             miniapps/sdk/node_modules
             miniapps/template/node_modules
             miniapps/samples/finance/node_modules
-          key: miniapps-bun-${{ hashFiles('miniapps/**/bun.lock') }}
+          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
           restore-keys: |
             miniapps-bun-
 
@@ -341,12 +341,21 @@ jobs:
       - name: Check miniapps formatting
         run: cd miniapps && bun run format-check
 
+      # One install at the workspace root covers every package (THU-906), so the
+      # per-package `bun install` this loop used to run is gone.
       - name: Type check each package
         run: |
           for pkg in sdk template samples/finance; do
             echo "== $pkg"
-            (cd "miniapps/$pkg" && bun install --frozen-lockfile && bunx tsc --noEmit)
+            (cd "miniapps/$pkg" && bunx tsc --noEmit)
           done
+
+      # The guest SDK bridge is 480 lines of postMessage protocol and had no
+      # tests, so guest origin filtering, request/reply disambiguation and
+      # disconnect settlement were covered by nothing. The host-side suite does
+      # not stand in for it: that exercises Thunderbolt's half.
+      - name: Test miniapps
+        run: cd miniapps && bun run test
 
   cli:
     needs: detect-changes

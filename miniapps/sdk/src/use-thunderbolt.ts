@@ -12,7 +12,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { connect, type AuthToken, type Connection, type HostContext, type MiniAppContext } from './bridge'
+import {
+  connect,
+  NotEmbeddedError,
+  type AuthToken,
+  type Connection,
+  type HostContext,
+  type MiniAppContext,
+} from './bridge'
 import type { ThunderboltTool } from './tools'
 
 export type ThunderboltState = {
@@ -29,6 +36,15 @@ export type ThunderboltState = {
    * or when the host has no audience configured for this app.
    */
   getAuthToken: () => Promise<AuthToken | null>
+  /**
+   * Why the connection failed, when it failed for a reason worth showing.
+   *
+   * Null both when connected and when simply not embedded — running standalone
+   * in a browser tab is a supported mode, not a fault. Anything else (a refused
+   * handshake, an unsupported protocol version, a handshake timeout) lands here
+   * so the app can say something better than nothing.
+   */
+  connectionError: string | null
 }
 
 /**
@@ -45,6 +61,7 @@ export const useThunderbolt = (
   const [connected, setConnected] = useState(false)
   // Patched rather than replaced: host-context updates carry only what changed.
   const [hostContext, setHostContext] = useState<HostContext>({ theme: 'light', locale: 'en', platform: 'web' })
+  const [connectionError, setConnectionError] = useState<string | null>(null)
   const connectionRef = useRef<Connection | null>(null)
   // Tools are read through a ref so redefining the array each render (which any
   // app using closures over state will do) doesn't tear down and rebuild the
@@ -71,9 +88,27 @@ export const useThunderbolt = (
         }
         connectionRef.current = connection
         setConnected(true)
-      } catch {
-        // Running standalone in a browser tab is a supported mode, not an error —
-        // the app stays fully usable, just without the chat integration.
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        /*
+         * Not embedded is a mode; everything else is a fault.
+         *
+         * This used to be a bare `catch` that called all of them standalone,
+         * which is right for the common case and wrong for every other one: a
+         * refused handshake, an unsupported protocol version, a timeout and a
+         * bug in here all looked identical, and the only symptom was a generic
+         * unreachable panel with the cause discarded.
+         */
+        if (error instanceof NotEmbeddedError) {
+          return
+        }
+        const message = error instanceof Error ? error.message : String(error)
+        setConnectionError(message)
+        // Reaches the host too: it forwards guest console errors into the panel
+        // strip, which is the one place a developer is already looking.
+        console.error('Mini App could not connect to Thunderbolt:', message)
       }
     }
 
@@ -93,5 +128,5 @@ export const useThunderbolt = (
   const openChat = useCallback((prompt?: string) => connectionRef.current?.openChat(prompt), [])
   const getAuthToken = useCallback(async () => (await connectionRef.current?.getAuthToken()) ?? null, [])
 
-  return { connected, hostContext, sendContext, openChat, getAuthToken }
+  return { connected, hostContext, sendContext, openChat, getAuthToken, connectionError }
 }

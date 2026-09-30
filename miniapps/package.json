@@ -13,12 +13,15 @@
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\"",
-    "format-check": "prettier --check \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\""
+    "format-check": "prettier --check \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\"",
+    "test": "bun test sdk --timeout 5000"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@happy-dom/global-registrator": "^20.14.5",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
+    "bun-types": "^1.4.2",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.5.0",

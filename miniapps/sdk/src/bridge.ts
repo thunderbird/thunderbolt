@@ -26,7 +26,8 @@
 import { elementAtPoint, type HighlightedElement } from './selection-hit-test'
 import { callTool, toDescriptors, type ThunderboltTool } from './tools'
 
-const protocolMarker = 'thunderbolt-miniapp'
+/** Exported for the tests; not re-exported from `index.ts`, so not public API. */
+export const protocolMarker = 'thunderbolt-miniapp'
 const protocolVersion = 2
 
 export type MiniAppContext = {
@@ -139,6 +140,21 @@ export type Connection = {
 
 type PendingResolver = (result: unknown) => void
 
+/** One in-flight guest request: how to settle it, and the deadline that will. */
+type PendingRequest = { settle: PendingResolver; timer: ReturnType<typeof setTimeout> }
+
+/**
+ * Longest an ordinary request waits for the host.
+ *
+ * Requests used to have no deadline at all and `disconnect()` left `pending`
+ * untouched, so a token request made just before the host stopped answering —
+ * or just before the component unmounted — stayed pending forever, and the
+ * caller's `await` never returned. Settling as a failure rather than rejecting
+ * keeps the existing shape: every caller already handles an `{ error }` reply,
+ * because that is what the host sends when a request genuinely fails.
+ */
+const requestTimeoutMs = 10_000
+
 /**
  * Debounce for selection reporting. `selectionchange` fires per character while
  * dragging, and the host repositions a floating control on every message — this
@@ -207,6 +223,23 @@ export const readTokenClaims = (token: string): TokenClaims | null => {
   }
 }
 
+/**
+ * Why `connect` rejected, when the reason is "nobody is framing us".
+ *
+ * A distinct type because that outcome is a *supported mode* and every other
+ * rejection is a fault. They were indistinguishable — a bare `catch` treating
+ * all of them as standalone swallowed a refused handshake, an unsupported
+ * protocol version, a handshake timeout and any implementation error alike, so
+ * the host eventually showed a generic unreachable panel and the actionable
+ * cause was gone.
+ */
+export class NotEmbeddedError extends Error {
+  constructor() {
+    super('not embedded: window.parent === window')
+    this.name = 'NotEmbeddedError'
+  }
+}
+
 /** Are we actually inside a frame? Running standalone is legal — just not embedded. */
 export const isEmbedded = (): boolean => typeof window !== 'undefined' && window.parent !== window
 
@@ -236,12 +269,23 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
 
   return new Promise<Connection>((resolve, reject) => {
     if (!isEmbedded()) {
-      reject(new Error('not embedded: window.parent === window'))
+      reject(new NotEmbeddedError())
       return
     }
 
     let nextId = 1
-    const pending = new Map<number, PendingResolver>()
+    const pending = new Map<number, PendingRequest>()
+
+    /** Settle one request once, clearing its deadline. Safe to call twice. */
+    const settlePending = (id: number, result: unknown) => {
+      const entry = pending.get(id)
+      if (!entry) {
+        return
+      }
+      clearTimeout(entry.timer)
+      pending.delete(id)
+      entry.settle(result)
+    }
 
     const post = (payload: Record<string, unknown>) => {
       // Targeted origin, never '*' — a wildcard would broadcast app state to
@@ -249,10 +293,15 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       window.parent.postMessage({ jsonrpc: '2.0', protocol: protocolMarker, ...payload }, hostOrigin)
     }
 
-    const request = (method: string, params: unknown): Promise<unknown> => {
+    const request = (method: string, params: unknown, deadlineMs = requestTimeoutMs): Promise<unknown> => {
       const id = nextId++
       return new Promise((resolveRequest) => {
-        pending.set(id, resolveRequest)
+        const timer = setTimeout(
+          () =>
+            settlePending(id, { error: { message: `Thunderbolt did not answer ${method} within ${deadlineMs}ms` } }),
+          deadlineMs,
+        )
+        pending.set(id, { settle: resolveRequest, timer })
         post({ id, method, params })
       })
     }
@@ -317,11 +366,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       }
 
       if (typeof data.id === 'number') {
-        const resolver = pending.get(data.id)
-        if (resolver) {
-          pending.delete(data.id)
-          resolver(data.error ? { error: data.error } : data.result)
-        }
+        settlePending(data.id, data.error ? { error: data.error } : data.result)
         return
       }
 
@@ -342,6 +387,15 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       teardownSelection = null
       teardownErrors?.()
       teardownErrors = null
+      /*
+       * Settle whatever was in flight. The listener is gone, so nothing will
+       * ever answer these — leaving them in the map left the caller's `await`
+       * hanging for the life of the page, which is how an unmounted component's
+       * pending token request became a permanent leak.
+       */
+      for (const id of [...pending.keys()]) {
+        settlePending(id, { error: { message: 'Disconnected from Thunderbolt before the request was answered' } })
+      }
     }
 
     /**
@@ -417,17 +471,23 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
     // executor, which cannot be async — returning a promise from one is an
     // anti-pattern, and the timeout above has to be able to reject. Rewriting
     // it as async/await would mean restructuring the deadline race for no gain.
-    void request('ui/initialize', {
-      protocolVersion,
-      appName,
-      // Declared, not assumed: the host only asks for a tool list when we say we
-      // have one, so an app with no tools costs no request and no timeout.
-      capabilities: {
-        selection: watchSelection,
-        tools: resolveTools().length > 0,
-        auth,
+    void request(
+      'ui/initialize',
+      {
+        protocolVersion,
+        appName,
+        // Declared, not assumed: the host only asks for a tool list when we say we
+        // have one, so an app with no tools costs no request and no timeout.
+        capabilities: {
+          selection: watchSelection,
+          tools: resolveTools().length > 0,
+          auth,
+        },
       },
-    }).then((result) => {
+      // One deadline for the handshake, not two racing: `connect`'s own timeout
+      // owns it, and the per-request default would only fire after it.
+      timeoutMs,
+    ).then((result) => {
       clearTimeout(timer)
       const typed = result as
         | {

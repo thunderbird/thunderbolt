@@ -12,7 +12,12 @@ import { type Finding, findingSchema, fingerprint, type Severity, severity } fro
 import type { Verified, VerifiedFinding } from './verify'
 
 export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'rolled-up' | 'refused' | 'dry-run'
-/** One line of `filed.json`. In a dry run `action` is `dry-run` and `would` is what a live run would do. */
+/** What a live run would send to Linear. */
+type Preview = { title?: string; issue?: string; labels?: string[]; body: string }
+/**
+ * One line of `filed.json`. In a dry run `action` is `dry-run`, `would` is what a live run would do and `preview`
+ * what it would send; security findings get no preview, their text only ever goes to Linear.
+ */
 export type Filed = {
   fp: string
   charterDir: string
@@ -20,6 +25,7 @@ export type Filed = {
   severity: Severity
   action: Action
   would?: Action
+  preview?: Preview
   issueId?: string
   identifier?: string
   url?: string
@@ -96,7 +102,8 @@ export const shouldBrake = (card: Scorecard): boolean =>
 
 // ---------- sanitising model-written text ----------
 
-export const secretPattern = /\bsk-[\w-]{8,}|lin_api_\w+|ghp_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
+export const secretPattern =
+  /\bsk-[\w-]{8,}|lin_api_\w+|ghp_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
 
 const keepUrl = (url: string, runUrl?: string): boolean => {
   if (runUrl && url.startsWith(runUrl)) return true
@@ -325,45 +332,50 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
 
   const filed: Filed[] = []
   const overflow: Entry[] = []
-  /** Records a mutation: performed when live, otherwise logged with its payload. */
-  const act = async (would: Action, payload: object, run: () => Promise<Partial<Filed>>, base: Filed) => {
+  const baseOf = ({ v, fp, sev }: Entry) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id })
+  /**
+   * Records a mutation: performed when live. A dry run logs one line without the ticket text, since the job log
+   * is public, and keeps the text as `preview` in `filed.json` unless the finding is a security one.
+   */
+  const act = async (entry: Entry, would: Action, preview: Preview, run: (ctx: Ctx) => Promise<Partial<Filed>>) => {
     if (!live || !ctx) {
-      log(`[dry run] would ${would} ${base.fp} (${base.severity}):\n${JSON.stringify(payload, null, 2)}`)
-      return filed.push({ ...base, action: 'dry-run', would })
+      log(`[dry run] would ${would} ${entry.fp} (${entry.sev})`)
+      filed.push({
+        ...baseOf(entry),
+        action: 'dry-run',
+        would,
+        preview: entry.f.area === 'security' ? undefined : preview,
+      })
+      return
     }
-    filed.push({ ...base, action: would, ...(await run()) })
+    filed.push({ ...baseOf(entry), action: would, ...(await run(ctx)) })
   }
 
   try {
     let newTickets = 0
     for (const entry of entries) {
       const { v, f, fp, sev } = entry
-      const base = { fp, severity: sev, charterDir: v.charterDir, id: v.id } as Filed
       const spec = await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8')
       if (secretPattern.test(modelText(f, spec))) {
-        filed.push({ ...base, action: 'refused', reason: 'secret pattern in model-written text' })
+        filed.push({ ...baseOf(entry), action: 'refused', reason: 'secret pattern in model-written text' })
         continue
       }
       const decision: Decision = ctx ? await decide(ctx, fp, now) : { kind: 'new' }
       if (decision.kind === 'suppressed') {
-        filed.push({ ...base, action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
+        filed.push({ ...baseOf(entry), action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
         continue
       }
       if (decision.kind === 'commented') {
         const link = f.area === 'security' || !runUrl ? '' : `: ${runUrl}`
         const body = `Seen again in a QA run${link}`
-        await act(
-          'commented',
-          { issue: decision.issue.identifier, body },
-          async () => {
-            await addComment(ctx as Ctx, decision.issue.id, body)
-            return { issueId: decision.issue.id, identifier: decision.issue.identifier, url: decision.issue.url }
-          },
-          base,
-        )
+        await act(entry, 'commented', { issue: decision.issue.identifier, body }, async (ctx) => {
+          await addComment(ctx, decision.issue.id, body)
+          return { issueId: decision.issue.id, identifier: decision.issue.identifier, url: decision.issue.url }
+        })
         continue
       }
-      if (newTickets >= maxNewTickets) {
+      // A security finding always gets its own ticket: the roll-up has the run link and no security label.
+      if (f.area !== 'security' && newTickets >= maxNewTickets) {
         overflow.push(entry)
         continue
       }
@@ -372,43 +384,31 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       const names = ['qa-agent', 'Bug', ...(f.area === 'security' ? ['security'] : [])]
       const title = `${sanitize(f.title, 120).replace(/\s+/g, ' ')} [qa:${fp}]`
       const video = f.area === 'security' ? undefined : v.artifacts.video
-      const dryBody = buildBody(entry, spec, { runUrl, sha, regressionOf })
-      await act(
-        regressionOf ? 'regression' : 'created',
-        { title, priority: priority[sev], labels: names, state: 'Triage', video, description: dryBody },
-        async () => {
-          const videoUrl = video ? await uploadVideo(ctx as Ctx, videoPath(outDir, video)) : undefined
-          const body = buildBody(entry, spec, { runUrl, sha, videoUrl, regressionOf })
-          const issue = await createIssue(ctx as Ctx, title, body, sev, names)
-          return { issueId: issue.id, identifier: issue.identifier, url: issue.url }
-        },
-        base,
-      )
+      const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
+      await act(entry, regressionOf ? 'regression' : 'created', preview, async (ctx) => {
+        const videoUrl = video ? await uploadVideo(ctx, videoPath(outDir, video)) : undefined
+        const body = buildBody(entry, spec, { runUrl, sha, videoUrl, regressionOf })
+        const issue = await createIssue(ctx, title, body, sev, names)
+        return { issueId: issue.id, identifier: issue.identifier, url: issue.url }
+      })
     }
 
     if (overflow.length) {
       const top = overflow[0].sev
       const title = `QA agent: ${overflow.length} more finding${overflow.length > 1 ? 's' : ''} over the ${maxNewTickets}-ticket cap`
-      const lines = overflow.map(({ f, fp, sev }) =>
-        f.area === 'security'
-          ? `- [qa:${fp}] ${sev} · security`
-          : `- [qa:${fp}] ${sev} · ${f.area} · ${sanitize(f.title, 120).replace(/\s+/g, ' ')}`,
+      const lines = overflow.map(
+        ({ f, fp, sev }) => `- [qa:${fp}] ${sev} · ${f.area} · ${sanitize(f.title, 120).replace(/\s+/g, ' ')}`,
       )
       const description = [runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
         .filter(Boolean)
         .join('\n\n')
-      let issue: Issue | undefined
-      if (live && ctx) issue = await createIssue(ctx, title, description, top, ['qa-agent', 'Bug'])
-      else
-        log(
-          `[dry run] would create roll-up:\n${JSON.stringify({ title, priority: priority[top], description }, null, 2)}`,
-        )
-      for (const { v, fp, sev } of overflow) {
-        const base = { fp, severity: sev, charterDir: v.charterDir, id: v.id }
+      const issue = live && ctx ? await createIssue(ctx, title, description, top, ['qa-agent', 'Bug']) : undefined
+      if (!issue) log(`[dry run] would create the roll-up "${title}"`)
+      for (const entry of overflow) {
         filed.push(
           issue
-            ? { ...base, action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
-            : { ...base, action: 'dry-run', would: 'rolled-up' },
+            ? { ...baseOf(entry), action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
+            : { ...baseOf(entry), action: 'dry-run', would: 'rolled-up' },
         )
       }
     }

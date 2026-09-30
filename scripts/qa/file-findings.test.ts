@@ -224,16 +224,29 @@ describe('cap and roll-up', () => {
     expect(created(api)).toHaveLength(9)
   })
 
-  test('security findings roll up without a title', async () => {
+  test('a security finding over the cap still gets its own ticket, never the roll-up', async () => {
     await writeVerified([
-      ...numbered(8),
-      { title: 'Leaky thing', area: 'security', oracle: { type: 'http-5xx', evidence: 'boom' } },
+      ...numbered(9),
+      { title: 'Leaky thing', area: 'security', oracle: { type: 'console-error', evidence: 'boom' } },
     ])
     const api = fakeLinear()
     const filed = await run(api.fetchFn)
-    const rollups = created(api).map((i) => i.description)
-    expect(filed.filter((f) => f.action === 'rolled-up')).toHaveLength(1)
-    expect(rollups.join()).not.toContain('Leaky thing')
+    expect(filed.map((f) => f.action)).toEqual([...Array(8).fill('created'), 'created', 'rolled-up'])
+    const [security, rollup] = created(api).slice(-2)
+    expect(security.title).toContain('Leaky thing')
+    expect(security.labelIds).toContain('l-security')
+    expect(security.description).not.toContain(runUrl)
+    expect(rollup.title).toContain('1 more finding')
+    expect(rollup.description).not.toContain('Leaky thing')
+  })
+
+  test('a dry run over the cap logs the roll-up without any finding text', async () => {
+    await writeVerified(numbered(9))
+    const lines: string[] = []
+    const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
+    expect(filed.map((f) => f.would)).toEqual([...Array(8).fill('created'), 'rolled-up'])
+    expect(lines.at(-1)).toBe('[dry run] would create the roll-up "QA agent: 1 more finding over the 8-ticket cap"')
+    expect(lines.join('\n')).not.toContain('Bug ')
   })
 })
 
@@ -314,14 +327,29 @@ describe('setup errors', () => {
 })
 
 describe('dry run', () => {
-  test('never mutates, records would-be actions, and logs the payload', async () => {
+  test('never mutates, logs one line without ticket text, and keeps the text in filed.json', async () => {
     await writeVerified([{}])
     const api = fakeLinear()
     const lines: string[] = []
     const [entry] = await run(api.fetchFn, { live: false, log: (l) => lines.push(l) })
     expect(entry).toMatchObject({ action: 'dry-run', would: 'created' })
     expect(api.mutations()).toEqual([])
-    expect(lines.join('\n')).toContain('Chat title disappears')
+    expect(lines).toEqual([`[dry run] would created ${fp({})} (Urgent)`])
+    expect(entry.preview).toMatchObject({ title: `Chat title disappears [qa:${fp({})}]`, labels: ['qa-agent', 'Bug'] })
+    expect(entry.preview?.body).toContain('The page throws')
+    expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))[0].preview).toEqual(entry.preview)
+  })
+
+  test('keeps no text of a security finding anywhere outside Linear', async () => {
+    const leak = { area: 'security' as const, actual: 'The token list is readable', title: 'Leaky thing' }
+    await writeVerified([{ ...leak, oracle: { type: 'http-5xx', evidence: 'boom' } }])
+    const lines: string[] = []
+    const [entry] = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
+    expect(entry).toMatchObject({ action: 'dry-run', would: 'created' })
+    expect(entry.preview).toBeUndefined()
+    const written = lines.join('\n') + (await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(written).not.toContain('Leaky')
+    expect(written).not.toContain('readable')
   })
 
   test('without a key it skips Linear entirely and says so', async () => {

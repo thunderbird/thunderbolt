@@ -128,6 +128,7 @@ describe('lintReproSpec', () => {
       '"launch" is not allowed',
     ],
     ["test.use({ launchOptions: { args: ['--gpu-launcher=sh'] } })", '"launchOptions" is not allowed'],
+    ["test.only('focused', async () => {})", '"only" is not allowed'],
     ['const o = Object.getOwnPropertyDescriptors([])', '"Object" is not a known global'],
     ['const o = Reflect.ownKeys([])', '"Reflect" is not a known global'],
     ['const o = { page, secret }', '"secret" is not a known global'],

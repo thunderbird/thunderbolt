@@ -122,6 +122,8 @@ const forbiddenNames = new Set([
   'connectOverCDP',
   'connectOptions',
   'executablePath',
+  // `test.only` would make the replay skip every other finding's spec.
+  'only',
 ])
 
 /**

@@ -19,8 +19,9 @@ real bugs and prove each one with quoted evidence and a failing test.
 
 ## Signing in
 
-Open the app, enter a fresh address `qa-<random digits>@thunderbolt.test`, press Continue and type the code
-`12345678`. If a "Welcome" dialog appears, press Continue. Every new address is a brand-new user.
+Open the app, enter a fresh address, press Continue and type the code `12345678`. If a "Welcome" dialog appears,
+press Continue. Every new address is a brand-new user. Take fresh addresses only from the pattern under "Your run"
+below, with a new number each time: an address you make up yourself may belong to another session's user.
 
 ## The app's AI
 

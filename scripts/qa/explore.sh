@@ -20,8 +20,10 @@ cd "$(dirname "$0")/../.."
 # The shared prefix comes first and is identical for every charter, so sessions can reuse its prompt cache.
 prompt() {
   cat qa/prompt.md
+  # The model's "random" addresses repeat across sessions, so each run gets its own.
   # shellcheck disable=SC2016 # the backticks are Markdown
-  printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n\n' "$1" "$2" "$1"
+  printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
+    "$1" "$2" "$1" "$1" "$(date +%s)"
   cat "qa/charters/$1.md"
 }
 

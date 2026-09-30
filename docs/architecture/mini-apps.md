@@ -181,7 +181,7 @@ Everything the guest can say, all guest-initiated and all optional:
 | It says                              | When                                          | Reaches the model as                      |
 | ------------------------------------ | --------------------------------------------- | ----------------------------------------- |
 | `ui/initialize`                      | Once per document                             | Nothing. Capability negotiation only      |
-| `ui/update-model-context`            | Whenever what's on screen changes             | The `get_app_context` tool's return value |
+| `ui/get-context` (host → app)        | On every `get_app_context` call               | The `get_app_context` tool's return value |
 | `tools/list` (as a reply)            | Once, after handshake, if it declared `tools` | Tool definitions, prefixed `app_`         |
 | `ui/notifications/error`             | On an uncaught error                          | Nothing. Host UI only                     |
 | `ui/notifications/selection-changed` | When the user selects text in the app         | Nothing until the user asks about it      |
@@ -202,7 +202,9 @@ descriptions also ride here, capped and fenced in `<app-provided-tool-list>` (se
 
 **Tool calls** carry the app's _state_, on demand:
 
-- `get_app_context` returns the last `ui/update-model-context` the app published. A tool rather than an injection,
+- `get_app_context` asks the frame over `ui/get-context` and returns what it answers _now_; on a timeout, a
+  navigation, or an app that never declared the capability it reports the context unavailable rather than anything
+  stale. A tool rather than an injection,
   because app state changes on every click and injecting it would invalidate the cacheable prompt prefix on every
   send. It's a cache with no pull: the protocol has no way for the host to _ask_ for context, so an app that
   stops publishing goes stale silently. That is the contract — publish on every meaningful change.
@@ -239,7 +241,7 @@ above it is our code, and worth reading with that in mind.
 4. The model calls `get_app_context`; the host answers from its cache of the last published context.
 5. The model calls `app_set_order_status`. It's a write, so the host shows the approval prompt above the composer
    and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
-6. The app's state changed, so it publishes a new `ui/update-model-context` unprompted. The next
+6. The app's state changed, and it publishes nothing — there is nothing to publish. The next
    `get_app_context` sees it.
 
 ## Identity
@@ -360,7 +362,7 @@ Chat provenance is part of this feature too, and lives outside `src/mini-apps/`:
 app rather than at `/chats/:id`.
 
 A starter template for a new app — the embedding headers above, the guest half of the bridge, and a worked
-`ui/update-model-context` — is published, and is the canonical guest implementation:
+`ui/get-context` — is answered, and is the canonical guest implementation:
 
 ```
 git clone git@github.com:thunderbird/thunderbolt-miniapp-template.git

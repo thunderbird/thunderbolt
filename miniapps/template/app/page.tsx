@@ -125,32 +125,37 @@ const Page = () => {
     [orders, open.length, exposure],
   )
 
-  const { connected, hostContext, sendContext } = useThunderbolt('Order Book', tools, { hostOrigin })
+  /*
+   * What the user is looking at, read on demand.
+   *
+   * The host calls this on every `get_app_context`, so it describes state as it
+   * is *now* — there is nothing to publish and nothing to keep in sync. The
+   * previous version of this file pushed the same object from an effect with
+   * seven dependencies; forget one and the assistant confidently describes a
+   * screen the user has left.
+   *
+   * Not memoised: it closes over live state and the SDK reads it through a ref,
+   * so a new function each render costs nothing.
+   */
+  const getContext = () => ({
+    title: selected ? `Order Book — ${selected.id}` : 'Order Book',
+    summary: [
+      `${orders.length} orders, ${open.length} open, open exposure ${money(exposure)}.`,
+      selected
+        ? `${selected.id} is selected: ${selected.side} ${selected.quantity} ${selected.symbol} at ${money(selected.price)}, ${selected.status}.`
+        : 'No order is selected.',
+    ].join(' '),
+    data: { orders, selectedId, openExposure: exposure },
+    selection: selected ?? undefined,
+  })
+
+  const { connected, hostContext } = useThunderbolt('Order Book', tools, { hostOrigin, getContext })
 
   // Writing to documentElement is a side effect on something outside React's
   // tree, which is what useEffect is actually for.
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', hostContext.theme)
   }, [hostContext.theme])
-
-  // Publishing to the host is an external subscription, not a parent
-  // notification — the chat reads whatever was last sent.
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
-    sendContext({
-      title: selected ? `Order Book — ${selected.id}` : 'Order Book',
-      summary: [
-        `${orders.length} orders, ${open.length} open, open exposure ${money(exposure)}.`,
-        selected
-          ? `${selected.id} is selected: ${selected.side} ${selected.quantity} ${selected.symbol} at ${money(selected.price)}, ${selected.status}.`
-          : 'No order is selected.',
-      ].join(' '),
-      data: { orders, selectedId, openExposure: exposure },
-      selection: selected ?? undefined,
-    })
-  }, [connected, orders, selected, selectedId, open.length, exposure, sendContext])
 
   const setSelectedStatus = (status: OrderStatus) => {
     if (!selectedId) {

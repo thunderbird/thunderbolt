@@ -84,7 +84,22 @@ const Page = () => {
     },
   ]
 
-  const { connected, hostContext, sendContext } = useThunderbolt('Finance Model', tools, { hostOrigin })
+  /**
+   * Describe the model on demand.
+   *
+   * Called on every `get_app_context`, so it reads live state and there is
+   * nothing to publish or keep in sync. This replaced an effect that pushed the
+   * same object on every change — the app's half of a caching contract, where a
+   * missed dependency meant the assistant described a screen the user had left.
+   */
+  const getContext = () => ({
+    title: selectedQuarter ? `FY26 Projection — ${selectedQuarter}` : 'FY26 Projection',
+    summary: describeProjection(assumptions, rows, selectedQuarter),
+    data: { assumptions, quarters: rows },
+    selection: selectedQuarter ? rows.find((row) => row.quarter === selectedQuarter) : undefined,
+  })
+
+  const { connected, hostContext } = useThunderbolt('Finance Model', tools, { hostOrigin, getContext })
 
   const rows = useMemo(() => buildProjection(assumptions), [assumptions])
 
@@ -92,27 +107,6 @@ const Page = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', hostContext.theme)
   }, [hostContext.theme])
-
-  /**
-   * Publish the model whenever it changes.
-   *
-   * The host caches the last context it received and serves it to the assistant
-   * on demand — there is no pull side to the protocol — so publishing on every
-   * meaningful change is the app's half of the contract. Skipped until the
-   * handshake completes; `sendContext` is a no-op then anyway, but the effect
-   * would run for nothing.
-   */
-  useEffect(() => {
-    if (!connected) {
-      return
-    }
-    sendContext({
-      title: selectedQuarter ? `FY26 Projection — ${selectedQuarter}` : 'FY26 Projection',
-      summary: describeProjection(assumptions, rows, selectedQuarter),
-      data: { assumptions, quarters: rows },
-      selection: selectedQuarter ? rows.find((row) => row.quarter === selectedQuarter) : undefined,
-    })
-  }, [connected, assumptions, rows, selectedQuarter, sendContext])
 
   /**
    * Toggle the focused quarter — unless the user was highlighting text. Without

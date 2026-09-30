@@ -13,8 +13,9 @@
  */
 
 import {
+  contextGetResultSchema,
+  elementAtResultSchema,
   isSupportedProtocolVersion,
-  type MiniAppPlatform,
   miniAppGuestMethods,
   miniAppHostMethods,
   miniAppProtocolMarker,
@@ -22,17 +23,18 @@ import {
   miniAppRpcErrors,
   parseGuestMessage,
   parseGuestResult,
-  elementAtResultSchema,
-  toolsCallResultSchema,
   parseToolsList,
+  toolsCallResultSchema,
+  type MiniAppContext,
   type MiniAppGuestCapabilities,
   type MiniAppGuestMessage,
-  type MiniAppHostRequest,
   type MiniAppHighlightedElement,
-  type MiniAppToolCallResult,
   type MiniAppHostMessage,
+  type MiniAppHostRequest,
   type MiniAppInitializeResult,
+  type MiniAppPlatform,
   type MiniAppSelection,
+  type MiniAppToolCallResult,
 } from '@shared/mini-app-protocol'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useActiveLocale } from '@/i18n/use-active-locale'
@@ -55,6 +57,17 @@ export const handshakeTimeoutMs = 8_000
 
 /** Tool discovery happens once at connect; a slow app shouldn't stall the UI. */
 export const toolsRequestTimeoutMs = 3_000
+
+/**
+ * How long `get_app_context` waits for the app to describe itself.
+ *
+ * Shorter than a tool call, because this one is on the model's critical path
+ * and a slow answer is worse than an honest "unavailable": the model can say
+ * it cannot see the screen and ask, where a fifteen-second stall reads as the
+ * assistant hanging. An app doing real work to answer should keep a cheap
+ * snapshot to hand.
+ */
+export const contextRequestTimeoutMs = 2_000
 
 /** A tool call blocks a model turn, so it gets more room than discovery. */
 export const toolCallTimeoutMs = 15_000
@@ -207,8 +220,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
   const theme = useResolvedTheme()
   const locale = useActiveLocale()
-  const setContext = useMiniAppStore((state) => state.setContext)
   const setTools = useMiniAppStore((state) => state.setTools)
+  const setContextReader = useMiniAppStore((state) => state.setContextReader)
   const resetGuest = useMiniAppStore((state) => state.resetGuest)
 
   // Held in a ref so a new callback identity from the parent doesn't tear down
@@ -367,11 +380,6 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         return
       }
 
-      if (message.method === miniAppGuestMethods.contextUpdate) {
-        setContext(message.params.context)
-        return
-      }
-
       if (message.method === miniAppGuestMethods.selectionChanged) {
         // Gated on the declaration, which is what makes it a capability rather
         // than a comment: an app that said it doesn't report selections has no
@@ -479,7 +487,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // settings load a beat after first render. Re-subscribing is cheap — but
     // only for things that genuinely change identity, which is why `theme` is a
     // ref above rather than listed here.
-  }, [app.id, app.origin, httpClient, pending, post, resetGuest, setContext])
+  }, [app.id, app.origin, httpClient, pending, post, resetGuest])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running
@@ -640,5 +648,45 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     }
   }, [app.url, resetGuest])
 
-  return { frameRef, status, selection, clearSelection, queryElementAt, runtimeError, handleFrameLoad, reloadFrame }
+  /**
+   * Ask the app what the user is looking at, right now.
+   *
+   * Returns `null` for every way of not knowing — the app never declared the
+   * capability, it is not connected, it answered with something unparseable, or
+   * it did not answer inside the deadline. The caller turns that into "context
+   * unavailable" for the model, which is the point of the whole change: a cache
+   * could be confidently stale, and this can only be absent.
+   */
+  const requestContext = useCallback(async (): Promise<MiniAppContext | null> => {
+    if (status !== 'ready' || !guestCapabilitiesRef.current.context) {
+      return null
+    }
+    const result = await request(miniAppHostMethods.contextGet, {}, contextRequestTimeoutMs)
+    const parsed = contextGetResultSchema.safeParse(result)
+    return parsed.success ? parsed.data.context : null
+  }, [status, request])
+
+  /*
+   * Hand the reader to the store so `get_app_context` can reach it.
+   *
+   * An effect because the store is outside React and the write has to happen
+   * after render, and it re-runs whenever `requestContext` is rebuilt — which is
+   * on every status change, so the installed reader is never one that closed
+   * over a stale `status` and answers for a connection that has gone.
+   */
+  useEffect(() => {
+    setContextReader(requestContext)
+  }, [requestContext, setContextReader])
+
+  return {
+    frameRef,
+    status,
+    selection,
+    clearSelection,
+    queryElementAt,
+    requestContext,
+    runtimeError,
+    handleFrameLoad,
+    reloadFrame,
+  }
 }

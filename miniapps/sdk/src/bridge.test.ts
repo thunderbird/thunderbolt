@@ -25,6 +25,23 @@ type Posted = { id?: number; method?: string; params?: unknown; result?: unknown
 
 let posted: Posted[] = []
 let realParent: Window
+/*
+ * Every connection made by a test, torn down after it.
+ *
+ * `connect` installs a `message` listener, and a test that left one attached
+ * meant the *next* test's host message was answered by two bridges. That is not
+ * hypothetical: it made a context request look like it returned null, because
+ * `posted.find` picked the older connection's reply — one made by an app with no
+ * `getContext` — over the one under test.
+ */
+const openConnections: Connection[] = []
+
+/** Connect, and register the result for teardown. */
+const track = async (pending: Promise<Connection>): Promise<Connection> => {
+  const connection = await pending
+  openConnections.push(connection)
+  return connection
+}
 
 /**
  * Deliver a message as though the host had sent it.
@@ -65,6 +82,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  for (const connection of openConnections) {
+    connection.disconnect()
+  }
+  openConnections.length = 0
   Object.defineProperty(window, 'parent', { value: realParent, configurable: true, writable: true })
 })
 
@@ -72,7 +93,7 @@ afterEach(() => {
 const connected = async (): Promise<Connection> => {
   const pending = connect({ appName: 'Test App', hostOrigin, auth: true })
   fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/initialize'), result: { hostContext: { theme: 'dark' } } })
-  return pending
+  return track(pending)
 }
 
 describe('handshake', () => {
@@ -153,14 +174,50 @@ describe('request lifecycle', () => {
 })
 
 describe('notifications', () => {
-  it('sends context as a notification, with no id to answer', async () => {
-    const connection = await connected()
+  /*
+   * Context is pulled, not pushed. The host asks on every `get_app_context`, so
+   * state the user changed a moment ago is in the answer without the app having
+   * notified anyone (THU-910).
+   */
+  it('answers a context request with whatever getContext returns now', async () => {
+    let view = 'first'
+    const pending = connect({ appName: 'Test App', hostOrigin, getContext: () => ({ title: view, summary: 's' }) })
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/initialize'), result: {} })
+    await track(pending)
 
-    connection.sendContext({ title: 'T', summary: 'S' })
+    view = 'changed since'
+    fromHost({ jsonrpc: '2.0', id: 7, method: 'ui/get-context', params: {} })
 
-    const update = posted.find((entry) => entry.method === 'ui/update-model-context')
-    expect(update).toBeDefined()
-    expect(update?.id).toBeUndefined()
+    const reply = posted.find((entry) => entry.id === 7)
+    expect((reply?.result as { context: { title: string } }).context.title).toBe('changed since')
+  })
+
+  it('declares the context capability only when an app supplies getContext', async () => {
+    await connected()
+    const withoutIt = posted.find((entry) => entry.method === 'ui/initialize')
+    expect((withoutIt?.params as { capabilities: { context?: boolean } }).capabilities.context).toBe(false)
+  })
+
+  /*
+   * A throwing `getContext` must still produce a reply: to the host a throw is
+   * indistinguishable from a frame that went away, and silence costs the model
+   * the whole deadline.
+   */
+  it('still answers when getContext throws', async () => {
+    const pending = connect({
+      appName: 'Test App',
+      hostOrigin,
+      getContext: () => {
+        throw new Error('boom')
+      },
+    })
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/initialize'), result: {} })
+    await track(pending)
+
+    fromHost({ jsonrpc: '2.0', id: 9, method: 'ui/get-context', params: {} })
+
+    expect((posted.find((entry) => entry.id === 9)?.result as { context: unknown }).context).toBeNull()
+    expect(posted.some((entry) => entry.method === 'ui/notifications/error')).toBe(true)
   })
 
   it('truncates a reported error to the length the host accepts', async () => {

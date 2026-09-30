@@ -62,7 +62,15 @@ export const miniAppProtocolMarker = 'thunderbolt-miniapp'
  * removed method has to bump this, so the handshake rejects an old guest with a
  * reason instead of leaving a feature quietly dead.
  */
-export const miniAppProtocolVersion = 2
+/**
+ * 3 — context became a pull.
+ *
+ * Breaking: `ui/update-model-context` is gone, and the host asks with
+ * `ui/get-context` instead. A v2 guest that only ever pushed will answer nothing
+ * and the host reports the context unavailable, which is the correct answer
+ * rather than a stale one.
+ */
+export const miniAppProtocolVersion = 3
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -71,7 +79,7 @@ export const miniAppProtocolVersion = 2
  *
  * Names follow **MCP Apps** (the first official MCP extension, spec 2026-01-26)
  * wherever the semantics genuinely match: `ui/initialize`,
- * `ui/update-model-context`, and MCP's own `tools/list` / `tools/call`. A
+ * `ui/get-context`, and MCP's own `tools/list` / `tools/call`. A
  * `ui/notifications/` prefix marks a fire-and-forget message in either direction,
  * which is their convention too.
  *
@@ -96,8 +104,6 @@ export const miniAppProtocolVersion = 2
 export const miniAppGuestMethods = {
   /** Handshake. Must be the guest's first message. */
   initialize: 'ui/initialize',
-  /** "Here is what the user is looking at now." Fire-and-forget. */
-  contextUpdate: 'ui/update-model-context',
   /** Ask the host to open the chat panel, optionally seeded with a prompt. */
   chatOpen: 'ui/open-chat',
   /** The user selected (or deselected) text inside the app. */
@@ -144,6 +150,19 @@ export const miniAppHostMethods = {
    * things the user meant, and it answered with a list nobody had reviewed.
    */
   elementAt: 'ui/element-at',
+  /**
+   * "What is the user looking at right now?"
+   *
+   * A request, asked on every `get_app_context`, because the previous design was
+   * a push the host cached: an app had to re-publish on every meaningful change,
+   * and one it forgot left the model describing a screen the user had left —
+   * confidently, because nothing marks a cache as stale. Pulling cannot be
+   * stale; it can only be unanswered, and unanswered is reportable.
+   *
+   * Superseded by a reserved read-only WebMCP tool once the shim lands
+   * (THU-910); this is the transport that tool will route to.
+   */
+  contextGet: 'ui/get-context',
   /** Discover the tools the app exposes to the model. Sent once, after handshake. */
   toolsList: 'tools/list',
   /** Invoke one of them. */
@@ -164,6 +183,12 @@ export const miniAppGuestCapabilitiesSchema = z
      *  is declared, so an app that has none is never asked. */
     tools: z.boolean().optional(),
     /**
+     * The app answers `ui/get-context` with what the user is looking at. The
+     * host only asks when this is declared, so `get_app_context` can say "this
+     * app reports no state" rather than waiting out a timeout on every call.
+     */
+    context: z.boolean().optional(),
+    /**
      * The app reports text selections via `ui/notifications/selection-changed`, so the host can
      * float a "Chat" control over highlighted text. Declared rather than assumed:
      * an app that never sends selections shouldn't have the host waiting for them.
@@ -182,7 +207,7 @@ export type MiniAppGuestCapabilities = z.infer<typeof miniAppGuestCapabilitiesSc
 
 /** What the host offers the guest, returned from `initialize`. */
 export type MiniAppHostCapabilities = {
-  /** The host will surface `ui/update-model-context` payloads to the model. */
+  /** The host will ask for context with `ui/get-context` and show it to the model. */
   context: boolean
   /** The host honours `ui/open-chat`. */
   chat: boolean
@@ -266,12 +291,6 @@ export const initializeRequestSchema = envelopeSchema.extend({
     appName: clampedString(200).optional(),
     capabilities: miniAppGuestCapabilitiesSchema,
   }),
-})
-
-/** `ui/update-model-context` — guest → host notification (no id, no reply). */
-export const contextUpdateNotificationSchema = envelopeSchema.extend({
-  method: z.literal(miniAppGuestMethods.contextUpdate),
-  params: z.object({ context: miniAppContextSchema }),
 })
 
 /** `ui/notifications/error` — guest → host notification (no id, no reply). */
@@ -369,7 +388,6 @@ export const requestAuthTokenSchema = envelopeSchema.extend({
 export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
   requestAuthTokenSchema,
   initializeRequestSchema,
-  contextUpdateNotificationSchema,
   chatOpenRequestSchema,
   selectionChangedNotificationSchema,
   runtimeErrorNotificationSchema,
@@ -413,6 +431,7 @@ export type MiniAppHostRequest = {
   protocol: typeof miniAppProtocolMarker
   id: string | number
   method:
+    | typeof miniAppHostMethods.contextGet
     | typeof miniAppHostMethods.elementAt
     | typeof miniAppHostMethods.toolsList
     | typeof miniAppHostMethods.toolsCall
@@ -681,6 +700,19 @@ export const parseToolsList = (result: unknown): ParsedToolsList => {
   }
   return { tools, dropped, envelope: 'valid' }
 }
+
+/**
+ * Guest's answer to `ui/get-context`.
+ *
+ * `context: null` is a real answer — "I have nothing to report" — and is
+ * distinct from no answer at all, which the host reports as unavailable. An app
+ * that is still loading should say null rather than stall the request.
+ */
+export const contextGetResultSchema = z.object({
+  context: miniAppContextSchema.nullable(),
+})
+
+export type ContextGetResult = z.infer<typeof contextGetResultSchema>
 
 /** Guest's answer to `tools/call`. */
 export const toolsCallResultSchema = z.object({

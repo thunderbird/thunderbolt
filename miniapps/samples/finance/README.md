@@ -53,19 +53,29 @@ that isn't running.
 The bridge is dependency-free and framework-agnostic; `lib/use-thunderbolt.ts` is a thin React wrapper over it. On
 Vue or Svelte you'd copy only the former.
 
-### 3. Publish context on every meaningful change
+### 3. Describe the current view on demand
 
 ```ts
-sendContext({
+const getContext = () => ({
   title: 'FY26 Projection — Q3',
   summary: 'Prose written for a language model to read.',
   data: { assumptions, quarters },
   selection: focusedRow,
 })
+
+const { connected } = useThunderbolt('Finance Model', tools, { getContext })
 ```
 
-**The protocol is push-only.** Thunderbolt caches the last context you sent and serves it to the assistant on demand;
-there is no pull. An app that forgets to publish will have the assistant confidently describing a stale view.
+**Context is pulled, not pushed.** Thunderbolt calls `getContext` on every `get_app_context`, so read live state
+rather than a snapshot — there is nothing to publish and nothing to keep in sync. Return `null` when you have nothing
+to report and the assistant is told it could not read the screen, which is better than a stale answer presented as
+current.
+
+Keep it cheap: it sits on the model's critical path and the host gives up after a couple of seconds.
+
+This replaced `sendContext()`, which pushed into a host-side cache. That put the burden on the app to re-publish on
+every meaningful change, and forgetting one meant the assistant confidently described a view the user had left —
+confidently, because nothing marks a cache as stale.
 
 `summary` and `data` are deliberately separate. `summary` is prose you write for the model — it's where you say what
 matters and what to notice. `data` is whatever structure you already have, forwarded without interpretation. Improving
@@ -171,7 +181,7 @@ The transport underneath is JSON-RPC 2.0 using MCP's own method names, `tools/li
 
 JSON-RPC 2.0 over `postMessage`, marked with `protocol: 'thunderbolt-miniapp'`.
 
-Method names follow **MCP Apps** where the semantics match (`ui/initialize`, `ui/update-model-context`, and MCP's own
+Method names follow **MCP Apps** where the semantics match (`ui/initialize`, `ui/get-context`, and MCP's own
 `tools/*`); `ui/open-chat` and the selection pair are Thunderbolt extensions with no MCP Apps equivalent. We don't
 implement MCP Apps itself — it ships UI as an HTML string into a sandbox proxy, which leaves the app with no origin
 of its own, and therefore no cookies, no same-origin calls to its backend and nowhere for an OIDC redirect to land.
@@ -179,9 +189,9 @@ of its own, and therefore no cookies, no same-origin calls to its backend and no
 | Direction  | Method                               | Kind         | Purpose                                                          |
 | ---------- | ------------------------------------ | ------------ | ---------------------------------------------------------------- |
 | app → host | `ui/initialize`                      | request      | Handshake; exchanges protocol version and capabilities           |
-| app → host | `ui/update-model-context`            | notification | Publish the current view                                         |
 | app → host | `ui/notifications/selection-changed` | notification | Text selected or cleared (auto-wired by `connect()`)             |
 | app → host | `ui/open-chat`                       | request      | Ask the host to open its chat panel, optionally seeding a prompt |
+| host → app | `ui/get-context`                     | request      | "What is the user looking at?" — answered by `getContext`        |
 | host → app | `ui/notifications/theme-changed`     | notification | Host appearance changed                                          |
 | host → app | `ui/selection-query`                 | request      | "What's inside this rect?" — answered by `resolveSelection`      |
 | host → app | `tools/list`                         | request      | Discover declared tools (MCP method name)                        |

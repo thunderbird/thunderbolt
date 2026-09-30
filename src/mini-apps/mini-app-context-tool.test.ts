@@ -43,12 +43,17 @@ describe('formatMiniAppContext', () => {
     expect(output).not.toContain('Full state:')
   })
 
-  // An app that hasn't published yet is the most likely demo failure. Saying so
-  // beats the model inventing plausible numbers.
-  it('tells the model the view is empty rather than letting it guess', () => {
+  /*
+   * No answer is now a *failed read*, not an empty screen, and the copy has to
+   * say which: the model must not fall back to describing something from earlier
+   * in the conversation as though it were current. That is the whole reason for
+   * pulling instead of caching (THU-910).
+   */
+  it('tells the model it could not read the screen rather than letting it guess', () => {
     const output = formatMiniAppContext(app, null)
-    expect(output).toContain("hasn't reported any state")
+    expect(output).toContain('cannot read the screen')
     expect(output).toContain('Finance Model')
+    expect(output).toContain('try again')
   })
 
   it('handles falsy-but-present data without dropping it', () => {

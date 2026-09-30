@@ -11,10 +11,15 @@
  * `createProjectSearchTool` makes, and for the same reason: the alternative is
  * pushing volatile state into the cacheable system prompt on every interaction.
  *
- * The value returned is the last context the app published over the bridge, not
- * a live pull — the protocol is push-only (see `mini-app-store.ts`). An app that
- * publishes on every meaningful change keeps this fresh; one that doesn't will
- * read stale, which is a bug in the app rather than here.
+ * **Every call asks the frame.** It used to return the last context the app had
+ * pushed, which put the burden on the app to re-publish on every meaningful
+ * change — and an app that forgot left the model describing a screen the user
+ * had already left, confidently, because nothing marks a cache as stale.
+ *
+ * The cost is that this can now fail: the frame may be gone, still loading, or
+ * simply slow. That is the trade, and it is the right way round — "I can't see
+ * your screen right now" is recoverable, and a stale answer presented as current
+ * is not (THU-910).
  */
 
 import { tool, type Tool } from 'ai'
@@ -23,8 +28,17 @@ import { maxContextPayloadChars, type MiniAppContext } from '@shared/mini-app-pr
 import type { MiniAppDefinition } from './registry'
 
 export type MiniAppContextToolDeps = {
-  /** Snapshot reader, injected so tests don't need the store. */
-  getSnapshot: () => { app: MiniAppDefinition | null; context: MiniAppContext | null }
+  /** Which app is open, if any. Injected so tests don't need the store. */
+  getSnapshot: () => { app: MiniAppDefinition | null }
+  /**
+   * Ask the open app what the user is looking at.
+   *
+   * Resolves `null` for every way of not knowing — not connected, capability
+   * never declared, unparseable answer, or no answer inside the deadline. The
+   * distinction the model needs is "current state" versus "couldn't read it",
+   * and both of those are here; "stale state" no longer exists.
+   */
+  requestContext: () => Promise<MiniAppContext | null>
 }
 
 /**
@@ -70,7 +84,7 @@ const renderPayload = (label: string, value: unknown): string => {
  */
 export const formatMiniAppContext = (app: MiniAppDefinition, context: MiniAppContext | null): string => {
   if (!context) {
-    return `The user has ${app.name} open but it hasn't reported any state yet. Tell them what you can see is empty rather than guessing, and suggest they interact with the app.`
+    return `${app.name} is open, but it did not report what the user is looking at — it may still be loading, may have navigated, or may not report state at all. Say you cannot read the screen right now rather than guessing or describing anything from earlier in the conversation, and offer to try again.`
   }
   const parts = [`Currently viewing: ${context.title}`, context.summary]
   if (context.selection !== undefined) {
@@ -84,6 +98,7 @@ export const formatMiniAppContext = (app: MiniAppDefinition, context: MiniAppCon
 
 export const createMiniAppContextTool = ({
   getSnapshot,
+  requestContext,
 }: MiniAppContextToolDeps): Tool<Record<string, never>, string> =>
   tool({
     description:
@@ -93,10 +108,10 @@ export const createMiniAppContextTool = ({
       'view changes as they click, so call it again on a follow-up rather than reusing an earlier result.',
     inputSchema: z.object({}),
     execute: async () => {
-      const { app, context } = getSnapshot()
+      const { app } = getSnapshot()
       if (!app) {
         return 'No app is currently open, so there is nothing on screen to read.'
       }
-      return formatMiniAppContext(app, context)
+      return formatMiniAppContext(app, await requestContext())
     },
   })

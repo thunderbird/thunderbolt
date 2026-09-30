@@ -4,17 +4,18 @@
 
 import { describe, expect, it } from 'bun:test'
 import {
+  contextGetResultSchema,
+  elementAtResultSchema,
   isSupportedProtocolVersion,
+  maxToolDescriptionChars,
+  maxToolNameChars,
+  maxToolSchemaChars,
+  maxToolsPerApp,
   miniAppProtocolMarker,
   miniAppProtocolVersion,
   parseGuestMessage,
   parseGuestResult,
   parseToolsList,
-  maxToolDescriptionChars,
-  maxToolNameChars,
-  maxToolSchemaChars,
-  maxToolsPerApp,
-  elementAtResultSchema,
   toolsCallResultSchema,
 } from './mini-app-protocol'
 
@@ -24,13 +25,6 @@ const initialize = {
   id: 1,
   method: 'ui/initialize',
   params: { protocolVersion: 1, appName: 'Finance Model', capabilities: {} },
-}
-
-const contextUpdate = {
-  jsonrpc: '2.0',
-  protocol: miniAppProtocolMarker,
-  method: 'ui/update-model-context',
-  params: { context: { title: 'Q3', summary: 'Revenue model for Q3.' } },
 }
 
 describe('parseGuestMessage', () => {
@@ -58,11 +52,6 @@ describe('parseGuestMessage', () => {
     expect(parsed?.method).toBe('ui/initialize')
   })
 
-  it('accepts a ui/update-model-context notification without an id', () => {
-    const parsed = parseGuestMessage(contextUpdate)
-    expect(parsed?.method).toBe('ui/update-model-context')
-  })
-
   it('accepts ui/open-chat with no params, defaulting them', () => {
     const parsed = parseGuestMessage({
       jsonrpc: '2.0',
@@ -71,21 +60,6 @@ describe('parseGuestMessage', () => {
       method: 'ui/open-chat',
     })
     expect(parsed?.method).toBe('ui/open-chat')
-  })
-
-  it('carries optional data and selection through untouched', () => {
-    const selection = { row: 3 }
-    const data = { quarters: [1, 2, 3] }
-    const parsed = parseGuestMessage({
-      ...contextUpdate,
-      params: { context: { title: 'Q3', summary: 's', data, selection } },
-    })
-    expect(parsed).not.toBeNull()
-    if (parsed?.method !== 'ui/update-model-context') {
-      throw new Error('expected a ui/update-model-context')
-    }
-    expect(parsed.params.context.selection).toEqual(selection)
-    expect(parsed.params.context.data).toEqual(data)
   })
 
   // The bus carries React DevTools, Vite HMR and extension traffic — anything
@@ -103,8 +77,13 @@ describe('parseGuestMessage', () => {
     expect(parseGuestMessage({ ...initialize, method: 'app/deleteEverything' })).toBeNull()
   })
 
-  it('rejects a ui/update-model-context whose context is missing required fields', () => {
-    expect(parseGuestMessage({ ...contextUpdate, params: { context: { title: 'Q3' } } })).toBeNull()
+  it('rejects a context reply missing required fields', () => {
+    expect(contextGetResultSchema.safeParse({ context: { title: 'Q3' } }).success).toBe(false)
+  })
+
+  /** "Nothing to report" is a real answer, and not the same as no answer. */
+  it('accepts a null context', () => {
+    expect(contextGetResultSchema.parse({ context: null }).context).toBeNull()
   })
 
   it('rejects a non-2.0 jsonrpc envelope', () => {
@@ -459,25 +438,15 @@ describe('bounds clamp rather than reject', () => {
   })
 
   it('clamps a summary an app built from its own data', () => {
-    const parsed = parseGuestMessage(
-      guestMessage('ui/update-model-context', { context: { title: 'Q3', summary: 'x'.repeat(20_001) } }),
-    )
+    const parsed = contextGetResultSchema.parse({ context: { title: 'Q3', summary: 'x'.repeat(20_001) } })
 
-    if (parsed?.method !== 'ui/update-model-context') {
-      throw new Error('expected a ui/update-model-context')
-    }
-    expect(parsed.params.context.summary).toHaveLength(20_000)
+    expect(parsed.context?.summary).toHaveLength(20_000)
   })
 
-  it('clamps a title rather than losing the context update', () => {
-    const parsed = parseGuestMessage(
-      guestMessage('ui/update-model-context', { context: { title: 'x'.repeat(201), summary: 'ok' } }),
-    )
+  it('clamps a title rather than losing the context reply', () => {
+    const parsed = contextGetResultSchema.parse({ context: { title: 'x'.repeat(201), summary: 'ok' } })
 
-    if (parsed?.method !== 'ui/update-model-context') {
-      throw new Error('expected a ui/update-model-context')
-    }
-    expect(parsed.params.context.title).toHaveLength(200)
+    expect(parsed.context?.title).toHaveLength(200)
   })
 
   // The worst of them: this one rode the handshake, so a long display name meant

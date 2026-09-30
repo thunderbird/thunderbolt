@@ -595,7 +595,12 @@ export const prepareAiRequestConfig = async ({
   if (supportsTools && surface === 'artifact') {
     appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
   } else if (supportsTools && surface === 'mini-app') {
-    appToolset.get_app_context = createMiniAppContextTool({ getSnapshot: getMiniAppSnapshot })
+    appToolset.get_app_context = createMiniAppContextTool({
+      getSnapshot: getMiniAppSnapshot,
+      // Reads the frame on every call rather than a cache, so state the user
+      // changed a moment ago is in the answer with no notification needed.
+      requestContext: () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null),
+    })
   }
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we

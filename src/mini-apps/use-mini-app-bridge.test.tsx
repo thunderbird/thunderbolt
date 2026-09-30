@@ -19,6 +19,7 @@ import { getClock } from '@/testing-library'
 import { Wallet } from 'lucide-react'
 import {
   acceptGuestMessage,
+  contextRequestTimeoutMs,
   handshakeTimeoutMs,
   toolCallTimeoutMs,
   toolsRequestTimeoutMs,
@@ -36,8 +37,8 @@ const origin = 'http://localhost:5174'
 const message = {
   jsonrpc: '2.0',
   protocol: miniAppProtocolMarker,
-  method: 'ui/update-model-context',
-  params: { context: { title: 'Q3', summary: 'Revenue model.' } },
+  method: 'ui/notifications/error',
+  params: { message: 'Chart failed to render' },
 }
 
 const event = (overrides: Partial<{ source: Window | null; origin: string; data: unknown }> = {}) => ({
@@ -50,7 +51,7 @@ const event = (overrides: Partial<{ source: Window | null; origin: string; data:
 describe('acceptGuestMessage', () => {
   it('accepts a message from the right window and origin', () => {
     const accepted = acceptGuestMessage(event(), { expectedWindow: frameWindow, expectedOrigin: origin })
-    expect(accepted?.method).toBe('ui/update-model-context')
+    expect(accepted?.method).toBe('ui/notifications/error')
   })
 
   // Source and origin are independent gates. Origin alone would trust a
@@ -217,7 +218,7 @@ const mountBridge = (onChatOpen: (prompt?: string) => void = () => {}, httpClien
 beforeEach(() => {
   // `activeApp` included: it is module-level state another file may have left
   // set, and these tests assume nothing is open until they open it.
-  useMiniAppStore.setState({ activeApp: null, context: null, tools: [], invokeTool: null })
+  useMiniAppStore.setState({ activeApp: null, tools: [], invokeTool: null })
 })
 
 describe('useMiniAppBridge deadlines', () => {
@@ -399,12 +400,52 @@ describe('useMiniAppBridge message handling', () => {
     expect(bridge.current?.status).toBe('connecting')
   })
 
-  it('caches a context update for the model to read', async () => {
-    const { send, envelope, handshake } = mountBridge()
-    await handshake()
-    await send(envelope({ method: 'ui/update-model-context', params: { context: { title: 'Q3', summary: '4.2M' } } }))
+  /*
+   * Pulled, not cached. The host asks on every `get_app_context`, so state the
+   * user changed a moment ago is in the answer without the app having had to
+   * notify anyone.
+   */
+  it('asks the app for its context and returns what it answers', async () => {
+    const { bridge, posted, send, envelope, handshake, settle } = mountBridge()
+    await handshake({ context: true })
 
-    expect(useMiniAppStore.getState().context).toEqual({ title: 'Q3', summary: '4.2M' })
+    let inFlight: Promise<unknown> = Promise.resolve(null)
+    await act(async () => {
+      inFlight = bridge.current!.requestContext()
+    })
+    const asked = posted.find((m) => 'method' in m && m.method === 'ui/get-context')
+    expect(asked).toBeDefined()
+    await send(envelope({ id: (asked as { id: number }).id, result: { context: { title: 'Q3', summary: '4.2M' } } }))
+    await settle()
+
+    expect(await inFlight).toEqual({ title: 'Q3', summary: '4.2M' })
+  })
+
+  it('reports no context for an app that never declared the capability', async () => {
+    const { bridge, posted, handshake } = mountBridge()
+    await handshake()
+
+    expect(await bridge.current!.requestContext()).toBeNull()
+    // Not even asked: the capability is the contract, so `get_app_context` can
+    // say "this app reports no state" instead of waiting out a deadline.
+    expect(posted.find((m) => 'method' in m && m.method === 'ui/get-context')).toBeUndefined()
+  })
+
+  /*
+   * The whole point of the pull. A cache could be confidently stale; this can
+   * only be absent, and absent is something the model can be told.
+   */
+  it('reports no context when the app does not answer in time', async () => {
+    const { bridge, handshake, elapse } = mountBridge()
+    await handshake({ context: true })
+
+    let inFlight: Promise<unknown> = Promise.resolve('unset')
+    await act(async () => {
+      inFlight = bridge.current!.requestContext()
+    })
+    await elapse(contextRequestTimeoutMs + 100)
+
+    expect(await inFlight).toBeNull()
   })
 
   // The capability is the contract, not a hint: an app that said it doesn't
@@ -527,7 +568,6 @@ describe('useMiniAppBridge message handling', () => {
   it('drops the previous document state when the app handshakes again', async () => {
     const { send, envelope, handshake } = mountBridge()
     await handshake()
-    await send(envelope({ method: 'ui/update-model-context', params: { context: { title: 'Q3', summary: '4.2M' } } }))
     useMiniAppStore.getState().setTools([{ name: 'refresh', description: 'Reload the books' }], async () => ({
       content: '',
     }))
@@ -535,7 +575,6 @@ describe('useMiniAppBridge message handling', () => {
 
     await handshake()
 
-    expect(useMiniAppStore.getState().context).toBeNull()
     expect(useMiniAppStore.getState().tools).toEqual([])
   })
 
@@ -554,15 +593,13 @@ describe('useMiniAppBridge message handling', () => {
    * and every tool call the model makes waits out its full timeout.
    */
   it('goes back to connecting when a new document loads without handshaking', async () => {
-    const { bridge, send, envelope, handshake } = mountBridge()
+    const { bridge, handshake } = mountBridge()
     await handshake()
-    await send(envelope({ method: 'ui/update-model-context', params: { context: { title: 'Q3', summary: '4.2M' } } }))
     // The load for the document that just handshaked, then a silent one.
     act(() => bridge.current?.handleFrameLoad())
     act(() => bridge.current?.handleFrameLoad())
 
     expect(bridge.current?.status).toBe('connecting')
-    expect(useMiniAppStore.getState().context).toBeNull()
   })
 
   it('clears a runtime error when a new document loads without handshaking', async () => {

@@ -67,12 +67,12 @@ const ask = (chatThreadId: string, args: unknown, forApp = app) =>
  * assume no app is open and failed as a block, on one seed in four.
  */
 afterEach(() => {
-  useMiniAppStore.setState({ activeApp: null, context: null, tools: [], invokeTool: null })
+  useMiniAppStore.setState({ activeApp: null, tools: [], invokeTool: null, requestContext: null })
   useChatStore.setState({ sessions: new Map(), currentSessionId: null })
 })
 
 beforeEach(() => {
-  useMiniAppStore.setState({ activeApp: app, context: null, tools: [], invokeTool: null })
+  useMiniAppStore.setState({ activeApp: app, tools: [], invokeTool: null, requestContext: null })
   useChatStore.setState({
     sessions: new Map([
       ['chat-a', makeSession('chat-a')],

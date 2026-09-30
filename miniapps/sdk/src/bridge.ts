@@ -16,7 +16,8 @@
  *
  * Lifecycle:
  *   1. `connect()` posts `initialize` to the parent and waits for the reply.
- *   2. Once connected, call `sendContext()` whenever the user's view changes.
+ *   2. The host asks for context with `ui/get-context` whenever the model needs
+ *      it, and your `getContext` answers with the *current* view.
  *   3. Call `openChat()` to ask Thunderbolt to open its chat panel.
  *
  * The host never trusts us and we never trust the host: every inbound message is
@@ -80,6 +81,23 @@ export type ConnectOptions = {
    */
   onHostContextChange?: (patch: Partial<HostContext>) => void
   /**
+   * What the user is looking at, right now.
+   *
+   * Called on every `get_app_context`, so it must read your live state rather
+   * than a snapshot taken earlier — that is the whole point. Return `null` while
+   * you have nothing to report (still loading, say); the host tells the model it
+   * could not read the screen, which is better than a stale answer presented as
+   * current.
+   *
+   * Keep it cheap. It sits on the model's critical path and the host gives up
+   * after a couple of seconds.
+   *
+   * This replaces `sendContext()`, which pushed to a host-side cache and put the
+   * burden on you to re-publish on every meaningful change — miss one and the
+   * assistant confidently described a screen the user had left.
+   */
+  getContext?: () => MiniAppContext | null
+  /**
    * Report text selections to the host, so it can float an "Ask about this"
    * control over highlighted text. On by default — the app gets the feature
    * without writing any code for it. Set false for an app that manages its own
@@ -112,7 +130,6 @@ export type ConnectOptions = {
 
 export type Connection = {
   /** Publish what the user is looking at. Call on every meaningful change. */
-  sendContext: (context: MiniAppContext) => void
   /** Ask the host to open its chat panel, optionally seeding the composer. */
   openChat: (prompt?: string) => void
   /** Host context at connect time. */
@@ -267,6 +284,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
     onHostContextChange,
     watchSelection = true,
     resolveElementAt = (point: { x: number; y: number }) => elementAtPoint(point),
+    getContext,
     tools = [],
     auth = false,
   } = options
@@ -353,6 +371,24 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
               ? resolveElementAt({ x: point.x, y: point.y })
               : null
           post({ id: data.id, result: { element } })
+          return
+        }
+        if (data.method === 'ui/get-context') {
+          /*
+           * Answered even when we have nothing, and never allowed to throw.
+           *
+           * The host cannot tell a thrown `getContext` from a frame that went
+           * away — both are silence, and silence costs the model the full
+           * deadline. Replying `null` says "nothing to report" in one round
+           * trip, which the host renders as "couldn't read the screen".
+           */
+          let context: MiniAppContext | null = null
+          try {
+            context = getContext?.() ?? null
+          } catch (error) {
+            reportError(`getContext threw: ${error instanceof Error ? error.message : String(error)}`)
+          }
+          post({ id: data.id, result: { context } })
           return
         }
         if (data.method === 'tools/list') {
@@ -488,6 +524,9 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
         // Declared, not assumed: the host only asks for a tool list when we say we
         // have one, so an app with no tools costs no request and no timeout.
         capabilities: {
+          // Declared, so the host can say "this app reports no state" instead of
+          // waiting out a deadline on every `get_app_context`.
+          context: getContext !== undefined,
           selection: watchSelection,
           tools: resolveTools().length > 0,
           auth,
@@ -539,7 +578,6 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
 
       resolve({
         getAuthToken,
-        sendContext: (context) => notify('ui/update-model-context', { context }),
         openChat: (prompt) => void request('ui/open-chat', prompt ? { prompt } : {}),
         reportError,
         hostContext,

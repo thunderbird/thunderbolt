@@ -27,8 +27,6 @@ export type ThunderboltState = {
   connected: boolean
   /** Host theme, locale and surface. Sensible defaults when running standalone. */
   hostContext: HostContext
-  /** Publish the current view. No-op when not embedded. */
-  sendContext: (context: MiniAppContext) => void
   /** Ask the host to open its chat panel. No-op when not embedded. */
   openChat: (prompt?: string) => void
   /**
@@ -59,6 +57,15 @@ export const useThunderbolt = (
   options: {
     auth?: boolean
     /**
+     * What the user is looking at, right now.
+     *
+     * Read on every `get_app_context`, so it must reflect live state — that is
+     * the point. Passed through a ref like `tools`, so redefining it each render
+     * (which any component closing over state will) does not tear down the
+     * connection.
+     */
+    getContext?: () => MiniAppContext | null
+    /**
      * The Thunderbolt origin to talk to, and to trust replies from.
      *
      * Defaults to the dev server, which is why this has to be reachable from
@@ -79,6 +86,10 @@ export const useThunderbolt = (
   // connection. The closures inside stay live because the ref is reassigned.
   const toolsRef = useRef(tools)
   toolsRef.current = tools
+  // Same reason as `tools`: an app's `getContext` closes over its own state, so
+  // it is a new function every render and must not be an effect dependency.
+  const getContextRef = useRef(options.getContext)
+  getContextRef.current = options.getContext
 
   useEffect(() => {
     let cancelled = false
@@ -103,6 +114,9 @@ export const useThunderbolt = (
           tools: () => (typeof toolsRef.current === 'function' ? toolsRef.current() : toolsRef.current),
           auth: options.auth,
           hostOrigin: options.hostOrigin,
+          // Declared only when the app supplied one, so the capability the host
+          // sees matches what this app can actually answer.
+          getContext: options.getContext ? () => getContextRef.current?.() ?? null : undefined,
         })
         // A late handshake after unmount would otherwise leave a live listener
         // and a connection nobody can disconnect.
@@ -148,9 +162,8 @@ export const useThunderbolt = (
   // Memoised because callers put these in effect dependency arrays. Rebuilding
   // them each render made the context-publishing effect fire on every render,
   // posting an identical message across the bridge each time.
-  const sendContext = useCallback((context: MiniAppContext) => connectionRef.current?.sendContext(context), [])
   const openChat = useCallback((prompt?: string) => connectionRef.current?.openChat(prompt), [])
   const getAuthToken = useCallback(async () => (await connectionRef.current?.getAuthToken()) ?? null, [])
 
-  return { connected, hostContext, sendContext, openChat, getAuthToken, connectionError }
+  return { connected, hostContext, openChat, getAuthToken, connectionError }
 }

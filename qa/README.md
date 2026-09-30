@@ -19,9 +19,17 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 | B: file               | `file`                       | the QA Linear key                                                                            | an LLM, a browser                                                                             |
 | C: fix                | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
 
-Only the `build` job saves caches, because it runs before any untrusted code. The stack stops before any repo
-script runs again after the explorer, and the judge runs in a fresh job, because model-written code may have
-changed files in the checkout.
+Only the `build` job saves caches, because it runs before any untrusted code. The judge runs in a fresh job,
+because the replayed specs may have changed files in the replay job's checkout.
+
+The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
+explorer. The stack is killed inline from pid files outside the checkout (`$RUNNER_TEMP/qa-stack.pid*`). A
+`sha256sum` check of every tracked file must pass, or the job fails and uploads nothing. The session metrics are
+computed later, in the report job. The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so
+no command they start sees the Anthropic key.
+
+Never add `--allow-unrestricted-file-access` to `mcp.json` or set `PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS`.
+The MCP blocks `file:` URLs by default, and that block keeps local files out of the explorer's reach.
 
 ## Pipeline and files
 
@@ -30,7 +38,8 @@ changed files in the checkout.
 2. **explore**: one job per charter with `claude-code-action` and the Playwright MCP (`mcp.json`,
    `mcp-two-devices.json` for c7). The prompt is `prompt.md` followed by the charter. The explorer writes
    `qa-out/<charter>/findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session
-   keeps what it found. `scripts/qa/report.ts session` turns the action's execution file into `session.json`.
+   keeps what it found. The job uploads only the counters of the session's result message; the report job turns
+   them into `session.json` with `scripts/qa/report.ts session`.
 3. **replay** (`scripts/qa/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
    observations), spec lint, then every spec runs 3 times (`playwright.qa.config.ts`) next to the control spec.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped.
@@ -39,8 +48,11 @@ changed files in the checkout.
 5. **file** (`scripts/qa/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
    at most 8 new tickets plus one roll-up, secret refusal, video upload. Dry run unless `--live`.
 6. **fix** (off by default): `scripts/qa/fix.ts route` picks at most 3 tickets in fixable areas. The fix agent
-   (`fix.md`) writes a patch without git. `fix.ts publish` rejects denied paths, edited specs and empty patches,
-   then opens a draft PR on `qa-fix/<fp>`, or labels the ticket `human required`.
+   (`fix.md`) writes a patch without git. A step without secrets then replays the original spec 3 times on the
+   patched code. A session that did not finish, or a spec that still fails, becomes a diagnosis, so the ticket goes
+   to a person. `fix.ts publish` rejects paths it does not allow, edited specs and empty patches, then opens a draft PR on
+   `qa-fix/<fp>`, or labels the ticket `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*`
+   PRs; a maintainer can still dispatch one.
 7. **report** (`report.ts summary`): the job summary with sessions, coverage, gate yield, the drop list,
    what was filed, canary recall and the calibration table.
 
@@ -150,7 +162,7 @@ Limit its deployment branches to `main`.
 | `QA_EXA_API_KEY`                               | backend of c3, c5        | QA-only Exa key for search and link previews                                                      |
 | `QA_LINEAR_API_KEY`                            | file, publish, scorecard | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                  | the GitHub App below                                                                              |
-| `QA_HEARTBEAT_URL`                             | report                   | optional BetterStack heartbeat; it also catches GitHub disabling the schedule                     |
+| `QA_HEARTBEAT_URL`                             | report                   | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                  |
 
 These names differ from nightly's on purpose: if an environment secret were missing, a same-named repository
 secret would be used without warning. `notify` uses the existing repository secrets `RESEND_API_KEY` and
@@ -206,7 +218,9 @@ A session stopped by its budget, its turn cap or the step timeout keeps every fi
 verified like any other. The report lists cut sessions first, under "⚠️ N INCOMPLETE session(s)", marks their
 stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**, and shows "no summary (session cut)" under
 Coverage. A timed-out step leaves no execution file, so its cost shows as $0.00. Look at the Anthropic
-workspace's usage for the real figure.
+workspace's usage for the real figure. A leg that crashed, or whose explore job failed the checksum check, shows
+as **ERROR** with no findings. When every explore session ends in an error or a timeout, the report job fails, so
+`notify-on-failure` fires.
 
 ## Promote a confirmed spec to `e2e/`
 
@@ -241,7 +255,11 @@ Never run on GitHub (only locally, or read in the action's code):
 - the GitHub App token, the bot identity lookup, the push and `gh pr create`;
 - every Linear call: label and state lookups, dedupe, `fileUpload`, ticket creation, the scorecard query;
 - the heartbeat and `notify-on-failure` for this workflow;
-- c7 (two devices, Postgres and PowerSync), which has not run locally either.
+- the explore job's inline stop, checksum check and result upload, and the fix job's spec replay (each was run
+  locally as a script under `bash -eo pipefail`, not inside Actions);
+- `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
+- c7 (two devices, Postgres and PowerSync) and the weekly replay on Postgres + PowerSync, which have not run
+  locally either (Docker was down during the local run).
 
 Also:
 
@@ -253,7 +271,10 @@ Also:
   is real, which is how the skill-delete canary was missed locally (recall 2/3).
 - A scheduled run acts as the user who last edited the cron line. `claude-code-action` refuses bot actors, so
   that must be a person.
-- The fix agent can run any code with the QA Anthropic key (its `bun run test` runs test files it writes). The
-  boundary is that the fix job holds no write token and a person reviews the draft PR.
+- The fix agent can still run any code (its `bun run test` runs test files it writes), but without the Anthropic
+  key in that code's environment. The boundary is that the fix job holds no write token and a person reviews the
+  draft PR.
+- On CLI 2.1.285, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` forces the permission mode from `dontAsk` to `default`. With
+  explicit allow lists both deny every unlisted command and allow read-only ones (probed).
 - c3 and c5 specs replay on the fake AI, so a bug that only shows with a real model is filed only if its spec
   also fails with the fake one.

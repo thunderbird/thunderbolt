@@ -59,6 +59,49 @@ both, with the reasoning inline:
   cross-origin iframe inside a COEP document has to opt in or it is blocked. This is not
   a Thunderbolt quirk; it applies to any cross-origin-isolated host.
 
+## Declaring tools
+
+Tools go into `document.modelContext`, which the SDK guarantees exists — native WebMCP
+where the browser has one, a shim over the bridge everywhere else
+(`sdk/src/model-context.ts`). Native is used unmodified and never reassigned.
+
+```ts
+const controller = new AbortController()
+
+document.modelContext.registerTool(
+  {
+    name: 'set_assumption',
+    description: 'Change one input of the model and recompute.',
+    inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+    // Omitted or false means Thunderbolt prompts the user before every call.
+    annotations: { readOnlyHint: false, title: 'Change an assumption' },
+    execute: ({ key }) => ({ content: [{ type: 'text', text: `Set ${key}.` }] }),
+  },
+  { signal: controller.signal }, // abort to unregister; there is no `unregisterTool`
+)
+```
+
+**In React, pass the array instead.** `execute` closes over current state, so the array
+is rebuilt every render and the bridge re-resolves it per call:
+
+```tsx
+const { connected } = useThunderbolt('Finance Model', tools, { getContext })
+```
+
+The equivalent `registerTool` is an effect that re-registers on every keystroke. Both
+spellings land in the same registry and the host reads one list, so this is a choice
+about your framework, not about what the model sees. The only difference in the
+descriptor is that the option's `execute` returns a plain string — a tool meant to work
+outside Thunderbolt too should be written the canonical way above.
+
+Names are `[a-zA-Z0-9_-]`, 1-60 characters. Tighter than WebMCP's own rule because the
+host prefixes them with `app_` for the model provider, which allows no dots and caps the
+result at 64 — so a bad name does not cost you the tool, it gets the whole request
+rejected. `registerTool` throws on one rather than letting the host drop it silently.
+
+Registering after connect is normal and needs nothing extra: the SDK forwards WebMCP's
+`toolchange` event to the host, which re-runs `tools/list`.
+
 ## Depending on the SDK
 
 The template and samples take it from the workspace:

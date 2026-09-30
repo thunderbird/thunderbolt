@@ -34,18 +34,63 @@ each independently fatal here:
 External URL support is deferred rather than rejected. If it lands with a real origin, revisit — that is the
 trigger, not a general sense that we should be closer to the standard.
 
-### Why not WebMCP
+### Why not WebMCP — and why we ship it anyway
 
 WebMCP has no UI transport at all, and never will: it assumes the page is already on screen and only lets it
-declare tools. It can replace `tools/list` + `tools/call` and nothing else — not context publishing, selection,
-theme, or chat-open.
+declare tools. It can replace `tools/list` + `tools/call` and nothing else — not context reads, selection,
+theme, or chat-open. So it cannot be the protocol.
 
-Its natural home in Thunderbolt is actually the **native webview** (`src/content-view/sidebar-webview.tsx`), which
+It is, however, the right **API**, and since THU-910 it is the one app authors write against. The SDK installs a
+`document.modelContext` shim at import (`miniapps/sdk/src/model-context.ts`) and the bridge answers `tools/list`
+and `tools/call` out of whatever registry is there:
+
+| The browser has                      | What the SDK does                                           |
+| ------------------------------------ | ----------------------------------------------------------- |
+| Native `document.modelContext`       | Uses it, unmodified, and reads tools back with `getTools()` |
+| Nothing                              | Installs a shim with the same shape                         |
+| Something else claiming the property | Leaves it alone, warns, and uses a detached registry        |
+
+Native is never reassigned. Overwriting it would silently drop every tool registered by code that has never heard
+of Thunderbolt — another SDK on the page, or the app's own pre-existing WebMCP support — and the app author would
+have no way to see why. The shim carries a `Symbol.for` brand so we can tell our own installation from the
+browser's, which duck-typing cannot do: the shim satisfies the interface, so it answers every check native would.
+
+The frame's `allow` attribute stays **empty**, `tools` included. That feature is not how the host reads tools — it
+reads them from inside the frame over the bridge. What `allow="tools"` grants is cross-frame discovery by an agent
+in the _embedder_, which in a Thunderbolt window means the browser's agent, not ours: it would route a customer
+app's tools around the approval prompt `readOnlyHint` gates, to a caller we have no relationship with.
+
+Two spellings reach the same registry, and which one to use is about the framework, not about portability:
+
+```ts
+// Canonical, portable, and what a non-React app should write.
+document.modelContext.registerTool({
+  name: 'set_assumption',
+  description: 'Change one input of the model.',
+  inputSchema: { type: 'object', properties: { key: { type: 'string' } } },
+  execute: ({ key }) => ({ content: [{ type: 'text', text: `Set ${key}.` }] }),
+})
+
+// The `tools` option — same descriptor, `execute` returns a plain string.
+useThunderbolt('Finance Model', tools, { getContext })
+```
+
+The samples use the option, deliberately. A React `execute` closes over current state, so the array is rebuilt
+every render and the bridge re-resolves it per call; the equivalent `registerTool` is an effect that re-registers
+on every keystroke, which is a worse example, not a more modern one. Non-React apps have no such pull and should
+use `registerTool`.
+
+Registering after the handshake is normal — an effect runs later than `ui/initialize`, so the `tools` capability
+could not have been declared. The guest sends `ui/notifications/tools-changed` (WebMCP's `toolchange` event,
+forwarded) and the host re-runs `tools/list`. The notification carries no descriptors: making it a prompt to ask
+again rather than a push keeps `parseToolsList` the only way a tool ever enters the host, caps and all. The host
+honours 20 of them per document, which is far above real use and bounds what a guest stuck in a
+register/unregister loop can cost.
+
+Its other natural home in Thunderbolt is the **native webview** (`src/content-view/sidebar-webview.tsx`), which
 loads arbitrary third-party sites that refuse to be iframed — the same shape as ChatGPT desktop's built-in
 browser, which shipped WebMCP support in August 2026. That's also where the constraint bites: Tauri is WKWebView
 on macOS and WebKitGTK on Linux, and neither implements `document.modelContext`. Only Windows (WebView2) could.
-
-So the template dual-registers tools with WebMCP where the runtime has it, and never depends on it.
 
 ## Surfaces: one embed path
 
@@ -178,15 +223,16 @@ supplied.
 
 Everything the guest can say, all guest-initiated and all optional:
 
-| It says                              | When                                          | Reaches the model as                      |
-| ------------------------------------ | --------------------------------------------- | ----------------------------------------- |
-| `ui/initialize`                      | Once per document                             | Nothing. Capability negotiation only      |
-| `ui/get-context` (host → app)        | On every `get_app_context` call               | The `get_app_context` tool's return value |
-| `tools/list` (as a reply)            | Once, after handshake, if it declared `tools` | Tool definitions, prefixed `app_`         |
-| `ui/notifications/error`             | On an uncaught error                          | Nothing. Host UI only                     |
-| `ui/notifications/selection-changed` | When the user selects text in the app         | Nothing until the user asks about it      |
-| `ui/open-chat`                       | When the app wants the panel open             | Nothing. Seeds the composer for the user  |
-| `ui/request-auth-token`              | When its identity token is near expiry        | Nothing. Host mints and replies           |
+| It says                              | When                                          | Reaches the model as                        |
+| ------------------------------------ | --------------------------------------------- | ------------------------------------------- |
+| `ui/initialize`                      | Once per document                             | Nothing. Capability negotiation only        |
+| `ui/get-context` (host → app)        | On every `get_app_context` call               | The `get_app_context` tool's return value   |
+| `tools/list` (as a reply)            | After handshake, and on every `tools-changed` | Tool definitions, prefixed `app_`           |
+| `ui/notifications/tools-changed`     | When its tool registry moves                  | Nothing directly. Host re-runs `tools/list` |
+| `ui/notifications/error`             | On an uncaught error                          | Nothing. Host UI only                       |
+| `ui/notifications/selection-changed` | When the user selects text in the app         | Nothing until the user asks about it        |
+| `ui/open-chat`                       | When the app wants the panel open             | Nothing. Seeds the composer for the user    |
+| `ui/request-auth-token`              | When its identity token is near expiry        | Nothing. Host mints and replies             |
 
 Note what's **absent**: there is no way for an app to send text directly to the model, or to make the model say
 something. `ui/open-chat` can seed the _composer_ with a prompt, which the user then reads and chooses to send —
@@ -237,8 +283,10 @@ above it is our code, and worth reading with that in mind.
 1. User opens the app. The frame loads; the guest posts `ui/initialize`; the host replies with its capabilities and,
    if asked, a scoped identity token.
 2. The host asks `tools/list` if the app declared the capability, and registers what comes back as `app_*` tools.
+   An app that registers through `document.modelContext` in an effect declares nothing here and sends
+   `ui/notifications/tools-changed` instead, which asks the same question a moment later.
 3. The user asks a question. `src/ai/fetch.ts` builds the toolset and adds a prompt section naming the app.
-4. The model calls `get_app_context`; the host answers from its cache of the last published context.
+4. The model calls `get_app_context`; the host asks the frame `ui/get-context` and answers with what it says now.
 5. The model calls `app_set_order_status`. It's a write, so the host shows the approval prompt above the composer
    and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
 6. The app's state changed, and it publishes nothing — there is nothing to publish. The next

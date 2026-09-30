@@ -22,6 +22,7 @@ import {
   contextRequestTimeoutMs,
   handshakeTimeoutMs,
   toolCallTimeoutMs,
+  maxToolsChangedPerDocument,
   toolsRequestTimeoutMs,
   useMiniAppBridge,
 } from './use-mini-app-bridge'
@@ -291,6 +292,90 @@ describe('useMiniAppBridge tool discovery', () => {
     await elapse(toolsRequestTimeoutMs)
 
     expect(useMiniAppStore.getState().tools).toEqual([])
+  })
+
+  /**
+   * The gate that lets `document.modelContext.registerTool()` work at all.
+   *
+   * A guest registering tools the canonical way has nothing to declare at
+   * handshake time — the registry is still empty when `initialize` goes out,
+   * because the call that fills it is in an effect. So the notification is the
+   * declaration, and it has to open the same gate.
+   */
+  it('asks for the tool list when an app that declared nothing says its tools changed', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake()
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/list')).toBe(false)
+
+    await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/list')).toBe(true)
+  })
+
+  it('re-lists rather than reusing the list it already has', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake({ tools: true })
+    const first = posted.find((message) => 'method' in message && message.method === 'tools/list')
+    await send(envelope({ id: (first as { id: number }).id, result: { tools: [{ name: 'early', description: 'a' }] } }))
+
+    await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+    const second = posted.filter((message) => 'method' in message && message.method === 'tools/list')
+    await send(
+      envelope({
+        id: (second[1] as { id: number }).id,
+        result: {
+          tools: [
+            { name: 'early', description: 'a' },
+            { name: 'late', description: 'b' },
+          ],
+        },
+      }),
+    )
+
+    expect(second).toHaveLength(2)
+    expect(useMiniAppStore.getState().tools.map((tool) => tool.name)).toEqual(['early', 'late'])
+  })
+
+  /** Accepted without `params` at all, which is valid JSON-RPC for a notification. */
+  it('accepts the notification with no params', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake()
+
+    await send(envelope({ method: 'ui/notifications/tools-changed' }))
+
+    expect(posted.some((message) => 'method' in message && message.method === 'tools/list')).toBe(true)
+  })
+
+  /**
+   * Each notification costs a `tools/list` with its own deadline, and the frame
+   * decides how often to send one. A register/unregister loop in the guest must
+   * not turn into unbounded work here.
+   */
+  it('stops re-listing once the guest has spent its allowance', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake()
+
+    for (let sent = 0; sent < maxToolsChangedPerDocument + 5; sent += 1) {
+      await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+    }
+
+    const lists = posted.filter((message) => 'method' in message && message.method === 'tools/list')
+    expect(lists).toHaveLength(maxToolsChangedPerDocument)
+  })
+
+  /** A reload is a new document, so it gets a fresh allowance and a fresh list. */
+  it('gives a re-handshaked document its allowance back', async () => {
+    const { posted, handshake, send, envelope } = mountBridge()
+    await handshake()
+    for (let sent = 0; sent < maxToolsChangedPerDocument; sent += 1) {
+      await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+    }
+
+    await handshake()
+    await send(envelope({ method: 'ui/notifications/tools-changed', params: {} }))
+
+    const lists = posted.filter((message) => 'method' in message && message.method === 'tools/list')
+    expect(lists).toHaveLength(maxToolsChangedPerDocument + 1)
   })
 })
 

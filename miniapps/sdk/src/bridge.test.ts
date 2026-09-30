@@ -18,6 +18,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
 import { connect, protocolMarker, readTokenClaims, type Connection } from './bridge'
+import { installModelContext, resetModelContextForTests, textResult } from './model-context'
+import type { ThunderboltTool } from './tools'
 
 const hostOrigin = 'https://host.example'
 
@@ -69,7 +71,20 @@ const lastRequestId = (method: string): number => {
   return match.id
 }
 
+/**
+ * Let the microtask queue drain.
+ *
+ * `tools/list` and `tools/call` are answered asynchronously now — both mirror
+ * the `tools` option into `document.modelContext` first, and the registry's API
+ * is promise-based because native WebMCP's is. So the reply is not in `posted`
+ * on the line after the request the way every other handler's is.
+ */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
 beforeEach(() => {
+  // The registry is module state on the document, so one test's tools would
+  // otherwise still be registered in the next.
+  resetModelContextForTests()
   posted = []
   realParent = window.parent
   // A distinct object so `window.parent !== window` and `isEmbedded()` passes.
@@ -82,6 +97,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  resetModelContextForTests()
   for (const connection of openConnections) {
     connection.disconnect()
   }
@@ -227,6 +243,191 @@ describe('notifications', () => {
 
     const report = posted.find((entry) => entry.method === 'ui/notifications/error')
     expect((report?.params as { message: string }).message).toHaveLength(500)
+  })
+})
+
+/**
+ * Tools reach the host out of `document.modelContext` — native WebMCP where the
+ * browser has it, our shim otherwise (see `model-context.ts`). Both spellings
+ * land in the same registry, and these cover the seam between them.
+ */
+describe('tools', () => {
+  const highlight = (label: string): ThunderboltTool => ({
+    name: 'highlight',
+    description: 'Highlights a row.',
+    execute: () => `highlighted ${label}`,
+  })
+
+  /** Connect with a `tools` option and answer the handshake. */
+  const connectedWithTools = async (tools: ThunderboltTool[] | (() => ThunderboltTool[])): Promise<Connection> => {
+    const pending = connect({ appName: 'Test App', hostOrigin, tools })
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/initialize'), result: {} })
+    return track(pending)
+  }
+
+  it('declares the capability when the app passes tools', async () => {
+    await connectedWithTools([highlight('a')])
+
+    const handshake = posted.find((entry) => entry.method === 'ui/initialize')
+    expect((handshake?.params as { capabilities: { tools: boolean } }).capabilities.tools).toBe(true)
+  })
+
+  it('lists the tools the app passed', async () => {
+    await connectedWithTools([highlight('a')])
+
+    fromHost({ jsonrpc: '2.0', id: 20, method: 'tools/list', params: {} })
+    await flush()
+
+    const listed = (posted.find((entry) => entry.id === 20)?.result as { tools: unknown[] }).tools
+    expect(listed).toEqual([{ name: 'highlight', description: 'Highlights a row.' }])
+  })
+
+  it('runs one and answers with its text', async () => {
+    await connectedWithTools([highlight('row-3')])
+
+    fromHost({ jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'highlight', arguments: {} } })
+    await flush()
+
+    expect(posted.find((entry) => entry.id === 21)?.result).toEqual({ content: 'highlighted row-3' })
+  })
+
+  /*
+   * The reason the `tools` option is mirrored on every list and call rather than
+   * registered once: a React app rebuilds its tool array each render so the
+   * closures see current state, and a descriptor captured at connect would
+   * invoke against state frozen at mount.
+   */
+  it('invokes against the current array, not the one present at connect', async () => {
+    let label = 'before'
+    await connectedWithTools(() => [highlight(label)])
+
+    label = 'after'
+    fromHost({ jsonrpc: '2.0', id: 22, method: 'tools/call', params: { name: 'highlight', arguments: {} } })
+    await flush()
+
+    expect(posted.find((entry) => entry.id === 22)?.result).toEqual({ content: 'highlighted after' })
+  })
+
+  it('stops listing a tool the app dropped from the array', async () => {
+    let tools = [highlight('a')]
+    await connectedWithTools(() => tools)
+
+    tools = []
+    fromHost({ jsonrpc: '2.0', id: 23, method: 'tools/list', params: {} })
+    await flush()
+
+    expect((posted.find((entry) => entry.id === 23)?.result as { tools: unknown[] }).tools).toEqual([])
+  })
+
+  it('reports an unknown tool as an error result rather than silence', async () => {
+    await connectedWithTools([highlight('a')])
+
+    fromHost({ jsonrpc: '2.0', id: 24, method: 'tools/call', params: { name: 'ghost', arguments: {} } })
+    await flush()
+
+    const result = posted.find((entry) => entry.id === 24)?.result as { content: string; isError: boolean }
+    expect(result.isError).toBe(true)
+    expect(result.content).toContain('No tool named "ghost"')
+  })
+
+  it("answers with an error result when the app's tool throws", async () => {
+    await connectedWithTools([
+      {
+        name: 'explode',
+        description: 'Always throws.',
+        execute: () => {
+          throw new Error('nope')
+        },
+      },
+    ])
+
+    fromHost({ jsonrpc: '2.0', id: 25, method: 'tools/call', params: { name: 'explode', arguments: {} } })
+    await flush()
+
+    expect(posted.find((entry) => entry.id === 25)?.result).toEqual({ content: 'nope', isError: true })
+  })
+
+  describe('registered through document.modelContext', () => {
+    it('lists a tool the app registered directly', async () => {
+      const connection = await connectedWithTools([])
+      await installModelContext().modelContext.registerTool({
+        name: 'native_style',
+        description: 'Registered the canonical way.',
+        execute: () => textResult('done'),
+      })
+
+      fromHost({ jsonrpc: '2.0', id: 26, method: 'tools/list', params: {} })
+      await flush()
+
+      const listed = (posted.find((entry) => entry.id === 26)?.result as { tools: Array<{ name: string }> }).tools
+      expect(listed.map((tool) => tool.name)).toEqual(['native_style'])
+      expect(connection.hostContext.theme).toBe('light')
+    })
+
+    /*
+     * The whole reason `ui/notifications/tools-changed` exists. The host asks
+     * for tools once, right after the handshake; the canonical way to register
+     * is a call in an effect, which runs after that. Without the nudge the tool
+     * is in the page and invisible to the model, with nothing to say why.
+     */
+    it('tells the host to re-list when a tool appears after the handshake', async () => {
+      await connectedWithTools([])
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(false)
+
+      await installModelContext().modelContext.registerTool({
+        name: 'late',
+        description: 'Registered in an effect.',
+        execute: () => textResult('done'),
+      })
+
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(true)
+    })
+
+    /*
+     * The other order, and it does not fire an event we can hear: the shim
+     * installs at import, so an app can register before `connect()` runs, and
+     * that `toolchange` goes to a registry with no listener attached yet.
+     */
+    it('announces tools that were registered before connect', async () => {
+      await installModelContext().modelContext.registerTool({
+        name: 'early',
+        description: 'Registered at module scope.',
+        execute: () => textResult('done'),
+      })
+
+      await connectedWithTools([])
+      await flush()
+
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(true)
+    })
+
+    /*
+     * Mirroring the `tools` option is itself a registry change, so without the
+     * suppression each `tools/list` would announce a change and the host would
+     * list again — answering that list would announce again, and so on.
+     */
+    it('does not announce the changes its own mirroring makes', async () => {
+      await connectedWithTools([highlight('a')])
+
+      fromHost({ jsonrpc: '2.0', id: 27, method: 'tools/list', params: {} })
+      await flush()
+
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(false)
+    })
+
+    it('stops announcing once disconnected', async () => {
+      const connection = await connectedWithTools([])
+      connection.disconnect()
+      posted = []
+
+      await installModelContext().modelContext.registerTool({
+        name: 'after_teardown',
+        description: 'Nobody is listening.',
+        execute: () => textResult('done'),
+      })
+
+      expect(posted).toEqual([])
+    })
   })
 })
 

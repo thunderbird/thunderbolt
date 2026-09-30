@@ -109,6 +109,18 @@ type ConnectionState = {
    * longer implements them.
    */
   handshakeEpoch: number
+  /**
+   * Counts the guest's `tools-changed` notifications for the current document.
+   *
+   * Drives re-discovery, and doubles as the reason to discover at all: an app
+   * that registers its tools with `document.modelContext.registerTool()` does it
+   * in an effect, which runs after the handshake that would have declared the
+   * `tools` capability. A non-zero epoch is the app telling us it has tools
+   * after the fact, so it opens the same gate the declaration does.
+   *
+   * Reset per document, like everything else keyed on a handshake.
+   */
+  toolsEpoch: number
   /** Last error the app reported about itself; shown as a strip over the frame. */
   runtimeError: string | null
 }
@@ -124,8 +136,26 @@ type ConnectionAction =
   | { type: 'RELOAD_REQUESTED' }
   /** The guest reported a failure in itself. */
   | { type: 'RUNTIME_ERROR_REPORTED'; message: string }
+  /** The guest's tool registry moved; the list we hold is out of date. */
+  | { type: 'TOOLS_CHANGED' }
 
-const initialConnection: ConnectionState = { status: 'connecting', handshakeEpoch: 0, runtimeError: null }
+/**
+ * Most `tools-changed` notifications one document gets to send.
+ *
+ * Each one costs a `tools/list` round trip with its own deadline, and the frame
+ * decides how often to send. A real app announces once or twice — per mount, and
+ * again if its tool list is genuinely conditional — so this is far above normal
+ * use and still bounds what a frame stuck in a register/unregister loop can cost
+ * us. Reset per document, so a reload gets a fresh allowance.
+ */
+export const maxToolsChangedPerDocument = 20
+
+const initialConnection: ConnectionState = {
+  status: 'connecting',
+  handshakeEpoch: 0,
+  toolsEpoch: 0,
+  runtimeError: null,
+}
 
 const connectionReducer = (state: ConnectionState, action: ConnectionAction): ConnectionState => {
   switch (action.type) {
@@ -134,20 +164,28 @@ const connectionReducer = (state: ConnectionState, action: ConnectionAction): Co
       // or was redeployed. Anything it told us about the last one is stale, and
       // an error strip pinned over a working app is worse than none. Artifacts
       // clear theirs on document change; this is the same moment.
-      return { status: 'ready', handshakeEpoch: state.handshakeEpoch + 1, runtimeError: null }
+      return { status: 'ready', handshakeEpoch: state.handshakeEpoch + 1, toolsEpoch: 0, runtimeError: null }
     case 'DOCUMENT_CHANGED':
       // Same reasoning as `HANDSHAKED`: the error belonged to the document that
       // just went away, and leaving it pinned over the one now loading blames
       // the new page for the old page's failure.
-      return { ...state, status: 'connecting', runtimeError: null }
+      return { ...state, status: 'connecting', toolsEpoch: 0, runtimeError: null }
     case 'TIMED_OUT':
       return { ...state, status: 'unreachable' }
     case 'RELOAD_REQUESTED':
-      return { ...state, status: 'connecting', runtimeError: null }
+      return { ...state, status: 'connecting', toolsEpoch: 0, runtimeError: null }
     case 'RUNTIME_ERROR_REPORTED':
       // Latest wins rather than accumulating: a page throwing in a render loop
       // would otherwise turn one broken component into an unbounded list.
       return { ...state, runtimeError: action.message }
+    case 'TOOLS_CHANGED':
+      // Clamped in the reducer rather than at the call site so the ceiling holds
+      // however the action arrives, and so re-dispatching at the cap is a no-op
+      // on the state — which keeps the discovery effect from re-running.
+      if (state.toolsEpoch >= maxToolsChangedPerDocument) {
+        return state
+      }
+      return { ...state, toolsEpoch: state.toolsEpoch + 1 }
   }
 }
 
@@ -212,7 +250,10 @@ export type UseMiniAppBridgeOptions = {
 export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const httpClient = useHttpClient()
-  const [{ status, handshakeEpoch, runtimeError }, dispatch] = useReducer(connectionReducer, initialConnection)
+  const [{ status, handshakeEpoch, toolsEpoch, runtimeError }, dispatch] = useReducer(
+    connectionReducer,
+    initialConnection,
+  )
   // Selection is host UI state, not model context — it drives the floating
   // control and is only promoted into the conversation when the user acts on it.
   // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
@@ -422,6 +463,15 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         return
       }
 
+      if (message.method === miniAppGuestMethods.toolsChanged) {
+        // No gate on the `tools` capability: this notification *is* the
+        // declaration. An app registering through `document.modelContext` has
+        // nothing to declare at handshake time, because the registry is still
+        // empty when the handshake goes out.
+        dispatch({ type: 'TOOLS_CHANGED' })
+        return
+      }
+
       if (message.method === miniAppGuestMethods.chatOpen) {
         // Acknowledge before acting so a slow panel animation can't look like a
         // dropped request to the guest.
@@ -574,9 +624,15 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    * Gated on the declaration rather than asked speculatively: an app that never
    * implements `tools/list` would otherwise cost a request and a timeout on every
    * connect, and the host would have no way to tell "no tools" from "not answering".
+   *
+   * Re-runs on `toolsEpoch`, which the guest bumps when its registry moves. That
+   * is not a refinement — it is what makes `document.modelContext.registerTool()`
+   * work at all, since the canonical place to call it is an effect that runs
+   * after the handshake. A declaration the app could not yet have made is the
+   * same gate, arriving late.
    */
   useEffect(() => {
-    if (status !== 'ready' || !guestCapabilitiesRef.current.tools) {
+    if (status !== 'ready' || !(guestCapabilitiesRef.current.tools || toolsEpoch > 0)) {
       return
     }
     let cancelled = false
@@ -607,7 +663,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // `callTool` and `request` are stable for the life of a connection, and a
     // different `app.id` arrives as a different route and remounts this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, handshakeEpoch, request, setTools])
+  }, [status, handshakeEpoch, toolsEpoch, request, setTools])
 
   /**
    * A new document committed in the frame.

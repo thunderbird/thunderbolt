@@ -25,7 +25,14 @@
  */
 
 import { elementAtPoint, type HighlightedElement } from './selection-hit-test'
-import { callTool, toDescriptors, type ThunderboltTool } from './tools'
+import {
+  flattenToolResult,
+  installModelContext,
+  textResult,
+  toDescriptor,
+  type ModelContextTool,
+} from './model-context'
+import { toModelContextTool, type ThunderboltTool } from './tools'
 
 /** Exported for the tests; not re-exported from `index.ts`, so not public API. */
 export const protocolMarker = 'thunderbolt-miniapp'
@@ -121,9 +128,17 @@ export type ConnectOptions = {
    */
   resolveElementAt?: (point: { x: number; y: number }) => HighlightedElement | null
   /**
-   * Tools the assistant can call in your app. See `thunderbolt-tools.ts` — the
-   * descriptors are WebMCP-shaped, so the same objects work with
-   * `document.modelContext.registerTool` where that exists.
+   * Tools the assistant can call in your app.
+   *
+   * A convenience over `document.modelContext.registerTool()`, which is the
+   * canonical way and which this SDK makes available in every browser (see
+   * `model-context.ts`). Both end up in the same registry; this one exists
+   * because a React `execute` closes over current state, so the array is
+   * rebuilt every render and resolved per call — where the equivalent
+   * `registerTool` is an effect that re-registers on every keystroke.
+   *
+   * Re-read on every `tools/list` and every `tools/call`, so a getter whose
+   * answer changes as data loads is fine.
    */
   tools?: ThunderboltTool[] | (() => ThunderboltTool[])
   /**
@@ -303,6 +318,15 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
   // snapshot taken at connect time would invoke against state frozen at mount.
   const resolveTools = (): ThunderboltTool[] => (typeof tools === 'function' ? tools() : tools)
 
+  /*
+   * Native WebMCP where the browser has it, our shim otherwise — and either way
+   * the single place tools live. Taken here rather than in the executor below so
+   * the registry exists whether or not the handshake ever succeeds: an app that
+   * calls `registerTool` outside a Thunderbolt frame is registering with the
+   * browser, which is none of our business to gate.
+   */
+  const { modelContext } = installModelContext()
+
   return new Promise<Connection>((resolve, reject) => {
     if (!isEmbedded()) {
       reject(new NotEmbeddedError())
@@ -344,10 +368,123 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
 
     const notify = (method: string, params: unknown) => post({ method, params })
 
-    /** Run one host-requested tool and answer on the same request id. */
+    /**
+     * Tell the host its tool list is out of date, so it re-runs `tools/list`.
+     *
+     * This is what makes `registerTool` usable at all: the host asks for tools
+     * once, right after the handshake, and the canonical way to register is a
+     * call in an effect — which runs *after* it. Without a nudge the tool would
+     * exist in the page and be invisible to the model, with nothing to indicate
+     * why.
+     *
+     * Queued until connected, because registration is allowed to happen before
+     * `connect()` — the shim installs at import precisely so it can. And skipped
+     * while we are mirroring the `tools` option, which would otherwise announce
+     * a change the host is in the middle of asking about.
+     */
+    let connected = false
+    let mirroring = false
+    let announcementPending = false
+
+    const announceToolChange = () => {
+      if (mirroring) {
+        return
+      }
+      if (!connected) {
+        announcementPending = true
+        return
+      }
+      notify('ui/notifications/tools-changed', {})
+    }
+
+    modelContext.addEventListener('toolchange', announceToolChange)
+
+    /**
+     * Mirror the `tools` option into the registry.
+     *
+     * Diffed by name against what is already there, and **idempotent** — which
+     * is what stops the loop: a mirrored registration fires `toolchange`, the
+     * notification below makes the host re-list, answering that re-syncs, and a
+     * sync that changes nothing emits nothing.
+     *
+     * The registered `execute` re-resolves by name instead of closing over the
+     * tool it was registered from. A React app redefines its tool array every
+     * render so the closures see current state, and a descriptor captured at
+     * connect would invoke against state frozen at mount. Only the *metadata*
+     * is snapshotted, and a change to that re-registers.
+     */
+    const mirrored = new Map<string, { descriptor: string; controller: AbortController }>()
+
+    const mirroredTool = (snapshot: ThunderboltTool): ModelContextTool => ({
+      ...toDescriptor(toModelContextTool(snapshot)),
+      execute: async (args) => {
+        const current = resolveTools().find((candidate) => candidate.name === snapshot.name)
+        if (!current) {
+          return textResult(`No tool named "${snapshot.name}" is registered.`, true)
+        }
+        // Caught here rather than left to the registry: native WebMCP owns
+        // `executeTool` when it is present, and how it treats a throwing
+        // `execute` is its business. An error the model can read about is ours.
+        try {
+          return await toModelContextTool(current).execute(args as never)
+        } catch (error) {
+          return textResult(error instanceof Error ? error.message : String(error), true)
+        }
+      },
+    })
+
+    const syncOptionTools = async (): Promise<void> => {
+      mirroring = true
+      try {
+        await mirrorOptionTools()
+      } finally {
+        mirroring = false
+      }
+    }
+
+    const mirrorOptionTools = async (): Promise<void> => {
+      const current = resolveTools()
+      for (const tool of current) {
+        const descriptor = JSON.stringify(toDescriptor(tool))
+        const previous = mirrored.get(tool.name)
+        if (previous?.descriptor === descriptor) {
+          continue
+        }
+        previous?.controller.abort()
+        const controller = new AbortController()
+        mirrored.set(tool.name, { descriptor, controller })
+        await modelContext.registerTool(mirroredTool(tool), { signal: controller.signal })
+      }
+      const names = new Set(current.map((tool) => tool.name))
+      for (const [name, entry] of [...mirrored]) {
+        if (!names.has(name)) {
+          entry.controller.abort()
+          mirrored.delete(name)
+        }
+      }
+    }
+
+    /** Answer `tools/list` out of the registry, option tools included. */
+    const answerToolsList = async (requestId: unknown): Promise<void> => {
+      await syncOptionTools()
+      post({ id: requestId, result: { tools: (await modelContext.getTools()).map(toDescriptor) } })
+    }
+
+    /**
+     * Run one host-requested tool and answer on the same request id.
+     *
+     * Dispatched through `executeTool` rather than by reaching for the
+     * descriptor's own `execute`: that is the spec's accessor, so when native
+     * WebMCP is present the call goes through the browser's own plumbing — and
+     * `getTools()` is not obliged to hand back a callable at all.
+     */
     const answerToolCall = async (requestId: unknown, name: string, args: unknown): Promise<void> => {
-      const result = await callTool(resolveTools(), name, args)
-      post({ id: requestId, result })
+      await syncOptionTools()
+      const tool = (await modelContext.getTools()).find((candidate) => candidate.name === name)
+      const result = tool
+        ? await modelContext.executeTool(tool, args)
+        : textResult(`No tool named "${name}" is registered.`, true)
+      post({ id: requestId, result: flattenToolResult(result) })
     }
 
     const handleMessage = (event: MessageEvent) => {
@@ -401,10 +538,8 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
           return
         }
         if (data.method === 'tools/list') {
-          post({
-            id: data.id,
-            result: { tools: toDescriptors(resolveTools()) },
-          })
+          // Voided for the same reason as `tools/call` below.
+          void answerToolsList(data.id)
           return
         }
         if (data.method === 'tools/call') {
@@ -437,6 +572,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
 
     const disconnect = () => {
       window.removeEventListener('message', handleMessage)
+      modelContext.removeEventListener('toolchange', announceToolChange)
       teardownSelection?.()
       teardownSelection = null
       teardownErrors?.()
@@ -521,6 +657,14 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       reject(new Error(`Thunderbolt did not respond to initialize within ${timeoutMs}ms`))
     }, timeoutMs)
 
+    /*
+     * Read before the handshake, not during it: this decides whether the host
+     * asks for a tool list unprompted, and `ui/notifications/tools-changed`
+     * covers everything registered after. A getter that returns tools only once
+     * some data has loaded is therefore not a problem — it announces later.
+     */
+    const declaredTools = resolveTools().length > 0
+
     // The one `.then` in this file, and deliberate: it sits inside a Promise
     // executor, which cannot be async — returning a promise from one is an
     // anti-pattern, and the timeout above has to be able to reject. Rewriting
@@ -537,7 +681,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
           // waiting out a deadline on every `get_app_context`.
           context: getContext !== undefined,
           selection: watchSelection,
-          tools: resolveTools().length > 0,
+          tools: declaredTools,
           auth,
         },
       },
@@ -570,6 +714,22 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
         startWatchingSelection()
       }
       teardownErrors = startWatchingErrors()
+      connected = true
+      /*
+       * Catch up on anything registered before the handshake landed. Two ways
+       * that happens and only one of them queued an announcement: a `registerTool`
+       * during `connect()` fired a `toolchange` we heard and deferred, while one
+       * *before* `connect()` fired it into a registry nobody was listening to —
+       * so the registry itself is the second source of truth. Skipped entirely
+       * when we declared the capability, because then the host is already asking.
+       */
+      void (async () => {
+        const hadRegistrations = announcementPending || (await modelContext.getTools()).length > 0
+        announcementPending = false
+        if (!declaredTools && hadRegistrations) {
+          announceToolChange()
+        }
+      })()
       // Refresh slightly early: a token that expires while a request is in
       // flight fails at the far end, where the error is least legible.
       const refreshSkewMs = 30_000

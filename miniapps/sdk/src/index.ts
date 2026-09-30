@@ -27,6 +27,19 @@ export {
   type Theme,
   type TokenClaims,
 } from './bridge'
-export { callTool, toDescriptors, toWebMcpTools, type ThunderboltTool, type ToolCallResult } from './tools'
+export { toModelContextTool, type ThunderboltTool } from './tools'
+export {
+  createModelContextShim,
+  flattenToolResult,
+  installModelContext,
+  maxToolNameLength,
+  nativeModelContext,
+  textResult,
+  toDescriptor,
+  type ModelContext,
+  type ModelContextTool,
+  type ModelContextToolResult,
+  type RegisterToolOptions,
+} from './model-context'
 export { useThunderbolt, type ThunderboltState } from './use-thunderbolt'
 export { elementAtPoint, type HighlightedElement, type Rect, type SelectionItem } from './selection-hit-test'

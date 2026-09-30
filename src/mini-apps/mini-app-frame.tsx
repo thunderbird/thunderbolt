@@ -30,6 +30,16 @@ type MiniAppFrameProps = {
  * grants it nothing but *its own* origin, which it needs for storage, cookies and
  * same-origin fetches. Removing it here would break every real app; the pairing is
  * deliberate.
+ *
+ * **On the empty `allow` and WebMCP's `tools` feature:** a Mini App's tools reach
+ * us over the bridge, read out of the frame's own `document.modelContext` from
+ * *inside* it (`miniapps/sdk/src/model-context.ts`) and forwarded by postMessage.
+ * That needs no permissions-policy grant. `allow="tools"` does something else:
+ * it lets an agent in the *embedder* — the browser's, not ours — discover and
+ * call tools across the frame boundary. Granting it would route a customer app's
+ * tools around the host-side approval prompt that `readOnlyHint` gates, to a
+ * caller Thunderbolt has no relationship with. So it stays denied, along with
+ * everything else.
  */
 export const MiniAppFrame = ({ app, frameRef, status, onFrameLoad, onRetry }: MiniAppFrameProps) => (
   <div className="relative flex-1 w-full overflow-hidden">

@@ -109,6 +109,22 @@ export const miniAppGuestMethods = {
   /** The user selected (or deselected) text inside the app. */
   selectionChanged: 'ui/notifications/selection-changed',
   /**
+   * "My tools are not what you last listed." Fire-and-forget; the host answers
+   * by re-running `tools/list`.
+   *
+   * WebMCP's `toolchange` event, forwarded. It exists because the canonical way
+   * to expose a tool — `document.modelContext.registerTool()` — is a call in an
+   * effect, and effects run *after* the handshake that declares the `tools`
+   * capability. Without this the host asks once, too early, and a correctly
+   * registered tool is invisible to the model with nothing to say why.
+   *
+   * Carries no list. A notification the host has to trust would let a frame
+   * push tool descriptors outside the one path that validates them; making it a
+   * *prompt to ask again* keeps `parseToolsList` the only way a tool ever
+   * enters the host, caps and all.
+   */
+  toolsChanged: 'ui/notifications/tools-changed',
+  /**
    * "My identity token is about to expire; give me another."
    *
    * Guest-initiated rather than pushed on a timer: only the app knows whether
@@ -159,11 +175,19 @@ export const miniAppHostMethods = {
    * confidently, because nothing marks a cache as stale. Pulling cannot be
    * stale; it can only be unanswered, and unanswered is reportable.
    *
-   * Superseded by a reserved read-only WebMCP tool once the shim lands
-   * (THU-910); this is the transport that tool will route to.
+   * Deliberately not a WebMCP tool, now that the shim gives every Mini App a
+   * `document.modelContext`. A tool is something the *model* chooses to call
+   * and the user can be asked to approve; reading the open app's own screen is
+   * neither — the host does it on the model's behalf, unprompted, as part of
+   * answering "what is this". Routing it through the tool registry would put it
+   * in the app's tool list, where an app author could shadow or unregister it.
    */
   contextGet: 'ui/get-context',
-  /** Discover the tools the app exposes to the model. Sent once, after handshake. */
+  /**
+   * Discover the tools the app exposes to the model. Sent after the handshake,
+   * and again whenever the guest says its list moved — see
+   * {@link miniAppGuestMethods.toolsChanged}.
+   */
   toolsList: 'tools/list',
   /** Invoke one of them. */
   toolsCall: 'tools/call',
@@ -366,6 +390,18 @@ export const selectionChangedNotificationSchema = envelopeSchema.extend({
 })
 
 /**
+ * `ui/notifications/tools-changed` — guest → host notification.
+ *
+ * `params` is optional rather than required-and-empty: there is nothing to
+ * carry (see {@link miniAppGuestMethods.toolsChanged}), and a guest that omits
+ * the key entirely is sending valid JSON-RPC.
+ */
+export const toolsChangedNotificationSchema = envelopeSchema.extend({
+  method: z.literal(miniAppGuestMethods.toolsChanged),
+  params: z.object({}).optional(),
+})
+
+/**
  * `ui/request-auth-token` — guest → host request. No params.
  *
  * `jsonRpcIdSchema` like every other request, not `z.number()`. It was numeric
@@ -390,6 +426,7 @@ export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
   initializeRequestSchema,
   chatOpenRequestSchema,
   selectionChangedNotificationSchema,
+  toolsChangedNotificationSchema,
   runtimeErrorNotificationSchema,
 ])
 

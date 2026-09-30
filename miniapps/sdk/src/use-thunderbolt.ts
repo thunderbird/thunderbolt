@@ -50,6 +50,11 @@ export type ThunderboltState = {
  * and it lets a component call this hook *before* the tools are defined. That
  * matters when the tool bodies need something the hook returns (the host locale,
  * say), which would otherwise be a chicken-and-egg between the two.
+ *
+ * It is also optional. `document.modelContext.registerTool()` works in any Mini
+ * App, React or not, and is what a tool meant to run outside Thunderbolt should
+ * use; see `model-context.ts`. The array is the ergonomic choice *in React*, not
+ * the only one.
  */
 export const useThunderbolt = (
   appName: string,

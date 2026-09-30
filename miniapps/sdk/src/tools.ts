@@ -3,130 +3,53 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Declaring tools your app exposes to the Thunderbolt assistant.
+ * The `tools` option — a thin convenience over `document.modelContext`.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * WHY THIS ISN'T JUST WebMCP
- * ─────────────────────────────────────────────────────────────────────────────
+ * The canonical way to expose a tool is WebMCP's own call, which this SDK makes
+ * available in every browser (see `model-context.ts`):
  *
- * WebMCP (`document.modelContext.registerTool`) is the browser-native answer to
- * exactly this problem, and it explicitly supports our topology — a parent page
- * discovering tools inside a cross-origin iframe via `allow="tools"` on the frame
- * plus `exposedTo` on registration. If it were available everywhere Thunderbolt
- * runs, this file would not exist.
+ * ```ts
+ * document.modelContext.registerTool({
+ *   name: 'highlight_row',
+ *   description: 'Highlight one row of the model.',
+ *   inputSchema: { type: 'object', properties: { id: { type: 'string' } } },
+ *   execute: ({ id }) => {
+ *     select(id)
+ *     return { content: [{ type: 'text', text: `Highlighted ${id}.` }] }
+ *   },
+ * })
+ * ```
  *
- * It isn't, for three reasons that are about deployment rather than design:
+ * `useThunderbolt(name, tools)` exists beside it because React apps almost
+ * always *have* their tool list already — as an array rebuilt each render, whose
+ * `execute` closures need current state — and turning that into imperative
+ * register/abort calls in an effect is boilerplate with a stale-closure bug
+ * waiting in it. The bridge mirrors the array into the registry instead, so both
+ * spellings end up in the same place and the host reads one list.
  *
- *   1. **Thunderbolt's desktop app can't run it.** Tauri embeds WKWebView on
- *      macOS and WebKitGTK on Linux — both WebKit, neither implements WebMCP, and
- *      no flag or config changes that. Only Windows (WebView2, Chromium) could.
- *      Desktop is a first-class Thunderbolt surface, so a WebMCP-only tool layer
- *      would quietly be a web-only feature.
- *
- *   2. **It's an origin trial, not a shipped API.** Chrome 146 has an
- *      implementation; the public origin trial runs Chrome 149→156. Origin trials
- *      expire, and this one is a W3C *Community Group* draft — not standards
- *      track. The surface has already moved once (`navigator.modelContext` →
- *      `document.modelContext`).
- *
- *   3. **Mozilla is neutral; Safari uncommitted.** Both participate in the spec
- *      discussion, neither has committed to shipping.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * SO: SAME SHAPE, DIFFERENT TRANSPORT
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * `ThunderboltTool` below is deliberately WebMCP's tool descriptor. Same fields,
- * same meanings, same `annotations.readOnlyHint` semantics. Which means:
- *
- *   - If you already register tools with WebMCP, hand us the same objects.
- *     `toWebMcpTools()` at the bottom of this file goes the other way, and is
- *     about ten lines.
- *   - If WebMCP ships broadly, Thunderbolt feature-detects `document.modelContext`
- *     and prefers it. Your tool definitions don't change.
- *
- * The transport underneath is JSON-RPC 2.0 over `postMessage`, using MCP's own
- * method names (`tools/list`, `tools/call`).
+ * The only difference between the two shapes is the return type: `execute` here
+ * returns a plain string, because that is what a one-line tool wants to write
+ * and the wire carries one string anyway. Hand the same object to native
+ * WebMCP and it would need `{ content: [{ type: 'text', text }] }`, so a tool
+ * meant to be portable should be written the canonical way above.
  */
 
-/** A tool your app exposes. Mirrors WebMCP's descriptor. */
-export type ThunderboltTool = {
-  /**
-   * Unique, `[a-zA-Z0-9_-]`, 1–60 characters.
-   *
-   * Tighter than WebMCP's `[a-zA-Z0-9_.-]{1,128}`, and deliberately so. The host
-   * prefixes the name with `app_` before handing it to a model provider, and
-   * OpenAI allows no dots and caps the prefixed name at 64 — so a dot or a long
-   * name does not cost you the tool, it gets the **whole request** rejected.
-   * Names outside this range are dropped by the host with a warning.
-   */
-  name: string
-  /** What it does, in natural language. The model reads this to decide. */
-  description: string
-  /** JSON Schema for the arguments. Omit for a tool that takes none. */
-  inputSchema?: Record<string, unknown>
-  annotations?: {
-    /**
-     * True for deterministic, side-effect-free tools. Read-only tools run
-     * silently; **everything else prompts the user before it runs**, and an
-     * omitted annotation means "prompt". Only your app knows whether a tool
-     * mutates something, which is why this is your call and not the host's.
-     */
-    readOnlyHint?: boolean
-    /** Friendly label shown in the approval prompt. Defaults to `name`. */
-    title?: string
-  }
+import { textResult, type ModelContextTool } from './model-context'
+
+/**
+ * A tool your app exposes, in the shape the `tools` option takes.
+ *
+ * Field-for-field WebMCP's descriptor apart from `execute`'s return type — see
+ * {@link ModelContextTool}, which documents the name and annotation rules that
+ * apply to both.
+ */
+export type ThunderboltTool = Omit<ModelContextTool, 'execute'> & {
   /** Runs the tool. Return a string the model will read. */
   execute: (args: never) => Promise<string> | string
 }
 
-/** What `execute` returns to the host, matching the wire's `tools/call` result. */
-export type ToolCallResult = { content: string; isError?: boolean }
-
-/** Strip `execute` — the host only ever learns a tool's *name*, never its body. */
-export const toDescriptors = (tools: ThunderboltTool[]) =>
-  tools.map(({ name, description, inputSchema, annotations }) => ({
-    name,
-    description,
-    ...(inputSchema ? { inputSchema } : {}),
-    ...(annotations ? { annotations } : {}),
-  }))
-
-/**
- * Invoke a declared tool by name.
- *
- * Errors are returned rather than thrown so the model gets something it can act
- * on. A thrown error would surface as "the tool is broken"; a message saying what
- * went wrong lets it retry with different arguments or explain the problem.
- */
-export const callTool = async (tools: ThunderboltTool[], name: string, args: unknown): Promise<ToolCallResult> => {
-  const tool = tools.find((candidate) => candidate.name === name)
-  if (!tool) {
-    return { content: `No tool named "${name}" is registered.`, isError: true }
-  }
-  try {
-    return { content: String(await tool.execute(args as never)) }
-  } catch (error) {
-    return { content: error instanceof Error ? error.message : String(error), isError: true }
-  }
-}
-
-/**
- * Register the same tools with WebMCP, where it exists.
- *
- * Not used by this sample — Thunderbolt reaches tools over the bridge, and the
- * desktop app has no `document.modelContext` at all. It's here to make the point
- * concrete: because the descriptor is WebMCP-shaped, supporting *other* browser
- * agents alongside Thunderbolt costs about ten lines and no change to how you
- * define a tool.
- */
-export const toWebMcpTools = async (tools: ThunderboltTool[], exposedTo?: string[]): Promise<boolean> => {
-  const modelContext = (
-    document as Document & { modelContext?: { registerTool: (t: unknown, o?: unknown) => Promise<void> } }
-  ).modelContext
-  if (!modelContext) {
-    return false
-  }
-  await Promise.all(tools.map((tool) => modelContext.registerTool(tool, exposedTo ? { exposedTo } : undefined)))
-  return true
-}
+/** Adapt one to the registry's shape, widening `execute`'s string to a result. */
+export const toModelContextTool = ({ execute, ...descriptor }: ThunderboltTool): ModelContextTool => ({
+  ...descriptor,
+  execute: async (args) => textResult(String(await execute(args))),
+})

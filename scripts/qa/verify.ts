@@ -25,7 +25,8 @@ export type Verified = {
   flaky: VerifiedFinding[]
   observations: FindingFile[]
   dropped: {
-    file: FindingFile | RejectedFile
+    /** A `VerifiedFinding` from gate `replay` on, carrying its replay counts. */
+    file: FindingFile | VerifiedFinding | RejectedFile
     gate: 'schema' | 'lint' | 'replay' | 'judge'
     reason: string
   }[]

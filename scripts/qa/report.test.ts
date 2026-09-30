@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -110,7 +110,10 @@ describe('sessionFromExecution', () => {
     expect((await sessionFromExecution(noResult, 'c3', true)).stop).toBe('timeout')
     const broken = join(dir, 'b.json')
     await writeFile(broken, '[{"type":')
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
     expect((await sessionFromExecution(broken, 'c3')).stop).toBe('error')
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining(`Unreadable execution file ${broken}`))
+    logged.mockRestore()
   })
 })
 
@@ -205,7 +208,11 @@ describe('renderReport', () => {
       summaries: new Map(),
       found: 6,
       verified,
-      filed: [{ fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' }],
+      filed: [
+        { fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
+        { fp: 'bcde2345', charterDir: 'c1', id: '5', severity: 'High', action: 'regression' },
+        { fp: 'cdef3456', charterDir: 'c1', id: '6', severity: 'High', action: 'commented' },
+      ],
       canary: {
         found: 1,
         total: 2,
@@ -217,7 +224,7 @@ describe('renderReport', () => {
         unattributed: [],
       },
     })
-    expect(report).toContain('found 6 → oracle 4 → lint 4 → replay 4 (1 flaky) → judge 3 → filed 1')
+    expect(report).toContain('found 6 → oracle 4 → lint 4 → replay 4 (1 flaky) → judge 1 → filed 2')
     expect(report).toContain('c1/3: **schema** — bad \\| json')
     expect(report).toContain('c1/4: **judge** — known issue')
     expect(report).toContain('dry-run (would created) abcd1234 Medium')
@@ -268,12 +275,12 @@ describe('canaries', () => {
     ...verifiedFinding(area, type, id),
     finding: { ...raw(area, type), title },
   })
-  const droppedOnNormal = (...ids: string[]): Verified => ({
+  const droppedOnNormal = (ids: string[], runs = 3): Verified => ({
     ...emptyVerified,
     dropped: ids.map((id) => ({
-      file: { charterDir: 'c8-phone', id, reason: '' },
+      file: { ...verifiedFinding('other', 'console-error', id), replay: { failed: 0, runs } },
       gate: 'replay' as const,
-      reason: 'failed 0/3 replays',
+      reason: `failed 0/${runs} replays`,
     })),
   })
 
@@ -281,7 +288,7 @@ describe('canaries', () => {
     const result = matchCanaries(
       canaries,
       [finding('1', 'Deleting a skill logs an error'), finding('2', 'Row subtitle spills out', 'skills')],
-      droppedOnNormal('1', '2'),
+      droppedOnNormal(['1', '2']),
     )
     expect(result.results.map((r) => r.found)).toEqual([false, true, true])
     expect(result.found).toBe(2)
@@ -294,28 +301,39 @@ describe('canaries', () => {
   })
 
   it('does not trust a baseline from an unhealthy stack', () => {
-    const baseline = { ...droppedOnNormal('1'), stack_unhealthy: 'control failed' }
+    const baseline = { ...droppedOnNormal(['1']), stack_unhealthy: 'control failed' }
     expect(matchCanaries(canaries, [finding('1', 'Delete fails')], baseline)).toMatchObject({
       found: 0,
       real: ['c8-phone/1'],
     })
   })
 
+  it('does not count a spec that never ran on the normal build', () => {
+    const result = matchCanaries(canaries, [finding('1', 'Deleting a skill logs an error')], droppedOnNormal(['1'], 0))
+    expect(result).toMatchObject({ found: 0, real: ['c8-phone/1'] })
+  })
+
+  it('lets one finding find one canary at most', () => {
+    const both = finding('6', 'Deleting a skill leaves its subtitle behind')
+    const result = matchCanaries(canaries, [both], droppedOnNormal(['6']))
+    expect(result.results.map((r) => r.found)).toEqual([false, true, false])
+  })
+
   it('matches keywords case-insensitively in steps and actual too', () => {
     const f = finding('4', 'Something odd')
     f.finding.steps = ['Type a Preferred Name']
-    expect(matchCanaries(canaries, [f], droppedOnNormal('4')).results[0].found).toBe(true)
+    expect(matchCanaries(canaries, [f], droppedOnNormal(['4'])).results[0].found).toBe(true)
   })
 
   it('reports a canary-caused finding with no keyword as unattributed and does not count it', () => {
-    const result = matchCanaries(canaries, [finding('5', 'Sidebar glitch')], droppedOnNormal('5'))
+    const result = matchCanaries(canaries, [finding('5', 'Sidebar glitch')], droppedOnNormal(['5']))
     expect(result).toMatchObject({ found: 0, unattributed: ['c8-phone/5'], real: [] })
   })
 
   it('matches the confirmed and flaky canary-leg findings against the baseline and writes canary.json', async () => {
     const baselineDir = join(dir, 'baseline')
     await mkdir(baselineDir)
-    await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(droppedOnNormal('1')))
+    await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(droppedOnNormal(['1'])))
     await writeFile(
       join(dir, 'verified.json'),
       JSON.stringify({

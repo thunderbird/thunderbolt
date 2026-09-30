@@ -61,7 +61,11 @@ const readJson = async <T>(path: string): Promise<T | undefined> => {
  * A missing file or result message is `timeout` when the job timed out, otherwise `error`.
  */
 export const sessionFromExecution = async (path: string, charter: string, timedOut = false): Promise<Session> => {
-  const messages = await readJson<{ type?: string }[]>(path).catch(() => undefined)
+  // A job killed mid-write leaves a truncated file: the session was cut, and its numbers are unknown.
+  const messages = await readJson<{ type?: string }[]>(path).catch((error) => {
+    console.error(`Unreadable execution file ${path}: ${error}`)
+    return undefined
+  })
   const result = messages?.findLast((m) => m.type === 'result') as ResultMessage | undefined
   const usage = Object.values(result?.modelUsage ?? {})
   const sum = (pick: (u: ModelUsage) => number | undefined) => usage.reduce((total, u) => total + (pick(u) ?? 0), 0)
@@ -102,22 +106,30 @@ const mentions = (canary: Canary, f: FindingFile) =>
   canary.keywords.some((k) => findingText(f).includes(k.toLowerCase()))
 
 /**
- * A canary is found when a canary-leg finding (confirmed or flaky) drops at replay (0 failures) on the normal
- * build, so the canary patch caused it, and mentions one of the canary's keywords. Area and oracle type are not
- * compared: the explorer files the same bug under different ones. A finding the baseline never replayed, or
- * replayed on an unhealthy stack, is not proven canary-caused and counts as real.
+ * A canary is found when a canary-leg finding (confirmed or flaky) replays on the normal build without failing, so
+ * the canary patch caused it, and mentions one of the canary's keywords; one finding finds one canary at most.
+ * Area and oracle type are not compared: the explorer files the same bug under different ones. A finding the
+ * baseline never ran, or ran on an unhealthy stack, is not proven canary-caused and counts as real.
  */
 export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
   const caused = (f: VerifiedFinding) =>
     !baseline.stack_unhealthy &&
     baseline.dropped.some(
-      (d) => d.gate === 'replay' && findingId(d.file) === findingId(f) && d.reason.startsWith('failed 0/'),
+      ({ gate, file }) =>
+        gate === 'replay' &&
+        findingId(file) === findingId(f) &&
+        'replay' in file &&
+        file.replay.runs > 0 &&
+        file.replay.failed === 0,
     )
   const canaryCaused = findings.filter(caused)
-  const results = canaries.map((c) => ({
-    ...c,
-    found: canaryCaused.some((f) => mentions(c, f)),
-  }))
+  // ponytail: greedy in canary order, so overlapping keywords can undercount; use a bipartite match if they do.
+  const used = new Set<VerifiedFinding>()
+  const results = canaries.map((c) => {
+    const match = canaryCaused.find((f) => !used.has(f) && mentions(c, f))
+    if (match) used.add(match)
+    return { ...c, found: match !== undefined }
+  })
   return {
     found: results.filter((r) => r.found).length,
     total: results.length,
@@ -200,15 +212,15 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
 
 const gateYield = ({ found, verified, filed }: ReportInput) => {
   if (!verified) return []
-  const dropped = (...gates: string[]) => verified.dropped.filter((d) => gates.includes(d.gate)).length
+  const dropped = (gate: string) => verified.dropped.filter((d) => d.gate === gate).length
   const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
   const afterReplay = afterLint - dropped('replay')
-  const afterJudge = afterReplay - dropped('judge')
-  const filedCount = filed?.filter((a) => (a.would ?? a.action) === 'created').length
+  // Flaky findings are never judged, and a regression is a new ticket too.
+  const filedCount = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action)).length
   return [
     `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} (${verified.flaky.length} flaky)` +
-      ` → judge ${afterJudge}${filedCount === undefined ? '' : ` → filed ${filedCount}`}`,
+      ` → judge ${verified.confirmed.length}${filedCount === undefined ? '' : ` → filed ${filedCount}`}`,
   ]
 }
 

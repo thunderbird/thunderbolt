@@ -52,4 +52,22 @@ describe('createAppSpanProcessor', () => {
 
     expect(exporter.getFinishedSpans()).toEqual([])
   })
+
+  it('drops spans already queued when the user opts out before the flush', async () => {
+    const exporter = new InMemorySpanExporter()
+    const state = { optedOut: false }
+    const posthog = { get_distinct_id: () => 'anon-1', has_opted_out_capturing: () => state.optedOut }
+    const provider = new BasicTracerProvider({ spanProcessors: [createAppSpanProcessor(exporter, posthog)] })
+
+    provider
+      .getTracer('test')
+      .startSpan('invoke_agent thunderbolt', { attributes: { 'gen_ai.operation.name': 'invoke_agent' } })
+      .end()
+    state.optedOut = true
+    const flushed = provider.forceFlush()
+    await getClock().tickAsync(0)
+    await flushed
+
+    expect(exporter.getFinishedSpans()).toEqual([])
+  })
 })

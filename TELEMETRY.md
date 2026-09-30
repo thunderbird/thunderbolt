@@ -161,9 +161,9 @@ Once PostHog is initialized, the app also emits OpenTelemetry spans for each bui
 
 **Trace id.** The span's trace id is a uuidv7 without dashes (32 hex characters). `trace_id` in the chat events uses this same value, so events and spans join on it. Without a tracer provider (no PostHog key) `trace_id` stays a dashed uuidv7.
 
-**Trace propagation.** The app sends a W3C `traceparent` header for the turn span only on the managed `/v1/chat/completions` and `/v1/chat/v1/messages` calls, so the backend's `chat` spans become children of the turn. BYOK, universal-proxy, and Tinfoil calls never get it, and `traceparent`/`tracestate` are never forwarded through `/v1/proxy`.
+**Trace propagation.** The app sends a W3C `traceparent` header for the turn span only on the managed `/v1/chat/completions` and `/v1/chat/v1/messages` calls, so the backend's `chat` spans become children of the turn. It is not sent while the user is opted out of Data collection. BYOK, universal-proxy, and Tinfoil calls never get it, and `traceparent`/`tracestate` are never forwarded through `/v1/proxy`.
 
-**Consent.** The span processor drops every span while posthog-js is opted out, so the Data collection toggle in Settings controls spans exactly like events.
+**Consent.** The Data collection toggle in Settings governs client events and client spans: the span processor and exporter drop every span while posthog-js is opted out, including spans queued before the opt-out. Backend generation spans are operational metering and are independent of the toggle, like the backend's previous `$ai_generation` event: they are sent whenever `POSTHOG_API_KEY` is configured, carry the user id, contain no content, and are not linked to the client trace when the user opted out.
 
 **Never emitted:** prompts, responses, tool arguments or results, MCP server or tool names, and error messages.
 

@@ -177,6 +177,21 @@ describe('turn spans', () => {
     expect(seconds * 1_000 + nanoseconds / 1e6).toBeCloseTo(5, 3)
   })
 
+  it('places a tool span at wall-clock time when using the production performance.now clock', () => {
+    const exporter = new InMemorySpanExporter()
+    const tracer = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }).getTracer('test')
+    const telemetry = createTurnTelemetry({ tracer })
+
+    telemetry.recordTool('search', 0)
+    telemetry.endSpan('success')
+
+    const [toolSpan, turnSpan] = exporter.getFinishedSpans()
+    const toEpochMs = ([seconds, nanoseconds]: [number, number]) => seconds * 1_000 + nanoseconds / 1e6
+    expect(Math.abs(toEpochMs(toolSpan.startTime) - Date.now())).toBeLessThan(5_000)
+    // 1ms slack: the turn span and `startedAt` read the clock separately.
+    expect(toEpochMs(toolSpan.startTime)).toBeGreaterThanOrEqual(toEpochMs(turnSpan.startTime) - 1)
+  })
+
   it('keeps the generated trace id and sends no traceparent without a tracer provider', () => {
     const telemetry = createTurnTelemetry({ generateId: () => 'trace-1' })
 

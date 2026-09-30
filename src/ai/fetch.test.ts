@@ -695,7 +695,7 @@ describe('withTraceparent', () => {
   it('sends traceparent on the managed backend fetch and never on a proxied BYOK fetch', async () => {
     const backend = capturingFetch()
     const proxy = capturingFetch()
-    const traced = withTraceparent(traceparent, backend.fn)
+    const traced = withTraceparent(traceparent, backend.fn, () => false)
 
     await resolveOpenAiCompatConnection({ provider: 'thunderbolt' } as Model, () => proxy.fn, traced)!.fetch(
       'https://cloud.example.com/v1/chat/completions',
@@ -706,6 +706,14 @@ describe('withTraceparent', () => {
 
     expect(new Headers(backend.received()?.init?.headers).get('traceparent')).toBe(traceparent)
     expect(new Headers(proxy.received()?.init?.headers).has('traceparent')).toBe(false)
+  })
+
+  it('sends no traceparent while the user is opted out of data collection', async () => {
+    const backend = capturingFetch()
+
+    await withTraceparent(traceparent, backend.fn, () => true)('https://cloud.example.com/v1/chat/completions')
+
+    expect(new Headers(backend.received()?.init?.headers).has('traceparent')).toBe(false)
   })
 
   it('returns the base fetch untouched without a traceparent', () => {

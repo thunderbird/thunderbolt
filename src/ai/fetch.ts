@@ -32,6 +32,7 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import { hydrateAttachmentsAsFileParts } from '@/lib/attachments'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { appVersionHeader } from '@/lib/app-version'
+import { getPosthogClient } from '@/lib/posthog'
 import { handleAppVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
@@ -124,13 +125,21 @@ export const withAppVersionHeader = (base: typeof fetch): typeof fetch => {
 /**
  * Wrap a fetch so every request carries the turn's W3C `traceparent`, making the backend's
  * generation spans children of the client turn span. Pass it only as the managed `backendFetch`
- * (our `/chat/*` routes); BYOK, proxy, and Tinfoil calls must never receive it.
+ * (our `/chat/*` routes); BYOK, proxy, and Tinfoil calls must never receive it. While the user is
+ * opted out of data collection it sends nothing, so their turns link to no client trace.
  */
-export const withTraceparent = (traceparent: string | undefined, base: FetchFn = fetch): FetchFn => {
+export const withTraceparent = (
+  traceparent: string | undefined,
+  base: FetchFn = fetch,
+  isOptedOut: () => boolean = () => getPosthogClient()?.has_opted_out_capturing() ?? true,
+): FetchFn => {
   if (!traceparent) {
     return base
   }
   const wrapped: FetchFn = (input, init) => {
+    if (isOptedOut()) {
+      return base(input, init)
+    }
     const headers = new Headers(init?.headers)
     headers.set('traceparent', traceparent)
     return base(input, { ...init, headers })

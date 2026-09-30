@@ -25,7 +25,16 @@ type PostHogConsent = Pick<PostHog, 'get_distinct_id' | 'has_opted_out_capturing
  * is opted out, and spans are redacted to the shared allowlist with a `service.name`-only resource.
  */
 export const createAppSpanProcessor = (exporter: SpanExporter, posthog: PostHogConsent): SpanProcessor => {
-  const batch = new BatchSpanProcessor(exporter)
+  // Spans queued before an opt-out must not leave either: drop the batch at export time.
+  const consentedExporter: SpanExporter = {
+    export: (spans, done) =>
+      posthog.has_opted_out_capturing()
+        ? done({ code: 0 /* ExportResultCode.SUCCESS */ })
+        : exporter.export(spans, done),
+    shutdown: () => exporter.shutdown(),
+    forceFlush: () => exporter.forceFlush?.() ?? Promise.resolve(),
+  }
+  const batch = new BatchSpanProcessor(consentedExporter)
   return {
     onStart: (span) => {
       span.setAttribute(genAiAttributes.posthogDistinctId, posthog.get_distinct_id())

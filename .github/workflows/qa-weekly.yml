@@ -690,6 +690,8 @@ jobs:
     environment: qa-agent
     permissions:
       contents: read
+    env:
+      HAS_HEARTBEAT: ${{ secrets.QA_HEARTBEAT_URL != '' }}
     steps:
       - *checkout
       - *setup-bun
@@ -711,6 +713,8 @@ jobs:
 
       - name: Report
         run: |
+          # Missing when the guard failed; report.ts needs the directory to exist.
+          mkdir -p qa-out
           bun scripts/qa/report.ts summary --out qa-out
           if [ -d qa-out-canary ]; then
             echo '# Canary leg: c8 on a build with planted bugs, never filed' >> "$GITHUB_STEP_SUMMARY"
@@ -718,7 +722,7 @@ jobs:
           fi
 
       - name: Heartbeat
-        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        if: ${{ env.HAS_HEARTBEAT == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
         env:
           HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"

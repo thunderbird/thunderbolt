@@ -160,6 +160,12 @@ const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n'
 /** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
 const isFix = (s: Session) => s.charter.startsWith('fix-')
 
+/** True when explore sessions ran and every one errored or timed out (a revoked key, a retired model id). */
+export const nothingExplored = (sessions: Session[]) => {
+  const explore = sessions.filter((s) => !isFix(s))
+  return explore.length > 0 && explore.every((s) => s.stop === 'error' || s.stop === 'timeout')
+}
+
 const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: number) => {
   const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
     const cap = suggestCap(samples)
@@ -316,7 +322,7 @@ const runSummary = async (outDir: string) => {
   })
   await writeFile(join(outDir, 'report.md'), report)
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report)
-  return report
+  return { report, nothingExplored: nothingExplored(sessions) }
 }
 
 /**
@@ -364,7 +370,13 @@ if (import.meta.main) {
     await mkdir(join(out, values.charter), { recursive: true })
     await writeFile(join(out, values.charter, 'session.json'), JSON.stringify(session, null, 2))
   } else if (positionals[0] === 'summary') {
-    console.log(await runSummary(out))
+    const summary = await runSummary(out)
+    console.log(summary.report)
+    // The report is written first; failing then lets notify-on-failure fire although every job stayed green.
+    if (summary.nothingExplored) {
+      console.error('::error::Every explore session ended in an error or a timeout.')
+      process.exitCode = 1
+    }
   } else if (positionals[0] === 'canary') {
     if (!values.baseline) throw new Error('canary needs --baseline')
     const result = await runCanary(out, values.baseline)

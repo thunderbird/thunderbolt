@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import type { RawFinding } from './findings'
 import {
   matchCanaries,
+  nothingExplored,
   renderReport,
   runCanary,
   sessionFromExecution,
@@ -136,6 +137,17 @@ const session = (over: Partial<Session>): Session => ({
   cache_creation_tokens: 1,
   stop: 'done',
   ...over,
+})
+
+describe('nothingExplored', () => {
+  it('is true only when every explore session errored or timed out, whatever the fix sessions did', () => {
+    const failed = [session({ charter: 'c1', stop: 'error' }), session({ charter: 'c2', stop: 'timeout' })]
+    expect(nothingExplored(failed)).toBe(true)
+    expect(nothingExplored([...failed, session({ charter: 'fix-ab12cd34' })])).toBe(true)
+    expect(nothingExplored([...failed, session({ charter: 'c3', stop: 'max_turns' })])).toBe(false)
+    expect(nothingExplored([session({ charter: 'fix-ab12cd34', stop: 'error' })])).toBe(false)
+    expect(nothingExplored([])).toBe(false)
+  })
 })
 
 const raw = (area: string, type: string): RawFinding => ({

@@ -198,7 +198,7 @@ describe('renderReport', () => {
       summaries: new Map(),
       found: 6,
       verified,
-      filed: [{ fp: 'abcd1234', severity: 'Medium', action: 'dry-run', would: 'created' }],
+      filed: [{ fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' }],
       canary: {
         found: 1,
         total: 2,

@@ -98,7 +98,7 @@ type CanaryResult = {
   unattributed: string[]
 }
 
-const findingId = (f: FindingFile) => `${f.charterDir}/${f.id}`
+const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
 const findingText = ({ finding }: FindingFile) =>
   [finding.title, ...finding.steps, finding.actual].join(' ').toLowerCase()
 
@@ -160,7 +160,7 @@ const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n'
 /** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
 const isFix = (s: Session) => s.charter.startsWith('fix-')
 
-const calibrationRows = (sessions: Session[], judgeCost?: number) => {
+const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: number) => {
   const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
     const cap = suggestCap(samples)
     return cap === undefined
@@ -168,8 +168,8 @@ const calibrationRows = (sessions: Session[], judgeCost?: number) => {
       : `| ${step} | ${metric} | ${samples.length} | ${format(Math.max(...samples))} | ${format(cap)} |`
   }
   const steps = [
-    ['explore', sessions.filter((s) => !isFix(s))],
-    ['fix', sessions.filter(isFix)],
+    ['explore', explore],
+    ['fix', fixes],
   ] as const
   return [
     ...steps.flatMap(([step, samples]) => [
@@ -215,6 +215,7 @@ export const renderReport = (input: ReportInput) => {
   const { sessions, summaries, verified, filed, scorecard, canary } = input
   const out: string[] = ['# Weekly QA run']
   const explore = sessions.filter((s) => !isFix(s))
+  const fixes = sessions.filter(isFix)
   const total = (list: Session[]) =>
     `${usd(list.reduce((t, s) => t + s.cost_usd, 0))}, ${list.reduce((t, s) => t + s.turns, 0)} turns, ` +
     minutes(list.reduce((t, s) => t + s.duration_ms, 0))
@@ -240,7 +241,7 @@ export const renderReport = (input: ReportInput) => {
         `| ${s.charter} | ${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`} |`,
     ),
     '',
-    `Total explore: ${total(explore)}. Fix: ${explore.length < sessions.length ? total(sessions.filter(isFix)) : 'n/a'}. ` +
+    `Total explore: ${total(explore)}. Fix: ${fixes.length ? total(fixes) : 'n/a'}. ` +
       `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.`,
     '',
     '## Coverage',
@@ -278,7 +279,7 @@ export const renderReport = (input: ReportInput) => {
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
     )
   }
-  const rows = calibrationRows(sessions, verified?.judge_usage?.cost_usd)
+  const rows = calibrationRows(explore, fixes, verified?.judge_usage?.cost_usd)
   if (rows.length > 0) {
     out.push(
       '',
@@ -309,7 +310,7 @@ const runSummary = async (outDir: string) => {
     summaries,
     found: valid.length + rejected.length,
     verified: await readJson<Verified>(join(outDir, 'verified.json')),
-    filed: await readJson<Filed>(join(outDir, 'filed.json')),
+    filed: await readJson<Filed[]>(join(outDir, 'filed.json')),
     scorecard: await readJson<Scorecard>(join(outDir, 'scorecard.json')),
     canary: await readJson<CanaryResult>(join(outDir, 'canary.json')),
   })

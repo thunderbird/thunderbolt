@@ -40,6 +40,18 @@ const drawerTransition = { duration: 0.3, ease: [0.22, 1, 0.36, 1] } as const
 const instantTransition = { duration: 0 } as const
 /** Foreground travel in px before a touch drag counts as opening the sidebar. */
 const swipeActivationDistance = 8
+/**
+ * Finger travel in px before the gesture's axis is decided. Approximates the
+ * platform touch slop so the decision lands on the same movement sample the
+ * compositor uses to resolve `touch-action: pan-y`.
+ */
+const axisLockDistance = 8
+/**
+ * Distance from the viewport's left edge, in px, within which an opening
+ * swipe may start. Matches the platform convention — UIKit's screen-edge pan
+ * and Android's DrawerLayout both reserve roughly this much.
+ */
+const swipeEdgeWidth = 24
 /** Release speed in px/s that decides the resting side regardless of position. */
 const swipeVelocityThreshold = 500
 // Interactive elements keep their own tap behavior instead of starting a drag.
@@ -111,6 +123,36 @@ export const canStartSidebarDrag = (target: EventTarget | null, boundary: HTMLEl
   return !isInHorizontalScroller(target, boundary)
 }
 
+/**
+ * Locks a touch gesture to one axis, or returns `null` while it is still
+ * inside the slop radius and the dominant direction is only noise.
+ *
+ * The rule — the dominant axis of the movement that clears the slop — is the
+ * one the browser itself applies to `touch-action: pan-y`, so the two can
+ * never deadlock: whenever this drives the menu the browser has declined to
+ * scroll, and whenever the browser scrolls it cancels the pointer and the
+ * drag dies with it. framer-motion's own `dragDirectionLock` cannot be used
+ * here because it tests the vertical axis first at an equal threshold, so a
+ * fast diagonal swipe locked to `y` and froze the menu for the rest of the
+ * gesture while the browser, reading the same swipe as horizontal, refused to
+ * scroll — leaving the gesture doing nothing at all (THU-772).
+ */
+export const resolveSwipeAxis = (deltaX: number, deltaY: number): 'x' | 'y' | null => {
+  if (Math.abs(deltaX) < axisLockDistance && Math.abs(deltaY) < axisLockDistance) {
+    return null
+  }
+  return Math.abs(deltaX) > Math.abs(deltaY) ? 'x' : 'y'
+}
+
+/**
+ * Restricts opening swipes to the left edge. A finger that lands mid-screen is
+ * reaching for the content and means to scroll it, so treating a swipe there
+ * as navigation is guesswork — which is what made diagonal swipes over the
+ * chat feel erratic (THU-772). Closing stays unrestricted: the whole
+ * foreground is the close surface, and nothing scrollable sits behind it.
+ */
+export const canArmSidebarSwipe = (clientX: number, isOpen: boolean): boolean => isOpen || clientX <= swipeEdgeWidth
+
 type UseMobileSidebarStateOptions = {
   enabled: boolean
   open: boolean
@@ -160,6 +202,10 @@ export const useMobileSidebarState = ({
   const animationTargetRef = useRef<number | null>(null)
   const isClosePendingRef = useRef(false)
   const isDraggingRef = useRef(false)
+  // The armed-but-not-yet-started gesture, held from pointerdown until the
+  // first move drives it (`claimed`) or `resolveSwipeAxis` rules on it.
+  const pendingSwipeRef = useRef<{ pointerId: number; x: number; y: number; claimed: boolean } | null>(null)
+  const foregroundRef = useRef<HTMLDivElement>(null)
   const dragStartedOpenRef = useRef(open)
   const didDragRef = useRef(false)
 
@@ -279,11 +325,99 @@ export const useMobileSidebarState = ({
     if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) {
       return
     }
-    if (!enabled || event.pointerType !== 'touch' || !canStartSidebarDrag(event.target, event.currentTarget)) {
+    if (
+      !enabled ||
+      event.pointerType !== 'touch' ||
+      !event.isPrimary ||
+      !canArmSidebarSwipe(event.clientX, targetOpenRef.current) ||
+      !canStartSidebarDrag(event.target, event.currentTarget)
+    ) {
       return
     }
-    dragControls.start(event)
+    // A closed drawer only arms from the edge, where the touchstart listener
+    // above cancelled the touch — that gesture is ours whole. Closing can
+    // start on the sidebar's own scroller, which the claim deliberately
+    // leaves alone, so it still has to resolve an axis first.
+    pendingSwipeRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      claimed: !targetOpenRef.current,
+    }
   }
+
+  // A JS gesture can only ever *observe* the compositor's axis decision, and by
+  // the time it resolves, a diagonal has already leaked a few pixels of scroll.
+  // Cancelling the touch outright is the only way to take the gesture whole, and
+  // it has to be a native non-passive listener: React registers touchstart
+  // passively at the root, where preventDefault is a no-op.
+  useEffect(() => {
+    const foreground = foregroundRef.current
+    if (!enabled || !foreground) {
+      return
+    }
+    const claimEdgeTouch = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      if (!touch || event.touches.length > 1 || targetOpenRef.current) {
+        return
+      }
+      if (!canArmSidebarSwipe(touch.clientX, false) || !canStartSidebarDrag(event.target, foreground)) {
+        return
+      }
+      event.preventDefault()
+    }
+    foreground.addEventListener('touchstart', claimEdgeTouch, { passive: false })
+    return () => foreground.removeEventListener('touchstart', claimEdgeTouch)
+  }, [enabled])
+
+  // Window-level so the axis still resolves once the finger leaves the element
+  // it started on, and passive because the vertical lock is enforced by
+  // `touch-action: pan-y`, never by preventDefault.
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    const clearPendingSwipe = () => {
+      pendingSwipeRef.current = null
+    }
+    // Only the finger that armed the gesture may end it — an unrelated
+    // pointer lifting mid-swipe must not throw the armed drag away.
+    const releasePendingSwipe = (event: PointerEvent) => {
+      if (pendingSwipeRef.current?.pointerId === event.pointerId) {
+        clearPendingSwipe()
+      }
+    }
+    const resolvePendingSwipe = (event: PointerEvent) => {
+      const pending = pendingSwipeRef.current
+      if (!pending || event.pointerId !== pending.pointerId) {
+        return
+      }
+      // A claimed touch can no longer become a scroll, so there is no axis to
+      // arbitrate — the first movement of any direction drives the drawer.
+      const axis = pending.claimed ? 'x' : resolveSwipeAxis(event.clientX - pending.x, event.clientY - pending.y)
+      if (!axis) {
+        return
+      }
+      pendingSwipeRef.current = null
+      if (axis === 'y') {
+        return
+      }
+      // The move event is the drag's origin, so the foreground picks the
+      // finger up where it is instead of jumping any slop; waiting for the
+      // first move (rather than starting on pointerdown) also keeps a bare
+      // tap from opening a pan session and halting an in-flight settle.
+      dragControls.start(event, { distanceThreshold: 0 })
+    }
+    window.addEventListener('pointermove', resolvePendingSwipe, { passive: true })
+    window.addEventListener('pointerup', releasePendingSwipe)
+    window.addEventListener('pointercancel', releasePendingSwipe)
+    return () => {
+      clearPendingSwipe()
+      window.removeEventListener('pointermove', resolvePendingSwipe)
+      window.removeEventListener('pointerup', releasePendingSwipe)
+      window.removeEventListener('pointercancel', releasePendingSwipe)
+    }
+  }, [dragControls, enabled])
 
   const handleDragStart = () => {
     stopAnimation()
@@ -338,6 +472,7 @@ export const useMobileSidebarState = ({
   return {
     x,
     dragControls,
+    foregroundRef,
     sidebarWidth,
     isDrawerOpen: enabled && (open || isPresented),
     handleOpenChange,
@@ -363,6 +498,7 @@ export const MobileSidebar = ({
   const {
     x,
     dragControls,
+    foregroundRef,
     sidebarWidth,
     isDrawerOpen,
     handleOpenChange,
@@ -434,10 +570,10 @@ export const MobileSidebar = ({
 
       <m.div
         key="mobile-foreground"
+        ref={foregroundRef}
         drag={dragAxis}
         dragControls={dragControls}
         dragConstraints={{ left: 0, right: sidebarWidth }}
-        dragDirectionLock
         dragElastic={{ left: 0, right: 0.08 }}
         dragListener={false}
         dragMomentum={false}

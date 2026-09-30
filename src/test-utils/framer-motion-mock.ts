@@ -104,8 +104,11 @@ export const animateSpy = mock((value: MockMotionValue, target: unknown, _transi
   return Object.assign(Promise.resolve(), { stop: () => {} })
 })
 
-/** Spy for gestures started through Framer Motion's external drag controls. */
-const dragControlsStartSpy = mock(() => {})
+/** Spy for gestures started through Framer Motion's external drag controls.
+ *  Exported so tests can assert which gestures reach a real drag — the mock
+ *  never moves anything, so the call itself is the only observable. Call
+ *  `dragControlsStartSpy.mockClear()` in a `beforeEach` to isolate history. */
+export const dragControlsStartSpy = mock((_event: unknown, _options?: unknown) => {})
 
 /** (Re-)registers the `framer-motion` module mock. See the module docs above
  *  for when the side-effect import alone is not enough. */

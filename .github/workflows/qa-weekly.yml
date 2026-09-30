@@ -1,0 +1,707 @@
+name: QA weekly
+
+# An AI agent uses the app like a person would, one charter per session. Deterministic code then replays, judges,
+# files and (optionally) fixes what it found. How it works, the secrets and variables, and the rule for calibrating
+# the caps below: qa/README.md.
+#
+# Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
+# token. Replay holds no secret at all. Only the build job saves caches, because it runs before any untrusted code.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1' # Monday 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log what would be filed and published instead of writing to Linear and GitHub
+        type: boolean
+        default: true
+      charters:
+        description: Comma-separated charter ids, e.g. c4-skills-projects,c8-phone (empty = all)
+        type: string
+        default: ''
+      autofix:
+        description: Let the fix agent attempt confirmed bugs (also needs vars.QA_AUTOFIX_ENABLED)
+        type: boolean
+        default: false
+
+concurrency:
+  group: qa-weekly
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  # Per-session caps. Initial values: recalibrate them with the rule in qa/README.md.
+  QA_EXPLORE_MAX_BUDGET_USD: 10
+  QA_EXPLORE_MAX_TURNS: 400
+  QA_EXPLORE_TIMEOUT_MINUTES: 60
+  QA_FIX_MAX_BUDGET_USD: 20
+  QA_FIX_MAX_TURNS: 200
+  QA_FIX_TIMEOUT_MINUTES: 60
+
+jobs:
+  build:
+    if: vars.QA_AGENT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      legs: ${{ steps.plan.outputs.legs }}
+      verify: ${{ steps.plan.outputs.verify }}
+      live: ${{ steps.plan.outputs.live }}
+      autofix: ${{ steps.plan.outputs.autofix }}
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - &setup-bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: &bun-cache
+          path: |
+            ~/.bun/install/cache
+            node_modules
+            backend/node_modules
+          key: qa-bun-${{ hashFiles('bun.lock', 'backend/bun.lock') }}
+
+      - &install
+        name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd backend && bun install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: &browser-cache
+          path: ~/.cache/ms-playwright
+          key: qa-browsers-${{ hashFiles('bun.lock') }}-mcp-0.0.83
+
+      - &install-browsers
+        name: Install browsers
+        # The repo's Playwright replays specs; the Playwright MCP (pinned in qa/mcp.json) drives its own Chromium.
+        run: |
+          bunx playwright install --with-deps chromium
+          npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
+
+      - name: Plan the legs
+        id: plan
+        env:
+          CHARTERS: ${{ inputs.charters }}
+          LIVE: ${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}
+          AUTOFIX: ${{ vars.QA_AUTOFIX_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.autofix) }}
+        run: |
+          for charter in ${CHARTERS//,/ }; do
+            [ -f "qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }
+          done
+          # shellcheck disable=SC2016 # jq variables
+          # One explore session per leg. The canary leg runs c8 on a build with planted bugs and is never filed.
+          legs=$(jq --null-input --compact-output --arg only "$CHARTERS" '
+            {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: "qa/mcp.json", viewport: "1280x800",
+             onboarding: false, real: false, postgres: false} as $leg
+            | [{charter: "c1-first-run", onboarding: true},
+               {charter: "c2-chat-power-user"},
+               {charter: "c3-models-providers", real: true},
+               {charter: "c4-skills-projects"},
+               {charter: "c5-widgets-connections", real: true},
+               {charter: "c6-settings-data"},
+               {charter: "c7-two-devices", postgres: true, mcp: "qa/mcp-two-devices.json"},
+               {charter: "c8-phone", viewport: "390x844"},
+               {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
+                artifact: "qa-canary"}]
+            | map($leg + .)
+            | map(select(.charter as $c | $only == "" or ($only | [splits(" *, *")] | index($c))))')
+          # Replay and judge once per out dir, on the same kind of stack its sessions explored.
+          verify=$(jq --compact-output '
+            [{name: "weekly", out: "qa-out", artifact: "qa-explore", dist: "qa-dist",
+              onboarding: any(.[]; .onboarding), postgres: any(.[]; .postgres)}]
+            + if any(.[]; .artifact == "qa-canary")
+              then [{name: "canary", out: "qa-out-canary", artifact: "qa-canary", dist: "qa-dist-canary", onboarding: false,
+                     postgres: false}]
+              else [] end' <<< "$legs")
+          {
+            echo "legs=$legs"
+            echo "verify=$verify"
+            echo "live=$LIVE"
+            echo "autofix=$AUTOFIX"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build the frontend (onboarding off, onboarding on, canaries planted)
+        run: |
+          scripts/qa/stack.sh build qa-dist
+          scripts/qa/stack.sh build qa-dist-onboarding onboarding
+          git apply qa/canaries/*.patch
+          scripts/qa/stack.sh build qa-dist-canary
+          git apply --reverse qa/canaries/*.patch
+
+      - name: Guard - smoke-test a fresh stack
+        run: |
+          scripts/qa/stack.sh start qa-dist
+          bunx playwright test --config playwright.qa.config.ts --project control
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-dist
+          path: qa-dist/
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-dist-onboarding
+          path: qa-dist-onboarding/
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-dist-canary
+          path: qa-dist-canary/
+          retention-days: 1
+
+  explore:
+    name: explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        leg: ${{ fromJSON(needs.build.outputs.legs) }}
+    # From nightly.yml's linux job. An empty image skips the container, so only Postgres legs start them.
+    services: &postgres-services
+      postgres:
+        image: ${{ matrix.leg.postgres && 'ghcr.io/thunderbird/thunderbolt/thunderbolt-postgres:latest' || '' }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+          POWERSYNC_DB_PASSWORD: myhighlyrandompassword
+        ports:
+          - 15434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      powersync:
+        image: ${{ matrix.leg.postgres && 'ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync:latest' || '' }}
+        env:
+          PS_PG_URI: postgresql://powersync_role:myhighlyrandompassword@postgres:5432/postgres
+          PS_STORAGE_URI: postgresql://postgres:postgres@postgres:5432/powersync_storage
+          PS_JWT_KEY_BASE64: ZW50ZXJwcmlzZS10aHVuZGVyYm9sdC1wb3dlcnN5bmMtand0LWRlZmF1bHQtc2VjcmV0
+          PS_JWT_KID: enterprise-powersync
+        ports:
+          - 18081:8080
+        options: --restart always
+    env:
+      QA_CHARTER: ${{ matrix.leg.charter }}
+      QA_OUT: ${{ matrix.leg.out }}
+      QA_MCP_VIEWPORT: ${{ matrix.leg.viewport }}
+      DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
+      POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - &restore-bun
+        name: Restore Bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: *bun-cache
+      - *install
+      - &restore-browsers
+        name: Restore Playwright browsers
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: *browser-cache
+      - *install-browsers
+
+      - &download-dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.leg.dist }}
+          path: ${{ matrix.leg.dist }}
+      - &download-onboarding
+        if: matrix.leg.onboarding
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-dist-onboarding
+          path: qa-dist-onboarding
+
+      - &postgres-setup
+        name: Prepare Postgres and PowerSync
+        if: matrix.leg.postgres
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          POWERSYNC_CONTAINER: ${{ job.services.powersync.id }}
+        # From nightly.yml's linux job.
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET wal_level = logical"
+          docker restart "$POSTGRES_CONTAINER"
+          for _ in $(seq 30); do docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres -d postgres >/dev/null && break; sleep 2; done
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc 'SHOW wal_level')" = logical
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_publication WHERE pubname = 'powersync'")" = 1
+          (cd backend && bunx drizzle-kit migrate)
+          docker restart "$POWERSYNC_CONTAINER"
+          ready() { curl --fail --silent --output /dev/null --max-time 2 http://localhost:18081/probes/readiness; }
+          for _ in $(seq 30); do ready && break; sleep 3; done
+          ready || { docker inspect --format 'Status: {{.State.Status}}, restarts: {{.RestartCount}}' "$POWERSYNC_CONTAINER"; exit 1; }
+
+      - name: Start the stack
+        env:
+          # Real providers only for the charters that need them, with QA-only keys, and only in the backend.
+          QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
+          ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_PROVIDER_ANTHROPIC_API_KEY || '' }}
+          TINFOIL_API_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
+          TINFOIL_ENCLAVE_URL: ${{ matrix.leg.real && secrets.QA_TINFOIL_ENCLAVE_URL || '' }}
+          EXA_API_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
+          QA_DIST: ${{ matrix.leg.dist }}
+          ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
+        run: scripts/qa/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
+
+      - name: Build the prompt
+        id: prompt
+        run: |
+          {
+            echo 'text<<QA_PROMPT_EOF'
+            scripts/qa/explore.sh prompt "$QA_CHARTER" "$QA_OUT"
+            echo 'QA_PROMPT_EOF'
+            echo "schema=$(jq --compact-output . qa/findings.schema.json)"
+            echo "start=$(date +%s)"
+          } >> "$GITHUB_OUTPUT"
+
+      # Same flags as scripts/qa/explore.sh. Only Write (inside the out dir) and the browser tools, no shell and no
+      # file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
+      - name: Explore
+        id: explore
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with:
+          anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model claude-sonnet-5-5
+            --setting-sources user
+            --permission-mode dontAsk
+            --tools Write
+            --allowedTools "mcp__playwright__*" "mcp__playwright_b__*" "Edit(${{ env.QA_OUT }}/**)"
+            --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe
+            --strict-mcp-config
+            --mcp-config ${{ matrix.leg.mcp }}
+            --json-schema '${{ steps.prompt.outputs.schema }}'
+            --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
+            --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
+
+      # The browser tools can write files into the checkout, so stop every process holding keys before any repo
+      # script runs again.
+      - &stop-stack
+        name: Stop the stack
+        if: always()
+        run: scripts/qa/stack.sh stop || true
+
+      - name: Record the session metrics
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.explore.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+          START: ${{ steps.prompt.outputs.start }}
+        run: |
+          # A step killed by its timeout leaves no execution file, so tell report.ts why it is missing.
+          timed_out=()
+          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
+          bun scripts/qa/report.ts session --execution-file "$EXECUTION_FILE" --charter "$QA_CHARTER" --out "$QA_OUT" "${timed_out[@]}"
+
+      - name: Save the session summary
+        if: always() && steps.explore.outputs.structured_output != ''
+        env:
+          SUMMARY: ${{ steps.explore.outputs.structured_output }}
+        run: printf '%s\n' "$SUMMARY" > "$QA_OUT/$QA_CHARTER/findings.json"
+
+      - name: Upload findings, specs and metrics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.leg.artifact }}-${{ matrix.leg.charter }}
+          # The `*` keeps the <charter>/ directory inside the artifact: upload-artifact drops what precedes it.
+          path: |
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings/*.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.spec.ts
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/session.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  replay:
+    name: replay ${{ matrix.leg.name }}
+    needs: [build, explore]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # No environment and no secrets: this job runs model-written specs.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.build.outputs.verify) }}
+    services: *postgres-services
+    env:
+      QA_OUT: ${{ matrix.leg.out }}
+      DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
+      POWERSYNC_URL: ${{ matrix.leg.postgres && 'http://localhost:18081' || '' }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - *restore-browsers
+      - *install-browsers
+      - *download-dist
+      - *download-onboarding
+      - name: Download the sessions' findings
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ matrix.leg.artifact }}-*
+          path: ${{ matrix.leg.out }}
+          merge-multiple: true
+      - *postgres-setup
+
+      - name: Start the stack
+        env:
+          QA_DIST: ${{ matrix.leg.dist }}
+          ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
+        run: |
+          mkdir -p "$QA_OUT"
+          scripts/qa/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
+
+      - name: Replay the repro specs
+        run: bun scripts/qa/verify.ts replay --out "$QA_OUT"
+
+      - name: Remove credentials and network data from traces
+        id: sanitize
+        if: always()
+        run: |
+          bun test scripts/sanitize-nightly-artifacts.test.ts --timeout 5000
+          bun scripts/sanitize-nightly-artifacts.ts "$QA_OUT/replay"
+
+      - name: Upload the replay
+        if: always() && steps.sanitize.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-replay-${{ matrix.leg.name }}
+          path: ${{ matrix.leg.out }}/
+          retention-days: 7
+
+  judge:
+    name: judge ${{ matrix.leg.name }}
+    needs: [build, replay]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.build.outputs.verify) }}
+    env:
+      QA_OUT: ${{ matrix.leg.out }}
+    steps:
+      # A fresh job, because the replayed specs could have rewritten any file in the replay job's checkout.
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-replay-${{ matrix.leg.name }}
+          path: ${{ matrix.leg.out }}
+      - name: Judge the confirmed findings
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+        run: bun scripts/qa/verify.ts judge --out "$QA_OUT"
+      - name: Measure canary recall
+        if: matrix.leg.name == 'canary'
+        run: bun scripts/qa/report.ts canary --out "$QA_OUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-verified-${{ matrix.leg.name }}
+          path: |
+            ${{ matrix.leg.out }}/verified.json
+            ${{ matrix.leg.out }}/canary.json
+          retention-days: 7
+
+  file:
+    needs: [build, judge]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: qa-agent
+    permissions:
+      contents: read
+    outputs:
+      plan: ${{ steps.route.outputs.plan }}
+    env:
+      QA_OUT: qa-out
+      HAS_LINEAR_KEY: ${{ secrets.QA_LINEAR_API_KEY != '' }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-replay-weekly
+          path: qa-out
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-verified-weekly
+          path: qa-out
+      - name: File the confirmed findings
+        env:
+          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun scripts/qa/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+      - name: Scorecard
+        if: env.HAS_LINEAR_KEY == 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+        run: bun scripts/qa/file-findings.ts scorecard --out qa-out
+      - name: Route fixable tickets
+        id: route
+        if: needs.build.outputs.autofix == 'true'
+        env:
+          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+        run: |
+          bun scripts/qa/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+          echo "plan=$(jq --compact-output . qa-out/fix-plan.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-filed
+          path: |
+            qa-out/filed.json
+            qa-out/scorecard.json
+            qa-out/fix-plan.json
+          retention-days: 7
+
+  fix:
+    name: fix ${{ matrix.task.fp }}
+    needs: [build, file]
+    if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90 # outer bound: the fix step's own cap plus setup
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.file.outputs.plan).fixes }}
+    env:
+      QA_OUT: qa-out
+      QA_FP: ${{ matrix.task.fp }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      - *restore-browsers
+      - *install-browsers
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-replay-weekly
+          path: qa-out
+
+      - name: Start the stack on the working tree
+        run: scripts/qa/stack.sh start dev
+
+      - name: Build the prompt
+        id: prompt
+        env:
+          TASK: ${{ toJSON(matrix.task) }}
+        run: |
+          {
+            echo 'text<<QA_PROMPT_EOF'
+            cat qa/fix.md
+            # shellcheck disable=SC2016 # Markdown backticks
+            printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
+            echo 'QA_PROMPT_EOF'
+            echo "start=$(date +%s)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The tool rules keep the agent on task; they are not the boundary. This job holds no write token and
+      # publishing is a separate, deterministic job.
+      - name: Fix
+        id: fix
+        continue-on-error: true
+        timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
+        uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
+        with:
+          anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: |
+            --model claude-opus-5-5
+            --setting-sources user
+            --permission-mode dontAsk
+            --tools "Read,Glob,Grep,Edit,Write,Bash"
+            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts:*)"
+            --disallowedTools "Bash(git:*),WebFetch,WebSearch"
+            --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
+            --max-turns ${{ env.QA_FIX_MAX_TURNS }}
+
+      - *stop-stack
+
+      - name: Collect the patch
+        if: always()
+        env:
+          SPEC: ${{ matrix.task.spec }}
+        run: |
+          mkdir -p qa-out/fix
+          git add --all
+          git diff --cached --binary HEAD > "qa-out/fix/$QA_FP.patch"
+          cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"
+
+      - name: Record the session metrics
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.fix.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+          START: ${{ steps.prompt.outputs.start }}
+        run: |
+          timed_out=()
+          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
+          bun scripts/qa/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-${{ matrix.task.fp }}
+          path: qa-out/fix/
+          retention-days: 7
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-fix-session-${{ matrix.task.fp }}
+          path: qa-out/fix-*/session.json
+          retention-days: 7
+
+  publish:
+    name: publish ${{ matrix.task.fp }}
+    needs: [build, file, fix]
+    if: ${{ !cancelled() && needs.file.outputs.plan != '' && fromJSON(needs.file.outputs.plan).fixes[0] != null }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: qa-agent
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        task: ${{ fromJSON(needs.file.outputs.plan).fixes }}
+    env:
+      QA_FP: ${{ matrix.task.fp }}
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      # The original specs and the plan come from before the fix agent ran; only its patch comes from the fix job.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-replay-weekly
+          path: qa-out
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-filed
+          path: qa-out
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-fix-${{ matrix.task.fp }}
+          path: qa-out/fix
+
+      - name: Create the GitHub App token
+        id: app-token
+        if: needs.build.outputs.live == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.QA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.QA_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Commit as the app
+        if: needs.build.outputs.live == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+
+      - name: Publish a draft PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
+        run: bun scripts/qa/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+
+  report:
+    needs: [build, explore, replay, judge, file, fix, publish]
+    if: ${{ always() && needs.build.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: qa-agent
+    permissions:
+      contents: read
+    steps:
+      - *checkout
+      - *setup-bun
+      - *restore-bun
+      - *install
+      # Every result is optional here: the report shows whatever the run got to.
+      - continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: '{qa-explore-*,qa-fix-session-*,qa-verified-weekly,qa-filed}'
+          path: qa-out
+          merge-multiple: true
+      - continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: '{qa-canary-*,qa-verified-canary}'
+          path: qa-out-canary
+          merge-multiple: true
+
+      - name: Report
+        run: |
+          bun scripts/qa/report.ts summary --out qa-out
+          if [ -d qa-out-canary ]; then
+            echo '# Canary leg: c8 on a build with planted bugs, never filed' >> "$GITHUB_STEP_SUMMARY"
+            bun scripts/qa/report.ts summary --out qa-out-canary
+          fi
+
+      - name: Heartbeat
+        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        env:
+          HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
+        run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"
+
+  notify:
+    needs: [build, explore, replay, judge, file, fix, publish, report]
+    if: ${{ always() && !cancelled() && needs.build.result != 'skipped' && github.ref == 'refs/heads/main' }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

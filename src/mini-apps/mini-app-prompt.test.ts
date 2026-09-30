@@ -18,11 +18,11 @@ const app: MiniAppDefinition = {
 
 describe('buildMiniAppPromptSection', () => {
   it('returns null when no app is open, so the prompt gains no empty heading', () => {
-    expect(buildMiniAppPromptSection(null)).toBeNull()
+    expect(buildMiniAppPromptSection(null, 'mini-app')).toBeNull()
   })
 
   it('names the app and its purpose', () => {
-    const section = buildMiniAppPromptSection(app)
+    const section = buildMiniAppPromptSection(app, 'mini-app')
     expect(section).toContain('# Mini App: Finance Model')
     expect(section).toContain('Quarterly revenue and headcount model.')
   })
@@ -30,7 +30,7 @@ describe('buildMiniAppPromptSection', () => {
   // Without an explicit pointer the model answers "I can't see your screen"
   // instead of calling the tool.
   it('tells the model to call get_app_context', () => {
-    expect(buildMiniAppPromptSection(app)).toContain('get_app_context')
+    expect(buildMiniAppPromptSection(app, 'mini-app')).toContain('get_app_context')
   })
 
   /*
@@ -40,6 +40,20 @@ describe('buildMiniAppPromptSection', () => {
    * on every click — the exact trade `project-search-tool.ts` documents.
    */
   it('is stable across calls for the same app', () => {
-    expect(buildMiniAppPromptSection(app)).toBe(buildMiniAppPromptSection(app))
+    expect(buildMiniAppPromptSection(app, 'mini-app')).toBe(buildMiniAppPromptSection(app, 'mini-app'))
+  })
+
+  /*
+   * `get_app_context` is one tool name for both embedded surfaces, and with an
+   * artifact selected it reports the artifact. Emitting this section anyway
+   * told the model the user was looking at the app and to call that tool to see
+   * it — a prompt pointing at a tool that answers about something else.
+   */
+  it('says nothing about the app when the artifact is the selected surface', () => {
+    expect(buildMiniAppPromptSection(app, 'artifact')).toBeNull()
+  })
+
+  it('says nothing when neither surface is selected', () => {
+    expect(buildMiniAppPromptSection(app, null)).toBeNull()
   })
 })

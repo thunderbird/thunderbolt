@@ -647,7 +647,10 @@ export const prepareAiRequestConfig = async ({
     // and only advertise the actions that survived the merge above.
     miniAppSection: supportsTools
       ? [
-          buildMiniAppPromptSection(miniApp),
+          // Gated on the surface: with an artifact selected, `get_app_context`
+          // reports the artifact, so claiming the app is on screen would point
+          // the model at a tool that answers about something else.
+          buildMiniAppPromptSection(miniApp, surface),
           buildMiniAppToolsPromptSection(
             miniAppSnapshot.tools.filter((tool) => registeredMiniAppTools.has(toToolsetName(tool))),
           ),

@@ -17,14 +17,26 @@
  * and never calls `get_app_context`.
  */
 
+import type { EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
 import type { MiniAppDefinition } from './registry'
 
 /**
- * Build the `# Mini App` section, or null when no app is open so the prompt
- * gains no empty heading.
+ * Build the `# Mini App` section, or null when the app is not the surface the
+ * model should be answering about, so the prompt gains no empty heading.
+ *
+ * `surface` is load-bearing, not decoration. `get_app_context` is one tool name
+ * for both embedded surfaces, and with an artifact selected it reports the
+ * *artifact*. Emitting this section anyway told the model the user was looking
+ * at the app and to call that tool to see it — a prompt pointing at a tool that
+ * answers about something else. The app's action tools stay advertised either
+ * way, because they stay registered; only the claim about what is on screen is
+ * gated. See `chooseEmbeddedSurface` for how the surface is picked.
  */
-export const buildMiniAppPromptSection = (app: MiniAppDefinition | null): string | null => {
-  if (!app) {
+export const buildMiniAppPromptSection = (
+  app: MiniAppDefinition | null,
+  surface: EmbeddedSurfaceChoice,
+): string | null => {
+  if (!app || surface !== 'mini-app') {
     return null
   }
   return [

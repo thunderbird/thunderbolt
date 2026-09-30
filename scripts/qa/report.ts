@@ -8,7 +8,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import type { Filed, Scorecard } from './file-findings'
-import { loadFindings } from './findings'
+import { type FindingFile, loadFindings } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
 
 export type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
@@ -87,16 +87,48 @@ export const suggestCap = (samples: number[]) => {
   return basis * 1.5
 }
 
-type Canary = { patch: string; charter: string; area: string; oracle: string; description: string }
-type CanaryResult = { found: number; total: number; results: (Canary & { found: boolean })[] }
+type Canary = { patch: string; charter: string; area: string; oracle: string; keywords: string[]; description: string }
+type CanaryResult = {
+  found: number
+  total: number
+  results: (Canary & { found: boolean })[]
+  /** Broke on the normal build too: real bugs, never counted. */
+  real: string[]
+  /** Caused by a canary but matching no canary's keywords. */
+  unattributed: string[]
+}
 
-/** A canary is found when a confirmed or flaky finding has its area and oracle type. */
-export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[]): CanaryResult => {
+const findingId = (f: FindingFile) => `${f.charterDir}/${f.id}`
+const findingText = ({ finding }: FindingFile) =>
+  [finding.title, ...finding.steps, finding.actual].join(' ').toLowerCase()
+
+const mentions = (canary: Canary, f: FindingFile) =>
+  canary.keywords.some((k) => findingText(f).includes(k.toLowerCase()))
+
+/**
+ * A canary is found when a canary-leg finding (confirmed or flaky) drops at replay (0 failures) on the normal
+ * build, so the canary patch caused it, and mentions one of the canary's keywords. Area and oracle type are not
+ * compared: the explorer files the same bug under different ones. A finding the baseline never replayed, or
+ * replayed on an unhealthy stack, is not proven canary-caused and counts as real.
+ */
+export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
+  const caused = (f: VerifiedFinding) =>
+    !baseline.stack_unhealthy &&
+    baseline.dropped.some(
+      (d) => d.gate === 'replay' && findingId(d.file) === findingId(f) && d.reason.startsWith('failed 0/'),
+    )
+  const canaryCaused = findings.filter(caused)
   const results = canaries.map((c) => ({
     ...c,
-    found: findings.some((f) => f.finding.area === c.area && f.finding.oracle.type === c.oracle),
+    found: canaryCaused.some((f) => mentions(c, f)),
   }))
-  return { found: results.filter((r) => r.found).length, total: results.length, results }
+  return {
+    found: results.filter((r) => r.found).length,
+    total: results.length,
+    results,
+    real: findings.filter((f) => !caused(f)).map(findingId),
+    unattributed: canaryCaused.filter((f) => !canaries.some((c) => mentions(c, f))).map(findingId),
+  }
 }
 
 type Summary = { visited: string[]; skipped: { screen: string; reason: string }[] }
@@ -225,7 +257,9 @@ export const renderReport = (input: ReportInput) => {
     out.push(
       '',
       `## Canary recall: ${canary.found}/${canary.total}`,
-      ...canary.results.map((r) => `- ${r.found ? 'found' : '**MISSED**'} ${r.patch} (${r.area}, ${r.oracle})`),
+      ...canary.results.map((r) => `- ${r.found ? 'found' : '**MISSED**'} ${r.patch}`),
+      `Unattributed canary-caused findings: ${canary.unattributed.join(', ') || 'none'}`,
+      `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
     )
   }
   const rows = calibrationRows(sessions, verified?.judge_usage?.cost_usd)
@@ -269,33 +303,28 @@ const runSummary = async (outDir: string) => {
 }
 
 /**
- * Canary leg: match its findings against `canaries.json`, write `canary.json` and move the matches out of
- * `confirmed`/`flaky` (into `canaryFindings`) so the filer never sees them.
+ * Canary leg: match its findings against `canaries.json` and the baseline (the same findings replayed on the normal
+ * build), write `canary.json`, and move every canary-leg finding out of `confirmed`/`flaky` (into `canaryFindings`)
+ * so the filer never sees them.
  */
-export const runCanary = async (outDir: string, canariesPath = 'qa/canaries/canaries.json') => {
+export const runCanary = async (outDir: string, baselineDir: string, canariesPath = 'qa/canaries/canaries.json') => {
   const verified = (await readJson<Verified>(join(outDir, 'verified.json'))) ?? {
     confirmed: [],
     flaky: [],
     observations: [],
     dropped: [],
   }
+  const baseline =
+    (await readJson<Verified>(join(baselineDir, 'candidates.json'))) ??
+    (await readJson<Verified>(join(baselineDir, 'verified.json')))
+  if (!baseline) throw new Error(`no candidates.json or verified.json in ${baselineDir}`)
   const canaries = JSON.parse(await readFile(canariesPath, 'utf8')) as Canary[]
-  const result = matchCanaries(canaries, [...verified.confirmed, ...verified.flaky])
-  const isCanary = (f: VerifiedFinding) =>
-    canaries.some((c) => c.area === f.finding.area && c.oracle === f.finding.oracle.type)
+  const canaryLeg = [...verified.confirmed, ...verified.flaky]
+  const result = matchCanaries(canaries, canaryLeg, baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
   await writeFile(
     join(outDir, 'verified.json'),
-    JSON.stringify(
-      {
-        ...verified,
-        confirmed: verified.confirmed.filter((f) => !isCanary(f)),
-        flaky: verified.flaky.filter((f) => !isCanary(f)),
-        canaryFindings: [...verified.confirmed, ...verified.flaky].filter(isCanary),
-      },
-      null,
-      2,
-    ),
+    JSON.stringify({ ...verified, confirmed: [], flaky: [], canaryFindings: canaryLeg }, null, 2),
   )
   return result
 }
@@ -308,6 +337,7 @@ if (import.meta.main) {
       'execution-file': { type: 'string' },
       charter: { type: 'string' },
       'timed-out': { type: 'boolean', default: false },
+      baseline: { type: 'string' },
     },
   })
   const out = values.out
@@ -319,9 +349,10 @@ if (import.meta.main) {
   } else if (positionals[0] === 'summary') {
     console.log(await runSummary(out))
   } else if (positionals[0] === 'canary') {
-    const result = await runCanary(out)
+    if (!values.baseline) throw new Error('canary needs --baseline')
+    const result = await runCanary(out, values.baseline)
     console.log(`canary recall ${result.found}/${result.total}`)
   } else {
-    throw new Error('usage: report.ts session|summary|canary --out qa-out')
+    throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir]')
   }
 }

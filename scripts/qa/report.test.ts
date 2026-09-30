@@ -201,18 +201,29 @@ describe('renderReport', () => {
       filed: [{ fp: 'abcd1234', severity: 'Medium', action: 'dry-run', would: 'created' }],
       canary: {
         found: 1,
-        total: 3,
+        total: 2,
         results: [
-          { patch: 'a.patch', charter: 'c8', area: 'skills', oracle: 'page-error', description: '', found: true },
+          {
+            patch: 'a.patch',
+            charter: 'c8',
+            area: 'skills',
+            oracle: 'page-error',
+            keywords: [],
+            description: '',
+            found: true,
+          },
           {
             patch: 'b.patch',
             charter: 'c8',
             area: 'settings',
             oracle: 'lost-on-reload',
+            keywords: [],
             description: '',
             found: false,
           },
         ],
+        real: ['c8-phone/7'],
+        unattributed: [],
       },
     })
     expect(report).toContain('found 6 → oracle 4 → lint 4 → replay 4 (1 flaky) → judge 3 → filed 1')
@@ -220,8 +231,9 @@ describe('renderReport', () => {
     expect(report).toContain('c1/4: **judge** — known issue')
     expect(report).toContain('dry-run (would created) abcd1234 Medium')
     expect(report).toContain('Judge: $0.12')
-    expect(report).toContain('Canary recall: 1/3')
+    expect(report).toContain('Canary recall: 1/2')
     expect(report).toContain('**MISSED** b.patch')
+    expect(report).toContain('Real bugs seen in the canary leg (not counted): c8-phone/7')
   })
 
   it('adds a calibration row per metric with max observed and the +50% cap', () => {
@@ -241,41 +253,106 @@ describe('renderReport', () => {
 
 describe('canaries', () => {
   const canaries = [
-    { patch: 'a.patch', charter: 'c8-phone', area: 'settings', oracle: 'lost-on-reload', description: '' },
-    { patch: 'b.patch', charter: 'c8-phone', area: 'skills', oracle: 'page-error', description: '' },
-    { patch: 'c.patch', charter: 'c8-phone', area: 'layout', oracle: 'overflow', description: '' },
+    {
+      patch: 'a.patch',
+      charter: 'c8-phone',
+      area: 'settings',
+      oracle: 'lost-on-reload',
+      keywords: ['preferred name'],
+      description: '',
+    },
+    {
+      patch: 'b.patch',
+      charter: 'c8-phone',
+      area: 'skills',
+      oracle: 'page-error',
+      keywords: ['delet'],
+      description: '',
+    },
+    {
+      patch: 'c.patch',
+      charter: 'c8-phone',
+      area: 'layout',
+      oracle: 'overflow',
+      keywords: ['subtitle'],
+      description: '',
+    },
   ]
-
-  it('matches on area and oracle type, not on the oracle alone', () => {
-    const result = matchCanaries(canaries, [
-      verifiedFinding('settings', 'lost-on-reload'),
-      verifiedFinding('chat', 'page-error'),
-    ])
-    expect(result.found).toBe(1)
-    expect(result.results.map((r) => r.found)).toEqual([true, false, false])
+  const finding = (id: string, title: string, area = 'other', type = 'console-error') => ({
+    ...verifiedFinding(area, type, id),
+    finding: { ...raw(area, type), title },
+  })
+  const droppedOnNormal = (...ids: string[]): Verified => ({
+    ...emptyVerified,
+    dropped: ids.map((id) => ({
+      file: { charterDir: 'c8-phone', id, reason: '' },
+      gate: 'replay' as const,
+      reason: 'failed 0/3 replays',
+    })),
   })
 
-  it('moves matched findings out of confirmed and flaky so they are never filed', async () => {
-    const other = verifiedFinding('chat', 'stuck', '5')
+  it('counts a finding that drops on the normal build and names a keyword, whatever its area and oracle', () => {
+    const result = matchCanaries(
+      canaries,
+      [finding('1', 'Deleting a skill logs an error'), finding('2', 'Row subtitle spills out', 'skills')],
+      droppedOnNormal('1', '2'),
+    )
+    expect(result.results.map((r) => r.found)).toEqual([false, true, true])
+    expect(result.found).toBe(2)
+  })
+
+  it('does not count a bug that also fails on the normal build, and lists it as real', () => {
+    const result = matchCanaries(canaries, [finding('3', 'Long subtitle overflows the bubble')], emptyVerified)
+    expect(result.found).toBe(0)
+    expect(result.real).toEqual(['c8-phone/3'])
+  })
+
+  it('does not trust a baseline from an unhealthy stack', () => {
+    const baseline = { ...droppedOnNormal('1'), stack_unhealthy: 'control failed' }
+    expect(matchCanaries(canaries, [finding('1', 'Delete fails')], baseline)).toMatchObject({
+      found: 0,
+      real: ['c8-phone/1'],
+    })
+  })
+
+  it('matches keywords case-insensitively in steps and actual too', () => {
+    const f = finding('4', 'Something odd')
+    f.finding.steps = ['Type a Preferred Name']
+    expect(matchCanaries(canaries, [f], droppedOnNormal('4')).results[0].found).toBe(true)
+  })
+
+  it('reports a canary-caused finding with no keyword as unattributed and does not count it', () => {
+    const result = matchCanaries(canaries, [finding('5', 'Sidebar glitch')], droppedOnNormal('5'))
+    expect(result).toMatchObject({ found: 0, unattributed: ['c8-phone/5'], real: [] })
+  })
+
+  it('empties confirmed and flaky so the filer never sees canary-leg findings', async () => {
+    const baselineDir = join(dir, 'baseline')
+    await mkdir(baselineDir)
+    await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(droppedOnNormal('1')))
     await writeFile(
       join(dir, 'verified.json'),
       JSON.stringify({
         ...emptyVerified,
-        confirmed: [verifiedFinding('settings', 'lost-on-reload'), other],
-        flaky: [verifiedFinding('layout', 'overflow', '2')],
+        confirmed: [finding('1', 'Delete skill throws')],
+        flaky: [finding('2', 'Unrelated real bug')],
       }),
     )
-    await mkdir(join(dir, 'c'))
     const canariesPath = join(dir, 'canaries.json')
     await writeFile(canariesPath, JSON.stringify(canaries))
 
-    const result = await runCanary(dir, canariesPath)
+    const result = await runCanary(dir, baselineDir, canariesPath)
 
-    expect(result.found).toBe(2)
+    expect(result).toMatchObject({ found: 1, real: ['c8-phone/2'] })
     const written = JSON.parse(await readFile(join(dir, 'verified.json'), 'utf8'))
-    expect(written.confirmed).toEqual([other])
+    expect(written.confirmed).toEqual([])
     expect(written.flaky).toEqual([])
     expect(written.canaryFindings).toHaveLength(2)
-    expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8')).found).toBe(2)
+    expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8')).found).toBe(1)
+  })
+
+  it('fails loudly without a baseline', async () => {
+    await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
+    expect(runCanary(dir, join(dir, 'missing'), join(dir, 'canaries.json'))).rejects.toThrow('no candidates.json')
   })
 })

@@ -185,6 +185,33 @@ describe('route', () => {
     expect(calls[1].variables).toEqual({ id: 'issue-high-sync', labelId: 'label-hr' })
   })
 
+  test('a live run routes nothing when filing was forced into a dry run', async () => {
+    await setup()
+    const filed: Filed[] = JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))
+    const braked = filed.map(({ fp, charterDir, id, severity, action }) => ({
+      fp,
+      charterDir,
+      id,
+      severity,
+      action: 'dry-run' as const,
+      would: action,
+    }))
+    await put(join(outDir, 'filed.json'), JSON.stringify(braked))
+    const calls: Call[] = []
+
+    const plan = await route({
+      outDir,
+      live: true,
+      key: 'k',
+      run: fakeRun([], {}),
+      fetchFn: fakeLinear(calls),
+      log: () => {},
+    })
+
+    expect(plan).toEqual({ fixes: [], humanRequired: [] })
+    expect(calls).toEqual([])
+  })
+
   test('refuses a live run without a Linear key', async () => {
     await setup()
     expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow('LINEAR_API_KEY')

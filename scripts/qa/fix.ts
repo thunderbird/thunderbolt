@@ -114,6 +114,8 @@ export type RouteOptions = {
  * on disk, its area is fixable, and no `qa-fix/<fp>` branch exists yet (an earlier draft PR is still open).
  * At most three, highest severity first. Security findings are never routed. Every other area (sync, auth,
  * models, data, onboarding, …) needs a person: with `live` those tickets get the `human required` label.
+ * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent; a dry run
+ * plans what a live filing would have created.
  */
 export const route = async ({
   outDir,
@@ -130,7 +132,7 @@ export const route = async ({
   const pending = new Set(branches.match(/(?<=refs\/heads\/qa-fix\/)\S+/g))
   const plan: FixPlan = { fixes: [], humanRequired: [] }
   const tickets = filed
-    .filter((f) => ticketActions.has(f.action === 'dry-run' ? f.would : f.action))
+    .filter((f) => ticketActions.has(f.action === 'dry-run' && !live ? f.would : f.action))
     .sort((a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity))
   for (const { fp, severity, issueId, identifier, url, charterDir, id } of tickets) {
     const verified = confirmed.find((v) => v.charterDir === charterDir && v.id === id)

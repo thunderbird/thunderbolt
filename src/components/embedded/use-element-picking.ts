@@ -22,7 +22,7 @@
  * are not.
  */
 
-import { useCallback, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { toPickedPassage } from './picked-passage'
 import type { SurfaceHighlightedElement } from './types'
@@ -100,6 +100,23 @@ export const useElementPicking = ({ query, onAsk }: ElementPickingDeps) => {
     gestureRef.current += 1
     dispatch({ type: 'DISMISSED' })
   }, [])
+
+  /*
+   * Unmounting ends the gesture too.
+   *
+   * The counter moved on a start and on a dismissal but not when the page went
+   * away, so a hit-test that came back after navigation still matched the
+   * gesture it belonged to and attached a passage for a pick the user had
+   * abandoned — onto whatever conversation happened to be current by then.
+   * Bumping it on teardown makes every outstanding reply stale, which is what
+   * the counter is for.
+   */
+  useEffect(
+    () => () => {
+      gestureRef.current += 1
+    },
+    [],
+  )
 
   const pointAt = useCallback(
     async (point: { x: number; y: number }) => {

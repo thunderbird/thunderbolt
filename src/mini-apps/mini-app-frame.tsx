@@ -5,7 +5,7 @@
 import { Trans } from '@lingui/react/macro'
 import type { RefObject } from 'react'
 
-import { EmbeddedSurfaceStatus } from '@/components/embedded/surface-status'
+import { EmbeddedSurfaceStatus } from '@/components/embedded'
 import type { MiniAppBridgeStatus } from './use-mini-app-bridge'
 import type { MiniAppDefinition } from './registry'
 

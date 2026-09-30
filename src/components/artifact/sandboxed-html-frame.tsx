@@ -13,8 +13,9 @@ import {
   type ArtifactContext,
   type ArtifactTextSelection,
 } from '@/artifacts/harness'
-import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded/pending-requests'
-import type { SurfaceHighlightedElement } from '@/components/embedded/types'
+import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded'
+import type { SurfaceHighlightedElement } from '@/components/embedded'
+
 import { cn } from '@/lib/utils'
 import { useEffect, useMemo, useRef, useState } from 'react'
 

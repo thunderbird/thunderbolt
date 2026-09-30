@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
+import { EmbeddedErrorStrip } from '@/components/embedded'
 import { SandboxedHtmlFrame } from '@/components/artifact/sandboxed-html-frame'
 import { Button } from '@/components/ui/button'
 import { useAppSettled } from '@/hooks/use-app-settled'

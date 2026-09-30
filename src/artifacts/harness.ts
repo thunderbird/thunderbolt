@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 import { clampedString } from '@shared/lib/clamped-string'
 
-import type { SurfaceTextSelection } from '@/components/embedded/types'
+import type { SurfaceTextSelection } from '@/components/embedded'
 
 export type HarnessMessage =
   | { artifactNonce: string; type: 'artifact-ready' }

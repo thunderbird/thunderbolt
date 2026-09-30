@@ -11,11 +11,10 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { MessageSquare, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
-import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
-import { ElementPickOverlay } from '@/components/embedded/element-pick-overlay'
-import { useElementPicking } from '@/components/embedded/use-element-picking'
+import { ElementPickOverlay, EmbeddedErrorStrip, SelectionPopover, useElementPicking } from '@/components/embedded'
+
 import { MiniAppFrame } from './mini-app-frame'
-import { SelectionPopover } from '@/components/embedded/selection-popover'
+
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'

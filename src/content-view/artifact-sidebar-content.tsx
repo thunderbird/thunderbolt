@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { ArtifactActions } from '@/components/artifact/artifact-actions'
-import { EmbeddedErrorStrip } from '@/components/embedded/surface-status'
+import { EmbeddedErrorStrip } from '@/components/embedded'
 import { SelectableArtifact } from '@/components/artifact/selectable-artifact'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 import { useParams } from 'react-router'

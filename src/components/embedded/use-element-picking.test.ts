@@ -252,4 +252,44 @@ describe('useElementPicking', () => {
 
     expect(hook.result.current.mode.kind).toBe('idle')
   })
+
+  /*
+   * Same rule, different way of leaving: the counter moved on a dismissal but
+   * not when the page went away, so a hit-test answering after navigation still
+   * matched its gesture and attached a passage for a pick the user had
+   * abandoned — onto whatever conversation was current by then.
+   */
+  it('ignores an answer that lands after the page went away', async () => {
+    const { query, releases } = deferredQueries()
+    const { hook, asked } = setup(query)
+    act(() => hook.result.current.startPicking())
+
+    // Put an element on screen, then move again so the outline is stale — which
+    // is the only path where `pickAt` awaits a fresh hit-test of its own.
+    let firstMove: Promise<void> = Promise.resolve()
+    act(() => {
+      firstMove = hook.result.current.pointAt(point)
+    })
+    await act(async () => {
+      releases[0](element('first'))
+      await firstMove
+    })
+    act(() => {
+      void hook.result.current.pointAt({ x: 99, y: 99 })
+    })
+
+    let inFlight: Promise<void> = Promise.resolve()
+    act(() => {
+      inFlight = hook.result.current.pickAt(point)
+    })
+    expect(releases).toHaveLength(3)
+
+    hook.unmount()
+    await act(async () => {
+      releases[2](element('late'))
+      await inFlight
+    })
+
+    expect(asked).toEqual([])
+  })
 })

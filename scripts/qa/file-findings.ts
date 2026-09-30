@@ -6,6 +6,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
+import { parseArgs } from 'node:util'
 import { linear } from '../notify-on-failure'
 import { type Finding, findingSchema, fingerprint, type Severity, severity } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
@@ -412,22 +413,29 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
 }
 
 if (import.meta.main) {
-  const args = Bun.argv.slice(2)
-  const flag = (name: string) => args[args.indexOf(name) + 1]
-  const outDir = flag('--out') ?? 'qa-out'
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      out: { type: 'string', default: 'qa-out' },
+      live: { type: 'boolean', default: false },
+      'run-url': { type: 'string' },
+    },
+  })
   const key = Bun.env.LINEAR_API_KEY
-  if (args[0] === 'scorecard') {
+  if (positionals[0] === 'scorecard') {
     if (!key) throw new Error('Missing LINEAR_API_KEY')
     const card = await computeScorecard(fetch, key)
-    await writeFile(join(outDir, 'scorecard.json'), JSON.stringify(card, null, 2))
+    await writeFile(join(values.out, 'scorecard.json'), JSON.stringify(card, null, 2))
     console.log(JSON.stringify(card, null, 2))
-  } else {
+  } else if (positionals.length === 0) {
     await fileFindings({
-      outDir,
-      live: args.includes('--live'),
-      runUrl: args.includes('--run-url') ? flag('--run-url') : undefined,
+      outDir: values.out,
+      live: values.live,
+      runUrl: values['run-url'],
       sha: Bun.env.GITHUB_SHA,
       key,
     })
+  } else {
+    throw new Error('usage: file-findings.ts [scorecard] --out DIR [--live] [--run-url URL]')
   }
 }

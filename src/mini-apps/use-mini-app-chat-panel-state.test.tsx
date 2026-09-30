@@ -223,6 +223,45 @@ describe('promotion and history', () => {
     expect(result.current.draftChatId).toBeNull()
   })
 
+  /*
+   * THU-905. The panel's width is `defaultSize` on a `ResizablePanel`, which the
+   * library applies on mount — so anything that unmounts the panel silently
+   * discards the width the user dragged to. Promotion clears the draft and asks
+   * the router for a new query, and the router answers a render later, so a gate
+   * on `openChatId !== null` sees null in between. `isChatOpen` must not.
+   */
+  it('stays open while a draft is promoted, even with the id momentarily absent', () => {
+    const { result } = setup()
+
+    act(() => result.current.openChat())
+    const id = result.current.openChatId ?? ''
+    expect(result.current.isChatOpen).toBe(true)
+
+    act(() => result.current.handleChatCreated(id))
+
+    expect(result.current.isChatOpen).toBe(true)
+    expect(result.current.openChatId).toBe(id)
+  })
+
+  it('reports closed only when the user closes it', () => {
+    const { result } = setup()
+
+    expect(result.current.isChatOpen).toBe(false)
+    act(() => result.current.openChat())
+    expect(result.current.isChatOpen).toBe(true)
+    act(() => result.current.closeChat())
+    expect(result.current.isChatOpen).toBe(false)
+    // Reopening resumes the same conversation, so the panel is open again.
+    act(() => result.current.openChat())
+    expect(result.current.isChatOpen).toBe(true)
+  })
+
+  it('starts open when the URL already names a thread', () => {
+    const { result } = setup('/apps/finance-model?chat=thread-1')
+
+    expect(result.current.isChatOpen).toBe(true)
+  })
+
   it('shows a thread picked from history, dropping any draft', () => {
     const { result } = setup()
 

@@ -24,6 +24,14 @@ import { setPendingPrompt } from '@/chats/pending-prompt-store'
 import { usePendingQuotesStore } from '@/chats/pending-quotes-store'
 
 export type MiniAppChatPanelState = {
+  /**
+   * Whether the panel is on screen.
+   *
+   * Tracked rather than derived from `openChatId !== null`, because the id goes
+   * briefly null while a draft is promoted into the URL and the layout must not
+   * notice. See the comment on `isOpen` below.
+   */
+  isChatOpen: boolean
   /** The conversation on screen, or null when the panel is closed. */
   openChatId: string | null
   /**
@@ -77,6 +85,23 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   const openChatId = draftChatId ?? searchParams.get('chat')
 
   /*
+   * Open/closed as its own state, not `openChatId !== null`.
+   *
+   * Promoting a draft into the URL clears `draftChatId` and calls
+   * `setSearchParams`, and the router applies the new query a render later. For
+   * that one render both sources read null, so an `openChatId !== null` gate
+   * unmounts the panel and remounts it immediately afterwards — which re-applies
+   * the `ResizablePanel` `defaultSize` and throws away whatever width the user
+   * had dragged to. It reproduced as "the chat sidebar changes width after the
+   * first message, but not every time", the timing depending on whether the two
+   * updates landed in one render (THU-905).
+   *
+   * The id may blink; whether the panel is on screen is a decision the user
+   * made, so it is stored as one.
+   */
+  const [isOpen, setIsOpen] = useState(searchParams.get('chat') !== null)
+
+  /*
    * Read through refs, not dependencies. `openChat` is handed to the bridge,
    * which keeps it for the life of the connection — depending on `openChatId`
    * would rebuild the message listener every time a chat opens or closes, and
@@ -127,6 +152,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     (chatThreadId: string) => {
       setDraftChatId(null)
       setOpenChatParam(chatThreadId)
+      setIsOpen(true)
     },
     [setOpenChatParam],
   )
@@ -159,6 +185,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
       }
       setDraftChatId(chatThreadId)
       setOpenChatParam(null)
+      setIsOpen(true)
     },
     [showPersistedChat, setOpenChatParam],
   )
@@ -187,6 +214,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
       const closed = lastChatRef.current
       const existing = openChatIdRef.current ?? closed?.id ?? null
       if (existing) {
+        setIsOpen(true)
         if (prompt) {
           setPendingPrompt(existing, prompt)
         }
@@ -240,6 +268,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
     lastChatRef.current = closing ? { id: closing, hasRow: hasChatRow(closing, draftChatIdRef.current !== null) } : null
     setDraftChatId(null)
     setOpenChatParam(null)
+    setIsOpen(false)
   }, [setOpenChatParam])
 
   /**
@@ -276,6 +305,7 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   )
 
   return {
+    isChatOpen: isOpen,
     openChatId,
     draftChatId,
     openChat,

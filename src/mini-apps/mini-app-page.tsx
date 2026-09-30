@@ -34,6 +34,7 @@ const chatPanelSize = '34%'
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const {
+    isChatOpen,
     openChatId,
     draftChatId,
     openChat,
@@ -135,7 +136,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
      */
     <div className={cn('flex h-full w-full flex-col', insetForHeader && 'pt-[var(--header-inset)]')}>
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={openChatId ? appPanelSize : '100%'} minSize="30%">
+        <ResizablePanel id="mini-app" defaultSize={isChatOpen ? appPanelSize : '100%'} minSize="30%">
           <div className="relative flex flex-col h-full">
             <MiniAppFrame
               app={app}
@@ -177,7 +178,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                   <MousePointerClick className="size-[var(--icon-size-sm)]" />
                   <Trans>Select</Trans>
                 </Button>
-                {!openChatId && (
+                {!isChatOpen && (
                   <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
                     <MessageSquare className="size-[var(--icon-size-sm)]" />
                     <Trans>Chat</Trans>
@@ -187,10 +188,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             )}
           </div>
         </ResizablePanel>
-        {openChatId && (
+        {isChatOpen && (
           <>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={chatPanelSize} minSize="20%">
+            <ResizablePanel id="mini-app-chat" defaultSize={chatPanelSize} minSize="20%">
               <div className="flex h-full min-h-0 flex-col">
                 {/* The same header every other side panel uses, rather than a
                     strip of our own: it already carries the round close button,

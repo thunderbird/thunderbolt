@@ -35,7 +35,6 @@ const oracleTypes = [
 ] as const
 
 export type Area = (typeof areas)[number]
-export type OracleType = (typeof oracleTypes)[number]
 export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
 
 /** A finding that passed the oracle check: a known oracle type backed by quoted evidence. */
@@ -198,7 +197,8 @@ const problemWith = (node: ts.Node, sourceFile: ts.SourceFile, checker: ts.TypeC
   }
   if (ts.isPropertyAssignment(node) && ts.isStringLiteral(node.name)) return nameProblem(node.name.text)
   if (!ts.isIdentifier(node)) return undefined
-  if (nameProblem(node.text)) return nameProblem(node.text)
+  const problem = nameProblem(node.text)
+  if (problem) return problem
   if (isPropertyName(node) || allowedGlobals.has(node.text)) return undefined
   const symbol = ts.isShorthandPropertyAssignment(node.parent)
     ? checker.getShorthandAssignmentValueSymbol(node.parent)

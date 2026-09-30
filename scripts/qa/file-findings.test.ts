@@ -387,28 +387,20 @@ describe('scorecard and precision brake', () => {
       Array.from({ length: n }, () => ({ labels: { nodes: [{ name: 'qa-agent' }, { name }] } })),
     )
 
-  test('computes precision, counts and cost per valid ticket', async () => {
-    await mkdir(join(outDir, 'c1'), { recursive: true })
-    await writeFile(join(outDir, 'c1/session.json'), JSON.stringify({ cost_usd: 4 }))
+  test('computes precision and counts', async () => {
     const api = fakeLinear({
       scorecard: tickets({ 'qa:valid': 2, 'qa:not-a-bug': 1, 'qa:env-artifact': 1, 'qa:duplicate': 3 }),
     })
-    const card = await computeScorecard(api.fetchFn, 'k', outDir)
-    expect(card).toMatchObject({
+    expect(await computeScorecard(api.fetchFn, 'k')).toEqual({
+      window: '28 days',
       counts: { valid: 2, notABug: 1, duplicate: 3, envArtifact: 1 },
       labelled: 7,
       precision: 0.5,
-      costPerValid: 2,
     })
   })
 
   test('brakes at 8+ labelled tickets under 50% precision', () => {
-    const card = {
-      window: '',
-      counts: { valid: 0, notABug: 0, duplicate: 0, envArtifact: 0 },
-      costUsd: null,
-      costPerValid: null,
-    }
+    const card = { window: '', counts: { valid: 0, notABug: 0, duplicate: 0, envArtifact: 0 } }
     expect(shouldBrake({ ...card, labelled: 8, precision: 0.49 })).toBe(true)
     expect(shouldBrake({ ...card, labelled: 8, precision: 0.5 })).toBe(false)
     expect(shouldBrake({ ...card, labelled: 7, precision: 0 })).toBe(false)

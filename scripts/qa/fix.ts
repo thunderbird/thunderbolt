@@ -86,7 +86,7 @@ const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[
   }
 }
 
-export type RouteOptions = {
+type RouteOptions = {
   outDir: string
   live: boolean
   key?: string
@@ -210,7 +210,7 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
 
 const oneLine = (text: string) => text.replace(/[\p{Cc}\s]+/gu, ' ').trim()
 
-export type PublishOptions = {
+type PublishOptions = {
   outDir: string
   fp: string
   live: boolean
@@ -221,7 +221,7 @@ export type PublishOptions = {
   fetchFn?: typeof fetch
   log?: (line: string) => void
 }
-export type PublishResult =
+type PublishResult =
   | { outcome: 'pr'; branch: string; files: string[]; spec: string; commit: string; prUrl?: string }
   | { outcome: 'human-required'; reasons: string[] }
 

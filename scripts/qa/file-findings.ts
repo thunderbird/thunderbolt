@@ -6,7 +6,6 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
-import { z } from 'zod'
 import { linear } from '../notify-on-failure'
 import { type Finding, findingSchema, fingerprint, type Severity, severity } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
@@ -48,28 +47,13 @@ export type Scorecard = {
   counts: { valid: number; notABug: number; duplicate: number; envArtifact: number }
   labelled: number
   precision: number | null
-  costUsd: number | null
-  costPerValid: number | null
-}
-
-const sessionSchema = z.object({ cost_usd: z.number().optional() })
-
-/** Sum `cost_usd` over every `<charter>/session.json`; null when no session reported one. */
-const sessionCost = async (outDir: string): Promise<number | null> => {
-  const paths = await Array.fromAsync(new Bun.Glob('*/session.json').scan(outDir))
-  const costs: number[] = []
-  for (const path of paths) {
-    const { cost_usd } = sessionSchema.parse(JSON.parse(await readFile(join(outDir, path), 'utf8')))
-    if (cost_usd !== undefined) costs.push(cost_usd)
-  }
-  return costs.length ? costs.reduce((a, b) => a + b, 0) : null
 }
 
 /**
  * Precision of the last ~28 days of `qa-agent` tickets from the triage labels a human put on them:
  * valid / (valid + not-a-bug + env-artifact). Duplicates are counted but do not move precision.
  */
-export const computeScorecard = async (fetchFn: typeof fetch, key: string, outDir: string): Promise<Scorecard> => {
+export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
   // ponytail: one page of 250 tickets, far above the weekly cap of 9; paginate if that ever changes
   const { issues } = await linear<{ issues: { nodes: { labels: { nodes: { name: string }[] } }[] } }>(
     fetchFn,
@@ -85,14 +69,11 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string, outDi
     (label) => issues.nodes.filter((issue) => issue.labels.nodes.some((l) => l.name === label)).length,
   )
   const judged = valid + notABug + envArtifact
-  const costUsd = await sessionCost(outDir)
   return {
     window: '28 days',
     counts: { valid, notABug, duplicate, envArtifact },
     labelled: judged + duplicate,
     precision: judged ? valid / judged : null,
-    costUsd,
-    costPerValid: valid && costUsd !== null ? costUsd / valid : null,
   }
 }
 
@@ -306,7 +287,7 @@ const videoPath = (outDir: string, video: string) =>
 
 // ---------- filing ----------
 
-export type FileOptions = {
+type FileOptions = {
   outDir: string
   live: boolean
   runUrl?: string
@@ -326,7 +307,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   let live = opts.live
   if (live && !key) throw new Error('--live needs LINEAR_API_KEY')
   if (live && key) {
-    const card = await computeScorecard(fetchFn, key, outDir)
+    const card = await computeScorecard(fetchFn, key)
     if (shouldBrake(card)) {
       live = false
       log(
@@ -437,7 +418,7 @@ if (import.meta.main) {
   const key = Bun.env.LINEAR_API_KEY
   if (args[0] === 'scorecard') {
     if (!key) throw new Error('Missing LINEAR_API_KEY')
-    const card = await computeScorecard(fetch, key, outDir)
+    const card = await computeScorecard(fetch, key)
     await writeFile(join(outDir, 'scorecard.json'), JSON.stringify(card, null, 2))
     console.log(JSON.stringify(card, null, 2))
   } else {

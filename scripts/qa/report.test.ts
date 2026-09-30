@@ -115,14 +115,9 @@ describe('sessionFromExecution', () => {
 })
 
 describe('suggestCap', () => {
-  it('is max + 50% under 20 samples and undefined with none', () => {
+  it('is max + 50%, and undefined with no samples', () => {
     expect(suggestCap([1, 4, 2])).toBe(6)
     expect(suggestCap([])).toBeUndefined()
-  })
-
-  it('uses p95 + 50% from 20 samples, ignoring the single outlier', () => {
-    const samples = [...Array.from({ length: 19 }, (_, i) => i + 1), 100]
-    expect(suggestCap(samples)).toBe(19 * 1.5)
   })
 })
 
@@ -215,24 +210,8 @@ describe('renderReport', () => {
         found: 1,
         total: 2,
         results: [
-          {
-            patch: 'a.patch',
-            charter: 'c8',
-            area: 'skills',
-            oracle: 'page-error',
-            keywords: [],
-            description: '',
-            found: true,
-          },
-          {
-            patch: 'b.patch',
-            charter: 'c8',
-            area: 'settings',
-            oracle: 'lost-on-reload',
-            keywords: [],
-            description: '',
-            found: false,
-          },
+          { patch: 'a.patch', keywords: [], found: true },
+          { patch: 'b.patch', keywords: [], found: false },
         ],
         real: ['c8-phone/7'],
         unattributed: [],
@@ -281,30 +260,9 @@ describe('renderReport', () => {
 
 describe('canaries', () => {
   const canaries = [
-    {
-      patch: 'a.patch',
-      charter: 'c8-phone',
-      area: 'settings',
-      oracle: 'lost-on-reload',
-      keywords: ['preferred name'],
-      description: '',
-    },
-    {
-      patch: 'b.patch',
-      charter: 'c8-phone',
-      area: 'skills',
-      oracle: 'page-error',
-      keywords: ['delet'],
-      description: '',
-    },
-    {
-      patch: 'c.patch',
-      charter: 'c8-phone',
-      area: 'layout',
-      oracle: 'overflow',
-      keywords: ['subtitle'],
-      description: '',
-    },
+    { patch: 'a.patch', keywords: ['preferred name'] },
+    { patch: 'b.patch', keywords: ['delet'] },
+    { patch: 'c.patch', keywords: ['subtitle'] },
   ]
   const finding = (id: string, title: string, area = 'other', type = 'console-error') => ({
     ...verifiedFinding(area, type, id),
@@ -354,7 +312,7 @@ describe('canaries', () => {
     expect(result).toMatchObject({ found: 0, unattributed: ['c8-phone/5'], real: [] })
   })
 
-  it('empties confirmed and flaky so the filer never sees canary-leg findings', async () => {
+  it('matches the confirmed and flaky canary-leg findings against the baseline and writes canary.json', async () => {
     const baselineDir = join(dir, 'baseline')
     await mkdir(baselineDir)
     await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(droppedOnNormal('1')))
@@ -372,15 +330,12 @@ describe('canaries', () => {
     const result = await runCanary(dir, baselineDir, canariesPath)
 
     expect(result).toMatchObject({ found: 1, real: ['c8-phone/2'] })
-    const written = JSON.parse(await readFile(join(dir, 'verified.json'), 'utf8'))
-    expect(written.confirmed).toEqual([])
-    expect(written.flaky).toEqual([])
-    expect(written.canaryFindings).toHaveLength(2)
-    expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8')).found).toBe(1)
+    expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8'))).toEqual(result)
   })
 
   it('fails loudly without a baseline', async () => {
     await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
-    expect(runCanary(dir, join(dir, 'missing'), join(dir, 'canaries.json'))).rejects.toThrow('no candidates.json')
+    await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))
+    await expect(runCanary(dir, join(dir, 'missing'), join(dir, 'canaries.json'))).rejects.toThrow('candidates.json')
   })
 })

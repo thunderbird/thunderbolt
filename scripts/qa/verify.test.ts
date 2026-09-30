@@ -285,7 +285,6 @@ describe('replay', () => {
       'HOME',
       'PATH',
       'PLAYWRIGHT_BROWSERS_PATH',
-      'QA_BASE_URL',
       'QA_OUT',
     ])
   })

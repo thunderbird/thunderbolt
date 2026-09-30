@@ -26,7 +26,7 @@ export type Verified = {
   observations: FindingFile[]
   dropped: {
     file: FindingFile | RejectedFile
-    gate: 'schema' | 'oracle' | 'lint' | 'replay' | 'judge'
+    gate: 'schema' | 'lint' | 'replay' | 'judge'
     reason: string
   }[]
   judge_usage?: { input_tokens: number; output_tokens: number; cost_usd: number }
@@ -68,7 +68,6 @@ export const replayEnv = (outDir: string) => ({
   HOME: Bun.env.HOME,
   CI: Bun.env.CI,
   PLAYWRIGHT_BROWSERS_PATH: Bun.env.PLAYWRIGHT_BROWSERS_PATH,
-  QA_BASE_URL: Bun.env.QA_BASE_URL,
   QA_OUT: outDir,
 })
 

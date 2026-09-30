@@ -4,14 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import type { Filed, Scorecard } from './file-findings'
 import { type FindingFile, loadFindings } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
 
-export type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
+type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
 export type Session = {
   charter: string
   cost_usd: number
@@ -79,15 +79,11 @@ export const sessionFromExecution = async (path: string, charter: string, timedO
   }
 }
 
-/** Suggested cap = max observed (p95 once there are 20 samples) + 50%; undefined without samples. */
-export const suggestCap = (samples: number[]) => {
-  if (samples.length === 0) return undefined
-  const sorted = [...samples].sort((a, b) => a - b)
-  const basis = sorted.length >= 20 ? sorted[Math.ceil(sorted.length * 0.95) - 1] : sorted[sorted.length - 1]
-  return basis * 1.5
-}
+/** Suggested cap = max observed + 50%; undefined without samples. A run has at most nine sessions per step. */
+export const suggestCap = (samples: number[]) => (samples.length === 0 ? undefined : Math.max(...samples) * 1.5)
 
-type Canary = { patch: string; charter: string; area: string; oracle: string; keywords: string[]; description: string }
+/** The fields of `qa/canaries/canaries.json` the matcher reads; the rest is for people. */
+type Canary = { patch: string; keywords: string[] }
 type CanaryResult = {
   found: number
   total: number
@@ -205,7 +201,7 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
 const gateYield = ({ found, verified, filed }: ReportInput) => {
   if (!verified) return []
   const dropped = (...gates: string[]) => verified.dropped.filter((d) => gates.includes(d.gate)).length
-  const afterOracle = found - verified.observations.length - dropped('schema', 'oracle')
+  const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
   const afterReplay = afterLint - dropped('replay')
   const afterJudge = afterReplay - dropped('judge')
@@ -289,7 +285,7 @@ export const renderReport = (input: ReportInput) => {
   if (rows.length > 0) {
     out.push(
       '',
-      '## Calibration hint (cap = max observed, p95 from 20 samples, +50%)',
+      '## Calibration hint (cap = max observed + 50%)',
       '| step | metric | samples | max observed | suggested cap |',
       '|---|---|---|---|---|',
       ...rows,
@@ -326,29 +322,16 @@ const runSummary = async (outDir: string) => {
 }
 
 /**
- * Canary leg: match its findings against `canaries.json` and the baseline (the same findings replayed on the normal
- * build), write `canary.json`, and move every canary-leg finding out of `confirmed`/`flaky` (into `canaryFindings`)
- * so the filer never sees them.
+ * Canary leg: match its confirmed and flaky findings against `canaries.json` and the baseline (the same findings
+ * replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees the canary
+ * leg: the file job downloads only the weekly leg's `verified.json`.
  */
 export const runCanary = async (outDir: string, baselineDir: string, canariesPath = 'qa/canaries/canaries.json') => {
-  const verified = (await readJson<Verified>(join(outDir, 'verified.json'))) ?? {
-    confirmed: [],
-    flaky: [],
-    observations: [],
-    dropped: [],
-  }
-  const baseline =
-    (await readJson<Verified>(join(baselineDir, 'candidates.json'))) ??
-    (await readJson<Verified>(join(baselineDir, 'verified.json')))
-  if (!baseline) throw new Error(`no candidates.json or verified.json in ${baselineDir}`)
-  const canaries = JSON.parse(await readFile(canariesPath, 'utf8')) as Canary[]
-  const canaryLeg = [...verified.confirmed, ...verified.flaky]
-  const result = matchCanaries(canaries, canaryLeg, baseline)
+  const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
+  const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
+  const canaries: Canary[] = await Bun.file(canariesPath).json()
+  const result = matchCanaries(canaries, [...verified.confirmed, ...verified.flaky], baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
-  await writeFile(
-    join(outDir, 'verified.json'),
-    JSON.stringify({ ...verified, confirmed: [], flaky: [], canaryFindings: canaryLeg }, null, 2),
-  )
   return result
 }
 

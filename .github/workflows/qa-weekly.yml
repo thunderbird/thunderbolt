@@ -275,6 +275,14 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
+      # The browser tools can write files anywhere in the checkout, so no repo code runs in this job after the
+      # explorer: the stack is stopped inline, a checksum tripwire guards the upload, and report.ts runs later.
+      - name: Record the checksums of the tracked files
+        # Symlinks are skipped: one tracked link dangles, and the files they point to are tracked themselves.
+        run: |
+          git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
+            xargs -0 sha256sum > "$RUNNER_TEMP/qa-tracked.sha256"
+
       # Same flags as scripts/qa/explore.sh. Only Write (inside the out dir) and the browser tools, no shell and no
       # file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
       - name: Explore
@@ -299,32 +307,42 @@ jobs:
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 
-      # The browser tools can write files into the checkout, so stop every process holding keys before any repo
-      # script runs again.
+      # Inline, from the pid files stack.sh wrote outside the checkout: the backend may hold provider keys.
       - &stop-stack
         name: Stop the stack
         if: always()
-        run: scripts/qa/stack.sh stop || true
+        run: |
+          pids=$(cat "$RUNNER_TEMP/qa-stack.pid" "$RUNNER_TEMP/qa-stack.pids" 2>/dev/null || true)
+          # shellcheck disable=SC2086 # one pid per word
+          kill -9 $pids 2>/dev/null || true
+          for pid in $pids; do while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done; done
 
-      - name: Record the session metrics
+      - name: Check that the checkout is unchanged
+        id: tripwire
         if: always()
+        # A changed tracked file means the explorer wrote into the repo: the job fails and uploads nothing.
+        run: sha256sum --check --quiet --strict "$RUNNER_TEMP/qa-tracked.sha256"
+
+      - name: Save the session
+        if: always() && steps.tripwire.outcome == 'success'
         env:
           EXECUTION_FILE: ${{ steps.explore.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
+          SUMMARY: ${{ steps.explore.outputs.structured_output }}
           START: ${{ steps.prompt.outputs.start }}
         run: |
-          # A step killed by its timeout leaves no execution file, so tell report.ts why it is missing.
-          timed_out=()
-          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
-          bun scripts/qa/report.ts session --execution-file "$EXECUTION_FILE" --charter "$QA_CHARTER" --out "$QA_OUT" "${timed_out[@]}"
+          dir=$QA_OUT/$QA_CHARTER
+          mkdir -p "$dir"
+          # Only the result message's counters: the full execution file holds every page the explorer read.
+          if [ -f "$EXECUTION_FILE" ]; then
+            jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
+              "$EXECUTION_FILE" > "$dir/execution.json"
+          fi
+          # A step killed by its timeout leaves no execution file; the marker tells report.ts why.
+          if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
+          if [ -n "$SUMMARY" ]; then printf '%s\n' "$SUMMARY" > "$dir/findings.json"; fi
 
-      - name: Save the session summary
-        if: always() && steps.explore.outputs.structured_output != ''
-        env:
-          SUMMARY: ${{ steps.explore.outputs.structured_output }}
-        run: printf '%s\n' "$SUMMARY" > "$QA_OUT/$QA_CHARTER/findings.json"
-
-      - name: Upload findings, specs and metrics
-        if: always()
+      - name: Upload findings, specs and the session result
+        if: always() && steps.tripwire.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.leg.artifact }}-${{ matrix.leg.charter }}
@@ -333,7 +351,8 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings/*.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.spec.ts
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings.json
-            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/session.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/execution.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
           if-no-files-found: warn
           retention-days: 7
 
@@ -712,7 +731,20 @@ jobs:
           merge-multiple: true
 
       - name: Report
+        env:
+          LEGS: ${{ needs.build.outputs.legs }}
+          EXPLORE_RESULT: ${{ needs.explore.result }}
         run: |
+          # Session metrics come from each explore job's result message, here rather than in the explorer's job.
+          # A leg without one (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
+          if [ "$EXPLORE_RESULT" != skipped ]; then
+            jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS" | while read -r out charter; do
+              timed_out=()
+              if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
+              bun scripts/qa/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
+                --out "$out" "${timed_out[@]}"
+            done
+          fi
           # Missing when the guard failed; report.ts needs the directory to exist.
           mkdir -p qa-out
           bun scripts/qa/report.ts summary --out qa-out

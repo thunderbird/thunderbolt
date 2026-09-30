@@ -11,7 +11,8 @@
 #   scripts/qa/stack.sh build <out-dir> [onboarding]   build the frontend for this stack (onboarding off unless asked)
 #   scripts/qa/stack.sh serve <dist> [<dist>]          serve a build on 1424 (and a second one on 1425) until killed
 #   scripts/qa/stack.sh serve dev                      Vite dev server on the working tree, backend with --watch
-#   scripts/qa/stack.sh start <serve args> / stop      for CI steps: serve in the background, return once ready
+#   scripts/qa/stack.sh start <serve args> / stop      for CI steps: serve in the background, return once ready;
+#                                                      the pids go to $RUNNER_TEMP/qa-stack.pid and qa-stack.pids
 #
 # `serve` prints "stack ready" once every server answers, and exits when any of them does.
 # QA_REAL_PROVIDERS=true hands the backend ANTHROPIC_API_KEY, TINFOIL_API_KEY, TINFOIL_ENCLAVE_URL and EXA_API_KEY
@@ -98,6 +99,8 @@ else
   vite preview --outDir "$2" --port 1424 --strictPort &
   if [ -n "${3:-}" ]; then vite preview --outDir "$3" --port 1425 --strictPort & fi
 fi
+# Next to start's pid file, outside the checkout: CI kills these inline, without running this script again.
+jobs -p > "$state.pids"
 
 wait_for() {
   for _ in $(seq 120); do

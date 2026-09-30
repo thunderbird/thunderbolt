@@ -142,12 +142,12 @@ Every out dir must sit directly under the repo root: the specs import `../../../
 
 The `build` job has no environment, so these must be repository variables.
 
-| Variable             | Effect                                                                                  |
-| -------------------- | --------------------------------------------------------------------------------------- |
-| `QA_AGENT_ENABLED`   | `true` runs the workflow at all (kill switch)                                           |
-| `QA_LINEAR_ENABLED`  | `true` lets `file` and `publish` write to Linear and GitHub                             |
-| `QA_AUTOFIX_ENABLED` | `true` routes confirmed tickets to the fix agent (schedule, or dispatch with `autofix`) |
-| `CI_ALERTS_ENABLED`  | existing: `notify-on-failure` does nothing until it is `true`                           |
+| Variable             | Effect                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `QA_AGENT_ENABLED`   | `true` runs the workflow at all (kill switch)                                                           |
+| `QA_LINEAR_ENABLED`  | `true` lets `file` and `publish` write to Linear and GitHub                                             |
+| `QA_AUTOFIX_ENABLED` | `true` routes confirmed tickets to the fix agent (schedule, or dispatch with `autofix`), only on `main` |
+| `CI_ALERTS_ENABLED`  | existing: `notify-on-failure` does nothing until it is `true`                                           |
 
 ### Environment `qa-agent`
 

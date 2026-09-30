@@ -96,7 +96,9 @@ jobs:
         env:
           CHARTERS: ${{ inputs.charters }}
           LIVE: ${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}
-          AUTOFIX: ${{ vars.QA_AUTOFIX_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.autofix) }}
+          AUTOFIX: >-
+            ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
+            (github.event_name == 'schedule' || inputs.autofix) }}
         run: |
           for charter in ${CHARTERS//,/ }; do
             [ -f "qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }

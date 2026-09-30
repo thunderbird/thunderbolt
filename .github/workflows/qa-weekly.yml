@@ -506,11 +506,13 @@ jobs:
         with:
           name: qa-baseline-canary
           path: qa-out-canary-baseline
-      # Also takes every canary-leg finding out of verified.json: the canary leg is never filed.
+      # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
         run: bun scripts/qa/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every finding).
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-verified-${{ matrix.leg.name }}
           path: |
@@ -646,7 +648,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun test:*),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts ${{ matrix.task.spec }})"
+            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts ${{ matrix.task.spec }})"
             --disallowedTools "Bash(git:*),WebFetch,WebSearch"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}

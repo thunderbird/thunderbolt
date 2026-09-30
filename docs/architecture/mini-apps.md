@@ -56,12 +56,12 @@ Mini Apps are _cooperative_ — they send `frame-ancestors` naming us — so a p
 and gives us `postMessage` for free. The native webview exists for arbitrary sites that send `X-Frame-Options`,
 which no Mini App does.
 
-| Surface               | Embed  | Open                                                                                      |
-| --------------------- | ------ | ----------------------------------------------------------------------------------------- |
-| Web (desktop browser) | iframe | —                                                                                         |
-| Tauri desktop         | iframe | blocked today — there is no `frame-src`, so frames fall back to `default-src` (see below) |
-| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                       |
-| Mobile web            | —      | not offered — same gate                                                                   |
+| Surface               | Embed  | Open                                                                                             |
+| --------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| Web (desktop browser) | iframe | —                                                                                                |
+| Tauri desktop         | iframe | `frame-src 'self' https:` — any HTTPS app origin loads; see below for why it is not an allowlist |
+| Tauri iOS / Android   | —      | not offered — the viewport gate below catches these                                              |
+| Mobile web            | —      | not offered — same gate                                                                          |
 
 **Mini Apps are web and desktop only** (THU-830). The gate is on _viewport_, not platform: the split view,
 highlight-to-ask and element picking all need pointer input and room, and a 700px browser window is as unworkable as a
@@ -73,17 +73,30 @@ deep link out of a synced chat, or someone narrowing their window mid-session, i
 hitting Not Found. An earlier cut overlaid the chat on the app for phones; that layout is gone, so nothing here
 depends on iOS Safari's COEP support being confirmed.
 
-**The Tauri `frame-src` problem is real and unsolved, and desktop is currently blocked by it.** There is no
-`frame-src` in `src-tauri/tauri.conf.json`, so frames fall back to `default-src` (`'self' tauri: asset:`) and **no
-app origin loads in a desktop build at all**. That is the deliberate state after the directive was removed for
-listing sample-app localhost origins in production builds, not an oversight — but it does mean desktop Mini Apps do
-not work until an origin is allowed there.
+**The desktop CSP allows any HTTPS origin to be framed, and deliberately does not name them.** Tauri compiles its
+CSP in at startup while the registry moved to runtime config (`MINI_APPS`), so the two cannot be reconciled: a
+build-time allowlist means a new desktop build for every new customer origin, and a reload would not pick up a
+change. `frame-src 'self' https:` is the compromise.
 
-Everything else in the registry moved to runtime config (`MINI_APPS`), while Tauri compiles its CSP in at startup: a
-reload won't pick up a change, so a new customer origin means a new desktop build. Options are a build-time config
-patch (`tauri build --config`), a dev-only overlay in a `tauri.dev.conf.json`, an allowlist generated from the same
-operator config as `MINI_APPS`, or dropping the frame CSP and relying on origin checks alone — which is worse. Until
-one of those lands, web is the only surface where an app actually loads.
+This had been left out entirely, which meant frames fell back to `default-src` (`'self' tauri: asset:`) and **no app
+loaded in a desktop build at all** — the feature was unusable on desktop. The directive had been removed because it
+named sample-app _localhost_ origins in production builds, which was the right call about the wrong thing: the
+problem was the localhost origins, not the directive. Production now allows `https:` and no localhost;
+`tauri.dev.conf.json` adds the dev ports on top.
+
+What that does and does not buy, stated plainly:
+
+- It is **not** the trust boundary for anything an app says. The bridge pins the origin in both directions — it
+  posts to `app.origin` and drops any message whose `event.origin` is not that app's — and those checks are what
+  make a guest's messages trustworthy. `frame-src` only decides what may be _framed_.
+- A framed page still cannot reach into Thunderbolt: `script-src` and `default-src` stay locked to `'self'`, so the
+  browser's origin model contains it.
+- It is consistent with the posture already in place rather than a loosening of it: `connect-src` in the same CSP
+  already allows `https:` and `wss:`.
+- What it gives up is defence in depth against a compromised renderer framing an origin the operator never
+  configured. That is a strictly smaller threat than the registry itself, which decides what gets framed.
+
+A generated allowlist is still the better answer once `MINI_APPS` is known at build time for a given deployment.
 
 ## Chrome around an app
 
@@ -122,9 +135,10 @@ wide enough (below the breakpoint the entry is hidden and the route shows a size
 
 Registering something else means editing `MINI_APPS` — see the block in `backend/.env.example`. Two things bite:
 
-- **The desktop app needs the origin in its CSP**, and Tauri compiles that in at startup. `src-tauri/tauri.dev.conf.json`
-  allows `http://localhost:5190` for the dev scripts; another port means adding it there and restarting. Production
-  builds have no `frame-src` at all, so **no app loads in a packaged desktop build** — see the CSP section above.
+- **A desktop dev build needs the origin in its CSP**, and Tauri compiles that in at startup.
+  `src-tauri/tauri.dev.conf.json` allows the sample ports (`:5190`, `:5174`, `:5180`) plus `https:`; another local
+  port means adding it there and restarting. Packaged builds allow any `https:` origin and no localhost — see the
+  CSP section above for why it is not an allowlist.
 - **The app must send the three embedding headers** or the panel stays blank with nothing in the console. The
   template already does; see "The embedding headers".
 

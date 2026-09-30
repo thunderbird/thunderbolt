@@ -19,6 +19,7 @@ import { SelectionPopover } from '@/components/embedded/selection-popover'
 import { useMiniAppStore } from './mini-app-store'
 import { findMiniApp, type MiniAppDefinition } from './registry'
 import { useMiniApps } from './use-mini-apps'
+import { useContentView } from '@/content-view/context'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { isTauriDesktop } from '@/lib/platform'
@@ -28,6 +29,7 @@ import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
 import { useMiniAppChatPanelState } from './use-mini-app-chat-panel-state'
 import { appPanelMinWidth, chatPanelMinWidth, useChatSplitFits } from './use-chat-split'
+import { useExclusiveSidePanel } from './use-exclusive-side-panel'
 
 /** Default split when the chat opens: roughly two-thirds app, one-third chat. */
 const appPanelSize = '66%'
@@ -72,6 +74,11 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       closeChat()
     }
   }, [splitFits, isChatOpen, closeChat])
+
+  // The chat and the content-view aside share the right-hand slot, so whichever
+  // opened last closes the other.
+  const { isOpen: isAsideOpen, close: closeAside } = useContentView()
+  useExclusiveSidePanel({ isChatOpen, closeChat, isAsideOpen, closeAside })
 
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)

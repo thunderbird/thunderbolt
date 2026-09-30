@@ -249,6 +249,22 @@ describe('renderReport', () => {
     expect(report).toContain('| explore | turns | 2 | 60 | 90 |')
     expect(report).toContain('| explore | duration | 2 | 20.0 min | 30.0 min |')
   })
+
+  it('keeps fix sessions out of the explore calibration and the coverage list', () => {
+    const report = renderReport({
+      sessions: [
+        session({ cost_usd: 2, turns: 30 }),
+        session({ charter: 'fix-ab12cd34', cost_usd: 8, turns: 90, stop: 'max_turns' }),
+      ],
+      summaries: new Map(),
+      found: 0,
+    })
+    expect(report).toContain('| explore | cost | 1 | $2.00 | $3.00 |')
+    expect(report).toContain('| fix | cost | 1 | $8.00 | $12.00 |')
+    expect(report).toContain('| fix | turns | 1 | 90 | 135 |')
+    expect(report).toContain('**fix-ab12cd34**: TURN CAP after 90 turns, $8.00; its patch may be partial')
+    expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
+  })
 })
 
 describe('canaries', () => {

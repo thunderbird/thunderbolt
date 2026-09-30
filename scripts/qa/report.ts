@@ -157,6 +157,9 @@ const tokens = (s: Session) =>
   `${s.input_tokens} in / ${s.output_tokens} out / ${s.cache_read_tokens} cache read / ${s.cache_creation_tokens} cache write`
 const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n', ' ')
 
+/** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
+const isFix = (s: Session) => s.charter.startsWith('fix-')
+
 const calibrationRows = (sessions: Session[], judgeCost?: number) => {
   const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
     const cap = suggestCap(samples)
@@ -164,25 +167,31 @@ const calibrationRows = (sessions: Session[], judgeCost?: number) => {
       ? undefined
       : `| ${step} | ${metric} | ${samples.length} | ${format(Math.max(...samples))} | ${format(cap)} |`
   }
+  const steps = [
+    ['explore', sessions.filter((s) => !isFix(s))],
+    ['fix', sessions.filter(isFix)],
+  ] as const
   return [
-    row(
-      'explore',
-      'cost',
-      sessions.map((s) => s.cost_usd),
-      usd,
-    ),
-    row(
-      'explore',
-      'turns',
-      sessions.map((s) => s.turns),
-      (n) => `${Math.ceil(n)}`,
-    ),
-    row(
-      'explore',
-      'duration',
-      sessions.map((s) => s.duration_ms),
-      minutes,
-    ),
+    ...steps.flatMap(([step, samples]) => [
+      row(
+        step,
+        'cost',
+        samples.map((s) => s.cost_usd),
+        usd,
+      ),
+      row(
+        step,
+        'turns',
+        samples.map((s) => s.turns),
+        (n) => `${Math.ceil(n)}`,
+      ),
+      row(
+        step,
+        'duration',
+        samples.map((s) => s.duration_ms),
+        minutes,
+      ),
+    ]),
     row('judge', 'cost', judgeCost === undefined ? [] : [judgeCost], usd),
   ].filter((r): r is string => r !== undefined)
 }
@@ -205,12 +214,20 @@ const gateYield = ({ found, verified, filed }: ReportInput) => {
 export const renderReport = (input: ReportInput) => {
   const { sessions, summaries, verified, filed, scorecard, canary } = input
   const out: string[] = ['# Weekly QA run']
+  const explore = sessions.filter((s) => !isFix(s))
+  const total = (list: Session[]) =>
+    `${usd(list.reduce((t, s) => t + s.cost_usd, 0))}, ${list.reduce((t, s) => t + s.turns, 0)} turns, ` +
+    minutes(list.reduce((t, s) => t + s.duration_ms, 0))
   const cut = sessions.filter((s) => s.stop !== 'done')
   if (cut.length > 0) {
     out.push(
       '',
-      `## ⚠️ ${cut.length} INCOMPLETE session(s): the charter was not fully explored`,
-      ...cut.map((s) => `- **${s.charter}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}`),
+      `## ⚠️ ${cut.length} INCOMPLETE session(s)`,
+      ...cut.map(
+        (s) =>
+          `- **${s.charter}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}; ` +
+          (isFix(s) ? 'its patch may be partial' : 'the charter was not fully explored'),
+      ),
     )
   }
   out.push(
@@ -223,12 +240,11 @@ export const renderReport = (input: ReportInput) => {
         `| ${s.charter} | ${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`} |`,
     ),
     '',
-    `Total explore: ${usd(sessions.reduce((t, s) => t + s.cost_usd, 0))}, ${sessions.reduce((t, s) => t + s.turns, 0)} turns, ` +
-      `${minutes(sessions.reduce((t, s) => t + s.duration_ms, 0))}. ` +
+    `Total explore: ${total(explore)}. Fix: ${explore.length < sessions.length ? total(sessions.filter(isFix)) : 'n/a'}. ` +
       `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.`,
     '',
     '## Coverage',
-    ...sessions.flatMap((s) => {
+    ...explore.flatMap((s) => {
       const summary = summaries.get(s.charter)
       if (!summary) return [`- **${s.charter}**: no summary (session cut)`]
       const skipped = summary.skipped.map((k) => `${k.screen} (${k.reason})`).join('; ') || 'none'

@@ -32,9 +32,21 @@ type MiniAppOriginNoticeProps = {
   canOpen: boolean
 }
 
-/** The banner itself, given an already-resolved app. Presentational. */
+/**
+ * The banner itself, given an already-resolved app. Presentational.
+ *
+ * `max-md:pt-…` clears the floating header (THU-907). `FloatingHeader` is
+ * `absolute top-0` with a scrim beneath it, and the convention is that pages
+ * pad by `--header-inset` where they need to. The chat transcript deliberately
+ * does not — it fades under the scrim — but this banner is a solid bordered
+ * strip pinned to the top, so it was drawn underneath the sidebar toggle and
+ * the logo, its title half-hidden behind them.
+ *
+ * Mobile only: below the breakpoint the header is always drawn, so this is
+ * exactly where it overlaps. Desktop keeps its current spacing.
+ */
 export const MiniAppOriginNotice = ({ app, chatThreadId, canOpen }: MiniAppOriginNoticeProps) => (
-  <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-[length:var(--font-size-sm)] text-muted-foreground">
+  <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-[length:var(--font-size-sm)] text-muted-foreground max-md:pt-[calc(var(--header-inset)+0.5rem)]">
     {app ? (
       <>
         <app.icon className="size-[var(--icon-size-sm)] shrink-0" aria-hidden="true" />

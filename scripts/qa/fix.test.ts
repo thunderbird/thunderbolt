@@ -335,6 +335,11 @@ describe('checkPatch', () => {
     expect(await checkPatch(git, outDir, task())).toEqual({ reasons: ['empty patch'], files: [] })
   })
 
+  test('rejects a patch that matches a secret pattern', async () => {
+    await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), "export const token = 'ghs_abc123'\n"))
+    expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the patch matches a secret pattern'])
+  })
+
   test('rejects a denied path, including a file renamed out of one', async () => {
     await patchFrom(async () => {
       await writeFile(join(repo, 'src', 'chat.ts'), 'export const title = 2\n')

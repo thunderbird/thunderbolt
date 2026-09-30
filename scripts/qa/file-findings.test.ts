@@ -255,6 +255,11 @@ describe('sanitising and refusal', () => {
     'sk-abcdefgh12345678',
     'lin_api_abc123',
     'ghp_abc123',
+    'ghs_abc123',
+    'gho_abc123',
+    'ghu_abc123',
+    'ghr_abc123',
+    'lin_oauth_abc123',
     'github_pat_abc',
     'xoxb-123-abc',
     'eyJhbGciOi.eyJzdWIiOiIx.sig',
@@ -265,6 +270,12 @@ describe('sanitising and refusal', () => {
     expect(entry.action).toBe('refused')
     expect(entry.reason).not.toContain(secret)
     expect(api.mutations()).toEqual([])
+  })
+
+  test('scans the charter too, since the ticket shows it', async () => {
+    await writeVerified([{ charter: 'c2 ghs_abc123' }])
+    const [entry] = await run(fakeLinear().fetchFn)
+    expect(entry.action).toBe('refused')
   })
 
   test('strips foreign URLs and images, keeps run and Linear asset links, caps length', () => {

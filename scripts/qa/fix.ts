@@ -211,7 +211,10 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   if ((await readFile(join(outDir, 'fix', `${task.fp}.spec.ts`), 'utf8')) !== original) {
     reasons.push('the repro spec was edited')
   }
-  if (!(await readFile(patch, 'utf8')).trim()) return { reasons: ['empty patch', ...reasons], files: [] }
+  const text = await readFile(patch, 'utf8')
+  if (!text.trim()) return { reasons: ['empty patch', ...reasons], files: [] }
+  // The patch becomes a public PR.
+  if (secretPattern.test(text)) reasons.push('the patch matches a secret pattern')
   const files = await patchedFiles(run, patch)
   return { reasons: [...reasons, ...files.filter(isDenied).map((f) => `touches ${f}`)], files }
 }

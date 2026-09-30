@@ -103,7 +103,7 @@ export const shouldBrake = (card: Scorecard): boolean =>
 // ---------- sanitising model-written text ----------
 
 export const secretPattern =
-  /\bsk-[\w-]{8,}|lin_api_\w+|ghp_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
+  /\bsk-[\w-]{8,}|lin_(api|oauth)_\w+|gh[pousr]_\w+|github_pat_\w+|eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*|xox[bp]-[\w-]+/
 
 const keepUrl = (url: string, runUrl?: string): boolean => {
   if (runUrl && url.startsWith(runUrl)) return true
@@ -256,7 +256,7 @@ type Entry = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
 
 /** Text an attacker-influenced page could have shaped; scanned for secrets before anything is sent. */
 const modelText = (f: Finding, spec: string) =>
-  [f.title, ...f.steps, f.expected, f.actual, f.oracle.evidence, spec].join('\n')
+  [f.title, f.charter, ...f.steps, f.expected, f.actual, f.oracle.evidence, spec].join('\n')
 
 /** Markdown body of a new ticket. Security findings carry no run link. */
 const buildBody = (

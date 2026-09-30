@@ -8,7 +8,15 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { lintReproSpec, type RawFinding } from './findings'
-import { judge, replay, type CreateMessage, type ReplayReport, type RunReplay, type Verified } from './verify'
+import {
+  judge,
+  replay,
+  replayEnv,
+  type CreateMessage,
+  type ReplayReport,
+  type RunReplay,
+  type Verified,
+} from './verify'
 
 const validSpec = (title: string) => `import { expect, test } from '@playwright/test'
 import { loginViaEmailCode } from '../../../e2e/helpers'
@@ -68,6 +76,7 @@ const fakeRunner =
     const entries: [string, string[]][] = [...Object.entries(statuses), [relative(outDir, controlSpec()), control]]
     const report: ReplayReport = {
       config: { rootDir: outDir },
+      errors: [],
       suites: entries.map(([file, runs]) => ({
         specs: runs.map((status, run) => ({
           file,
@@ -217,6 +226,68 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({ 'c2-chat/repro/always.spec.ts': ['failed'] }, [], []), qaDir)
     expect(result.stack_unhealthy).toBe('control spec failed 0/0 runs: it did not run')
     expect(result.confirmed).toEqual([])
+  })
+
+  test('a spec that fails to load is dropped at lint, and the rest replay again with the control', async () => {
+    for (const title of ['good', 'broken']) await writeFinding(makeFinding(title, pageError))
+    const good = join(outDir, 'c2-chat/repro/good.spec.ts')
+    const broken = join(outDir, 'c2-chat/repro/broken.spec.ts')
+    const linkError = {
+      message:
+        "SyntaxError: The requested module '../../../e2e/helpers' does not provide an export named 'loginX'\n  at x",
+    }
+    const calls: string[][] = []
+    const listed: string[][] = []
+    const replays = fakeRunner({ 'c2-chat/repro/good.spec.ts': ['failed', 'failed', 'failed'] }, calls)
+    // Like Playwright: one file that fails to load stops the whole run, and the error names no file.
+    const runner: RunReplay = async (specs, dir, opts) => {
+      if (opts?.list) listed.push(specs)
+      if (specs.includes(broken)) return { config: { rootDir: outDir }, suites: [], errors: [linkError] }
+      if (opts?.list) return { config: { rootDir: outDir }, suites: [], errors: [] }
+      return replays(specs, dir)
+    }
+
+    const result = await replay(outDir, runner, qaDir)
+
+    expect(listed).toEqual([[broken], [good]])
+    expect(calls).toEqual([[controlSpec(), good]])
+    expect(result.stack_unhealthy).toBeUndefined()
+    expect(titles(result.confirmed)).toEqual(['good'])
+    expect(droppedAt(result, 'lint')).toEqual([
+      {
+        file: expect.objectContaining({ id: 'broken' }),
+        gate: 'lint',
+        reason: `failed to load: ${linkError.message.split('\n')[0]}`,
+      },
+    ])
+  })
+
+  test('a load error that no repro spec explains marks the stack unhealthy with that error', async () => {
+    await writeFinding(makeFinding('always', pageError))
+    const listed: string[][] = []
+    const runner: RunReplay = async (specs, _dir, opts) => {
+      if (opts?.list) listed.push(specs)
+      return {
+        config: { rootDir: outDir },
+        suites: [],
+        errors: opts?.list ? [] : [{ message: 'Error: helpers broke' }],
+      }
+    }
+    const result = await replay(outDir, runner, qaDir)
+    expect(listed).toHaveLength(1)
+    expect(result.stack_unhealthy).toBe('control spec failed 0/0 runs: Error: helpers broke')
+    expect(droppedAt(result, 'replay').map((entry) => entry.reason)).toEqual(['stack unhealthy'])
+  })
+
+  test('Playwright gets only the allowlisted variables, never the caller environment', () => {
+    expect(Object.keys(replayEnv('qa-out')).sort()).toEqual([
+      'CI',
+      'HOME',
+      'PATH',
+      'PLAYWRIGHT_BROWSERS_PATH',
+      'QA_BASE_URL',
+      'QA_OUT',
+    ])
   })
 
   test('the control spec passes the repro spec lint', async () => {

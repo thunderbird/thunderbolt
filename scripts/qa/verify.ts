@@ -6,6 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { rm } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { z } from 'zod'
@@ -33,8 +34,8 @@ export type Verified = {
   stack_unhealthy?: string
 }
 
-/** The part of Playwright's JSON report that replay reads. */
-export type ReplayReport = { config: { rootDir: string }; suites: ReplaySuite[] }
+/** The part of Playwright's JSON report that replay reads. `errors` lists files that failed to load. */
+export type ReplayReport = { config: { rootDir: string }; suites: ReplaySuite[]; errors: { message: string }[] }
 type ReplaySuite = {
   specs: {
     file: string
@@ -44,8 +45,8 @@ type ReplaySuite = {
   }[]
   suites?: ReplaySuite[]
 }
-/** Runs the given specs (absolute paths) three times each in one Playwright run and returns the report. */
-export type RunReplay = (specs: string[], outDir: string) => Promise<ReplayReport>
+/** Runs the given specs (absolute paths) three times each in one Playwright run, or with `list` only loads them. */
+export type RunReplay = (specs: string[], outDir: string, opts?: { list?: boolean }) => Promise<ReplayReport>
 
 /** One Messages API call, injected so tests never reach the network. */
 export type CreateMessage = (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<
@@ -62,7 +63,7 @@ const judgePrice = { input: 4, output: 20 }
  * The specs are untrusted, so Playwright gets only what it needs to run and never the caller's secrets:
  * a dev shell with provider keys exported stays safe too.
  */
-const replayEnv = (outDir: string) => ({
+export const replayEnv = (outDir: string) => ({
   PATH: Bun.env.PATH,
   HOME: Bun.env.HOME,
   CI: Bun.env.CI,
@@ -71,16 +72,20 @@ const replayEnv = (outDir: string) => ({
   QA_OUT: outDir,
 })
 
-const runPlaywright: RunReplay = async (specs, outDir) => {
+const runPlaywright: RunReplay = async (specs, outDir, { list = false } = {}) => {
   // `/…/` filters are case-sensitive and anchored, so no spec that failed the lint can match.
   const filters = specs.map((spec) => `/^${RegExp.escape(spec)}$/`)
-  const result =
-    await Bun.$`bunx playwright test --config playwright.qa.config.ts --repeat-each=3 --retries=0 --reporter=json ${filters}`
-      .env(replayEnv(outDir))
-      .nothrow()
-      .quiet()
-  if (result.stdout.length === 0) throw new Error(`Playwright wrote no report:\n${result.stderr}`)
-  return result.json()
+  const mode = list ? ['--list'] : ['--repeat-each=3', '--retries=0']
+  // A file, not stdout: a spec that logs at module scope would corrupt a report on stdout.
+  const reportFile = resolve(outDir, 'replay-report.json')
+  await rm(reportFile, { force: true })
+  const result = await Bun.$`bunx playwright test --config playwright.qa.config.ts ${mode} --reporter=json ${filters}`
+    .env({ ...replayEnv(outDir), PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile })
+    .nothrow()
+    .quiet()
+  const report = Bun.file(reportFile)
+  if (!(await report.exists())) throw new Error(`Playwright wrote no report:\n${result.stderr}`)
+  return report.json()
 }
 
 const readList = async (path: string) =>
@@ -124,18 +129,29 @@ const outcomesBySpec = (report: ReplayReport) => {
 const specPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_spec}`
 
 /** Why the control spec says the stack is broken, or undefined when it passed every run. */
-const stackProblem = (control: VerifiedFinding['replay']) =>
+const stackProblem = (control: VerifiedFinding['replay'], report: ReplayReport) =>
   control.runs > 0 && control.failed === 0
     ? undefined
-    : `control spec failed ${control.failed}/${control.runs} runs: ${control.error ?? 'it did not run'}`
+    : `control spec failed ${control.failed}/${control.runs} runs: ${control.error ?? report.errors[0]?.message ?? 'it did not run'}`
+
+/** The specs that fail to load, each with its first error line. Loaded one at a time: the error may name no file. */
+const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay) => {
+  const broken = new Map<string, string>()
+  for (const spec of specs) {
+    const { errors } = await runReplay([spec], outDir, { list: true })
+    if (errors.length > 0) broken.set(spec, stripVTControlCharacters(errors[0].message).split('\n')[0])
+  }
+  return broken
+}
 
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying every surviving spec three times.
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. The same run replays
  * `qa/control/repro/stack.spec.ts`; if any of its runs fails, the stack is broken, nothing is confirmed and
- * `stack_unhealthy` says why. Writes and returns `<outDir>/candidates.json`. Needs NO secrets and must run without
- * any: the specs were written by a model that read untrusted pages, and the spec lint is defence in depth, not the
- * boundary.
+ * `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped at
+ * gate `lint` and the rest replay again without them. Writes and returns `<outDir>/candidates.json`. Needs NO
+ * secrets and must run without any: the specs were written by a model that read untrusted pages, and the spec lint
+ * is defence in depth, not the boundary.
  */
 export const replay = async (outDir: string, runReplay: RunReplay = runPlaywright, qaDir = 'qa') => {
   const { valid, rejected } = await loadFindings(outDir)
@@ -164,10 +180,20 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
   if (replayable.length > 0) {
     const control = resolve(qaDir, 'control/repro/stack.spec.ts')
     const specOf = (file: FindingFile) => resolve(outDir, specPath(file))
-    const outcomes = outcomesBySpec(await runReplay([control, ...new Set(replayable.map(specOf))], outDir))
+    const specs = [...new Set(replayable.map(specOf))]
+    const first = await runReplay([control, ...specs], outDir)
+    const broken = first.errors.length > 0 ? await loadErrors(specs, outDir, runReplay) : new Map<string, string>()
+    const report =
+      broken.size > 0 ? await runReplay([control, ...specs.filter((spec) => !broken.has(spec))], outDir) : first
+    const outcomes = outcomesBySpec(report)
     const noRuns = { replay: { failed: 0, runs: 0 }, artifacts: {} }
-    result.stack_unhealthy = stackProblem((outcomes.get(control) ?? noRuns).replay)
+    result.stack_unhealthy = stackProblem((outcomes.get(control) ?? noRuns).replay, report)
     for (const file of replayable) {
+      const loadError = broken.get(specOf(file))
+      if (loadError) {
+        result.dropped.push({ file, gate: 'lint', reason: `failed to load: ${loadError}` })
+        continue
+      }
       const replayed = { ...file, ...(outcomes.get(specOf(file)) ?? noRuns) }
       const { failed, runs } = replayed.replay
       if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })

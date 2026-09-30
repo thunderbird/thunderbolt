@@ -198,3 +198,29 @@ button.primary:hover:not(:disabled) {
   font-size: 0.75rem;
   color: var(--muted-fg);
 }
+
+/*
+ * The per-row select control.
+ *
+ * Looks like the cell text it replaced, because it is the cell text — the point
+ * is that it takes focus and answers the keyboard, not that it looks like a
+ * button. The focus ring is the only visible difference, and it has to stay.
+ */
+.row-select {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-select:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+tbody tr[aria-selected='true'] .row-select {
+  font-weight: 650;
+}

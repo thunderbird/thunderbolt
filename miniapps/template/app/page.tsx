@@ -192,7 +192,29 @@ const Page = () => {
               data-tb-select
               data-tb-label={`${order.id}: ${order.side} ${order.quantity} ${order.symbol} at ${money(order.price)}, ${order.status}`}
             >
-              <td>{order.id}</td>
+              <td>
+                {/*
+                 * A real button, so the row is reachable and selectable from the
+                 * keyboard. The row's own `onClick` is a mouse convenience and
+                 * nothing more: a `<tr>` cannot take focus, so without this the
+                 * Fill / Cancel / Reopen buttons — all disabled until something
+                 * is selected — were unusable without a pointer.
+                 *
+                 * `stopPropagation` because the click would otherwise bubble to
+                 * the row handler and toggle the selection straight back off.
+                 */}
+                <button
+                  type="button"
+                  className="row-select"
+                  aria-pressed={order.id === selectedId}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedId(order.id === selectedId ? null : order.id)
+                  }}
+                >
+                  {order.id}
+                </button>
+              </td>
               <td>{order.symbol}</td>
               <td className={order.side === 'buy' ? 'side-buy' : 'side-sell'}>{order.side}</td>
               <td className="num">{order.quantity}</td>

@@ -133,7 +133,8 @@ Every out dir must sit directly under the repo root: the specs import `../../../
 3. Set `QA_AGENT_ENABLED=true`, leave `QA_LINEAR_ENABLED` and `QA_AUTOFIX_ENABLED` unset. From now on the
    Monday schedule runs too, still as a dry run.
 4. Run the workflow by hand from `main` with `dry_run` on (the default), first with one charter
-   (`charters: c4-skills-projects`), then with all of them. Read the job summary.
+   (`charters: c4-skills-projects`; separate several ids with commas or spaces), then with all of them. Read the
+   job summary.
 5. Set `QA_LINEAR_ENABLED=true` to file for real. The schedule then files live; a dispatch files live only with
    `dry_run` off. A dispatch from another branch is always a dry run.
 6. Later, and only after triage shows the findings are worth it: `QA_AUTOFIX_ENABLED=true`.

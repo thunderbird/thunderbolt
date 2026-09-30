@@ -100,12 +100,15 @@ jobs:
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
             (github.event_name == 'schedule' || inputs.autofix) }}
         run: |
-          for charter in ${CHARTERS//,/ }; do
+          # Commas and spaces both separate charter ids; the same list feeds the check and the legs below.
+          only=$(jq --null-input --compact-output --arg charters "$CHARTERS" '[$charters | splits("[ ,]+") | select(. != "")]')
+          if [ -n "$CHARTERS" ] && [ "$only" = '[]' ]; then echo "::error::No charter id in '$CHARTERS'"; exit 1; fi
+          for charter in $(jq --raw-output '.[]' <<< "$only"); do
             [ -f "qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }
           done
           # shellcheck disable=SC2016 # jq variables
           # One explore session per leg. The canary leg runs c8 on a build with planted bugs and is never filed.
-          legs=$(jq --null-input --compact-output --arg only "$CHARTERS" '
+          legs=$(jq --null-input --compact-output --argjson only "$only" '
             {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: "qa/mcp.json", viewport: "1280x800",
              onboarding: false, real: false, postgres: false} as $leg
             | [{charter: "c1-first-run", onboarding: true},
@@ -119,7 +122,7 @@ jobs:
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
             | map($leg + .)
-            | map(select(.charter as $c | $only == "" or ($only | [splits(" *, *")] | index($c))))')
+            | map(select(.charter as $c | $only == [] or ($only | index($c))))')
           # Replay and judge once per out dir, on the same kind of stack its sessions explored.
           verify=$(jq --compact-output '
             [{name: "weekly", out: "qa-out", artifact: "qa-explore", dist: "qa-dist",

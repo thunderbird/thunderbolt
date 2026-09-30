@@ -216,8 +216,17 @@ export const readTokenClaims = (token: string): TokenClaims | null => {
     return null
   }
   try {
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(json) as TokenClaims
+    /*
+     * Decoded as UTF-8, not as a Latin-1 "binary string".
+     *
+     * `atob` yields one char per *byte*, but a JWT payload is base64url over
+     * UTF-8 — so a name like "Müller" came back mojibake'd. It failed silently
+     * too: the mangled bytes are still valid JSON, so nothing threw and the
+     * garbled name went straight into the UI, which is the one use this function
+     * documents itself as being for.
+     */
+    const bytes = Uint8Array.from(atob(payload.replace(/-/g, '+').replace(/_/g, '/')), (char) => char.charCodeAt(0))
+    return JSON.parse(new TextDecoder().decode(bytes)) as TokenClaims
   } catch {
     return null
   }

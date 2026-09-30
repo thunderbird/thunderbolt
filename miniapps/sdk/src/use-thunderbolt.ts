@@ -82,6 +82,18 @@ export const useThunderbolt = (
 
   useEffect(() => {
     let cancelled = false
+    /*
+     * Start every attempt disconnected.
+     *
+     * The effect restarts when `hostOrigin` or `auth` changes, and it tears the
+     * old bridge down — but `connected` stayed true across the gap. If the new
+     * handshake then failed, the app went on reporting a live connection while
+     * context updates, chat requests and token requests all silently did
+     * nothing; and even when it succeeded, an app that publishes context off a
+     * `connected` transition never saw one, so it never re-sent its state.
+     */
+    setConnected(false)
+    setConnectionError(null)
 
     const open = async (): Promise<void> => {
       try {

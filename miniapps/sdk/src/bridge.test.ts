@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
-import { connect, protocolMarker, type Connection } from './bridge'
+import { connect, protocolMarker, readTokenClaims, type Connection } from './bridge'
 
 const hostOrigin = 'https://host.example'
 
@@ -170,5 +170,40 @@ describe('notifications', () => {
 
     const report = posted.find((entry) => entry.method === 'ui/notifications/error')
     expect((report?.params as { message: string }).message).toHaveLength(500)
+  })
+})
+
+describe('readTokenClaims', () => {
+  /** base64url over UTF-8, the way a real issuer encodes a payload. */
+  const encodePayload = (claims: Record<string, unknown>) => {
+    const utf8 = new TextEncoder().encode(JSON.stringify(claims))
+    const binary = String.fromCharCode(...utf8)
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
+
+  /*
+   * `atob` yields one char per byte, so a Latin-1 read of a UTF-8 payload
+   * mangled any non-ASCII name — and silently, because the mangled bytes are
+   * still valid JSON. Exactly the case this function documents itself as being
+   * for: putting a name in the corner of the UI.
+   */
+  it('decodes a non-ASCII name rather than mojibake', () => {
+    const token = `header.${encodePayload({ name: 'Jürgen Müller', email: 'jm@example.de' })}.signature`
+
+    expect(readTokenClaims(token)?.name).toBe('Jürgen Müller')
+  })
+
+  it('decodes a non-Latin name', () => {
+    const token = `header.${encodePayload({ name: '田中太郎', email: 't@example.jp' })}.signature`
+
+    expect(readTokenClaims(token)?.name).toBe('田中太郎')
+  })
+
+  it('returns null for a token with no payload segment', () => {
+    expect(readTokenClaims('nonsense')).toBeNull()
+  })
+
+  it('returns null rather than throwing on a payload that is not JSON', () => {
+    expect(readTokenClaims('header.bm90LWpzb24.signature')).toBeNull()
   })
 })

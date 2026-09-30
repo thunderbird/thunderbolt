@@ -517,6 +517,27 @@ export const maxToolsPerApp = 64
 export const maxToolSchemaChars = 8_192
 
 /**
+ * Is this schema serialisable, and within budget?
+ *
+ * The try/catch is the point. `JSON.stringify` *throws* on a `BigInt` (and on a
+ * circular reference), and a throw inside a Zod refinement is not a failed
+ * check — it escapes `safeParse` entirely, so one unserialisable descriptor
+ * killed `parseToolsList` and the app lost every one of its other valid tools.
+ * A schema that cannot be serialised is an invalid descriptor, which is exactly
+ * what returning false says.
+ *
+ * `parseToolsList` reads untrusted guest input, so nothing in this schema may
+ * throw; a predicate that can is a predicate that takes discovery down.
+ */
+const isSerialisableWithinBudget = (schema: unknown): boolean => {
+  try {
+    return JSON.stringify(schema).length <= maxToolSchemaChars
+  } catch {
+    return false
+  }
+}
+
+/**
  * What {@link parseToolsList} found.
  *
  * `envelope` distinguishes "this app has no tools" from "the reply was not a
@@ -590,8 +611,8 @@ export const miniAppToolSchema = z.object({
    */
   inputSchema: z
     .record(z.string(), z.unknown())
-    .refine((schema) => JSON.stringify(schema).length <= maxToolSchemaChars, {
-      message: `inputSchema must serialise to at most ${maxToolSchemaChars} characters`,
+    .refine(isSerialisableWithinBudget, {
+      message: `inputSchema must be JSON-serialisable and at most ${maxToolSchemaChars} characters`,
     })
     .optional(),
   annotations: z

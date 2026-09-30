@@ -415,6 +415,29 @@ describe('parseToolsList', () => {
     expect(dropped).toBe(1)
   })
 
+  /*
+   * `JSON.stringify` throws on a BigInt, and a throw inside a Zod refinement
+   * escapes `safeParse` rather than failing the check — so this took the whole
+   * parser down and the app lost every other valid tool it had declared.
+   */
+  it('drops a schema that cannot be serialised instead of killing discovery', () => {
+    const { tools, dropped } = parseToolsList({
+      tools: [tool(), tool({ name: 'bad', inputSchema: { n: 1n } })],
+    })
+
+    expect(tools.map((t) => t.name)).toEqual(['set_assumption'])
+    expect(dropped).toBe(1)
+  })
+
+  it('drops a circular schema for the same reason', () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const { tools, dropped } = parseToolsList({ tools: [tool({ inputSchema: circular })] })
+
+    expect(tools).toHaveLength(0)
+    expect(dropped).toBe(1)
+  })
+
   it('keeps a schema comfortably inside the cap', () => {
     const fine = { type: 'object', properties: { name: { type: 'string' } } }
     expect(parseToolsList({ tools: [tool({ inputSchema: fine })] }).tools).toHaveLength(1)

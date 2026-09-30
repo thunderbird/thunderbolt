@@ -89,7 +89,18 @@ export const elementAtPoint = (
   selector = defaultCandidateSelector,
 ): HighlightedElement | null => {
   const hit = document.elementFromPoint(point.x, point.y)
-  const element = hit?.closest(selector)
+  /*
+   * The preferred ancestor when there is one, otherwise whatever is under the
+   * pointer.
+   *
+   * The selector is a *preference*, not a requirement. An app that lays its
+   * content out in plain `div`s — which this is documented as a sensible default
+   * for — matched none of it, so `closest` returned null and the host's Select
+   * gesture reported nothing pickable over the whole app. Falling back to the
+   * hit element keeps the semantic grouping where the markup offers it and still
+   * picks something where it doesn't.
+   */
+  const element = hit?.closest(selector) ?? hit
   if (!element) {
     return null
   }

@@ -783,8 +783,21 @@ jobs:
             bun scripts/qa/report.ts summary --out qa-out-canary
           fi
 
+      # A revoked key or a retired model id errors every session while the jobs stay green: fail so notify fires.
+      - name: Fail when no explore session worked
+        run: |
+          shopt -s nullglob
+          sessions=(qa-out*/c*/session.json)
+          if [ ${#sessions[@]} -gt 0 ] && jq -e -s 'all(.stop == "error" or .stop == "timeout")' "${sessions[@]}" > /dev/null; then
+            echo "::error::Every explore session ended in an error or a timeout."
+            exit 1
+          fi
+
+      # The dead-man switch watches the Monday run on main only, and only a run that worked.
       - name: Heartbeat
-        if: ${{ env.HAS_HEARTBEAT == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        if: >-
+          ${{ env.HAS_HEARTBEAT == 'true' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' &&
+          !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
         env:
           HEARTBEAT_URL: ${{ secrets.QA_HEARTBEAT_URL }}
         run: curl --fail --silent --show-error --retry 3 "$HEARTBEAT_URL"

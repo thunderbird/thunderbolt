@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@thunderbolt/miniapp-sdk": "file:../../sdk",
+    "@thunderbolt/miniapp-sdk": "workspace:*",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

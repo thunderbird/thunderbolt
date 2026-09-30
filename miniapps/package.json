@@ -5,6 +5,11 @@
   "license": "MPL-2.0",
   "description": "Thunderbolt Mini App SDK, starter template, and samples",
   "type": "module",
+  "workspaces": [
+    "sdk",
+    "template",
+    "samples/*"
+  ],
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write \"{sdk,template,samples}/**/*.{ts,tsx,json,css,md}\"",

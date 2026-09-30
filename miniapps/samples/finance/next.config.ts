@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { fileURLToPath } from 'node:url'
+
 import type { NextConfig } from 'next'
 
 /**
@@ -29,6 +31,16 @@ const allowedEmbedders = ['http://localhost:1420', 'tauri://localhost', 'http://
  *    quirk; it applies to embedding in any cross-origin-isolated host.
  */
 const nextConfig: NextConfig = {
+  /*
+   * Turbopack's root has to contain the linked SDK.
+   *
+   * The SDK arrives through the `miniapps/` bun workspace, so it resolves to a
+   * symlink into `../sdk` — outside this package. Turbopack infers its root from
+   * the package directory and refuses to follow a link that leaves it, so the
+   * dev server fails on the SDK import. Pointing the root at the workspace puts
+   * both this app and the SDK inside it.
+   */
+  turbopack: { root: fileURLToPath(new URL('../..', import.meta.url)) },
   async headers() {
     return [
       {

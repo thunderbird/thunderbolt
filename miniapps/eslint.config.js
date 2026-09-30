@@ -18,11 +18,21 @@ import { sharedParserOptions, sharedRules } from '../shared/eslint/base.js'
  * nothing and the conventions would hold only until the next edit.
  */
 export default [
+  /*
+   * Global ignores.
+   *
+   * A config object carrying *only* `ignores` applies to every other block. The
+   * same list sitting beside `files` does not: it narrows that one block, so
+   * `js.configs.recommended` — which has no `files` and therefore matches
+   * everything — went on linting build output. That stayed invisible while each
+   * package installed and built in its own directory, and surfaced the moment
+   * `miniapps/` became one workspace and `eslint .` could see `template/.next`.
+   */
+  { ignores: ['**/node_modules/**', '**/.next/**', '**/next-env.d.ts', '**/dist/**'] },
   js.configs.recommended,
   prettier,
   {
     files: ['sdk/src/**/*.{ts,tsx}', 'template/**/*.{ts,tsx}', 'samples/**/*.{ts,tsx}'],
-    ignores: ['**/node_modules/**', '**/.next/**', '**/next-env.d.ts'],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: { ...sharedParserOptions, ecmaFeatures: { jsx: true } },

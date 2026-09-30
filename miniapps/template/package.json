@@ -5,14 +5,14 @@
   "license": "MPL-2.0",
   "description": "Starter for a Thunderbolt Mini App",
   "scripts": {
-    "dev": "next dev -p 5174",
+    "dev": "next dev -p 5190",
     "build": "next build",
-    "start": "next start -p 5174",
+    "start": "next start -p 5190",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@thunderbolt/miniapp-sdk": "file:../sdk",
+    "@thunderbolt/miniapp-sdk": "workspace:*",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

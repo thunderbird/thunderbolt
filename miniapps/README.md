@@ -12,14 +12,20 @@ point at one of its elements.
 
 ## Running one locally
 
-Each package installs on its own; there is no root workspace, matching `cli/` and
-`backend/`.
+One bun workspace, installed from `miniapps/`. Install once at the root and every
+package is linked:
 
 ```sh
-cd template        # or samples/finance
+cd miniapps
 bun install
-bun dev            # http://localhost:3000
+
+cd template          # bun dev → http://localhost:5190
+cd samples/finance   # bun dev → http://localhost:5174
 ```
+
+The template's `:5190` is the port the backend's development `MINI_APPS` fallback and
+`src-tauri/tauri.dev.conf.json`'s `frame-src` both already name, so a fresh checkout
+needs no configuration to see it. Another port means updating both.
 
 Then point Thunderbolt at it. See `docs/` in the repo root for registering a Mini App
 with the host.
@@ -40,13 +46,20 @@ both, with the reasoning inline:
 
 ## Depending on the SDK
 
-The template and samples reference it by path:
+The template and samples take it from the workspace:
 
 ```json
-"@thunderbolt/miniapp-sdk": "file:../sdk"
+"@thunderbolt/miniapp-sdk": "workspace:*"
 ```
 
-That works for anything inside this repo. **It does not work for an app outside it** —
+Not `file:../sdk`. On Linux, bun installs a `file:` dependency as one symlink **per
+file**, and Turbopack cannot follow file symlinks, so `next dev` died with "package.json
+is not parseable: a redirect can't be parsed as json" ([vercel/next.js#87647](https://github.com/vercel/next.js/issues/87647)).
+A workspace dependency links the directory once instead. Each app's `next.config.ts`
+also sets `turbopack.root` to `miniapps/`, because the linked SDK resolves outside the
+app's own package and Turbopack refuses to follow a link that leaves its root.
+
+This works for anything inside this repo. **It does not work for an app outside it** —
 publishing the SDK is what makes it consumable by third parties, and that is not done
 yet. Until then, an external app copies `sdk/src/` in.
 

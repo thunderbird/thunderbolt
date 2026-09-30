@@ -29,7 +29,7 @@ Run all three and make them pass:
 - `bun run test`, plus `bun run test:backend` when you changed `backend/src/`
 
 Run the spec before you change anything too, to see it fail. `bun run test 2>&1 | grep -A8 '(fail)'` shows
-only the failures; `bun test <file> --timeout 5000` runs one test file.
+only the failures.
 
 ## When the fix is unclear
 

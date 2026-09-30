@@ -17,5 +17,3 @@ one word at a time."), so a spec must not depend on what a real model says. Writ
 its spec only reproduces what the fake AI can show.
 
 Out of bounds: skills, projects, account deletion, other settings.
-
-Budget: about 150 tool calls.

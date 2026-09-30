@@ -15,5 +15,3 @@ Start state: fresh user, desktop viewport, fake AI (select "Opus 5").
    of the project; reload after each move. Delete a project that still has chats.
 
 Out of bounds: account deletion, sign out, settings unrelated to skills and projects.
-
-Budget: about 200 tool calls.

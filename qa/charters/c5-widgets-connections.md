@@ -21,5 +21,3 @@ its spec only reproduces what the fake AI can show.
 
 Out of bounds: other settings, skills, projects, account deletion. Never open the links in a new tab or navigate
 away from localhost: judge a link preview by what the app shows.
-
-Budget: about 150 tool calls.

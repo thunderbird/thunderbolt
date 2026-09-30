@@ -16,5 +16,3 @@ Start state: fresh user, desktop viewport, fake AI (select "Opus 5").
    recovers when you switch back to "Opus 5".
 
 Out of bounds: settings, skills, projects, account deletion.
-
-Budget: about 200 tool calls.

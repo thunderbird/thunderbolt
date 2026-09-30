@@ -15,5 +15,3 @@ On every screen you open, run the overflow check from the oracle list and look f
    the theme and one unit; reload and check each.
 
 Out of bounds: account deletion, sign out.
-
-Budget: about 150 tool calls.

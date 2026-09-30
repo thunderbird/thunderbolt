@@ -17,5 +17,3 @@ Specs for this charter: start with `test.use({ baseURL: 'http://localhost:1425' 
 `12345678`), because `loginViaEmailCode` expects onboarding to be off.
 
 Out of bounds: settings beyond what these steps need.
-
-Budget: about 150 tool calls.

@@ -14,5 +14,3 @@ Start state: fresh user, desktop viewport, fake AI (select "Opus 5").
 5. Visit every other settings page once and check it loads.
 
 Out of bounds: account deletion, sign out.
-
-Budget: about 200 tool calls.

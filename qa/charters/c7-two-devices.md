@@ -17,5 +17,3 @@ Specs for this charter: sign in device A with `loginViaEmailCode(page)`. For dev
 `thunderbolt_device_id` and `thunderbolt_user_cache_secret`, then turn sync on in both, as a user would.
 
 Out of bounds: account deletion.
-
-Budget: about 200 tool calls.

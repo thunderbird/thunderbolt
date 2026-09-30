@@ -127,9 +127,7 @@ const tools: ThunderboltTool[] = [
     description: 'Change one input of the model and recompute…',
     inputSchema: {
       type: 'object',
-      properties: {
-        /* JSON Schema */
-      },
+      properties: {/* JSON Schema */},
       required: ['key', 'value'],
     },
     annotations: { readOnlyHint: false, title: 'Change a model assumption' },

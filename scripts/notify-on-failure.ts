@@ -40,12 +40,6 @@ type AlertState = {
 }
 type State = { id: string; name: string; type: string }
 type Label = { id: string; name: string; team: { id: string } | null }
-type LinearVariables =
-  | { teamId: string; title: string }
-  | { id: string; stateId: string }
-  | { id: string; description: string }
-  | { issueId: string; body: string }
-  | { input: { teamId: string; title: string; stateId: string; labelIds: string[]; description: string } }
 
 /** Report only trusted API context, never response content or network error text. */
 const requestJson = async <T>(
@@ -65,11 +59,11 @@ const requestJson = async <T>(
 }
 
 /** Query Linear and reject GraphQL errors, including partial 200 responses. */
-const linear = async <T>(
+export const linear = async <T>(
   fetchFn: typeof fetch,
   key: string,
   query: string,
-  variables?: LinearVariables,
+  variables?: Record<string, unknown>,
 ): Promise<T> => {
   const operation = /^(?:query|mutation) (\w+)/.exec(query)?.[1] ?? 'GraphQL'
   const { body: result, status } = await requestJson<{ data?: T; errors?: { message: string }[] }>(

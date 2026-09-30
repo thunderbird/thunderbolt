@@ -97,11 +97,13 @@ Then the rest of the pipeline:
 # Replay: no keys in this shell, and the stack running with the fake AI
 bun scripts/qa/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun scripts/qa/verify.ts judge --out qa-out
-bun scripts/qa/file-findings.ts --out qa-out       # dry run: prints what it would file
+bun scripts/qa/file-findings.ts --out qa-out       # dry run: one line per finding, text in filed.json
 bun scripts/qa/fix.ts route --out qa-out
 bun scripts/qa/report.ts summary --out qa-out      # writes qa-out/report.md
 ```
 
+A filer dry run logs one line per finding (fingerprint, severity, action), because the Actions log is public. The
+would-be ticket text is `preview` in `filed.json`, except for security findings, which get none.
 `file-findings.ts scorecard` needs a Linear key, so it cannot run offline.
 
 **Canary leg:** build the canary frontend from a patched copy, so your checkout stays clean:
@@ -271,6 +273,9 @@ Also:
   placeholder request in c3 was).
 - Repro specs are model-written. A spec that fails before its assertion is dropped by the judge even when the bug
   is real, which is how the skill-delete canary was missed locally (recall 2/3).
+- A security finding's ticket carries no run link, but its finding JSON and repro spec still sit in the explore
+  and replay artifacts for their 7-day retention. This repo is public, so any signed-in GitHub user can download
+  them.
 - A scheduled run acts as the user who last edited the cron line. `claude-code-action` refuses bot actors, so
   that must be a person.
 - The fix agent can still run any code (its `bun run test` runs test files it writes), but without the Anthropic

@@ -383,6 +383,22 @@ jobs:
       - name: Replay the repro specs
         run: bun scripts/qa/verify.ts replay --out "$QA_OUT"
 
+      - name: Download the normal build
+        if: matrix.leg.name == 'canary'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-dist
+          path: qa-dist
+      # A canary counts as found only when its finding fails on the canary build and passes on the normal one, so the
+      # same findings replay again on the normal build. Playwright wipes the copied replay/ output first.
+      - name: Replay the canary findings on the normal build
+        if: matrix.leg.name == 'canary'
+        run: |
+          scripts/qa/stack.sh stop
+          cp -R "$QA_OUT/." qa-out-canary-baseline
+          scripts/qa/stack.sh start qa-dist
+          bun scripts/qa/verify.ts replay --out qa-out-canary-baseline
+
       - name: Remove credentials and network data from traces
         id: sanitize
         if: always()
@@ -396,6 +412,13 @@ jobs:
         with:
           name: qa-replay-${{ matrix.leg.name }}
           path: ${{ matrix.leg.out }}/
+          retention-days: 7
+      - name: Upload the canary baseline
+        if: always() && matrix.leg.name == 'canary'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-baseline-canary
+          path: qa-out-canary-baseline/candidates.json
           retention-days: 7
 
   judge:
@@ -427,9 +450,16 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
         run: bun scripts/qa/verify.ts judge --out "$QA_OUT"
+      - name: Download the canary baseline
+        if: matrix.leg.name == 'canary'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-baseline-canary
+          path: qa-out-canary-baseline
+      # Also takes every canary-leg finding out of verified.json: the canary leg is never filed.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
-        run: bun scripts/qa/report.ts canary --out "$QA_OUT"
+        run: bun scripts/qa/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-verified-${{ matrix.leg.name }}

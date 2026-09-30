@@ -205,9 +205,23 @@ describe('isDenied', () => {
     'src/crypto/keys.ts',
     'src/services/encryption.ts',
     'src/hooks/use-powersync-status.ts',
+    'src/lib/oauth-state.ts',
+    'src/lib/oauth-redirect.ts',
+    'src/lib/sso-loopback.ts',
+    'backend/src/dal/sessions.ts',
+    'src/components/approve-device-dialog.tsx',
+    'src/components/sign-in/sign-in-form.tsx',
+    'backend/src/dal/otp-challenge.ts',
+    'src/components/sync-setup/recovery-key-entry-step.tsx',
+    'src/dal/mcp-secrets.ts',
     'deploy/k8s/values.yaml',
     'src-tauri/src/main.rs',
     '.github/workflows/ci.yml',
+    '.husky/pre-commit',
+    '.lintstagedrc.json',
+    'Makefile',
+    'eslint.config.js',
+    'scripts/license-headers.ts',
     'package.json',
     'backend/package.json',
     'bun.lock',
@@ -219,12 +233,14 @@ describe('isDenied', () => {
     expect(isDenied(path)).toBe(true)
   })
 
-  test.each(['src/chats/chat-title.tsx', 'src/lib/oauth-redirect.ts', 'shared/url.ts', 'backend/src/api/chat.ts'])(
-    'allows %s',
-    (path) => {
-      expect(isDenied(path)).toBe(false)
-    },
-  )
+  test.each([
+    'src/chats/chat-title.tsx',
+    'src/components/chat/message-bubbles.tsx',
+    'shared/url.ts',
+    'backend/src/api/chat.ts',
+  ])('allows %s', (path) => {
+    expect(isDenied(path)).toBe(false)
+  })
 })
 
 describe('regressionSpec', () => {
@@ -391,15 +407,16 @@ describe('publish', () => {
     })
 
     expect(result).toMatchObject({ outcome: 'pr', prUrl: 'https://github.com/o/r/pull/9' })
-    expect(runs.slice(3).map((r) => r.cmd.slice(0, 3).join(' '))).toEqual([
-      'git switch --create',
-      'git apply --index',
-      'git add e2e/consumer-qa-ab12cd34.spec.ts',
-      'git commit --quiet',
-      'git push origin',
-      'gh pr create',
+    const noHooks = ['git', '-c', 'core.hooksPath=/dev/null']
+    expect(runs.slice(3, -1).map((r) => r.cmd.slice(0, 5))).toEqual([
+      [...noHooks, 'switch', '--create'],
+      [...noHooks, 'apply', '--index'],
+      [...noHooks, 'add', 'e2e/consumer-qa-ab12cd34.spec.ts'],
+      [...noHooks, 'commit', '--no-verify'],
+      [...noHooks, 'push', '--no-verify'],
     ])
     const [push, pr] = runs.slice(-2)
+    expect(pr.cmd.slice(0, 3)).toEqual(['gh', 'pr', 'create'])
     expect(push.cmd.join(' ')).not.toContain('app-token')
     expect(Buffer.from(push.env?.GIT_CONFIG_VALUE_0.split(' ').at(-1) ?? '', 'base64').toString()).toBe(
       'x-access-token:app-token',

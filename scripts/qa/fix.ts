@@ -18,21 +18,13 @@ const severityOrder: Severity[] = ['Urgent', 'High', 'Medium', 'Low']
 const maxFixes = 3
 const humanRequired = 'human required'
 
-/**
- * Paths a fix PR must never touch: synced-table schema, migrations and sync, auth and encryption code,
- * infrastructure, dependencies, and the QA machinery itself (the regression spec is added by `publish`).
- */
-const deniedPaths = [
-  /^(src|backend\/src)\/db\//,
-  /^(src|backend)\/drizzle\//,
-  /^shared\/powersync-tables\.ts$/,
-  /^(powersync-service|deploy|src-tauri|\.github|qa|scripts\/qa|e2e)\//,
-  /(^|[/-])(auth|crypto|encryption|powersync)([/.-]|$)/i,
-  /(^|\/)(package\.json|bun\.lock)$/,
-  /^playwright[\w.-]*\.config\.ts$/,
-]
-/** True when a fix PR must not touch `path` (repo-relative). */
-export const isDenied = (path: string) => deniedPaths.some((pattern) => pattern.test(path))
+/** A fix may change only app code, as `qa/fix.md` tells the agent; `publish` adds the regression spec itself. */
+const allowedPaths = /^(src|shared|backend\/src)\//
+/** Sensitive app code: database schema, migrations, sync, and any path naming sign-in, sessions, devices or keys. */
+const sensitivePaths =
+  /^(src|backend\/src)\/db\/|auth|sso|session|device|sign-?in|log-?(in|out)|otp|approv|recovery|secret|credential|crypto|encrypt|powersync|drizzle|migration/i
+/** True when a fix PR must not touch `path` (repo-relative): anything outside app code, or sensitive app code. */
+export const isDenied = (path: string) => !allowedPaths.test(path) || sensitivePaths.test(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 /** One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. */
@@ -320,13 +312,16 @@ export const publish = async ({
   }
 
   const patch = resolve(outDir, 'fix', `${fp}.patch`)
-  await run(['git', 'switch', '--create', branch])
-  await run(['git', 'apply', '--index', patch])
+  // No git hooks: they would run code from the patched tree while this job holds the write token.
+  const git = (args: string[], opts?: Parameters<Run>[1]) =>
+    run(['git', '-c', 'core.hooksPath=/dev/null', ...args], opts)
+  await git(['switch', '--create', branch])
+  await git(['apply', '--index', patch])
   await writeFile(join(repoDir, spec.path), spec.source)
-  await run(['git', 'add', spec.path])
-  await run(['git', 'commit', '--quiet', '--message', commit])
+  await git(['add', spec.path])
+  await git(['commit', '--no-verify', '--quiet', '--message', commit])
   const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
-  await run(['git', 'push', 'origin', `HEAD:refs/heads/${branch}`], {
+  await git(['push', '--no-verify', 'origin', `HEAD:refs/heads/${branch}`], {
     env: {
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',

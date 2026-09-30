@@ -289,6 +289,9 @@ jobs:
         id: explore
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_EXPLORE_TIMEOUT_MINUTES) }}
+        env:
+          # Keeps the Anthropic key out of every process the session starts (MCP servers, browsers).
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with:
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
@@ -591,6 +594,9 @@ jobs:
         id: fix
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(env.QA_FIX_TIMEOUT_MINUTES) }}
+        env:
+          # Keeps the Anthropic key out of every command the agent runs, such as a test file it wrote.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         uses: anthropics/claude-code-action@fd1c128679612beff4ca259c78021c506e8aa7a7 # v1.0.237
         with:
           anthropic_api_key: ${{ secrets.QA_ANTHROPIC_API_KEY }}
@@ -601,7 +607,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun test:*),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts:*)"
+            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun test:*),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts ${{ matrix.task.spec }})"
             --disallowedTools "Bash(git:*),WebFetch,WebSearch"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}

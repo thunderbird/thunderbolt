@@ -30,6 +30,21 @@ needs no configuration to see it. Another port means updating both.
 Then point Thunderbolt at it. See `docs/` in the repo root for registering a Mini App
 with the host.
 
+## Deploying against a real host
+
+Two settings, and both are needed. They answer different questions, and getting
+either wrong produces the same symptom: a blank panel.
+
+| Variable                              | Answers                                       | Read by                                |
+| ------------------------------------- | --------------------------------------------- | -------------------------------------- |
+| `NEXT_PUBLIC_THUNDERBOLT_HOST_ORIGIN` | who the app talks to, and trusts replies from | the browser, via `useThunderbolt`      |
+| `THUNDERBOLT_HOST_ORIGINS`            | who is allowed to frame the app               | `next.config.ts`, as `frame-ancestors` |
+
+Unset, both fall back to the development origins (`http://localhost:1420` plus
+the desktop app's `tauri://localhost` and `http://tauri.localhost`). Until
+THU-908 the React path had no way to pass the first of these at all, so a
+deployed app could only ever target the dev server.
+
 ## The two headers that decide whether it works
 
 Both failures look identical — a blank panel, no console error in the embedding page —

@@ -49,6 +49,16 @@ const statuses: OrderStatus[] = ['open', 'filled', 'cancelled']
  */
 const money = (value: number) => `$${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ',')}`
 
+/**
+ * The Thunderbolt origin to connect to.
+ *
+ * `NEXT_PUBLIC_` because the hook needs it in the browser. Unset falls back to
+ * the dev server, matching the default in `next.config.ts` — set both when you
+ * deploy: this one decides who the app talks to, that one decides who is
+ * allowed to frame it, and getting either wrong is a blank panel.
+ */
+const hostOrigin = process.env.NEXT_PUBLIC_THUNDERBOLT_HOST_ORIGIN
+
 const Page = () => {
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -115,7 +125,7 @@ const Page = () => {
     [orders, open.length, exposure],
   )
 
-  const { connected, hostContext, sendContext } = useThunderbolt('Order Book', tools)
+  const { connected, hostContext, sendContext } = useThunderbolt('Order Book', tools, { hostOrigin })
 
   // Writing to documentElement is a side effect on something outside React's
   // tree, which is what useEffect is actually for.

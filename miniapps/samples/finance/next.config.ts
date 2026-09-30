@@ -9,11 +9,22 @@ import type { NextConfig } from 'next'
 /**
  * Origins allowed to embed this app.
  *
- * `1420` is Thunderbolt's Vite dev server (a Tauri convention, not Vite's usual
- * 5173). `tauri://localhost` and `http://tauri.localhost` are the desktop app's
- * origins on macOS and Windows respectively.
+ * The defaults are the development ones: `1420` is Thunderbolt's Vite dev server
+ * (a Tauri convention, not Vite's usual 5173), and `tauri://localhost` /
+ * `http://tauri.localhost` are the desktop app's origins on macOS and Windows.
+ *
+ * `THUNDERBOLT_HOST_ORIGINS` (comma-separated) replaces them, because a
+ * hardcoded list means a deployed Thunderbolt cannot load the app at all: the
+ * browser refuses the frame before any bridge code runs, and the panel goes
+ * blank with nothing in the embedder's console. Set it to your Thunderbolt
+ * origin when you deploy.
  */
-const allowedEmbedders = ['http://localhost:1420', 'tauri://localhost', 'http://tauri.localhost']
+const allowedEmbedders = (
+  process.env.THUNDERBOLT_HOST_ORIGINS ?? 'http://localhost:1420,tauri://localhost,http://tauri.localhost'
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 
 /**
  * The two headers a Thunderbolt Mini App must send. Both fail the same way — a

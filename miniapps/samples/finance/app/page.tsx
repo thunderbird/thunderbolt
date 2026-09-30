@@ -23,6 +23,16 @@ const fields: { key: keyof Assumptions; label: string; step?: number }[] = [
   { key: 'costPerEmployee', label: 'Cost per employee', step: 5_000 },
 ]
 
+/**
+ * The Thunderbolt origin to connect to.
+ *
+ * `NEXT_PUBLIC_` because the hook needs it in the browser. Unset falls back to
+ * the dev server, matching the default in `next.config.ts` — set both when you
+ * deploy: this one decides who the app talks to, that one decides who is
+ * allowed to frame it, and getting either wrong is a blank panel.
+ */
+const hostOrigin = process.env.NEXT_PUBLIC_THUNDERBOLT_HOST_ORIGIN
+
 const Page = () => {
   const [assumptions, setAssumptions] = useState<Assumptions>(defaultAssumptions)
   const [selectedQuarter, setSelectedQuarter] = useState<string | null>(null)
@@ -74,7 +84,7 @@ const Page = () => {
     },
   ]
 
-  const { connected, hostContext, sendContext } = useThunderbolt('Finance Model', tools)
+  const { connected, hostContext, sendContext } = useThunderbolt('Finance Model', tools, { hostOrigin })
 
   const rows = useMemo(() => buildProjection(assumptions), [assumptions])
 

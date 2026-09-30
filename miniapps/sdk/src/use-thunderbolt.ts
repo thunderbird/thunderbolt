@@ -56,7 +56,18 @@ export type ThunderboltState = {
 export const useThunderbolt = (
   appName: string,
   tools: ThunderboltTool[] | (() => ThunderboltTool[]) = [],
-  options: { auth?: boolean } = {},
+  options: {
+    auth?: boolean
+    /**
+     * The Thunderbolt origin to talk to, and to trust replies from.
+     *
+     * Defaults to the dev server, which is why this has to be reachable from
+     * here: `connect` has always accepted it, but the hook did not pass it on,
+     * so the shipped React path could only ever target `http://localhost:1420`
+     * and there was no way to deploy an app against a real host.
+     */
+    hostOrigin?: string
+  } = {},
 ): ThunderboltState => {
   const [connected, setConnected] = useState(false)
   // Patched rather than replaced: host-context updates carry only what changed.
@@ -79,6 +90,7 @@ export const useThunderbolt = (
           onHostContextChange: (patch) => setHostContext((current) => ({ ...current, ...patch })),
           tools: () => (typeof toolsRef.current === 'function' ? toolsRef.current() : toolsRef.current),
           auth: options.auth,
+          hostOrigin: options.hostOrigin,
         })
         // A late handshake after unmount would otherwise leave a live listener
         // and a connection nobody can disconnect.
@@ -119,7 +131,7 @@ export const useThunderbolt = (
       connectionRef.current?.disconnect()
       connectionRef.current = null
     }
-  }, [appName])
+  }, [appName, options.auth, options.hostOrigin])
 
   // Memoised because callers put these in effect dependency arrays. Rebuilding
   // them each render made the context-publishing effect fire on every render,

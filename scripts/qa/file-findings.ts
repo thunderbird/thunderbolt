@@ -34,7 +34,8 @@ export type Filed = {
 
 /** Linear priority per severity; lower is more urgent, so it also sorts findings. */
 export const priority = { Urgent: 1, High: 2, Medium: 3, Low: 4 } satisfies Record<Severity, number>
-const maxNewTickets = 8
+/** New tickets per run, with a separate cap for security findings so neither kind crowds out the other. */
+const ticketCap = { bug: 8, security: 3 }
 const regressionWindowMs = 60 * 24 * 60 * 60 * 1000
 const requiredLabels = ['qa-agent', 'Bug', 'security']
 const triageLabels = ['qa:valid', 'qa:not-a-bug', 'qa:duplicate', 'qa:env-artifact'] as const
@@ -238,6 +239,8 @@ const uploadVideo = async (ctx: Ctx, path: string): Promise<string | undefined> 
 // ---------- ticket text ----------
 
 type Entry = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
+/** Findings over their kind's ticket cap, rolled up into one ticket per kind. */
+type Overflow = { bug: Entry[]; security: Entry[] }
 
 /** Text an attacker-influenced page could have shaped; scanned for secrets before anything is sent. */
 const modelText = (f: Finding, spec: string) =>
@@ -325,7 +328,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   entries.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
 
   const filed: Filed[] = []
-  const overflow: Entry[] = []
+  const opened = { bug: 0, security: 0 }
+  const overflow: Overflow = { bug: [], security: [] }
   const baseOf = ({ v, fp, sev }: Entry) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id })
   /**
    * Records a mutation: performed when live. A dry run logs one line without the ticket text, since the job log
@@ -345,8 +349,32 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     filed.push({ ...baseOf(entry), action: would, ...(await run(ctx)) })
   }
 
+  /** One roll-up ticket per kind over its cap. A security roll-up lists fingerprints only and has no run link. */
+  const rollUp = async (kind: keyof typeof ticketCap) => {
+    const rest = overflow[kind]
+    if (rest.length === 0) return
+    const security = kind === 'security'
+    const noun = `${security ? 'security finding' : 'finding'}${rest.length > 1 ? 's' : ''}`
+    const title = `QA agent: ${rest.length} more ${noun} over the ${ticketCap[kind]}-ticket cap`
+    const lines = rest.map(({ f, fp, sev }) =>
+      security ? `- [qa:${fp}] ${sev}` : `- [qa:${fp}] ${sev} · ${f.area} · ${ticketView(f).title}`,
+    )
+    const description = [!security && runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
+      .filter(Boolean)
+      .join('\n\n')
+    const labels = ['qa-agent', 'Bug', ...(security ? ['security'] : [])]
+    const issue = live && ctx ? await createIssue(ctx, title, description, rest[0].sev, labels) : undefined
+    if (!issue) log(`[dry run] would create the roll-up "${title}"`)
+    for (const entry of rest) {
+      filed.push(
+        issue
+          ? { ...baseOf(entry), action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
+          : { ...baseOf(entry), action: 'dry-run', would: 'rolled-up' },
+      )
+    }
+  }
+
   try {
-    let newTickets = 0
     for (const entry of entries) {
       const { v, f, fp, sev } = entry
       const spec = await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8')
@@ -368,12 +396,12 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
         })
         continue
       }
-      // A security finding always gets its own ticket: the roll-up has the run link and no security label.
-      if (f.area !== 'security' && newTickets >= maxNewTickets) {
-        overflow.push(entry)
+      const kind = f.area === 'security' ? 'security' : 'bug'
+      if (opened[kind] >= ticketCap[kind]) {
+        overflow[kind].push(entry)
         continue
       }
-      newTickets++
+      opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
       const names = ['qa-agent', 'Bug', ...(f.area === 'security' ? ['security'] : [])]
       const title = `${ticketView(f).title} [qa:${fp}]`
@@ -387,23 +415,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       })
     }
 
-    if (overflow.length) {
-      const top = overflow[0].sev
-      const title = `QA agent: ${overflow.length} more finding${overflow.length > 1 ? 's' : ''} over the ${maxNewTickets}-ticket cap`
-      const lines = overflow.map(({ f, fp, sev }) => `- [qa:${fp}] ${sev} · ${f.area} · ${ticketView(f).title}`)
-      const description = [runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
-        .filter(Boolean)
-        .join('\n\n')
-      const issue = live && ctx ? await createIssue(ctx, title, description, top, ['qa-agent', 'Bug']) : undefined
-      if (!issue) log(`[dry run] would create the roll-up "${title}"`)
-      for (const entry of overflow) {
-        filed.push(
-          issue
-            ? { ...baseOf(entry), action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
-            : { ...baseOf(entry), action: 'dry-run', would: 'rolled-up' },
-        )
-      }
-    }
+    await rollUp('bug')
+    await rollUp('security')
   } finally {
     await writeFile(join(outDir, 'filed.json'), JSON.stringify(filed, null, 2))
   }

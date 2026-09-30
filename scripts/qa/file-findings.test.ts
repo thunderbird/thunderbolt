@@ -240,6 +240,31 @@ describe('cap and roll-up', () => {
     expect(rollup.description).not.toContain('Leaky thing')
   })
 
+  test('security findings have their own cap of 3, then one security roll-up with fingerprints only', async () => {
+    await writeVerified(numbered(5, { area: 'security' }))
+    const api = fakeLinear()
+    const filed = await run(api.fetchFn)
+    expect(filed.map((f) => f.action)).toEqual(['created', 'created', 'created', 'rolled-up', 'rolled-up'])
+    const tickets = created(api)
+    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-security'))).toBe(true)
+    const rollup = tickets[3]
+    expect(rollup.title).toBe('QA agent: 2 more security findings over the 3-ticket cap')
+    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-security'])
+    expect(rollup.description).not.toContain(runUrl)
+    expect(rollup.description).not.toContain('Bug ')
+    expect(rollup.description).toContain(`[qa:${filed[3].fp}] High`)
+  })
+
+  test('a dry-run security roll-up leaves no finding text in the log or filed.json', async () => {
+    await writeVerified(numbered(4, { area: 'security' }))
+    const lines: string[] = []
+    const filed = await run(fakeLinear().fetchFn, { live: false, log: (l) => lines.push(l) })
+    expect(filed.map((f) => f.would)).toEqual(['created', 'created', 'created', 'rolled-up'])
+    const written = lines.join('\n') + (await readFile(join(outDir, 'filed.json'), 'utf8'))
+    expect(written).not.toContain('Bug ')
+    expect(written).not.toContain('Distinct failure')
+  })
+
   test('a dry run over the cap logs the roll-up without any finding text', async () => {
     await writeVerified(numbered(9))
     const lines: string[] = []

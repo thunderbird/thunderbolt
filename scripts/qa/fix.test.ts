@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Filed } from './file-findings'
@@ -337,6 +337,47 @@ describe('checkPatch', () => {
     expect(await checkPatch(git, outDir, task())).toEqual({ reasons: ['empty patch'], files: [] })
   })
 
+  test('rejects a patch that adds a symlink or a submodule, even under an allowed path', async () => {
+    await patchFrom(async () => {
+      await symlink('../.github', join(repo, 'src', 'link'))
+      // A nested repo is staged as a submodule entry (mode 160000).
+      const vendor = runIn(join(repo, 'src', 'vendor'))
+      await mkdir(join(repo, 'src', 'vendor'))
+      await vendor(['git', 'init', '--quiet'])
+      await vendor([
+        'git',
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '--quiet',
+        '--allow-empty',
+        '-m',
+        'v',
+      ])
+    })
+    const { reasons, files } = await checkPatch(git, outDir, task())
+    expect(files.sort()).toEqual(['src/link', 'src/vendor'])
+    expect(reasons.sort()).toEqual([
+      'adds or changes a symlink or submodule: src/link',
+      'adds or changes a symlink or submodule: src/vendor',
+    ])
+  })
+
+  test('rejects a patch that turns an existing symlink into a file', async () => {
+    await symlink('chat.ts', join(repo, 'src', 'alias.ts'))
+    await git(['git', 'add', '-A'])
+    await git(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'link'])
+    await patchFrom(async () => {
+      await rm(join(repo, 'src', 'alias.ts'))
+      await writeFile(join(repo, 'src', 'alias.ts'), 'export const alias = 1\n')
+    })
+    expect((await checkPatch(git, outDir, task())).reasons).toEqual([
+      'adds or changes a symlink or submodule: src/alias.ts',
+    ])
+  })
+
   test('rejects a patch that matches a secret pattern', async () => {
     await patchFrom(() => writeFile(join(repo, 'src', 'chat.ts'), "export const token = 'ghs_abc123'\n"))
     expect((await checkPatch(git, outDir, task())).reasons).toEqual(['the patch matches a secret pattern'])
@@ -367,7 +408,9 @@ describe('checkPatch', () => {
 describe('publish', () => {
   const fp = 'ab12cd34'
   const specPath = () => join(outDir, 'c2-chat', 'repro', '1.spec.ts')
-  const diffOutput = { 'git diff': 'src/chat.ts\0' }
+  /** `git diff --raw -z` output for these modified regular files. */
+  const rawDiff = (...paths: string[]) => paths.map((p) => `:100644 100644 aaa bbb M\0${p}\0`).join('')
+  const diffOutput = { 'git diff': rawDiff('src/chat.ts') }
 
   const setup = async (ticket = true) => {
     const task: FixTask = {
@@ -529,7 +572,7 @@ describe('publish', () => {
       live: true,
       key: 'lin',
       token: 't',
-      run: fakeRun(runs, { 'git diff': 'src/chat.ts\0.github/workflows/ci.yml\0' }),
+      run: fakeRun(runs, { 'git diff': rawDiff('src/chat.ts', '.github/workflows/ci.yml') }),
       fetchFn: fakeLinear(calls),
       log: () => {},
     })

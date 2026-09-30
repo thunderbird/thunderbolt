@@ -179,18 +179,27 @@ export const regressionSpec = (charterDir: string, fp: string, source: string) =
     ),
 })
 
-/** Files a patch touches, rename sources included, read through a scratch index so the checkout stays as is. */
+/**
+ * Files a patch touches with their old and new git modes, rename sources included, read through a scratch index so
+ * the checkout stays as is.
+ */
 const patchedFiles = async (run: Run, patch: string) => {
   const env = { GIT_INDEX_FILE: `${patch}.index` }
   try {
     await run(['git', 'read-tree', 'HEAD'], { env })
     await run(['git', 'apply', '--cached', patch], { env })
-    const names = await run(['git', 'diff', '--cached', '--name-only', '--no-renames', '-z', 'HEAD'], { env })
-    return names.split('\0').filter(Boolean)
+    // Per file: ":<old mode> <new mode> <old sha> <new sha> <status>\0<path>\0".
+    const fields = (await run(['git', 'diff', '--cached', '--raw', '--no-renames', '-z', 'HEAD'], { env })).split('\0')
+    return fields.flatMap((field, i) =>
+      field.startsWith(':') ? [{ path: fields[i + 1], modes: field.slice(1).split(' ').slice(0, 2) }] : [],
+    )
   } finally {
     await rm(env.GIT_INDEX_FILE, { force: true })
   }
 }
+
+/** Git modes of a symlink and a submodule: either can point a reviewed path at anything. */
+const linkModes = new Set(['120000', '160000'])
 
 /** Why the agent's output must not become a PR (empty = it may), and the files its patch touches. */
 export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
@@ -205,7 +214,16 @@ export const checkPatch = async (run: Run, outDir: string, task: FixTask) => {
   // The patch becomes a public PR.
   if (secretPattern.test(text)) reasons.push('the patch matches a secret pattern')
   const files = await patchedFiles(run, patch)
-  return { reasons: [...reasons, ...files.filter(isDenied).map((f) => `touches ${f}`)], files }
+  return {
+    reasons: [
+      ...reasons,
+      ...files.filter((f) => isDenied(f.path)).map((f) => `touches ${f.path}`),
+      ...files
+        .filter((f) => f.modes.some((m) => linkModes.has(m)))
+        .map((f) => `adds or changes a symlink or submodule: ${f.path}`),
+    ],
+    files: files.map((f) => f.path),
+  }
 }
 
 const oneLine = (text: string) => text.replace(/[\p{Cc}\s]+/gu, ' ').trim()

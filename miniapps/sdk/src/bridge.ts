@@ -29,7 +29,16 @@ import { callTool, toDescriptors, type ThunderboltTool } from './tools'
 
 /** Exported for the tests; not re-exported from `index.ts`, so not public API. */
 export const protocolMarker = 'thunderbolt-miniapp'
-const protocolVersion = 2
+/**
+ * The wire version we declare at handshake.
+ *
+ * Must be a member of the host's `supportedProtocolVersions`
+ * (`shared/mini-app-protocol.ts`) or the handshake is rejected outright — which
+ * is exactly what a bump on one side alone causes, and it is silent in tests
+ * that build the handshake from the host's own constant. `protocol-version.test.ts`
+ * beside the host reads both literals off disk to keep them honest.
+ */
+const protocolVersion = 3
 
 export type MiniAppContext = {
   /** Short label for the current view. */

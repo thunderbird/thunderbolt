@@ -26,7 +26,8 @@ The browser tools can write files anywhere in the explore job's checkout, so no 
 explorer. The stack is killed inline from pid files outside the checkout (`$RUNNER_TEMP/qa-stack.pid*`). A
 `sha256sum` check of every tracked file must pass, or the job fails and uploads nothing. The session metrics are
 computed later, in the report job. The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so
-no command they start sees the Anthropic key.
+no command they start inherits the Anthropic key in its environment. The fix job also installs bubblewrap, so those
+commands run in a sandbox and cannot read the key from the CLI's own process either.
 
 Never add `--allow-unrestricted-file-access` to `mcp.json` or set `PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS`.
 The MCP blocks `file:` URLs by default, and that block keeps local files out of the explorer's reach.
@@ -47,7 +48,8 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`.
    The default answer is drop. Writes `verified.json`.
 5. **file** (`scripts/qa/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
-   at most 8 new tickets plus one roll-up, secret refusal, video upload. Dry run unless `--live`.
+   at most 8 new tickets plus one roll-up (security findings: 3 more plus their own roll-up, without the run link),
+   secret refusal, video upload. Dry run unless `--live`.
 6. **fix** (off by default): `scripts/qa/fix.ts route` picks at most 3 tickets in fixable areas. The fix agent
    (`fix.md`) writes a patch without git. A step without secrets then replays the original spec 3 times on the
    patched code. A session that did not finish, or a spec that still fails, becomes a diagnosis, so the ticket goes
@@ -188,6 +190,10 @@ write**. `publish` pushes `qa-fix/<fp>` and opens a draft PR with it. PRs opened
 would not start CI until someone approves the run. Enable "Automatically delete head branches": `route` skips a
 fingerprint while its `qa-fix/<fp>` branch exists.
 
+Residual risk: test code that the fix agent writes runs in the same job as the QA Anthropic key. The Anthropic
+workspace's spend limit bounds what a leaked key can cost, and auto-fix stays off unless `QA_AUTOFIX_ENABLED` is
+`true`. Before its upload, the fix job fails and uploads nothing if `qa-out/fix/` holds the key or a token prefix.
+
 ## Budget calibration
 
 Each step type has its own caps, in one place each: the `env` block at the top of `qa-weekly.yml` for explore
@@ -262,6 +268,9 @@ Never run on GitHub (only locally, or read in the action's code):
 - the explore job's inline stop, checksum check and result upload, and the fix job's spec replay (each was run
   locally as a script under `bash -eo pipefail`, not inside Actions);
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
+- the bubblewrap sandbox in the fix job, including whether the agent's own spec run can still reach the local
+  stack from inside it (the separate spec replay step runs outside the sandbox), and the fix output's secret scan
+  (run locally as a script);
 - c7 (two devices, Postgres and PowerSync) and its sync replay leg on Postgres + PowerSync, which have not run
   locally either (Docker was down during the local run).
 

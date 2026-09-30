@@ -614,6 +614,17 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
+      # With bubblewrap the scrubbed CLI runs the agent's commands in a sandbox, so they cannot read the key from
+      # the CLI's /proc/<pid>/environ either. Same install as claude-code-action's for allowed_non_write_users.
+      - name: Install the subprocess sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor; older kernels lack the sysctl.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       # The tool rules keep the agent on task; they are not the boundary. This job holds no write token and
       # publishing is a separate, deterministic job.
       - name: Fix
@@ -685,13 +696,26 @@ jobs:
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
           bun scripts/qa/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
 
-      - if: always()
+      # The agent could write anything under qa-out/fix/, and artifacts are public: a secret in it means no upload.
+      # JWT-shaped strings are left to publish's own check, because repo test fixtures contain some.
+      - name: Check the fix output for secrets
+        id: secret-scan
+        if: always()
+        env:
+          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+        run: |
+          if { [ -n "$QA_KEY" ] && grep -rqF -- "$QA_KEY" qa-out/fix/; } ||
+            grep -rqE '\bsk-[[:alnum:]_-]{8,}|lin_(api|oauth)_|gh[pousr]_[[:alnum:]]{20,}|github_pat_|xox[bp]-' qa-out/fix/; then
+            echo "::error::qa-out/fix/ contains a secret, so nothing is uploaded."
+            exit 1
+          fi
+      - if: always() && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-${{ matrix.task.fp }}
           path: qa-out/fix/
           retention-days: 7
-      - if: always()
+      - if: always() && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-fix-session-${{ matrix.task.fp }}

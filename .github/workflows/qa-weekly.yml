@@ -612,14 +612,38 @@ jobs:
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
 
+      # Only a finished session whose patch makes the original spec pass may become a PR. The spec comes fresh
+      # from the artifact (the agent's commands could have changed qa-out/), and no secret is left in this job.
+      - name: Download the original spec
+        if: steps.fix.outcome == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-replay-weekly
+          path: qa-out-verify
+      - name: Replay the spec on the patched code
+        id: verify
+        if: steps.fix.outcome == 'success'
+        env:
+          QA_OUT: qa-out-verify
+          SPEC: ${{ matrix.task.spec }}
+        run: bunx playwright test --config playwright.qa.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
+
       - *stop-stack
 
       - name: Collect the patch
         if: always()
         env:
           SPEC: ${{ matrix.task.spec }}
+          FIX_OUTCOME: ${{ steps.fix.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           mkdir -p qa-out/fix
+          # A diagnosis makes publish hand the ticket to a person instead of opening a PR.
+          if [ "$FIX_OUTCOME" != success ]; then
+            echo "The fix session did not finish (step outcome: $FIX_OUTCOME), so its patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"
+          elif [ "$VERIFY_OUTCOME" != success ]; then
+            echo "The repro spec still fails on the patched code, so the patch is not published." >> "qa-out/fix/$QA_FP.diagnosis.md"
+          fi
           git add --all
           git diff --cached --binary HEAD > "qa-out/fix/$QA_FP.patch"
           cp "$SPEC" "qa-out/fix/$QA_FP.spec.ts"

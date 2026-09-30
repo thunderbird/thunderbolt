@@ -1,0 +1,327 @@
+#!/usr/bin/env bun
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { parseArgs } from 'node:util'
+import type { Filed, Scorecard } from './file-findings'
+import { loadFindings } from './findings'
+import type { Verified, VerifiedFinding } from './verify'
+
+export type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
+export type Session = {
+  charter: string
+  cost_usd: number
+  turns: number
+  duration_ms: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+  stop: Stop
+}
+
+type ModelUsage = {
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  costUSD?: number
+}
+export type ResultMessage = {
+  type: 'result'
+  subtype?: string
+  is_error?: boolean
+  total_cost_usd?: number
+  num_turns?: number
+  duration_ms?: number
+  /** All zeros on a budget cut, so tokens come from `modelUsage`. */
+  usage?: { input_tokens?: number; output_tokens?: number }
+  modelUsage?: Record<string, ModelUsage>
+}
+
+const toStop = (subtype?: string): Stop => {
+  if (subtype === 'success') return 'done'
+  if (subtype === 'error_max_budget_usd') return 'max_budget'
+  if (subtype === 'error_max_turns') return 'max_turns'
+  return 'error'
+}
+
+const readJson = async <T>(path: string): Promise<T | undefined> => {
+  const file = Bun.file(path)
+  return (await file.exists()) ? ((await file.json()) as T) : undefined
+}
+
+/**
+ * Session metrics from a claude-code-action execution file (a JSON array of SDK messages ending in the
+ * `result` message). Tokens are summed from `modelUsage`: on a budget cut `usage` is all zeros.
+ * A missing file or result message is `timeout` when the job timed out, otherwise `error`.
+ */
+export const sessionFromExecution = async (path: string, charter: string, timedOut = false): Promise<Session> => {
+  const messages = await readJson<{ type?: string }[]>(path).catch(() => undefined)
+  const result = messages?.findLast((m) => m.type === 'result') as ResultMessage | undefined
+  const usage = Object.values(result?.modelUsage ?? {})
+  const sum = (pick: (u: ModelUsage) => number | undefined) => usage.reduce((total, u) => total + (pick(u) ?? 0), 0)
+  const fallbackStop = timedOut ? 'timeout' : 'error'
+  return {
+    charter,
+    cost_usd: result?.total_cost_usd ?? sum((u) => u.costUSD),
+    turns: result?.num_turns ?? 0,
+    duration_ms: result?.duration_ms ?? 0,
+    input_tokens: sum((u) => u.inputTokens),
+    output_tokens: sum((u) => u.outputTokens),
+    cache_read_tokens: sum((u) => u.cacheReadInputTokens),
+    cache_creation_tokens: sum((u) => u.cacheCreationInputTokens),
+    stop: !result ? fallbackStop : result.is_error && result.subtype === 'success' ? 'error' : toStop(result.subtype),
+  }
+}
+
+/** Suggested cap = max observed (p95 once there are 20 samples) + 50%; undefined without samples. */
+export const suggestCap = (samples: number[]) => {
+  if (samples.length === 0) return undefined
+  const sorted = [...samples].sort((a, b) => a - b)
+  const basis = sorted.length >= 20 ? sorted[Math.ceil(sorted.length * 0.95) - 1] : sorted[sorted.length - 1]
+  return basis * 1.5
+}
+
+type Canary = { patch: string; charter: string; area: string; oracle: string; description: string }
+type CanaryResult = { found: number; total: number; results: (Canary & { found: boolean })[] }
+
+/** A canary is found when a confirmed or flaky finding has its area and oracle type. */
+export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[]): CanaryResult => {
+  const results = canaries.map((c) => ({
+    ...c,
+    found: findings.some((f) => f.finding.area === c.area && f.finding.oracle.type === c.oracle),
+  }))
+  return { found: results.filter((r) => r.found).length, total: results.length, results }
+}
+
+type Summary = { visited: string[]; skipped: { screen: string; reason: string }[] }
+
+type ReportInput = {
+  sessions: Session[]
+  summaries: Map<string, Summary>
+  found: number
+  verified?: Verified
+  filed?: Filed[]
+  scorecard?: Scorecard
+  canary?: CanaryResult
+}
+
+const stopLabel = {
+  done: 'done',
+  max_budget: 'BUDGET CAP',
+  max_turns: 'TURN CAP',
+  timeout: 'TIMEOUT',
+  error: 'ERROR',
+} as const satisfies Record<Stop, string>
+
+const usd = (n: number) => `$${n.toFixed(2)}`
+const minutes = (ms: number) => `${(ms / 60_000).toFixed(1)} min`
+const tokens = (s: Session) =>
+  `${s.input_tokens} in / ${s.output_tokens} out / ${s.cache_read_tokens} cache read / ${s.cache_creation_tokens} cache write`
+const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n', ' ')
+
+const calibrationRows = (sessions: Session[], judgeCost?: number) => {
+  const row = (step: string, metric: string, samples: number[], format: (n: number) => string) => {
+    const cap = suggestCap(samples)
+    return cap === undefined
+      ? undefined
+      : `| ${step} | ${metric} | ${samples.length} | ${format(Math.max(...samples))} | ${format(cap)} |`
+  }
+  return [
+    row(
+      'explore',
+      'cost',
+      sessions.map((s) => s.cost_usd),
+      usd,
+    ),
+    row(
+      'explore',
+      'turns',
+      sessions.map((s) => s.turns),
+      (n) => `${Math.ceil(n)}`,
+    ),
+    row(
+      'explore',
+      'duration',
+      sessions.map((s) => s.duration_ms),
+      minutes,
+    ),
+    row('judge', 'cost', judgeCost === undefined ? [] : [judgeCost], usd),
+  ].filter((r): r is string => r !== undefined)
+}
+
+const gateYield = ({ found, verified, filed }: ReportInput) => {
+  if (!verified) return []
+  const dropped = (...gates: string[]) => verified.dropped.filter((d) => gates.includes(d.gate)).length
+  const afterOracle = found - verified.observations.length - dropped('schema', 'oracle')
+  const afterLint = afterOracle - dropped('lint')
+  const afterReplay = afterLint - dropped('replay')
+  const afterJudge = afterReplay - dropped('judge')
+  const filedCount = filed?.filter((a) => (a.would ?? a.action) === 'created').length
+  return [
+    `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} (${verified.flaky.length} flaky)` +
+      ` → judge ${afterJudge}${filedCount === undefined ? '' : ` → filed ${filedCount}`}`,
+  ]
+}
+
+/** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
+export const renderReport = (input: ReportInput) => {
+  const { sessions, summaries, verified, filed, scorecard, canary } = input
+  const out: string[] = ['# Weekly QA run']
+  const cut = sessions.filter((s) => s.stop !== 'done')
+  if (cut.length > 0) {
+    out.push(
+      '',
+      `## ⚠️ ${cut.length} INCOMPLETE session(s): the charter was not fully explored`,
+      ...cut.map((s) => `- **${s.charter}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}`),
+    )
+  }
+  out.push(
+    '',
+    '## Sessions',
+    '| charter | cost | turns | duration | tokens | stop |',
+    '|---|---|---|---|---|---|',
+    ...sessions.map(
+      (s) =>
+        `| ${s.charter} | ${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`} |`,
+    ),
+    '',
+    `Total explore: ${usd(sessions.reduce((t, s) => t + s.cost_usd, 0))}, ${sessions.reduce((t, s) => t + s.turns, 0)} turns, ` +
+      `${minutes(sessions.reduce((t, s) => t + s.duration_ms, 0))}. ` +
+      `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.`,
+    '',
+    '## Coverage',
+    ...sessions.flatMap((s) => {
+      const summary = summaries.get(s.charter)
+      if (!summary) return [`- **${s.charter}**: no summary (session cut)`]
+      const skipped = summary.skipped.map((k) => `${k.screen} (${k.reason})`).join('; ') || 'none'
+      return [`- **${s.charter}**: visited ${summary.visited.join(', ') || 'none'}; skipped ${skipped}`]
+    }),
+  )
+  if (verified) {
+    out.push('', '## Gate yield', ...gateYield(input))
+    out.push(
+      '',
+      `### Dropped (${verified.dropped.length})`,
+      ...verified.dropped.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.gate}** — ${escapeCell(d.reason)}`),
+    )
+  }
+  if (filed) {
+    out.push(
+      '',
+      '## Filed',
+      ...filed.map((a) =>
+        `- ${a.action}${a.would ? ` (would ${a.would})` : ''} ${a.fp} ${a.severity} ${a.identifier ?? ''} ${a.reason ?? ''}`.trimEnd(),
+      ),
+    )
+  }
+  if (scorecard) out.push('', '## Scorecard', '```json', JSON.stringify(scorecard, null, 2), '```')
+  if (canary) {
+    out.push(
+      '',
+      `## Canary recall: ${canary.found}/${canary.total}`,
+      ...canary.results.map((r) => `- ${r.found ? 'found' : '**MISSED**'} ${r.patch} (${r.area}, ${r.oracle})`),
+    )
+  }
+  const rows = calibrationRows(sessions, verified?.judge_usage?.cost_usd)
+  if (rows.length > 0) {
+    out.push(
+      '',
+      '## Calibration hint (cap = max observed, p95 from 20 samples, +50%)',
+      '| step | metric | samples | max observed | suggested cap |',
+      '|---|---|---|---|---|',
+      ...rows,
+    )
+  }
+  return `${out.join('\n')}\n`
+}
+
+const loadSessions = async (outDir: string) => {
+  const paths = await Array.fromAsync(new Bun.Glob('*/session.json').scan(outDir))
+  return Promise.all(paths.sort().map((p) => Bun.file(join(outDir, p)).json() as Promise<Session>))
+}
+
+const runSummary = async (outDir: string) => {
+  const sessions = await loadSessions(outDir)
+  const summaries = new Map<string, Summary>()
+  for (const s of sessions) {
+    const summary = await readJson<Summary>(join(outDir, s.charter, 'findings.json'))
+    if (summary) summaries.set(s.charter, summary)
+  }
+  const { valid, rejected } = await loadFindings(outDir)
+  const report = renderReport({
+    sessions,
+    summaries,
+    found: valid.length + rejected.length,
+    verified: await readJson<Verified>(join(outDir, 'verified.json')),
+    filed: await readJson<Filed>(join(outDir, 'filed.json')),
+    scorecard: await readJson<Scorecard>(join(outDir, 'scorecard.json')),
+    canary: await readJson<CanaryResult>(join(outDir, 'canary.json')),
+  })
+  await writeFile(join(outDir, 'report.md'), report)
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, report)
+  return report
+}
+
+/**
+ * Canary leg: match its findings against `canaries.json`, write `canary.json` and move the matches out of
+ * `confirmed`/`flaky` (into `canaryFindings`) so the filer never sees them.
+ */
+export const runCanary = async (outDir: string, canariesPath = 'qa/canaries/canaries.json') => {
+  const verified = (await readJson<Verified>(join(outDir, 'verified.json'))) ?? {
+    confirmed: [],
+    flaky: [],
+    observations: [],
+    dropped: [],
+  }
+  const canaries = JSON.parse(await readFile(canariesPath, 'utf8')) as Canary[]
+  const result = matchCanaries(canaries, [...verified.confirmed, ...verified.flaky])
+  const isCanary = (f: VerifiedFinding) =>
+    canaries.some((c) => c.area === f.finding.area && c.oracle === f.finding.oracle.type)
+  await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
+  await writeFile(
+    join(outDir, 'verified.json'),
+    JSON.stringify(
+      {
+        ...verified,
+        confirmed: verified.confirmed.filter((f) => !isCanary(f)),
+        flaky: verified.flaky.filter((f) => !isCanary(f)),
+        canaryFindings: [...verified.confirmed, ...verified.flaky].filter(isCanary),
+      },
+      null,
+      2,
+    ),
+  )
+  return result
+}
+
+if (import.meta.main) {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      out: { type: 'string', default: 'qa-out' },
+      'execution-file': { type: 'string' },
+      charter: { type: 'string' },
+      'timed-out': { type: 'boolean', default: false },
+    },
+  })
+  const out = values.out
+  if (positionals[0] === 'session') {
+    if (!values.charter || !values['execution-file']) throw new Error('session needs --charter and --execution-file')
+    const session = await sessionFromExecution(values['execution-file'], values.charter, values['timed-out'])
+    await mkdir(join(out, values.charter), { recursive: true })
+    await writeFile(join(out, values.charter, 'session.json'), JSON.stringify(session, null, 2))
+  } else if (positionals[0] === 'summary') {
+    console.log(await runSummary(out))
+  } else if (positionals[0] === 'canary') {
+    const result = await runCanary(out)
+    console.log(`canary recall ${result.found}/${result.total}`)
+  } else {
+    throw new Error('usage: report.ts session|summary|canary --out qa-out')
+  }
+}

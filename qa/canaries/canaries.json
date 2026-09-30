@@ -1,0 +1,23 @@
+[
+  {
+    "patch": "qa/canaries/preferred-name.patch",
+    "charter": "c8-phone",
+    "area": "settings",
+    "oracle": "lost-on-reload",
+    "description": "The Preferred Name typed the first time is not saved: it shows until the page is reloaded, then the field is empty."
+  },
+  {
+    "patch": "qa/canaries/skill-delete.patch",
+    "charter": "c8-phone",
+    "area": "skills",
+    "oracle": "page-error",
+    "description": "Deleting a skill that no other skill references throws an uncaught TypeError and the confirmation dialog never opens."
+  },
+  {
+    "patch": "qa/canaries/row-subtitle.patch",
+    "charter": "c8-phone",
+    "area": "layout",
+    "oracle": "overflow",
+    "description": "Settings list rows (skills, models, connections) no longer truncate their subtitle, so long descriptions overflow at 390px width."
+  }
+]

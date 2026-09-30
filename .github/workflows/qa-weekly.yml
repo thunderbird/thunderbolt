@@ -346,6 +346,8 @@ jobs:
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
+          # The explorer can write into its out dir: only what this step writes may reach the report.
+          rm -f "$dir/execution.json" "$dir/timed-out" "$dir/findings.json"
           # Only the result message's counters: the full execution file holds every page the explorer read.
           if [ -f "$EXECUTION_FILE" ]; then
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \

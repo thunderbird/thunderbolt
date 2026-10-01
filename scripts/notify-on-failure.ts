@@ -40,6 +40,8 @@ type AlertState = {
 }
 type State = { id: string; name: string; type: string }
 type Label = { id: string; name: string; team: { id: string } | null }
+/** A GraphQL variable value. `JSON.stringify` drops `undefined` properties and sends `undefined` items as null. */
+type Json = string | number | boolean | null | undefined | Json[] | { [key: string]: Json }
 
 /** Report only trusted API context, never response content or network error text. */
 const requestJson = async <T>(
@@ -63,7 +65,7 @@ export const linear = async <T>(
   fetchFn: typeof fetch,
   key: string,
   query: string,
-  variables?: Record<string, unknown>,
+  variables?: { [name: string]: Json },
 ): Promise<T> => {
   const operation = /^(?:query|mutation) (\w+)/.exec(query)?.[1] ?? 'GraphQL'
   const { body: result, status } = await requestJson<{ data?: T; errors?: { message: string }[] }>(

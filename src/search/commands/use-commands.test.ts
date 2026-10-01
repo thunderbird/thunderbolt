@@ -10,7 +10,7 @@ import type { PaletteCommand } from './types'
 
 const makeDeps = (overrides: Partial<BuildCommandsDeps> = {}): BuildCommandsDeps => ({
   i18n,
-  flags: { voice: false, tasks: false, dev: false },
+  flags: { voice: false, tasks: false, dev: false, passkey: false },
   showDownloadApp: false,
   isMac: true,
   onNewChat: () => {},
@@ -37,25 +37,38 @@ describe('buildCommands — navigation gating', () => {
     expect(ids).not.toContain('tasks')
     expect(ids).not.toContain('dev-settings')
     expect(ids).not.toContain('message-simulator')
+    expect(ids).not.toContain('passkeys')
     // Ungated core routes are always present.
     expect(ids).toContain('agents')
     expect(ids).toContain('preferences')
   })
 
   it('reveals each gated nav command only when its own flag is on', () => {
-    const voiceOnly = buildCommands(makeDeps({ flags: { voice: true, tasks: false, dev: false } })).map((c) => c.id)
+    const voiceOnly = buildCommands(makeDeps({ flags: { voice: true, tasks: false, dev: false, passkey: false } })).map(
+      (c) => c.id,
+    )
     expect(voiceOnly).toContain('voice')
     expect(voiceOnly).not.toContain('tasks')
     expect(voiceOnly).not.toContain('dev-settings')
 
-    const tasksOnly = buildCommands(makeDeps({ flags: { voice: false, tasks: true, dev: false } })).map((c) => c.id)
+    const tasksOnly = buildCommands(makeDeps({ flags: { voice: false, tasks: true, dev: false, passkey: false } })).map(
+      (c) => c.id,
+    )
     expect(tasksOnly).toContain('tasks')
     expect(tasksOnly).not.toContain('voice')
 
-    const devOnly = buildCommands(makeDeps({ flags: { voice: false, tasks: false, dev: true } })).map((c) => c.id)
+    const devOnly = buildCommands(makeDeps({ flags: { voice: false, tasks: false, dev: true, passkey: false } })).map(
+      (c) => c.id,
+    )
     expect(devOnly).toContain('dev-settings')
     expect(devOnly).toContain('message-simulator')
     expect(devOnly).not.toContain('voice')
+
+    const passkeyOnly = buildCommands(
+      makeDeps({ flags: { voice: false, tasks: false, dev: false, passkey: true } }),
+    ).map((c) => c.id)
+    expect(passkeyOnly).toContain('passkeys')
+    expect(passkeyOnly).not.toContain('voice')
   })
 })
 

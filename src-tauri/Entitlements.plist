@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Passkeys (THU-790): associates the macOS app with app.thunderbolt.io so
+	     ASAuthorization platform passkeys scope to that RP ID. Pairs with the
+	     `webcredentials` block in public/.well-known/apple-app-site-association.
+	     For local dev against a signed build, append `?mode=developer` and run
+	     `swcutil developer-mode -e true` on the test Mac. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.thunderbolt.io</string>
+		<string>webcredentials:app.thunderbolt.io</string>
+	</array>
+</dict>
+</plist>

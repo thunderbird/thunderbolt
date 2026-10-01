@@ -17,11 +17,16 @@ import { OnboardingAuthStep } from './onboarding-auth-step'
 import { OnboardingNameStep } from './onboarding-name-step'
 import { OnboardingLocationStep } from './onboarding-location-step'
 import { OnboardingLanguageStep } from './onboarding-language-step'
+import { OnboardingPasskeyStep } from './onboarding-passkey-step'
 import { OnboardingCelebrationStep } from './onboarding-celebration-step'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { StepIndicators } from './step-indicators'
 import { OnboardingActionButtons } from './onboarding-action-buttons'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+
+/** Wizard position of the passkey step (THU-790). Celebration is the last step. */
+const passkeyStep = 6
 
 export const OnboardingDialog = () => {
   const { isMobile } = useIsMobile()
@@ -32,6 +37,19 @@ export const OnboardingDialog = () => {
   })
   const [isOpen, setIsOpen] = useState(false)
   const { state, actions } = useOnboardingState()
+  const passkeyAvailable = usePasskeyAvailable()
+
+  // The passkey step (6) is only meaningful where passkeys work. When they don't
+  // (deployment off, unsupported browser, Tauri), auto-advance so the user never
+  // sees a dead step. Guarded to fire once — after skipStep the current step is 7.
+  useEffect(() => {
+    if (isOpen && state.currentStep === passkeyStep && !passkeyAvailable) {
+      actions.skipStep()
+    }
+    // `actions` is a fresh object each render; excluded deliberately. The guard is
+    // idempotent — after skipStep the step is no longer `passkeyStep`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, state.currentStep, passkeyAvailable])
 
   // Owned here (the connected container) so the auth step stays presentational.
   const handleProviderDisconnect = async (provider: OAuthProvider) => {
@@ -141,7 +159,8 @@ export const OnboardingDialog = () => {
               <OnboardingLocationStep state={state} actions={actions} onFormDirtyChange={setIsFormDirty} />
             )}
             {state.currentStep === 5 && <OnboardingLanguageStep />}
-            {state.currentStep === 6 && <OnboardingCelebrationStep />}
+            {state.currentStep === passkeyStep && passkeyAvailable && <OnboardingPasskeyStep />}
+            {state.currentStep === 7 && <OnboardingCelebrationStep />}
           </div>
           <div className="relative flex w-full shrink-0 px-5 pt-2">
             <OnboardingActionButtons

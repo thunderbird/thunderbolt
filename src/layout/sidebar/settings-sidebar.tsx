@@ -14,11 +14,12 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { useSettings } from '@/hooks/use-settings'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { cn } from '@/lib/utils'
 import type { MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
-import { AudioLines, Bot, Cpu, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
+import { AudioLines, Bot, Cpu, KeyRound, Plug, SlidersHorizontal, Smartphone, Zap, type LucideIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import { useLocation } from 'react-router'
 import { SidebarNavToggle } from './nav-toggle'
@@ -58,6 +59,7 @@ const navGroups: { id: string; label: MessageDescriptor; items: NavItem[] }[] = 
     items: [
       { path: '/settings/preferences', label: msg`Preferences`, icon: SlidersHorizontal },
       { path: '/settings/devices', label: msg`Devices`, icon: Smartphone },
+      { path: '/settings/passkeys', label: msg`Passkeys`, icon: KeyRound },
     ],
   },
 ]
@@ -77,15 +79,26 @@ export const SettingsSidebarContent = ({
   const { isMobile, toggleSidebar } = useSidebar()
   const location = useLocation()
   const { experimentalFeatureVoice } = useSettings({ experimental_feature_voice: false })
+  const passkeyAvailable = usePasskeyAvailable()
 
   const isItemActive = ({ path, matchPrefix }: NavItem) =>
     matchPrefix ? location.pathname.startsWith(path) : location.pathname === path
 
-  // Voice settings only exist to configure a custom (non-Thunderbolt) provider,
-  // which is gated behind the experimental flag — hide the nav item otherwise.
-  const groups = experimentalFeatureVoice.value
-    ? navGroups
-    : navGroups.map((group) => ({ ...group, items: group.items.filter((item) => item.path !== '/settings/voice') }))
+  // Hide nav items that don't apply: Voice only exists to configure a custom
+  // (non-Thunderbolt) provider, gated behind the experimental flag; Passkeys are
+  // hidden where the deployment/runtime can't offer them.
+  const groups = navGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => {
+      if (item.path === '/settings/voice') {
+        return experimentalFeatureVoice.value
+      }
+      if (item.path === '/settings/passkeys') {
+        return passkeyAvailable
+      }
+      return true
+    }),
+  }))
 
   return (
     <SidebarContent className="flex flex-col h-full">

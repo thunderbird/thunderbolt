@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Allows passkey registration, authentication, and availability checks."
+permissions = ["allow-register", "allow-authenticate", "allow-is-available"]

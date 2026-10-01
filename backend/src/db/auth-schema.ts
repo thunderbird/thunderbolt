@@ -163,6 +163,33 @@ export const apikey = pgTable(
   (table) => [index('apikey_key_idx').on(table.key), index('apikey_referenceId_idx').on(table.referenceId)],
 )
 
+/**
+ * Backs the `@better-auth/passkey` plugin (THU-790 POC). One row per WebAuthn
+ * credential: `credentialID` is the authenticator's credential id, `publicKey` the
+ * COSE public key (base64), `counter` the signature counter, `aaguid` identifies the
+ * authenticator/provider model (kept for PRF-eligibility analytics — Phase B input).
+ * Column JS keys mirror the plugin's field names; SQL names are snake_case.
+ */
+export const passkey = pgTable(
+  'passkey',
+  {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    publicKey: text('public_key').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    credentialID: text('credential_id').notNull(),
+    counter: integer('counter').notNull(),
+    deviceType: text('device_type').notNull(),
+    backedUp: boolean('backed_up').notNull(),
+    transports: text('transports'),
+    createdAt: timestamp('created_at'),
+    aaguid: text('aaguid'),
+  },
+  (table) => [index('passkey_userId_idx').on(table.userId), index('passkey_credentialID_idx').on(table.credentialID)],
+)
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),

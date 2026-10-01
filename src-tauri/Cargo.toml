@@ -20,7 +20,7 @@ default = []
 native_fetch = []
 
 [workspace]
-members = []
+members = ["plugins/tauri-plugin-passkey"]
 default-members = ["."]
 
 [[bin]]
@@ -58,6 +58,8 @@ tauri-plugin-deep-link = "2.4"
 tauri-plugin-haptics = "2.3"
 tauri-plugin-updater = "2.3"
 tauri-plugin-store = "2.4.3"
+# Native WebAuthn passkey ceremonies (iOS + macOS); no-op stub elsewhere. THU-790.
+tauri-plugin-passkey = { path = "plugins/tauri-plugin-passkey" }
 
 # Used only in debug builds to install a rustls crypto provider before
 # tauri-plugin-devtools' reqwest stack initializes (otherwise iOS dev panics

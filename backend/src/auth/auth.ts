@@ -26,6 +26,7 @@ import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
+import { passkey } from '@better-auth/passkey'
 import { sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
@@ -257,6 +258,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           return
         }
 
+        // Passkey management (register/list/update/delete) requires a real account:
+        // an anonymous user's credential would bind to a throwaway identity that is
+        // deleted on promotion. The two authentication paths stay open — they're how
+        // sign-in works and need no session at all.
+        if (
+          ctx.path.startsWith('/passkey/') &&
+          ctx.path !== '/passkey/generate-authenticate-options' &&
+          ctx.path !== '/passkey/verify-authentication'
+        ) {
+          const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
+          if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous === true) {
+            throw ctx.error('FORBIDDEN', { message: 'Passkeys are not available for anonymous users' })
+          }
+          return
+        }
+
         if (ctx.path !== otpSignInPath) {
           // Anonymous sign-in (above) is intentionally NOT waitlist-gated — that's the feature.
           // All other non-OTP paths are also unchecked here.
@@ -438,6 +455,22 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         keyExpiration: { defaultExpiresIn: settings.apiKeyDefaultExpiresInSeconds },
         rateLimit: { enabled: false },
       }),
+      // Passkey (WebAuthn) sign-in — THU-790 POC. Operator-gated on PASSKEY_RP_ID
+      // (defaults to 'localhost' in development). The RP ID is permanent per
+      // deployment: changing it orphans every registered credential. `origin` is
+      // pinned to the trusted-origins list rather than echoing the request's own
+      // Origin header. The challenge round-trips via a signed cookie, so ceremony
+      // calls from the frontend must use credentials: 'include' (CORS already
+      // allows credentials for trusted origins).
+      ...(settings.passkeyRpId
+        ? [
+            passkey({
+              rpID: settings.passkeyRpId,
+              rpName: settings.passkeyRpName,
+              origin: trustedOrigins,
+            }),
+          ]
+        : []),
       // Anonymous plugin is operator-gated: register only when AUTH_ALLOW_ANONYMOUS=true.
       // Otherwise /v1/api/auth/sign-in/anonymous returns 404 — defense-in-depth against
       // a malicious client bypassing the frontend `VITE_AUTH_ENABLE_ANONYMOUS` overlay.

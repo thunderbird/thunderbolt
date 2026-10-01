@@ -9,6 +9,7 @@ import {
   Bot,
   CheckSquare,
   Cpu,
+  KeyRound,
   Plug,
   SlidersHorizontal,
   Smartphone,
@@ -19,9 +20,10 @@ import {
 
 /**
  * Experimental/build gate a navigation command depends on. `voice` and `tasks`
- * mirror their sidebar/route feature flags; `dev` mirrors `import.meta.env.DEV`.
+ * mirror their sidebar/route feature flags; `dev` mirrors `import.meta.env.DEV`;
+ * `passkey` mirrors passkey availability (deployment flag + runtime capability).
  */
-export type NavGate = 'voice' | 'tasks' | 'dev'
+export type NavGate = 'voice' | 'tasks' | 'dev' | 'passkey'
 
 /** A route the Cmd+K palette can jump to. Pure data — no React, no hooks. */
 export type NavigationCommand = {
@@ -71,6 +73,14 @@ export const navigationCommands: NavigationCommand[] = [
     keywords: ['theme', 'appearance'],
   },
   { id: 'devices', title: msg`Devices`, icon: Smartphone, to: '/settings/devices', keywords: ['sync'] },
+  {
+    id: 'passkeys',
+    title: msg`Passkeys`,
+    icon: KeyRound,
+    to: '/settings/passkeys',
+    keywords: ['webauthn', 'biometric', 'fingerprint', 'face'],
+    gate: 'passkey',
+  },
   { id: 'tasks', title: msg`Tasks`, icon: CheckSquare, to: '/tasks', keywords: ['todo'], gate: 'tasks' },
   { id: 'dev-settings', title: msg`Dev Settings`, icon: Terminal, to: '/settings/dev-settings', gate: 'dev' },
   { id: 'message-simulator', title: msg`Message Simulator`, icon: Terminal, to: '/message-simulator', gate: 'dev' },

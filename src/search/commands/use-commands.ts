@@ -7,6 +7,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useCreateNewChat } from '@/hooks/use-create-new-chat'
 import { useSettings } from '@/hooks/use-settings'
 import { getDownloadUrl } from '@/lib/download-links'
+import { usePasskeyAvailable } from '@/lib/passkey'
 import { getWebOsPlatform, isMacDesktop, isTauri, isWebDesktopPlatform } from '@/lib/platform'
 import { trackEvent } from '@/lib/posthog'
 import { useTheme, type Theme } from '@/lib/theme-provider'
@@ -25,7 +26,7 @@ const openExternal = (url: string) => window.open(url, '_blank', 'noopener,noref
 const isMacPlatform = () => isMacDesktop() || getWebOsPlatform() === 'macos'
 
 /** Resolved feature/build gates a navigation command can depend on. */
-export type CommandFlags = { voice: boolean; tasks: boolean; dev: boolean }
+export type CommandFlags = { voice: boolean; tasks: boolean; dev: boolean; passkey: boolean }
 
 const themeOptions: { theme: Theme; title: MessageDescriptor }[] = [
   { theme: 'light', title: msg`Set Light` },
@@ -151,6 +152,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
   const createNewChat = useCreateNewChat()
   const { setTheme } = useTheme()
   const { toggleSidebar, closeMobileSidebar } = useSidebar()
+  const passkeyAvailable = usePasskeyAvailable()
 
   return buildCommands({
     i18n,
@@ -158,6 +160,7 @@ export const useCommands = (opts: UseCommandsOptions): PaletteCommand[] => {
       voice: experimentalFeatureVoice.value,
       tasks: experimentalFeatureTasks.value,
       dev: import.meta.env.DEV,
+      passkey: passkeyAvailable,
     },
     showDownloadApp: showAppDownloads && !isTauri() && isWebDesktopPlatform(),
     isMac: isMacPlatform(),

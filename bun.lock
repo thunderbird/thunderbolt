@@ -53,6 +53,7 @@
         "@radix-ui/react-toggle-group": "^1.1.15",
         "@radix-ui/react-tooltip": "^1.2.12",
         "@scure/bip39": "^2.0.1",
+        "@simplewebauthn/browser": "^13",
         "@tailwindcss/typography": "^0.5.16",
         "@tanstack/react-query": "^5.85.5",
         "@tauri-apps/api": "^2.11.0",
@@ -937,6 +938,8 @@
     "@scure/bip39": ["@scure/bip39@2.2.0", "", { "dependencies": { "@noble/hashes": "2.2.0", "@scure/base": "2.2.0" } }, "sha512-T/Bj/YvYMNkIPq6EENO6/rcs2e7qTNuyoUXf0KBFDmp0ZDu0H2X4Lq6yC3i0c8PcWkov5EbW+yQZZbdMmk154A=="],
 
     "@silvia-odwyer/photon-node": ["@silvia-odwyer/photon-node@0.3.4", "", {}, "sha512-bnly4BKB3KDTFxrUIcgCLbaeVVS8lrAkri1pEzskpmxu9MdfGQTy8b8EgcD83ywD3RPMsIulY8xJH5Awa+t9fA=="],
+
+    "@simplewebauthn/browser": ["@simplewebauthn/browser@13.3.0", "", {}, "sha512-BE/UWv6FOToAdVk0EokzkqQQDOWtNydYlY6+OrmiZ5SCNmb41VehttboTetUM3T/fr6EAFYVXjz4My2wg230rQ=="],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.27.12", "", {}, "sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g=="],
 

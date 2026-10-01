@@ -20,6 +20,7 @@ import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
 import type { RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import type { ChatInit, ChatOnFinishCallback } from 'ai'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { useChatStore } from './chat-store'
@@ -49,7 +50,7 @@ const hydrate = () => {
 }
 
 /** Build a chat instance whose retry callbacks and original methods are observable. */
-const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}) => {
+const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {}, deps: CreateChatInstanceDeps = {}) => {
   const regenerate = mock(async () => {})
   const sendMessage = mock(async (_message: ThunderboltUIMessage) => {})
   const budgets: TurnBudget[] = []
@@ -85,6 +86,7 @@ const createRetryHarness = (saveMessages: SaveMessagesFunction = async () => {})
     createTurnBudget: createTrackedTurnBudget,
     wakeAdapterReconnect,
     trackEvent,
+    ...deps,
   })
   hydrateStore({
     chatInstance: instance,
@@ -1140,6 +1142,61 @@ describe('createChatInstance — retry policy', () => {
       }),
     )
     expect(JSON.stringify(summary)).not.toContain('private_customer_server')
+  })
+
+  it('ends one invoke_agent span per turn, joined to trace_id, with execute_tool children', async () => {
+    const exporter = new InMemorySpanExporter()
+    const tracer = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] }).getTracer('test')
+    const { finishSuccessfully, instance, trackEvent } = createRetryHarness(undefined, {
+      createTurnTelemetry: () => createTurnTelemetry({ tracer }),
+    })
+
+    await instance.sendMessage({ text: 'use tools' })
+    await finishSuccessfully({
+      id: 'successful-assistant',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolName: 'private_customer_server_list_documents',
+          toolCallId: 'call-1',
+          state: 'output-error',
+          input: { query: 'secret' },
+          errorText: 'secret',
+        },
+        { type: 'tool-web_search', toolCallId: 'call-2', state: 'output-available', input: {}, output: {} },
+      ],
+      metadata: { reasoningTime: { 'call-1': 12, 'call-2': 9 } },
+    })
+
+    const summary = trackEvent.mock.calls.find(([event]) => event === 'chat_turn_completed')?.[1]
+    const spans = exporter.getFinishedSpans()
+    const root = spans.find((span) => span.name === 'invoke_agent thunderbolt')!
+    const tools = spans.filter((span) => span.name.startsWith('execute_tool'))
+    expect(spans).toHaveLength(3)
+    expect(summary).toEqual(expect.objectContaining({ trace_id: root.spanContext().traceId }))
+    expect(root.attributes).toMatchObject({
+      'gen_ai.request.model': 'claude-opus',
+      'gen_ai.provider.name': 'anthropic',
+      'thunderbolt.outcome': 'success',
+    })
+    expect(tools.map((span) => [span.name, span.attributes])).toEqual([
+      [
+        'execute_tool mcp',
+        {
+          'gen_ai.operation.name': 'execute_tool',
+          'gen_ai.tool.name': 'mcp',
+          'gen_ai.tool.type': 'function',
+          'error.type': 'tool_error',
+        },
+      ],
+      [
+        'execute_tool web_search',
+        { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'web_search', 'gen_ai.tool.type': 'function' },
+      ],
+    ])
+    expect(tools.every((span) => span.parentSpanContext?.spanId === root.spanContext().spanId)).toBe(true)
+    expect(JSON.stringify(spans.map((span) => span.attributes))).not.toContain('secret')
   })
 
   it('ignores malformed persisted tool durations', async () => {

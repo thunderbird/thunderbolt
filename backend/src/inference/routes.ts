@@ -7,19 +7,19 @@ import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { classifyInferenceError } from '@/inference/error-kind'
 import { createErrorResponse, getErrorStatus, getSafeErrorMessage, safeErrorHandler } from '@/middleware/error-handling'
-import { captureInferenceError, getPostHogClient, isPostHogConfigured } from '@/posthog/client'
+import { captureInferenceError } from '@/posthog/client'
 import { createAnthropicSSEStream } from '@/utils/anthropic-streaming'
 import { createSSEStreamFromCompletion, invokeObserverSafely } from '@/utils/streaming'
 import { elapsedMs } from '@/utils/timing'
 import { APIError as AnthropicAPIError } from '@anthropic-ai/sdk'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { MessageCreateParamsStreaming } from '@anthropic-ai/sdk/resources/messages'
-import type { OpenAI as PostHogOpenAI } from '@posthog/ai'
+import { trace, type Tracer } from '@opentelemetry/api'
 import { Elysia, type AnyElysia } from 'elysia'
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { z } from 'zod'
-import type { PostHog } from 'posthog-node'
+import { startGenerationSpan } from './generation-span'
 import {
   createInferenceAttemptTracker,
   getAnthropicMessagesClient,
@@ -75,12 +75,12 @@ export type CreateInferenceRoutesOptions = {
   fetchFn?: typeof fetch
   getClient?: (provider: ManagedDirectRuntime['provider']) => InferenceClient
   getMessagesClient?: () => Anthropic
-  isPostHogConfiguredFn?: () => boolean
-  posthogClient?: PostHog
   logger?: InferenceLogger
   /** Monotonic clock used for route latency and upstream-attempt instrumentation. */
   nowFn?: () => number
   rateLimit?: AnyElysia
+  /** Tracer for GenAI generation spans. Default: the global tracer set up in `config/instrumentation.ts`. */
+  tracer?: Tracer
 }
 
 /** Format inference phases using Server-Timing header syntax. */
@@ -216,7 +216,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
   const { auth, database, fetchFn, logger, rateLimit } = options
   const settings = getSettings()
   const nowFn = options.nowFn ?? (() => performance.now())
-  const isPostHogConfiguredFn = options.isPostHogConfiguredFn ?? isPostHogConfigured
+  const tracer = options.tracer ?? trace.getTracer('thunderbolt-inference')
+  const anthropicHost = new URL(settings.anthropicBaseUrl).hostname
   const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
   const getClient =
     options.getClient ??
@@ -302,10 +303,20 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
 
       const usageEventId = crypto.randomUUID()
       const { client } = getClient(provider)
+      const generation = startGenerationSpan({
+        tracer,
+        headers: ctx.request.headers,
+        provider,
+        model: internalName,
+        price,
+        route,
+        host: new URL(client.baseURL).hostname,
+        userId: ctx.user.id,
+      })
 
       try {
         const completion = await runWithInferenceAttemptTracking(attemptTracker, () =>
-          (client as PostHogOpenAI).chat.completions.create({
+          client.chat.completions.create({
             model: internalName,
             messages: sanitizeMessageRoles(body.messages) as ChatCompletionMessageParam[],
             ...(omitTemperature ? {} : { temperature: body.temperature }),
@@ -313,38 +324,47 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
             tool_choice: body.tool_choice,
             stream: true,
             ...(supportsStreamUsage && { stream_options: { include_usage: true } }),
-            ...(isPostHogConfiguredFn() && {
-              posthogDistinctId: ctx.user.id,
-              posthogProperties: {
-                model_provider: provider,
-                model: internalName,
-                endpoint: '/chat/completions',
-                has_tools: !!body.tools,
-                temperature: body.temperature,
-              },
-            }),
           }),
         )
         const upstreamResolvedAt = nowFn()
         recordLatency(200, upstreamResolvedAt)
 
+        const usageCallbacks = createUsageCallbacks({
+          database,
+          eventId: usageEventId,
+          logger,
+          model: internalName,
+          price,
+          provider,
+          route,
+          userId: ctx.user.id,
+        })
         const stream = createSSEStreamFromCompletion(completion, {
-          ...createUsageCallbacks({
-            database,
-            eventId: usageEventId,
-            logger,
-            model: internalName,
-            price,
-            provider,
-            route,
-            userId: ctx.user.id,
-          }),
+          ...usageCallbacks,
+          onChunk: (chunk) =>
+            generation.observeChunk({
+              responseModel: chunk.model,
+              finishReason: chunk.choices[0]?.finish_reason,
+              cacheReadTokens: chunk.usage?.prompt_tokens_details?.cached_tokens,
+              reasoningTokens: chunk.usage?.completion_tokens_details?.reasoning_tokens,
+            }),
+          onUsage: async (counts) => {
+            invokeObserverSafely(() => generation.end(counts))
+            await usageCallbacks.onUsage(counts)
+          },
+          onUsageMissing: () => {
+            generation.end()
+            usageCallbacks.onUsageMissing()
+          },
+          onCancel: () => generation.end(),
           onError: (error) => {
+            const errorKind = classifyInferenceError(error)
+            generation.fail(errorKind)
             captureInferenceErrorFn({
               provider,
               status: getErrorStatus(error),
               model: body.model,
-              errorKind: classifyInferenceError(error),
+              errorKind,
               ...getApiErrorMetadata(error),
               distinctId: ctx.user.id,
               phase: 'stream',
@@ -358,13 +378,15 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return new Response(stream, { headers: streamingResponseHeaders(ctx.set.headers) })
       } catch (error) {
         const status = getErrorStatus(error)
+        const errorKind = classifyInferenceError(error)
+        generation.fail(errorKind)
         recordLatency(status, nowFn())
         // Keep failures diagnosable using body-free structured metadata only.
         captureInferenceErrorFn({
           provider,
           status,
           model: body.model,
-          errorKind: classifyInferenceError(error),
+          errorKind,
           ...getApiErrorMetadata(error),
           distinctId: ctx.user.id,
         })
@@ -427,31 +449,16 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       }
       const { price } = admission
       const usageEventId = crypto.randomUUID()
-      /** Preserve generation telemetry without sending prompt, response, or provider error content. */
-      const captureGeneration = (status: number, counts?: InferenceTokenCounts) => {
-        if (!isPostHogConfiguredFn()) {
-          return
-        }
-        invokeObserverSafely(() =>
-          (options.posthogClient ?? getPostHogClient()).capture({
-            distinctId: ctx.user.id,
-            event: '$ai_generation',
-            properties: {
-              model_provider: provider,
-              model: internalName,
-              endpoint: '/chat/v1/messages',
-              has_tools: !!body.tools,
-              $ai_trace_id: usageEventId,
-              $ai_provider: provider,
-              $ai_model: internalName,
-              $ai_latency: elapsedMs(handlerStartedAt, nowFn()) / 1000,
-              $ai_http_status: status,
-              $ai_is_error: status >= 400,
-              ...(counts && { $ai_input_tokens: counts.promptTokens, $ai_output_tokens: counts.completionTokens }),
-            },
-          }),
-        )
-      }
+      const generation = startGenerationSpan({
+        tracer,
+        headers: ctx.request.headers,
+        provider,
+        model: internalName,
+        price,
+        route,
+        host: anthropicHost,
+        userId: ctx.user.id,
+      })
 
       try {
         const upstreamBody = {
@@ -488,17 +495,28 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         })
         const stream = createAnthropicSSEStream(upstream, {
           ...usageCallbacks,
+          onEvent: (event) =>
+            generation.observeChunk({
+              responseModel: event.type === 'message_start' ? event.message.model : undefined,
+              finishReason: event.type === 'message_delta' ? event.delta.stop_reason : undefined,
+            }),
+          // A client cancel still lands here with the partial usage seen so far.
           onUsage: async (counts) => {
-            captureGeneration(200, counts)
+            invokeObserverSafely(() => generation.end(counts))
             await usageCallbacks.onUsage(counts)
           },
+          onUsageMissing: () => {
+            generation.end()
+            usageCallbacks.onUsageMissing()
+          },
           onError: (error) => {
-            captureGeneration(getErrorStatus(error))
+            const errorKind = classifyInferenceError(error)
+            generation.fail(errorKind)
             captureInferenceErrorFn({
               provider,
               status: getErrorStatus(error),
               model: body.model,
-              errorKind: classifyInferenceError(error),
+              errorKind,
               ...getApiErrorMetadata(error),
               distinctId: ctx.user.id,
               phase: 'stream',
@@ -508,13 +526,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return new Response(stream, { headers: streamingResponseHeaders(ctx.set.headers) })
       } catch (error) {
         const status = getErrorStatus(error)
-        captureGeneration(status)
+        const errorKind = classifyInferenceError(error)
+        generation.fail(errorKind)
         recordLatency(status, nowFn())
         captureInferenceErrorFn({
           provider,
           status,
           model: body.model,
-          errorKind: classifyInferenceError(error),
+          errorKind,
           ...getApiErrorMetadata(error),
           distinctId: ctx.user.id,
         })

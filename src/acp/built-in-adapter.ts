@@ -47,6 +47,7 @@ import {
   prepareAiRequestConfig,
   resolveManagedAnthropicConnection,
   resolveOpenAiCompatConnection,
+  withTraceparent,
   type PreparedAiRequestConfig,
 } from '@/ai/fetch'
 import { getKnownImageSupport } from '@/ai/image-support'
@@ -456,7 +457,12 @@ export const resolvePiModel = async (
     if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
       return null
     }
-    const connection = resolveManagedAnthropicConnection(model, context.getProxyFetch)
+    const connection = resolveManagedAnthropicConnection(
+      model,
+      context.getProxyFetch,
+      'anthropic-sdk',
+      withTraceparent(context.telemetry?.traceparent),
+    )
     return {
       descriptor: {
         kind: 'anthropic',
@@ -470,7 +476,12 @@ export const resolvePiModel = async (
       thinkingLevel,
     }
   }
-  const connection = resolveOpenAiCompatConnection(model, context.getProxyFetch)
+  // The traced fetch only serves the managed `thunderbolt` provider; BYOK providers ignore it.
+  const connection = resolveOpenAiCompatConnection(
+    model,
+    context.getProxyFetch,
+    withTraceparent(context.telemetry?.traceparent),
+  )
   // Pi's openai-completions client requires a bearer key (it throws on an empty
   // one with no auth header). A `custom` model pointing at a no-auth local
   // endpoint (ollama / llama.cpp) has no key, so it stays on the legacy pipeline

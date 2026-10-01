@@ -478,7 +478,7 @@ const recordMessageTelemetry = (telemetry: TurnTelemetry, message: ThunderboltUI
     const toolName = part.type === 'dynamic-tool' ? 'mcp' : part.type.replace(/^tool-/, '')
     const duration = toolDurationSchema.safeParse(reasoningTime[part.toolCallId])
     if (duration.success) {
-      telemetry.recordTool(toolName, duration.data)
+      telemetry.recordTool(toolName, duration.data, part.state === 'output-error')
     }
   }
 }
@@ -771,6 +771,7 @@ export const createChatInstance = (
         recordMessageTelemetry(telemetry, message)
       }
       trackEvent('chat_turn_completed', telemetry.buildPayload(outcome))
+      telemetry.endSpan(outcome)
       inFlightTurns.clear(telemetry.traceId)
     }
     finishRecordedTurn(turn, outcome)

@@ -54,7 +54,6 @@ describe('Inference Routes', () => {
     client: mockOpenAIClient,
     provider: 'anthropic' as const,
   }))
-  const isPostHogConfiguredMock = mock(() => false)
 
   const createMockStream = (chunks: unknown[] = []) => ({
     [Symbol.asyncIterator]: async function* () {
@@ -78,7 +77,6 @@ describe('Inference Routes', () => {
         auth: mockAuth,
         database,
         getClient: getInferenceClientMock,
-        isPostHogConfiguredFn: isPostHogConfiguredMock,
       }),
     )
   })
@@ -124,9 +122,7 @@ describe('Inference Routes', () => {
       // Reset all mocks before each test
       mockCreateCompletion.mockClear()
       getInferenceClientMock.mockClear()
-      isPostHogConfiguredMock.mockClear()
       consoleSpies.error.mockClear()
-      isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient,
         provider: 'anthropic' as const,
@@ -244,35 +240,6 @@ describe('Inference Routes', () => {
       )
     })
 
-    it('should include PostHog properties when configured', async () => {
-      isPostHogConfiguredMock.mockImplementation(() => true)
-      const mockCompletion = createMockStream()
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
-
-      const response = await app.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(validRequestBody),
-        }),
-      )
-
-      expect(response.status).toBe(200)
-      expect(mockCreateCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          posthogProperties: expect.objectContaining({
-            model_provider: 'anthropic',
-            endpoint: '/chat/completions',
-            has_tools: false,
-            temperature: validRequestBody.temperature,
-          }),
-        }),
-      )
-
-      // Reset for other tests
-      isPostHogConfiguredMock.mockImplementation(() => false)
-    })
-
     it('should reject non-streaming requests', async () => {
       const nonStreamingRequest = {
         ...validRequestBody,
@@ -376,7 +343,6 @@ describe('Inference Routes', () => {
               auth: createMockAuth(userId, isAnonymous),
               database,
               getClient: getInferenceClientMock,
-              isPostHogConfiguredFn: isPostHogConfiguredMock,
             }),
           )
           mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream()))
@@ -434,7 +400,6 @@ describe('Inference Routes', () => {
           auth: createMockAuth(userId, false),
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
         }),
       )
 
@@ -559,7 +524,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
         }),
       )
@@ -607,7 +571,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
@@ -646,7 +609,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
         }),
       )
@@ -700,7 +662,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
         }),
       )
@@ -746,7 +707,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
@@ -801,7 +761,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
@@ -855,7 +814,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           captureInferenceErrorFn: captureInferenceErrorMock,
         }),
       )
@@ -988,36 +946,6 @@ describe('Inference Routes', () => {
       expect(mockCreateCompletion).not.toHaveBeenCalled()
     })
 
-    it('should handle requests with has_tools flag correctly', async () => {
-      isPostHogConfiguredMock.mockImplementation(() => true)
-      const mockCompletion = createMockStream()
-      mockCreateCompletion.mockImplementation(() => Promise.resolve(mockCompletion))
-
-      const requestWithTools = {
-        ...validRequestBody,
-        tools: [{ type: 'function', function: { name: 'test' } }],
-      }
-
-      await app.handle(
-        new Request('http://localhost/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestWithTools),
-        }),
-      )
-
-      expect(mockCreateCompletion).toHaveBeenCalledWith(
-        expect.objectContaining({
-          posthogProperties: expect.objectContaining({
-            has_tools: true,
-          }),
-        }),
-      )
-
-      // Reset for other tests
-      isPostHogConfiguredMock.mockImplementation(() => false)
-    })
-
     it.each([
       {
         publicModel: 'opus-5',
@@ -1046,7 +974,6 @@ describe('Inference Routes', () => {
             auth: createMockAuth(userId, isAnonymous),
             database,
             getClient: getInferenceClientMock,
-            isPostHogConfiguredFn: isPostHogConfiguredMock,
           }),
         )
         mockCreateCompletion.mockImplementation(() =>
@@ -1127,7 +1054,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
@@ -1166,7 +1092,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
@@ -1224,7 +1149,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
@@ -1278,7 +1202,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: {
             info: (context) => {
               attemptedEvents.push(context.event)
@@ -1334,7 +1257,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
@@ -1382,7 +1304,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: {
             info: (context) => {
               if (context.event === 'inference_usage_completed') {
@@ -1432,7 +1353,6 @@ describe('Inference Routes', () => {
           auth: mockAuth,
           database,
           getClient: getInferenceClientMock,
-          isPostHogConfiguredFn: isPostHogConfiguredMock,
           logger: { info: (context, message) => logs.push({ context, message }) },
         }),
       )
@@ -1465,42 +1385,23 @@ describe('Inference Routes', () => {
       expect(logs.some(({ context }) => context.event === 'inference_usage_inserted')).toBeFalse()
     })
 
-    it.each([true, false])(
-      'preserves provider usage chunks without shared-object mutation when PostHog configured is %s',
-      async (postHogConfigured) => {
-        isPostHogConfiguredMock.mockImplementation(() => postHogConfigured)
-        const usage = Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 })
-        const chunk = Object.freeze({ choices: Object.freeze([]), usage })
-        mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream([chunk])))
+    it('preserves provider usage chunks without shared-object mutation', async () => {
+      const usage = Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 })
+      const chunk = Object.freeze({ choices: Object.freeze([]), usage })
+      mockCreateCompletion.mockImplementation(() => Promise.resolve(createMockStream([chunk])))
 
-        const response = await app.handle(
-          new Request('http://localhost/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(validRequestBody),
-          }),
-        )
-        const responseText = await response.text()
+      const response = await app.handle(
+        new Request('http://localhost/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validRequestBody),
+        }),
+      )
+      const responseText = await response.text()
 
-        expect(responseText).toBe(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`)
-        expect(chunk).toEqual({ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } })
-        if (postHogConfigured) {
-          expect(mockCreateCompletion).toHaveBeenCalledWith(
-            expect.objectContaining({
-              posthogDistinctId: 'test-user',
-              posthogProperties: expect.objectContaining({
-                model_provider: 'anthropic',
-                model: 'claude-opus-5',
-              }),
-            }),
-          )
-        } else {
-          expect(mockCreateCompletion).not.toHaveBeenCalledWith(
-            expect.objectContaining({ posthogDistinctId: expect.anything() }),
-          )
-        }
-      },
-    )
+      expect(responseText).toBe(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`)
+      expect(chunk).toEqual({ choices: [], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } })
+    })
   })
 
   describe('authentication', () => {
@@ -1531,8 +1432,6 @@ describe('Inference Routes', () => {
     beforeEach(() => {
       mockCreateCompletion.mockClear()
       getInferenceClientMock.mockClear()
-      isPostHogConfiguredMock.mockClear()
-      isPostHogConfiguredMock.mockImplementation(() => false)
       getInferenceClientMock.mockImplementation(() => ({
         client: mockOpenAIClient,
         provider: 'anthropic' as const,

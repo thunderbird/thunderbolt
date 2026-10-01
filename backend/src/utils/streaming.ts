@@ -11,6 +11,9 @@ export type CompletionUsageSnapshot = {
   totalTokens: number
 }
 type CreateSSEStreamOptions = {
+  /** Fires when the caller cancels before the upstream stream is exhausted. */
+  onCancel?: () => void
+  onChunk?: (chunk: ChatCompletionChunk) => void
   onError?: (error: unknown) => void
   onUsage?: (snapshot: CompletionUsageSnapshot) => Promise<void>
   onUsageError?: CreateSSEStreamOptions['onError']
@@ -72,6 +75,7 @@ export const createSSEStreamFromCompletion = (
             return
           }
 
+          invokeObserverSafely(() => options.onChunk?.(chunk))
           const usage = parseCompletionUsage(chunk.usage)
           const sseChunk = `data: ${JSON.stringify(chunk)}\n\n`
 
@@ -124,6 +128,7 @@ export const createSSEStreamFromCompletion = (
       isCancelled = true
       if (!naturalExhaustionObserved) {
         completion.controller.abort()
+        invokeObserverSafely(options.onCancel)
       }
     },
   })

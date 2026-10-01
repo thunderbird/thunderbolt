@@ -233,7 +233,6 @@ describe('API key authentication', () => {
         auth: createAuth(harness.db),
         database: harness.db,
         getClient: () => ({ client, provider: 'anthropic' }),
-        isPostHogConfiguredFn: () => false,
       }),
     )
 

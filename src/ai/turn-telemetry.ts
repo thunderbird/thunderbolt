@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { genAiAttributes as attr, genAiOperationExecuteTool, genAiOperationInvokeAgent } from '@shared/telemetry/gen-ai'
+import { ROOT_CONTEXT, SpanKind, SpanStatusCode, isSpanContextValid, trace, type Tracer } from '@opentelemetry/api'
 import { v7 as uuidv7 } from 'uuid'
 
 export type TurnEngine = 'pi' | 'legacy'
@@ -28,6 +30,8 @@ export type TurnTelemetryPayload = Record<string, string | number | boolean | st
 
 export type TurnTelemetry = {
   readonly traceId: string
+  /** W3C `traceparent` of the turn span, sent only to our managed chat routes; undefined without a tracer provider. */
+  readonly traceparent: string | undefined
   getEngine: () => TurnEngine | undefined
   setDimensions: (dimensions: { engine?: TurnEngine; modelId?: string; modelName?: string; provider?: string }) => void
   startPhase: (name: TurnPhase) => void
@@ -35,15 +39,18 @@ export type TurnTelemetry = {
   markFirstToken: () => void
   recordRetry: (retry: { layer: TurnRetryLayer; reason: string; attempt: number }) => void
   recordStep: () => void
-  recordTool: (toolName: string, durationMs: number) => void
+  recordTool: (toolName: string, durationMs: number, failed?: boolean) => void
   recordToolCallValidationFailure: (kind: ToolCallValidationFailureKind) => void
   recordError: (errorClass: string) => void
   buildPayload: (outcome: TurnOutcome) => TurnTelemetryPayload
+  /** End the `invoke_agent` turn span; call once, after the last `recordTool`. */
+  endSpan: (outcome: TurnOutcome) => void
 }
 
 type CreateTurnTelemetryOptions = {
   now?: () => number
   generateId?: () => string
+  tracer?: Tracer
 }
 
 const roundDuration = (durationMs: number): number => Math.max(0, Math.round(durationMs))
@@ -57,8 +64,20 @@ const toolCallValidationFailureKindOrder: readonly ToolCallValidationFailureKind
 export const createTurnTelemetry = ({
   now = () => performance.now(),
   generateId = uuidv7,
+  tracer = trace.getTracer('thunderbolt'),
 }: CreateTurnTelemetryOptions = {}): TurnTelemetry => {
-  const traceId = generateId()
+  const span = tracer.startSpan(`${genAiOperationInvokeAgent} thunderbolt`, {
+    kind: SpanKind.INTERNAL,
+    attributes: { [attr.operationName]: genAiOperationInvokeAgent, [attr.agentName]: 'thunderbolt' },
+  })
+  const spanContext = span.spanContext()
+  const hasSpan = isSpanContextValid(spanContext)
+  // The span's trace id doubles as `trace_id`, so PostHog events and spans join on one value.
+  const traceId = hasSpan ? spanContext.traceId : generateId()
+  const traceparent = hasSpan
+    ? `00-${traceId}-${spanContext.spanId}-${spanContext.traceFlags.toString(16).padStart(2, '0')}`
+    : undefined
+  const spanParent = trace.setSpan(ROOT_CONTEXT, span)
   const startedAt = now()
   const phaseStarts = new Map<TurnPhase, number>()
   const phaseDurations = new Map<TurnPhase, number>()
@@ -85,6 +104,7 @@ export const createTurnTelemetry = ({
 
   return {
     traceId,
+    traceparent,
     getEngine: () => dimensions.engine,
     setDimensions: (nextDimensions) => {
       dimensions.engine = nextDimensions.engine ?? dimensions.engine
@@ -112,7 +132,25 @@ export const createTurnTelemetry = ({
     recordStep: () => {
       stepCount++
     },
-    recordTool: (name, durationMs) => {
+    recordTool: (name, durationMs, failed = false) => {
+      const endedAt = now()
+      tracer
+        .startSpan(
+          `${genAiOperationExecuteTool} ${name}`,
+          {
+            kind: SpanKind.INTERNAL,
+            // A child must not start before its parent turn span.
+            startTime: Math.max(startedAt, endedAt - durationMs),
+            attributes: {
+              [attr.operationName]: genAiOperationExecuteTool,
+              [attr.toolName]: name,
+              [attr.toolType]: 'function',
+              [attr.errorType]: failed ? 'tool_error' : undefined,
+            },
+          },
+          spanParent,
+        )
+        .end(endedAt)
       toolCount++
       if (tools.length < 20) {
         tools.push({ name, duration_ms: roundDuration(durationMs) })
@@ -154,6 +192,19 @@ export const createTurnTelemetry = ({
         total_ms: roundDuration(now() - startedAt),
       }
       return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined))
+    },
+    endSpan: (outcome) => {
+      span.setAttributes({
+        [attr.requestModel]: dimensions.modelName,
+        [attr.providerName]: dimensions.provider,
+        [attr.thunderboltEngine]: dimensions.engine,
+        [attr.thunderboltOutcome]: outcome,
+      })
+      if (outcome === 'error') {
+        span.setAttribute(attr.errorType, errorClass ?? '_OTHER')
+        span.setStatus({ code: SpanStatusCode.ERROR })
+      }
+      span.end()
     },
   }
 }

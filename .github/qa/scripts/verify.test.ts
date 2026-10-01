@@ -212,6 +212,21 @@ describe('replay', () => {
     expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['never'])
   })
 
+  test('replays at most 20 findings and defers the rest, in path order', async () => {
+    const ids = Array.from({ length: 21 }, (_, n) => `f${String(n).padStart(2, '0')}`)
+    for (const id of ids) await writeFinding(makeFinding(id, pageError))
+    const calls: string[][] = []
+
+    const result = await replay(outDir, fakeRunner({}, calls), qaDir)
+
+    expect(calls[0]).toHaveLength(21) // the control spec and 20 findings
+    expect(calls[0]).not.toContain(join(outDir, 'c2-chat/repro/f20.spec.ts'))
+    expect(result.deferred).toEqual([
+      { file: expect.objectContaining({ id: 'f20' }), step: 'replay', reason: 'over the cap of 20 replayed findings' },
+    ])
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('f20')
+  })
+
   test('a spec missing from the report is dropped, and nothing replayable means no Playwright run', async () => {
     await writeFinding(makeFinding('lost', pageError))
     const calls: string[][] = []
@@ -325,7 +340,7 @@ describe('replay', () => {
     const result = await replay(outDir, fakeRunner({ 'c2-chat/repro/always.spec.ts': ['failed'] }, []), qaDir)
     const written: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
     expect(written).toEqual(result)
-    expect(Object.keys(written).sort()).toEqual(['confirmed', 'dropped', 'flaky', 'observations'])
+    expect(Object.keys(written).sort()).toEqual(['confirmed', 'deferred', 'dropped', 'flaky', 'observations'])
     expect(Object.keys(written.confirmed[0]).sort()).toEqual(['artifacts', 'charterDir', 'finding', 'id', 'replay'])
   })
 })
@@ -418,6 +433,48 @@ describe('judge', () => {
       '<replay_failure>\nError: expect(locator).toBeVisible() failed for real\n</replay_failure>',
     )
     expect(prompt).not.toContain('qa-out/replay')
+  })
+
+  test('judges at most 15 candidates and defers the rest, keeping the replay leg deferrals', async () => {
+    const ids = Array.from({ length: 16 }, (_, n) => `j${String(n).padStart(2, '0')}`)
+    const replayDeferred = { file: candidate('late'), step: 'replay' as const, reason: 'over the cap' }
+    await writeCandidates({
+      confirmed: ids.map(candidate),
+      flaky: [],
+      observations: [],
+      dropped: [],
+      deferred: [replayDeferred],
+    })
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    const result = await judge(outDir, fakeCreate({}, calls), qaDir)
+
+    expect(calls).toHaveLength(15)
+    expect(result.deferred).toEqual([
+      replayDeferred,
+      { file: candidate('j15'), step: 'judge', reason: 'over the cap of 15 judged findings' },
+    ])
+    expect(result.dropped.map((entry) => entry.file.id)).not.toContain('j15')
+  })
+
+  test('defers a candidate whose worst-case cost would pass the spend ceiling, and judges the next one', async () => {
+    await writeCandidates({
+      confirmed: [candidate('huge'), candidate('small')],
+      flaky: [],
+      observations: [],
+      dropped: [],
+    })
+    // 600,000 bytes may be up to 600,000 input tokens: $2.40 at $4 per million, over the $2 ceiling.
+    await Bun.write(join(outDir, 'c2-chat/repro/huge.spec.ts'), 'x'.repeat(600_000))
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    const result = await judge(outDir, fakeCreate({ small: '{"keep":true,"reason":"ok"}' }, calls), qaDir)
+
+    expect(calls).toHaveLength(1)
+    expect(result.confirmed.map((file) => file.id)).toEqual(['small'])
+    expect(result.deferred).toEqual([
+      { file: candidate('huge'), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+    ])
   })
 
   test('a refusal or a truncated reply is dropped, and no candidates means no calls', async () => {

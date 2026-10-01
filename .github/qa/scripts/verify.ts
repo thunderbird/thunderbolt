@@ -30,6 +30,8 @@ export type Verified = {
     gate: 'schema' | 'lint' | 'replay' | 'judge'
     reason: string
   }[]
+  /** Over a cap: never replayed (`replay`) or never judged (`judge`), so neither confirmed nor dropped. */
+  deferred?: { file: FindingFile; step: 'replay' | 'judge'; reason: string }[]
   judge_usage?: { input_tokens: number; output_tokens: number; cost_usd: number }
   /** Set when the control spec failed: nothing is confirmed and every replayed finding is dropped. */
   stack_unhealthy?: string
@@ -59,6 +61,22 @@ export type CreateMessage = (params: Anthropic.MessageCreateParamsNonStreaming) 
 const judgeModel = 'claude-opus-5-5'
 // USD per million tokens for judgeModel, from https://platform.claude.com/docs/en/about-claude/pricing.
 const judgePrice = { input: 4, output: 20 }
+const judgeMaxTokens = 4096
+// The aggregate caps, per replay leg and per judge leg; the README explains how to calibrate them.
+const replayCap = 20
+const judgeCap = 15
+const judgeCeilingUsd = 2
+// Message framing and the verdict schema, on top of the prompt text.
+const judgeOverheadTokens = 1_000
+
+/**
+ * The most a judge call can cost. A token covers at least one byte of UTF-8 text, so the prompt's byte length
+ * bounds its input tokens, and `max_tokens` bounds the output.
+ */
+const worstJudgeCost = (system: string, user: string) =>
+  ((Buffer.byteLength(system) + Buffer.byteLength(user) + judgeOverheadTokens) * judgePrice.input +
+    judgeMaxTokens * judgePrice.output) /
+  1_000_000
 
 /**
  * The specs are untrusted, so Playwright gets only what it needs to run and never the caller's secrets:
@@ -150,7 +168,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 }
 
 /**
- * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying every surviving spec three times.
+ * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying the surviving specs three times each,
+ * up to `replayCap` findings (the rest are `deferred`).
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
  * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, nothing is confirmed and
@@ -168,7 +187,7 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
     observations: [],
     dropped: rejected.map((file) => ({ file, gate: 'schema', reason: file.reason })),
   }
-  const replayable: FindingFile[] = []
+  const lintClean: FindingFile[] = []
   for (const file of valid) {
     const { oracle } = file.finding
     const isNoise = oracle.type === 'console-error' && noise.some((line) => oracle.evidence.includes(line))
@@ -179,8 +198,13 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
     const spec = Bun.file(join(outDir, specPath(file)))
     const problems = (await spec.exists()) ? lintReproSpec(await spec.text()) : ['repro spec not found']
     if (problems.length > 0) result.dropped.push({ file, gate: 'lint', reason: problems.join('; ') })
-    else replayable.push(file)
+    else lintClean.push(file)
   }
+  // ponytail: the first findings in path order fill the cap; rank by severity if a capped run ever loses a bad one.
+  const replayable = lintClean.slice(0, replayCap)
+  result.deferred = lintClean
+    .slice(replayCap)
+    .map((file) => ({ file, step: 'replay' as const, reason: `over the cap of ${replayCap} replayed findings` }))
 
   // Never start Playwright without a filter: it would run every spec, including the ones the lint rejected.
   if (replayable.length > 0) {
@@ -229,29 +253,46 @@ const createMessage: CreateMessage = (params) => new Anthropic().messages.create
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
  * its spec, its replay failure and `.github/qa/known-issues.md`. Kept → `confirmed`, otherwise `dropped` at gate
- * `judge`; flaky candidates are never judged. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY`
- * and nothing else.
+ * `judge`; flaky candidates are never judged. At most `judgeCap` calls, admitted in order only while their worst-case
+ * cost fits under `judgeCeilingUsd`; the rest are `deferred`. Writes and returns `<outDir>/verified.json`. Needs
+ * `ANTHROPIC_API_KEY` and nothing else.
  */
 export const judge = async (outDir: string, create: CreateMessage = createMessage, qaDir = '.github/qa') => {
   const candidates: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
   const system = `${await Bun.file(join(qaDir, 'judge.md')).text()}\n\n${await Bun.file(join(qaDir, 'known-issues.md')).text()}`
-  const judged = await Promise.all(
+  const prompts = await Promise.all(
     candidates.confirmed.map(async (candidate) => {
       const spec = await Bun.file(join(outDir, specPath(candidate))).text()
+      const user =
+        `<finding>\n${JSON.stringify(candidate.finding, null, 2)}\n</finding>\n\n` +
+        `<repro_spec>\n${spec}\n</repro_spec>\n\n` +
+        `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>`
+      return { candidate, user, cost: worstJudgeCost(system, user) }
+    }),
+  )
+  const toJudge: typeof prompts = []
+  const deferred = [...(candidates.deferred ?? [])]
+  let worstTotal = 0
+  for (const prompt of prompts) {
+    if (toJudge.length < judgeCap && worstTotal + prompt.cost <= judgeCeilingUsd) {
+      toJudge.push(prompt)
+      worstTotal += prompt.cost
+    } else {
+      const reason =
+        toJudge.length < judgeCap
+          ? `over the judge's spend ceiling of $${judgeCeilingUsd}`
+          : `over the cap of ${judgeCap} judged findings`
+      deferred.push({ file: prompt.candidate, step: 'judge', reason })
+    }
+  }
+  const judged = await Promise.all(
+    toJudge.map(async ({ candidate, user }) => {
       const response = await create({
         model: judgeModel,
-        max_tokens: 4096,
+        max_tokens: judgeMaxTokens,
         system,
         output_config: { effort: 'medium', format: zodOutputFormat(verdictSchema) },
-        messages: [
-          {
-            role: 'user',
-            content:
-              `<finding>\n${JSON.stringify(candidate.finding, null, 2)}\n</finding>\n\n` +
-              `<repro_spec>\n${spec}\n</repro_spec>\n\n` +
-              `<replay_failure>\n${candidate.replay.error ?? '(no message recorded)'}\n</replay_failure>`,
-          },
-        ],
+        messages: [{ role: 'user', content: user }],
       })
       return { finding: { ...candidate, judge: readVerdict(response) }, usage: response.usage }
     }),
@@ -267,6 +308,7 @@ export const judge = async (outDir: string, create: CreateMessage = createMessag
         finding.judge.keep ? [] : [{ file: finding, gate: 'judge' as const, reason: finding.judge.reason }],
       ),
     ],
+    deferred,
     judge_usage: {
       input_tokens: inputTokens,
       output_tokens: outputTokens,
@@ -289,7 +331,8 @@ if (import.meta.main) {
   const result = await { replay, judge }[step](values.out)
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +
-      `observations ${result.observations.length}, dropped ${result.dropped.length}`,
+      `observations ${result.observations.length}, dropped ${result.dropped.length}, ` +
+      `deferred ${result.deferred?.length ?? 0}`,
   )
   if (result.stack_unhealthy) {
     console.error(`Stack unhealthy, nothing confirmed. The ${result.stack_unhealthy}`)

@@ -518,7 +518,7 @@ jobs:
           for leg in qa-out-legs/*/; do
             [ -f "$leg/candidates.json" ] || continue
             jq --slurp '.[1] as $leg | .[0] | .confirmed += $leg.confirmed | .flaky += $leg.flaky
-              | .observations += $leg.observations | .dropped += $leg.dropped' \
+              | .observations += $leg.observations | .dropped += $leg.dropped | .deferred += $leg.deferred' \
               qa-out/candidates.json "$leg/candidates.json" > "$RUNNER_TEMP/candidates.json"
             cp -R "$leg." qa-out/
             mv "$RUNNER_TEMP/candidates.json" qa-out/candidates.json

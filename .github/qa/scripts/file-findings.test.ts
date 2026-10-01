@@ -419,17 +419,24 @@ describe('scorecard and precision brake', () => {
     expect(await computeScorecard(api.fetchFn, 'k')).toEqual({
       window: '28 days',
       counts: { valid: 2, notABug: 1, duplicate: 3, envArtifact: 1 },
-      labelled: 7,
+      labelled: 4,
       precision: 0.5,
     })
   })
 
-  test('brakes at 8+ labelled tickets under 50% precision', () => {
+  test('brakes at 8+ non-duplicate triaged tickets under 70% precision', () => {
     const card = { window: '', counts: { valid: 0, notABug: 0, duplicate: 0, envArtifact: 0 } }
-    expect(shouldBrake({ ...card, labelled: 8, precision: 0.49 })).toBe(true)
-    expect(shouldBrake({ ...card, labelled: 8, precision: 0.5 })).toBe(false)
+    expect(shouldBrake({ ...card, labelled: 8, precision: 0.69 })).toBe(true)
+    expect(shouldBrake({ ...card, labelled: 8, precision: 0.7 })).toBe(false)
     expect(shouldBrake({ ...card, labelled: 7, precision: 0 })).toBe(false)
     expect(shouldBrake({ ...card, labelled: 9, precision: null })).toBe(false)
+  })
+
+  test('duplicates do not fill the sample the brake needs', async () => {
+    const api = fakeLinear({ scorecard: tickets({ 'qa:valid': 3, 'qa:not-a-bug': 4, 'qa:duplicate': 9 }) })
+    const card = await computeScorecard(api.fetchFn, 'k')
+    expect(card.labelled).toBe(7)
+    expect(shouldBrake(card)).toBe(false)
   })
 
   test('a live run under the brake becomes a dry run and says so', async () => {

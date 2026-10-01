@@ -40,20 +40,21 @@ const regressionWindowMs = 60 * 24 * 60 * 60 * 1000
 const requiredLabels = ['qa-agent', 'Bug', 'security']
 const triageLabels = ['qa:valid', 'qa:not-a-bug', 'qa:duplicate', 'qa:env-artifact'] as const
 const brakeMinLabelled = 8
-const brakeMinPrecision = 0.5
+const brakeMinPrecision = 0.7
 
 // ---------- scorecard ----------
 
 export type Scorecard = {
   window: string
   counts: { valid: number; notABug: number; duplicate: number; envArtifact: number }
+  /** Triaged tickets that are not duplicates: the sample precision is computed on. */
   labelled: number
   precision: number | null
 }
 
 /**
  * Precision of the last ~28 days of `qa-agent` tickets from the triage labels a human put on them:
- * valid / (valid + not-a-bug + env-artifact). Duplicates are counted but do not move precision.
+ * valid / (valid + not-a-bug + env-artifact). Duplicates are counted but move neither precision nor the sample.
  */
 export const computeScorecard = async (fetchFn: typeof fetch, key: string): Promise<Scorecard> => {
   // ponytail: one page of 250 tickets, far above the weekly cap of 9; paginate if that ever changes
@@ -74,7 +75,7 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
   return {
     window: '28 days',
     counts: { valid, notABug, duplicate, envArtifact },
-    labelled: judged + duplicate,
+    labelled: judged,
     precision: judged ? valid / judged : null,
   }
 }
@@ -320,7 +321,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const braked = card !== undefined && shouldBrake(card)
   if (braked) {
     log(
-      `PRECISION BRAKE: ${card.labelled} triaged tickets, precision ${card.precision?.toFixed(2)} < ${brakeMinPrecision}. Forcing a dry run.`,
+      `PRECISION BRAKE: ${card.labelled} non-duplicate triaged tickets, precision ${card.precision?.toFixed(2)} < ${brakeMinPrecision}. Forcing a dry run.`,
     )
   }
   const live = opts.live && !braked

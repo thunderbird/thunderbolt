@@ -86,7 +86,7 @@ export const sessionFromExecution = async (path: string, charter: string, timedO
 /** Suggested cap = max observed + 50%; undefined without samples. A run has at most nine sessions per step. */
 export const suggestCap = (samples: number[]) => (samples.length === 0 ? undefined : Math.max(...samples) * 1.5)
 
-/** The fields of `qa/canaries/canaries.json` the matcher reads; the rest is for people. */
+/** The fields of `.github/qa/canaries/canaries.json` the matcher reads; the rest is for people. */
 type Canary = { patch: string; keywords: string[] }
 type CanaryResult = {
   found: number
@@ -338,7 +338,11 @@ const runSummary = async (outDir: string) => {
  * replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees the canary
  * leg: the file job downloads only the weekly leg's `verified.json`.
  */
-export const runCanary = async (outDir: string, baselineDir: string, canariesPath = 'qa/canaries/canaries.json') => {
+export const runCanary = async (
+  outDir: string,
+  baselineDir: string,
+  canariesPath = '.github/qa/canaries/canaries.json',
+) => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
   const canaries: Canary[] = await Bun.file(canariesPath).json()

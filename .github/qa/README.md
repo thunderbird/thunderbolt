@@ -35,22 +35,22 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 ## Pipeline and files
 
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
-   stack must pass `control/repro/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
+   stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
 2. **explore**: one job per charter with `claude-code-action` and the Playwright MCP (`mcp.json`,
    `mcp-two-devices.json` for c7). The prompt is `prompt.md` followed by the charter. The explorer writes
    `qa-out/<charter>/findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session
    keeps what it found. The job uploads only the counters of the session's result message; the report job turns
-   them into `session.json` with `scripts/qa/report.ts session`.
-3. **replay** (`scripts/qa/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
-   observations), spec lint, then every spec runs 3 times (`playwright.qa.config.ts`) next to the control spec.
+   them into `session.json` with `scripts/report.ts session`.
+3. **replay** (`scripts/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
+   observations), spec lint, then every spec runs 3 times (`playwright.config.ts` here) next to the control spec.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
    `qa-sync`) replay in their own leg on Postgres + PowerSync, the others on pglite; the judge takes both.
 4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`.
    The default answer is drop. Writes `verified.json`.
-5. **file** (`scripts/qa/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
+5. **file** (`scripts/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
    at most 8 new tickets plus one roll-up (security findings: 3 more plus their own roll-up, without the run link),
    secret refusal, video upload. Dry run unless `--live`.
-6. **fix** (off by default): `scripts/qa/fix.ts route` picks at most 3 tickets in fixable areas. The fix agent
+6. **fix** (off by default): `scripts/fix.ts route` picks at most 3 tickets in fixable areas. The fix agent
    (`fix.md`) writes a patch without git. A step without secrets then replays the original spec 3 times on the
    patched code. A session that did not finish, or a spec that still fails, becomes a diagnosis, so the ticket goes
    to a person. `fix.ts publish` rejects paths it does not allow, edited specs and empty patches, then opens a draft PR on
@@ -73,35 +73,35 @@ Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005
 
 ```sh
 # Builds (about 3 s each)
-scripts/qa/stack.sh build qa-dist
-scripts/qa/stack.sh build qa-dist-onboarding onboarding   # only for c1
+.github/qa/scripts/stack.sh build qa-dist
+.github/qa/scripts/stack.sh build qa-dist-onboarding onboarding   # only for c1
 
 # The stack: fake AI, pglite, the normal build on 1424 and the onboarding build on 1425. Leave it running.
-scripts/qa/stack.sh serve qa-dist qa-dist-onboarding
+.github/qa/scripts/stack.sh serve qa-dist qa-dist-onboarding
 
 # The guard
-bunx playwright test --config playwright.qa.config.ts --project control
+bunx playwright test --config .github/qa/playwright.config.ts --project control
 
 # One session. The last argument is the budget cap in USD (default 2).
-ANTHROPIC_API_KEY=… scripts/qa/explore.sh run c4-skills-projects qa-out 4
-QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… scripts/qa/explore.sh run c8-phone qa-out 4
+ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c4-skills-projects qa-out 4
+QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
 ```
 
 - **c3 and c5** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and `ANTHROPIC_API_KEY`,
   `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment.
 - **c7** needs Postgres and PowerSync. Start them as `nightly.yml` does, run `bunx drizzle-kit migrate` in
   `backend/`, start the stack with `DATABASE_URL` and `POWERSYNC_URL` set, and run the session with
-  `QA_MCP_CONFIG=qa/mcp-two-devices.json`.
+  `QA_MCP_CONFIG=.github/qa/mcp-two-devices.json`.
 
 Then the rest of the pipeline:
 
 ```sh
 # Replay: no keys in this shell, and the stack running with the fake AI
-bun scripts/qa/verify.ts replay --out qa-out
-ANTHROPIC_API_KEY=… bun scripts/qa/verify.ts judge --out qa-out
-bun scripts/qa/file-findings.ts --out qa-out       # dry run: one line per finding, text in filed.json
-bun scripts/qa/fix.ts route --out qa-out
-bun scripts/qa/report.ts summary --out qa-out      # writes qa-out/report.md
+bun .github/qa/scripts/verify.ts replay --out qa-out
+ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
+bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run: one line per finding, text in filed.json
+bun .github/qa/scripts/fix.ts route --out qa-out
+bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.md
 ```
 
 A filer dry run logs one line per finding (fingerprint, severity, action), because the Actions log is public. The
@@ -113,17 +113,18 @@ would-be ticket text is `preview` in `filed.json`, except for security findings,
 ```sh
 rm -rf /tmp/qa-canary && mkdir /tmp/qa-canary && git archive HEAD | tar -x -C /tmp/qa-canary
 ln -s "$PWD/node_modules" /tmp/qa-canary/node_modules
-(cd /tmp/qa-canary && git apply qa/canaries/*.patch)
-/tmp/qa-canary/scripts/qa/stack.sh build "$PWD/qa-dist-canary"
+(cd /tmp/qa-canary && git apply .github/qa/canaries/*.patch)
+/tmp/qa-canary/.github/qa/scripts/stack.sh build "$PWD/qa-dist-canary"
 ```
 
 Serve `qa-dist-canary`, run c8 into `qa-out-canary` and replay it there. Then serve `qa-dist`,
 `cp -R qa-out-canary/. qa-out-canary-baseline`, replay that dir, judge `qa-out-canary`, and run
-`bun scripts/qa/report.ts canary --out qa-out-canary --baseline qa-out-canary-baseline`.
+`bun .github/qa/scripts/report.ts canary --out qa-out-canary --baseline qa-out-canary-baseline`.
 
-**Fix agent:** run it in a separate checkout (it edits the working tree), with `scripts/qa/stack.sh serve dev`
-from that checkout and the flags of the `fix` job. Collect the patch like the workflow does, then
-`bun scripts/qa/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the commit and the PR it would open.
+**Fix agent:** run it in a separate checkout (it edits the working tree), with
+`.github/qa/scripts/stack.sh serve dev` from that checkout and the flags of the `fix` job. Collect the patch like
+the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
+commit and the PR it would open.
 
 Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers`.
 
@@ -242,8 +243,8 @@ The fix agent's draft PR already does this. By hand:
    `test`, `expect`, `Page`, `Request` or `Route`.
 4. `bun run e2e:check-collected`, then check that the spec fails before the fix and passes after it.
 
-A c1 spec runs against the onboarding build on port 1425, which `playwright.config.ts` does not start. It needs
-its own project before it can live in `e2e/`.
+A c1 spec runs against the onboarding build on port 1425, which the root `playwright.config.ts` does not start. It
+needs its own project before it can live in `e2e/`.
 
 ## Owners
 

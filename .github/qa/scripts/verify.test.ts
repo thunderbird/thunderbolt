@@ -63,7 +63,7 @@ const writeFinding = async (finding: RawFinding, spec: string | null = validSpec
   if (spec !== null) await Bun.write(join(outDir, 'c2-chat', finding.repro_spec), spec)
 }
 
-const controlSpec = () => join(qaDir, 'control/repro/stack.spec.ts')
+const controlSpec = () => join(qaDir, 'control/stack.spec.ts')
 
 /**
  * A runner that reports the given result statuses per spec file (relative to `outDir`), one Playwright spec entry
@@ -290,7 +290,7 @@ describe('replay', () => {
   })
 
   test('the control spec passes the repro spec lint', async () => {
-    const source = await Bun.file(join(import.meta.dir, '../../qa/control/repro/stack.spec.ts')).text()
+    const source = await Bun.file(join(import.meta.dir, '../control/stack.spec.ts')).text()
     expect(lintReproSpec(source)).toEqual([])
   })
 

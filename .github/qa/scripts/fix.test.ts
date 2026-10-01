@@ -254,10 +254,10 @@ describe('isDenied', () => {
     'package.json',
     'backend/package.json',
     'bun.lock',
-    'qa/fix.md',
-    'scripts/qa/fix.ts',
+    '.github/qa/fix.md',
+    '.github/qa/scripts/fix.ts',
     'e2e/helpers.ts',
-    'playwright.qa.config.ts',
+    '.github/qa/playwright.config.ts',
   ])('denies %s', (path) => {
     expect(isDenied(path)).toBe(true)
   })

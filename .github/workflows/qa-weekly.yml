@@ -2,7 +2,7 @@ name: QA weekly
 
 # An AI agent uses the app like a person would, one charter per session. Deterministic code then replays, judges,
 # files and (optionally) fixes what it found. How it works, the secrets and variables, and the rule for calibrating
-# the caps below: qa/README.md.
+# the caps below: .github/qa/README.md.
 #
 # Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
 # token. Replay holds no secret at all. Only the build job saves caches, because it runs before any untrusted code.
@@ -32,7 +32,7 @@ concurrency:
 permissions: {}
 
 env:
-  # Per-session caps. Initial values: recalibrate them with the rule in qa/README.md.
+  # Per-session caps. Initial values: recalibrate them with the rule in .github/qa/README.md.
   QA_EXPLORE_MAX_BUDGET_USD: 10
   QA_EXPLORE_MAX_TURNS: 400
   QA_EXPLORE_TIMEOUT_MINUTES: 60
@@ -87,7 +87,8 @@ jobs:
 
       - &install-browsers
         name: Install browsers
-        # The repo's Playwright replays specs; the Playwright MCP (pinned in qa/mcp.json) drives its own Chromium.
+        # The repo's Playwright replays specs; the Playwright MCP (pinned in .github/qa/mcp.json) drives its own
+        # Chromium.
         run: |
           bunx playwright install --with-deps chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
@@ -105,12 +106,12 @@ jobs:
           only=$(jq --null-input --compact-output --arg charters "$CHARTERS" '[$charters | splits("[ ,]+") | select(. != "")]')
           if [ -n "$CHARTERS" ] && [ "$only" = '[]' ]; then echo "::error::No charter id in '$CHARTERS'"; exit 1; fi
           for charter in $(jq --raw-output '.[]' <<< "$only"); do
-            [ -f "qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }
+            [ -f ".github/qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }
           done
           # shellcheck disable=SC2016 # jq variables
           # One explore session per leg. The canary leg runs c8 on a build with planted bugs and is never filed.
           legs=$(jq --null-input --compact-output --argjson only "$only" '
-            {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: "qa/mcp.json", viewport: "1280x800",
+            {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: ".github/qa/mcp.json", viewport: "1280x800",
              onboarding: false, real: false, postgres: false} as $leg
             | [{charter: "c1-first-run", onboarding: true},
                {charter: "c2-chat-power-user"},
@@ -118,7 +119,7 @@ jobs:
                {charter: "c4-skills-projects"},
                {charter: "c5-widgets-connections", real: true},
                {charter: "c6-settings-data"},
-               {charter: "c7-two-devices", postgres: true, mcp: "qa/mcp-two-devices.json", artifact: "qa-sync"},
+               {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp-two-devices.json", artifact: "qa-sync"},
                {charter: "c8-phone", viewport: "390x844"},
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
@@ -146,16 +147,16 @@ jobs:
 
       - name: Build the frontend (onboarding off, onboarding on, canaries planted)
         run: |
-          scripts/qa/stack.sh build qa-dist
-          scripts/qa/stack.sh build qa-dist-onboarding onboarding
-          git apply qa/canaries/*.patch
-          scripts/qa/stack.sh build qa-dist-canary
-          git apply --reverse qa/canaries/*.patch
+          .github/qa/scripts/stack.sh build qa-dist
+          .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding
+          git apply .github/qa/canaries/*.patch
+          .github/qa/scripts/stack.sh build qa-dist-canary
+          git apply --reverse .github/qa/canaries/*.patch
 
       - name: Guard - smoke-test a fresh stack
         run: |
-          scripts/qa/stack.sh start qa-dist
-          bunx playwright test --config playwright.qa.config.ts --project control
+          .github/qa/scripts/stack.sh start qa-dist
+          bunx playwright test --config .github/qa/playwright.config.ts --project control
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -273,16 +274,16 @@ jobs:
           EXA_API_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
           QA_DIST: ${{ matrix.leg.dist }}
           ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
-        run: scripts/qa/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
+        run: .github/qa/scripts/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
 
       - name: Build the prompt
         id: prompt
         run: |
           {
             echo 'text<<QA_PROMPT_EOF'
-            scripts/qa/explore.sh prompt "$QA_CHARTER" "$QA_OUT"
+            .github/qa/scripts/explore.sh prompt "$QA_CHARTER" "$QA_OUT"
             echo 'QA_PROMPT_EOF'
-            echo "schema=$(jq --compact-output . qa/findings.schema.json)"
+            echo "schema=$(jq --compact-output . .github/qa/findings.schema.json)"
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
@@ -294,8 +295,8 @@ jobs:
           git ls-files --stage -z | tr '\0' '\n' | awk -F '\t' '!/^120000 / { print $2 }' | tr '\n' '\0' |
             xargs -0 sha256sum > "$RUNNER_TEMP/qa-tracked.sha256"
 
-      # Same flags as scripts/qa/explore.sh. Only Write (inside the out dir) and the browser tools, no shell and no
-      # file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
+      # Same flags as .github/qa/scripts/explore.sh. Only Write (inside the out dir) and the browser tools, no shell
+      # and no file reads; `--setting-sources user` keeps the repo's agent instructions and skills out of the session.
       - name: Explore
         id: explore
         continue-on-error: true
@@ -413,10 +414,10 @@ jobs:
           ONBOARDING_DIST: ${{ matrix.leg.onboarding && 'qa-dist-onboarding' || '' }}
         run: |
           mkdir -p "$QA_OUT"
-          scripts/qa/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
+          .github/qa/scripts/stack.sh start "$QA_DIST" ${ONBOARDING_DIST:+"$ONBOARDING_DIST"}
 
       - name: Replay the repro specs
-        run: bun scripts/qa/verify.ts replay --out "$QA_OUT"
+        run: bun .github/qa/scripts/verify.ts replay --out "$QA_OUT"
 
       - name: Download the normal build
         if: matrix.leg.name == 'canary'
@@ -429,10 +430,10 @@ jobs:
       - name: Replay the canary findings on the normal build
         if: matrix.leg.name == 'canary'
         run: |
-          scripts/qa/stack.sh stop
+          .github/qa/scripts/stack.sh stop
           cp -R "$QA_OUT/." qa-out-canary-baseline
-          scripts/qa/stack.sh start qa-dist
-          bun scripts/qa/verify.ts replay --out qa-out-canary-baseline
+          .github/qa/scripts/stack.sh start qa-dist
+          bun .github/qa/scripts/verify.ts replay --out qa-out-canary-baseline
 
       - name: Remove credentials and network data from traces
         id: sanitize
@@ -499,7 +500,7 @@ jobs:
       - name: Judge the confirmed findings
         env:
           ANTHROPIC_API_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
-        run: bun scripts/qa/verify.ts judge --out "$QA_OUT"
+        run: bun .github/qa/scripts/verify.ts judge --out "$QA_OUT"
       - name: Download the canary baseline
         if: matrix.leg.name == 'canary'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -509,7 +510,7 @@ jobs:
       # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
-        run: bun scripts/qa/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline
+        run: bun .github/qa/scripts/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline
       # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every finding).
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -553,19 +554,19 @@ jobs:
         env:
           LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bun scripts/qa/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+        run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
       - name: Scorecard
         if: env.HAS_LINEAR_KEY == 'true'
         env:
           LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
-        run: bun scripts/qa/file-findings.ts scorecard --out qa-out
+        run: bun .github/qa/scripts/file-findings.ts scorecard --out qa-out
       - name: Route fixable tickets
         id: route
         if: needs.build.outputs.autofix == 'true'
         env:
           LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
         run: |
-          bun scripts/qa/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+          bun .github/qa/scripts/fix.ts route --out qa-out ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
           echo "plan=$(jq --compact-output . qa-out/fix-plan.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -602,7 +603,7 @@ jobs:
       - *download-replay
 
       - name: Start the stack on the working tree
-        run: scripts/qa/stack.sh start dev
+        run: .github/qa/scripts/stack.sh start dev
 
       - name: Build the prompt
         id: prompt
@@ -611,7 +612,7 @@ jobs:
         run: |
           {
             echo 'text<<QA_PROMPT_EOF'
-            cat qa/fix.md
+            cat .github/qa/fix.md
             # shellcheck disable=SC2016 # Markdown backticks
             printf '\n## Task\n\n```json\n%s\n```\n' "$TASK"
             echo 'QA_PROMPT_EOF'
@@ -648,7 +649,7 @@ jobs:
             --setting-sources user
             --permission-mode dontAsk
             --tools "Read,Glob,Grep,Edit,Write,Bash"
-            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bunx playwright test --config playwright.qa.config.ts ${{ matrix.task.spec }})"
+            --allowedTools "Read,Glob,Grep,Edit(src/**),Edit(shared/**),Edit(backend/src/**),Edit(qa-out/fix/**),Bash(bun run check),Bash(bun run test:*),Bash(bun run test:backend),Bash(bun run i18n:extract),Bash(bunx playwright test --config .github/qa/playwright.config.ts ${{ matrix.task.spec }})"
             --disallowedTools "Bash(git:*),WebFetch,WebSearch"
             --max-budget-usd ${{ env.QA_FIX_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_FIX_MAX_TURNS }}
@@ -668,7 +669,7 @@ jobs:
         env:
           QA_OUT: qa-out-verify
           SPEC: ${{ matrix.task.spec }}
-        run: bunx playwright test --config playwright.qa.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
+        run: bunx playwright test --config .github/qa/playwright.config.ts --repeat-each=3 --retries=0 "qa-out-verify/${SPEC#qa-out/}"
 
       - *stop-stack
 
@@ -698,7 +699,7 @@ jobs:
         run: |
           timed_out=()
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_FIX_TIMEOUT_MINUTES * 60 )) ]; then timed_out=(--timed-out); fi
-          bun scripts/qa/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
+          bun .github/qa/scripts/report.ts session --execution-file "$EXECUTION_FILE" --charter "fix-$QA_FP" --out qa-out "${timed_out[@]}"
 
       # The agent could write anything under qa-out/fix/, and artifacts are public: a secret in it means no upload.
       # JWT-shaped strings are left to publish's own check, because repo test fixtures contain some.
@@ -785,7 +786,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
-        run: bun scripts/qa/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
+        run: bun .github/qa/scripts/fix.ts publish --out qa-out --fp "$QA_FP" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
 
   report:
     needs: [build, explore, replay, judge, file, fix, publish]
@@ -827,7 +828,7 @@ jobs:
             jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS" | while read -r out charter; do
               timed_out=()
               if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
-              bun scripts/qa/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
+              bun .github/qa/scripts/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
                 --out "$out" "${timed_out[@]}"
             done
           fi
@@ -836,10 +837,10 @@ jobs:
           # summary exits 1 when every explore session errored or timed out (a revoked key, a retired model id),
           # while the jobs stayed green. Write both reports, then fail the step so notify-on-failure fires.
           status=0
-          bun scripts/qa/report.ts summary --out qa-out || status=1
+          bun .github/qa/scripts/report.ts summary --out qa-out || status=1
           if [ -d qa-out-canary ]; then
             echo '# Canary leg: c8 on a build with planted bugs, never filed' >> "$GITHUB_STEP_SUMMARY"
-            bun scripts/qa/report.ts summary --out qa-out-canary || status=1
+            bun .github/qa/scripts/report.ts summary --out qa-out-canary || status=1
           fi
           exit "$status"
 

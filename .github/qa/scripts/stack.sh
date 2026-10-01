@@ -4,15 +4,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# The QA agent's app stack, in CI and locally: the consumer pair of playwright.config.ts (backend on 8005 with the
-# fixed sign-in code, frontend on 1424) plus the fake LLM provider (9878) and the fake MCP server (9879), with a
-# production build served by `vite preview` instead of the dev server.
+# The QA agent's app stack, in CI and locally: the consumer pair of the root playwright.config.ts (backend on 8005
+# with the fixed sign-in code, frontend on 1424) plus the fake LLM provider (9878) and the fake MCP server (9879),
+# with a production build served by `vite preview` instead of the dev server.
 #
-#   scripts/qa/stack.sh build <out-dir> [onboarding]   build the frontend for this stack (onboarding off unless asked)
-#   scripts/qa/stack.sh serve <dist> [<dist>]          serve a build on 1424 (and a second one on 1425) until killed
-#   scripts/qa/stack.sh serve dev                      Vite dev server on the working tree, backend with --watch
-#   scripts/qa/stack.sh start <serve args> / stop      for CI steps: serve in the background, return once ready;
-#                                                      the pids go to $RUNNER_TEMP/qa-stack.pid and qa-stack.pids
+#   .github/qa/scripts/stack.sh build <out-dir> [onboarding]  build the frontend (onboarding off unless asked)
+#   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on 1424 (and one on 1425) until killed
+#   .github/qa/scripts/stack.sh serve dev                     Vite dev server on the working tree, backend --watch
+#   .github/qa/scripts/stack.sh start <serve args> / stop     for CI steps: serve in the background, return once
+#                                                             ready; the pids go to $RUNNER_TEMP/qa-stack.pid and
+#                                                             qa-stack.pids
 #
 # `serve` prints "stack ready" once every server answers, and exits when any of them does.
 # QA_REAL_PROVIDERS=true hands the backend ANTHROPIC_API_KEY, TINFOIL_API_KEY, TINFOIL_ENCLAVE_URL and EXA_API_KEY
@@ -20,7 +21,7 @@
 # an already migrated Postgres with PowerSync, as in nightly.yml.
 
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../../.."
 # Like `bun run`: vite.config.ts calls package binaries such as powersync-web.
 export PATH=$PWD/node_modules/.bin:$PATH
 
@@ -41,7 +42,7 @@ fi
 
 state=${RUNNER_TEMP:-/tmp}/qa-stack
 if [ "$1" = start ]; then
-  "$PWD/scripts/qa/stack.sh" serve "${@:2}" > "$state.log" 2>&1 &
+  "$PWD/.github/qa/scripts/stack.sh" serve "${@:2}" > "$state.log" 2>&1 &
   echo $! > "$state.pid"
   until grep -q "stack ready" "$state.log"; do
     kill -0 $! 2>/dev/null || { cat "$state.log"; exit 1; }

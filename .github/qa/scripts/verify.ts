@@ -79,10 +79,11 @@ const runPlaywright: RunReplay = async (specs, outDir, { list = false } = {}) =>
   // A file, not stdout: a spec that logs at module scope would corrupt a report on stdout.
   const reportFile = resolve(outDir, 'replay-report.json')
   await rm(reportFile, { force: true })
-  const result = await Bun.$`bunx playwright test --config playwright.qa.config.ts ${mode} --reporter=json ${filters}`
-    .env({ ...replayEnv(outDir), PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile })
-    .nothrow()
-    .quiet()
+  const result =
+    await Bun.$`bunx playwright test --config .github/qa/playwright.config.ts ${mode} --reporter=json ${filters}`
+      .env({ ...replayEnv(outDir), PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile })
+      .nothrow()
+      .quiet()
   const report = Bun.file(reportFile)
   if (!(await report.exists())) throw new Error(`Playwright wrote no report:\n${result.stderr}`)
   return report.json()
@@ -147,13 +148,13 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying every surviving spec three times.
  * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. The same run replays
- * `qa/control/repro/stack.spec.ts`; if any of its runs fails, the stack is broken, nothing is confirmed and
+ * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, nothing is confirmed and
  * `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped at
  * gate `lint` and the rest replay again without them. Writes and returns `<outDir>/candidates.json`. Needs NO
  * secrets and must run without any: the specs were written by a model that read untrusted pages, and the spec lint
  * is defence in depth, not the boundary.
  */
-export const replay = async (outDir: string, runReplay: RunReplay = runPlaywright, qaDir = 'qa') => {
+export const replay = async (outDir: string, runReplay: RunReplay = runPlaywright, qaDir = '.github/qa') => {
   const { valid, rejected } = await loadFindings(outDir)
   const noise = await readList(join(qaDir, 'noise.txt'))
   const result: Verified = {
@@ -178,7 +179,7 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
 
   // Never start Playwright without a filter: it would run every spec, including the ones the lint rejected.
   if (replayable.length > 0) {
-    const control = resolve(qaDir, 'control/repro/stack.spec.ts')
+    const control = resolve(qaDir, 'control/stack.spec.ts')
     const specOf = (file: FindingFile) => resolve(outDir, specPath(file))
     const specs = [...new Set(replayable.map(specOf))]
     const first = await runReplay([control, ...specs], outDir)
@@ -222,10 +223,11 @@ const createMessage: CreateMessage = (params) => new Anthropic().messages.create
 
 /**
  * Verify step 2: one fresh model call per confirmed candidate, seeing only the finding (with its oracle evidence),
- * its spec, its replay failure and `qa/known-issues.md`. Kept → `confirmed`, otherwise `dropped` at gate `judge`; flaky candidates are
- * never judged. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY` and nothing else.
+ * its spec, its replay failure and `.github/qa/known-issues.md`. Kept → `confirmed`, otherwise `dropped` at gate
+ * `judge`; flaky candidates are never judged. Writes and returns `<outDir>/verified.json`. Needs `ANTHROPIC_API_KEY`
+ * and nothing else.
  */
-export const judge = async (outDir: string, create: CreateMessage = createMessage, qaDir = 'qa') => {
+export const judge = async (outDir: string, create: CreateMessage = createMessage, qaDir = '.github/qa') => {
   const candidates: Verified = await Bun.file(join(outDir, 'candidates.json')).json()
   const system = `${await Bun.file(join(qaDir, 'judge.md')).text()}\n\n${await Bun.file(join(qaDir, 'known-issues.md')).text()}`
   const judged = await Promise.all(
@@ -278,7 +280,7 @@ if (import.meta.main) {
   })
   const step = positionals[0]
   if (step !== 'replay' && step !== 'judge')
-    throw new Error('usage: bun scripts/qa/verify.ts replay|judge --out qa-out')
+    throw new Error('usage: bun .github/qa/scripts/verify.ts replay|judge --out qa-out')
   const result = await { replay, judge }[step](values.out)
   console.log(
     `confirmed ${result.confirmed.length}, flaky ${result.flaky.length}, ` +

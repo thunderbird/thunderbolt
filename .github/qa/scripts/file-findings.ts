@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { linear } from '../notify-on-failure'
+import { linear } from '../../../scripts/notify-on-failure'
 import { type Finding, findingSchema, fingerprint, type Severity, severity } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
 

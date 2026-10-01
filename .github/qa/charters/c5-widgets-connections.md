@@ -9,8 +9,8 @@ prompts short and send at most 12 chat messages in total.
    Francisco together so I can compare their locations.", "Quiz me with one multiple-choice question about email
    protocols." (answer it), "Find me three beginner-friendly TypeScript tutorials." (open a link preview and a
    citation if shown). Check each widget renders and reacts to clicks.
-2. Files: attach `qa/fixtures/sample.pdf` with `browser_file_upload`, ask about it, open it in the viewer and page
-   through it.
+2. Files: attach `.github/qa/fixtures/sample.pdf` with `browser_file_upload`, ask about it, open it in the viewer
+   and page through it.
 3. Artifacts: ask for "a small HTML page with a button that counts clicks", open it and click the button.
 4. MCP connection (Settings → MCP servers or Connections): add the local test server `http://127.0.0.1:9879/mcp`,
    ask the model to "echo hello with the MCP echo tool", then change its URL to port 9 and try again, then remove it.

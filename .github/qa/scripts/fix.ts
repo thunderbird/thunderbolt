@@ -7,7 +7,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { linear } from '../notify-on-failure'
+import { linear } from '../../../scripts/notify-on-failure'
 import {
   type Action,
   addComment,
@@ -26,7 +26,7 @@ const ticketActions = new Set<Action | undefined>(['created', 'regression', 'com
 const maxFixes = 3
 const humanRequired = 'human required'
 
-/** A fix may change only app code, as `qa/fix.md` tells the agent; `publish` adds the regression spec itself. */
+/** A fix may change only app code, as `.github/qa/fix.md` says; `publish` adds the regression spec itself. */
 const allowedPaths = /^(src|shared|backend\/src)\//
 /** Sensitive app code: database schema, migrations, sync, and any path naming sign-in, sessions, devices or keys. */
 const sensitivePaths =

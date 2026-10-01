@@ -1,16 +1,16 @@
 [
   {
-    "patch": "qa/canaries/preferred-name.patch",
+    "patch": ".github/qa/canaries/preferred-name.patch",
     "description": "The Preferred Name typed the first time is not saved: it shows until the page is reloaded, then the field is empty.",
     "keywords": ["preferred name", "your name", "name field"]
   },
   {
-    "patch": "qa/canaries/skill-delete.patch",
+    "patch": ".github/qa/canaries/skill-delete.patch",
     "description": "Deleting a skill that no other skill references throws an uncaught TypeError and the confirmation dialog never opens.",
     "keywords": ["delet", "remove"]
   },
   {
-    "patch": "qa/canaries/row-subtitle.patch",
+    "patch": ".github/qa/canaries/row-subtitle.patch",
     "description": "Settings list rows (skills, models, connections) no longer truncate their subtitle, so long descriptions overflow at 390px width.",
     "keywords": ["subtitle", "description", "truncat", "overflow"]
   }

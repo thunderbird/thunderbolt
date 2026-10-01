@@ -6,6 +6,7 @@ import type { AuthClient } from '@/contexts'
 import { authRequestHeaders } from '@/contexts/auth-context'
 import { selectPasskeyEnabled, useConfigStore } from '@/api/config-store'
 import { isSsoMode } from '@/lib/auth-mode'
+import { authenticatePasskeyNative, isNativePasskeyPlatform, registerPasskeyNative } from '@/lib/passkey-native'
 import { getPlatform } from '@/lib/platform'
 import {
   startAuthentication,
@@ -75,16 +76,24 @@ const ceremonyFetch = async <T>(authClient: AuthClient, path: string, request: C
 }
 
 /**
- * True when this runtime can perform a WebAuthn ceremony at all. Feature detection
- * alone is not enough: a Tauri webview may expose `PublicKeyCredential` yet fail the
- * ceremony (native passkey bridges are Phase-B/Tauri work), so we also require the
- * plain web platform. SSO deployments swap the whole auth surface, so exclude them.
+ * True when this runtime can perform a WebAuthn ceremony. Two paths: the browser
+ * (`navigator.credentials`, web only — a Tauri webview may expose the API yet fail),
+ * or a Tauri platform with a native bridge (Apple, via `tauri-plugin-passkey`). SSO
+ * deployments swap the whole auth surface, so exclude them.
+ *
+ * The native branch is a platform check, not a liveness check — the ceremony still
+ * needs the native plugin built with its entitlement and the RP's AASA deployed, and
+ * fails gracefully otherwise. `is_available` on the plugin is the precise probe.
  */
-export const isPasskeyCapable = (): boolean =>
-  typeof window !== 'undefined' &&
-  typeof window.PublicKeyCredential === 'function' &&
-  getPlatform() === 'web' &&
-  !isSsoMode()
+export const isPasskeyCapable = (): boolean => {
+  if (isSsoMode()) {
+    return false
+  }
+  if (isNativePasskeyPlatform()) {
+    return true
+  }
+  return typeof window !== 'undefined' && typeof window.PublicKeyCredential === 'function' && getPlatform() === 'web'
+}
 
 /**
  * Whether passkey UI should be offered: the deployment enabled it (RP ID configured,
@@ -95,9 +104,16 @@ export const usePasskeyAvailable = (): boolean => {
   return enabled && isPasskeyCapable()
 }
 
-/** True when a ceremony rejection is the user dismissing/cancelling the prompt. */
-export const isPasskeyCancellation = (error: unknown): boolean =>
-  error instanceof WebAuthnError && (error.name === 'NotAllowedError' || error.code === 'ERROR_CEREMONY_ABORTED')
+/** True when a ceremony rejection is the user dismissing/cancelling the prompt.
+ *  Covers both the browser (`WebAuthnError`) and the native bridge, which rejects
+ *  a cancelled sheet with a plain "cancelled" string. */
+export const isPasskeyCancellation = (error: unknown): boolean => {
+  if (error instanceof WebAuthnError) {
+    return error.name === 'NotAllowedError' || error.code === 'ERROR_CEREMONY_ABORTED'
+  }
+  const message = typeof error === 'string' ? error : error instanceof Error ? error.message : ''
+  return /cancel/i.test(message)
+}
 
 /**
  * Register a new passkey for the currently authenticated (non-anonymous) user.
@@ -111,7 +127,9 @@ export const registerPasskey = async (authClient: AuthClient, name?: string): Pr
     { method: 'GET', withChallengeCookie: true },
   )
 
-  const attResp = await startRegistration({ optionsJSON })
+  const attResp = isNativePasskeyPlatform()
+    ? await registerPasskeyNative(optionsJSON)
+    : await startRegistration({ optionsJSON })
 
   return ceremonyFetch<PasskeyRecord>(authClient, '/passkey/verify-registration', {
     method: 'POST',
@@ -132,7 +150,9 @@ export const signInWithPasskey = async (authClient: AuthClient): Promise<{ userI
     { method: 'GET', withChallengeCookie: true },
   )
 
-  const asseResp = await startAuthentication({ optionsJSON })
+  const asseResp = isNativePasskeyPlatform()
+    ? await authenticatePasskeyNative(optionsJSON)
+    : await startAuthentication({ optionsJSON })
 
   await ceremonyFetch(authClient, '/passkey/verify-authentication', {
     method: 'POST',

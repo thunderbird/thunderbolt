@@ -1,0 +1,156 @@
+# Build a SIGNED + notarized macOS desktop app on demand and upload it as a
+# workflow artifact — no GitHub Release, no tag, no CrabNebula/auto-updater.
+#
+# Purpose: get a properly code-signed build (with the team's Apple Developer
+# identity from secrets) for features that need entitlements the local ad-hoc
+# build can't carry — e.g. passkeys / Associated Domains (THU-790). Run it against
+# any branch via the "Run workflow" button and download the .dmg from the run.
+#
+# NOTE: workflow_dispatch only appears once this file is on the default branch.
+# After it's on main, select your feature branch as the ref to build its code.
+name: Desktop Build (signed, artifact-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'macOS target to build'
+        type: choice
+        default: aarch64-apple-darwin
+        options:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+
+concurrency:
+  group: desktop-build-signed-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build signed macOS app (${{ inputs.target }})
+    runs-on: macos-latest
+    # Same environment as desktop-release so the Apple signing secrets resolve.
+    environment: thunderbolt_release
+
+    steps:
+      # Default checkout uses the dispatched ref, i.e. the branch you picked in
+      # the "Run workflow" dropdown — that's the code that gets built.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 'lts/*'
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: stable
+          cache: false
+          rustflags: ''
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-build-signed-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-signed-
+
+      # Imports the team's Apple Developer certificate from secrets and exports the
+      # signing + notarization env vars. Copied verbatim from desktop-release.yml so
+      # the signed output is identical to a real release build (incl. entitlements).
+      - name: Setup macOS code signing and notarization
+        env:
+          APPLE_DEVELOPER_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE }}
+          APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_DEVELOPER_CERTIFICATE" ] || [ -z "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" ]; then
+            echo "Required secrets are not set"
+            exit 1
+          fi
+
+          CLEAN_CERT=$(echo "$APPLE_DEVELOPER_CERTIFICATE" | tr -d '\n\r\t ' | tr -d '[:space:]')
+          echo "$CLEAN_CERT" | base64 --decode > certificate.p12
+          if [ ! -s certificate.p12 ]; then
+            echo "Failed to decode certificate"
+            exit 1
+          fi
+
+          security create-keychain -p "build" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "build" build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
+
+          # OpenSSL 3 needs -legacy for Apple's p12 ciphers; LibreSSL rejects the flag.
+          LEGACY_FLAG=""
+          if openssl version 2>/dev/null | grep -q '^OpenSSL 3'; then
+            LEGACY_FLAG="-legacy"
+          fi
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+
+          security import macos_certificate.p12 -k build.keychain -P "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          rm temp_cert.pem temp_key.pem macos_certificate.p12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "build" build.keychain
+          rm certificate.p12
+
+          DETECTED_IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          if [ -z "$DETECTED_IDENTITY" ]; then
+            echo "No valid signing identity found in keychain"
+            exit 1
+          fi
+
+          mkdir -p ~/private_keys
+          if echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8 2>/dev/null; then
+            echo "Decoded base64 API key"
+          else
+            echo "$APP_STORE_CONNECT_API_KEY" > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+          fi
+          chmod 600 ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+
+          echo "APPLE_SIGNING_IDENTITY=$DETECTED_IDENTITY" >> $GITHUB_ENV
+          echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_ISSUER_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY=$APP_STORE_CONNECT_API_KEY_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
+
+      - name: Build signed Tauri app
+        run: |
+          rustup target add ${{ inputs.target }}
+          if [ "${{ inputs.target }}" = "x86_64-apple-darwin" ]; then
+            rm -rf src-tauri/target/x86_64-apple-darwin
+          fi
+          bun install --frozen-lockfile
+          bun tauri build --target ${{ inputs.target }}
+        env:
+          # x86_64 must not inherit target-cpu=native from the host runner.
+          RUSTFLAGS: ${{ inputs.target == 'x86_64-apple-darwin' && '-C target-cpu=x86-64' || '' }}
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload signed macOS build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: thunderbolt-macos-${{ inputs.target }}
+          # The .dmg is the installer; the .app bundle is handy for codesign -d checks.
+          path: |
+            src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ inputs.target }}/release/bundle/macos/*.app
+          if-no-files-found: error
+          retention-days: 7

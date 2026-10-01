@@ -116,10 +116,12 @@ append; number findings 1, 2, 3…
    - After an action that saves, wait until the page shows the result (the new item or value) before the spec
      reloads or navigates away, so a reload never beats the save.
    - A phone finding sets its viewport first: `test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })`.
+     `test.use` takes only `viewport`, `baseURL`, `isMobile`, `hasTouch`, `deviceScaleFactor`, `locale`,
+     `timezoneId` and `colorScheme`, written inline.
    - Use role, label, text or test-id locators. No `x[i]` with a variable index: use `.nth(i)` or `for … of`.
    - Plain JavaScript besides Playwright: no `process`, `fetch`, `require`, `eval`, `Function`, `globalThis`,
-     `Object`, `Reflect`, `Error`, `crypto`, `Bun`, `constructor`, `prototype`, names starting with `_`, or
-     `test.only`. For unique values use `Date.now()` or `Math.random()`.
+     `Object`, `Reflect`, `Error`, `crypto`, `Bun`, `constructor`, `prototype`, names starting with `_`,
+     `test.only` or `test.extend`. For unique values use `Date.now()` or `Math.random()`.
    - One test per file, named after the finding. No `waitForTimeout` longer than 2 s.
 
 ## Finish

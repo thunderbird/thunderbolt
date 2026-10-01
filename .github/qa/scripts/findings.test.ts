@@ -97,6 +97,14 @@ describe('lintReproSpec', () => {
     expect(lintReproSpec(spec(body))).toEqual([])
   })
 
+  test('passes test.use with the allowed options written inline', () => {
+    const body = `
+  const viewport = { width: 390, height: 844 }
+  test.use({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3, 'locale': 'de-DE' })
+  test.use({ baseURL: 'http://localhost:1425', timezoneId: 'Europe/Berlin', colorScheme: 'dark' })`
+    expect(lintReproSpec(spec(body))).toEqual([])
+  })
+
   test.each([
     ["import { execSync } from 'node:child_process'", 'import from "node:child_process"'],
     ["import fs from 'fs'", 'import from "fs"'],
@@ -128,6 +136,22 @@ describe('lintReproSpec', () => {
       '"launch" is not allowed',
     ],
     ["test.use({ launchOptions: { args: ['--gpu-launcher=sh'] } })", '"launchOptions" is not allowed'],
+    ["test.use({ connectOptions: { wsEndpoint: 'ws://evil.test' } })", '"connectOptions" is not allowed'],
+    ["test.use({ channel: 'chrome' })", '"channel" is not allowed'],
+    ["test.use({ browserName: 'firefox' })", '"browserName" is not allowed'],
+    ["test.use({ executablePath: '/bin/sh' })", '"executablePath" is not allowed'],
+    ["test.use({ proxy: { server: 'http://evil.test' } })", 'test.use option "proxy" is not allowed'],
+    ["test.use({ viewport: null, storageState: '/etc/passwd' })", 'test.use option "storageState" is not allowed'],
+    ["test.use({ ...devices['Pixel 7'] })", 'test.use option "...devices[\'Pixel 7\']" is not allowed'],
+    ['const options = { viewport: null }; test.use(options)', 'test.use takes one object literal'],
+    [
+      "const use = test.use; use({ proxy: { server: 'http://evil.test' } })",
+      '"use" is allowed only as test.use({ … })',
+    ],
+    ['const { use } = test', '"use" is allowed only as test.use({ … })'],
+    ['const wrap = (f: unknown) => f; wrap(test.use)', '"use" is allowed only as test.use({ … })'],
+    ["test['use']({ viewport: null })", '"use" is not allowed'],
+    ["const fixtures = test.extend({ proxy: { server: 'http://evil.test' } })", '"extend" is not allowed'],
     ["test.only('focused', async () => {})", '"only" is not allowed'],
     ['const o = Object.getOwnPropertyDescriptors([])', '"Object" is not a known global'],
     ['const o = Reflect.ownKeys([])', '"Reflect" is not a known global'],

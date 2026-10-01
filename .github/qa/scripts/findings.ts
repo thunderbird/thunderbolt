@@ -121,8 +121,23 @@ const forbiddenNames = new Set([
   'connectOverCDP',
   'connectOptions',
   'executablePath',
+  // Overrides the same options as `test.use`, which `useProblem` limits. `use` itself passes only there.
+  'extend',
+  'use',
   // `test.only` would make the replay skip every other finding's spec.
   'only',
+])
+
+/** The only options a spec may give `test.use`: the page's shape and locale, and c1's onboarding build URL. */
+const useOptions = new Set([
+  'viewport',
+  'baseURL',
+  'isMobile',
+  'hasTouch',
+  'deviceScaleFactor',
+  'locale',
+  'timezoneId',
+  'colorScheme',
 ])
 
 /**
@@ -170,6 +185,34 @@ const keyProblem = (key: ts.Expression) =>
     ? nameProblem(key.text)
     : 'computed member access is not allowed'
 
+/**
+ * `use` passes only as `x.use({ … })` with `useOptions` written inline, so it cannot be aliased or handed an option
+ * the lint never sees, such as `proxy` or `storageState`.
+ */
+const useProblem = (id: ts.Identifier) => {
+  const access = id.parent
+  const call = access.parent
+  if (
+    !ts.isPropertyAccessExpression(access) ||
+    access.name !== id ||
+    !ts.isCallExpression(call) ||
+    call.expression !== access
+  ) {
+    return '"use" is allowed only as test.use({ … })'
+  }
+  const [options, ...rest] = call.arguments
+  if (!options || rest.length > 0 || !ts.isObjectLiteralExpression(options)) return 'test.use takes one object literal'
+  const refused = options.properties
+    .map((p) =>
+      (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
+      (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))
+        ? p.name.text
+        : p.getText(),
+    )
+    .filter((name) => !useOptions.has(name))
+  return refused.length > 0 ? `test.use option "${refused.join('", "')}" is not allowed` : undefined
+}
+
 /** `x.name`, `{ name: y } = x` and `import { name as y }` name a property, not a variable. */
 const isPropertyName = (id: ts.Identifier) =>
   (ts.isPropertyAccessExpression(id.parent) && id.parent.name === id) ||
@@ -197,6 +240,7 @@ const problemWith = (node: ts.Node, sourceFile: ts.SourceFile, checker: ts.TypeC
   }
   if (ts.isPropertyAssignment(node) && ts.isStringLiteral(node.name)) return nameProblem(node.name.text)
   if (!ts.isIdentifier(node)) return undefined
+  if (node.text === 'use') return useProblem(node)
   const problem = nameProblem(node.text)
   if (problem) return problem
   if (isPropertyName(node) || allowedGlobals.has(node.text)) return undefined

@@ -12,7 +12,7 @@ We are Thunderbird Technologies Corporation, the entity behind Thunderbird, fund
 
 ### Is it part of Thunderbird?
 
-No. It is its own product from MZLA, the same entity that makes the Thunderbird email client.
+No. It is its own product from Thunderbird Technologies Corporation, the same entity that makes the Thunderbird email client.
 
 ## Cost and licensing
 

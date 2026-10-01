@@ -66,7 +66,7 @@ Organizations interested in pilot deployments or enterprise licensing should con
 
 ## About Thunderbird Technologies Corporation
 
-Thunderbird Technologies Corporation is a wholly owned subsidiary of the Mozilla Foundation and the organization behind Thunderbird, one of the world's most widely used open-source email clients with over 20 million active users. Guided by principles of openness, user control, and privacy, MZLA develops software that gives individuals and organizations ownership over their digital infrastructure. Thunderbolt is funded through a dedicated investment from Mozilla and is being developed by a separate team focused on enterprise AI products, distinct from Thunderbird's donation-supported consumer product work.
+Thunderbird Technologies Corporation is a wholly owned subsidiary of the Mozilla Foundation and the organization behind Thunderbird, one of the world's most widely used open-source email clients with over 20 million active users. Guided by principles of openness, user control, and privacy, Thunderbird Technologies Corporation develops software that gives individuals and organizations ownership over their digital infrastructure. Thunderbolt is funded through a dedicated investment from Mozilla and is being developed by a separate team focused on enterprise AI products, distinct from Thunderbird's donation-supported consumer product work.
 
 ## About Mozilla
 

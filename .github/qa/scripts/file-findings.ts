@@ -168,6 +168,13 @@ const decide = async (ctx: Ctx, fp: string, now: number): Promise<Decision> => {
   return recent ? { kind: 'regression', issue: recent } : { kind: 'new' }
 }
 
+/** The id of a label `setup` resolved; throws for any other name. */
+const labelId = (ctx: Ctx, name: string) => {
+  const id = ctx.labels.get(name)
+  if (!id) throw new Error(`Missing Linear label: ${name}`)
+  return id
+}
+
 const createIssue = async (ctx: Ctx, title: string, description: string, sev: Severity, names: string[]) => {
   const { issueCreate } = await linear<{ issueCreate: { success: boolean; issue: Issue } }>(
     ctx.fetchFn,
@@ -177,7 +184,7 @@ const createIssue = async (ctx: Ctx, title: string, description: string, sev: Se
       input: {
         teamId: ctx.teamId,
         stateId: ctx.triageId,
-        labelIds: names.map((name) => ctx.labels.get(name)),
+        labelIds: names.map((name) => labelId(ctx, name)),
         title,
         description,
         priority: priority[sev],

@@ -40,8 +40,8 @@ type AlertState = {
 }
 type State = { id: string; name: string; type: string }
 type Label = { id: string; name: string; team: { id: string } | null }
-/** A GraphQL variable value. `JSON.stringify` drops `undefined` properties and sends `undefined` items as null. */
-type Json = string | number | boolean | null | undefined | Json[] | { [key: string]: Json }
+/** A JSON value, as sent in GraphQL variables. */
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
 /** Report only trusted API context, never response content or network error text. */
 const requestJson = async <T>(

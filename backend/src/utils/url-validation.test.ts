@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createSafeFetch, isPrivateAddress, validateAndPin, validateSafeUrl, type DnsLookup } from './url-validation'
 
 describe('isPrivateAddress', () => {
@@ -182,7 +186,7 @@ describe('validateSafeUrl', () => {
 /** Deterministic resolver for the SSRF-engine tests: avoids real network/DNS so
  *  the pin + redirect-revalidation invariants are exercised hermetically. */
 const testLookup: DnsLookup = (host) => {
-  if (host === 'public.test') {
+  if (host === 'public.test' || host === 'other.test') {
     return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
   }
   if (host === 'rebind.test') {
@@ -291,6 +295,11 @@ describe('validateAndPin', () => {
     expect(headers.get('host')).toBe('public.test')
   })
 
+  it('names the original hostname for TLS SNI, since the pinned URL carries an IP', async () => {
+    const [, , tls] = await validateAndPin('https://public.test/path', undefined, testLookup)
+    expect(tls).toEqual({ serverName: 'public.test' })
+  })
+
   it('strips userinfo before pinning', async () => {
     const [pinnedUrl] = await validateAndPin('http://user:pass@public.test/x', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/x')
@@ -300,9 +309,10 @@ describe('validateAndPin', () => {
     await expect(validateAndPin('http://127.0.0.1/', undefined, testLookup)).rejects.toThrow(/private\/internal/)
   })
 
-  it('allows a public IP literal as-is (no Host rewrite needed)', async () => {
-    const [pinnedUrl] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
+  it('allows a public IP literal as-is (no Host rewrite or SNI override needed)', async () => {
+    const [pinnedUrl, , tls] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/ok')
+    expect(tls).toBeUndefined()
   })
 })
 
@@ -314,12 +324,16 @@ const requestUrl = (input: string | URL | Request): string => {
 }
 
 /** Build a fetch stub that returns a queued response per call and records the
- *  URL + Host header each call was made with. */
+ *  URL, Host header and TLS server name each call was made with. */
 const stubFetch = (responses: Response[]) => {
   const queue = [...responses]
-  const calls: Array<{ url: string; host: string | null }> = []
-  const fn = ((input: string | URL | Request, init?: RequestInit) => {
-    calls.push({ url: requestUrl(input), host: new Headers(init?.headers).get('host') })
+  const calls: Array<{ url: string; host: string | null; serverName: string | undefined }> = []
+  const fn = ((input: string | URL | Request, init?: BunFetchRequestInit) => {
+    calls.push({
+      url: requestUrl(input),
+      host: new Headers(init?.headers).get('host'),
+      serverName: init?.tls?.serverName,
+    })
     return Promise.resolve(queue.shift())
   }) as typeof fetch
   return { fn, calls }
@@ -350,6 +364,16 @@ describe('createSafeFetch', () => {
     expect(calls[1].host).toBe('public.test')
   })
 
+  it('sends the hostname as TLS SNI on every hop, following a cross-host redirect', async () => {
+    const { fn, calls } = stubFetch([
+      new Response(null, { status: 302, headers: { location: 'https://other.test/next' } }),
+      new Response('ok', { status: 200 }),
+    ])
+    const safeFetch = createSafeFetch(fn, testLookup)
+    await safeFetch('https://public.test/')
+    expect(calls.map((c) => c.serverName)).toEqual(['public.test', 'other.test'])
+  })
+
   it('returns the redirect unfollowed when the caller asks for manual redirects', async () => {
     const { fn, calls } = stubFetch([new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/' } })])
     const safeFetch = createSafeFetch(fn, testLookup)
@@ -365,5 +389,65 @@ describe('createSafeFetch', () => {
     expect(res.status).toBe(200)
     expect(calls).toHaveLength(1)
     expect(calls[0].url).toBe('http://93.184.216.34/')
+  })
+})
+
+/** Generate a throwaway self-signed cert valid only for `hostname`, so no private key is committed
+ *  (same approach as e2e/saml-test-certs.ts). */
+const generateCert = (hostname: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pinned-tls-'))
+  const keyPath = join(dir, 'key.pem')
+  const certPath = join(dir, 'cert.pem')
+  try {
+    execFileSync(
+      'openssl',
+      ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${hostname}`].concat([
+        '-addext',
+        `subjectAltName=DNS:${hostname}`,
+        '-keyout',
+        keyPath,
+        '-out',
+        certPath,
+      ]),
+      { stdio: 'pipe' },
+    )
+    return { key: readFileSync(keyPath, 'utf-8'), cert: readFileSync(certPath, 'utf-8') }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// A real TLS handshake, not a fetch stub: the assertions above only prove `tls.serverName`
+// is passed, so this guards against a Bun upgrade that stops honouring it for an IP URL
+// (Bun 1.4.1 already stopped deriving SNI from the Host header).
+describe('createSafeFetch TLS handshake', () => {
+  const hostname = 'pinned.test'
+  const { key, cert } = generateCert(hostname)
+  const realFetch = (globalThis as Record<string, unknown>).__originalFetch as typeof fetch
+  let server: ReturnType<typeof Bun.serve>
+
+  beforeAll(() => {
+    server = Bun.serve({ hostname: '127.0.0.1', port: 0, tls: { key, cert }, fetch: () => new Response('ok') })
+  })
+
+  afterAll(() => {
+    server.stop(true)
+  })
+
+  it('verifies the certificate against the original hostname when connecting to the pinned IP', async () => {
+    const publicLookup: DnsLookup = () => Promise.resolve([{ address: '93.184.216.34', family: 4 }])
+    // Route the pinned public IP to the local server and trust the test cert; SNI and
+    // certificate verification are left to whatever `createSafeFetch` passes.
+    const toLocalServer = ((input: string, init?: BunFetchRequestInit) => {
+      const url = new URL(input)
+      url.hostname = '127.0.0.1'
+      url.port = String(server.port)
+      return realFetch(url, { ...init, tls: { ...init?.tls, ca: cert } })
+    }) as typeof fetch
+
+    const res = await createSafeFetch(toLocalServer, publicLookup)(`https://${hostname}/`)
+
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('ok')
   })
 })

@@ -182,7 +182,7 @@ describe('validateSafeUrl', () => {
 /** Deterministic resolver for the SSRF-engine tests: avoids real network/DNS so
  *  the pin + redirect-revalidation invariants are exercised hermetically. */
 const testLookup: DnsLookup = (host) => {
-  if (host === 'public.test') {
+  if (host === 'public.test' || host === 'other.test') {
     return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
   }
   if (host === 'rebind.test') {
@@ -291,6 +291,11 @@ describe('validateAndPin', () => {
     expect(headers.get('host')).toBe('public.test')
   })
 
+  it('names the original hostname for TLS SNI, since the pinned URL carries an IP', async () => {
+    const [, , tls] = await validateAndPin('https://public.test/path', undefined, testLookup)
+    expect(tls).toEqual({ serverName: 'public.test' })
+  })
+
   it('strips userinfo before pinning', async () => {
     const [pinnedUrl] = await validateAndPin('http://user:pass@public.test/x', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/x')
@@ -300,9 +305,10 @@ describe('validateAndPin', () => {
     await expect(validateAndPin('http://127.0.0.1/', undefined, testLookup)).rejects.toThrow(/private\/internal/)
   })
 
-  it('allows a public IP literal as-is (no Host rewrite needed)', async () => {
-    const [pinnedUrl] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
+  it('allows a public IP literal as-is (no Host rewrite or SNI override needed)', async () => {
+    const [pinnedUrl, , tls] = await validateAndPin('http://93.184.216.34/ok', undefined, testLookup)
     expect(pinnedUrl).toBe('http://93.184.216.34/ok')
+    expect(tls).toBeUndefined()
   })
 })
 
@@ -314,12 +320,16 @@ const requestUrl = (input: string | URL | Request): string => {
 }
 
 /** Build a fetch stub that returns a queued response per call and records the
- *  URL + Host header each call was made with. */
+ *  URL, Host header and TLS server name each call was made with. */
 const stubFetch = (responses: Response[]) => {
   const queue = [...responses]
-  const calls: Array<{ url: string; host: string | null }> = []
-  const fn = ((input: string | URL | Request, init?: RequestInit) => {
-    calls.push({ url: requestUrl(input), host: new Headers(init?.headers).get('host') })
+  const calls: Array<{ url: string; host: string | null; serverName: string | undefined }> = []
+  const fn = ((input: string | URL | Request, init?: BunFetchRequestInit) => {
+    calls.push({
+      url: requestUrl(input),
+      host: new Headers(init?.headers).get('host'),
+      serverName: init?.tls?.serverName,
+    })
     return Promise.resolve(queue.shift())
   }) as typeof fetch
   return { fn, calls }
@@ -348,6 +358,16 @@ describe('createSafeFetch', () => {
     expect(res.status).toBe(200)
     expect(calls.map((c) => c.url)).toEqual(['http://93.184.216.34/', 'http://93.184.216.34/next'])
     expect(calls[1].host).toBe('public.test')
+  })
+
+  it('sends the hostname as TLS SNI on every hop, following a cross-host redirect', async () => {
+    const { fn, calls } = stubFetch([
+      new Response(null, { status: 302, headers: { location: 'https://other.test/next' } }),
+      new Response('ok', { status: 200 }),
+    ])
+    const safeFetch = createSafeFetch(fn, testLookup)
+    await safeFetch('https://public.test/')
+    expect(calls.map((c) => c.serverName)).toEqual(['public.test', 'other.test'])
   })
 
   it('returns the redirect unfollowed when the caller asks for manual redirects', async () => {

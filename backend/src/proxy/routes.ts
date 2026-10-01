@@ -5,7 +5,13 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import { safeErrorHandler } from '@/middleware/error-handling'
-import { ensureHttps, isAllowedTestProxyTarget, validateAndPin, type DnsLookup } from '@/utils/url-validation'
+import {
+  ensureHttps,
+  isAllowedTestProxyTarget,
+  validateAndPin,
+  type DnsLookup,
+  type PinnedTls,
+} from '@/utils/url-validation'
 import {
   droppedResponseHeaders,
   finalUrlHeader,
@@ -306,8 +312,9 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               // DNS-pin each hop so cross-origin redirects can't bypass SSRF.
               let pinnedUrl: string
               let pinnedExtraHeaders: Headers
+              let pinnedTls: PinnedTls | undefined
               try {
-                ;[pinnedUrl, pinnedExtraHeaders] = await withDnsTimeout(
+                ;[pinnedUrl, pinnedExtraHeaders, pinnedTls] = await withDnsTimeout(
                   validateAndPin(currentUrl, undefined, dnsLookup),
                 )
               } catch (err) {
@@ -357,7 +364,9 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
               // Bun-specific fetch options: `decompress: false` lets the original
               // compressed bytes (and `content-encoding`) pass through unchanged so
               // the browser decodes; `duplex: 'half'` enables streaming request
-              // bodies. Both are absent from the standard `RequestInit` type.
+              // bodies; `tls` names the original hostname for SNI since the URL
+              // carries the pinned IP (see validateAndPin). All three are absent
+              // from the standard `RequestInit` type.
               // Bun (>=1.3) auto-decompresses but ALSO keeps `content-encoding` on the
               // Response — without `decompress: false` we would forward gzip headers
               // with already-decoded bodies and the browser would corrupt the result.
@@ -373,7 +382,8 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
                 signal: upstreamCtl.signal,
                 decompress: false,
                 duplex: 'half',
-              } as RequestInit & { decompress: boolean; duplex: 'half' })
+                tls: pinnedTls,
+              } as RequestInit & { decompress: boolean; duplex: 'half'; tls: PinnedTls | undefined })
 
               /** Bytes uploaded to upstream. Buffered bodies have a fixed size known
                *  up-front; for streamed bodies we expose a late-read getter so the

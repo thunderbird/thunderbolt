@@ -30,6 +30,10 @@ word at a time." Before your first chat message, open the model picker (the butt
 `model-selector-trigger`, it shows the current model's name) and select "Opus 5". No other model is configured here,
 so an error message from another model is expected (a screen that hangs is still a bug).
 
+When your charter says the AI is real, replies vary and can use tools (weather, maps, search, link previews, MCP
+servers, files). Read every reply in full, besides the console and the network, and check that the AI really did
+what you asked. A reply saying it could not is exactly the kind of bug only a real AI shows (`ai-reported-failure`).
+
 ## How to work
 
 - Follow your charter item by item, edge cases included. You have ample budget: never stop early because the
@@ -76,6 +80,10 @@ status, or the text on screen):
   ```
 
 - `assert-failed`: the screen contradicts what you just did (a renamed item still shows its old name).
+- `ai-reported-failure`: the app's AI says it could not do what the feature is for: a tool, search, connection, file
+  or integration failed, or it "can't access" something that is set up. The evidence is the exact quote of the reply.
+  A safety refusal, "I don't know" to a general question, or no access to something the user never connected is not
+  one.
 
 Anything else (a design you dislike, slow but working) is not a finding.
 
@@ -114,6 +122,11 @@ append; number findings 1, 2, 3…
      `await page.getByTestId('model-selector-trigger').click()`, then
      `await page.getByRole('button', { name: 'Opus 5', exact: true }).click()` (or the other model's name).
      Otherwise no reply ever comes.
+   - An `ai-reported-failure` spec sends the same prompt and waits for the reply to finish: the "Stop generating"
+     button shows, then is hidden (allow 120 s, and call `test.setTimeout(180_000)`). Then it asserts what a working
+     feature shows (a role, label or text of the widget or tool result) and that no text matches a case-insensitive
+     regex of the failure words you quoted. A real model words every reply differently, so match loosely: the spec
+     is replayed three times, and two failures confirm the bug.
    - After an action that saves, wait until the page shows the result (the new item or value) before the spec
      reloads or navigates away, so a reload never beats the save.
    - A phone finding sets its viewport first: `test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })`.

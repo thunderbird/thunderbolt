@@ -62,6 +62,8 @@ describe('loadFindings', () => {
 describe('hasOracle', () => {
   test('accepts a known oracle type with quoted evidence', () => {
     expect(hasOracle(finding)).toBe(true)
+    const reply = "I wasn't able to fetch your calendar events: the Google tool returned an error."
+    expect(hasOracle(variant({ oracle: { type: 'ai-reported-failure', evidence: reply } }))).toBe(true)
   })
 
   test('turns an unknown type or blank evidence into an observation', () => {
@@ -223,6 +225,9 @@ describe('severity', () => {
     ['chat', 'overflow', 'Low'],
     ['auth', 'console-error', 'Low'],
     ['i18n', 'assert-failed', 'Low'],
+    ['chat', 'ai-reported-failure', 'High'],
+    ['widgets', 'ai-reported-failure', 'Medium'],
+    ['layout', 'ai-reported-failure', 'Low'],
   ] as const)('%s + %s is %s', (area, type, expected) => {
     expect(severity({ ...finding, area, oracle: { type, evidence: 'quoted' } })).toBe(expected)
   })

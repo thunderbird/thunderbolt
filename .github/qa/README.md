@@ -62,7 +62,9 @@ it imports everything at start. If that changes, run it from a copy the job's us
    `mcp-two-devices.json` for c7). The prompt is `prompt.md` followed by the charter. The explorer writes
    `qa-out/<charter>/findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session
    keeps what it found. The job uploads only the counters of the session's result message; the report job turns
-   them into `session.json` with `scripts/report.ts session`.
+   them into `session.json` with `scripts/report.ts session`. Every finding names an oracle from `prompt.md`. With
+   the real AI that includes `ai-reported-failure`: the app's AI says a tool, search, connection, file or integration
+   failed, which the console and the network often do not show (an AI that could not read the user's calendar).
 3. **replay** (`scripts/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
    observations), spec lint, then every spec runs 3 times (`playwright.config.ts` here) next to the control spec.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix

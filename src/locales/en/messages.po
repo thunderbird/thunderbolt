@@ -208,6 +208,10 @@ msgstr "Add <0>~/.local/bin</0> to your PATH, then restart your shell:"
 msgid "Add a new task…"
 msgstr "Add a new task…"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+msgstr "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Add a skill"
@@ -238,6 +242,10 @@ msgstr "Add MCP Server"
 msgid "Add Model"
 msgstr "Add Model"
 
+#: src/settings/passkeys.tsx
+msgid "Add passkey"
+msgstr "Add passkey"
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Add Server"
@@ -247,6 +255,10 @@ msgstr "Add Server"
 msgid "Add to chat"
 msgstr "Add to chat"
 
+#: src/settings/passkeys.tsx
+msgid "Add your first passkey"
+msgstr "Add your first passkey"
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "Add your first server"
@@ -254,6 +266,11 @@ msgstr "Add your first server"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Add Your First Task"
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+msgid "Added {0}"
+msgstr "Added {0}"
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -985,6 +1002,14 @@ msgstr "Could not render pairing code."
 msgid "Could not save the project."
 msgstr "Could not save the project."
 
+#: src/settings/passkeys.tsx
+msgid "Couldn't add a passkey. Please try again."
+msgstr "Couldn't add a passkey. Please try again."
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can try again from Settings later."
+msgstr "Couldn't add a passkey. You can try again from Settings later."
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr "Couldn't add the agent. Please try again."
@@ -1028,6 +1053,10 @@ msgstr "Couldn't load this app's pairing identity: {error}"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "Couldn't pin {name}."
+
+#: src/settings/passkeys.tsx
+msgid "Couldn't remove the passkey. Please try again."
+msgstr "Couldn't remove the passkey. Please try again."
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
@@ -2074,6 +2103,10 @@ msgstr "Loading devices…"
 msgid "Loading emoji…"
 msgstr "Loading emoji…"
 
+#: src/settings/passkeys.tsx
+msgid "Loading passkeys…"
+msgstr "Loading passkeys…"
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "Loading preview…"
@@ -2379,6 +2412,10 @@ msgstr "No models found."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 
+#: src/settings/passkeys.tsx
+msgid "No passkeys yet"
+msgstr "No passkeys yet"
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr "No projects yet"
@@ -2543,6 +2580,11 @@ msgstr "Optional — leave blank for local servers that don’t require auth."
 msgid "Optional — what this project is for"
 msgstr "Optional — what this project is for"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr "or"
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "Or click the magic link in your email"
@@ -2570,6 +2612,29 @@ msgstr "Pairing identity"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "Partly cloudy"
+
+#: src/settings/passkeys.tsx
+msgid "Passkey"
+msgstr "Passkey"
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Passkey added — you're all set."
+msgstr "Passkey added — you're all set."
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Passkey sign-in failed. Please try again or use your email."
+msgstr "Passkey sign-in failed. Please try again or use your email."
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+msgid "Passkeys"
+msgstr "Passkeys"
+
+#: src/settings/passkeys.tsx
+msgid "Passkeys aren't available on this device."
+msgstr "Passkeys aren't available on this device."
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2753,6 +2818,10 @@ msgstr "Reload"
 #: src/settings/devices.tsx
 msgid "Remove"
 msgstr "Remove"
+
+#: src/settings/passkeys.tsx
+msgid "Remove {name}"
+msgstr "Remove {name}"
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -3132,6 +3201,10 @@ msgstr "Set Dark"
 msgid "Set Light"
 msgstr "Set Light"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
+msgstr "Set up a passkey"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
 msgstr "Set up encrypted sync"
@@ -3207,6 +3280,10 @@ msgstr "Sign in"
 msgid "Sign In"
 msgstr "Sign In"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr "Sign in faster next time"
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr "Sign in to a full account to share a debug transcript."
@@ -3230,6 +3307,15 @@ msgstr "Sign in to the CLI"
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr "Sign in to Thunderbolt"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr "Sign in with passkey"
+
+#: src/settings/passkeys.tsx
+msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+msgstr "Sign in with your fingerprint, face, or device PIN instead of an email code."
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3315,6 +3401,7 @@ msgstr "Snow grains"
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/index.tsx
+#: src/settings/passkeys.tsx
 msgid "Something went wrong"
 msgstr "Something went wrong"
 

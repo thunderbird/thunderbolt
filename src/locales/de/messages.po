@@ -208,6 +208,10 @@ msgstr "Fügen Sie <0>~/.local/bin</0> zu Ihrem PATH hinzu und starten Sie dann 
 msgid "Add a new task…"
 msgstr "Neue Aufgabe hinzufügen…"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Skill hinzufügen"
@@ -238,6 +242,10 @@ msgstr "MCP-Server hinzufügen"
 msgid "Add Model"
 msgstr "Modell hinzufügen"
 
+#: src/settings/passkeys.tsx
+msgid "Add passkey"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Server hinzufügen"
@@ -247,6 +255,10 @@ msgstr "Server hinzufügen"
 msgid "Add to chat"
 msgstr "Zum Chat hinzufügen"
 
+#: src/settings/passkeys.tsx
+msgid "Add your first passkey"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "Ersten Server hinzufügen"
@@ -254,6 +266,11 @@ msgstr "Ersten Server hinzufügen"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Erste Aufgabe hinzufügen"
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+msgid "Added {0}"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -985,6 +1002,14 @@ msgstr "Der Kopplungscode konnte nicht angezeigt werden."
 msgid "Could not save the project."
 msgstr "Das Projekt konnte nicht gespeichert werden."
 
+#: src/settings/passkeys.tsx
+msgid "Couldn't add a passkey. Please try again."
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can try again from Settings later."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr "Der Agent konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut."
@@ -1028,6 +1053,10 @@ msgstr "Die Kopplungsidentität dieser App konnte nicht geladen werden: {error}"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "{name} konnte nicht angepinnt werden."
+
+#: src/settings/passkeys.tsx
+msgid "Couldn't remove the passkey. Please try again."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
@@ -2074,6 +2103,10 @@ msgstr "Geräte werden geladen…"
 msgid "Loading emoji…"
 msgstr "Emojis werden geladen…"
 
+#: src/settings/passkeys.tsx
+msgid "Loading passkeys…"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "Vorschau wird geladen…"
@@ -2379,6 +2412,10 @@ msgstr "Keine Modelle gefunden."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "Keine Modelle zurückgegeben (Server nicht erreichbar oder listet keine Modelle auf). Geben Sie Modell- und Stimmen-IDs manuell ein."
 
+#: src/settings/passkeys.tsx
+msgid "No passkeys yet"
+msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr "Noch keine Projekte"
@@ -2543,6 +2580,11 @@ msgstr "Optional – für lokale Server ohne Authentifizierung leer lassen."
 msgid "Optional — what this project is for"
 msgstr "Optional – wofür dieses Projekt gedacht ist"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "Oder klicken Sie auf den Magic Link in Ihrer E-Mail"
@@ -2570,6 +2612,29 @@ msgstr "Kopplungsidentität"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "Teilweise bewölkt"
+
+#: src/settings/passkeys.tsx
+msgid "Passkey"
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Passkey added — you're all set."
+msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Passkey sign-in failed. Please try again or use your email."
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+msgid "Passkeys"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Passkeys aren't available on this device."
+msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2753,6 +2818,10 @@ msgstr "Neu laden"
 #: src/settings/devices.tsx
 msgid "Remove"
 msgstr "Entfernen"
+
+#: src/settings/passkeys.tsx
+msgid "Remove {name}"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -3132,6 +3201,10 @@ msgstr "Dunkel einstellen"
 msgid "Set Light"
 msgstr "Hell einstellen"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
 msgstr "Verschlüsselte Synchronisierung einrichten"
@@ -3207,6 +3280,10 @@ msgstr "Anmelden"
 msgid "Sign In"
 msgstr "Anmelden"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
@@ -3230,6 +3307,15 @@ msgstr "Bei der CLI anmelden"
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr "Bei Thunderbolt anmelden"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3315,6 +3401,7 @@ msgstr "Schneegriesel"
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/index.tsx
+#: src/settings/passkeys.tsx
 msgid "Something went wrong"
 msgstr "Etwas ist schiefgelaufen"
 

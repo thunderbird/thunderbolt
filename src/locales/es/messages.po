@@ -220,6 +220,10 @@ msgstr "Añade <0>~/.local/bin</0> a tu PATH y reinicia la shell:"
 msgid "Add a new task…"
 msgstr "Añadir una tarea nueva…"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "Añadir una habilidad"
@@ -250,6 +254,10 @@ msgstr "Añadir servidor MCP"
 msgid "Add Model"
 msgstr "Añadir modelo"
 
+#: src/settings/passkeys.tsx
+msgid "Add passkey"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "Añadir servidor"
@@ -259,6 +267,10 @@ msgstr "Añadir servidor"
 msgid "Add to chat"
 msgstr "Añadir al chat"
 
+#: src/settings/passkeys.tsx
+msgid "Add your first passkey"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "Añade tu primer servidor"
@@ -266,6 +278,11 @@ msgstr "Añade tu primer servidor"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "Añade tu primera tarea"
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+msgid "Added {0}"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -997,6 +1014,14 @@ msgstr "No se pudo mostrar el código de emparejamiento."
 msgid "Could not save the project."
 msgstr "No se pudo guardar el proyecto."
 
+#: src/settings/passkeys.tsx
+msgid "Couldn't add a passkey. Please try again."
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can try again from Settings later."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr "No se pudo añadir el agente. Inténtalo de nuevo."
@@ -1040,6 +1065,10 @@ msgstr "No se pudo cargar la identidad de emparejamiento de esta app: {error}"
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "No se pudo fijar {name}."
+
+#: src/settings/passkeys.tsx
+msgid "Couldn't remove the passkey. Please try again."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
@@ -2086,6 +2115,10 @@ msgstr "Cargando los dispositivos…"
 msgid "Loading emoji…"
 msgstr "Cargando emojis…"
 
+#: src/settings/passkeys.tsx
+msgid "Loading passkeys…"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "Cargando la vista previa…"
@@ -2391,6 +2424,10 @@ msgstr "No se encontraron modelos."
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "No se devolvieron modelos (el servidor no está accesible o no los lista). Introduce los ids de modelo y de voz manualmente."
 
+#: src/settings/passkeys.tsx
+msgid "No passkeys yet"
+msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr "Todavía no hay proyectos"
@@ -2555,6 +2592,11 @@ msgstr "Opcional: déjalo vacío para servidores locales que no requieren autent
 msgid "Optional — what this project is for"
 msgstr "Opcional: para qué sirve este proyecto"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "O haz clic en el enlace mágico de tu correo"
@@ -2582,6 +2624,29 @@ msgstr "Identidad de emparejamiento"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "Parcialmente nublado"
+
+#: src/settings/passkeys.tsx
+msgid "Passkey"
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Passkey added — you're all set."
+msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Passkey sign-in failed. Please try again or use your email."
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+msgid "Passkeys"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Passkeys aren't available on this device."
+msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2765,6 +2830,10 @@ msgstr "Recargar"
 #: src/settings/devices.tsx
 msgid "Remove"
 msgstr "Quitar"
+
+#: src/settings/passkeys.tsx
+msgid "Remove {name}"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -3144,6 +3213,10 @@ msgstr "Poner en oscuro"
 msgid "Set Light"
 msgstr "Poner en claro"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
 msgstr "Configurar la sincronización cifrada"
@@ -3219,6 +3292,10 @@ msgstr "Iniciar sesión"
 msgid "Sign In"
 msgstr "Iniciar sesión"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
@@ -3242,6 +3319,15 @@ msgstr "Iniciar sesión en la CLI"
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr "Inicia sesión en Thunderbolt"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3327,6 +3413,7 @@ msgstr "Granos de nieve"
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/index.tsx
+#: src/settings/passkeys.tsx
 msgid "Something went wrong"
 msgstr "Algo salió mal"
 

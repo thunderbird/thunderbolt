@@ -196,6 +196,10 @@ msgstr "<0>~/.local/bin</0> を PATH に追加し、シェルを再起動して�
 msgid "Add a new task…"
 msgstr "新しいタスクを追加…"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Add a passkey to sign in with your fingerprint, face, or device PIN instead of an email code. You can always use your email too."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Add a skill"
 msgstr "スキルを追加"
@@ -226,6 +230,10 @@ msgstr "MCP サーバーを追加"
 msgid "Add Model"
 msgstr "モデルを追加"
 
+#: src/settings/passkeys.tsx
+msgid "Add passkey"
+msgstr ""
+
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Add Server"
 msgstr "サーバーを追加"
@@ -235,6 +243,10 @@ msgstr "サーバーを追加"
 msgid "Add to chat"
 msgstr "チャットに追加"
 
+#: src/settings/passkeys.tsx
+msgid "Add your first passkey"
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "Add your first server"
 msgstr "最初のサーバーを追加"
@@ -242,6 +254,11 @@ msgstr "最初のサーバーを追加"
 #: src/tasks/index.tsx
 msgid "Add Your First Task"
 msgstr "最初のタスクを追加"
+
+#. placeholder {0}: formatters.date(passkey.createdAt)
+#: src/settings/passkeys.tsx
+msgid "Added {0}"
+msgstr ""
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 #: src/settings/connections/mcp-server-form.tsx
@@ -973,6 +990,14 @@ msgstr "ペアリングコードを表示できませんでした。"
 msgid "Could not save the project."
 msgstr "プロジェクトを保存できませんでした。"
 
+#: src/settings/passkeys.tsx
+msgid "Couldn't add a passkey. Please try again."
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Couldn't add a passkey. You can try again from Settings later."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Couldn't add the agent. Please try again."
 msgstr "エージェントを追加できませんでした。もう一度お試しください。"
@@ -1016,6 +1041,10 @@ msgstr "このアプリのペアリング ID を読み込めませんでした: 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
 msgstr "{name} をピン留めできませんでした。"
+
+#: src/settings/passkeys.tsx
+msgid "Couldn't remove the passkey. Please try again."
+msgstr ""
 
 #: src/settings/app-version-section.tsx
 #~ msgid "Couldn't restart to apply the update"
@@ -2062,6 +2091,10 @@ msgstr "デバイスを読み込んでいます…"
 msgid "Loading emoji…"
 msgstr "絵文字を読み込んでいます…"
 
+#: src/settings/passkeys.tsx
+msgid "Loading passkeys…"
+msgstr ""
+
 #: src/content-view/sidebar-webview.tsx
 msgid "Loading preview…"
 msgstr "プレビューを読み込んでいます…"
@@ -2367,6 +2400,10 @@ msgstr "モデルが見つかりません。"
 msgid "No models returned (server unreachable, or it doesn’t list models). Enter model and voice ids manually."
 msgstr "モデルが返されませんでした（サーバーに到達できない、またはモデルを列挙していません）。モデル ID と音声 ID を手動で入力してください。"
 
+#: src/settings/passkeys.tsx
+msgid "No passkeys yet"
+msgstr ""
+
 #: src/projects/index.tsx
 msgid "No projects yet"
 msgstr "まだプロジェクトはありません"
@@ -2531,6 +2568,11 @@ msgstr "任意 — 認証が不要なローカルサーバーの場合は空欄�
 msgid "Optional — what this project is for"
 msgstr "任意 — このプロジェクトの目的"
 
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "or"
+msgstr ""
+
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Or click the magic link in your email"
 msgstr "またはメールのマジックリンクをクリックしてください"
@@ -2558,6 +2600,29 @@ msgstr "ペアリング ID"
 #: src/widgets/weather-forecast/lib.ts
 msgid "Partly cloudy"
 msgstr "一部曇り"
+
+#: src/settings/passkeys.tsx
+msgid "Passkey"
+msgstr ""
+
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Passkey added — you're all set."
+msgstr ""
+
+#: src/components/sign-in/use-sign-in-form-state.ts
+#: src/waitlist/use-waitlist-state.ts
+msgid "Passkey sign-in failed. Please try again or use your email."
+msgstr ""
+
+#: src/layout/sidebar/settings-sidebar.tsx
+#: src/search/commands/navigation.ts
+#: src/settings/passkeys.tsx
+msgid "Passkeys"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Passkeys aren't available on this device."
+msgstr ""
 
 #: src/components/set-node-id-dialog.tsx
 msgid "Paste a pairing code or upload its QR image to bind this device to its peer-to-peer identity."
@@ -2741,6 +2806,10 @@ msgstr "再読み込み"
 #: src/settings/devices.tsx
 msgid "Remove"
 msgstr "削除"
+
+#: src/settings/passkeys.tsx
+msgid "Remove {name}"
+msgstr ""
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
@@ -3120,6 +3189,10 @@ msgstr "ダークに設定"
 msgid "Set Light"
 msgstr "ライトに設定"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Set up a passkey"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Set up encrypted sync"
 msgstr "暗号化された同期を設定"
@@ -3195,6 +3268,10 @@ msgstr "サインイン"
 msgid "Sign In"
 msgstr "サインイン"
 
+#: src/components/onboarding/onboarding-passkey-step.tsx
+msgid "Sign in faster next time"
+msgstr ""
+
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
 #~ msgid "Sign in to a full account to share a debug transcript."
 #~ msgstr ""
@@ -3218,6 +3295,15 @@ msgstr "CLI にサインイン"
 #: src/components/sign-in-modal.tsx
 msgid "Sign in to Thunderbolt"
 msgstr "Thunderbolt にサインイン"
+
+#: src/components/sign-in/sign-in-email-step.tsx
+#: src/waitlist/waitlist-page.tsx
+msgid "Sign in with passkey"
+msgstr ""
+
+#: src/settings/passkeys.tsx
+msgid "Sign in with your fingerprint, face, or device PIN instead of an email code."
+msgstr ""
 
 #: src/search/commands/use-commands.ts
 msgid "Sign out"
@@ -3303,6 +3389,7 @@ msgstr "霧雪"
 #: src/settings/models/add-model-form.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/settings/models/index.tsx
+#: src/settings/passkeys.tsx
 msgid "Something went wrong"
 msgstr "問題が発生しました"
 

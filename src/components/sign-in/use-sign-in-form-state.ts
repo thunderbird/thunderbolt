@@ -3,11 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
-import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
-import { authRequestHeaders } from '@/contexts/auth-context'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
-import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
@@ -169,12 +168,12 @@ export const useSignInFormState = ({
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      const result = await authClient.signIn.emailOtp({
+      // `state.challengeToken` is always a string, so the header is always sent
+      // — including empty, as before.
+      const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
-        fetchOptions: {
-          headers: authRequestHeaders({ [challengeTokenHeader]: state.challengeToken }),
-        },
+        challengeToken: state.challengeToken,
       })
 
       if (result.error) {
@@ -182,7 +181,6 @@ export const useSignInFormState = ({
         return
       }
 
-      await markOnboardedForReturningUser(result.data?.user)
       if (result.data?.user?.id) {
         analytics.onPromotionSuccess(result.data.user.id)
       }

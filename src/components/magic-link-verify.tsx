@@ -9,15 +9,13 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
-import { challengeTokenHeader } from '@/lib/constants'
 import { useAuth } from '@/contexts'
-import { authRequestHeaders } from '@/contexts/auth-context'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { useSettings } from '@/hooks/use-settings'
-import { markOnboardedForReturningUser } from '@/lib/returning-user-onboarding'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
 
 type VerifyState = { status: 'verifying' } | { status: 'success' } | { status: 'error'; message: string }
 
@@ -66,24 +64,18 @@ export const MagicLinkVerify = () => {
       try {
         // Use the standard emailOtp sign-in endpoint
         // This is what Better Auth provides - no custom endpoint needed
-        const result = await authClient.signIn.emailOtp({
+        // `|| undefined` so a missing *and* an empty param both send no header,
+        // matching what this path did before the wrapper.
+        const result = await signInWithOtp(authClient, {
           email,
           otp,
-          fetchOptions: challengeToken
-            ? { headers: authRequestHeaders({ [challengeTokenHeader]: challengeToken }) }
-            : undefined,
+          challengeToken: challengeToken || undefined,
         })
 
         if (result.error) {
           setState({ status: 'error', message: i18n._(getOtpErrorMessage(result.error, 'link')) })
           return
         }
-
-        // Must happen here, on the sign-in response: `isNew` is retired inside
-        // this request, so the refetch below already reports false. Omitting
-        // this is why signing in via the emailed link redid onboarding and
-        // then overwrote the real value on every other device (GH #1299).
-        await markOnboardedForReturningUser(result.data?.user)
 
         // Refetch session to update the auth client cache
         // This ensures the sidebar and other components see the new session immediately

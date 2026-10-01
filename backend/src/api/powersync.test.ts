@@ -1220,6 +1220,50 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userId)
     })
 
+    it('honours ifAbsent on the wire: create-only PUT cannot overwrite (GH #1299)', async () => {
+      const userId = 'user-upload-if-absent'
+      const now = new Date()
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'If Absent User',
+        email: 'upload-if-absent@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-upload-if-absent',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-upload-if-absent',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('test-device-id', userId)
+
+      const upload = (data: Record<string, unknown>, ifAbsent?: boolean) =>
+        app.handle(
+          new Request('http://localhost/powersync/upload', {
+            method: 'PUT',
+            headers: uploadHeaders('bearer-upload-if-absent'),
+            body: JSON.stringify({
+              operations: [{ op: 'PUT' as const, type: 'settings', id: 'onboarding', data, ...{ ifAbsent } }],
+            }),
+          }),
+        )
+
+      expect((await upload({ value: 'true' })).status).toBe(200)
+
+      // The seeded default a second device queues offline. It must reach the
+      // route (so the row is created where absent) and be refused where not.
+      const seeded = await upload({ value: 'false' }, true)
+
+      expect(seeded.status).toBe(200)
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onboarding'))
+      expect(rows[0]?.value).toBe('true')
+    })
+
     it('ignores user_id and id in PUT payload, always uses session user', async () => {
       const userId = 'user-put-owns-row'
       const now = new Date()
@@ -1479,7 +1523,7 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userId)
     })
 
-    it('returns 400 when PATCH targets non-existent record', async () => {
+    it('accepts a PATCH against a non-existent record so the queue can drain', async () => {
       const userId = 'user-patch-nonexistent'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1519,12 +1563,13 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // Accepted so the client's queue can drain; rejecting wedges sync in
+      // both directions for devices carrying rows the account never held.
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ success: true })
     })
 
-    it('returns 400 when PATCH targets record belonging to another user', async () => {
+    it('never applies a PATCH to another user’s record, though it accepts the op', async () => {
       const userA = 'user-patch-owner'
       const userB = 'user-patch-attacker'
       const now = new Date()
@@ -1589,9 +1634,9 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // Acceptance is queue liveness, never authority — the write is scoped
+      // by user_id, so the owner's row is untouched.
+      expect(response.status).toBe(200)
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_setting'))
       expect(rows).toHaveLength(1)
@@ -1753,7 +1798,7 @@ describe('PowerSync API', () => {
       expect(rows).toHaveLength(0)
     })
 
-    it('returns 400 when DELETE targets non-existent record', async () => {
+    it('accepts a DELETE against a non-existent record', async () => {
       const userId = 'user-delete-nonexistent'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1786,12 +1831,12 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // The intended end state — row absent — already holds.
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ success: true })
     })
 
-    it('returns 400 when DELETE targets record belonging to another user', async () => {
+    it('never deletes another user’s record, though it accepts the op', async () => {
       const userA = 'user-delete-owner'
       const userB = 'user-delete-attacker'
       const now = new Date()
@@ -1849,9 +1894,7 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_to_delete'))
       expect(rows).toHaveLength(1)

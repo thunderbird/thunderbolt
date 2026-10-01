@@ -11,7 +11,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { modelProfilesTable, modelsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import { defaultModels, defaultModelsVersion, hashModel, type SharedModel } from '@shared/defaults/models'
-import { defaultSettings, defaultSettingsVersion, hashSetting } from '../defaults/settings'
+import { defaultSettings, defaultSettingsVersion, hashSetting, shipsWithoutValue } from '../defaults/settings'
 import { defaultSkills, defaultSkillsVersion, hashSkill, isWidgetSkillId } from '../defaults/skills'
 import { defaultTasks, defaultTasksVersion, hashTask } from '../defaults/tasks'
 import type { ModelsDefaults } from './pick-defaults'
@@ -165,6 +165,17 @@ export type ReconcileDefaultsForTableOptions<T> = {
   canResurrect?: boolean
   frozenFields?: readonly FrozenField<T>[] | ((defaultItem: T) => readonly FrozenField<T>[])
   metadataFields?: readonly FrozenField<T>[]
+  /**
+   * Predicate for defaults whose absence IS the target state, so a missing row
+   * must be left missing rather than seeded. The caller supplies the rule
+   * because only it knows the row shape — see `shipsWithoutValue` in
+   * `defaults/settings.ts` for the one use today and why it exists.
+   *
+   * Rows skipped this way keep `everyBundleRowAtTarget` true, on the same
+   * reasoning as the `wouldOverwriteUserValue` branch: absent is where they
+   * belong, so there is nothing unverified about them.
+   */
+  skipMissingWhen?: (defaultItem: T) => boolean
 }
 
 /**
@@ -210,6 +221,7 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     canResurrect = canOverwrite,
     frozenFields = [],
     metadataFields = [],
+    skipMissingWhen,
   } = options
 
   if (defaults.length === 0) {
@@ -234,6 +246,12 @@ export const reconcileDefaultsForTable = async <T extends { defaultHash: string 
     const existing = existingByKey.get(keyValue)
 
     if (!existing) {
+      // Defaults whose absence is the target state stay absent — see
+      // `skipMissingWhen`. `everyBundleRowAtTarget` is deliberately untouched.
+      if (skipMissingWhen?.(defaultItem)) {
+        continue
+      }
+
       // Row missing locally: only seed when we're allowed to. For most tables
       // that mirrors `canOverwrite` (ghost-insert protection). Tables that opt
       // into `insertMissing: true` seed regardless because their row must
@@ -611,7 +629,7 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionKey: string,
       currentVersion: number,
       hasAnyRow: boolean,
-      reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields'> = {},
+      reconcileOptions: Pick<ReconcileDefaultsForTableOptions<T>, 'keyField' | 'frozenFields' | 'skipMissingWhen'> = {},
     ): Promise<void> => {
       const gate = await computeCanOverwrite(tx, versionKey, currentVersion, hasAnyRow, initialSyncCompleted)
       const pass = await reconcileDefaultsForTable(tx, table, defaults, hashFn, {
@@ -648,7 +666,10 @@ export const reconcileDefaults = async (db: AnyDrizzleDatabase, overrides?: Reco
       versionMarkerKeys.settings,
       defaultSettingsVersion,
       hasAnySettingsRow,
-      { keyField: 'key' },
+      // A placeholder row would turn the later seed into an UPDATE, which
+      // uploads as a PATCH and escapes the create-only guard — see
+      // `shipsWithoutValue`.
+      { keyField: 'key', skipMissingWhen: shipsWithoutValue },
     )
 
     // Initialize anonymous ID for analytics (unique per user)

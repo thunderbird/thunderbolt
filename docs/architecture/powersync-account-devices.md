@@ -58,7 +58,7 @@ See [docs/composite-primary-keys-and-default-data.md](composite-primary-keys-and
    - [powersync-service/config/config.yaml](../../powersync-service/config/config.yaml) — local docker-compose.
    - [deploy/config/powersync-config.yaml](../../deploy/config/powersync-config.yaml) — baked into the `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image; used by preview stacks (Pulumi) and prod on Render.
    - [deploy/k8s/templates/configmaps.yaml](../../deploy/k8s/templates/configmaps.yaml) — Helm-rendered config for the enterprise k8s deploy path.
-   Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
+     Add a line under `sync_rules.content` → the appropriate bucket in each: `bucket_definitions.user_essentials.data` for latency-sensitive tables (loaded first, priority 1), or `bucket_definitions.user_data.data` for the rest (priority 2). Example: `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
 6. Run migrations for frontend and backend as needed.
 
 ### PR Flow for Adding Tables
@@ -188,6 +188,91 @@ Summary for client:
 - **403** with `DEVICE_DISCONNECTED` → this device revoked (reset).
 - **409** with `DEVICE_ID_TAKEN` → device id already registered to another user; reset to get a fresh device id.
 - **401** → generic auth failure.
+
+#### Create-only writes (`ifAbsent`)
+
+An operation may carry `ifAbsent: true`. Only `PUT` honours it: the row is inserted when absent
+and left untouched when present, instead of the usual upsert.
+
+The client sets it on every `PUT` it uploads **before the device has completed its first sync**
+(`isCreateOnlyWrite` in `src/db/powersync/connector.ts`, gated on `currentStatus.hasSynced`).
+Until that first sync the device has never seen the account's state, so every row it holds is one
+it invented locally — the bundled defaults and the seeded settings keys, all with deterministic
+ids that collide with whatever another device already stored. Those writes are guesses, and a
+guess must not beat a stored value.
+
+This is GH #1299: sync is off by default, so a second device seeds
+`user_has_completed_onboarding = false` at boot, and the moment the user enables sync that seed
+uploaded straight over the already-onboarded value on every other device.
+
+`hasSynced` is a safe gate even though it is read once per CRUD transaction while uploads and
+downloads run concurrently. It derives from `ps_sync_state.last_synced_at`, written only by
+`sync_local`, which the core guards with `SELECT 1 FROM ps_crud LIMIT 1` over the whole table — so
+a checkpoint cannot be _applied_ while any write is still queued, and the flag cannot flip
+mid-drain. A download _completing_ only lands ops in `ps_oplog`. By the time the flag can flip,
+there is nothing left to send.
+
+**Deploy the backend before the client.** Elysia drops body fields it does not declare, so a
+client sending `ifAbsent` to a backend that predates it is silently ignored and the overwrite
+behaviour returns, with no error anywhere.
+
+Two properties keep the rule safe:
+
+- **The op is still sent.** It is not dropped client-side. When the account genuinely lacks the
+  row — the common case, since sync is off by default and most accounts have never uploaded
+  anything — the row is created. Dropping it instead would leave the device holding rows the
+  server has never heard of, and the first `PATCH` against one of those would miss, return 400,
+  and wedge the upload queue permanently.
+- **Only `PUT` is constrained**, because `PUT` is the op with no user intent behind it. PowerSync
+  emits `PUT` from `INSERT` statements and `PATCH` from `UPDATE` statements (`UpdateType` in
+  `@powersync/common`), so a `PUT` is a row the device made up while a `PATCH` is someone editing
+  a row in front of them. That is what keeps resetting a setting to its default
+  (`resetSettingToDefault`) working — it rewrites the row to content byte-identical to a fresh
+  seed, so any content-based rule would swallow it.
+
+**Known gap — pre-first-sync `PATCH`es are not fully informed either.** The rule guards writes
+that carry no intent; it does not, and deliberately cannot, guard writes that do. Before its first
+sync a device is editing its own seeded copy of a bundled default rather than the account's
+version, so any `PATCH` it issues against a deterministic id lands on whatever the account
+actually stored there. Two instances:
+
+- **Auto-seeded settings — fixed.** `language` (`useAppLanguage`) and the four unit settings
+  (`useUnitDefaults`) ship as `null` and are filled in from the browser or the region at boot.
+  Reconcile used to pre-create those rows, which made the fill-in an `UPDATE` → `PATCH` and put
+  it outside the guard, so a new device could overwrite an established device's chosen language
+  or units. Reconcile now **skips inserting null-valued defaults** — absent is the target state
+  for them — so the first write is an `INSERT` → `PUT` and the guard covers it. Two things depend
+  on that row and were adjusted with it: `everyBundleRowAtTarget` treats an absent null-default
+  row as at target (so the version marker still advances), and `isSettingModified` treats an
+  unstamped row for a null-default key as modified (the pre-created row was what carried the
+  `defaultHash` stamp behind the reset affordance). Only new installs benefit — devices that
+  already created those rows keep them, and their next seed is still a `PATCH`.
+- **Edits and soft-deletes of bundled defaults.** Soft-delete is `update(...).set({ deletedAt })`,
+  so removing a default skill or model on a fresh device before enabling sync propagates that
+  `deletedAt` onto the account's row — possibly a customized version the user has on another
+  device. Accepted: constraining `PATCH` would lose real offline edits, which is worse than
+  propagating one made against a stale view.
+
+#### Which device runs onboarding
+
+Sync is off by default, so a device signing in to an account that already exists cannot read the
+synced `user_has_completed_onboarding` setting — all it has is the `false` reconcile seeded at
+boot. `markOnboardedForReturningUser` (`src/lib/returning-user-onboarding.ts`) treats "the account
+already existed" as "onboarding already happened" and writes the setting locally.
+
+**It must be called from every sign-in entry point.** Reaching only the sign-in modal and the
+waitlist page is GH #1299: the magic-link path left the seeded `false` in place, so the user redid
+onboarding there and then uploaded that `false` over the real value on every other device.
+
+The `isNew` flag it reads has to come from the sign-in **response**, never from `useSession()`.
+The backend retires the flag inside the sign-in request (`markUserNotNew` in the auth `after`
+hook), and Better Auth's session atom is fed solely by `/get-session` — so every session read
+reports `false` and cannot distinguish a fresh signup from a returning sign-in.
+
+**Not covered:** SSO. It leaves via a full page navigation and returns through a browser reload,
+so there is no in-app sign-in response to read, and `markUserNotNew` never runs on that path
+anyway (it is gated to `/sign-in/email-otp`), leaving the flag stuck at its `true` default for SSO
+accounts. An SSO user therefore still sees onboarding on each new device until they enable sync.
 
 ### Revoke Device (`POST /v1/account/devices/:id/revoke`)
 

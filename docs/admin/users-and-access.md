@@ -5,11 +5,11 @@ Who can sign in to your deployment, and how you change that. The full list of se
 
 ## Pick where access is decided
 
-| Mode     | `AUTH_MODE` | Users sign in with                  | You control access from       |
-| -------- | ----------- | ----------------------------------- | ----------------------------- |
-| Consumer | `consumer`  | An 8-digit code sent to their email | Thunderbolt's waitlist, below |
-| OIDC SSO | `oidc`      | Your identity provider              | Your identity provider        |
-| SAML SSO | `saml`      | Your identity provider              | Your identity provider        |
+| Mode     | `AUTH_MODE` | Users sign in with                  | You control access from      |
+| -------- | ----------- | ----------------------------------- | ---------------------------- |
+| Consumer | `consumer`  | An 8-digit code sent to their email | Anyone with an email address |
+| OIDC SSO | `oidc`      | Your identity provider              | Your identity provider       |
+| SAML SSO | `saml`      | Your identity provider              | Your identity provider       |
 
 An unset `AUTH_MODE` falls back to `consumer`, but the packaged Docker Compose and Kubernetes
 deployments both set `oidc` and ship a demo identity provider, so a stock install is on SSO until you
@@ -51,90 +51,13 @@ shared across them, unless you set `RATE_LIMIT_ENABLED=false`, which turns it of
 > packaged Compose and Helm deployments set, the send throws and the request fails, so consumer mode
 > needs the key.
 
-## The waitlist
-
-In consumer mode, every email address that has never signed in is queued, and no setting turns that
-off: `WAITLIST_ENABLED` is accepted and validated but currently has no effect, and the app build
-setting `VITE_BYPASS_WAITLIST` only hides the waitlist screen while the API still queues.
-
-> On a fresh deployment running consumer mode, nobody new can sign in until you act on this.
-
-### Auto-approve your own domains
-
-Domain auto-approval is the API's only approval setting, and for most team deployments it is all you
-need:
-
-```bash
-WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
-```
-
-An address whose domain is exactly one of the listed entries is approved the first time it asks and
-gets a code immediately. Matching uses the part after the last `@` and ignores case. Subdomains are
-not covered, so list `mail.example.com` separately if you need it. Settings are read once at
-startup, so restart the API after changing this.
-
-### Approve one address
-
-Approval is a row in the `waitlist` table of your PostgreSQL database; no API route or command sets
-it. Ask the person to request a code once, which creates their row, then approve it.
-
-```sql
-UPDATE waitlist SET status = 'approved', updated_at = now()
-WHERE email = 'person@example.com';
-```
-
-To approve someone who has never tried:
-
-```sql
-INSERT INTO waitlist (id, email, status)
-VALUES (gen_random_uuid()::text, 'person@example.com', 'approved');
-```
-
-Addresses are stored lowercase and trimmed. On a Docker Compose deployment, reach the database with:
-
-```bash
-docker compose exec postgres psql -U postgres -d postgres
-```
-
-The person can sign in on their next attempt. Nothing notifies them, so tell them yourself.
-
-### Who gets a code
-
-The API works down this list and stops at the first match.
-
-| Order | The address                        | Result                                             |
-| ----- | ---------------------------------- | -------------------------------------------------- |
-| 1     | Already has an account             | Code sent. Past the gate once, never queued again  |
-| 2     | Is marked approved on the waitlist | Code sent                                          |
-| 3     | Ends in a domain you auto-approve  | Code sent, and the address is recorded as approved |
-| 4     | Anything else                      | Queued. No code                                    |
-
-Every well-formed request returns the same `200`, so the failure modes an enumerator looks for, a 404
-or an "already registered" error, do not exist. The body does differ: an approved address gets a
-challenge token and a queued one does not, so the endpoint reveals whether an address is approved. It
-cannot distinguish an existing account from an approved waitlist row.
-
-### What the person receives
-
-| Their situation              | Email                     |
-| ---------------------------- | ------------------------- |
-| Approved                     | The sign-in code and link |
-| Newly queued                 | "You are on the list"     |
-| Already queued, asked again  | A reminder                |
-| Queued, but tried to sign in | "Not ready yet"           |
-
-Each email is written in the language the person's app is set to. A queued user still sees the "check
-your email" screen with a code box, because the screen does not disclose which branch the API took.
-Expect the occasional report that a code never arrived.
-
 ## Anonymous access
 
 Visitors can use the app with no account at all. Anonymous access is off by default and takes two
 settings that have to agree: `AUTH_ALLOW_ANONYMOUS=true` on the API and
 `VITE_AUTH_ENABLE_ANONYMOUS=true` in the app build. It is not available under SSO.
 
-The app build also has to drop the waitlist screen with `VITE_BYPASS_WAITLIST=true`, or visitors are
-still sent to a sign-in wall. Set `VITE_BYPASS_WAITLIST` on its own and unauthenticated visitors
+The app build also needs `VITE_BYPASS_WAITLIST=true`, or visitors are still sent to a sign-in wall. Set `VITE_BYPASS_WAITLIST` on its own and unauthenticated visitors
 land on a not-found page, so use both or neither.
 
 Both app settings are read when the app is built, and neither is offered as a build argument on the
@@ -162,15 +85,13 @@ spends their own money and is not metered here.
 If an anonymous visitor signs in later, the work already on their device carries into the new account
 and the anonymous record is removed.
 
-Anonymous visitors are never waitlist-gated.
-
 > Turning anonymous access on means anyone who can reach the URL can use the deployment. Put it
 > behind your network perimeter if that is not what you want.
 
 ## SSO deployments
 
-Under `AUTH_MODE=oidc` or `saml` the sign-in screen becomes a redirect to your identity provider and
-the waitlist never runs. Provisioning, deprovisioning, multi-factor, and group membership are your
+Under `AUTH_MODE=oidc` or `saml` the sign-in screen becomes a redirect to your identity provider.
+Provisioning, deprovisioning, multi-factor, and group membership are your
 provider's job.
 
 - Add the provider's origin to `TRUSTED_ORIGINS`, not `CORS_ORIGINS`. Containerized deployments
@@ -183,12 +104,12 @@ signs in for the first time.
 
 ## Removing access
 
-| Goal                             | How                                                                                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Offboard someone (SSO)           | Disable or remove them in your identity provider                                                                                          |
-| Offboard someone (consumer mode) | Delete their row from the `user` table. Setting their waitlist row back to `pending` does nothing: an existing account is never re-queued |
-| Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                                          |
-| Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data             |
+| Goal                             | How                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Offboard someone (SSO)           | Disable or remove them in your identity provider                                                                              |
+| Offboard someone (consumer mode) | Delete their row from the `user` table                                                                                        |
+| Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
+| Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |
 
 Deleting the account stops new requests at once. Each of their devices that has sync on notices on
 its next check with the API, clears its local copy, and shows an account-deleted screen. A signed-in

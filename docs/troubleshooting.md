@@ -59,16 +59,9 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ### Emailed sign-in codes (consumer mode)
 
-Check the waitlist gate first. An address with no existing account and no approved waitlist entry receives a "you're on the list" email instead of a sign-in code, regardless of `WAITLIST_ENABLED`. Set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains, or approve addresses one at a time in the `waitlist` table. This applies to email-code sign-in only, and the Kubernetes and AWS targets do not expose that setting, so it has to be added to the deployment files there.
-
-```bash
-WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
-```
-
 | Symptom                                                             | Likely cause                                                                                       | Check                                                                                                                                                      |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No email arrives at all                                             | `RESEND_API_KEY` is unset, so nothing is sent                                                      | The log warns at startup when the key is missing. `/v1/health/email` confirms the sending domain is verified, once `RESEND_MONITORING_API_KEY` is also set |
-| A waitlist email arrives instead of a code                          | The waitlist gate above                                                                            | Add the domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart                                                                                              |
 | "This code has expired" or "Invalid code"                           | The code timed out or was mistyped                                                                 | Request a new one                                                                                                                                          |
 | "Too many attempts"                                                 | Repeated wrong codes                                                                               | Request a new code                                                                                                                                         |
 | `429` on a sign-in request                                          | Either of two limits: 10 requests per minute per IP, or a 15 second per-address cooldown on resend | Wait out `Retry-After` where it is sent. The resend cooldown returns `code_already_sent` with no header                                                    |

@@ -139,17 +139,9 @@ In `consumer` mode a user types an email address and receives an 8-digit code, s
 
 Typing the code also requires a challenge token issued alongside it, so the eight digits on their own are not enough. That token is tied to the email address rather than to one browser, and the emailed link carries it, so treat the message itself as the credential.
 
-### Two limitations to know before choosing this mode
+### Before choosing this mode
 
 **The sender address is not configurable.** Sign-in email is sent through [Resend](https://resend.com) using a fixed Thunderbolt sender domain, so a self-hosted deployment cannot currently send these emails under its own domain. We recommend single sign-on instead.
-
-**Access is gated by an allowlist, and there is no admin interface for it.** Every email address must either already have an account or be approved before it can receive a code. An unapproved address gets a "you have joined the waitlist" email instead, with no code in it. Your only configuration lever is a domain allowlist:
-
-```sh
-WAITLIST_AUTO_APPROVE_DOMAINS=example.com,example.org
-```
-
-Any address at a listed domain is approved on first request. The list is read at startup, so restart the server after changing it. Approving an individual address outside those domains means editing the `waitlist` table by hand, and [Users and access](../admin/users-and-access.md#approve-one-address) has the SQL. There is no admin page, API or command for it. The gate is always active in `consumer` mode, whatever `WAITLIST_ENABLED` is set to.
 
 In production mode a server with no email service refuses the sign-in request outright, with an "Email service not configured" error.
 
@@ -171,7 +163,7 @@ Command-line sign-in is enabled by default. `thunderbolt login` shows a code, th
 
 Personal access tokens, the long-lived tokens users create for scripts and automation, are enabled by default too. A token is shown once at creation and lasts 90 days, or whatever `API_KEY_DEFAULT_EXPIRES_IN` (in seconds) says. Confidential models refuse a token unless `CONFIDENTIAL_API_KEYS_ENABLED=true`.
 
-Anonymous sessions ship disabled, and an SSO-built app never offers them. The server setting is mode-independent, though: `AUTH_ALLOW_ANONYMOUS=true` mounts the anonymous sign-in endpoint whatever `AUTH_MODE` is, so leave it off on an SSO deployment. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for. An anonymous session bypasses the email allowlist by design.
+Anonymous sessions ship disabled, and an SSO-built app never offers them. The server setting is mode-independent, though: `AUTH_ALLOW_ANONYMOUS=true` mounts the anonymous sign-in endpoint whatever `AUTH_MODE` is, so leave it off on an SSO deployment. Turning them on takes `AUTH_ALLOW_ANONYMOUS=true` on the server, which lets visitors try the app with no account, plus an app built with `VITE_AUTH_ENABLE_ANONYMOUS=true` and `VITE_BYPASS_WAITLIST=true`. With the server setting alone, visitors still meet the sign-in wall; with the build flags alone, they get a button the server has no endpoint for.
 
 ## Sessions and devices
 
@@ -188,7 +180,7 @@ A session belongs to the device that created it. With sync on, users see every s
 | The callback returns 404                                       | The redirect URI registered with the provider does not match              | Register `<BETTER_AUTH_URL>/v1/api/auth/sso/callback/sso` exactly                             |
 | SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above          |
 | An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                  |
-| Nobody receives a sign-in code                                 | No email service is configured, or the address is not approved            | Check the server logs. An unapproved address gets a waitlist email instead of a code.         |
+| Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                         |
 
 ## Next
 

@@ -101,14 +101,14 @@ Open **Settings → Preferences → Data** and choose **Delete My Account**. **E
 
 ### What is not removed
 
-| Not removed                                                        | Why                                                                                               |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Local data on a device that never reconnects, or one with sync off | It learns the account is gone by losing its session, not by syncing the removal. Wipe it by hand  |
-| The waitlist row, and rate-limit and sign-in-code rows             | No link to the account record. The address stays approved, so signing up again skips the waitlist |
-| Prompts and responses already sent to a model provider             | Retention is that provider's policy, not Thunderbolt's                                            |
-| Data written into a connected tool or external server              | It lives in that system, not in Thunderbolt                                                       |
-| Exports already downloaded                                         | Ordinary files on disk                                                                            |
-| Server logs and, if enabled, analytics                             | Handled by the operator's retention policy                                                        |
+| Not removed                                                        | Why                                                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Local data on a device that never reconnects, or one with sync off | It learns the account is gone by losing its session, not by syncing the removal. Wipe it by hand |
+| Rate-limit and sign-in-code rows                                   | No link to the account record                                                                    |
+| Prompts and responses already sent to a model provider             | Retention is that provider's policy, not Thunderbolt's                                           |
+| Data written into a connected tool or external server              | It lives in that system, not in Thunderbolt                                                      |
+| Exports already downloaded                                         | Ordinary files on disk                                                                           |
+| Server logs and, if enabled, analytics                             | Handled by the operator's retention policy                                                       |
 
 Deleting the account in Thunderbolt does not delete the user in your identity provider. Signing up again with the same email creates a new, empty account.
 

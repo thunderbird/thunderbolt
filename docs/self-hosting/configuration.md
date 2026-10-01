@@ -185,7 +185,7 @@ A pipeline that should accept file attachments needs `"supportedContent": {"text
 
 ## Email
 
-Sign-in codes and waitlist notices are sent through Resend.
+Sign-in codes are sent through Resend.
 
 | Variable                    | Default | What it does                                                                                                                                          |
 | --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -224,7 +224,7 @@ The limits themselves are not configurable:
 | Sign-in                                                                          | 10 per minute  |
 | Debug transcript upload                                                          | 10 per hour    |
 
-The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in and waitlist requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
+The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
 
 Rejections return `429` with a `Retry-After` header.
 
@@ -243,17 +243,6 @@ Exempt, because none of them can set the header: the startup configuration reque
 `CLI_DEVICE_REGISTRATION_ENABLED`, `false` by default, allows the command-line client to register as a device.
 
 Enable it only after every app your users run is new enough to recognise a command-line client in the device list, since an older app cannot display a kind of device it does not know about. Set `MIN_APP_VERSION` first if you cannot be sure.
-
-## Waitlist
-
-| Variable                        | Default | What it does                                                                            |
-| ------------------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `WAITLIST_AUTO_APPROVE_DOMAINS` | none    | Comma-separated email domains approved on sight, for example `example.com,example.org`. |
-| `WAITLIST_ENABLED`              | `false` | Accepted and validated, but currently has no effect.                                    |
-
-The waitlist check runs on email-code sign-in regardless of `WAITLIST_ENABLED`: an address with no existing account and no approved waitlist entry gets a "you're on the list" email instead of a sign-in code. Deployments on OIDC or SAML are unaffected.
-
-> If your deployment uses email codes, set `WAITLIST_AUTO_APPROVE_DOMAINS` to your own domains. Nobody new can sign in until you do.
 
 ## Analytics and tracing
 

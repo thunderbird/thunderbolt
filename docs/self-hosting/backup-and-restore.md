@@ -26,7 +26,6 @@ Don't restore into an older release than the dump came from; there is no downgra
 | The synced copy of user data | Chats, messages, settings, tasks, projects, prompts, skills, automations, model and agent configuration.                                      |
 | Registered devices           | Which devices are on each account and whether they are trusted or revoked.                                                                    |
 | Encryption metadata          | A copy of the account's content key locked separately for each approved device, plus the check value that confirms a recovery key is correct. |
-| Waitlist entries             | Only if you run a waitlist: who asked for access and whether they were approved.                                                              |
 | Personal access tokens       | Only if you issue them: the tokens used for command-line and programmatic access.                                                             |
 | Token usage and cost records | Only when the server supplies model access: what each user spent, for the per-user spending caps.                                             |
 

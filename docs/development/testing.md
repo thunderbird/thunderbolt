@@ -27,7 +27,7 @@ bun run e2e
 bun run e2e:headed   # with a visible browser
 ```
 
-**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, the `scripts/qa/` tests, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit). It runs `bun test --cwd=e2e db-diagnostic.test.ts` separately because root `bunfig.toml` excludes `e2e/**` from Bun discovery; Playwright collects only `*.spec.ts` files.
+**Note**: Don't run `bun test` directly from the project root — Bun's positional args are substring filters (not paths), so a filter like `src/` matches `backend/src/...` and pulls in backend tests. The `test` script uses `bun test --cwd=src` to scope discovery to the frontend tree, then runs the `shared/` test paths it enumerates (`shared/*.test.ts`, `shared/defaults/`, `shared/i18n/` — `shared/agent-core/` has its own `test:agent-core` script), `scripts/create-release.test.ts`, `scripts/check-e2e-specs-collected.test.ts`, `scripts/notify-on-failure.test.ts`, `scripts/sanitize-nightly-artifacts.test.ts`, and the selected `.github/scripts/*.test.*` files by explicit path (`shared/` is outside `--cwd=src`, and Bun skips hidden dirs in discovery, so each path must be explicit). It runs `bun test --cwd=e2e db-diagnostic.test.ts` separately because root `bunfig.toml` excludes `e2e/**` from Bun discovery; Playwright collects only `*.spec.ts` files.
 
 **`shared/agent-core` is the app's in-browser adapter around the npm `@earendil-works/pi-agent-core` package**, not that package itself. Its nested unit tests sit outside frontend test discovery, so they are intentionally **not** part of `bun run test`. Run them with `bun run test:agent-core` (or `bun run test:agent-core:5x` for the 5x-stability gate). In CI, the dedicated `agent-core` job in [`ci.yml`](../../.github/workflows/ci.yml) runs the 5x unit gate and browser check when the module, dependencies, build configuration, browser check, or workflow changes. The CLI imports the npm Pi package directly and imports the OpenAI-compatible and confidential-model builders plus receipt lifecycle from `shared/agent-core`, unit-tested by `bun run test:agent-core`; its integration coverage remains in the CLI suite.
 
@@ -265,10 +265,6 @@ bunx playwright test --config playwright.extended.config.ts
 ```
 
 On Linux, first start and migrate PostgreSQL, then start PowerSync using [`nightly-compose.yml`](../../deploy/nightly-compose.yml) and the setup in [`nightly.yml`](../../.github/workflows/nightly.yml). Set `EXTENDED_DATABASE_URL` and `EXTENDED_POWERSYNC_URL` to those services before running the same Playwright command. See [`playwright.extended.config.ts`](../../playwright.extended.config.ts) for browser selection and backend environment variables.
-
-### Weekly exploratory QA
-
-[`qa-weekly.yml`](../../.github/workflows/qa-weekly.yml) lets an AI agent use a production build like a person would, one charter per session, then replays what it found as Playwright specs, judges it and files confirmed bugs in Linear. It is off until `QA_AGENT_ENABLED` is set. See [`qa/README.md`](../../qa/README.md) for how it works, how to run each step locally and how to enable it.
 
 ### Native app smoke
 

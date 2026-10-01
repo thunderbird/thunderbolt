@@ -1,10 +1,12 @@
 # Weekly exploratory QA
 
-Once a week an AI agent uses the web app the way a person would. It works through one **charter** per session
-(a short list of things to try, in `charters/`). When something breaks, it writes a finding and a Playwright
-spec that fails because of the bug. Plain code then replays each spec, asks a second model whether the finding
-is real, and files the confirmed ones in Linear. It can also hand a few of them to a fix agent that opens draft PRs.
-The workflow never merges, approves or marks anything ready.
+Once a week an AI agent uses the web app the way a person would. It tests one area per session: the area's list
+of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`) or a
+**mission** that leaves the steps to the agent (`missions/`). It records every attempt as it goes. When something
+breaks, it writes a finding and a Playwright spec that fails because of the bug. Plain code then checks the attempts
+against what the browser really returned, replays each spec, asks a second model whether the finding is real, and
+files the confirmed ones in Linear. It can also hand a few of them to a fix agent that opens draft PRs. The workflow
+never merges, approves or marks anything ready.
 
 The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 UTC, and by hand with
 `workflow_dispatch`. It does nothing until the `QA_AGENT_ENABLED` variable is `true`.
@@ -24,8 +26,10 @@ because the replayed specs may have changed files in the replay job's checkout.
 
 The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
 explorer. The stack is killed inline from pid files outside the checkout (`$RUNNER_TEMP/qa-stack.pid*`). A
-`sha256sum` check of every tracked file must pass, or the job fails and uploads nothing. The session metrics are
-computed later, in the report job. The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so
+`sha256sum` check of every tracked file must pass, or the job fails and uploads nothing. Only then does `jq` cut the
+public transcript out of the execution file with `transcript.jq`, a filter (jq runs no commands and opens no files)
+that the checksum check covers. The session output must not hold any key the job has (an exact-value check, inline),
+or nothing is uploaded. The session metrics and the coverage check run later, in the report job. The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so
 no command they start inherits the Anthropic key in its environment. The fix job also installs bubblewrap, so those
 commands run in a sandbox and cannot read the key from the CLI's own process either.
 
@@ -59,21 +63,26 @@ it imports everything at start. If that changes, run it from a copy the job's us
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
    stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
 2. **explore**: one job per charter with `claude-code-action` and the Playwright MCP (`mcp.json`,
-   `mcp-two-devices.json` for c7). The prompt is `prompt.md` followed by the charter. The explorer writes
-   `qa-out/<charter>/findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session
-   keeps what it found. The job uploads only the counters of the session's result message; the report job turns
-   them into `session.json` with `scripts/report.ts session`. Every finding names an oracle from `prompt.md`. With
-   the real AI that includes `ai-reported-failure`: the app's AI says a tool, search, connection, file or integration
-   failed, which the console and the network often do not show (an AI that could not read the user's calendar).
+   `mcp-two-devices.json` for c7). The prompt is `prompt.md`, then the charter or the mission (see below), then the
+   area's function list. The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
+   `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
+   The job uploads the counters of the session's result message and `transcript.json`: the browser tool calls and
+   their results (each cut to 20,000 characters), without the prompt or any model text. The report job turns the
+   counters into `session.json` with `scripts/report.ts session`. Every finding names an oracle from `prompt.md`.
+   With the real AI that includes `ai-reported-failure`: the app's AI says a tool, search, connection, file or
+   integration failed, which the console and the network often do not show (an AI that could not read the user's
+   calendar).
 3. **replay** (`scripts/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
-   observations), spec lint, then every spec runs 3 times (`playwright.config.ts` here) next to the control spec.
+   observations), spec lint, then up to 20 specs per leg run 3 times each (`playwright.config.ts` here) next to the
+   control spec; the rest are deferred.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
    `qa-sync`) replay in their own leg on Postgres + PowerSync. The real-AI charters' findings (`realAiCharters` in
    `scripts/findings.ts`, today c3 and c5; artifact prefix `qa-real`) replay in their own leg against the real
    providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky, 0 = dropped. The rest replay on
    pglite with the fake AI. The judge takes all three.
-4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`.
-   The default answer is drop. Writes `verified.json`.
+4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`,
+   at most 15 per leg and only while their worst-case cost stays under $2; the rest are deferred, never filed. The
+   default answer is drop. Writes `verified.json`.
 5. **file** (`scripts/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
    at most 8 new tickets plus one roll-up (security findings: 3 more plus their own roll-up, without the run link),
    secret refusal, video upload. Dry run unless `--live`.
@@ -84,15 +93,40 @@ it imports everything at start. If that changes, run it from a copy the job's us
    to a person. `fix.ts publish` rejects paths it does not allow, edited specs and empty patches, then opens a draft PR on
    `qa-fix/<fp>`, or labels the ticket `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*`
    PRs; a maintainer can still dispatch one.
-7. **report** (`report.ts summary`): the job summary with sessions, coverage, gate yield, the drop list,
-   what was filed, canary recall and the calibration table.
+7. **report** (`report.ts summary`): the job summary with sessions, evidence-supported coverage, gate yield, every
+   flaky finding with its evidence, the deferred and drop lists, what was filed, canary recall and the calibration
+   table.
 
 The **canary leg** runs c8 against a build with the planted bugs in `canaries/` (`canaries.json` describes them).
 Its findings replay on the canary build, then again on the normal build. A canary counts as found only when its
 finding fails on the canary build, passes on the normal build and mentions that canary's keywords.
 Canary findings are never filed.
 
-Run-time output goes to `qa-out*/` (gitignored). `fixtures/` holds the PDF and image the charters upload.
+Run-time output goes to `qa-out*/` (gitignored). `fixtures/` holds the PDF and image the charters upload; `prompt.md`
+tells the explorer what they contain, and forbids it to tell the app's AI.
+
+## Functions, charters and missions
+
+`functions.json` holds one list per area (c1 to c8): what must work, as an id and an observable outcome, plus
+`reload: true` where the outcome must survive a reload. A function that spans two areas has one owner: how project
+instructions change a real reply is c5's `project-instructions-reply`. Integrations (Google, Microsoft) are in no
+list: nothing covers them.
+
+Two styles share that list, the prompt, the oracles and the evidence rules:
+
+- **scripted** (`charters/`, the default): steps and edge cases to follow, each naming the function ids it covers.
+- **mission** (`missions/`): only the target, the risks, the start state and what is out of bounds. The explorer
+  picks its own tests, with the toolbox in `prompt.md`.
+
+The `arm` input of a dispatch picks the style (the schedule always runs `scripted`); locally it is `QA_ARM`.
+
+**Coverage** (`report.ts summary`) counts a function only when one of its `passed` or `failed` attempts quotes text
+that a browser tool returned, inside that attempt's window (since the previous record), after a browser action in
+that window, and, for a passed `reload` function, after a navigation that follows a change. The code a tool echoes
+back (what the explorer typed) never counts. Every function in the list is in the denominator, so a missing one is
+"unattempted". A session without a transcript (a timeout, a broken save) covers nothing. The check proves the
+quote was really seen at the right moment, not that it shows the outcome, and that some reload followed some change
+in the attempt, not that it followed the change under test: sample covered functions by hand.
 
 ## Run it locally
 
@@ -110,7 +144,7 @@ Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
 
-# One session. The last argument is the budget cap in USD (default 2).
+# One session. The last argument is the budget cap in USD (default 2). QA_ARM=mission runs the mission instead.
 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c4-skills-projects qa-out 4
 QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
 ```
@@ -215,7 +249,8 @@ Team Thunderbolt needs these labels, or the filer stops and lists the missing on
 - `qa-agent`, `Bug`, `security` (filing)
 - `human required` (tickets the fix agent must not touch)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
-  precision, and filing falls back to a dry run while precision stays under 50% over 8+ triaged tickets)
+  precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
+  not duplicates)
 
 ### GitHub App (auto-fix only)
 
@@ -231,8 +266,16 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 ## Budget calibration
 
 Each step type has its own caps, in one place each: the `env` block at the top of `qa-weekly.yml` for explore
-and fix (budget, turns, timeout), and `max_tokens` in `verify.ts` for the judge. The first values are generous on
-purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min.
+and fix (budget, turns, timeout), and the constants at the top of `verify.ts` for the judge's `max_tokens` and the
+aggregate caps. The first values are generous on purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns /
+60 min.
+
+The aggregate caps bound a whole leg, whatever the sessions found: at most 20 findings replayed per replay leg (four
+legs at most) and 15 judged per judge leg (weekly, canary), and a judge leg spends at most $2. The judge admits a
+call only if its worst case fits: the prompt's UTF-8 bytes (a token covers at least one byte) plus `max_tokens` of
+output, at Opus prices. Findings over a cap are listed as deferred in the report and are never filed. The app's own
+provider calls in c3 and c5 are **not measured**: the backend logs no token counts for them, so watch the QA provider
+keys' dashboards; the report says so whenever a real-AI charter ran.
 
 **Rule:** per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
 for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions.
@@ -261,7 +304,8 @@ is one local sample per charter and a single fix, so keep the initial caps until
 A session stopped by its budget, its turn cap or the step timeout keeps every finding it wrote, and they are
 verified like any other. The report lists cut sessions first, under "⚠️ N INCOMPLETE session(s)", marks their
 stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**, and shows "no summary (session cut)" under
-Coverage. A timed-out step leaves no execution file, so its cost shows as $0.00. Look at the Anthropic
+Coverage. A timed-out step leaves no execution file, so its cost shows as $0.00 and its coverage as **no
+transcript**: its attempt records stay unchecked. Look at the Anthropic
 workspace's usage for the real figure. A leg that crashed, or whose explore job failed the checksum check, shows
 as **ERROR** with no findings. When every explore session of the weekly charters, or of the canary leg, ends in
 an error or a timeout, `report.ts summary` exits 1 and the report job fails, so `notify-on-failure` fires.
@@ -281,7 +325,8 @@ needs its own project before it can live in `e2e/`.
 
 ## Owners
 
-The Monitoring / E2E Tests project lead owns the charters, `noise.txt`, `known-issues.md` and the canaries, and
+The Monitoring / E2E Tests project lead owns `functions.json`, the charters and missions, `noise.txt`,
+`known-issues.md` and the canaries, and
 turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is tracked or
 accepted, and remove it once it is fixed. Whoever triages on Monday puts one `qa:` label on every `qa-agent` ticket.
 
@@ -301,6 +346,8 @@ Never run on GitHub (only locally, or read in the action's code):
 - the heartbeat and `notify-on-failure` for this workflow;
 - the explore job's inline stop, checksum check and result upload, and the fix job's spec replay (each was run
   locally as a script under `bash -eo pipefail`, not inside Actions);
+- the explore job's transcript cut and secret check, and the `arm` input (the same `transcript.jq` and an exact-value
+  `grep` ran locally on real sessions' output);
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
 - the bubblewrap sandbox in the fix job, including whether the agent's own spec run can still reach the local
   stack from inside it (the separate spec replay step runs outside the sandbox), and the fix output's secret scan
@@ -317,8 +364,10 @@ Never run on GitHub (only locally, or read in the action's code):
 
 Also:
 
-- The explorer still stops early by itself and lists some charter items as skipped, "not tried". Coverage in the
-  report shows them; the charter owner decides whether a charter is too long.
+- The explorer can still stop early by itself. Coverage in the report shows every function it did not reach as
+  "unattempted"; the charter owner decides whether an area's list is too long.
+- The coverage check trusts the transcript, which the explorer cannot edit, but not what a quote means: an explorer
+  can quote a real line that does not show the outcome. Sample covered functions by hand.
 - The judge is a model: a borderline finding can be kept in one run and dropped in the next (the Custom provider
   placeholder request in c3 was).
 - Repro specs are model-written. A spec that fails before its assertion is dropped by the judge even when the bug
@@ -335,5 +384,5 @@ Also:
   explicit allow lists both deny every unlisted command and allow read-only ones (probed).
 - A real model can fail twice in three replays by chance, and pass twice although the bug is real. The judge drops
   provider outages and expected limitations, and a real-AI finding never goes to the fix agent.
-- Integrations (Google, Microsoft) are not explored yet. They need a charter and a test account per provider,
-  connected before the session, whose tokens the backend would hold like the provider keys.
+- Integrations (Google, Microsoft) are explicitly out of coverage. They need a function list and a test account per
+  provider, connected before the session, whose tokens the backend would hold like the provider keys.

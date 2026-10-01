@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import {
   createModelContextShim,
+  descriptorSignature,
   flattenToolResult,
   installModelContext,
   nativeModelContext,
@@ -385,6 +386,32 @@ describe('toDescriptor', () => {
       inputSchema: { type: 'object' },
       annotations: { readOnlyHint: true, title: 'Full' },
     })
+  })
+})
+
+describe('descriptorSignature', () => {
+  it('is stable for an unchanged descriptor and moves when one does', () => {
+    const before = descriptorSignature({ ...echo('a'), inputSchema: { type: 'object' } })
+
+    expect(descriptorSignature({ ...echo('a'), inputSchema: { type: 'object' } })).toBe(before)
+    expect(descriptorSignature({ ...echo('a'), inputSchema: { type: 'string' } })).not.toBe(before)
+  })
+
+  /*
+   * `inputSchema` is arbitrary app-supplied JSON Schema, and `postMessage` is
+   * happy with both of these — structured clone carries cycles and BigInt — so
+   * such a tool genuinely exists and works. A throw here took down a React
+   * render in one caller and cost the app every *other* tool in the other.
+   */
+  it('returns null for a schema holding a cycle rather than throwing', () => {
+    const cyclic: Record<string, unknown> = { type: 'object' }
+    cyclic.self = cyclic
+
+    expect(descriptorSignature({ ...echo('a'), inputSchema: cyclic })).toBeNull()
+  })
+
+  it('returns null for a schema holding a BigInt rather than throwing', () => {
+    expect(descriptorSignature({ ...echo('a'), inputSchema: { maximum: 10n } })).toBeNull()
   })
 })
 

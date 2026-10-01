@@ -20,6 +20,7 @@ import {
   type HostContext,
   type MiniAppContext,
 } from './bridge'
+import { descriptorSignature } from './model-context'
 import type { ThunderboltTool } from './tools'
 
 export type ThunderboltState = {
@@ -104,16 +105,17 @@ export const useThunderbolt = (
    * construction, so including it would make every render a change. What the
    * host actually holds is the descriptor, and that is what has to be resynced
    * when it moves.
+   *
+   * Through `descriptorSignature`, never a bare `JSON.stringify`. This runs
+   * during render, and `inputSchema` is arbitrary app-supplied JSON Schema that
+   * may hold a cycle or a `BigInt` — neither of which `postMessage` minds, so
+   * the tool works — and a throw here would take down the whole app component
+   * rather than the one descriptor.
    */
   const resolved = typeof tools === 'function' ? tools() : tools
-  const toolSignature = JSON.stringify(
-    resolved.map(({ name, description, inputSchema, annotations }) => ({
-      name,
-      description,
-      inputSchema,
-      annotations,
-    })),
-  )
+  const toolSignature = resolved
+    .map((tool) => descriptorSignature(tool) ?? `<unserialisable:${tool.name}>`)
+    .join('\u0000')
 
   /**
    * Keep the host's tool list in step with the app's.

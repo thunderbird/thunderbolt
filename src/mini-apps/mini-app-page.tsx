@@ -257,7 +257,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
  * error surface — a stale bookmark to a deregistered app should behave like any
  * other bad URL.
  */
-export default function MiniAppPage() {
+const MiniAppPage = () => {
   const { appId } = useParams()
   const { apps, loading, failed } = useMiniApps()
   const { isMobile } = useIsMobile()
@@ -328,3 +328,5 @@ export default function MiniAppPage() {
   // pointing the existing frame at a new origin.
   return <MiniAppView key={app.id} app={app} />
 }
+
+export default MiniAppPage

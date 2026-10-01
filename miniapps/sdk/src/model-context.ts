@@ -149,6 +149,28 @@ export const toDescriptor = ({ name, description, inputSchema, annotations }: Om
 })
 
 /**
+ * A comparable string for a descriptor, or `null` when it has no safe one.
+ *
+ * `inputSchema` is `Record<string, unknown>` — arbitrary JSON Schema the app
+ * hands us — so it can hold a cycle or a `BigInt`, both of which `JSON.stringify`
+ * throws on and neither of which `postMessage` minds: structured clone carries
+ * them happily, so such a tool is perfectly able to exist and work.
+ *
+ * Callers diff descriptors to decide what changed, and a throw there is far
+ * worse than a coarse answer — it took out a React render in one place and cost
+ * the app every tool in the other. They fall back to the name, which means a
+ * change confined to an unserialisable schema is not noticed; the tool itself
+ * still registers and still runs.
+ */
+export const descriptorSignature = (tool: Omit<ModelContextTool, 'execute'>): string | null => {
+  try {
+    return JSON.stringify(toDescriptor(tool))
+  } catch {
+    return null
+  }
+}
+
+/**
  * Reject a descriptor the host would later drop.
  *
  * Loud, and on the app's own stack. The host does validate — `parseToolsList`

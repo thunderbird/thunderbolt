@@ -26,6 +26,7 @@
 
 import { elementAtPoint, type HighlightedElement } from './selection-hit-test'
 import {
+  descriptorSignature,
   flattenToolResult,
   installModelContext,
   textResult,
@@ -484,7 +485,10 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
     const mirrorOptionTools = async (): Promise<void> => {
       const current = resolveTools()
       for (const tool of current) {
-        const descriptor = JSON.stringify(toDescriptor(tool))
+        // Never a bare `JSON.stringify`: an unserialisable `inputSchema` threw
+        // out of this loop, past the per-tool guard below, and cost the app
+        // every one of its *other* tools for that list.
+        const descriptor = descriptorSignature(tool) ?? `<unserialisable:${tool.name}>`
         const previous = mirrored.get(tool.name)
         if (previous?.descriptor === descriptor) {
           continue

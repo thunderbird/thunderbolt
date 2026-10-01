@@ -15,14 +15,28 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { realpath } from 'node:fs/promises'
 import { AgentSideConnection, ClientSideConnection, PROTOCOL_VERSION, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { Client, RequestPermissionRequest, SessionNotification, Stream } from '@agentclientprotocol/sdk'
-import type { AgentHarnessEvent, Session as PiSession, ToolCallEvent, ToolCallResult } from '@earendil-works/pi-agent-core'
+import type {
+  AgentHarnessEvent,
+  Session as PiSession,
+  ToolCallEvent,
+  ToolCallResult,
+} from '@earendil-works/pi-agent-core'
 import { buildWireSkillsMeta, skillsCapabilityMeta, type SkillDefinition } from '../../../shared/agent-core/skills.ts'
+import { emptyAgentConfig } from '../agent/agent-config.ts'
+import { emptyMcpRuntime, type McpRuntime } from '../agent/mcp.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import type { BuildServeHarness } from './harness-agent.ts'
 import type { SessionStore } from './session-store.ts'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import type { PreparedPiBinding, ProviderRuntime } from '../provider-runtime/types.ts'
-import { assistantMessage, controlledAgent, fakeHarness, fakeStore, preparedBinding, providerRuntime } from './test-fixtures.ts'
+import {
+  assistantMessage,
+  controlledAgent,
+  fakeHarness,
+  fakeStore,
+  preparedBinding,
+  providerRuntime,
+} from './test-fixtures.ts'
 
 const captureRejection = async (operation: Promise<unknown>): Promise<unknown> => {
   try {
@@ -48,6 +62,7 @@ const connectPair = (
   store: SessionStore = fakeStore(),
   permissionOptionId: 'allow-once' | 'allow-always' | 'reject-once' = 'allow-once',
   runtime: ProviderRuntime = providerRuntime(),
+  mcp: McpRuntime = emptyMcpRuntime,
 ): {
   client: ClientSideConnection
   updates: SessionNotification[]
@@ -58,7 +73,10 @@ const connectPair = (
   const agentStream: Stream = ndJsonStream(agentToClient.writable, clientToAgent.readable)
   const clientStream: Stream = ndJsonStream(clientToAgent.writable, agentToClient.readable)
 
-  new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, runtime, buildServeHarness), agentStream)
+  new AgentSideConnection(
+    (conn) => createHarnessAgent(conn, config, store, runtime, buildServeHarness, emptyAgentConfig, mcp),
+    agentStream,
+  )
 
   const updates: SessionNotification[] = []
   const permissions: RequestPermissionRequest[] = []
@@ -79,7 +97,10 @@ const restoreSpies: (() => void)[] = []
 beforeAll(() => {
   const consoleError = spyOn(console, 'error').mockImplementation(() => {})
   const stderrWrite = spyOn(process.stderr, 'write').mockImplementation(() => true)
-  restoreSpies.push(() => consoleError.mockRestore(), () => stderrWrite.mockRestore())
+  restoreSpies.push(
+    () => consoleError.mockRestore(),
+    () => stderrWrite.mockRestore(),
+  )
 })
 afterAll(() => {
   for (const restore of restoreSpies) restore()
@@ -522,6 +543,60 @@ describe('createHarnessAgent (ACP server)', () => {
     expect(store.created).toHaveLength(1)
     expect(store.created[0]?.cwd).toBe(trustedRoot)
     expect(harnessCwds).toEqual([trustedRoot])
+  })
+
+  test('a tool from a trustTools server runs without asking the client', async () => {
+    // The live trust path. MCP tools only exist under `acp serve`, so this gate
+    // — not `attachPermissionGate` — is the one that enforces `trustTools`.
+    const decisions: Array<ToolCallResult | undefined> = []
+    const builder: BuildServeHarness = async () => {
+      let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
+      return fakeHarness({
+        registerToolCallGate: (handler) => {
+          gate = handler
+        },
+        prompt: async () => {
+          decisions.push(await gate?.({ type: 'tool_call', toolCallId: 't', toolName: 'docs_search', input: {} }))
+          return assistantMessage()
+        },
+      })
+    }
+
+    const trusted: McpRuntime = { ...emptyMcpRuntime, trustedToolNames: new Set(['docs_search']) }
+    const { client, permissions } = connectPair(builder, fakeStore(), 'reject-once', providerRuntime(), trusted)
+    const { sessionId } = await client.newSession({ cwd: process.cwd(), mcpServers: [] })
+    await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'go' }] })
+
+    expect(decisions).toEqual([undefined])
+    // The client answers `reject-once`, so a prompt reaching it would have
+    // blocked the call. Nothing was asked.
+    expect(permissions).toEqual([])
+  })
+
+  test('an MCP tool whose server was not trusted still asks the client', async () => {
+    // `isReadOnlyAgentTool` knows only the built-in tools, so an unrecognised
+    // name must fall through to the prompt rather than to allowed.
+    const decisions: Array<ToolCallResult | undefined> = []
+    const builder: BuildServeHarness = async () => {
+      let gate: ((event: ToolCallEvent) => Promise<ToolCallResult | undefined>) | null = null
+      return fakeHarness({
+        registerToolCallGate: (handler) => {
+          gate = handler
+        },
+        prompt: async () => {
+          decisions.push(await gate?.({ type: 'tool_call', toolCallId: 't', toolName: 'deploy_release', input: {} }))
+          return assistantMessage()
+        },
+      })
+    }
+
+    const trusted: McpRuntime = { ...emptyMcpRuntime, trustedToolNames: new Set(['docs_search']) }
+    const { client, permissions } = connectPair(builder, fakeStore(), 'reject-once', providerRuntime(), trusted)
+    const { sessionId } = await client.newSession({ cwd: process.cwd(), mcpServers: [] })
+    await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'go' }] })
+
+    expect(permissions.map((request) => request.toolCall.title)).toEqual(['deploy_release'])
+    expect(decisions[0]).toEqual({ block: true, reason: 'user rejected deploy_release' })
   })
 
   test('read is auto-allowed only when real path stays inside trusted workspace', async () => {

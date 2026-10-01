@@ -106,6 +106,41 @@ const capturingProfileSource = (builtinProvider: BuiltinProvider, probeUrl?: (ba
 }
 
 describe('buildBuiltinProfileModel', () => {
+  test('resolves the profile credential through Pi auth, not only at stream time', async () => {
+    // Pi resolves provider auth before dispatching to `stream`, so a provider
+    // that carries its key only in the stream wrapper fails that check with
+    // "Provider is not configured" and never reaches the wrapper. Every BYOK
+    // profile went dead that way on a Pi upgrade with no test failing, because
+    // nothing asserted the auth layer itself could produce the key.
+    const { provider } = buildBuiltinProfileModel({
+      profileId: 'byok-auth',
+      provider: 'anthropic',
+      modelId: 'claude-opus-4-8',
+      apiKey: 'profile-key',
+    })
+
+    const apiKeyAuth = provider.auth.apiKey
+    expect(apiKeyAuth).toBeDefined()
+    const resolved = await apiKeyAuth?.resolve({
+      ctx: { env: async () => undefined } as never,
+      credential: undefined,
+    })
+    expect(resolved?.auth.apiKey).toBe('profile-key')
+  })
+
+  test('never offers Pi an interactive login for a Thunderbolt-owned credential', () => {
+    // Thunderbolt stores these keys, so a Pi login prompt would ask for a
+    // credential the CLI already has and write it somewhere Thunderbolt does
+    // not read.
+    const { provider } = buildBuiltinProfileModel({
+      profileId: 'byok-no-login',
+      provider: 'anthropic',
+      modelId: 'claude-opus-4-8',
+      apiKey: 'profile-key',
+    })
+    expect(provider.auth.apiKey?.login).toBeUndefined()
+  })
+
   test('requires and honors an explicit API for unknown mixed-protocol Fireworks models', () => {
     const source = builtinModels()
     const fireworksModels = source.getModels('fireworks')

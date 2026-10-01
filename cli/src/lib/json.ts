@@ -28,5 +28,17 @@ export const hasExactKeys = <Key extends string>(
   return actualKeys.length === expectedKeys.size && actualKeys.every((key) => expectedKeys.has(key))
 }
 
+/**
+ * Rejects a JSON object carrying any key the schema does not name.
+ *
+ * {@link hasExactKeys} for a schema whose every field is required; this one for
+ * a schema with optional fields, where absence is fine but a stray key is not.
+ * Both exist so an unrecognised key fails loudly instead of being dropped.
+ */
+export const hasOnlyKeys = (value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean => {
+  const allowed = new Set<string>(keys)
+  return Object.keys(value).every((key) => allowed.has(key))
+}
+
 /** Narrows strings that contain at least one non-whitespace character without changing their value. */
 export const isNonblankString = (value: unknown): value is string => typeof value === 'string' && value.trim() !== ''

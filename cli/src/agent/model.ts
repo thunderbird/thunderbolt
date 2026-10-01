@@ -4,7 +4,6 @@
 
 /** Builds stable BYOK models and provider-native request features. */
 
-import { envApiKeyAuth } from '@earendil-works/pi-ai'
 import type { Api, Model, Models, Provider, ProviderStreams } from '@earendil-works/pi-ai'
 import { builtinModels } from '@earendil-works/pi-ai/providers/all'
 import {
@@ -93,17 +92,26 @@ export const buildBuiltinProfileModel = (
   const baseStreamSimple: ProviderStreams['streamSimple'] = sourceProvider.streamSimple
   const credentialOrigin = sourceModel.baseUrl || sourceProvider.baseUrl
   if (!credentialOrigin) throw new Error(`Pi catalog provider "${options.provider}" has no base URL.`)
-  const credentialedFetch = createCredentialedFetch(
-    credentialOrigin,
-    options.fetchFn,
-    options.observeResponse,
-  )
+  const credentialedFetch = createCredentialedFetch(credentialOrigin, options.fetchFn, options.observeResponse)
 
   const provider: Provider = {
     ...sourceProvider,
     id: options.profileId,
     baseUrl: credentialOrigin,
-    auth: { apiKey: envApiKeyAuth(`${options.profileId} API key`, []) },
+    // Resolve the profile's key through Pi's auth layer, not only inside the
+    // stream wrappers below. Pi resolves provider auth *before* it dispatches to
+    // `stream`, so a provider whose only credential arrives as a per-request
+    // option fails that check with "Provider is not configured" and never
+    // reaches the wrapper that had the key all along. This profile owns its
+    // credential outright — Thunderbolt stores it, not Pi — so resolution is a
+    // constant, and `login` stays absent because Pi must never prompt for a key
+    // the CLI already manages.
+    auth: {
+      apiKey: {
+        name: `${options.profileId} API key`,
+        resolve: async () => ({ auth: { apiKey: options.apiKey }, source: 'thunderbolt profile' }),
+      },
+    },
     getModels: () => [model],
     refreshModels: undefined,
     stream: (resolved, context, streamOptions) =>

@@ -20,6 +20,9 @@ import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk'
 import type { CommandSyntaxServeConfig } from '../agent/types.ts'
 import { prepareProviderBinding } from '../provider-runtime/provider-stage.ts'
 import type { ProviderRuntime } from '../provider-runtime/types.ts'
+import { loadAgentConfig } from '../agent/agent-config.ts'
+import { createHarnessRuntime } from '../agent/harness.ts'
+import { createMcpRuntime } from '../agent/mcp.ts'
 import { createHarnessAgent } from './harness-agent.ts'
 import { createSessionStore, defaultSessionsDir } from './session-store.ts'
 
@@ -48,9 +51,21 @@ const probeProvider = async (
 /** Owns production stdio only after provider startup validation succeeds. */
 const serveStdioConnection = async (config: CommandSyntaxServeConfig, runtime: ProviderRuntime): Promise<void> => {
   const store = createSessionStore(defaultSessionsDir())
+  // Loaded and connected once per process, before stdio is claimed: MCP clients
+  // outlive individual sessions, connecting is async while tool assembly is
+  // not, and anything written to stdout after this point is JSON-RPC.
+  const agentConfig = await loadAgentConfig()
+  const mcp = await createMcpRuntime(agentConfig.mcpServers)
   const stream = ndJsonStream(stdoutWritable(), Bun.stdin.stream())
-  const connection = new AgentSideConnection((conn) => createHarnessAgent(conn, config, store, runtime), stream)
-  await connection.closed
+  const connection = new AgentSideConnection(
+    (conn) => createHarnessAgent(conn, config, store, runtime, createHarnessRuntime, agentConfig, mcp),
+    stream,
+  )
+  try {
+    await connection.closed
+  } finally {
+    await mcp.dispose()
+  }
 }
 
 /** Runs startup preparation under process cancellation, then hands ownership to the ACP connection signal. */

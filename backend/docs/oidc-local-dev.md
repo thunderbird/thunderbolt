@@ -51,7 +51,7 @@ OIDC_ISSUER=http://localhost:8180/realms/mozilla
 TRUSTED_ORIGINS=http://localhost:1420,http://localhost:8180
 ```
 
-No waitlist variable belongs here. Both waitlist checks in `backend/src/auth/auth.ts` are on the email-OTP path (the `before` hook returns early for anything but `otpSignInPath`; the other is in the `sendVerificationOTP` callback), so SSO never reaches them. `WAITLIST_ENABLED` is inert even in consumer mode: `settings.waitlistEnabled` (`backend/src/config/settings.ts`) is read by nothing outside tests, so the gate always runs and `WAITLIST_AUTO_APPROVE_DOMAINS` is the only lever.
+No waitlist variable belongs here. Both waitlist checks in `backend/src/auth/auth.ts` are on the email-OTP path (the `before` hook returns early for anything but `otpSignInPath`; the other is in the `sendVerificationOTP` callback), so SSO never reaches them. `WAITLIST_ENABLED` is inert even under `AUTH_MODE=consumer`: `settings.waitlistEnabled` (`backend/src/config/settings.ts`) is read by nothing outside tests, so the gate always runs and `WAITLIST_AUTO_APPROVE_DOMAINS` is the only lever.
 
 **Frontend** (`.env.local` in the project root):
 
@@ -165,5 +165,5 @@ Playwright runs a real provider: `e2e/global-setup.ts` starts `oauth2-mock-serve
 | `backend/src/auth/oidc-integration.test.ts` | OIDC integration tests with a stubbed discovery endpoint                     |
 | `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm for local development (OIDC + SAML clients)    |
 | `src/lib/auth-mode.ts`                      | `isSsoMode()`, reads `VITE_AUTH_MODE`                                        |
-| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode        |
+| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs email-code sign-in   |
 | `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap      |

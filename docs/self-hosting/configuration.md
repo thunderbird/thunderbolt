@@ -54,6 +54,20 @@ Pick one mode.
 
 `tauri://localhost` (the desktop and mobile apps) and the `BETTER_AUTH_URL` origin are always accepted, whatever you set.
 
+### First-time email sign-in
+
+Under `AUTH_MODE=consumer`, an address with no account gets a sign-in code only once it is approved. Everyone else is put on a waitlist and receives a waitlist email instead of a code. Addresses that already have an account always get a code.
+
+| Variable                        | Default | What it does                                                                                                     |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
+| `WAITLIST_AUTO_APPROVE_DOMAINS` | empty   | Comma-separated email domains, for example `example.com,example.org`, whose addresses are approved on first use. |
+
+Each entry must equal everything after the `@`, ignoring case, so `example.com` does not cover `mail.example.com`. The list is read once at startup, so restart the API after changing it.
+
+To let in one address outside those domains, set its row in the `waitlist` table to `status = 'approved'`. There is no screen or command for this.
+
+> `WAITLIST_ENABLED` appears in the packaged Compose, Helm and AWS configurations but has no effect. The waitlist always applies, so `WAITLIST_AUTO_APPROVE_DOMAINS` and the `waitlist` table are the only ways to let new addresses in.
+
 ### OIDC
 
 | Variable             | Default                                           | What it does                                                                                              |
@@ -299,7 +313,7 @@ The web app is a static bundle, so these are fixed when its image is built, not 
 | Build argument               | Default | What it does                                                                         |
 | ---------------------------- | ------- | ------------------------------------------------------------------------------------ |
 | `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Where the app calls the API. A relative path works when a reverse proxy fronts both. |
-| `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for consumer sign-in.                          |
+| `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for email sign-in codes.                       |
 
 Several further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself. Anonymous sessions need `VITE_AUTH_ENABLE_ANONYMOUS=true` **and** `VITE_BYPASS_WAITLIST=true` alongside `AUTH_ALLOW_ANONYMOUS`; with only the first two a visitor still meets the sign-in wall. `VITE_APP_VERSION` is what makes a client send `X-App-Version`, so the version gate depends on it. `VITE_IROH_RELAY_URL` points the command-line bridge at a relay of your own instead of the public ones.
 

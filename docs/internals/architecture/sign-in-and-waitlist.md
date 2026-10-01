@@ -1,6 +1,6 @@
 # Sign-in and the Waitlist
 
-Consumer mode has one sign-in path: type an email, receive an 8-digit code (also sent as a link), enter or
+Email-code sign-in (`AUTH_MODE=consumer`) has one path: type an email, receive an 8-digit code (also sent as a link), enter or
 click it. `POST /v1/waitlist/join` is "sign up", "sign in" and "join the waitlist" at once; the server picks
 which, and every oddity here follows from that.
 
@@ -84,7 +84,7 @@ replay it as `x-challenge-token` on the Better Auth call; the magic-link route t
 
 | Surface                   | State hook                                                                                     | Reached from                                                                                                                                |
 | ------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/waitlist` page          | [use-waitlist-state.ts:103-134](../../../src/waitlist/use-waitlist-state.ts)                   | The unauthenticated redirect target in consumer mode                                                                                        |
+| `/waitlist` page          | [use-waitlist-state.ts:103-134](../../../src/waitlist/use-waitlist-state.ts)                   | The unauthenticated redirect target under email-code sign-in                                                                                |
 | Sign-in modal             | [use-sign-in-form-state.ts:197-232](../../../src/components/sign-in/use-sign-in-form-state.ts) | The sidebar footer and Preferences sign-in buttons, device approval for an anonymous visitor, and session expiry; also resend at `:270-275` |
 | `/auth/verify` magic link | [magic-link-verify.tsx:43-74](../../../src/components/magic-link-verify.tsx)                   | The link in the email, or a Tauri deep link                                                                                                 |
 

@@ -5,28 +5,44 @@ Who can sign in to your deployment, and how you change that. The full list of se
 
 ## Pick where access is decided
 
-| Mode     | `AUTH_MODE` | Users sign in with                  | You control access from      |
-| -------- | ----------- | ----------------------------------- | ---------------------------- |
-| Consumer | `consumer`  | An 8-digit code sent to their email | Anyone with an email address |
-| OIDC SSO | `oidc`      | Your identity provider              | Your identity provider       |
-| SAML SSO | `saml`      | Your identity provider              | Your identity provider       |
+| Mode       | `AUTH_MODE` | Users sign in with                  | You control access from                                                    |
+| ---------- | ----------- | ----------------------------------- | -------------------------------------------------------------------------- |
+| Email code | `consumer`  | An 8-digit code sent to their email | Approved email domains and the `waitlist` table ([below](#first-sign-in)) |
+| OIDC SSO   | `oidc`      | Your identity provider              | Your identity provider                                                     |
+| SAML SSO   | `saml`      | Your identity provider              | Your identity provider                                                     |
 
 An unset `AUTH_MODE` falls back to `consumer`, but the packaged Docker Compose and Kubernetes
 deployments both set `oidc` and ship a demo identity provider, so a stock install is on SSO until you
 change it. Set the mode explicitly either way. The app build carries the same choice as a build
-argument, `VITE_AUTH_MODE` (`sso` for either SSO mode, unset for consumer), so changing modes means
+argument, `VITE_AUTH_MODE` (`sso` for either SSO mode, unset for email codes), so changing modes means
 rebuilding the app image as well as restarting the API. The published app image is built with `sso`,
-so consumer mode means building that image yourself.
+so email-code sign-in means building that image yourself.
 [Authentication](../self-hosting/authentication.md) covers the provider settings.
 
 We recommend SSO if your organization already runs an identity provider. Joining, leaving, and
 multi-factor policy then stay where the rest of your accounts are.
 
-Consumer mode has no passwords and no "sign in with Google" button; the emailed code is the only
+Email-code sign-in has no passwords and no "sign in with Google" button; the emailed code is the only
 credential. `GOOGLE_CLIENT_ID` and `MICROSOFT_CLIENT_ID`, if you have set them, let a signed-in user
 connect their own mailbox and calendar to the app. They are not a sign-in method.
 
-## Consumer mode sign-in
+## Email-code sign-in
+
+### First sign-in
+
+An email address without an account is let in only once it is approved. Until then, asking for a code
+puts the address on a waitlist and sends it a waitlist email instead of a code. Anyone who already has
+an account always gets a code.
+
+| To let in                       | Do this                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------- |
+| Everyone at your email domains  | List them in `WAITLIST_AUTO_APPROVE_DOMAINS`, comma-separated, and restart the API          |
+| One address outside them        | Set its row in the `waitlist` table to `status = 'approved'`; there is no screen or command |
+
+A domain entry must equal everything after the `@`, so `example.com` does not cover
+`mail.example.com`. `WAITLIST_ENABLED` has no effect: the waitlist always applies.
+
+### Codes
 
 One message carries both an 8-digit code and a link, and either one signs the person in.
 
@@ -48,8 +64,8 @@ shared across them, unless you set `RATE_LIMIT_ENABLED=false`, which turns it of
 
 > Without `RESEND_API_KEY` no sign-in email is sent. Outside production the API logs the code and
 > link instead, which is enough for a local evaluation. On `NODE_ENV=production`, which both the
-> packaged Compose and Helm deployments set, the send throws and the request fails, so consumer mode
-> needs the key.
+> packaged Compose and Helm deployments set, the send throws and the request fails, so email-code
+> sign-in needs the key.
 
 ## Anonymous access
 
@@ -107,7 +123,7 @@ signs in for the first time.
 | Goal                             | How                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Offboard someone (SSO)           | Disable or remove them in your identity provider                                                                              |
-| Offboard someone (consumer mode) | Delete their row from the `user` table                                                                                        |
+| Offboard someone (email codes)   | Delete their rows from the `user` and `waitlist` tables. An address at an auto-approved domain can still sign up again        |
 | Cut off one lost laptop or phone | The user revokes it under **Settings → Devices**                                                                              |
 | Remove a person's data entirely  | The user does it under **Settings → Preferences → Data**, or you delete their `user` row, which cascades to their synced data |
 

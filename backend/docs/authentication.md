@@ -4,7 +4,7 @@ Every credential resolves to a Better Auth session. Everything downstream (the `
 
 | Credential               | Minted by                                 | Plugin / gate                | Documented in                                                   |
 | ------------------------ | ----------------------------------------- | ---------------------------- | --------------------------------------------------------------- |
-| Email OTP session        | `POST /v1/api/auth/sign-in/email-otp`     | `emailOTP` plugin            | [below](#consumer-sign-in-email-otp-bound-to-a-challenge-token) |
+| Email OTP session        | `POST /v1/api/auth/sign-in/email-otp`     | `emailOTP` plugin            | [below](#email-sign-in-otp-bound-to-a-challenge-token) |
 | Enterprise SSO session   | `/v1/api/auth/sso/*`                      | `AUTH_MODE=oidc` or `saml`   | [OIDC](./oidc-local-dev.md), [SAML](./saml-local-dev.md)        |
 | CLI device-grant session | `POST /v1/api/auth/device/token`          | `deviceAuthorization` plugin | [below](#the-cli-device-grant-rfc-8628)                         |
 | Anonymous session        | `POST /v1/api/auth/sign-in/anonymous`     | `AUTH_ALLOW_ANONYMOUS=true`  | [below](#anonymous-sessions)                                    |
@@ -43,7 +43,7 @@ Both read the client IP through `TRUSTED_PROXY` (`getTrustedIpHeaders(settings.t
 
 `trustedOrigins` always includes `tauri://localhost` (the desktop and mobile origin) and the backend's own origin, so the SSO desktop callback can be a `callbackURL`.
 
-## Consumer sign-in: email OTP bound to a challenge token
+## Email sign-in: OTP bound to a challenge token
 
 ```text
 POST /v1/waitlist/join           { email }         → { success: true, challengeToken? }
@@ -126,7 +126,7 @@ Tauri cannot use the web chain: WKWebView drops cookies across the cross-origin 
 
 - **Port allowlist, hard-coded on both sides.** `allowedLoopbackPorts = {17421, 17422, 17423}` in `sso-desktop-callback.ts` must match `OAUTH_PORTS` in [`src-tauri/src/commands.rs`](../../src-tauri/src/commands.rs), and those ports are the redirect URIs registered in the Google and Microsoft OAuth consoles. A port off the list returns a 400 HTML error page, not a redirect.
 - **The nonce cookie is a CSRF control, checked for presence only.** `thunderbolt_desktop_sso_nonce` is `HttpOnly; SameSite=Lax; Path=/v1/api/auth/sso; Max-Age=600` (plus `Secure` when initiate arrived over HTTPS), set only by `desktop-initiate`, cleared by `desktop-callback`. The protection is in the attributes; validating the value server-side would need a session store for no gain.
-- **Both routes are a no-op in consumer mode.** `createSsoDesktopCallbackRoutes` returns an empty router, so `desktop-initiate` 404s rather than failing later with a confusing 502.
+- **Both routes are a no-op under `AUTH_MODE=consumer`.** `createSsoDesktopCallbackRoutes` returns an empty router, so `desktop-initiate` 404s rather than failing later with a confusing 502.
 - **`desktop-initiate` calls Better Auth over HTTP** at `settings.betterAuthUrl` rather than through the internal API, which keeps it working behind a reverse proxy and uncoupled from Better Auth internals, at one network hop.
 - `/v1/api/auth/sso` is in `appVersionExemptPrefixes` ([`app-version.ts`](../src/middleware/app-version.ts)): browser redirects carry no `X-App-Version`, and the gate is fail-closed.
 

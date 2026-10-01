@@ -57,11 +57,13 @@ Single sign-on adds its own required sets, and a missing member of either one st
 
 ## Users cannot sign in
 
-### Emailed sign-in codes (consumer mode)
+### Emailed sign-in codes (`AUTH_MODE=consumer`)
 
 | Symptom                                                             | Likely cause                                                                                       | Check                                                                                                                                                      |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No email arrives at all                                             | `RESEND_API_KEY` is unset, so nothing is sent                                                      | The log warns at startup when the key is missing. `/v1/health/email` confirms the sending domain is verified, once `RESEND_MONITORING_API_KEY` is also set |
+| A new user gets a waitlist email instead of a code                  | The address has no account and is not approved, so it was put on the waitlist                      | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or set its `waitlist` row to `status = 'approved'`. `WAITLIST_ENABLED` has no effect        |
+| Without `RESEND_API_KEY`, the log shows no code for a new user      | Same cause: only approved addresses get a code, so there is nothing to log                         | As above. The log records a waitlist email it would have sent instead                                                                                      |
 | "This code has expired" or "Invalid code"                           | The code timed out or was mistyped                                                                 | Request a new one                                                                                                                                          |
 | "Too many attempts"                                                 | Repeated wrong codes                                                                               | Request a new code                                                                                                                                         |
 | `429` on a sign-in request                                          | Either of two limits: 10 requests per minute per IP, or a 15 second per-address cooldown on resend | Wait out `Retry-After` where it is sent. The resend cooldown returns `code_already_sent` with no header                                                    |

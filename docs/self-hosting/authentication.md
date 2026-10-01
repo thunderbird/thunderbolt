@@ -16,10 +16,10 @@ Every deployment path (Docker Compose, Kubernetes, AWS) ships with `oidc` set an
 
 ## The mode is set in two places
 
-| Where     | Setting                             | Values                                     |
-| --------- | ----------------------------------- | ------------------------------------------ |
-| Server    | `AUTH_MODE`                         | `consumer`, `oidc`, `saml`                 |
-| App build | `VITE_AUTH_MODE` (a build argument) | `sso` for OIDC or SAML, unset for consumer |
+| Where     | Setting                             | Values                                        |
+| --------- | ----------------------------------- | --------------------------------------------- |
+| Server    | `AUTH_MODE`                         | `consumer`, `oidc`, `saml`                    |
+| App build | `VITE_AUTH_MODE` (a build argument) | `sso` for OIDC or SAML, unset for email codes |
 
 An unset `AUTH_MODE` falls back to `consumer`, so set it explicitly. `VITE_AUTH_MODE` is baked into the app at build time rather than read at runtime, so switching between SSO and email sign-in means rebuilding the app image. The server refuses to start if the chosen mode's settings are incomplete.
 
@@ -127,7 +127,9 @@ The AWS stack installs that same chart only when you set `platform` to `k8s`. On
 
 ## Email sign-in codes
 
-In `consumer` mode a user types an email address and receives an 8-digit code, sent both as a code to type and as a link to click. Either works.
+Under `AUTH_MODE=consumer` a user types an email address and receives an 8-digit code, sent both as a code to type and as a link to click. Either works.
+
+An address with no account gets a code only once it is approved; otherwise it is put on a waitlist and sent a waitlist email instead. Approve whole domains with `WAITLIST_AUTO_APPROVE_DOMAINS`, or one address by setting its `waitlist` row to `status = 'approved'`. [Configuration](./configuration.md#first-time-email-sign-in) has the details.
 
 | Behaviour            | Value                                                          |
 | -------------------- | -------------------------------------------------------------- |
@@ -181,6 +183,7 @@ A session belongs to the device that created it. With sync on, users see every s
 | SAML rejects the assertion                                     | The wrong assertion consumer URL, or a mismatched entity ID               | Compare the provider's configuration against the service-provider metadata URL above          |
 | An invalid certificate error on SAML                           | The certificate still has its PEM header and footer                       | Use the raw base64 body only                                                                  |
 | Nobody receives a sign-in code                                 | No email service is configured                                            | Check the server logs                                                                         |
+| A new user gets a waitlist email instead of a code             | The address has no account and is not approved                            | Add its domain to `WAITLIST_AUTO_APPROVE_DOMAINS` and restart, or approve its `waitlist` row  |
 
 ## Next
 

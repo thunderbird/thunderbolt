@@ -139,5 +139,5 @@ Providers keep their own session, so signing out of Thunderbolt alone re-authent
 | `backend/src/auth/saml-integration.test.ts` | SAML integration tests                                                             |
 | `backend/docs/mozilla-realm.json`           | Pre-configured Keycloak realm with SAML client                                     |
 | `src/lib/auth-mode.ts`                      | `isSsoMode()` reads `VITE_AUTH_MODE`                                               |
-| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs consumer mode              |
+| `src/app.tsx`                               | `SsoRedirect` component, conditional routing for SSO vs email-code sign-in         |
 | `src/contexts/auth-context.tsx`             | `credentials: 'include'` in SSO mode for cookie-based session bootstrap            |

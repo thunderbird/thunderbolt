@@ -55,7 +55,7 @@ Operator view: [Self-hosting § Configuration](../../self-hosting/configuration.
 | `VITE_AUTH_ENABLE_ANONYMOUS` | Anonymous-session overlay. Needs the backend's `AUTH_ALLOW_ANONYMOUS` too, or the UI offers a route the server answers with 404 |
 | `VITE_BYPASS_WAITLIST`       | Skips the client-side waitlist redirect. UI only; the backend still gates sign-in                                               |
 
-Consumer mode runs `credentials: 'omit'`
+Email-code sign-in runs `credentials: 'omit'`
 ([auth-context.tsx:134](../../../src/contexts/auth-context.tsx)): the bearer token is the whole credential, so
 cookies would add ambient authority for nothing. The PowerSync connector repeats the SSO-only choice when
 fetching a sync JWT ([connector.ts:104-105](../../../src/db/powersync/connector.ts)).

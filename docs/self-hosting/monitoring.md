@@ -102,17 +102,17 @@ The probe exercises only the models your deployment is configured to serve; mode
 
 ## What to alert on
 
-| Signal                                       | Severity                                | Reasoning                                                                                                                                                           |
-| -------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/v1/health` failing for 1 minute            | page                                    | The API is down. Everything else follows.                                                                                                                           |
-| `/v1/health/database` failing for 2 minutes  | page                                    | Sign-in, sync and settings all stop.                                                                                                                                |
-| `/v1/health/powersync` failing for 5 minutes | page                                    | Writes still upload through the API, so new content reaches the database and your backups. Only downloads to a user's other devices stop, and they will not notice. |
-| `/v1/health/email` failing                   | page in consumer mode, ignore under SSO | Emailed codes are the only way to create a new session under `AUTH_MODE=consumer`. Existing sessions and personal access tokens keep working.                       |
-| `/v1/health/models` failing                  | ticket                                  | Affects the preconfigured models only, and usually resolves upstream.                                                                                               |
-| API restart loop                             | page                                    | Almost always a bad configuration value or an unreachable database. The startup log says which.                                                                     |
-| A sustained rise in `429` responses          | ticket                                  | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                                           |
-| A sustained rise in `5xx` responses          | ticket                                  | Check the API log for the failing route.                                                                                                                            |
-| `426` responses appearing                    | ticket                                  | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                                                   |
+| Signal                                       | Severity                              | Reasoning                                                                                                                                                           |
+| -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/v1/health` failing for 1 minute            | page                                  | The API is down. Everything else follows.                                                                                                                           |
+| `/v1/health/database` failing for 2 minutes  | page                                  | Sign-in, sync and settings all stop.                                                                                                                                |
+| `/v1/health/powersync` failing for 5 minutes | page                                  | Writes still upload through the API, so new content reaches the database and your backups. Only downloads to a user's other devices stop, and they will not notice. |
+| `/v1/health/email` failing                   | page on email codes, ignore under SSO | Emailed codes are the only way to create a new session under `AUTH_MODE=consumer`. Existing sessions and personal access tokens keep working.                       |
+| `/v1/health/models` failing                  | ticket                                | Affects the preconfigured models only, and usually resolves upstream.                                                                                               |
+| API restart loop                             | page                                  | Almost always a bad configuration value or an unreachable database. The startup log says which.                                                                     |
+| A sustained rise in `429` responses          | ticket                                | The limits themselves are not configurable. A steady stream means a client is misbehaving or your team has outgrown them.                                           |
+| A sustained rise in `5xx` responses          | ticket                                | Check the API log for the failing route.                                                                                                                            |
+| `426` responses appearing                    | ticket                                | You set `MIN_APP_VERSION` and clients below it are locked out. Expected during a forced upgrade, a bug otherwise.                                                   |
 
 ## Logs
 

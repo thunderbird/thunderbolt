@@ -271,6 +271,14 @@ Once the tag exists, all platform builds run in parallel:
 - **iOS TestFlight**: Testers with access are notified
 - **Android Play Store**: Available on internal track for testing
 
+## Desktop Nightly Releases
+
+Scheduled desktop nightlies (`v{version}-nightly.YYYYMMDD`) are published as **full** GitHub Releases (not prerelease) and marked **Latest**, so the current build appears in the repository Releases sidebar.
+
+- The release title/body still label the build as nightly and warn that it may be unstable.
+- CrabNebula auto-update uploads remain skipped for nightlies so unstable builds are not pushed to the in-app updater.
+- The CLI workflow must not create the shared draft with `--prerelease`, or it would race desktop and hide the build from the sidebar.
+
 ## Platform-Specific Releases
 
 ### iOS-Only Releases

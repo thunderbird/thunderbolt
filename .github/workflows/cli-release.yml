@@ -71,13 +71,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
-          NIGHTLY: ${{ inputs.nightly }}
         run: |
           if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
             exit 0
           fi
+          # Do not mark nightlies as prerelease — desktop publishes them as the
+          # GitHub Latest release (#1219). Creating with --prerelease here would
+          # race the desktop draft job and hide builds from the sidebar.
           FLAGS="--draft"
-          [ "$NIGHTLY" = "true" ] && FLAGS="$FLAGS --prerelease"
           gh release create "v${VERSION}" --repo "$REPO" $FLAGS \
             --title "Release v${VERSION}" \
             --notes "Release assets are uploaded by CI." \

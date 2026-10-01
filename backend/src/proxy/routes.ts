@@ -55,6 +55,19 @@ const withDnsTimeout = <T>(p: Promise<T>): Promise<T> => {
   ]).finally(() => clearTimeout(timer))
 }
 
+/** DNS-pin a hop under the DNS timeout. Returns the fetch-ready pinned request, or the
+ *  failure message (`'DNS_TIMEOUT'` on expiry) for the caller to map to a response. */
+const pinHop = async (
+  url: string,
+  dnsLookup: DnsLookup | undefined,
+): Promise<Awaited<ReturnType<typeof validateAndPin>> | { error: string }> => {
+  try {
+    return await withDnsTimeout(validateAndPin(url, undefined, dnsLookup))
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 const isPrintableAscii = (value: string) => /^[\x20-\x7E]*$/.test(value)
 
 const textResponse = (status: number, body: string): Response =>
@@ -310,28 +323,17 @@ export const createUniversalProxyRoutes = (options: CreateUniversalProxyRoutesOp
 
             for (let hop = 0; hop <= maxHops; hop++) {
               // DNS-pin each hop so cross-origin redirects can't bypass SSRF.
-              let pinnedUrl: string
-              let pinnedExtraHeaders: Headers
-              let pinnedTls: PinnedTls | undefined
-              try {
-                ;[pinnedUrl, pinnedExtraHeaders, pinnedTls] = await withDnsTimeout(
-                  validateAndPin(currentUrl, undefined, dnsLookup),
-                )
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                const isTimeout = msg === 'DNS_TIMEOUT'
+              const pinned = await pinHop(currentUrl, dnsLookup)
+              if ('error' in pinned) {
+                const errorType = pinned.error === 'DNS_TIMEOUT' ? 'dns_timeout' : 'ssrf'
                 if (hop === 0) {
-                  return fail(400, `Blocked: ${msg}`, isTimeout ? 'dns_timeout' : 'ssrf', currentUrl)
+                  return fail(400, `Blocked: ${pinned.error}`, errorType, currentUrl)
                 }
-                return fail(
-                  502,
-                  'Bad gateway (SSRF or DNS error on redirect)',
-                  isTimeout ? 'dns_timeout' : 'ssrf',
-                  currentUrl,
-                )
+                return fail(502, 'Bad gateway (SSRF or DNS error on redirect)', errorType, currentUrl)
               }
+              const [pinnedUrl, pinnedExtraHeaders, pinnedTls] = pinned
 
-              // Compose hop-specific headers: passthrough + Host (for SNI).
+              // Compose hop-specific headers: passthrough + Host (for virtual hosting).
               const hopHeadersResult =
                 hop === 0
                   ? initialPassthroughHeaders

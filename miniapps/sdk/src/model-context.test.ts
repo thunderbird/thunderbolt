@@ -27,6 +27,7 @@ import {
   descriptorSignature,
   flattenToolResult,
   installModelContext,
+  maxToolSchemaChars,
   nativeModelContext,
   resetModelContextForTests,
   textResult,
@@ -356,6 +357,47 @@ describe('the shim registry', () => {
       await expect(
         shim.registerTool({ name: 'inert', description: 'Does nothing.' } as unknown as ModelContextTool),
       ).rejects.toThrow('no execute function')
+    })
+
+    /*
+     * The host drops a descriptor it cannot serialise (`parseToolsList`), so a
+     * tool like this would never reach the model. Rejecting here puts the
+     * failure on the author's own stack instead of in Thunderbolt's console.
+     */
+    it('rejects a schema holding a circular reference', async () => {
+      const shim = createModelContextShim()
+      const cyclic: Record<string, unknown> = { type: 'object' }
+      cyclic.self = cyclic
+
+      await expect(shim.registerTool({ ...echo('cyclic'), inputSchema: cyclic })).rejects.toThrow(
+        'not JSON-serialisable',
+      )
+    })
+
+    it('rejects a schema holding a BigInt', async () => {
+      const shim = createModelContextShim()
+
+      await expect(shim.registerTool({ ...echo('big'), inputSchema: { maximum: 10n } })).rejects.toThrow(
+        'not JSON-serialisable',
+      )
+    })
+
+    it('rejects a schema over the budget it would spend on every request', async () => {
+      const shim = createModelContextShim()
+      const huge = { type: 'object', description: 'x'.repeat(maxToolSchemaChars) }
+
+      await expect(shim.registerTool({ ...echo('huge'), inputSchema: huge })).rejects.toThrow(
+        `${maxToolSchemaChars}-character limit`,
+      )
+    })
+
+    it('accepts a schema just inside the budget', async () => {
+      const shim = createModelContextShim()
+      const snug = { type: 'object', description: 'x'.repeat(maxToolSchemaChars - 100) }
+
+      await shim.registerTool({ ...echo('snug'), inputSchema: snug })
+
+      expect(await shim.getTools()).toHaveLength(1)
     })
 
     it('accepts the full legal name alphabet at the length limit', async () => {

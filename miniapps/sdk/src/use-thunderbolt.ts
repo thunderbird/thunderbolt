@@ -108,9 +108,10 @@ export const useThunderbolt = (
    *
    * Through `descriptorSignature`, never a bare `JSON.stringify`. This runs
    * during render, and `inputSchema` is arbitrary app-supplied JSON Schema that
-   * may hold a cycle or a `BigInt` — neither of which `postMessage` minds, so
-   * the tool works — and a throw here would take down the whole app component
-   * rather than the one descriptor.
+   * may hold a cycle or a `BigInt`, both of which throw — taking down the whole
+   * app component rather than the one descriptor. Such a schema is rejected at
+   * registration (`assertValidTool`), so the fallback is for the window before
+   * that, not a way to ship one.
    */
   const resolved = typeof tools === 'function' ? tools() : tools
   const toolSignature = resolved

@@ -118,6 +118,17 @@ export type ModelContext = {
 /** Longest tool name the host will accept. See {@link ModelContextTool.name}. */
 export const maxToolNameLength = 60
 
+/**
+ * Longest serialised `inputSchema` the host will accept.
+ *
+ * Mirrors `maxToolSchemaChars` in `shared/mini-app-protocol.ts`, which the SDK
+ * cannot import — it is meant to drop into a customer's app with no dependency
+ * on this repo. The host forwards the schema verbatim into a provider tool
+ * definition, so an unbounded one spends the request budget and fails the whole
+ * turn before any provider limit helps.
+ */
+export const maxToolSchemaChars = 8_192
+
 const toolNamePattern = /^[a-zA-Z0-9_-]+$/
 
 /** Text of a WebMCP result, joined. The wire carries one string, not parts. */
@@ -158,9 +169,12 @@ export const toDescriptor = ({ name, description, inputSchema, annotations }: Om
  *
  * Callers diff descriptors to decide what changed, and a throw there is far
  * worse than a coarse answer — it took out a React render in one place and cost
- * the app every tool in the other. They fall back to the name, which means a
- * change confined to an unserialisable schema is not noticed; the tool itself
- * still registers and still runs.
+ * the app every tool in the other. They fall back to the name instead.
+ *
+ * Answering `null` says "no safe signature", **not** "this is fine".
+ * {@link assertValidTool} rejects such a schema outright, because the host does
+ * too: `parseToolsList` drops a descriptor it cannot serialise, so a tool like
+ * that would never reach the model however gracefully we diffed it.
  */
 export const descriptorSignature = (tool: Omit<ModelContextTool, 'execute'>): string | null => {
   try {
@@ -190,6 +204,39 @@ const assertValidTool = (tool: ModelContextTool): void => {
   }
   if (!tool.description) {
     throw new TypeError(`Tool "${tool.name}" needs a description — it is what the model reads to decide.`)
+  }
+  if (tool.inputSchema === undefined) {
+    return
+  }
+  /*
+   * The same two rules the host applies in `parseToolsList`, applied here for
+   * the same reason the name rules are: a descriptor the host will silently
+   * drop is a bug in the app, and it should fail where it was written rather
+   * than turn up as a missing tool and a warning in Thunderbolt's console.
+   *
+   * `JSON.stringify` throws on a cycle and on a `BigInt`, and `postMessage`
+   * minds neither — structured clone carries both — so the schema really can
+   * get this far. It still cannot reach a model provider, which is what makes
+   * it invalid rather than merely awkward.
+   */
+  const serialised = ((): string | null => {
+    try {
+      return JSON.stringify(tool.inputSchema)
+    } catch {
+      return null
+    }
+  })()
+  if (serialised === null) {
+    throw new TypeError(
+      `Tool "${tool.name}" has an inputSchema that is not JSON-serialisable — a circular reference or a BigInt. ` +
+        'Thunderbolt forwards the schema to a model provider as JSON, so it would be dropped during discovery.',
+    )
+  }
+  if (serialised.length > maxToolSchemaChars) {
+    throw new TypeError(
+      `Tool "${tool.name}" has an inputSchema of ${serialised.length} characters, over the ` +
+        `${maxToolSchemaChars}-character limit. It rides every request this tool is offered in.`,
+    )
   }
 }
 

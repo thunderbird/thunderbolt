@@ -487,7 +487,9 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       for (const tool of current) {
         // Never a bare `JSON.stringify`: an unserialisable `inputSchema` threw
         // out of this loop, past the per-tool guard below, and cost the app
-        // every one of its *other* tools for that list.
+        // every one of its *other* tools for that list. The guard then rejects
+        // the descriptor on its own account, which is the outcome we want —
+        // the host would drop it too, so it could never reach the model.
         const descriptor = descriptorSignature(tool) ?? `<unserialisable:${tool.name}>`
         const previous = mirrored.get(tool.name)
         if (previous?.descriptor === descriptor) {

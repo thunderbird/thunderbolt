@@ -307,7 +307,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The browser tools can write files anywhere in the checkout, so no repo code runs in this job after the
-      # explorer: the stack is stopped inline, a checksum tripwire guards the upload, and report.ts runs later.
+      # explorer: the stack is stopped inline, a checksum tripwire guards the upload, and report.ts runs later. The
+      # one repo file read afterwards is transcript.jq, a jq filter (no shell, no file access) the tripwire covers.
       - name: Record the checksums of the tracked files
         # Symlinks are skipped: one tracked link dangles, and the files they point to are tracked themselves.
         run: |
@@ -372,18 +373,40 @@ jobs:
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
           # The explorer can write into its out dir: only what this step writes may reach the report.
-          rm -f "$dir/execution.json" "$dir/timed-out" "$dir/findings.json"
-          # Only the result message's counters: the full execution file holds every page the explorer read.
+          rm -f "$dir/execution.json" "$dir/timed-out" "$dir/findings.json" "$dir/transcript.json"
+          # Only the result message's counters, and the tool calls with capped results for the coverage check: the
+          # full execution file also holds the prompt and everything the model wrote.
           if [ -f "$EXECUTION_FILE" ]; then
             jq '[last(.[] | select(.type == "result")) | {type, subtype, is_error, total_cost_usd, num_turns, duration_ms, modelUsage}]' \
               "$EXECUTION_FILE" > "$dir/execution.json"
+            jq --compact-output --from-file .github/qa/transcript.jq "$EXECUTION_FILE" > "$dir/transcript.json"
           fi
           # A step killed by its timeout leaves no execution file; the marker tells report.ts why.
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
           if [ -n "$SUMMARY" ]; then printf '%s\n' "$SUMMARY" > "$dir/findings.json"; fi
 
-      - name: Upload findings, specs and the session result
+      # Artifacts are public, and GitHub masks secrets in logs only. The pages the explorer read could show a key (a
+      # backend bug in a real-AI leg), so any key this job holds, found anywhere in the session output, means no
+      # upload. Exact values only: a token-shaped pattern would also match a made-up key typed into a model form. The
+      # session and the stack have ended, so no untrusted process is meant to be left to read this step's keys.
+      - name: Check the session output for secrets
+        id: secret-scan
         if: always() && steps.tripwire.outcome == 'success'
+        env:
+          QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
+          PROVIDER_KEY: ${{ matrix.leg.real && secrets.QA_PROVIDER_ANTHROPIC_API_KEY || '' }}
+          TINFOIL_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
+          EXA_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
+        run: |
+          for key in "$QA_KEY" "$PROVIDER_KEY" "$TINFOIL_KEY" "$EXA_KEY"; do
+            if [ -n "$key" ] && grep -rqF -- "$key" "$QA_OUT/$QA_CHARTER"; then
+              echo "::error::The session output holds a secret, so nothing is uploaded."
+              exit 1
+            fi
+          done
+
+      - name: Upload findings, specs, attempts and the session result
+        if: always() && steps.secret-scan.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.leg.artifact }}-${{ matrix.leg.charter }}
@@ -391,8 +414,10 @@ jobs:
           path: |
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings/*.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.spec.ts
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/attempts/*.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/execution.json
+            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/transcript.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out
           if-no-files-found: warn
           retention-days: 7

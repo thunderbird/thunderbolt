@@ -9,8 +9,10 @@
 #   .github/qa/scripts/explore.sh prompt <charter> <out-dir>         print the session prompt (the workflow uses it)
 #   .github/qa/scripts/explore.sh run <charter> <out-dir> [max-usd]  run the session locally with `claude -p` ($2)
 #
-# `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<charter>/{findings,repro}/ (the explorer),
-# execution.json + session.json (metrics) and findings.json (the summary, only if the session finished).
+# `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<charter>/{findings,repro,attempts}/ (the explorer),
+# execution.json + session.json (metrics), transcript.json (the tool calls, for the coverage check) and
+# findings.json (the summary, only if the session finished). The charter is followed by the area's function list
+# from functions.json.
 # The phone charter needs QA_MCP_VIEWPORT=390x844, the two-device charter
 # QA_MCP_CONFIG=.github/qa/mcp-two-devices.json. Keep the claude flags in step with the explore job in
 # .github/workflows/qa-weekly.yml.
@@ -26,6 +28,10 @@ prompt() {
   printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
     "$1" "$2" "$1" "$1" "$(date +%s)"
   cat ".github/qa/charters/$1.md"
+  printf '\n## Functions to test\n\nEach id, then the outcome that shows the function works.\n\n'
+  # shellcheck disable=SC2016 # jq string interpolation
+  jq --raw-output --arg charter "$1" \
+    '.[$charter][] | "- `\(.id)`: \(.outcome)\(if .reload then " (after a reload)" else "" end)"' .github/qa/functions.json
 }
 
 run() {
@@ -46,6 +52,7 @@ run() {
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"
   jq --slurp . "$dir/run.jsonl" > "$dir/execution.json"
+  jq --compact-output --from-file .github/qa/transcript.jq "$dir/execution.json" > "$dir/transcript.json"
   bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$charter" --out "$out"
   jq --exit-status 'last | .structured_output // empty' "$dir/execution.json" > "$dir/findings.json" ||
     rm "$dir/findings.json"

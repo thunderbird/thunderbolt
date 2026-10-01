@@ -8,14 +8,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RawFinding } from './findings'
 import {
+  checkCoverage,
   matchCanaries,
   nothingExplored,
   renderReport,
   runCanary,
+  runSummary,
   sessionFromExecution,
   suggestCap,
+  type Coverage,
   type ResultMessage,
   type Session,
+  type TranscriptMessage,
 } from './report'
 import type { Verified, VerifiedFinding } from './verify'
 
@@ -176,19 +180,22 @@ describe('renderReport', () => {
         session({ charter: 'c2', stop: 'max_budget' }),
         session({ charter: 'c3', stop: 'timeout' }),
       ],
-      summaries: new Map([['c1', { visited: ['chat'], skipped: [{ screen: 'export', reason: 'no data' }] }]]),
+      summaries: new Map([['c1', { visited: ['chat'] }]]),
+      coverage: new Map(),
       found: 0,
     })
     const firstSection = report.split('## Sessions')[0]
     expect(firstSection).toContain('2 INCOMPLETE')
     expect(firstSection).toContain('**c2**: BUDGET CAP')
     expect(firstSection).toContain('**c3**: TIMEOUT')
-    expect(report).toContain('- **c1**: visited chat; skipped export (no data)')
-    expect(report).toContain('- **c2**: no summary (session cut)')
+    expect(report).toContain('- **c1**: no function list; visited chat')
+    expect(report).toContain('- **c2**: no function list; no summary (session cut)')
   })
 
   it('has no incomplete banner when every session finished', () => {
-    expect(renderReport({ sessions: [session({})], summaries: new Map(), found: 0 })).not.toContain('INCOMPLETE')
+    expect(
+      renderReport({ sessions: [session({})], summaries: new Map(), coverage: new Map(), found: 0 }),
+    ).not.toContain('INCOMPLETE')
   })
 
   it('reports gate yield, the full drop list, filed actions and canary recall', () => {
@@ -206,6 +213,7 @@ describe('renderReport', () => {
     const report = renderReport({
       sessions: [session({})],
       summaries: new Map(),
+      coverage: new Map(),
       found: 6,
       verified,
       filed: [
@@ -241,6 +249,7 @@ describe('renderReport', () => {
         session({ charter: 'c2', cost_usd: 4, turns: 60, duration_ms: 1_200_000 }),
       ],
       summaries: new Map(),
+      coverage: new Map(),
       found: 0,
     })
     expect(report).toContain('| explore | cost | 2 | $4.00 | $6.00 |')
@@ -255,6 +264,7 @@ describe('renderReport', () => {
         session({ charter: 'fix-ab12cd34', cost_usd: 8, turns: 90, stop: 'max_turns' }),
       ],
       summaries: new Map(),
+      coverage: new Map(),
       found: 0,
     })
     expect(report).toContain('| explore | cost | 1 | $2.00 | $3.00 |')
@@ -262,6 +272,247 @@ describe('renderReport', () => {
     expect(report).toContain('| fix | turns | 1 | 90 | 135 |')
     expect(report).toContain('**fix-ab12cd34**: TURN CAP after 90 turns, $8.00; its patch may be partial')
     expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
+  })
+})
+
+describe('checkCoverage', () => {
+  const record = (id: string) =>
+    ['Write', 'File created successfully', `/runner/qa-out/c4/attempts/${id}.json`] as const
+  const browser = (tool: string, result = 'ok', device = '') =>
+    [`mcp__playwright${device}__browser_${tool}`, result] as const
+  const transcriptOf = (steps: readonly (readonly [string, string, string?])[]): TranscriptMessage[] =>
+    steps.flatMap(([name, result, path], i) => [
+      { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name, input: { file_path: path } }] } },
+      { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+    ])
+  const attempt = (
+    id: string,
+    fn: string,
+    status: 'passed' | 'failed' | 'blocked' | 'unattempted',
+    observed: string,
+  ) => ({
+    id,
+    attempt: { function: fn, setup: 'fresh user', action: 'did it', expected: 'it works', observed, status },
+  })
+  const fns = (...ids: string[]) => ids.map((id) => ({ id, outcome: 'works', reload: id.endsWith('!') }))
+  const verdicts = (coverage: Coverage) => coverage.verdicts.map((v) => [v.id, v.state, v.reason])
+  const snapshot = '- heading "Skills" [level=1] [ref=e1]\n  - button "Skill Alpha One" [ref=e5] [cursor=pointer]'
+
+  it('covers a function whose quote is in a browser result after its action, across snapshot lines', () => {
+    const transcript = transcriptOf([browser('click'), browser('snapshot', snapshot), record('1'), record('2')])
+    const coverage = checkCoverage(
+      fns('edit', 'slash'),
+      [
+        attempt('1', 'edit', 'passed', 'heading "Skills" [level=1]\n - button "Skill Alpha One"'),
+        attempt('2', 'slash', 'failed', 'button "Skill Alpha One"'),
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['edit', 'passed', undefined],
+      ['slash', 'failed', undefined],
+    ])
+  })
+
+  it('matches a quote of an evaluate result whether it was copied with its JSON escapes or without', () => {
+    const result = '### Result\n"Delete this project?\\n\\nChats are kept as \\"ordinary\\" chats."'
+    const transcript = transcriptOf([browser('click'), browser('evaluate', result), record('1'), record('2')])
+    const coverage = checkCoverage(
+      fns('decoded', 'escaped'),
+      [
+        attempt('1', 'decoded', 'passed', 'Delete this project?\n\nChats are kept as "ordinary" chats.'),
+        attempt('2', 'escaped', 'passed', 'Delete this project?\\n\\nChats are kept as \\"ordinary\\"'),
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['decoded', 'passed', undefined],
+      ['escaped', 'passed', undefined],
+    ])
+  })
+
+  it('does not back an invented quote, typed text the tool echoes, a short quote or a Write result', () => {
+    const echo =
+      "### Ran Playwright code\n```js\nawait page.fill('Skill Alpha One');\n```\n### Page\n- Page URL: /skills"
+    const transcript = transcriptOf([
+      browser('type', echo),
+      browser('snapshot', snapshot),
+      record('1'),
+      record('2'),
+      record('3'),
+      record('4'),
+    ])
+    const coverage = checkCoverage(
+      fns('a', 'b', 'c', 'd'),
+      [
+        attempt('1', 'a', 'passed', 'Skill Beta was saved'),
+        attempt('2', 'b', 'passed', "fill('Skill Alpha One')"),
+        attempt('3', 'c', 'passed', 'Skills'),
+        attempt('4', 'd', 'passed', 'File created successfully'),
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['a', 'unsupported', 'quote not in a browser tool result of this attempt'],
+      ['b', 'unsupported', 'quote not in a browser tool result of this attempt'],
+      ['c', 'unsupported', 'quote under 10 characters'],
+      ['d', 'unsupported', 'quote not in a browser tool result of this attempt'],
+    ])
+  })
+
+  it("needs an action before the quote and a quote from the attempt's own window", () => {
+    const transcript = transcriptOf([
+      browser('snapshot', 'Skill Alpha One'),
+      browser('click'),
+      record('1'),
+      browser('click'),
+      browser('snapshot', 'Skill Beta Two'),
+      record('2'),
+      record('3'),
+    ])
+    const coverage = checkCoverage(
+      fns('first', 'second', 'third', 'unwritten'),
+      [
+        attempt('1', 'first', 'passed', 'Skill Alpha One'),
+        attempt('2', 'second', 'passed', 'Skill Alpha One'),
+        attempt('3', 'third', 'passed', 'Skill Beta Two'),
+        attempt('9', 'unwritten', 'passed', 'Skill Beta Two'),
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['first', 'unsupported', 'no browser action before the quoted result'],
+      ['second', 'unsupported', 'quote not in a browser tool result of this attempt'],
+      ['third', 'passed', undefined],
+      ['unwritten', 'unsupported', 'record not written in this session'],
+    ])
+  })
+
+  it('needs a reload after the change for a passed reload function, but not for a failed one', () => {
+    const transcript = transcriptOf([
+      browser('click'),
+      browser('snapshot', 'Skill Alpha One'),
+      record('1'),
+      record('2'),
+      browser('click', 'ok', '_b'),
+      browser('navigate'),
+      browser('snapshot', 'Skill Alpha One', '_b'),
+      record('3'),
+      browser('navigate'),
+      browser('snapshot', 'Skill Alpha One'),
+      record('4'),
+    ])
+    const coverage = checkCoverage(
+      fns('saved!', 'lost!', 'reloaded!', 'reload-only!'),
+      [
+        attempt('1', 'saved!', 'passed', 'Skill Alpha One'),
+        attempt('2', 'lost!', 'failed', 'Skill Alpha One'),
+        attempt('3', 'reloaded!', 'passed', 'Skill Alpha One'),
+        attempt('4', 'reload-only!', 'passed', 'Skill Alpha One'),
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['saved!', 'unsupported', 'no reload between the change and the quoted result'],
+      ['lost!', 'failed', undefined],
+      ['reloaded!', 'passed', undefined],
+      ['reload-only!', 'unsupported', 'no reload between the change and the quoted result'],
+    ])
+  })
+
+  it('counts every listed function: blocked, unattempted and missing ones, with invalid and unknown records', () => {
+    const transcript = transcriptOf([browser('click'), browser('snapshot', 'Skill Alpha One'), record('1')])
+    const coverage = checkCoverage(
+      fns('done', 'blocked', 'skipped', 'missing'),
+      [
+        attempt('1', 'done', 'passed', 'Skill Alpha One'),
+        attempt('2', 'blocked', 'blocked', 'no reorder control'),
+        attempt('3', 'skipped', 'unattempted', 'ran out of ideas'),
+        attempt('4', 'other', 'passed', 'Skill Alpha One'),
+        { id: 'bad' },
+      ],
+      transcript,
+    )
+    expect(verdicts(coverage)).toEqual([
+      ['done', 'passed', undefined],
+      ['blocked', 'blocked', undefined],
+      ['skipped', 'unattempted', undefined],
+      ['missing', 'unattempted', undefined],
+    ])
+    expect(coverage).toMatchObject({ records: 5, invalid: ['bad'], unknown: ['other'], transcript: true })
+  })
+
+  it('covers nothing without a transcript', () => {
+    const coverage = checkCoverage(fns('done'), [attempt('1', 'done', 'passed', 'Skill Alpha One')])
+    expect(coverage.transcript).toBe(false)
+    expect(verdicts(coverage)).toEqual([['done', 'unsupported', 'no transcript']])
+  })
+
+  it('renders covered counts, the open functions and the no-transcript state per session', () => {
+    const transcript = transcriptOf([browser('click'), browser('snapshot', 'Skill Alpha One'), record('1')])
+    const files = [attempt('1', 'done', 'failed', 'Skill Alpha One'), attempt('2', 'blocked', 'blocked', 'no control')]
+    const report = renderReport({
+      sessions: [session({ charter: 'c4' }), session({ charter: 'c8' })],
+      summaries: new Map([['c4', { visited: ['Skills'] }]]),
+      coverage: new Map([
+        ['c4', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
+        ['c8', checkCoverage(fns('done'), files)],
+      ]),
+      found: 0,
+    })
+    expect(report).toContain(
+      '- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing; visited Skills',
+    )
+    expect(report).toContain(
+      '- **c8**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
+        'unknown function ids: blocked; no summary (session cut)',
+    )
+  })
+})
+
+describe('runSummary', () => {
+  it('reads attempt records and the transcript of each session against functions.json', async () => {
+    const qaDir = join(dir, 'qa')
+    const outDir = join(dir, 'out')
+    await mkdir(join(outDir, 'c4/attempts'), { recursive: true })
+    await mkdir(qaDir)
+    const list = [{ id: 'skill-create', outcome: 'shows' }]
+    await writeFile(join(qaDir, 'functions.json'), JSON.stringify({ c4: list, c8: list }))
+    await writeFile(join(outDir, 'c4/session.json'), JSON.stringify(session({ charter: 'c4' })))
+    // A save step cut short: the transcript is broken, and that session counts as having none.
+    await mkdir(join(outDir, 'c8'))
+    await writeFile(join(outDir, 'c8/session.json'), JSON.stringify(session({ charter: 'c8' })))
+    await writeFile(join(outDir, 'c8/transcript.json'), '[{"message":')
+    await writeFile(join(outDir, 'c4/findings.json'), JSON.stringify({ visited: ['Skills'], findings_written: 0 }))
+    const observed = 'button "Skill Alpha One"'
+    await writeFile(
+      join(outDir, 'c4/attempts/1.json'),
+      JSON.stringify({ function: 'skill-create', setup: 's', action: 'a', expected: 'e', observed, status: 'passed' }),
+    )
+    await writeFile(join(outDir, 'c4/attempts/2.json'), '{ not json')
+    const steps = [
+      ['mcp__playwright__browser_click', 'ok'],
+      ['mcp__playwright__browser_snapshot', observed],
+      ['Write', 'ok', join(outDir, 'c4/attempts/1.json')],
+    ]
+    const transcript = steps.flatMap(([name, content, path], i) => [
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: `t${i}`, name, input: { file_path: path } }] },
+      },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `t${i}`, content }] } },
+    ])
+    await writeFile(join(outDir, 'c4/transcript.json'), JSON.stringify(transcript))
+    const stepSummary = join(dir, 'step-summary.md')
+
+    const { report } = await runSummary(outDir, qaDir, stepSummary)
+
+    expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2; visited Skills')
+    expect(report).toContain(
+      '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
+    )
+    expect(await readFile(join(outDir, 'report.md'), 'utf8')).toBe(report)
+    expect(await readFile(stepSummary, 'utf8')).toBe(report)
   })
 })
 

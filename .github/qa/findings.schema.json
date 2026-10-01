@@ -3,17 +3,8 @@
   "additionalProperties": false,
   "properties": {
     "visited": { "type": "array", "items": { "type": "string" } },
-    "skipped": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": { "screen": { "type": "string" }, "reason": { "type": "string" } },
-        "required": ["screen", "reason"]
-      }
-    },
     "findings_written": { "type": "integer", "minimum": 0 },
     "notes": { "type": "string" }
   },
-  "required": ["visited", "skipped", "findings_written"]
+  "required": ["visited", "findings_written"]
 }

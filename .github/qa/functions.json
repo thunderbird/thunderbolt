@@ -1,0 +1,261 @@
+{
+  "c1-first-run": [
+    { "id": "sign-in", "outcome": "A fresh address and the code 12345678 sign in and open onboarding" },
+    {
+      "id": "onboarding-complete",
+      "outcome": "Every onboarding step can be completed, and the optional ones skipped, ending in the app"
+    },
+    {
+      "id": "onboarding-back",
+      "outcome": "Going back and forward between onboarding steps keeps what was already entered"
+    },
+    {
+      "id": "onboarding-name",
+      "outcome": "The name entered during onboarding shows as the preferred name in Settings → Preferences",
+      "reload": true
+    },
+    {
+      "id": "welcome-dialog",
+      "outcome": "The welcome dialog closes with Continue and does not come back",
+      "reload": true
+    },
+    {
+      "id": "first-chat",
+      "outcome": "The first message gets the fake reply and the chat stays listed",
+      "reload": true
+    },
+    {
+      "id": "sign-out-keep",
+      "outcome": "After signing out keeping the data and signing in again with the same address, the earlier chat is there"
+    },
+    {
+      "id": "sign-out-wipe",
+      "outcome": "After signing out with this device's data deleted and signing in again, the app works and a new message gets a reply"
+    },
+    {
+      "id": "delete-account",
+      "outcome": "Deleting the account signs the user out, and signing in again with the same address starts a new, empty account"
+    }
+  ],
+  "c2-chat-power-user": [
+    {
+      "id": "long-thread",
+      "outcome": "A thread of 12 or more messages, with a 2,000-character prompt and one with Markdown and code, shows every message in order with Markdown and code rendered"
+    },
+    { "id": "stop-reply", "outcome": "Stopping a reply mid-stream ends it, and the next message gets a full reply" },
+    { "id": "regenerate", "outcome": "Retrying or regenerating a reply gives a new reply in its place" },
+    { "id": "chat-rename", "outcome": "A renamed chat shows its new name in the sidebar", "reload": true },
+    {
+      "id": "chat-delete",
+      "outcome": "A deleted chat is gone from the sidebar and the other chats remain",
+      "reload": true
+    },
+    { "id": "chat-clear-all", "outcome": "Clearing all chats leaves the sidebar without chats", "reload": true },
+    {
+      "id": "search",
+      "outcome": "The search palette finds a word from an earlier message, and opening the result shows that chat"
+    },
+    { "id": "quote-reply", "outcome": "Quoting part of an earlier message puts that part into the next message" },
+    {
+      "id": "attach-files",
+      "outcome": "sample.pdf and sample.png attached with the file picker are sent with the message and open from the thread"
+    },
+    { "id": "attach-remove", "outcome": "An attachment removed before sending is not sent" },
+    {
+      "id": "model-error",
+      "outcome": "With \"GLM 5.3 Flash\", which is not configured here, the app shows an error for the message, and after switching back to \"Opus 5\" the next message gets a reply"
+    }
+  ],
+  "c3-models-providers": [
+    { "id": "picker-lists", "outcome": "The model picker lists \"Opus 5\", \"GLM 5.3 Flash\" and \"GLM 5.3\"" },
+    { "id": "models-reply", "outcome": "Each of those models answers a short prompt with a relevant reply" },
+    {
+      "id": "switch-mid-thread",
+      "outcome": "After switching the model in the middle of a thread, the new model's reply follows the earlier turns"
+    },
+    { "id": "model-persists", "outcome": "The model selected in a thread is still the selected one", "reload": true },
+    {
+      "id": "multi-turn",
+      "outcome": "In three turns with \"Opus 5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+    },
+    {
+      "id": "model-disable",
+      "outcome": "A model disabled in Settings → Models is missing from the picker, and is back once enabled",
+      "reload": true
+    },
+    {
+      "id": "custom-model",
+      "outcome": "A custom model can be added, edited and deleted in Settings → Models, and each change shows there",
+      "reload": true
+    },
+    {
+      "id": "custom-model-unreachable",
+      "outcome": "A custom model whose endpoint is unreachable (http://localhost:9) shows an error in its connection test and in chat, and nothing hangs"
+    },
+    { "id": "custom-model-invalid-url", "outcome": "An empty or malformed endpoint URL is refused with a message" }
+  ],
+  "c4-skills-projects": [
+    { "id": "skill-create", "outcome": "A skill created in Settings → Skills shows in the list", "reload": true },
+    {
+      "id": "skill-create-home",
+      "outcome": "The \"Add a skill\" button on the chat home creates a skill that then shows in Settings → Skills"
+    },
+    {
+      "id": "skill-edit",
+      "outcome": "A skill's edited name and instructions show in Settings → Skills",
+      "reload": true
+    },
+    {
+      "id": "skill-toggle",
+      "outcome": "A disabled skill shows as disabled and is missing from the slash (/) popup; enabled again, it is back",
+      "reload": true
+    },
+    {
+      "id": "skill-delete",
+      "outcome": "A deleted skill is gone from Settings → Skills and from the slash popup",
+      "reload": true
+    },
+    { "id": "skill-reorder", "outcome": "Skills reordered in Settings → Skills keep the new order", "reload": true },
+    {
+      "id": "skill-slash",
+      "outcome": "Typing / in the composer lists the enabled skills, and the one picked goes into the sent message"
+    },
+    {
+      "id": "skill-invalid-input",
+      "outcome": "Invalid or unusual input in the skill form is refused with a message or saved intact, never breaking the list or logging an error"
+    },
+    {
+      "id": "project-create",
+      "outcome": "A project created with instructions shows in the sidebar with its instructions",
+      "reload": true
+    },
+    { "id": "project-rename", "outcome": "A renamed project shows its new name", "reload": true },
+    { "id": "project-instructions", "outcome": "A project's edited instructions show in the project", "reload": true },
+    { "id": "project-delete", "outcome": "A deleted project is gone from the sidebar", "reload": true },
+    {
+      "id": "chat-move",
+      "outcome": "A chat moved into a project, then into another one, then out of projects, shows in the right place each time",
+      "reload": true
+    },
+    {
+      "id": "project-delete-with-chats",
+      "outcome": "Deleting a project that still has chats says what happens to them, and the chats end up as it said",
+      "reload": true
+    },
+    {
+      "id": "project-invalid-input",
+      "outcome": "Invalid or unusual input in the project form is refused with a message or saved intact, never breaking the sidebar or logging an error"
+    }
+  ],
+  "c5-widgets-connections": [
+    { "id": "weather-widget", "outcome": "Asking for the weather in a city renders a weather widget for that city" },
+    { "id": "map-widget", "outcome": "Asking to compare several cities on a map renders one map with all of them" },
+    {
+      "id": "quiz-widget",
+      "outcome": "Asking for a multiple-choice question renders a quiz whose answers can be clicked, and answering shows whether it was right"
+    },
+    {
+      "id": "search-sources",
+      "outcome": "Asking for web resources gives a reply with sources, and its link previews and citations open inside the app"
+    },
+    {
+      "id": "pdf-read",
+      "outcome": "With sample.pdf attached, the reply states what the file really says, and the file opens in the viewer"
+    },
+    {
+      "id": "html-artifact",
+      "outcome": "Asking for a small HTML page with a click counter gives an artifact that opens, and its button counts clicks"
+    },
+    {
+      "id": "mcp-echo",
+      "outcome": "An MCP server added at http://127.0.0.1:9879/mcp shows as connected, and asking for its echo tool runs the tool and shows its real result"
+    },
+    {
+      "id": "mcp-broken-url",
+      "outcome": "Changing the server's URL to port 9 is refused or shows a connection error, and a chat that needs the tool says it failed without hanging"
+    },
+    { "id": "mcp-remove", "outcome": "A removed MCP server is gone from the list", "reload": true },
+    {
+      "id": "project-instructions-reply",
+      "outcome": "In a chat inside a project whose instructions set a clear, checkable rule (for example: end every reply with the word BANANA), the real reply follows the rule"
+    }
+  ],
+  "c6-settings-data": [
+    { "id": "pref-name", "outcome": "A changed preferred name shows in Settings → Preferences", "reload": true },
+    { "id": "theme", "outcome": "A chosen theme applies to the app", "reload": true },
+    {
+      "id": "language",
+      "outcome": "Another language translates the interface, and switching back restores English",
+      "reload": true
+    },
+    {
+      "id": "units",
+      "outcome": "A changed distance unit, temperature unit, time format and currency show as chosen",
+      "reload": true
+    },
+    {
+      "id": "location",
+      "outcome": "A set location shows in Preferences, and a cleared one stays cleared",
+      "reload": true
+    },
+    {
+      "id": "privacy-toggles",
+      "outcome": "The data collection switch and any proxy or privacy switch keep their state",
+      "reload": true
+    },
+    {
+      "id": "export-import",
+      "outcome": "Data exported, then deleted from this device, then imported again brings back the chats and the skill"
+    },
+    { "id": "devices-page", "outcome": "Settings → Devices lists this device" },
+    { "id": "settings-pages", "outcome": "Every other settings page opens without an error" }
+  ],
+  "c7-two-devices": [
+    {
+      "id": "sync-on",
+      "outcome": "Sync turns on for the same account on both devices, through any approval or recovery-key flow the app shows"
+    },
+    {
+      "id": "chat-sync",
+      "outcome": "A chat created on A shows on B without a reload, and B's rename and delete show on A"
+    },
+    { "id": "skill-sync", "outcome": "A skill created on A shows on B, and B's rename and delete show on A" },
+    {
+      "id": "setting-sync",
+      "outcome": "A setting changed on one device (for example the theme) changes on the other"
+    },
+    { "id": "devices-list", "outcome": "Settings → Devices on A lists both devices" },
+    { "id": "device-revoke", "outcome": "Revoking B from A ends B's access, and B says so" }
+  ],
+  "c8-phone": [
+    { "id": "sidebar-drawer", "outcome": "The sidebar drawer opens and closes, and its contents fit the screen" },
+    {
+      "id": "chat-send",
+      "outcome": "Messages, a long one too, are sent and get the fake reply, and the thread fits the screen"
+    },
+    {
+      "id": "chat-rename-delete",
+      "outcome": "A renamed chat shows its new name and a deleted one is gone",
+      "reload": true
+    },
+    {
+      "id": "skill-crud",
+      "outcome": "A skill created, edited and then deleted on the phone shows each change in Settings → Skills",
+      "reload": true
+    },
+    {
+      "id": "skill-slash",
+      "outcome": "The slash (/) popup fits the screen and puts the picked skill into the message"
+    },
+    {
+      "id": "project-create-delete",
+      "outcome": "A project created on the phone shows in the sidebar, and once deleted it is gone",
+      "reload": true
+    },
+    {
+      "id": "settings-fit",
+      "outcome": "Preferences, Skills, Models, Connections and Devices open and fit the screen (the overflow check finds nothing)"
+    },
+    { "id": "pref-changes", "outcome": "A changed preferred name, theme and unit show as chosen", "reload": true }
+  ]
+}

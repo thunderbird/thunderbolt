@@ -100,7 +100,12 @@ const buildSsoPlugins = () => {
               pkce: true,
               clientId: settings.oidcClientId,
               clientSecret: settings.oidcClientSecret,
-              discoveryEndpoint: settings.oidcDiscoveryUrl || `${settings.oidcIssuer}/.well-known/openid-configuration`,
+              // Left undefined so Better Auth derives it from the issuer. Its own
+              // helper strips a trailing slash, which OIDC Discovery requires and
+              // our previous concatenation did not: an issuer ending in `/` gave a
+              // double slash and a 404. Providers such as Authentik publish them
+              // that way.
+              discoveryEndpoint: settings.oidcDiscoveryUrl || undefined,
               scopes: ['openid', 'profile', 'email'],
             },
           },

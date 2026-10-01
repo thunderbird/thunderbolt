@@ -143,6 +143,11 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `postgres.storage` | `5Gi` | Postgres PVC size |
 | `postgres.storageClassName` | `""` (uses cluster default) | StorageClass for the Postgres PVC. Set explicitly on clusters with a node-local default or node churn; `"-"` binds a PV you provisioned yourself. New installs only, see below |
 | `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
+| `keycloak.enabled` | `true` | Deploy the bundled Keycloak. Set `false` when using an external `oidc.issuer` |
+| `oidc.issuer` | `""` | External IdP issuer URL (leave empty to use the bundled Keycloak) |
+| `oidc.discoveryUrl` | `""` | Override the discovery document URL when it differs from `<issuer>/.well-known/openid-configuration` |
+| `oidc.clientId` | `""` | External IdP client ID |
+| `oidc.clientSecretBase64` | `""` | Base64-encoded external IdP client secret |
 
 See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
 
@@ -219,6 +224,24 @@ starting fails in ways that are easy to miss.
 The sync service's own `powersync_storage` database is deliberately not in the
 dump. It rebuilds itself from the application database, so after this every
 client does one full re-sync.
+
+### Using an external identity provider
+
+Set `keycloak.enabled=false` and the `oidc.*` values instead. Whatever OIDC
+provider you use, register this callback URL with it:
+
+```
+<appUrl>/v1/api/auth/sso/callback/sso
+```
+
+```bash
+helm upgrade thunderbolt . -n thunderbolt \
+  --reuse-values \
+  --set keycloak.enabled=false \
+  --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
+  --set oidc.clientId=<client-id> \
+  --set oidc.clientSecretBase64=$(echo -n '<client-secret>' | base64)
+```
 
 ## Templates
 

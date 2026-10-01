@@ -1,6 +1,6 @@
 # Using Thunderbolt
 
-Thunderbolt is a chat client for the AI models and agents you choose.
+Thunderbolt is an open-source AI workspace. Chat with its built-in assistant, or bring your own agent, like Claude Code or Codex.
 
 ## Chats
 
@@ -62,7 +62,7 @@ Search runs against an index on the device, so it works offline and no query lea
 | Preferences | Appearance, your name, language and units, privacy, network proxy, sync, export, deletion |
 | Devices     | The devices signed into the account, and revoking one                                     |
 
-Your preferred name, location, language, units, and usage-data opt-in follow the account. Theme, haptics, link behaviour, and voice provider stay on this device, along with model API keys, MCP servers and their credentials, and whether this device syncs at all.
+Your preferred name, location, language, units, and usage-data preference follow the account. Theme, haptics, link behaviour, and voice provider stay on this device, along with model API keys, MCP servers and their credentials, and whether this device syncs at all.
 
 Attached files stay on the device that added them too: the message syncs, the file does not. [Apps and Sync](./apps-and-sync.md) describes what replicates between devices and how a new device is approved.
 

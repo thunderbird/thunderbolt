@@ -1,8 +1,8 @@
 # Connections
 
-Thunderbolt can reach outside itself in two ways: **MCP servers**, which add tools to the assistant so it can search a wiki, query a database or file a ticket, and **external agents**, which hand a chat to a different agent such as a coding agent. Both are added in Settings, and both can be restricted by whoever runs your deployment.
+You can connect Thunderbolt to other tools and agents. **MCP servers** give the assistant new abilities, like searching a wiki, querying a database or filing a ticket. **External agents**, like Claude Code or Codex, can take over a chat in place of the built-in assistant. Your admin can limit which ones you're allowed to add.
 
-Alongside them sit the ready-made account integrations, which let the assistant read your mail, calendar or files. MCP servers and integrations live in **Settings → Connections**. Agents live in **Settings → Agents**.
+There are also ready-made integrations that let the assistant read your mail, calendar and files. You'll find MCP servers and integrations in **Settings → Connections**, and agents in **Settings → Agents**.
 
 ## MCP servers
 

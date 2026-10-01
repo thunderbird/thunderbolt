@@ -8,15 +8,11 @@ An open-source AI client you deploy yourself. It runs on the web, macOS, Windows
 
 ### Who makes it, and how is it funded?
 
-We are MZLA Technologies, the entity behind Thunderbird, funded through a dedicated investment from Mozilla.
+We are Thunderbird Technologies Corporation, the entity behind Thunderbird, funded through a dedicated investment from Mozilla.
 
 ### Is it part of Thunderbird?
 
 No. It is its own product from MZLA, the same entity that makes the Thunderbird email client.
-
-### Is there a hosted version?
-
-A hosted version is planned. There is no release date.
 
 ## Cost and licensing
 
@@ -32,21 +28,19 @@ The software is free. It is licensed under the [Mozilla Public License 2.0](http
 | A local model         | Nothing beyond your own hardware    | Run through Ollama or llama.cpp on the same machine as the app |
 | System-managed models | Your deployment's provider accounts | Only if you supply the backend with provider keys              |
 
-### Is there a paid tier or a per-seat license?
+### Is there a paid or hosted version?
 
-No. There is no subscription, no seat count, and no license key. The project is community-supported today; deployment questions go to the [issue tracker](https://github.com/thunderbird/thunderbolt/issues).
-
-### Do I have to publish changes I make?
-
-MPL 2.0 is file-level copyleft. Modifications to Thunderbolt's own files must be shared under the same license if you distribute them; your separate files are unaffected. Running a modified version internally is not distribution.
+Not currently, but there is enterprise support available.
 
 ## Data
 
 ### Where does my data live?
 
-On the device. Every client reads and writes a local database first, so the app works against local data even when the network does not.
+In two places: a local database on each device, and, once you sign in, your deployment's PostgreSQL database.
 
-Cross-device sync is off by default and signing in turns it on for that device. An anonymous session never syncs. The toggle is under _Settings → Preferences → Data_. When it is on, synced rows are stored in your deployment's PostgreSQL database. Encryption applies to what is sent and stored on the server; the copy on the device stays readable locally so the app can search and render it.
+Every client reads and writes its local database first, so the app keeps working against local data even when the network is down. Signing in turns on cross-device sync for that device, and synced rows are then also stored on your deployment's server so your other devices can pick them up.
+
+Whether the server copy is encrypted depends on the deployment: when the server has end-to-end encryption enabled (`E2EE_ENABLED`), what is sent to and stored on the server is encrypted. Either way, the copy on the device stays readable locally so the app can search and render it.
 
 ### Can the server read my chats?
 
@@ -89,7 +83,7 @@ One exception: if you connect an external coding agent that stages files on its 
 
 ### Do you collect analytics?
 
-Events from the app, only if a user opts in: the toggle sits under _Settings → Preferences_, off by default. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
+Events from the app, only while the user has the toggle under _Settings → Preferences_ turned on. A deployment that sets `POSTHOG_API_KEY` also records one event per model call it pays for, plus an error event when one fails, attributed to the user id and independent of that toggle. Calls on a user's own key or a local model record nothing. No event carries prompts, responses, or API keys, and every one is listed in [Telemetry](../TELEMETRY.md). Leave `POSTHOG_API_KEY` unset to send nothing at all.
 
 ## Models
 

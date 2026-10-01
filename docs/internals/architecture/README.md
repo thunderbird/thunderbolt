@@ -169,7 +169,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 | PostgreSQL   | Server-side store behind PowerSync and Better Auth                         | No                         |
 | Keycloak     | Default OIDC provider in the self-hosted stack                             | Any OIDC-compliant IdP     |
 | Resend       | Transactional email delivery                                               | Swap for any SMTP/provider |
-| PostHog      | In-app analytics (opt-in)                                                  | Optional                   |
+| PostHog      | In-app analytics (user toggle)                                             | Optional                   |
 | AI providers | Anthropic, OpenAI, OpenRouter, Tinfoil, and any OpenAI-compatible endpoint | Bring your own             |
 
 ## Build and Release

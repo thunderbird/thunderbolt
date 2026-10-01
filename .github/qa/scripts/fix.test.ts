@@ -212,6 +212,23 @@ describe('route', () => {
     expect(calls).toEqual([])
   })
 
+  test('a real-AI finding goes to a person even in a fixable area: the fix check runs on the fake AI', async () => {
+    const charterDir = 'c5-widgets-connections'
+    const filed: Filed[] = [{ fp: 'fp-real', charterDir, id: '1', severity: 'High', action: 'created' }]
+    const confirmed: VerifiedFinding[] = [
+      { charterDir, id: '1', finding: finding('chat'), replay: { failed: 2, runs: 3 }, artifacts: {} },
+    ]
+    const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
+    await put(join(outDir, 'filed.json'), JSON.stringify(filed))
+    await put(join(outDir, 'verified.json'), JSON.stringify(verified))
+    await put(join(outDir, charterDir, 'repro', '1.spec.ts'), spec)
+
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+
+    expect(plan.fixes).toEqual([])
+    expect(plan.humanRequired.map((t) => [t.fp, t.area])).toEqual([['fp-real', 'chat']])
+  })
+
   test('refuses a live run without a Linear key', async () => {
     await setup()
     await expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow(

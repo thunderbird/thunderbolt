@@ -10,7 +10,7 @@ import { rm } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
 import { parseArgs, stripVTControlCharacters } from 'node:util'
 import { z } from 'zod'
-import { hasOracle, lintReproSpec, loadFindings, type FindingFile, type RejectedFile } from './findings'
+import { hasOracle, lintReproSpec, loadFindings, realAiCharters, type FindingFile, type RejectedFile } from './findings'
 
 export type VerifiedFinding = FindingFile & {
   /** `error`: the first failed run's error message, shown to the judge. */
@@ -129,6 +129,10 @@ const outcomesBySpec = (report: ReplayReport) => {
 
 const specPath = (file: FindingFile) => `${file.charterDir}/${file.finding.repro_spec}`
 
+/** Failed runs that confirm a finding: all of them, or two in three for a real-AI charter, whose replies vary. */
+const confirmingFailures = (file: FindingFile, runs: number) =>
+  realAiCharters.has(file.charterDir) ? Math.ceil((runs * 2) / 3) : runs
+
 /** Why the control spec says the stack is broken, or undefined when it passed every run. */
 const stackProblem = (control: VerifiedFinding['replay'], report: ReplayReport) =>
   control.runs > 0 && control.failed === 0
@@ -147,7 +151,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
 
 /**
  * Verify step 1: schema, oracle, spec lint, then one Playwright run replaying every surviving spec three times.
- * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. The same run replays
+ * A spec asserts the expected behaviour, so failed 3/3 = confirmed, 1–2 = flaky, 0 = dropped. A real-AI charter's
+ * findings replay against the real providers, so 2/3 confirms them and only 1/3 is flaky. The same run replays
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, nothing is confirmed and
  * `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped at
  * gate `lint` and the rest replay again without them. Writes and returns `<outDir>/candidates.json`. Needs NO
@@ -199,7 +204,7 @@ export const replay = async (outDir: string, runReplay: RunReplay = runPlaywrigh
       const { failed, runs } = replayed.replay
       if (result.stack_unhealthy) result.dropped.push({ file: replayed, gate: 'replay', reason: 'stack unhealthy' })
       else if (failed === 0) result.dropped.push({ file: replayed, gate: 'replay', reason: `failed 0/${runs} replays` })
-      else if (failed === runs) result.confirmed.push(replayed)
+      else if (failed >= confirmingFailures(file, runs)) result.confirmed.push(replayed)
       else result.flaky.push(replayed)
     }
   }

@@ -13,6 +13,7 @@ import {
   lintReproSpec,
   loadFindings,
   type RawFinding,
+  realAiCharters,
   severity,
 } from './findings'
 
@@ -225,4 +226,10 @@ describe('severity', () => {
   ] as const)('%s + %s is %s', (area, type, expected) => {
     expect(severity({ ...finding, area, oracle: { type, evidence: 'quoted' } })).toBe(expected)
   })
+})
+
+test('every real-AI charter id names a charter file', async () => {
+  for (const charter of realAiCharters) {
+    expect(await Bun.file(join(import.meta.dir, `../charters/${charter}.md`)).exists(), charter).toBe(true)
+  }
 })

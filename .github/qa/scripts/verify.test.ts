@@ -186,6 +186,32 @@ describe('replay', () => {
     ])
   })
 
+  test('a real-AI charter confirms at 2/3 failures and is flaky at 1/3, while other charters still need 3/3', async () => {
+    const real = 'c5-widgets-connections'
+    for (const title of ['twice', 'once', 'never', 'always']) {
+      const finding = { ...makeFinding(title, pageError), charter: real }
+      await Bun.write(join(outDir, real, 'findings', `${title}.json`), JSON.stringify(finding))
+      await Bun.write(join(outDir, real, finding.repro_spec), validSpec(title))
+    }
+    await writeFinding(makeFinding('fake-twice', pageError))
+    const runner = fakeRunner(
+      {
+        [`${real}/repro/twice.spec.ts`]: ['failed', 'passed', 'timedOut'],
+        [`${real}/repro/once.spec.ts`]: ['passed', 'failed', 'passed'],
+        [`${real}/repro/never.spec.ts`]: ['passed', 'passed', 'passed'],
+        [`${real}/repro/always.spec.ts`]: ['failed', 'failed', 'failed'],
+        'c2-chat/repro/fake-twice.spec.ts': ['failed', 'passed', 'failed'],
+      },
+      [],
+    )
+
+    const result = await replay(outDir, runner, qaDir)
+
+    expect(titles(result.confirmed)).toEqual(['always', 'twice'])
+    expect(titles(result.flaky)).toEqual(['fake-twice', 'once'])
+    expect(droppedAt(result, 'replay').map((entry) => entry.file.id)).toEqual(['never'])
+  })
+
   test('a spec missing from the report is dropped, and nothing replayable means no Playwright run', async () => {
     await writeFinding(makeFinding('lost', pageError))
     const calls: string[][] = []

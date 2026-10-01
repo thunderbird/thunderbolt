@@ -34,6 +34,13 @@ const oracleTypes = [
   'assert-failed',
 ] as const
 
+/**
+ * Charters explored with the app's real AI providers. Their findings replay on a stack with the real providers too,
+ * where two failed runs in three confirm one, and they never go to the fix agent, whose check runs on the fake AI.
+ * The workflow reads this set to plan its legs.
+ */
+export const realAiCharters = new Set(['c3-models-providers', 'c5-widgets-connections'])
+
 export type Area = (typeof areas)[number]
 export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
 

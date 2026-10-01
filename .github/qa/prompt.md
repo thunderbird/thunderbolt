@@ -110,9 +110,10 @@ append; number findings 1, 2, 3…
      `sendChatPrompt(page, text)` sends a chat message; `collectPageErrors(page)` returns an array that fills with
      uncaught errors; `openSidebarOnMobile(page)` opens the sidebar on a phone. The base URL is set, so use relative
      URLs such as `page.goto('/settings/skills')`.
-   - Before its first chat message, a spec selects the fake AI just as you did:
+   - Before its first chat message, a spec selects the model you used, just as you did:
      `await page.getByTestId('model-selector-trigger').click()`, then
-     `await page.getByRole('button', { name: 'Opus 5', exact: true }).click()`. Otherwise no reply ever comes.
+     `await page.getByRole('button', { name: 'Opus 5', exact: true }).click()` (or the other model's name).
+     Otherwise no reply ever comes.
    - After an action that saves, wait until the page shows the result (the new item or value) before the spec
      reloads or navigates away, so a reload never beats the save.
    - A phone finding sets its viewport first: `test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })`.

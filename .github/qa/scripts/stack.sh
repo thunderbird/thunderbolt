@@ -14,11 +14,15 @@
 #   .github/qa/scripts/stack.sh start <serve args> / stop     for CI steps: serve in the background, return once
 #                                                             ready; the pids go to $RUNNER_TEMP/qa-stack.pid and
 #                                                             qa-stack.pids
+#   .github/qa/scripts/stack.sh lock                          for CI: take root away from this user for the rest
+#                                                             of the job
 #
 # `serve` prints "stack ready" once every server answers, and exits when any of them does.
 # QA_REAL_PROVIDERS=true hands the backend ANTHROPIC_API_KEY, TINFOIL_API_KEY, TINFOIL_ENCLAVE_URL and EXA_API_KEY
-# from the environment instead of the fake provider. DATABASE_URL + POWERSYNC_URL switch the backend from pglite to
-# an already migrated Postgres with PowerSync, as in nightly.yml.
+# from the environment instead of the fake provider. With QA_BACKEND_USER=<name> as well (CI), `start` creates that
+# OS user and moves the keys into a file only it can read, and the backend runs as that user, so no process of the
+# job's own user, which later runs model-written specs, holds them. DATABASE_URL + POWERSYNC_URL switch the backend
+# from pglite to an already migrated Postgres with PowerSync, as in nightly.yml.
 
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -41,7 +45,18 @@ if [ "$1" = build ]; then
 fi
 
 state=${RUNNER_TEMP:-/tmp}/qa-stack
+backend_keys=/home/${QA_BACKEND_USER:-}/keys.env
 if [ "$1" = start ]; then
+  if [ -n "${QA_BACKEND_USER:-}" ]; then
+    sudo useradd --create-home "$QA_BACKEND_USER"
+    # Lets that user reach bun and the checkout without listing this user's home.
+    sudo chmod o+x "$HOME"
+    sudo install --owner "$QA_BACKEND_USER" --mode 0400 /dev/null "$backend_keys"
+    printf 'ANTHROPIC_API_KEY=%s\nTINFOIL_API_KEY=%s\nTINFOIL_ENCLAVE_URL=%s\nEXA_API_KEY=%s\n' \
+      "$ANTHROPIC_API_KEY" "$TINFOIL_API_KEY" "$TINFOIL_ENCLAVE_URL" "$EXA_API_KEY" | sudo tee "$backend_keys" > /dev/null
+    # Before any server starts: a process's initial environment stays readable to its own user in /proc.
+    unset ANTHROPIC_API_KEY TINFOIL_API_KEY TINFOIL_ENCLAVE_URL EXA_API_KEY
+  fi
   "$PWD/.github/qa/scripts/stack.sh" serve "${@:2}" > "$state.log" 2>&1 &
   echo $! > "$state.pid"
   until grep -q "stack ready" "$state.log"; do
@@ -57,8 +72,21 @@ if [ "$1" = stop ]; then
   while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
   exit
 fi
+if [ "$1" = lock ]; then
+  # Root could read the backend's keys, and the runner's memory, which holds every secret the job references. The
+  # docker group is root in all but name, and in sudoers the last matching rule wins.
+  sudo rm -f /var/run/docker.sock
+  sudo sh -c "umask 0337 && echo '$(id -un) ALL=(ALL:ALL) NOPASSWD: !ALL' > /etc/sudoers.d/zz-qa-lock"
+  if sudo -n true 2>/dev/null; then echo "sudo still works" >&2; exit 1; fi
+  # Yama 1 or more: a process may read the memory of its own descendants only, not the runner's. No Yama is like 0.
+  if [ "$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 0)" -lt 1 ]; then
+    echo "kernel.yama.ptrace_scope is 0 or missing" >&2
+    exit 1
+  fi
+  exit
+fi
 
-[ "$1" = serve ] || { echo "usage: $0 build <out-dir> [onboarding] | serve|start <dist> [<dist>] | serve|start dev | stop" >&2; exit 2; }
+[ "$1" = serve ] || { echo "usage: $0 build <out-dir> [onboarding] | serve|start <dist> [<dist>] | serve|start dev | stop | lock" >&2; exit 2; }
 trap 'kill $(jobs -p) 2>/dev/null || true; wait' EXIT
 
 origins=http://localhost:1424,http://localhost:1425
@@ -88,6 +116,12 @@ if [ -n "${DATABASE_URL:-}" ]; then
 else
   backend_env+=(DATABASE_DRIVER=pglite)
 fi
+backend=(env "${backend_env[@]}" bun run src/index.ts)
+if [ -n "${QA_BACKEND_USER:-}" ]; then
+  # sudo resets the environment: the backend gets its settings, PATH and the keys file `start` wrote, nothing more.
+  backend=(sudo --user "$QA_BACKEND_USER" --set-home -- env "${backend_env[@]}" "PATH=$PATH"
+    bun "--env-file=$backend_keys" run src/index.ts)
+fi
 
 bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFakeProvider(9878)" &
 bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer(9879)" &
@@ -96,7 +130,7 @@ if [ "$2" = dev ]; then
   (cd backend && exec env "${backend_env[@]}" bun run --watch src/index.ts) &
   env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort &
 else
-  (cd backend && exec env "${backend_env[@]}" bun run src/index.ts) &
+  (cd backend && exec "${backend[@]}") &
   vite preview --outDir "$2" --port 1424 --strictPort &
   if [ -n "${3:-}" ]; then vite preview --outDir "$3" --port 1425 --strictPort & fi
 fi

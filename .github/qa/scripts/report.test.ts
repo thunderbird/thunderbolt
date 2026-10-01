@@ -232,7 +232,9 @@ describe('renderReport', () => {
         unattributed: [],
       },
     })
-    expect(report).toContain('found 6 → oracle 4 → lint 4 → replay 4 (1 flaky) → judge 1 → filed 2')
+    expect(report).toContain(
+      'found 6 → oracle 4 → lint 4 → replay 4 (1 flaky, 0 deferred) → judge 1 (0 deferred) → filed 2',
+    )
     expect(report).toContain('c1/3: **schema** — bad \\| json')
     expect(report).toContain('c1/4: **judge** — known issue')
     expect(report).toContain('dry-run (would created) abcd1234 Medium')
@@ -272,6 +274,52 @@ describe('renderReport', () => {
     expect(report).toContain('| fix | turns | 1 | 90 | 135 |')
     expect(report).toContain('**fix-ab12cd34**: TURN CAP after 90 turns, $8.00; its patch may be partial')
     expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
+  })
+})
+
+describe('renderReport findings and caps', () => {
+  const render = (verified: Verified, charter = 'c1') =>
+    renderReport({ sessions: [session({ charter })], summaries: new Map(), coverage: new Map(), found: 3, verified })
+
+  it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
+    const overflow = { ...verifiedFinding('layout', 'overflow', '2'), replay: { failed: 1, runs: 3 } }
+    overflow.finding = {
+      ...overflow.finding,
+      title: 'Row | spills',
+      oracle: { type: 'overflow', evidence: 'see https://evil.example/x' },
+    }
+    const security = { ...verifiedFinding('security', 'assert-failed', '3'), replay: { failed: 2, runs: 3 } }
+    const report = render({ ...emptyVerified, flaky: [overflow, security] })
+    expect(report).toContain('### Flaky (2), never filed')
+    expect(report).toContain('- c8-phone/2: Row \\| spills — overflow: "see [link removed]" (failed 1/3 replays)')
+    expect(report).toContain('- c8-phone/3: security finding, text withheld (failed 2/3 replays)')
+  })
+
+  it('lists deferred findings and counts them in the gate yield', () => {
+    const report = render({
+      ...emptyVerified,
+      confirmed: [verifiedFinding('chat', 'page-error')],
+      deferred: [
+        {
+          file: verifiedFinding('chat', 'page-error', '4'),
+          step: 'replay',
+          reason: 'over the cap of 20 replayed findings',
+        },
+        {
+          file: verifiedFinding('chat', 'page-error', '5'),
+          step: 'judge',
+          reason: 'over the cap of 15 judged findings',
+        },
+      ],
+    })
+    expect(report).toContain('found 3 → oracle 3 → lint 3 → replay 2 (0 flaky, 1 deferred) → judge 1 (1 deferred)')
+    expect(report).toContain('### Deferred (2), over a cap')
+    expect(report).toContain('- c8-phone/5: **judge** — over the cap of 15 judged findings')
+  })
+
+  it('says app-provider spend is not measured only when a real-AI charter ran', () => {
+    expect(render(emptyVerified, 'c5-widgets-connections')).toContain('App providers (real-AI charters): not measured.')
+    expect(render(emptyVerified)).not.toContain('App providers')
   })
 })
 

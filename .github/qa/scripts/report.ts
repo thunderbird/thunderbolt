@@ -9,7 +9,7 @@ import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import { type Filed, sanitize, type Scorecard } from './file-findings'
-import { type FindingFile, loadFindings } from './findings'
+import { type FindingFile, loadFindings, realAiCharters } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
 
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
@@ -349,6 +349,15 @@ const coverageLine = (charter: string, coverage?: Coverage, summary?: Summary) =
   return `- **${charter}**: ${[...parts, visited].join('; ')}`
 }
 
+/** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
+const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
+  const text =
+    finding.area === 'security'
+      ? 'security finding, text withheld'
+      : `${safe(finding.title, 150)} — ${finding.oracle.type}: "${safe(finding.oracle.evidence, 300)}"`
+  return `- ${charterDir}/${id}: ${text} (failed ${replay.failed}/${replay.runs} replays)`
+}
+
 /** Fix sessions record their metrics as `fix-<fp>`; every other session explored a charter. */
 const isFix = (s: Session) => s.charter.startsWith('fix-')
 
@@ -397,14 +406,16 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
 const gateYield = ({ found, verified, filed }: ReportInput) => {
   if (!verified) return []
   const dropped = (gate: string) => verified.dropped.filter((d) => d.gate === gate).length
+  const deferred = (step: string) => (verified.deferred ?? []).filter((d) => d.step === step).length
   const afterOracle = found - verified.observations.length - dropped('schema')
   const afterLint = afterOracle - dropped('lint')
-  const afterReplay = afterLint - dropped('replay')
+  const afterReplay = afterLint - deferred('replay') - dropped('replay')
   // Flaky findings are never judged, and a regression is a new ticket too.
   const filedCount = filed?.filter((a) => ['created', 'regression'].includes(a.would ?? a.action)).length
   return [
-    `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} (${verified.flaky.length} flaky)` +
-      ` → judge ${verified.confirmed.length}${filedCount === undefined ? '' : ` → filed ${filedCount}`}`,
+    `found ${found} → oracle ${afterOracle} → lint ${afterLint} → replay ${afterReplay} ` +
+      `(${verified.flaky.length} flaky, ${deferred('replay')} deferred) → judge ${verified.confirmed.length} ` +
+      `(${deferred('judge')} deferred)${filedCount === undefined ? '' : ` → filed ${filedCount}`}`,
   ]
 }
 
@@ -440,7 +451,9 @@ export const renderReport = (input: ReportInput) => {
     ),
     '',
     `Total explore: ${total(explore)}. Fix: ${fixes.length ? total(fixes) : 'n/a'}. ` +
-      `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.`,
+      `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.` +
+      // The backend logs no token counts for the app's own provider calls.
+      (explore.some((s) => realAiCharters.has(s.charter)) ? ' App providers (real-AI charters): not measured.' : ''),
     '',
     '## Coverage',
     'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
@@ -449,6 +462,15 @@ export const renderReport = (input: ReportInput) => {
   )
   if (verified) {
     out.push('', '## Gate yield', ...gateYield(input))
+    out.push('', `### Flaky (${verified.flaky.length}), never filed`, ...verified.flaky.map(flakyLine))
+    const deferred = verified.deferred ?? []
+    if (deferred.length > 0) {
+      out.push(
+        '',
+        `### Deferred (${deferred.length}), over a cap`,
+        ...deferred.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.step}** — ${d.reason}`),
+      )
+    }
     out.push(
       '',
       `### Dropped (${verified.dropped.length})`,

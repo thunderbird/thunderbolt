@@ -101,7 +101,14 @@ export const elementAtPoint = (
    * picks something where it doesn't.
    */
   const element = hit?.closest(selector) ?? hit
-  if (!element) {
+  /*
+   * Document roots are excluded from the fallback, not just from the selector.
+   * `<body>` and `<html>` contain every word on the page, so over empty
+   * background the fallback outlined the whole app and handed the chat up to
+   * `maxTextLength` characters of it — which reads to the user as
+   * "clicking nothing selected everything".
+   */
+  if (!element || element === document.body || element === document.documentElement) {
     return null
   }
 

@@ -347,6 +347,120 @@ describe('tools', () => {
     expect(posted.find((entry) => entry.id === 25)?.result).toEqual({ content: 'nope', isError: true })
   })
 
+  describe('failure containment', () => {
+    /*
+     * `registerTool` rejects a descriptor the host would drop. That rejection
+     * used to escape the list handler, which then never posted — so the host
+     * waited out its deadline and lost every *valid* tool too, for the whole
+     * connection.
+     */
+    it('lists the good tools when one descriptor is invalid', async () => {
+      await connectedWithTools([highlight('a'), { ...highlight('a'), name: 'not.allowed' }])
+
+      fromHost({ jsonrpc: '2.0', id: 30, method: 'tools/list', params: {} })
+      await flush()
+
+      const listed = (posted.find((entry) => entry.id === 30)?.result as { tools: Array<{ name: string }> }).tools
+      expect(listed.map((tool) => tool.name)).toEqual(['highlight'])
+    })
+
+    it('reports the rejected descriptor rather than dropping it silently', async () => {
+      await connectedWithTools([{ ...highlight('a'), name: 'not.allowed' }])
+
+      fromHost({ jsonrpc: '2.0', id: 31, method: 'tools/list', params: {} })
+      await flush()
+
+      const report = posted.find((entry) => entry.method === 'ui/notifications/error')
+      expect((report?.params as { message: string }).message).toContain('not.allowed')
+    })
+
+    it('still answers tools/call when a sibling descriptor is invalid', async () => {
+      await connectedWithTools([highlight('row-3'), { ...highlight('a'), name: 'not.allowed' }])
+
+      fromHost({ jsonrpc: '2.0', id: 32, method: 'tools/call', params: { name: 'highlight', arguments: {} } })
+      await flush()
+
+      expect(posted.find((entry) => entry.id === 32)?.result).toEqual({ content: 'highlighted row-3' })
+    })
+
+    /** Skipped, not remembered as broken: the app may fix its descriptor. */
+    it('picks up a descriptor that was corrected after being rejected', async () => {
+      let tools: ThunderboltTool[] = [{ ...highlight('a'), name: 'not.allowed' }]
+      await connectedWithTools(() => tools)
+      fromHost({ jsonrpc: '2.0', id: 33, method: 'tools/list', params: {} })
+      await flush()
+
+      tools = [highlight('a')]
+      fromHost({ jsonrpc: '2.0', id: 34, method: 'tools/list', params: {} })
+      await flush()
+
+      const listed = (posted.find((entry) => entry.id === 34)?.result as { tools: Array<{ name: string }> }).tools
+      expect(listed.map((tool) => tool.name)).toEqual(['highlight'])
+    })
+  })
+
+  describe('syncTools', () => {
+    /*
+     * The option is resolved lazily and nothing observes it, so an app whose
+     * tools appear once data has loaded declared no capability at connect, the
+     * host never asked, and no registry change ever fired to make it ask.
+     */
+    it('announces tools that the option only starts returning later', async () => {
+      let tools: ThunderboltTool[] = []
+      const connection = await connectedWithTools(() => tools)
+      const handshake = posted.find((entry) => entry.method === 'ui/initialize')
+      expect((handshake?.params as { capabilities: { tools: boolean } }).capabilities.tools).toBe(false)
+
+      tools = [highlight('a')]
+      await connection.syncTools()
+
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(true)
+    })
+
+    it('sends nothing when the tools have not moved', async () => {
+      const connection = await connectedWithTools([highlight('a')])
+      // Mirror them once, the way answering a `tools/list` does.
+      fromHost({ jsonrpc: '2.0', id: 35, method: 'tools/list', params: {} })
+      await flush()
+
+      await connection.syncTools()
+
+      expect(posted.some((entry) => entry.method === 'ui/notifications/tools-changed')).toBe(false)
+    })
+  })
+
+  describe('disconnect', () => {
+    /*
+     * `document.modelContext` outlives the connection — it is the document's,
+     * and reconnecting in the same page is ordinary — so tools left behind had
+     * the host listing a dead bridge's, whose `execute` still closed over the
+     * old connection's `resolveTools`.
+     */
+    it('unregisters the tools it mirrored', async () => {
+      const connection = await connectedWithTools([highlight('a')])
+      fromHost({ jsonrpc: '2.0', id: 36, method: 'tools/list', params: {} })
+      await flush()
+      expect(await installModelContext().modelContext.getTools()).toHaveLength(1)
+
+      connection.disconnect()
+
+      expect(await installModelContext().modelContext.getTools()).toEqual([])
+    })
+
+    it('leaves tools the app registered itself alone', async () => {
+      const connection = await connectedWithTools([])
+      await installModelContext().modelContext.registerTool({
+        name: 'app_owned',
+        description: 'Registered by the app, not mirrored.',
+        execute: () => textResult('done'),
+      })
+
+      connection.disconnect()
+
+      expect((await installModelContext().modelContext.getTools()).map((tool) => tool.name)).toEqual(['app_owned'])
+    })
+  })
+
   describe('registered through document.modelContext', () => {
     it('lists a tool the app registered directly', async () => {
       const connection = await connectedWithTools([])

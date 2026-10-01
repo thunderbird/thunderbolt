@@ -108,15 +108,29 @@ export const useMiniAppChatPanelState = (): MiniAppChatPanelState => {
   const openChatId = chatParam ?? localChatId
 
   /*
-   * Release the bridge as soon as the router has caught up.
+   * Drop both local sources as soon as the URL names a chat, because from that
+   * moment it is the only one that can be right.
    *
    * Adjusting state during render, which is the pattern React prescribes for
    * exactly this — the alternative is an effect that lands a frame late. It
-   * cannot loop: clearing makes the condition false. Holding it any longer
-   * would make it a second, stale source of truth, which is the bug above.
+   * cannot loop: clearing makes the condition false.
+   *
+   * It is not only the promotion handoff this covers. The sidebar moves `?chat=`
+   * to another thread without going through `showPersistedChat`, so neither
+   * local value was cleared — and a left-behind `draftChatId` is not merely
+   * stale, it is *read*: `mini-app-page` passes `existingId={draftChatId ? null
+   * : openChatId}`, so a thread with messages in it was handed to
+   * `ChatHydrateHandler` as a new chat and rendered empty over its own row.
+   * Keyed on "is there a URL chat" rather than on matching ids, so navigation
+   * to a *different* thread is covered by the same line as the handoff.
    */
-  if (localChatId !== null && chatParam === localChatId) {
-    setLocalChatId(null)
+  if (chatParam !== null) {
+    if (localChatId !== null) {
+      setLocalChatId(null)
+    }
+    if (draftChatId !== null && draftChatId !== chatParam) {
+      setDraftChatId(null)
+    }
   }
 
   /*

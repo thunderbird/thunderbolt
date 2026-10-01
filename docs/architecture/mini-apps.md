@@ -251,10 +251,11 @@ descriptions also ride here, capped and fenced in `<app-provided-tool-list>` (se
 
 - `get_app_context` asks the frame over `ui/get-context` and returns what it answers _now_; on a timeout, a
   navigation, or an app that never declared the capability it reports the context unavailable rather than anything
-  stale. A tool rather than an injection,
-  because app state changes on every click and injecting it would invalidate the cacheable prompt prefix on every
-  send. It's a cache with no pull: the protocol has no way for the host to _ask_ for context, so an app that
-  stops publishing goes stale silently. That is the contract — publish on every meaningful change.
+  stale. A tool rather than an injection, because app state changes on every click and injecting it would
+  invalidate the cacheable prompt prefix on every send. There is nothing to publish and nothing to keep in sync:
+  the app supplies a `getContext()` the host calls, so the contract is "answer with what is on screen", not
+  "remember to tell us when it changes". The failure mode is an unanswered read, which the model is told about —
+  not a stale one, which it could not detect.
 - `app_<name>` calls the app's own tools. Arguments come from the model; results come back as text.
 
 ### What the model can and cannot cause

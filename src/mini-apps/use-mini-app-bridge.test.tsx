@@ -832,6 +832,25 @@ describe('useMiniAppBridge message handling', () => {
   })
 
   /**
+   * The same race as the test above, but with no reply at all. A guest answers
+   * `ui/identify` only between `connect()` and `disconnect()`, so a document
+   * that handshaked and then tore its bridge down inside this deadline says
+   * nothing — and a timeout is indistinguishable from a wrong id at the parse.
+   * Resetting on it would clear a document the frame had already confirmed by
+   * handshaking, then wait for an `initialize` it has no reason to send again.
+   */
+  it('keeps a document that handshaked while the confirmation went unanswered', async () => {
+    const { bridge, handshake, elapse } = mountBridge()
+    await handshake()
+
+    act(() => bridge.current?.handleFrameLoad())
+    await handshake({}, { documentId: 'doc-b', id: 2 })
+    await elapse(identifyTimeoutMs)
+
+    expect(bridge.current?.status).toBe('ready')
+  })
+
+  /**
    * A frame can commit twice inside one confirmation's deadline — a redirect
    * chain, or a user mashing reload. The first load's reply then describes a
    * document two generations old, and acting on it would vouch for a handshake

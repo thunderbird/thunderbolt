@@ -320,6 +320,35 @@ describe('promotion and history', () => {
     expect(result.current.isChatOpen).toBe(true)
   })
 
+  /**
+   * The sidebar moves `?chat=` without going through `openExistingChat`, so the
+   * draft was left behind — and it is read, not merely stale: `mini-app-page`
+   * passes `existingId={draftChatId ? null : openChatId}`, so the thread the
+   * user had just picked was handed to `ChatHydrateHandler` as a *new* chat and
+   * rendered empty over its own row.
+   */
+  it('drops an open draft when the sidebar navigates to a real thread', () => {
+    const { result } = setup()
+    act(() => result.current.openChat())
+    expect(result.current.draftChatId).not.toBeNull()
+
+    act(() => result.current.setChatParam('thread-7'))
+
+    expect(result.current.openChatId).toBe('thread-7')
+    expect(result.current.draftChatId).toBeNull()
+  })
+
+  it('drops a draft when the sidebar moves between two real threads', () => {
+    const { result } = setup()
+    act(() => result.current.openChat())
+
+    act(() => result.current.setChatParam('thread-7'))
+    act(() => result.current.setChatParam('thread-8'))
+
+    expect(result.current.openChatId).toBe('thread-8')
+    expect(result.current.draftChatId).toBeNull()
+  })
+
   it('shows a thread picked from history, dropping any draft', () => {
     const { result } = setup()
 

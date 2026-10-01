@@ -773,20 +773,31 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
       return
     }
 
+    const askedAbout = documentIdRef.current
+
     const confirm = async () => {
       const result = await request(miniAppHostMethods.identify, {}, identifyTimeoutMs)
       if (generation !== loadGenerationRef.current) {
         // A later load already made this question obsolete, and answered its own.
         return
       }
-      const parsed = identifyResultSchema.safeParse(result)
       /*
-       * Compared against the ref rather than the id captured when this started:
-       * the new document may have handshaked while we were waiting, in which
-       * case the ref has already moved to *its* id and the reply matching means
-       * the live document is the one we are talking to. Using a captured value
-       * here would reset a handshake that had just succeeded.
+       * A different document handshaked while we were waiting, so the frame has
+       * already told us what this question was for — and told us *directly*,
+       * which beats any answer to it.
+       *
+       * Checked before the reply, because the reply may be a timeout and a
+       * timeout is indistinguishable from a wrong id at the parse below. The
+       * guest answers `ui/identify` only between `connect()` and `disconnect()`,
+       * so a page whose handshake and whose bridge teardown straddle this
+       * deadline says nothing — and resetting on that silence would clear a
+       * document we had just confirmed by the strongest signal there is, then
+       * wait for an `initialize` it has no reason to send again.
        */
+      if (documentIdRef.current !== askedAbout) {
+        return
+      }
+      const parsed = identifyResultSchema.safeParse(result)
       const identified = parsed.success ? parsed.data.documentId || null : null
       if (identified !== null && identified === documentIdRef.current) {
         return

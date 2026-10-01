@@ -31,6 +31,7 @@ import {
   textResult,
   toDescriptor,
   type ModelContextTool,
+  type ModelContextToolResult,
 } from './model-context'
 import { toModelContextTool, type ThunderboltTool } from './tools'
 
@@ -168,9 +169,24 @@ export type ConnectOptions = {
 }
 
 export type Connection = {
-  /** Publish what the user is looking at. Call on every meaningful change. */
   /** Ask the host to open its chat panel, optionally seeding the composer. */
   openChat: (prompt?: string) => void
+  /**
+   * Re-read the `tools` option and tell the host if it moved.
+   *
+   * Needed because the option is resolved lazily and nothing observes it. An
+   * app whose tools appear once data loads — `tools: () => loaded ? [...] : []`,
+   * which is the normal shape — declared no `tools` capability at connect, so
+   * the host never asked, and no registry change ever fired to make it ask.
+   * The tools existed and the model could not see them.
+   *
+   * `useThunderbolt` calls this for you when your array changes. Call it
+   * yourself only if you are using `connect()` directly *and* passing a getter;
+   * `document.modelContext.registerTool()` announces itself.
+   *
+   * Idempotent — a call that finds nothing changed sends nothing.
+   */
+  syncTools: () => Promise<void>
   /** Host context at connect time. */
   hostContext: HostContext
   /**
@@ -448,8 +464,16 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       },
     })
 
-    const syncOptionTools = async (): Promise<void> => {
-      mirroring = true
+    /**
+     * Mirror the option into the registry.
+     *
+     * `announce` is false when the host asked for the list itself — it is
+     * already mid-question, and announcing would have it ask again. True when
+     * the app's own tool array changed, which is the only signal the host has
+     * that an option resolved later than connect finally has something in it.
+     */
+    const syncOptionTools = async ({ announce }: { announce: boolean }): Promise<void> => {
+      mirroring = !announce
       try {
         await mirrorOptionTools()
       } finally {
@@ -467,8 +491,21 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
         }
         previous?.controller.abort()
         const controller = new AbortController()
-        mirrored.set(tool.name, { descriptor, controller })
-        await modelContext.registerTool(mirroredTool(tool), { signal: controller.signal })
+        /*
+         * Per tool, because `registerTool` rejects a descriptor the host would
+         * drop — and one bad name used to cost the whole sync. The rejection
+         * escaped into `answerToolsList`, which then never posted, so the host
+         * waited out its deadline and lost every *valid* tool too. Reported and
+         * skipped instead, and left out of `mirrored` so a corrected descriptor
+         * is retried rather than remembered as broken.
+         */
+        try {
+          await modelContext.registerTool(mirroredTool(tool), { signal: controller.signal })
+          mirrored.set(tool.name, { descriptor, controller })
+        } catch (error) {
+          mirrored.delete(tool.name)
+          reportError(`tool "${tool.name}" was rejected: ${error instanceof Error ? error.message : String(error)}`)
+        }
       }
       const names = new Set(current.map((tool) => tool.name))
       for (const [name, entry] of [...mirrored]) {
@@ -479,10 +516,22 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       }
     }
 
-    /** Answer `tools/list` out of the registry, option tools included. */
+    /**
+     * Answer `tools/list` out of the registry, option tools included.
+     *
+     * Never leaves the request unanswered. The host correlates by id and waits
+     * out its deadline otherwise, so a throw anywhere in here would read to it
+     * as "this app does not implement tools" — and cost the model every tool
+     * the app does have, for the whole connection.
+     */
     const answerToolsList = async (requestId: unknown): Promise<void> => {
-      await syncOptionTools()
-      post({ id: requestId, result: { tools: (await modelContext.getTools()).map(toDescriptor) } })
+      try {
+        await syncOptionTools({ announce: false })
+        post({ id: requestId, result: { tools: (await modelContext.getTools()).map(toDescriptor) } })
+      } catch (error) {
+        reportError(`tools/list failed: ${error instanceof Error ? error.message : String(error)}`)
+        post({ id: requestId, result: { tools: [] } })
+      }
     }
 
     /**
@@ -494,11 +543,19 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
      * `getTools()` is not obliged to hand back a callable at all.
      */
     const answerToolCall = async (requestId: unknown, name: string, args: unknown): Promise<void> => {
-      await syncOptionTools()
-      const tool = (await modelContext.getTools()).find((candidate) => candidate.name === name)
-      const result = tool
-        ? await modelContext.executeTool(tool, args)
-        : textResult(`No tool named "${name}" is registered.`, true)
+      const result = await (async (): Promise<ModelContextToolResult> => {
+        // Same contract as `answerToolsList`: an unanswered call blocks a model
+        // turn for the full deadline, and the model is told nothing it can use.
+        try {
+          await syncOptionTools({ announce: false })
+          const tool = (await modelContext.getTools()).find((candidate) => candidate.name === name)
+          return tool
+            ? await modelContext.executeTool(tool, args)
+            : textResult(`No tool named "${name}" is registered.`, true)
+        } catch (error) {
+          return textResult(error instanceof Error ? error.message : String(error), true)
+        }
+      })()
       post({ id: requestId, result: flattenToolResult(result) })
     }
 
@@ -599,6 +656,21 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
     const disconnect = () => {
       window.removeEventListener('message', handleMessage)
       modelContext.removeEventListener('toolchange', announceToolChange)
+      /*
+       * Unregister what this connection mirrored. `document.modelContext`
+       * outlives the connection — it is the document's, and reconnecting in the
+       * same page is ordinary (React StrictMode, a remount) — so leaving these
+       * behind left the host listing tools from a bridge that had gone away,
+       * whose `execute` still closed over the old connection's `resolveTools`.
+       * A tool the new connection does not have could still be called.
+       *
+       * Only ours: anything the app registered directly is the app's to manage
+       * through its own `AbortSignal`, and still belongs to a live document.
+       */
+      for (const entry of mirrored.values()) {
+        entry.controller.abort()
+      }
+      mirrored.clear()
       teardownSelection?.()
       teardownSelection = null
       teardownErrors?.()
@@ -774,6 +846,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
 
       resolve({
         getAuthToken,
+        syncTools: () => syncOptionTools({ announce: true }),
         openChat: (prompt) => void request('ui/open-chat', prompt ? { prompt } : {}),
         reportError,
         hostContext,

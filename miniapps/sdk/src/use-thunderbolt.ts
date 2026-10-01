@@ -96,6 +96,41 @@ export const useThunderbolt = (
   const getContextRef = useRef(options.getContext)
   getContextRef.current = options.getContext
 
+  /*
+   * A cheap signature of the tool set, so the effect below can fire on a real
+   * change rather than on every render.
+   *
+   * `execute` is deliberately excluded: it is a new closure every render by
+   * construction, so including it would make every render a change. What the
+   * host actually holds is the descriptor, and that is what has to be resynced
+   * when it moves.
+   */
+  const resolved = typeof tools === 'function' ? tools() : tools
+  const toolSignature = JSON.stringify(
+    resolved.map(({ name, description, inputSchema, annotations }) => ({
+      name,
+      description,
+      inputSchema,
+      annotations,
+    })),
+  )
+
+  /**
+   * Keep the host's tool list in step with the app's.
+   *
+   * The `tools` option is resolved lazily and nothing observes it, so an app
+   * whose tools appear once data has loaded — `tools: () => loaded ? [...] : []`
+   * — declared no `tools` capability at connect, the host never asked, and no
+   * registry change ever fired to make it ask. The tools existed and the model
+   * could not see them.
+   *
+   * Keyed on the signature, so this is a no-op on an ordinary re-render, and
+   * `syncTools` is itself idempotent if one slips through.
+   */
+  useEffect(() => {
+    void connectionRef.current?.syncTools()
+  }, [connected, toolSignature])
+
   useEffect(() => {
     let cancelled = false
     /*

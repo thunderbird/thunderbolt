@@ -1,0 +1,29 @@
+[package]
+name = "tauri-plugin-passkey"
+version = "0.1.0"
+description = "Native WebAuthn passkey ceremonies for Thunderbolt's Tauri apps (iOS + macOS)."
+authors = ["Thunderbolt"]
+license = "MPL-2.0"
+edition = "2021"
+# Required by the Tauri mobile plugin bridge to locate the native iOS/Android sources.
+links = "tauri-plugin-passkey"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# macOS runs the ceremony through a static Swift lib (swift-rs), adapted from
+# yminghua/tauri-plugin-macos-passkey (MIT/Apache). iOS goes through the Tauri
+# mobile plugin bridge instead (see src/mobile.rs + ios/), so swift-rs is macOS-only.
+[target.'cfg(target_os = "macos")'.dependencies]
+swift-rs = { version = "1.0.6" }
+tokio = { version = "1", features = ["sync", "rt"] }
+futures = "0.3"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+swift-rs = { version = "1.0.6", features = ["build"] }

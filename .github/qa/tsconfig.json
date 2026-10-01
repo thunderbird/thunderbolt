@@ -1,0 +1,8 @@
+{
+  "extends": "../../shared/tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2023",
+    "types": ["bun"]
+  },
+  "include": ["."]
+}

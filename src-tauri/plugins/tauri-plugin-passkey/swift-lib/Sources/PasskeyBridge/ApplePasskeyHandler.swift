@@ -37,7 +37,7 @@ public final class ApplePasskeyHandler: NSObject {
         controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { continuation in
             self.registrationContinuation = continuation
-            controller.performRequests()
+            DispatchQueue.main.async { controller.performRequests() }
         }
     }
 
@@ -59,7 +59,7 @@ public final class ApplePasskeyHandler: NSObject {
         controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { continuation in
             self.loginContinuation = continuation
-            controller.performRequests()
+            DispatchQueue.main.async { controller.performRequests() }
         }
     }
 }

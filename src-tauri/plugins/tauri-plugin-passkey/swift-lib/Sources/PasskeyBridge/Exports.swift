@@ -5,7 +5,13 @@
 import Foundation
 import AuthenticationServices
 import AppKit
+import OSLog
 import SwiftRs
+
+// Visible in Console.app (subsystem "io.thunderbolt.passkey"). The FFI callback can
+// only signal success-or-nil, so the *reason* a ceremony failed (e.g. domain not
+// associated, RP ID mismatch) is logged here rather than lost as a bare nil.
+private let exportsLogger = Logger(subsystem: "io.thunderbolt.passkey", category: "Exports")
 
 @objcMembers
 public class RegistrationResultObject: NSObject {
@@ -89,6 +95,7 @@ public func begin_passkey_registration(
             let resultPtr = Unmanaged.passRetained(RegistrationResultObject(from: credential)).toOpaque()
             callback(resultPtr, context)
         } catch {
+            exportsLogger.error("passkey ceremony failed: \(error.localizedDescription, privacy: .public)")
             callback(nil, context)
         }
     }
@@ -117,6 +124,7 @@ public func begin_passkey_login(
             let resultPtr = Unmanaged.passRetained(LoginResultObject(from: assertion)).toOpaque()
             callback(resultPtr, context)
         } catch {
+            exportsLogger.error("passkey ceremony failed: \(error.localizedDescription, privacy: .public)")
             callback(nil, context)
         }
     }

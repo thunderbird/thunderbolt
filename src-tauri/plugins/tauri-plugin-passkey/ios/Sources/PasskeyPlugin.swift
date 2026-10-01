@@ -146,7 +146,7 @@ final class IOSPasskeyHandler: NSObject, ASAuthorizationControllerDelegate, ASAu
         controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { continuation in
             self.registrationContinuation = continuation
-            controller.performRequests()
+            DispatchQueue.main.async { controller.performRequests() }
         }
     }
 
@@ -169,7 +169,7 @@ final class IOSPasskeyHandler: NSObject, ASAuthorizationControllerDelegate, ASAu
         controller.presentationContextProvider = self
         return try await withCheckedThrowingContinuation { continuation in
             self.loginContinuation = continuation
-            controller.performRequests()
+            DispatchQueue.main.async { controller.performRequests() }
         }
     }
 

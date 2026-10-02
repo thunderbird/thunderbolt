@@ -7,6 +7,7 @@ import type { HttpClient } from '@/lib/http'
 import { getOAuthRedirectUri } from '@/lib/oauth-redirect'
 import type { AuthProviderBackendConfig } from '@/types'
 import type { GoogleUserInfo } from './types'
+import { googleAccountsUrl, googleApisUrl } from './utils'
 
 let cachedConfig: AuthProviderBackendConfig | null = null
 
@@ -56,7 +57,7 @@ export const buildAuthUrl = async (
     const missing = config.clientId === '' ? 'both' : 'secret'
     throw new MisconfiguredOAuthError('google', missing)
   }
-  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  const authUrl = new URL(`${googleAccountsUrl}/o/oauth2/v2/auth`)
   authUrl.searchParams.set('client_id', config.clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri ?? config.redirectUri)
   authUrl.searchParams.set('response_type', 'code')
@@ -84,7 +85,7 @@ export const exchangeCodeForTokens = async (
 }
 
 export const getUserInfo = async (accessToken: string): Promise<GoogleUserInfo> => {
-  const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+  const response = await fetch(`${googleApisUrl}/oauth2/v2/userinfo`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) {

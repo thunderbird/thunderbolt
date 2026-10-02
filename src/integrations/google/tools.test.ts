@@ -487,7 +487,10 @@ describe('Google Tools', () => {
       const { client, urls } = createRecordingHttpClient({ items: [], timeZone: 'UTC' })
       await checkCalendar(params, client, mockAuth)
 
-      expect(urls[0]).toContain('/calendars/team%40example.com/events')
+      const url = new URL(urls[0])
+      expect(url.origin + url.pathname).toBe(
+        'https://www.googleapis.com/calendar/v3/calendars/team%40example.com/events',
+      )
       expect(urls[0]).not.toContain('calendarId=')
     })
 

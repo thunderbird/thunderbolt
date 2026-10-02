@@ -4,6 +4,7 @@
 
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
@@ -32,6 +33,7 @@ const settingsSchema = z
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
+    googleBaseUrl: z.string().default('https://oauth2.googleapis.com'),
     microsoftClientId: z.string().trim().default(''),
     microsoftClientSecret: z.string().trim().default(''),
 
@@ -216,6 +218,9 @@ const parseSettings = (): Settings => {
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    // Only a loopback override (the QA stack's fake Google) is honoured, so the client secret never leaves for
+    // another host.
+    googleBaseUrl: loopbackOrigin(process.env.GOOGLE_BASE_URL) ?? 'https://oauth2.googleapis.com',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),

@@ -266,6 +266,30 @@ describe('Authentication Routes', () => {
       )
       expect(response.status).toBe(200)
       expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/token')
+    })
+
+    it('posts Google token calls to the configured base URL', async () => {
+      getSettingsSpy.mockReturnValueOnce(
+        createTestSettings({
+          googleClientId: 'test-google-client-id',
+          googleClientSecret: 'test-google-secret',
+          googleBaseUrl: 'http://localhost:9880',
+        }),
+      )
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(
+        createMockOAuthResponse(200, { access_token: 'token', expires_in: 3600, token_type: 'Bearer' }),
+      )
+      const response = await app.handle(
+        new Request('http://localhost/auth/google/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: 'refresh' }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:9880/token')
     })
 
     it('allows Microsoft exchange with valid localhost redirect_uri', async () => {

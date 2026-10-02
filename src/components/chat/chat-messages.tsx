@@ -16,6 +16,7 @@ import { isAttachmentPart } from '@/lib/attachments'
 import { filterMessageParts } from '@/lib/assistant-message'
 import { useHaptics } from '@/hooks/use-haptics'
 import { useAttachmentRemediation } from './use-attachment-remediation'
+import { isBuiltInAgent } from '@/defaults/agents'
 import { QuoteReplyButton } from './quote-reply-button'
 import { selectDebugTranscriptsEnabled, useConfigStore } from '@/api/config-store'
 import type { ThunderboltUIMessage } from '@/types'
@@ -45,7 +46,8 @@ type ChatMessagesProps = {
 // intended throttle cadence. It takes no props that change (`useChat` defaults
 // to the real hook), so the shallow prop compare holds across parent renders.
 export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesProps) => {
-  const { chatInstance, chatThread, retryCount, retriesExhausted, stopping } = useCurrentChatSession()
+  const { chatInstance, chatThread, retryCount, retriesExhausted, stopping, selectedAgent, selectedModel } =
+    useCurrentChatSession()
   const debugTranscriptsEnabled = useConfigStore((state) => selectDebugTranscriptsEnabled(state.config))
 
   const {
@@ -109,6 +111,7 @@ export const ChatMessages = memo(({ useChat = useChat_default }: ChatMessagesPro
     regenerate,
     error: chatError,
     active: hasError && !isStreaming,
+    model: isBuiltInAgent(selectedAgent) ? selectedModel : undefined,
   })
 
   // Manual override for the latest turn's attachments: re-deliver a single file

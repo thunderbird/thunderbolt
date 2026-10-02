@@ -14,11 +14,28 @@ import type {
 } from './tools'
 import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails } from './tools'
 
-// Custom error type for HTTP error mocking
-type HTTPError = Error & {
-  response?: {
-    status: number
-  }
+/**
+ * Mock client that fails with a real non-ok `Response`, so the client under test
+ * throws the same `HttpError` (body included) it would in the browser.
+ */
+const createErrorHttpClient = (status: number, body: unknown = {}): HttpClient =>
+  createClient({
+    fetch: async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
+  })
+
+/** Mock client that records the requested URLs and returns `response` for each call. */
+const createRecordingHttpClient = (response: unknown): { client: HttpClient; urls: string[] } => {
+  const urls: string[] = []
+  const client = createClient({
+    fetch: async (input) => {
+      urls.push(input instanceof Request ? input.url : input.toString())
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    },
+  })
+  return { client, urls }
 }
 
 /** Encode a string as Gmail-style base64url body data */
@@ -464,37 +481,115 @@ describe('Google Tools', () => {
       })
     })
 
-    it('should handle calendar access error', async () => {
+    it('should request the calendar named by calendar_id', async () => {
+      const params: CheckCalendarParams = { days_ahead: 7, calendar_id: 'team@example.com' }
+
+      const { client, urls } = createRecordingHttpClient({ items: [], timeZone: 'UTC' })
+      await checkCalendar(params, client, mockAuth)
+
+      expect(urls[0]).toContain('/calendars/team%40example.com/events')
+      expect(urls[0]).not.toContain('calendarId=')
+    })
+
+    it('should apply both schema defaults when called with raw arguments', async () => {
+      // The ACP/Pi bridge calls execute with the model's raw arguments, so the
+      // zod defaults never run — `{}` is a shape this function really receives.
+      const { client, urls } = createRecordingHttpClient({ items: [], timeZone: 'UTC' })
+      await checkCalendar({} as CheckCalendarParams, client, mockAuth)
+
+      expect(urls[0]).toContain('/calendars/primary/events')
+      // A missing days_ahead used to reach toISOString() as NaN and throw.
+      const timeMax = new URL(urls[0]).searchParams.get('timeMax')
+      expect(Number.isNaN(Date.parse(timeMax ?? ''))).toBe(false)
+    })
+
+    it('should report a disabled Calendar API', async () => {
       const params: CheckCalendarParams = {
         days_ahead: 7,
         calendar_id: 'primary',
       }
 
-      const mockError = new Error('Forbidden') as HTTPError
-      mockError.response = { status: 403 }
-      const mockHttpClient = createMockHttpClient([mockError])
+      const mockHttpClient = createErrorHttpClient(403, {
+        error: {
+          code: 403,
+          message: 'Google Calendar API has not been used in project 123 before or it is disabled.',
+          errors: [{ reason: 'accessNotConfigured', domain: 'usageLimits' }],
+          status: 'PERMISSION_DENIED',
+          details: [{ reason: 'SERVICE_DISABLED' }],
+        },
+      })
 
       const result = await checkCalendar(params, mockHttpClient, mockAuth)
 
       expect(result.events).toHaveLength(0)
       expect(result.timezone).toBe('UTC')
-      expect(result.error).toContain('Calendar access not available')
+      expect(result.error).toContain('not enabled for this Google Cloud project')
     })
 
-    it('should handle 404 calendar error', async () => {
+    it('should report a token missing the calendar scope', async () => {
       const params: CheckCalendarParams = {
         days_ahead: 7,
-        calendar_id: 'nonexistent',
+        calendar_id: 'primary',
       }
 
-      const mockError = new Error('Not Found') as HTTPError
-      mockError.response = { status: 404 }
-      const mockHttpClient = createMockHttpClient([mockError])
+      const mockHttpClient = createErrorHttpClient(403, {
+        error: {
+          code: 403,
+          message: 'Request had insufficient authentication scopes.',
+          errors: [{ reason: 'insufficientPermissions', domain: 'global' }],
+          status: 'PERMISSION_DENIED',
+          details: [{ reason: 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' }],
+        },
+      })
+
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
+
+      expect(result.error).toContain('has not granted calendar access')
+    })
+
+    it('should fall back to the message from Google for an unrecognized 403', async () => {
+      const params: CheckCalendarParams = {
+        days_ahead: 7,
+        calendar_id: 'primary',
+      }
+
+      const mockHttpClient = createErrorHttpClient(403, {
+        error: { code: 403, message: 'Rate Limit Exceeded', errors: [{ reason: 'rateLimitExceeded' }] },
+      })
+
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
+
+      expect(result.error).toBe('Rate Limit Exceeded')
+    })
+
+    it('should degrade gracefully when the 403 body is not JSON', async () => {
+      const params: CheckCalendarParams = {
+        days_ahead: 7,
+        calendar_id: 'primary',
+      }
+
+      const mockHttpClient = createClient({ fetch: async () => new Response('<html>denied</html>', { status: 403 }) })
 
       const result = await checkCalendar(params, mockHttpClient, mockAuth)
 
       expect(result.events).toHaveLength(0)
       expect(result.error).toContain('Calendar access not available')
+    })
+
+    it('should name the missing calendar on a 404', async () => {
+      const params: CheckCalendarParams = {
+        days_ahead: 7,
+        calendar_id: 'nonexistent',
+      }
+
+      const mockHttpClient = createErrorHttpClient(404, {
+        error: { code: 404, message: 'Not Found', errors: [{ reason: 'notFound' }] },
+      })
+
+      const result = await checkCalendar(params, mockHttpClient, mockAuth)
+
+      expect(result.events).toHaveLength(0)
+      expect(result.error).toContain('"nonexistent" was not found')
     })
 
     it('should propagate other errors', async () => {
@@ -503,11 +598,9 @@ describe('Google Tools', () => {
         calendar_id: 'primary',
       }
 
-      const mockError = new Error('Server Error') as HTTPError
-      mockError.response = { status: 500 }
-      const mockHttpClient = createMockHttpClient([mockError])
+      const mockHttpClient = createErrorHttpClient(500, { error: { code: 500, message: 'Backend Error' } })
 
-      await expect(checkCalendar(params, mockHttpClient, mockAuth)).rejects.toThrow('Server Error')
+      await expect(checkCalendar(params, mockHttpClient, mockAuth)).rejects.toThrow('Request failed with status 500')
     })
   })
 })

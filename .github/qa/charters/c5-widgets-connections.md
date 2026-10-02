@@ -1,7 +1,6 @@
 # c5-widgets-connections: widgets, files and connections
 
-Goal: the rich parts of a reply (widgets, previews, files), MCP connections and project instructions work with a
-real model.
+Goal: the rich parts of a reply (widgets, previews, files) and MCP connections work with a real model.
 
 Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5"; replies vary. Keep
 prompts short and send at most 12 chat messages in total. Read every reply and check the AI did the task: a reply
@@ -20,13 +19,11 @@ saying a tool, a search, the file or the MCP server failed is a finding (`ai-rep
    the model to echo a fresh word of yours with the MCP echo tool and check the tool really ran, then change its URL
    to port 9 and try again, then remove it. A failure on port 9 is expected, because you broke the URL on purpose.
    Functions: `mcp-echo`, `mcp-broken-url`, `mcp-remove`.
-5. Project instructions: create a project whose instructions set a clear, checkable rule (for example "End every
-   reply with the word BANANA"), start a chat in it and send a short prompt. Function: `project-instructions-reply`.
 
 Specs for this charter replay against the same real providers, three times each, and two failures confirm a
 finding. A spec may depend on what the model does (it called the tool, the widget rendered), never on its exact
 words.
 
-Out of bounds: other settings, skills, project management beyond step 5, account deletion. Integrations (Google,
-Microsoft) are not covered by any charter. Never open the links in a new tab or navigate away from localhost: judge
-a link preview by what the app shows.
+Out of bounds: other settings, skills, projects (c4 checks how their instructions change a reply), account
+deletion. Integrations (Google, Microsoft) are not covered by any charter. Never open the links in a new tab or
+navigate away from localhost: judge a link preview by what the app shows.

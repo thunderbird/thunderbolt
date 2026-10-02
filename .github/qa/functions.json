@@ -129,6 +129,18 @@
       "outcome": "Typing / in the composer lists the enabled skills, and the one picked goes into the sent message"
     },
     {
+      "id": "skill-reply-slash",
+      "outcome": "A message with a skill picked from the slash popup gets a real reply that follows the skill's instructions: it shows the skill's marker word, which no message mentions"
+    },
+    {
+      "id": "skill-reply-home",
+      "outcome": "A skill added with the chat home's \"Add a skill\" button and put into a message with its chip gets a real reply that shows its marker word"
+    },
+    {
+      "id": "skill-off-reply",
+      "outcome": "Once the skill is disabled, and again once it is deleted, the same message with its /slug sent in a new chat gets a reply without the marker word"
+    },
+    {
       "id": "skill-invalid-input",
       "outcome": "Invalid or unusual input in the skill form is refused with a message or saved intact, never breaking the list or logging an error"
     },
@@ -139,6 +151,10 @@
     },
     { "id": "project-rename", "outcome": "A renamed project shows its new name", "reload": true },
     { "id": "project-instructions", "outcome": "A project's edited instructions show in the project", "reload": true },
+    {
+      "id": "project-instructions-reply",
+      "outcome": "In a chat inside a project whose instructions ask to end every reply with a marker word, which no message mentions, the real reply shows the marker word"
+    },
     { "id": "project-delete", "outcome": "A deleted project is gone from the sidebar", "reload": true },
     {
       "id": "chat-move",
@@ -182,11 +198,7 @@
       "id": "mcp-broken-url",
       "outcome": "Changing the server's URL to port 9 is refused or shows a connection error, and a chat that needs the tool says it failed without hanging"
     },
-    { "id": "mcp-remove", "outcome": "A removed MCP server is gone from the list", "reload": true },
-    {
-      "id": "project-instructions-reply",
-      "outcome": "In a chat inside a project whose instructions set a clear, checkable rule (for example: end every reply with the word BANANA), the real reply follows the rule"
-    }
+    { "id": "mcp-remove", "outcome": "A removed MCP server is gone from the list", "reload": true }
   ],
   "c6-settings-data": [
     { "id": "pref-name", "outcome": "A changed preferred name shows in Settings → Preferences", "reload": true },

@@ -75,8 +75,16 @@
     },
     { "id": "model-persists", "outcome": "The model selected in a thread is still the selected one", "reload": true },
     {
-      "id": "multi-turn",
+      "id": "multi-turn-opus-5",
       "outcome": "In three turns with \"Opus 5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+    },
+    {
+      "id": "multi-turn-glm-5-3-flash",
+      "outcome": "In three turns with \"GLM 5.3 Flash\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+    },
+    {
+      "id": "multi-turn-glm-5-3",
+      "outcome": "In three turns with \"GLM 5.3\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
     },
     {
       "id": "model-disable",

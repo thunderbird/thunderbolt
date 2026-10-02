@@ -3,18 +3,18 @@
 Goal: choosing, switching and configuring models works with real providers.
 
 Start state: fresh user, desktop viewport. In this charter the AI is **real**: "Opus 5" (Anthropic), "GLM 5.3 Flash"
-and "GLM 5.3" answer for real, so replies vary. Keep prompts short and send at most 12 chat messages in total. Read
+and "GLM 5.3" answer for real, so replies vary. Keep prompts short and send at most 20 chat messages in total. Read
 every reply: a model that says it cannot answer is a finding.
 
-1. Model picker: open it, check every model is listed, pick each real model and send one short prompt.
-   Functions: `picker-lists`, `models-reply`.
+1. Model picker: open it and check every model is listed. Then, for each real model, start a new chat with it and
+   hold a conversation of three short turns, each building on the earlier ones. On one turn ask for a longer answer,
+   stop the reply mid-stream, then send again. Functions: `picker-lists`, `models-reply`, `multi-turn-opus-5`,
+   `multi-turn-glm-5-3-flash`, `multi-turn-glm-5-3`.
 2. Switch the model in the middle of a thread and continue the conversation. Reload and check which model is selected.
    Functions: `switch-mid-thread`, `model-persists`.
-3. A multi-turn conversation with "Opus 5": three short turns, stop one reply mid-stream, then send again.
-   Function: `multi-turn`.
-4. Settings → Models: open each model, disable one and check it leaves the picker, enable it again.
+3. Settings → Models: open each model, disable one and check it leaves the picker, enable it again.
    Function: `model-disable`.
-5. Add a custom model with an unreachable endpoint (for example `http://localhost:9`): run its connection test if the
+4. Add a custom model with an unreachable endpoint (for example `http://localhost:9`): run its connection test if the
    form has one, try to chat with it, then edit and delete it. Also try an empty and a malformed URL. An error from
    this model is expected, because you broke its endpoint on purpose. Functions: `custom-model`,
    `custom-model-unreachable`, `custom-model-invalid-url`.

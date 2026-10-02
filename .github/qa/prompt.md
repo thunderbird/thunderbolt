@@ -69,6 +69,8 @@ Techniques for choosing your own tests. Use the ones that fit a function, in any
   reply mid-stream.
 - Round trips: create, change, delete and create the same thing again, checking each step after a reload.
 - Combinations: one feature used inside another (a skill in a project's chat, a file in a long thread).
+- Forms: fill every required field. When a form does not save, read why, fix the input and retry; a form that
+  refuses without saying why, or with an unclear message, is an `assert-failed` finding.
 
 ## Record every attempt
 

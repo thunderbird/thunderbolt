@@ -4,6 +4,11 @@ Goal: skills and projects work end to end for a new user, including edge cases.
 
 Start state: fresh user, desktop viewport, fake AI (select "Opus 5").
 
+Fill every required field each time you create or edit: a skill needs a name, a description and instructions (the
+slug fills itself from the name), a project needs a name. When a form does not save, read its validation message,
+fix the input and retry. A form that refuses to save without a message saying why, or with an unclear one, is a
+finding (`assert-failed`): quote the form's fields and its disabled button.
+
 1. Skills (Settings → Skills, the "Add a skill" button on the chat home, and the slash (`/`) popup in the composer):
    create, edit, disable and enable, delete, and reorder if the UI allows it. Reload after every change.
    Edge cases for each form: empty name, a 300-character name, emoji and right-to-left text, duplicate names, a

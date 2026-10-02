@@ -9,8 +9,8 @@ get a ticket for it.
 **The default answer is drop.** Keep a finding only when all of these hold:
 
 - It is a real defect in the app: a user-visible failure (wrong or missing content, a broken action, lost data,
-  a layout that hides or clips content) or an error the app itself raises (uncaught page error, console error,
-  HTTP 5xx from the app's backend).
+  a form that refuses input without saying why, a layout that hides or clips content) or an error the app itself
+  raises (uncaught page error, console error, HTTP 5xx from the app's backend).
 - The oracle evidence and the spec support the reported actual behaviour, and the replay failure shows that
   behaviour, not a problem with the spec (a wrong selector, a too-short timeout, a wrong assumption about the
   UI's copy or flow).

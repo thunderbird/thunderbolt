@@ -16,6 +16,7 @@ import {
   realAiCharters,
   severity,
 } from './findings'
+import type { QaFunction } from './report'
 
 const finding: Finding = {
   title: 'Chat title disappears',
@@ -233,8 +234,13 @@ describe('severity', () => {
   })
 })
 
-test('every real-AI charter id names a charter file', async () => {
-  for (const charter of realAiCharters) {
-    expect(await Bun.file(join(import.meta.dir, `../charters/${charter}.md`)).exists(), charter).toBe(true)
+test('each charter names exactly the functions of its list, and says the AI is real only for a real-AI charter', async () => {
+  const lists: Record<string, QaFunction[]> = await Bun.file(join(import.meta.dir, '../functions.json')).json()
+  for (const [charter, list] of Object.entries(lists)) {
+    const text = await Bun.file(join(import.meta.dir, `../charters/${charter}.md`)).text()
+    const named = [...text.matchAll(/Functions?:((?:\s+`[\w-]+`[,.]?)+)/g)].flatMap(([, ids]) => ids.match(/[\w-]+/g))
+    expect([...new Set(named)].sort(), charter).toEqual(list.map((fn) => fn.id).sort())
+    expect(text.includes('the AI is **real**'), charter).toBe(realAiCharters.has(charter))
   }
+  expect([...realAiCharters].filter((charter) => !(charter in lists))).toEqual([])
 })

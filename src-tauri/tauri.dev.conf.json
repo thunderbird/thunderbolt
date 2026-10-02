@@ -9,5 +9,12 @@
     "updater": {
       "endpoints": []
     }
+  },
+  "app": {
+    "security": {
+      "csp": {
+        "frame-src": "'self' https: http://localhost:5190 http://localhost:5174 http://localhost:5180"
+      }
+    }
   }
 }

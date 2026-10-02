@@ -32,6 +32,17 @@ export type ArtifactViewData = {
   title: string
   /** The render_html tool-call id; also the key for the render-target toggle. */
   artifactId: string
+  /**
+   * The conversation that produced it, so a highlighted passage has somewhere
+   * to go.
+   *
+   * Carried with the view rather than read from the route. `/apps/:appId` has
+   * no `chatThreadId` param — its conversation is held by the Mini App panel —
+   * so deriving it from `useParams` dropped every passage picked out of an
+   * artifact opened beside an app, and warned about a missing composer while a
+   * real one was open.
+   */
+  chatThreadId: string | null
 }
 
 type ContentViewState =

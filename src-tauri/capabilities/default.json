@@ -81,6 +81,14 @@
           "path": "$APPDATA/*"
         }
       ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/*"
+        }
+      ]
     }
   ],
   "remote": {

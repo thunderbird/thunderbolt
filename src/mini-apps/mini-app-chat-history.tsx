@@ -63,7 +63,7 @@ export const MiniAppChatHistory = ({ chats, onOpenChat, onNewChat }: MiniAppChat
           <History />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="flex max-h-[min(24rem,60vh)] w-72 flex-col">
+      <DropdownMenuContent align="end" className="max-h-[min(24rem,60vh)] w-72">
         {/* Styled as a row rather than a menu item so it reads as an action on
             the list, matching the "New Skill" row in the skills popover. */}
         <DropdownMenuItem
@@ -73,8 +73,10 @@ export const MiniAppChatHistory = ({ chats, onOpenChat, onNewChat }: MiniAppChat
           <MessageCirclePlus className="size-[var(--icon-size-sm)]" />
           <Trans>New chat</Trans>
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="shrink-0" />
-        <DropdownMenuLabel className="shrink-0">
+        <DropdownMenuSeparator />
+        {/* The settings-list section-label treatment, so it reads as a heading
+            over the rows rather than as a row itself. */}
+        <DropdownMenuLabel className="shrink-0 text-[length:var(--font-size-xs)] uppercase tracking-wide text-muted-foreground">
           <Trans>Chats from this app</Trans>
         </DropdownMenuLabel>
         {/* The list is the only region that scrolls, so "New chat" stays put

@@ -85,7 +85,6 @@ table {
   width: 100%;
   border-collapse: collapse;
   background: var(--card);
-  border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }

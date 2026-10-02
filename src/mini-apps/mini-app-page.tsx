@@ -6,8 +6,10 @@ import { Trans } from '@lingui/react/macro'
 import ChatUI from '@/components/chat/chat-ui'
 import { ChatHydrateHandler } from '@/chats/detail'
 import { Button } from '@/components/ui/button'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { ContentViewHeader } from '@/content-view/header'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { AnimatePresence, m } from 'framer-motion'
 import { MessageSquare, MousePointerClick } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
@@ -28,11 +30,14 @@ import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
 import { useMiniAppChatPanelState } from './use-mini-app-chat-panel-state'
 import { appPanelMinWidth, chatPanelMinWidth, useChatSplitFits } from './use-chat-split'
-import { useExclusiveSidePanel } from './use-exclusive-side-panel'
+import { useAsideYieldsToChat } from './use-aside-yields-to-chat'
 
-/** Default split when the chat opens: roughly two-thirds app, one-third chat. */
+/** Default split when the side pane opens: roughly two-thirds app, one-third pane. */
 const appPanelSize = '66%'
-const chatPanelSize = '34%'
+const sidePanelSize = '34%'
+
+/** Same curve `main-layout` uses for its aside, so the two feel like one control. */
+const asideSlide = { duration: 0.3, ease: [0.32, 0.72, 0, 1] as const }
 
 const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const {
@@ -57,7 +62,19 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    */
   const insetForHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   /*
-   * Below the combined floor the split cannot honour both minimums, so the chat
+   * The right-hand pane holds the chat, with the content-view aside — an
+   * artifact, a tool call or reasoning block, a preview — layered over it when
+   * one is open. One pane, two layers: the chat stays mounted underneath and
+   * is revealed again when the aside slides away, the way the full-window
+   * content view on mobile reveals what was beneath it. `main-layout` leaves
+   * its own aside collapsed on this route (`routeHostsContentView`).
+   */
+  const { isOpen: isAsideOpen, close: closeAside } = useContentView()
+  const isSidePaneOpen = isChatOpen || isAsideOpen
+  useAsideYieldsToChat({ isChatOpen, isAsideOpen, closeAside })
+
+  /*
+   * Below the combined floor the split cannot honour both minimums, so the pane
    * closes rather than squeezing to an unusable width (THU-902).
    *
    * An effect, and one of the legitimate kinds: `useChatSplitFits` observes the
@@ -73,15 +90,16 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
   const [splitContainer, setSplitContainer] = useState<HTMLDivElement | null>(null)
   const splitFits = useChatSplitFits(splitContainer)
   useEffect(() => {
-    if (!splitFits && isChatOpen) {
+    if (splitFits) {
+      return
+    }
+    if (isChatOpen) {
       closeChat()
     }
-  }, [splitFits, isChatOpen, closeChat])
-
-  // The chat and the content-view aside share the right-hand slot, so whichever
-  // opened last closes the other.
-  const { isOpen: isAsideOpen, close: closeAside } = useContentView()
-  useExclusiveSidePanel({ isChatOpen, closeChat, isAsideOpen, closeAside })
+    if (isAsideOpen) {
+      closeAside()
+    }
+  }, [splitFits, isChatOpen, closeChat, isAsideOpen, closeAside])
 
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)
@@ -169,7 +187,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel
           id="mini-app"
-          defaultSize={isChatOpen ? appPanelSize : '100%'}
+          defaultSize={isSidePaneOpen ? appPanelSize : '100%'}
           minSize={`${appPanelMinWidth}px`}
         >
           <div className="relative flex flex-col h-full">
@@ -213,7 +231,10 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                   <MousePointerClick className="size-[var(--icon-size-sm)]" />
                   <Trans>Select</Trans>
                 </Button>
-                {!isChatOpen && splitFits && (
+                {/* Not while an aside is up either: the chat would open
+                    underneath it, out of sight. Closing the aside is the way
+                    to what is beneath. */}
+                {!isSidePaneOpen && splitFits && (
                   <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
                     <MessageSquare className="size-[var(--icon-size-sm)]" />
                     <Trans>Chat</Trans>
@@ -223,26 +244,59 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             )}
           </div>
         </ResizablePanel>
-        {isChatOpen && (
+        {isSidePaneOpen && (
           <>
             <ResizableHandle withHandle />
-            <ResizablePanel id="mini-app-chat" defaultSize={chatPanelSize} minSize={`${chatPanelMinWidth}px`}>
-              <div className="flex h-full min-h-0 flex-col">
-                {/* The same header every other side panel uses, rather than a
-                    strip of our own: it already carries the round close button,
-                    the macOS traffic-light clearance and the frameless-caption
-                    clearance this panel needs in the window's top-right. */}
-                <ContentViewHeader
-                  title={app.name}
-                  onClose={closeChat}
-                  /* One control for one job: pick a conversation or start
-                     one. "New chat" is the first row of the menu — the floating
-                     "Chat" button only appears when the panel is shut, so
-                     without a way back to a blank composer the first
-                     conversation you opened was the last one you could start. */
-                  actions={<MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} onNewChat={startNewChat} />}
-                />
-                <div className="min-h-0 flex-1">{chatPane}</div>
+            <ResizablePanel id="mini-app-side" defaultSize={sidePanelSize} minSize={`${chatPanelMinWidth}px`}>
+              <div className="relative h-full overflow-hidden">
+                {isChatOpen && (
+                  /* `inert` while covered: the chat is still mounted so nothing
+                     is lost, but a layer the user cannot see must not take
+                     focus from the one they can. */
+                  <div className="flex h-full min-h-0 flex-col" inert={isAsideOpen}>
+                    {/* The same header every other side panel uses, rather than a
+                        strip of our own: it already carries the round close button,
+                        the macOS traffic-light clearance and the frameless-caption
+                        clearance this panel needs in the window's top-right. */}
+                    <ContentViewHeader
+                      title={app.name}
+                      onClose={closeChat}
+                      /* One control for one job: pick a conversation or start
+                         one. "New chat" is the first row of the menu — the floating
+                         "Chat" button only appears when the panel is shut, so
+                         without a way back to a blank composer the first
+                         conversation you opened was the last one you could start. */
+                      actions={
+                        <MiniAppChatHistory chats={chats} onOpenChat={openExistingChat} onNewChat={startNewChat} />
+                      }
+                    />
+                    <div className="min-h-0 flex-1">{chatPane}</div>
+                  </div>
+                )}
+                {/* `initial={false}`: when the pane itself is what just
+                    appeared, the aside is already in place and the pane's
+                    arrival is the transition. Sliding is for arriving *over*
+                    a chat that is already there.
+
+                    `will-change-transform` so the compositor rasterizes the
+                    layer before it moves. Without it WebKit paints the tiles
+                    lazily during the slide and the user sees a bare
+                    background travelling in, with the content popping in once
+                    it stops. */}
+                <AnimatePresence initial={false}>
+                  {isAsideOpen && (
+                    <m.div
+                      key="aside"
+                      initial={{ x: '100%' }}
+                      animate={{ x: 0 }}
+                      exit={{ x: '100%' }}
+                      transition={asideSlide}
+                      className="absolute inset-0 z-10 flex flex-col border-l bg-background will-change-transform"
+                    >
+                      <ActiveContentView />
+                    </m.div>
+                  )}
+                </AnimatePresence>
               </div>
             </ResizablePanel>
           </>

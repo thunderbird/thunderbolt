@@ -9,43 +9,27 @@ import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
-import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
-import { SidebarWebview } from '@/content-view/sidebar-webview'
-import { Sideview } from '@/content-view/sideview'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
 import { isTauri, isTauriDesktop } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
 import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+import { routeHostsContentView } from './content-view-host'
 import { sharedHeaderHasControls } from './shared-header'
-
-/*
- * Lazy, and the only content view that is.
- *
- * It reaches the whole shared element-picking stack — the overlay, the popover,
- * the selection state machine — none of which any other entry-bundle module
- * needs. A static import put roughly a thousand lines of it into the chunk every
- * user downloads to see a chat, for a panel that only opens when someone clicks
- * an artifact. The inline artifact card keeps `SandboxedHtmlFrame` in the entry
- * bundle on purpose, because chat renders artifacts inline; picking is the part
- * that can wait.
- */
-const ArtifactSidebarContent = lazy(() =>
-  import('@/content-view/artifact-sidebar-content').then((module) => ({ default: module.ArtifactSidebarContent })),
-)
 
 /** The main app shell: sidebar-inset content area, floating header, and the
  *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
   const { pathname } = useLocation()
-  const { state, close, previewHidden } = useContentView()
+  const { state, close } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
   const { contentViewWidth } = useSettings({
@@ -53,7 +37,9 @@ export default function Page() {
   })
   const showsSharedHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   const isOpen = state.type !== null
-  const isDesktopPanelOpen = isOpen && !isMobile
+  // A route that hosts the view itself (`/apps/`) leaves this aside collapsed.
+  const drawsDesktopPanel = !isMobile && !routeHostsContentView(pathname)
+  const isDesktopPanelOpen = isOpen && drawsDesktopPanel
   const prevIsDesktopPanelOpen = useRef(isDesktopPanelOpen)
   const lastSavedWidth = useRef<number | null>(null)
 
@@ -108,19 +94,6 @@ export default function Page() {
       }
     }
   }
-
-  const contentView = (
-    <>
-      {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
-      {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-      {state.type === 'sideview' && <Sideview />}
-      {state.type === 'artifact' && (
-        <Suspense fallback={<PageFallback />}>
-          <ArtifactSidebarContent data={state.data} onClose={close} />
-        </Suspense>
-      )}
-    </>
-  )
 
   return (
     <SidebarInset className="h-full flex flex-col">
@@ -181,7 +154,7 @@ export default function Page() {
             )}
           </div>
         )}
-        {!isMobile && (
+        {drawsDesktopPanel && (
           <ResizablePanel
             panelRef={panelRef}
             collapsible
@@ -206,7 +179,7 @@ export default function Page() {
                   transition={{ duration: 0.2, delay: 0.15 }}
                   className="h-full"
                 >
-                  {contentView}
+                  <ActiveContentView />
                 </m.div>
               )}
             </AnimatePresence>
@@ -216,7 +189,7 @@ export default function Page() {
       {isMobile && (
         <Dialog open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
           <ResponsiveModalContentComposable className="gap-0 p-0" flush>
-            {contentView}
+            <ActiveContentView />
           </ResponsiveModalContentComposable>
         </Dialog>
       )}

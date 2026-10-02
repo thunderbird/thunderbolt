@@ -1,7 +1,8 @@
 # Weekly exploratory QA
 
 Once a week an AI agent uses the web app the way a person would. It tests one area per session: the area's list
-of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`). It records
+of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`). A **free
+session** also plays one person's goal, with no steps, on every platform (see "Free session"). It records
 every attempt as it goes. When something breaks, it writes a finding and a Playwright spec that fails because of the bug. Plain code then checks the attempts
 against what the browser really returned, replays each spec, asks a second model whether the finding is real, and
 files the confirmed ones in Linear. It can also hand a few of them to a fix agent that opens draft PRs. The workflow
@@ -16,7 +17,7 @@ The explorer reads untrusted pages, so everything it writes is untrusted too. Ea
 
 | Zone                  | Jobs                         | Holds                                                                                        | Never holds                                                                                   |
 | --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| A: explore and verify | `explore`, `replay`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in c3–c5's backend (another OS user) | Linear key, any write token. The replay step holds **no secret**: it runs model-written specs |
+| A: explore and verify | `explore`, `replay`, `judge` | the QA Anthropic key (explore, judge); QA provider keys in real-AI backends (other OS users) | Linear key, any write token. The replay step holds **no secret**: it runs model-written specs |
 | B: file               | `file`                       | the QA Linear key                                                                            | an LLM, a browser                                                                             |
 | C: fix                | `fix`, then `publish`        | `fix`: the QA Anthropic key, read-only token. `publish`: GitHub App token + Linear key       | `publish` runs no LLM and checks the patch in code                                            |
 
@@ -37,8 +38,8 @@ The MCP blocks `file:` URLs by default, and that block keeps local files out of 
 
 ### Real-AI legs
 
-c3, c4 and c5 explore with the real providers, and their findings replay with them too, so the provider keys share
-a job with model-written specs. Two things keep them apart:
+c3, c4, c5 and the free sessions explore with the real providers, and their findings replay with them too, so the
+provider keys share a job with model-written specs. Two things keep them apart:
 
 - **A separate OS user for the backend.** With `QA_BACKEND_USER=qa-backend`, `stack.sh start` creates that user,
   writes the four keys to `/home/qa-backend/keys.env` (mode 0400, owned by that user) and drops them from its own
@@ -61,8 +62,9 @@ it imports everything at start. If that changes, run it from a copy the job's us
 
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
    stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
-2. **explore**: one job per charter with `claude-code-action` and the Playwright MCP (`mcp.json`,
-   `mcp-two-devices.json` for c7). The prompt is `prompt.md`, then the charter, then the area's function list. The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
+2. **explore**: one job per charter, and one per platform for the free session (`free-<platform>`), with
+   `claude-code-action` and the Playwright MCP (`mcp.json`, `mcp-two-devices.json` for c7). The prompt is
+   `prompt.md`, then the charter, then the area's function list (a free session: the case instead). The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
    `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
    The job uploads the counters of the session's result message and `transcript.json`: the browser tool calls and
    their results (each cut to 20,000 characters), without the prompt or any model text. The report job turns the
@@ -75,9 +77,9 @@ it imports everything at start. If that changes, run it from a copy the job's us
    control spec; the rest are deferred.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
    `qa-sync`) replay in their own leg on Postgres + PowerSync. The real-AI charters' findings (`realAiCharters` in
-   `scripts/findings.ts`, today c3, c4 and c5; artifact prefix `qa-real`) replay in their own leg against the real
-   providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky, 0 = dropped. The rest replay on
-   pglite with the fake AI. The judge takes all three.
+   `scripts/findings.ts`, today c3, c4, c5 and every `free-<platform>`; artifact prefix `qa-real`) replay in their
+   own leg against the real providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky, 0 =
+   dropped. The rest replay on pglite with the fake AI. The judge takes all three.
 4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`,
    at most 15 per leg and only while their worst-case cost stays under $2; the rest are deferred, never filed. The
    default answer is drop. Writes `verified.json`.
@@ -107,9 +109,9 @@ tells the explorer what they contain, and forbids it to tell the app's AI.
 
 `functions.json` holds one list per area (c1 to c8): what must work, as an id and an observable outcome, plus
 `reload: true` where the outcome must survive a reload. A function that spans two areas has one owner: how project
-instructions change a real reply is c4's `project-instructions-reply`. Integrations (Google, Microsoft) are in no
-list: nothing covers them. Each charter (`charters/`) lists steps and edge cases to follow, each naming the
-function ids it covers.
+instructions change a real reply is c4's `project-instructions-reply`. Integrations are in no list: Google is
+covered only by the free session's Google cases, through the fake Google below, and Microsoft not at all. Each
+charter (`charters/`) lists steps and edge cases to follow, each naming the function ids it covers.
 
 **Coverage** (`report.ts summary`) counts a function only when one of its `passed` or `failed` attempts quotes text
 that a browser tool returned, inside that attempt's window (since the previous record), after a browser action in
@@ -119,9 +121,36 @@ back (what the explorer typed) never counts. Every function in the list is in th
 quote was really seen at the right moment, not that it shows the outcome, and that some reload followed some change
 in the attempt, not that it followed the change under test: sample covered functions by hand.
 
+## Free session
+
+Each run also plays one **case** from `journeys.json` on every platform in `platforms.json`, with the real AI. A
+case is a person (`who`), a goal with no steps (`goal`), an optional `style`, the areas it crosses (`crosses`), a
+summary in Portuguese for people (`pt`, left out of the prompt) and sometimes `facts`: what the explorer knows to
+judge the AI's answers and never tells it, so a wrong answer is an `assert-failed` finding. The "Free session"
+section of `prompt.md` makes the explorer pursue the goal as that person and, whenever something works, try a
+variant that might break it. It records attempts and findings like a charter session.
+
+- **Which case.** `explore.sh journey` picks it: the number of weeks since 1970 modulo the number of cases, so
+  consecutive Mondays take consecutive cases and every case runs once before any repeats. A dispatch's `journey`
+  input forces one; add `charters: free-desktop,free-phone` to run only the free session.
+- **Add a case.** Append an object with a new `id` to `journeys.json`. Adding one shifts the rotation once.
+  `bun run test:qa` checks that every case has its fields.
+- **Platforms.** One entry each in `platforms.json`: the `id` (also the findings' `viewport`), the screen size and
+  the Playwright MCP config. Each platform is one explore leg, `free-<id>`, so a new platform is one entry. Every
+  `free-*` leg counts as a real-AI charter (`realAiCharters` in `findings.ts`): its findings replay in the `real`
+  leg, where two failures in three confirm one, and never go to the fix agent. A native platform will also need
+  its driver (an MCP config and a build or launch step) and a new `viewport` value in the finding schema.
+- **Report.** The free sessions get their own section: case and platform, metrics, what each tried (the names of
+  its own attempt records, each checked against the transcript like a charter function, instead of a share
+  covered) and their own gate yield, drop and filing lists. A session cut by a cap shows under INCOMPLETE like any
+  other.
+- **Cost.** One case on two platforms is two real-AI explore sessions a week, at most 15 chat messages each on the
+  app side, plus three replays of each spec: about $1.3 a week measured (see "Budget calibration"). Each new
+  platform adds about half of that.
+
 ## Run it locally
 
-Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005, 9878, 9879), so stop any
+Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005, 9878, 9879, 9880), so stop any
 `bun run e2e` first. Use a production build: the Vite dev server reloads pages while Playwright writes traces.
 
 ```sh
@@ -140,10 +169,13 @@ ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user qa-ou
 QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
 ```
 
-- **c3, c4 and c5** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and `ANTHROPIC_API_KEY`,
-  `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment. Replay their findings against that
-  same stack, from their own out dir. Locally the backend runs as you: `QA_BACKEND_USER` and `stack.sh lock` are
-  for CI's throwaway Linux runners (`lock` would take your sudo away for good).
+- **The free session** runs one platform per call, this week's case unless `QA_JOURNEY` names one. It takes its
+  viewport and MCP config from `platforms.json` and needs the real-provider stack below:
+  `QA_JOURNEY=trip-planner ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run free-phone qa-out 4`.
+- **c3, c4, c5 and the free session** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and
+  `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment. Replay their
+  findings against that same stack, from their own out dir. Locally the backend runs as you: `QA_BACKEND_USER` and
+  `stack.sh lock` are for CI's throwaway Linux runners (`lock` would take your sudo away for good).
 - **c7** needs Postgres and PowerSync. Start them as `nightly.yml` does, run `bunx drizzle-kit migrate` in
   `backend/`, start the stack with `DATABASE_URL` and `POWERSYNC_URL` set, and run the session with
   `QA_MCP_CONFIG=.github/qa/mcp-two-devices.json`.
@@ -151,7 +183,7 @@ QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run 
 Then the rest of the pipeline:
 
 ```sh
-# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3, c4 and c5)
+# Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*)
 bun .github/qa/scripts/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
 bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run: one line per finding, text in filed.json
@@ -185,6 +217,31 @@ Every out dir must sit directly under the repo root: the specs import `../../../
 
 The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa` (the `qa` job in `ci.yml` runs
 both when a QA file changes).
+
+## Fake Google
+
+`scripts/fake-google.ts` stands in for Google on `127.0.0.1:9880`: the account chooser, the token endpoint, userinfo,
+and exactly the Gmail and Calendar endpoints the app's tools call, with Google's JSON and error bodies. `stack.sh`
+always starts it, even with `QA_REAL_PROVIDERS=true`, and points the build (`VITE_GOOGLE_BASE_URL`) and the backend
+(`GOOGLE_BASE_URL`, plus a fake client id and secret) at it. The app honours either override only on a loopback host,
+so a build with a wrong value still talks to the real Google.
+
+Connect it in Settings → Connections → Connect Google, then pick an account. Times are UTC and move with today:
+"Thursday" is the next Thursday. On a Thursday, the calendar tool's 7-day window cuts that day short.
+
+| Account (`@gmail.test`) | What it does |
+|---|---|
+| `jonas` | Primary calendar plus the work calendar `jonas@northwind.test`; on Thursday only 11:00–12:00 is free in both |
+| `camille` | 8 emails from the last two days, 6 unread |
+| `expired` | Tokens say `expires_in: 1`, so every call refreshes first |
+| `revoked` | Refreshing fails with `invalid_grant` |
+| `no-calendar-api` | Calendar answers 403 `accessNotConfigured`; Gmail works |
+| `no-calendar-scope` | Consent drops the calendar scope; Calendar answers 403 `insufficientPermissions` |
+| `empty` | Empty inbox and calendar |
+| `big` | 1,200 emails and 80 events in the next 7 days, over the tool's 50 |
+
+The four failure accounts get Jonas's calendars and Camille's inbox. Codes and tokens live in the fake's memory, so
+restarting the stack disconnects Google.
 
 ## Enable it
 
@@ -222,9 +279,9 @@ Used by `explore`, the real-AI `replay` leg, `judge`, `file`, `fix`, `publish` a
 | Secret                                         | Used by                  | What it is                                                                                        |
 | ---------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------- |
 | `QA_ANTHROPIC_API_KEY`                         | explore, judge, fix      | a key from a dedicated Anthropic workspace with a monthly spend limit                             |
-| `QA_PROVIDER_ANTHROPIC_API_KEY`                | c3–c5 backend and replay | the app's own Anthropic key for the real-provider charters, QA-only, low limit                    |
-| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | c3–c5 backend and replay | QA-only Tinfoil access for the GLM models                                                         |
-| `QA_EXA_API_KEY`                               | c3–c5 backend and replay | QA-only Exa key for search and link previews                                                      |
+| `QA_PROVIDER_ANTHROPIC_API_KEY`                | real-AI backend, replay  | the app's own Anthropic key for the real-provider sessions, QA-only, low limit                    |
+| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI backend, replay  | QA-only Tinfoil access for the GLM models                                                         |
+| `QA_EXA_API_KEY`                               | real-AI backend, replay  | QA-only Exa key for search and link previews                                                      |
 | `QA_LINEAR_API_KEY`                            | file, publish, scorecard | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                  | the GitHub App below                                                                              |
 | `QA_HEARTBEAT_URL`                             | report                   | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                  |
@@ -290,6 +347,12 @@ Opus 5 calls over two runs); the backend logs no token counts for them. c7 has n
 spec it writes. Its first local session cost $1.72 (283 turns, the most so far, 9.2 min) plus $0.14 for 6 Opus 5
 calls on the app side; a c3 session with a conversation per model cost $0.85 plus $0.09 for 3 Opus 5 calls (its
 GLM calls were not metered).
+
+The free session, measured on 2026-10-02 with the case `contract-reader` on both platforms: $0.49 and $0.50 (78
+and 83 turns, 4.3 and 4.4 min, both finished). The app side made 10 Opus 5 calls for the two sessions and 9 more
+for the 6 replays, about $0.25 in all; the judge cost $0.04. So one case on two platforms costs about $1.3 a week.
+Earlier wordings of the prompt ended after 3 chat messages and 4 or 5 attempts ($0.25–0.37): the explorer now
+writes its own list of at least 10 things to try first, and still used only 5 of its 15 messages.
 
 With these numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That
 is one local sample per charter and a single fix, so keep the initial caps until two scheduled runs have reported.
@@ -378,5 +441,5 @@ Also:
   explicit allow lists both deny every unlisted command and allow read-only ones (probed).
 - A real model can fail twice in three replays by chance, and pass twice although the bug is real. The judge drops
   provider outages and expected limitations, and a real-AI finding never goes to the fix agent.
-- Integrations (Google, Microsoft) are explicitly out of coverage. They need a function list and a test account per
-  provider, connected before the session, whose tokens the backend would hold like the provider keys.
+- Google is covered only through the fake Google, by the free session's `calendar-planner` and `inbox-triager`
+  cases. Real Google and Microsoft accounts stay out of scope, and Microsoft has no fake yet.

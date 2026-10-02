@@ -15,6 +15,8 @@ import type { Verified, VerifiedFinding } from './verify'
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
 export type Session = {
   charter: string
+  /** The case a free session (`free-<platform>`) played, from `journeys.json`. */
+  journey?: string
   cost_usd: number
   turns: number
   duration_ms: number
@@ -302,7 +304,8 @@ type ReportInput = {
   sessions: Session[]
   summaries: Map<string, Summary>
   coverage: Map<string, Coverage>
-  found: number
+  /** The charter directory of every finding file the explorers wrote, valid or not. */
+  found: string[]
   verified?: Verified
   filed?: Filed[]
   scorecard?: Scorecard
@@ -325,28 +328,45 @@ const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n'
 /** Model-written text for the public job summary: one line, no foreign links or images, capped. */
 const safe = (text: string, max: number) => sanitize(escapeCell(text), max)
 
-const coverageParts = ({ verdicts, records, invalid, unknown, transcript }: Coverage) => {
+/** Free sessions record their metrics as `free-<platform>`: they play a case and have no function list. */
+const isFree = (charter: string) => charter.startsWith('free-')
+/** A free session's name in the report, with the case it played. */
+const sessionName = (s: Session) => (s.journey ? `${s.charter} (${s.journey})` : s.charter)
+
+const verdictStates = ['passed', 'failed', 'unsupported', 'blocked', 'unattempted'] as const
+
+/**
+ * A charter session's coverage of its function list. A free session's "functions" are the names of its own attempt
+ * records, so it lists what it tried, passed ones included, instead of a share covered.
+ */
+const coverageParts = (charter: string, { verdicts, records, invalid, unknown, transcript }: Coverage) => {
+  const free = isFree(charter)
   const covered = verdicts.filter((v) => v.state === 'passed' || v.state === 'failed').length
   const groups = [
-    ...(['failed', 'unsupported', 'blocked', 'unattempted'] as const).map((state): [string, string[]] => [
-      state,
-      verdicts.filter((v) => v.state === state).map((v) => (v.reason && transcript ? `${v.id} (${v.reason})` : v.id)),
-    ]),
+    ...verdictStates
+      .filter((state) => free || state !== 'passed')
+      .map((state): [string, string[]] => [
+        state,
+        verdicts
+          .filter((v) => v.state === state)
+          .map((v) => (v.reason && transcript ? `${safe(v.id, 40)} (${v.reason})` : safe(v.id, 40))),
+      ]),
     ['invalid records', invalid.map((id) => safe(id, 40))],
     ['unknown function ids', unknown.map((id) => safe(id, 40))],
   ] satisfies [string, string[]][]
+  const headline = free ? `tried ${verdicts.length}` : `${covered}/${verdicts.length} covered`
   return [
-    `${covered}/${verdicts.length} covered${transcript ? '' : `, **no transcript** (${records} records unchecked)`}`,
+    `${headline}${transcript ? '' : `, **no transcript** (${records} records unchecked)`}`,
     ...groups.filter(([, ids]) => ids.length > 0).map(([label, ids]) => `${label}: ${ids.join(', ')}`),
   ]
 }
 
-const coverageLine = (charter: string, coverage?: Coverage, summary?: Summary) => {
-  const parts = coverage ? coverageParts(coverage) : ['no function list']
+const coverageLine = (s: Session, coverage?: Coverage, summary?: Summary) => {
+  const parts = coverage ? coverageParts(s.charter, coverage) : ['no function list']
   const visited = summary
     ? `visited ${summary.visited.map((screen) => safe(screen, 60)).join(', ') || 'none'}`
     : 'no summary (session cut)'
-  return `- **${charter}**: ${[...parts, visited].join('; ')}`
+  return `- **${sessionName(s)}**: ${[...parts, visited].join('; ')}`
 }
 
 /** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
@@ -403,8 +423,24 @@ const calibrationRows = (explore: Session[], fixes: Session[], judgeCost?: numbe
   ].filter((r): r is string => r !== undefined)
 }
 
-const gateYield = ({ found, verified, filed }: ReportInput) => {
-  if (!verified) return []
+/** One group of sessions' findings: how many the explorers wrote, what verify made of them, and what was filed. */
+type Findings = { found: number; verified?: Verified; filed?: Filed[] }
+
+/** The findings of the sessions whose charter directory `keep` selects. */
+const findingsOf = ({ found, verified, filed }: ReportInput, keep: (charterDir: string) => boolean): Findings => ({
+  found: found.filter(keep).length,
+  verified: verified && {
+    ...verified,
+    confirmed: verified.confirmed.filter((f) => keep(f.charterDir)),
+    flaky: verified.flaky.filter((f) => keep(f.charterDir)),
+    observations: verified.observations.filter((f) => keep(f.charterDir)),
+    dropped: verified.dropped.filter((d) => keep(d.file.charterDir)),
+    deferred: verified.deferred?.filter((d) => keep(d.file.charterDir)),
+  },
+  filed: filed?.filter((a) => keep(a.charterDir)),
+})
+
+const gateYield = (found: number, verified: Verified, filed?: Filed[]) => {
   const dropped = (gate: string) => verified.dropped.filter((d) => d.gate === gate).length
   const deferred = (step: string) => (verified.deferred ?? []).filter((d) => d.step === step).length
   const afterOracle = found - verified.observations.length - dropped('schema')
@@ -419,49 +455,11 @@ const gateYield = ({ found, verified, filed }: ReportInput) => {
   ]
 }
 
-/** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
-export const renderReport = (input: ReportInput) => {
-  const { sessions, summaries, coverage, verified, filed, scorecard, canary } = input
-  const out: string[] = ['# Weekly QA run']
-  const explore = sessions.filter((s) => !isFix(s))
-  const fixes = sessions.filter(isFix)
-  const total = (list: Session[]) =>
-    `${usd(list.reduce((t, s) => t + s.cost_usd, 0))}, ${list.reduce((t, s) => t + s.turns, 0)} turns, ` +
-    minutes(list.reduce((t, s) => t + s.duration_ms, 0))
-  const cut = sessions.filter((s) => s.stop !== 'done')
-  if (cut.length > 0) {
-    out.push(
-      '',
-      `## ⚠️ ${cut.length} INCOMPLETE session(s)`,
-      ...cut.map(
-        (s) =>
-          `- **${s.charter}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}; ` +
-          (isFix(s) ? 'its patch may be partial' : 'the charter was not fully explored'),
-      ),
-    )
-  }
-  out.push(
-    '',
-    '## Sessions',
-    '| charter | cost | turns | duration | tokens | stop |',
-    '|---|---|---|---|---|---|',
-    ...sessions.map(
-      (s) =>
-        `| ${s.charter} | ${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`} |`,
-    ),
-    '',
-    `Total explore: ${total(explore)}. Fix: ${fixes.length ? total(fixes) : 'n/a'}. ` +
-      `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.` +
-      // The backend logs no token counts for the app's own provider calls.
-      (explore.some((s) => realAiCharters.has(s.charter)) ? ' App providers (real-AI charters): not measured.' : ''),
-    '',
-    '## Coverage',
-    'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
-      'and after a reload where the function needs one.',
-    ...explore.map((s) => coverageLine(s.charter, coverage.get(s.charter), summaries.get(s.charter))),
-  )
+/** Gate yield, the flaky, deferred and dropped lists, and what was filed; `label` tells two groups' sections apart. */
+const findingsSection = ({ found, verified, filed }: Findings, label: string) => {
+  const out: string[] = []
   if (verified) {
-    out.push('', '## Gate yield', ...gateYield(input))
+    out.push('', `## Gate yield${label}`, ...gateYield(found, verified, filed))
     out.push('', `### Flaky (${verified.flaky.length}), never filed`, ...verified.flaky.map(flakyLine))
     const deferred = verified.deferred ?? []
     if (deferred.length > 0) {
@@ -480,12 +478,86 @@ export const renderReport = (input: ReportInput) => {
   if (filed) {
     out.push(
       '',
-      '## Filed',
+      `## Filed${label}`,
       ...filed.map((a) =>
         `- ${a.action}${a.would ? ` (would ${a.would})` : ''} ${a.fp} ${a.severity} ${a.identifier ?? ''} ${a.reason ?? ''}`.trimEnd(),
       ),
     )
   }
+  return out
+}
+
+const total = (list: Session[]) =>
+  `${usd(list.reduce((t, s) => t + s.cost_usd, 0))}, ${list.reduce((t, s) => t + s.turns, 0)} turns, ` +
+  minutes(list.reduce((t, s) => t + s.duration_ms, 0))
+const metricCells = (s: Session) =>
+  `${usd(s.cost_usd)} | ${s.turns} | ${minutes(s.duration_ms)} | ${tokens(s)} | ${s.stop === 'done' ? 'done' : `**${stopLabel[s.stop]}**`}`
+
+const cutNote = (s: Session) => {
+  if (isFix(s)) return 'its patch may be partial'
+  return isFree(s.charter) ? 'the case was not fully played' : 'the charter was not fully explored'
+}
+
+/** The free sessions, apart from the charters: one case on every platform, what each tried, and their findings. */
+const freeSection = ({ coverage, summaries }: ReportInput, free: Session[], findings: Findings) => [
+  '',
+  '## Free session',
+  'One case, played on every platform with the real AI. What a session tried is its own attempt records, each ' +
+    'checked against the transcript like a charter function. App providers: not measured.',
+  '',
+  '| platform | case | cost | turns | duration | tokens | stop |',
+  '|---|---|---|---|---|---|---|',
+  ...free.map((s) => `| ${s.charter.slice('free-'.length)} | ${s.journey ?? 'unknown'} | ${metricCells(s)} |`),
+  '',
+  `Total: ${total(free)}.`,
+  '',
+  '### What was tried',
+  ...free.map((s) => coverageLine(s, coverage.get(s.charter), summaries.get(s.charter))),
+  ...findingsSection(findings, ' (free session)'),
+]
+
+/** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
+export const renderReport = (input: ReportInput) => {
+  const { sessions, summaries, coverage, verified, scorecard, canary } = input
+  const out: string[] = ['# Weekly QA run']
+  const explore = sessions.filter((s) => !isFix(s))
+  const fixes = sessions.filter(isFix)
+  const free = explore.filter((s) => isFree(s.charter))
+  const chartered = explore.filter((s) => !isFree(s.charter))
+  const cut = sessions.filter((s) => s.stop !== 'done')
+  if (cut.length > 0) {
+    out.push(
+      '',
+      `## ⚠️ ${cut.length} INCOMPLETE session(s)`,
+      ...cut.map(
+        (s) =>
+          `- **${sessionName(s)}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}; ${cutNote(s)}`,
+      ),
+    )
+  }
+  out.push(
+    '',
+    '## Sessions',
+    '| charter | cost | turns | duration | tokens | stop |',
+    '|---|---|---|---|---|---|',
+    ...sessions.filter((s) => !isFree(s.charter)).map((s) => `| ${s.charter} | ${metricCells(s)} |`),
+    '',
+    `Total explore: ${total(chartered)}. Fix: ${fixes.length ? total(fixes) : 'n/a'}. ` +
+      `Judge: ${verified?.judge_usage ? usd(verified.judge_usage.cost_usd) : 'n/a'}.` +
+      // The backend logs no token counts for the app's own provider calls.
+      (chartered.some((s) => realAiCharters.has(s.charter)) ? ' App providers (real-AI charters): not measured.' : ''),
+    '',
+    '## Coverage',
+    'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
+      'and after a reload where the function needs one.',
+    ...chartered.map((s) => coverageLine(s, coverage.get(s.charter), summaries.get(s.charter))),
+    ...findingsSection(
+      findingsOf(input, (charterDir) => !isFree(charterDir)),
+      '',
+    ),
+  )
+  const freeFindings = findingsOf(input, isFree)
+  if (free.length > 0 || freeFindings.found > 0) out.push(...freeSection(input, free, freeFindings))
   if (scorecard) out.push('', '## Scorecard', '```json', JSON.stringify(scorecard, null, 2), '```')
   if (canary) {
     out.push(
@@ -550,11 +622,14 @@ export const runSummary = async (
     const dir = join(outDir, s.charter)
     const summary = await readJson<Summary>(join(dir, 'findings.json'))
     if (summary) summaries.set(s.charter, summary)
-    const list = functions.get(s.charter)
+    const attempts = await loadAttempts(dir)
+    // A free session has no list: each name it gave its own attempts counts as one function.
+    const tried = new Set(attempts.flatMap((f) => (f.attempt ? [f.attempt.function] : [])))
+    const list = isFree(s.charter) ? [...tried].map((id) => ({ id, outcome: 'tried' })) : functions.get(s.charter)
     if (list) {
       // A save step cut short can leave a broken file: that session has no transcript.
       const transcript = await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
-      coverage.set(s.charter, checkCoverage(list, await loadAttempts(dir), transcript))
+      coverage.set(s.charter, checkCoverage(list, attempts, transcript))
     }
   }
   const { valid, rejected } = await loadFindings(outDir)
@@ -562,7 +637,7 @@ export const runSummary = async (
     sessions,
     summaries,
     coverage,
-    found: valid.length + rejected.length,
+    found: [...valid, ...rejected].map((f) => f.charterDir),
     verified: await readJson<Verified>(join(outDir, 'verified.json')),
     filed: await readJson<Filed[]>(join(outDir, 'filed.json')),
     scorecard: await readJson<Scorecard>(join(outDir, 'scorecard.json')),
@@ -598,6 +673,7 @@ if (import.meta.main) {
       out: { type: 'string', default: 'qa-out' },
       'execution-file': { type: 'string' },
       charter: { type: 'string' },
+      journey: { type: 'string' },
       'timed-out': { type: 'boolean', default: false },
       baseline: { type: 'string' },
     },
@@ -605,7 +681,8 @@ if (import.meta.main) {
   const out = values.out
   if (positionals[0] === 'session') {
     if (!values.charter || !values['execution-file']) throw new Error('session needs --charter and --execution-file')
-    const session = await sessionFromExecution(values['execution-file'], values.charter, values['timed-out'])
+    const metrics = await sessionFromExecution(values['execution-file'], values.charter, values['timed-out'])
+    const session: Session = { ...metrics, journey: values.journey }
     await mkdir(join(out, values.charter), { recursive: true })
     await writeFile(join(out, values.charter, 'session.json'), JSON.stringify(session, null, 2))
   } else if (positionals[0] === 'summary') {

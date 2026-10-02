@@ -182,7 +182,7 @@ describe('renderReport', () => {
       ],
       summaries: new Map([['c1', { visited: ['chat'] }]]),
       coverage: new Map(),
-      found: 0,
+      found: [],
     })
     const firstSection = report.split('## Sessions')[0]
     expect(firstSection).toContain('2 INCOMPLETE')
@@ -194,7 +194,7 @@ describe('renderReport', () => {
 
   it('has no incomplete banner when every session finished', () => {
     expect(
-      renderReport({ sessions: [session({})], summaries: new Map(), coverage: new Map(), found: 0 }),
+      renderReport({ sessions: [session({})], summaries: new Map(), coverage: new Map(), found: [] }),
     ).not.toContain('INCOMPLETE')
   })
 
@@ -214,7 +214,7 @@ describe('renderReport', () => {
       sessions: [session({})],
       summaries: new Map(),
       coverage: new Map(),
-      found: 6,
+      found: Array(6).fill('c1'),
       verified,
       filed: [
         { fp: 'abcd1234', charterDir: 'c1', id: '1', severity: 'Medium', action: 'dry-run', would: 'created' },
@@ -252,7 +252,7 @@ describe('renderReport', () => {
       ],
       summaries: new Map(),
       coverage: new Map(),
-      found: 0,
+      found: [],
     })
     expect(report).toContain('| explore | cost | 2 | $4.00 | $6.00 |')
     expect(report).toContain('| explore | turns | 2 | 60 | 90 |')
@@ -267,7 +267,7 @@ describe('renderReport', () => {
       ],
       summaries: new Map(),
       coverage: new Map(),
-      found: 0,
+      found: [],
     })
     expect(report).toContain('| explore | cost | 1 | $2.00 | $3.00 |')
     expect(report).toContain('| fix | cost | 1 | $8.00 | $12.00 |')
@@ -275,11 +275,70 @@ describe('renderReport', () => {
     expect(report).toContain('**fix-ab12cd34**: TURN CAP after 90 turns, $8.00; its patch may be partial')
     expect(report.split('## Coverage')[1]).not.toContain('fix-ab12cd34')
   })
+
+  it('shows free sessions apart from the charters: case, platform, what was tried and their own findings', () => {
+    const free = (charterDir: string, id: string) => ({ ...verifiedFinding('chat', 'assert-failed', id), charterDir })
+    const report = renderReport({
+      sessions: [
+        session({ charter: 'c8-phone' }),
+        session({ charter: 'free-desktop', journey: 'trip-planner' }),
+        session({ charter: 'free-phone', journey: 'trip-planner', stop: 'max_budget' }),
+      ],
+      summaries: new Map(),
+      coverage: new Map([
+        [
+          'free-desktop',
+          {
+            verdicts: [{ id: 'plan-after-reload', state: 'passed' }],
+            records: 1,
+            invalid: [],
+            unknown: [],
+            transcript: true,
+          },
+        ],
+      ]),
+      found: ['c8-phone', 'free-desktop', 'free-phone'],
+      verified: {
+        ...emptyVerified,
+        confirmed: [verifiedFinding('chat', 'page-error')],
+        flaky: [{ ...free('free-phone', '2'), replay: { failed: 1, runs: 3 } }],
+        dropped: [{ file: free('free-desktop', '1'), gate: 'replay', reason: 'failed 0/3 replays' }],
+      },
+      filed: [
+        { fp: 'abcd1234', charterDir: 'c8-phone', id: '1', severity: 'High', action: 'dry-run', would: 'created' },
+      ],
+    })
+    const [charters, freePart] = report.split('## Free session')
+    expect(charters).toContain(
+      '**free-phone (trip-planner)**: BUDGET CAP after 30 turns, $2.00; the case was not fully played',
+    )
+    expect(charters).not.toContain('| free-')
+    expect(charters).toContain(
+      'found 1 → oracle 1 → lint 1 → replay 1 (0 flaky, 0 deferred) → judge 1 (0 deferred) → filed 1',
+    )
+    expect(charters).not.toContain('free-phone/2')
+    expect(freePart).toContain('| phone | trip-planner | $2.00 | 30 | 10.0 min |')
+    expect(freePart).toContain('- **free-desktop (trip-planner)**: tried 1; passed: plan-after-reload; no summary')
+    expect(freePart).toContain('## Gate yield (free session)')
+    expect(freePart).toContain(
+      'found 2 → oracle 2 → lint 2 → replay 1 (1 flaky, 0 deferred) → judge 0 (0 deferred) → filed 0',
+    )
+    expect(freePart).toContain('free-phone/2')
+    expect(freePart).toContain('free-desktop/1: **replay**')
+    // The free sessions share the explore caps, so they count in its calibration.
+    expect(report).toContain('| explore | cost | 3 |')
+  })
 })
 
 describe('renderReport findings and caps', () => {
   const render = (verified: Verified, charter = 'c1') =>
-    renderReport({ sessions: [session({ charter })], summaries: new Map(), coverage: new Map(), found: 3, verified })
+    renderReport({
+      sessions: [session({ charter })],
+      summaries: new Map(),
+      coverage: new Map(),
+      found: Array(3).fill('c8-phone'),
+      verified,
+    })
 
   it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
     const overflow = { ...verifiedFinding('layout', 'overflow', '2'), replay: { failed: 1, runs: 3 } }
@@ -506,7 +565,7 @@ describe('checkCoverage', () => {
         ['c4', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
         ['c8', checkCoverage(fns('done'), files)],
       ]),
-      found: 0,
+      found: [],
     })
     expect(report).toContain(
       '- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing; visited Skills',
@@ -551,6 +610,23 @@ describe('runSummary', () => {
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `t${i}`, content }] } },
     ])
     await writeFile(join(outDir, 'c4/transcript.json'), JSON.stringify(transcript))
+    // A free session has no list: its attempts' own names are what it tried.
+    await mkdir(join(outDir, 'free-phone/attempts'), { recursive: true })
+    await writeFile(
+      join(outDir, 'free-phone/session.json'),
+      JSON.stringify(session({ charter: 'free-phone', journey: 'phone-commuter' })),
+    )
+    await writeFile(
+      join(outDir, 'free-phone/attempts/1.json'),
+      JSON.stringify({
+        function: 'photo-question',
+        setup: 's',
+        action: 'a',
+        expected: 'e',
+        observed,
+        status: 'passed',
+      }),
+    )
     const stepSummary = join(dir, 'step-summary.md')
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
@@ -558,6 +634,9 @@ describe('runSummary', () => {
     expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2; visited Skills')
     expect(report).toContain(
       '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
+    )
+    expect(report.split('## Free session')[1]).toContain(
+      '- **free-phone (phone-commuter)**: tried 1, **no transcript** (1 records unchecked); unsupported: photo-question',
     )
     expect(await readFile(join(outDir, 'report.md'), 'utf8')).toBe(report)
     expect(await readFile(stepSummary, 'utf8')).toBe(report)

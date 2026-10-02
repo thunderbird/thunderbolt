@@ -12,8 +12,6 @@
 # `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<charter>/{findings,repro,attempts}/ (the explorer),
 # execution.json + session.json (metrics), transcript.json (the tool calls, for the coverage check) and
 # findings.json (the summary, only if the session finished).
-# QA_ARM picks the charter style: `scripted` (default, charters/: steps to follow) or `mission` (missions/: only
-# what must work). Both get the area's function list from functions.json.
 # The phone charter needs QA_MCP_VIEWPORT=390x844, the two-device charter
 # QA_MCP_CONFIG=.github/qa/mcp-two-devices.json. Keep the claude flags in step with the explore job in
 # .github/workflows/qa-weekly.yml.
@@ -23,18 +21,12 @@ cd "$(dirname "$0")/../../.."
 
 # The shared prefix comes first and is identical for every charter, so sessions can reuse its prompt cache.
 prompt() {
-  local dir
-  case ${QA_ARM:-scripted} in
-    scripted) dir=charters ;;
-    mission) dir=missions ;;
-    *) echo "QA_ARM must be scripted or mission, not $QA_ARM" >&2; exit 2 ;;
-  esac
   cat .github/qa/prompt.md
   # The model's "random" addresses repeat across sessions, so each run gets its own.
   # shellcheck disable=SC2016 # the backticks are Markdown
   printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
     "$1" "$2" "$1" "$1" "$(date +%s)"
-  cat ".github/qa/$dir/$1.md"
+  cat ".github/qa/charters/$1.md"
   printf '\n## Functions to test\n\nEach id, then the outcome that shows the function works.\n\n'
   # shellcheck disable=SC2016 # jq string interpolation
   jq --raw-output --arg charter "$1" \

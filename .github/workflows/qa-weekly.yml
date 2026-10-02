@@ -22,11 +22,6 @@ on:
         description: Comma-separated charter ids, e.g. c4-skills-projects,c8-phone (empty = all)
         type: string
         default: ''
-      arm:
-        description: Charter style - scripted (steps to follow) or mission (only what must work, the explorer chooses how)
-        type: choice
-        options: [scripted, mission]
-        default: scripted
       autofix:
         description: Let the fix agent attempt confirmed bugs (also needs vars.QA_AUTOFIX_ENABLED)
         type: boolean
@@ -302,9 +297,6 @@ jobs:
 
       - name: Build the prompt
         id: prompt
-        env:
-          # The schedule has no inputs, so it runs the scripted charters.
-          QA_ARM: ${{ inputs.arm || 'scripted' }}
         run: |
           {
             echo 'text<<QA_PROMPT_EOF'

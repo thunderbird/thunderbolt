@@ -49,8 +49,7 @@ A wrong or invented answer about a fixture is an `assert-failed` finding: quote 
 
 ## How to work
 
-- Test every function listed under "Functions to test". If your charter also lists steps, follow every step, edge
-  cases included. If it lists no steps, you choose how to test each function; the toolbox below has techniques.
+- Test every function listed under "Functions to test", and follow every step of your charter, edge cases included.
 - You have ample budget: never stop early because the session feels long. Before you finish, every function has at
   least one attempt record. `blocked` is only for what the app does not let you do (no such control, or a bug blocks
   it); "not tried" is not a reason, so go back and try it.

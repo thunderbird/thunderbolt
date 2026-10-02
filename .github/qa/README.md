@@ -1,9 +1,8 @@
 # Weekly exploratory QA
 
 Once a week an AI agent uses the web app the way a person would. It tests one area per session: the area's list
-of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`) or a
-**mission** that leaves the steps to the agent (`missions/`). It records every attempt as it goes. When something
-breaks, it writes a finding and a Playwright spec that fails because of the bug. Plain code then checks the attempts
+of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`). It records
+every attempt as it goes. When something breaks, it writes a finding and a Playwright spec that fails because of the bug. Plain code then checks the attempts
 against what the browser really returned, replays each spec, asks a second model whether the finding is real, and
 files the confirmed ones in Linear. It can also hand a few of them to a fix agent that opens draft PRs. The workflow
 never merges, approves or marks anything ready.
@@ -63,8 +62,7 @@ it imports everything at start. If that changes, run it from a copy the job's us
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
    stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
 2. **explore**: one job per charter with `claude-code-action` and the Playwright MCP (`mcp.json`,
-   `mcp-two-devices.json` for c7). The prompt is `prompt.md`, then the charter or the mission (see below), then the
-   area's function list. The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
+   `mcp-two-devices.json` for c7). The prompt is `prompt.md`, then the charter, then the area's function list. The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
    `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
    The job uploads the counters of the session's result message and `transcript.json`: the browser tool calls and
    their results (each cut to 20,000 characters), without the prompt or any model text. The report job turns the
@@ -105,20 +103,13 @@ Canary findings are never filed.
 Run-time output goes to `qa-out*/` (gitignored). `fixtures/` holds the PDF and image the charters upload; `prompt.md`
 tells the explorer what they contain, and forbids it to tell the app's AI.
 
-## Functions, charters and missions
+## Functions and charters
 
 `functions.json` holds one list per area (c1 to c8): what must work, as an id and an observable outcome, plus
 `reload: true` where the outcome must survive a reload. A function that spans two areas has one owner: how project
 instructions change a real reply is c5's `project-instructions-reply`. Integrations (Google, Microsoft) are in no
-list: nothing covers them.
-
-Two styles share that list, the prompt, the oracles and the evidence rules:
-
-- **scripted** (`charters/`, the default): steps and edge cases to follow, each naming the function ids it covers.
-- **mission** (`missions/`): only the target, the risks, the start state and what is out of bounds. The explorer
-  picks its own tests, with the toolbox in `prompt.md`.
-
-The `arm` input of a dispatch picks the style (the schedule always runs `scripted`); locally it is `QA_ARM`.
+list: nothing covers them. Each charter (`charters/`) lists steps and edge cases to follow, each naming the
+function ids it covers.
 
 **Coverage** (`report.ts summary`) counts a function only when one of its `passed` or `failed` attempts quotes text
 that a browser tool returned, inside that attempt's window (since the previous record), after a browser action in
@@ -144,7 +135,7 @@ Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
 
-# One session. The last argument is the budget cap in USD (default 2). QA_ARM=mission runs the mission instead.
+# One session. The last argument is the budget cap in USD (default 2).
 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c4-skills-projects qa-out 4
 QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
 ```
@@ -325,9 +316,8 @@ needs its own project before it can live in `e2e/`.
 
 ## Owners
 
-The Monitoring / E2E Tests project lead owns `functions.json`, the charters and missions, `noise.txt`,
-`known-issues.md` and the canaries, and
-turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is tracked or
+The Monitoring / E2E Tests project lead owns `functions.json`, the charters, `noise.txt`, `known-issues.md`
+and the canaries, and turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is tracked or
 accepted, and remove it once it is fixed. Whoever triages on Monday puts one `qa:` label on every `qa-agent` ticket.
 
 Charters carry no step budget on purpose. With "about 200 tool calls" in c4, the explorer stopped near that
@@ -346,7 +336,7 @@ Never run on GitHub (only locally, or read in the action's code):
 - the heartbeat and `notify-on-failure` for this workflow;
 - the explore job's inline stop, checksum check and result upload, and the fix job's spec replay (each was run
   locally as a script under `bash -eo pipefail`, not inside Actions);
-- the explore job's transcript cut and secret check, and the `arm` input (the same `transcript.jq` and an exact-value
+- the explore job's transcript cut and secret check (the same `transcript.jq` and an exact-value
   `grep` ran locally on real sessions' output);
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
 - the bubblewrap sandbox in the fix job, including whether the agent's own spec run can still reach the local

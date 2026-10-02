@@ -5,8 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # The QA agent's app stack, in CI and locally: the consumer pair of the root playwright.config.ts (backend on 8005
-# with the fixed sign-in code, frontend on 1424) plus the fake LLM provider (9878) and the fake MCP server (9879),
-# with a production build served by `vite preview` instead of the dev server.
+# with the fixed sign-in code, frontend on 1424) plus the fake LLM provider (9878), the fake MCP server (9879) and the
+# fake Google (9880, also with real providers), with a production build served by `vite preview` instead of the dev
+# server.
 #
 #   .github/qa/scripts/stack.sh build <out-dir> [onboarding]  build the frontend (onboarding off unless asked)
 #   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on 1424 (and one on 1425) until killed
@@ -30,11 +31,13 @@ cd "$(dirname "$0")/../../.."
 export PATH=$PWD/node_modules/.bin:$PATH
 
 backend_url=http://localhost:8005
+fake_google_url=http://127.0.0.1:9880
 frontend_env=(
   VITE_AUTH_MODE=thunderbolt
   VITE_AUTH_ENABLE_ANONYMOUS=false
   VITE_BYPASS_WAITLIST=false
   "VITE_THUNDERBOLT_CLOUD_URL=$backend_url/v1"
+  "VITE_GOOGLE_BASE_URL=$fake_google_url"
 )
 
 if [ "$1" = build ]; then
@@ -102,6 +105,10 @@ backend_env=(
   "TRUSTED_ORIGINS=$origins"
   RATE_LIMIT_ENABLED=false
   TEST_PROXY_ALLOWED_HOSTS=127.0.0.1:9879
+  # Any non-empty client makes the app offer Google; these are the fake's own, not secrets.
+  GOOGLE_CLIENT_ID=fake-google-client-id
+  GOOGLE_CLIENT_SECRET=fake-google-client-secret
+  "GOOGLE_BASE_URL=$fake_google_url"
 )
 if [ "${QA_REAL_PROVIDERS:-}" != true ]; then
   backend_env+=(ANTHROPIC_API_KEY=e2e-fake-provider-key ANTHROPIC_BASE_URL=http://localhost:9878)
@@ -125,6 +132,7 @@ fi
 
 bun -e "import { createFakeProvider } from './e2e/fake-provider'; await createFakeProvider(9878)" &
 bun -e "import { createFakeMcpServer } from './e2e/fake-mcp-server'; await createFakeMcpServer(9879)" &
+bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; createFakeGoogle(9880)" &
 
 if [ "$2" = dev ]; then
   (cd backend && exec env "${backend_env[@]}" bun run --watch src/index.ts) &

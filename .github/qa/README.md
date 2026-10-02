@@ -287,7 +287,9 @@ A full set of 8 charters plus the canary leg cost about $7 in explore sessions, 
 Cache reads are most of every explore session's cost. c3 and c5 also spend on the app's own providers (38 real
 Opus 5 calls over two runs); the backend logs no token counts for them. c7 has not been measured yet. Since
 2026-10-02 c4 uses the real AI too: up to 10 chat messages on Opus 5 a session (its cap), and 3 replays of each
-spec it writes.
+spec it writes. Its first local session cost $1.72 (283 turns, the most so far, 9.2 min) plus $0.14 for 6 Opus 5
+calls on the app side; a c3 session with a conversation per model cost $0.85 plus $0.09 for 3 Opus 5 calls (its
+GLM calls were not metered).
 
 With these numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That
 is one local sample per charter and a single fix, so keep the initial caps until two scheduled runs have reported.

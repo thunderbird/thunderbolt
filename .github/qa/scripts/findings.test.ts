@@ -251,7 +251,9 @@ test('each charter names exactly the functions of its list, and says the AI is r
 
 test('every free session is real AI, on a platform whose id is a finding viewport, and every case is complete', async () => {
   for (const { id, viewport, mcp } of platforms) {
-    expect(realAiCharters.has(`free-${id}`)).toBe(true)
+    // A session id is free-<case>-<platform>; a platform id without hyphens keeps the case readable before it.
+    expect(id).toMatch(/^[a-z]+$/)
+    expect(cases.every((c) => realAiCharters.has(`free-${c.id}-${id}`))).toBe(true)
     expect(findingSchema.safeParse({ ...finding, viewport: id }).success, id).toBe(true)
     expect(viewport).toMatch(/^\d+x\d+$/)
     expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)

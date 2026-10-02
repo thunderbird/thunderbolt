@@ -14,8 +14,9 @@
 # execution.json + session.json (metrics), transcript.json (the tool calls, for the coverage check) and
 # findings.json (the summary, only if the session finished).
 # The phone charter needs QA_MCP_VIEWPORT=390x844, the two-device charter
-# QA_MCP_CONFIG=.github/qa/mcp-two-devices.json. The free session on a platform of platforms.json is the charter
-# free-<platform> (its viewport and MCP config come from there); it plays the case in QA_JOURNEY, or this week's.
+# QA_MCP_CONFIG=.github/qa/mcp-two-devices.json. The free session of a case in journeys.json on a platform in
+# platforms.json is the charter free-<case>-<platform> (its viewport and MCP config come from platforms.json), e.g.
+# `run "free-$(.github/qa/scripts/explore.sh journey)-phone" qa-out` for this week's case on the phone.
 # Keep the claude flags in step with the explore job in .github/workflows/qa-weekly.yml.
 
 set -euo pipefail
@@ -43,11 +44,12 @@ prompt() {
   printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
     "$1" "$2" "$1" "$1" "$(date +%s)"
   if [[ $1 == free-* ]]; then
-    local viewport id
-    viewport=$(platform "${1#free-}" viewport)
-    id=$(journey "${QA_JOURNEY:-}")
+    # free-<case>-<platform>: platform ids have no hyphen, so the last part names the platform.
+    local viewport id=${1#free-}
+    viewport=$(platform "${1##*-}" viewport)
+    id=$(journey "${id%-*}")
     # shellcheck disable=SC2016 # the backticks are Markdown
-    printf '## Your case (free session)\n\nPlatform: `%s`, a %s screen.\n\n```json\n' "${1#free-}" "$viewport"
+    printf '## Your case (free session)\n\nPlatform: `%s`, a %s screen.\n\n```json\n' "${1##*-}" "$viewport"
     jq --arg id "$id" '.[] | select(.id == $id) | del(.pt)' .github/qa/journeys.json
     printf '```\n'
     return
@@ -60,13 +62,11 @@ prompt() {
 }
 
 run() {
-  local charter=$1 out=$2 dir=$2/$1 config journey_id=''
+  local charter=$1 out=$2 dir=$2/$1 config
   if [[ $charter == free-* ]]; then
-    QA_MCP_VIEWPORT=$(platform "${charter#free-}" viewport)
-    QA_MCP_CONFIG=$(platform "${charter#free-}" mcp)
-    journey_id=$(journey "${QA_JOURNEY:-}")
-    # The prompt and the MCP config read these.
-    export QA_MCP_VIEWPORT QA_JOURNEY=$journey_id
+    QA_MCP_VIEWPORT=$(platform "${charter##*-}" viewport)
+    QA_MCP_CONFIG=$(platform "${charter##*-}" mcp)
+    export QA_MCP_VIEWPORT
   fi
   mkdir -p "$dir"
   config=$(mktemp -d)
@@ -85,8 +85,7 @@ run() {
   rm -rf "$config"
   jq --slurp . "$dir/run.jsonl" > "$dir/execution.json"
   jq --compact-output --from-file .github/qa/transcript.jq "$dir/execution.json" > "$dir/transcript.json"
-  bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$charter" --out "$out" \
-    ${journey_id:+--journey "$journey_id"}
+  bun .github/qa/scripts/report.ts session --execution-file "$dir/execution.json" --charter "$charter" --out "$out"
   jq --exit-status 'last | .structured_output // empty' "$dir/execution.json" > "$dir/findings.json" ||
     rm "$dir/findings.json"
   cat "$dir/session.json"

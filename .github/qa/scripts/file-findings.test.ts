@@ -100,17 +100,17 @@ beforeEach(async () => {
 afterEach(() => rm(outDir, { recursive: true, force: true }))
 
 /** Write verified.json with these findings (plus their repro specs) as confirmed. */
-const writeVerified = async (findings: Partial<RawFinding>[], video?: string) => {
+const writeVerified = async (findings: Partial<RawFinding>[], video?: string, charterDir = 'c2-chat') => {
   const confirmed = []
   for (const [i, fields] of findings.entries()) {
     const finding = { ...base, ...fields }
-    await mkdir(join(outDir, 'c2-chat/repro'), { recursive: true })
+    await mkdir(join(outDir, charterDir, 'repro'), { recursive: true })
     await writeFile(
-      join(outDir, 'c2-chat', finding.repro_spec),
+      join(outDir, charterDir, finding.repro_spec),
       `// spec ${i}\nawait page.goto('http://localhost:1420')`,
     )
     confirmed.push({
-      charterDir: 'c2-chat',
+      charterDir,
       id: String(i),
       finding,
       replay: { failed: 3, runs: 3 },
@@ -374,6 +374,12 @@ describe('dry run', () => {
     expect(entry.preview).toMatchObject({ title: `Chat title disappears [qa:${fp({})}]`, labels: ['qa-agent', 'Bug'] })
     expect(entry.preview?.body).toContain('The page throws')
     expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))[0].preview).toEqual(entry.preview)
+  })
+
+  test("names the session's directory as the charter, so a free session's ticket shows its case", async () => {
+    await writeVerified([{ charter: 'free-desktop' }], undefined, 'free-calendar-planner-desktop')
+    const [entry] = await run(fakeLinear().fetchFn, { live: false })
+    expect(entry.preview?.body).toContain('**Charter:** free-calendar-planner-desktop')
   })
 
   test('keeps no text of a security finding anywhere outside Linear', async () => {

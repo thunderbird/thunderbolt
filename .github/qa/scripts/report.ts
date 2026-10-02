@@ -15,8 +15,6 @@ import type { Verified, VerifiedFinding } from './verify'
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
 export type Session = {
   charter: string
-  /** The case a free session (`free-<platform>`) played, from `journeys.json`. */
-  journey?: string
   cost_usd: number
   turns: number
   duration_ms: number
@@ -328,10 +326,8 @@ const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n'
 /** Model-written text for the public job summary: one line, no foreign links or images, capped. */
 const safe = (text: string, max: number) => sanitize(escapeCell(text), max)
 
-/** Free sessions record their metrics as `free-<platform>`: they play a case and have no function list. */
+/** Free sessions record their metrics as `free-<case>-<platform>`: they play a case and have no function list. */
 const isFree = (charter: string) => charter.startsWith('free-')
-/** A free session's name in the report, with the case it played. */
-const sessionName = (s: Session) => (s.journey ? `${s.charter} (${s.journey})` : s.charter)
 
 const verdictStates = ['passed', 'failed', 'unsupported', 'blocked', 'unattempted'] as const
 
@@ -361,12 +357,12 @@ const coverageParts = (charter: string, { verdicts, records, invalid, unknown, t
   ]
 }
 
-const coverageLine = (s: Session, coverage?: Coverage, summary?: Summary) => {
-  const parts = coverage ? coverageParts(s.charter, coverage) : ['no function list']
+const coverageLine = (charter: string, coverage?: Coverage, summary?: Summary) => {
+  const parts = coverage ? coverageParts(charter, coverage) : ['no function list']
   const visited = summary
     ? `visited ${summary.visited.map((screen) => safe(screen, 60)).join(', ') || 'none'}`
     : 'no summary (session cut)'
-  return `- **${sessionName(s)}**: ${[...parts, visited].join('; ')}`
+  return `- **${charter}**: ${[...parts, visited].join('; ')}`
 }
 
 /** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
@@ -505,14 +501,14 @@ const freeSection = ({ coverage, summaries }: ReportInput, free: Session[], find
   'One case, played on every platform with the real AI. What a session tried is its own attempt records, each ' +
     'checked against the transcript like a charter function. App providers: not measured.',
   '',
-  '| platform | case | cost | turns | duration | tokens | stop |',
-  '|---|---|---|---|---|---|---|',
-  ...free.map((s) => `| ${s.charter.slice('free-'.length)} | ${s.journey ?? 'unknown'} | ${metricCells(s)} |`),
+  '| session (free-case-platform) | cost | turns | duration | tokens | stop |',
+  '|---|---|---|---|---|---|',
+  ...free.map((s) => `| ${s.charter} | ${metricCells(s)} |`),
   '',
   `Total: ${total(free)}.`,
   '',
   '### What was tried',
-  ...free.map((s) => coverageLine(s, coverage.get(s.charter), summaries.get(s.charter))),
+  ...free.map((s) => coverageLine(s.charter, coverage.get(s.charter), summaries.get(s.charter))),
   ...findingsSection(findings, ' (free session)'),
 ]
 
@@ -530,8 +526,7 @@ export const renderReport = (input: ReportInput) => {
       '',
       `## ⚠️ ${cut.length} INCOMPLETE session(s)`,
       ...cut.map(
-        (s) =>
-          `- **${sessionName(s)}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}; ${cutNote(s)}`,
+        (s) => `- **${s.charter}**: ${stopLabel[s.stop]} after ${s.turns} turns, ${usd(s.cost_usd)}; ${cutNote(s)}`,
       ),
     )
   }
@@ -550,7 +545,7 @@ export const renderReport = (input: ReportInput) => {
     '## Coverage',
     'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
       'and after a reload where the function needs one.',
-    ...chartered.map((s) => coverageLine(s, coverage.get(s.charter), summaries.get(s.charter))),
+    ...chartered.map((s) => coverageLine(s.charter, coverage.get(s.charter), summaries.get(s.charter))),
     ...findingsSection(
       findingsOf(input, (charterDir) => !isFree(charterDir)),
       '',
@@ -673,7 +668,6 @@ if (import.meta.main) {
       out: { type: 'string', default: 'qa-out' },
       'execution-file': { type: 'string' },
       charter: { type: 'string' },
-      journey: { type: 'string' },
       'timed-out': { type: 'boolean', default: false },
       baseline: { type: 'string' },
     },
@@ -681,8 +675,7 @@ if (import.meta.main) {
   const out = values.out
   if (positionals[0] === 'session') {
     if (!values.charter || !values['execution-file']) throw new Error('session needs --charter and --execution-file')
-    const metrics = await sessionFromExecution(values['execution-file'], values.charter, values['timed-out'])
-    const session: Session = { ...metrics, journey: values.journey }
+    const session = await sessionFromExecution(values['execution-file'], values.charter, values['timed-out'])
     await mkdir(join(out, values.charter), { recursive: true })
     await writeFile(join(out, values.charter, 'session.json'), JSON.stringify(session, null, 2))
   } else if (positionals[0] === 'summary') {

@@ -19,7 +19,7 @@ on:
         type: boolean
         default: true
       charters:
-        description: Comma-separated charter ids or free-<platform>, e.g. c4-skills-projects,free-phone (empty = all)
+        description: Comma-separated charter ids, free for the free session, e.g. c4-skills-projects,free (empty = all)
         type: string
         default: ''
       journey:
@@ -133,12 +133,13 @@ jobs:
                {charter: "c8-phone", viewport: "390x844"},
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
-              + ($platforms | map({charter: "free-\(.id)", journey: $journey, viewport, mcp}))
+              + ($platforms | map({charter: "free-\($journey)-\(.id)", viewport, mcp}))
             | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)')
-          unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) | join(" ")' <<< "$all")
+          # "free" selects the free session on every platform.
+          unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) - ["free"] | join(" ")' <<< "$all")
           if [ -n "$unknown" ]; then echo "::error::Unknown charter $unknown"; exit 1; fi
-          legs=$(jq --compact-output --argjson only "$only" \
-            'map(select(.charter as $c | $only == [] or ($only | index($c))))' <<< "$all")
+          legs=$(jq --compact-output --argjson only "$only" 'map(select(.charter as $c | $only == []
+            or ($only | index($c)) or (($c | startswith("free-")) and ($only | index("free")))))' <<< "$all")
           # Replay each artifact prefix on the kind of stack its sessions explored: pglite, Postgres + PowerSync for c7
           # (sync), or the real AI providers (real). Sync and real findings share qa-out and are judged with the
           # weekly ones.
@@ -194,9 +195,7 @@ jobs:
           retention-days: 1
 
   explore:
-    name: >-
-      explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}${{
-      matrix.leg.journey && format(' ({0})', matrix.leg.journey) || '' }}
+    name: explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
@@ -236,7 +235,6 @@ jobs:
         options: --restart always
     env:
       QA_CHARTER: ${{ matrix.leg.charter }}
-      QA_JOURNEY: ${{ matrix.leg.journey }}
       QA_OUT: ${{ matrix.leg.out }}
       QA_MCP_VIEWPORT: ${{ matrix.leg.viewport }}
       DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
@@ -889,11 +887,11 @@ jobs:
           # Session metrics come from each explore job's result message, here rather than in the explorer's job.
           # A leg without one (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
           if [ "$EXPLORE_RESULT" != skipped ]; then
-            jq -r '.[] | "\(.out) \(.charter) \(.journey // "")"' <<< "$LEGS" | while read -r out charter journey; do
+            jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS" | while read -r out charter; do
               timed_out=()
               if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
               bun .github/qa/scripts/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
-                --out "$out" "${timed_out[@]}" ${journey:+--journey "$journey"}
+                --out "$out" "${timed_out[@]}"
             done
           fi
           # Missing when the guard failed; report.ts needs the directory to exist.

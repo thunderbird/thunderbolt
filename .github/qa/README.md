@@ -62,7 +62,7 @@ it imports everything at start. If that changes, run it from a copy the job's us
 
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
    stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
-2. **explore**: one job per charter, and one per platform for the free session (`free-<platform>`), with
+2. **explore**: one job per charter, and one per platform for the free session (`free-<case>-<platform>`), with
    `claude-code-action` and the Playwright MCP (`mcp.json`, `mcp-two-devices.json` for c7). The prompt is
    `prompt.md`, then the charter, then the area's function list (a free session: the case instead). The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
    `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
@@ -77,9 +77,9 @@ it imports everything at start. If that changes, run it from a copy the job's us
    control spec; the rest are deferred.
    3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
    `qa-sync`) replay in their own leg on Postgres + PowerSync. The real-AI charters' findings (`realAiCharters` in
-   `scripts/findings.ts`, today c3, c4, c5 and every `free-<platform>`; artifact prefix `qa-real`) replay in their
-   own leg against the real providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky, 0 =
-   dropped. The rest replay on pglite with the fake AI. The judge takes all three.
+   `scripts/findings.ts`, today c3, c4, c5 and every `free-<case>-<platform>`; artifact prefix `qa-real`) replay
+   in their own leg against the real providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky,
+   0 = dropped. The rest replay on pglite with the fake AI. The judge takes all three.
 4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`,
    at most 15 per leg and only while their worst-case cost stays under $2; the rest are deferred, never filed. The
    default answer is drop. Writes `verified.json`.
@@ -132,14 +132,15 @@ variant that might break it. It records attempts and findings like a charter ses
 
 - **Which case.** `explore.sh journey` picks it: the number of weeks since 1970 modulo the number of cases, so
   consecutive Mondays take consecutive cases and every case runs once before any repeats. A dispatch's `journey`
-  input forces one; add `charters: free-desktop,free-phone` to run only the free session.
+  input forces one; add `charters: free` to run only the free session.
 - **Add a case.** Append an object with a new `id` to `journeys.json`. Adding one shifts the rotation once.
   `bun run test:qa` checks that every case has its fields.
 - **Platforms.** One entry each in `platforms.json`: the `id` (also the findings' `viewport`), the screen size and
-  the Playwright MCP config. Each platform is one explore leg, `free-<id>`, so a new platform is one entry. Every
-  `free-*` leg counts as a real-AI charter (`realAiCharters` in `findings.ts`): its findings replay in the `real`
-  leg, where two failures in three confirm one, and never go to the fix agent. A native platform will also need
-  its driver (an MCP config and a build or launch step) and a new `viewport` value in the finding schema.
+  the Playwright MCP config. Each platform is one explore leg, `free-<case>-<id>` (so the id has no hyphen), and a
+  new platform is one entry. That name is the session's everywhere: job, artifact, report and the ticket's Charter
+  line. Every `free-*` leg counts as a real-AI charter (`realAiCharters` in `findings.ts`): its findings replay in
+  the `real` leg, where two failures in three confirm one, and never go to the fix agent. A native platform will
+  also need its driver (an MCP config and a build or launch step) and a new `viewport` value in the finding schema.
 - **Report.** The free sessions get their own section: case and platform, metrics, what each tried (the names of
   its own attempt records, each checked against the transcript like a charter function, instead of a share
   covered) and their own gate yield, drop and filing lists. A session cut by a cap shows under INCOMPLETE like any
@@ -169,9 +170,9 @@ ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user qa-ou
 QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
 ```
 
-- **The free session** runs one platform per call, this week's case unless `QA_JOURNEY` names one. It takes its
-  viewport and MCP config from `platforms.json` and needs the real-provider stack below:
-  `QA_JOURNEY=trip-planner ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run free-phone qa-out 4`.
+- **The free session** runs one case on one platform per call, named `free-<case>-<platform>` (`explore.sh journey`
+  prints this week's case). It takes its viewport and MCP config from `platforms.json` and needs the real-provider
+  stack below: `ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run free-trip-planner-phone qa-out 4`.
 - **c3, c4, c5 and the free session** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and
   `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment. Replay their
   findings against that same stack, from their own out dir. Locally the backend runs as you: `QA_BACKEND_USER` and

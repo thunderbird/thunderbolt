@@ -268,9 +268,12 @@ export const ticketView = (f: Finding, runUrl?: string) => {
   }
 }
 
-/** Markdown body of a new ticket. Security findings carry no run link. */
+/**
+ * Markdown body of a new ticket. Security findings carry no run link. The charter is the session's directory, not
+ * what the model wrote, so a free session's ticket always names its case and platform (`free-<case>-<platform>`).
+ */
 const buildBody = (
-  { f, sev }: Entry,
+  { v, f, sev }: Entry,
   spec: string,
   extra: { runUrl?: string; sha?: string; videoUrl?: string; regressionOf?: Existing },
 ): string => {
@@ -279,7 +282,7 @@ const buildBody = (
   return [
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
-    `**Area:** ${f.area} · **Severity:** ${sev} · **Viewport:** ${f.viewport} · **Charter:** ${sanitize(f.charter, 60, runUrl)}`,
+    `**Area:** ${f.area} · **Severity:** ${sev} · **Viewport:** ${f.viewport} · **Charter:** ${sanitize(v.charterDir, 60, runUrl)}`,
     extra.sha && `**Commit:** ${extra.sha}`,
     runUrl && `**Run:** ${runUrl}`,
     '## Steps',

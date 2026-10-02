@@ -278,16 +278,18 @@ describe('renderReport', () => {
 
   it('shows free sessions apart from the charters: case, platform, what was tried and their own findings', () => {
     const free = (charterDir: string, id: string) => ({ ...verifiedFinding('chat', 'assert-failed', id), charterDir })
+    const desktop = 'free-trip-planner-desktop'
+    const phone = 'free-trip-planner-phone'
     const report = renderReport({
       sessions: [
         session({ charter: 'c8-phone' }),
-        session({ charter: 'free-desktop', journey: 'trip-planner' }),
-        session({ charter: 'free-phone', journey: 'trip-planner', stop: 'max_budget' }),
+        session({ charter: desktop }),
+        session({ charter: phone, stop: 'max_budget' }),
       ],
       summaries: new Map(),
       coverage: new Map([
         [
-          'free-desktop',
+          desktop,
           {
             verdicts: [{ id: 'plan-after-reload', state: 'passed' }],
             records: 1,
@@ -297,12 +299,12 @@ describe('renderReport', () => {
           },
         ],
       ]),
-      found: ['c8-phone', 'free-desktop', 'free-phone'],
+      found: ['c8-phone', desktop, phone],
       verified: {
         ...emptyVerified,
         confirmed: [verifiedFinding('chat', 'page-error')],
-        flaky: [{ ...free('free-phone', '2'), replay: { failed: 1, runs: 3 } }],
-        dropped: [{ file: free('free-desktop', '1'), gate: 'replay', reason: 'failed 0/3 replays' }],
+        flaky: [{ ...free(phone, '2'), replay: { failed: 1, runs: 3 } }],
+        dropped: [{ file: free(desktop, '1'), gate: 'replay', reason: 'failed 0/3 replays' }],
       },
       filed: [
         { fp: 'abcd1234', charterDir: 'c8-phone', id: '1', severity: 'High', action: 'dry-run', would: 'created' },
@@ -310,21 +312,21 @@ describe('renderReport', () => {
     })
     const [charters, freePart] = report.split('## Free session')
     expect(charters).toContain(
-      '**free-phone (trip-planner)**: BUDGET CAP after 30 turns, $2.00; the case was not fully played',
+      '**free-trip-planner-phone**: BUDGET CAP after 30 turns, $2.00; the case was not fully played',
     )
     expect(charters).not.toContain('| free-')
     expect(charters).toContain(
       'found 1 → oracle 1 → lint 1 → replay 1 (0 flaky, 0 deferred) → judge 1 (0 deferred) → filed 1',
     )
-    expect(charters).not.toContain('free-phone/2')
-    expect(freePart).toContain('| phone | trip-planner | $2.00 | 30 | 10.0 min |')
-    expect(freePart).toContain('- **free-desktop (trip-planner)**: tried 1; passed: plan-after-reload; no summary')
+    expect(charters).not.toContain(`${phone}/2`)
+    expect(freePart).toContain('| free-trip-planner-phone | $2.00 | 30 | 10.0 min |')
+    expect(freePart).toContain('- **free-trip-planner-desktop**: tried 1; passed: plan-after-reload; no summary')
     expect(freePart).toContain('## Gate yield (free session)')
     expect(freePart).toContain(
       'found 2 → oracle 2 → lint 2 → replay 1 (1 flaky, 0 deferred) → judge 0 (0 deferred) → filed 0',
     )
-    expect(freePart).toContain('free-phone/2')
-    expect(freePart).toContain('free-desktop/1: **replay**')
+    expect(freePart).toContain('free-trip-planner-phone/2')
+    expect(freePart).toContain('free-trip-planner-desktop/1: **replay**')
     // The free sessions share the explore caps, so they count in its calibration.
     expect(report).toContain('| explore | cost | 3 |')
   })
@@ -611,13 +613,11 @@ describe('runSummary', () => {
     ])
     await writeFile(join(outDir, 'c4/transcript.json'), JSON.stringify(transcript))
     // A free session has no list: its attempts' own names are what it tried.
-    await mkdir(join(outDir, 'free-phone/attempts'), { recursive: true })
+    const free = 'free-phone-commuter-phone'
+    await mkdir(join(outDir, free, 'attempts'), { recursive: true })
+    await writeFile(join(outDir, free, 'session.json'), JSON.stringify(session({ charter: free })))
     await writeFile(
-      join(outDir, 'free-phone/session.json'),
-      JSON.stringify(session({ charter: 'free-phone', journey: 'phone-commuter' })),
-    )
-    await writeFile(
-      join(outDir, 'free-phone/attempts/1.json'),
+      join(outDir, free, 'attempts/1.json'),
       JSON.stringify({
         function: 'photo-question',
         setup: 's',
@@ -636,7 +636,7 @@ describe('runSummary', () => {
       '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
     )
     expect(report.split('## Free session')[1]).toContain(
-      '- **free-phone (phone-commuter)**: tried 1, **no transcript** (1 records unchecked); unsupported: photo-question',
+      '- **free-phone-commuter-phone**: tried 1, **no transcript** (1 records unchecked); unsupported: photo-question',
     )
     expect(await readFile(join(outDir, 'report.md'), 'utf8')).toBe(report)
     expect(await readFile(stepSummary, 'utf8')).toBe(report)

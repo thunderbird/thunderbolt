@@ -18,7 +18,7 @@ export const googleApisUrl = googleBaseUrl ?? 'https://www.googleapis.com'
 /**
  * Parse email address from Gmail API format
  */
-export const parseEmailAddress = (emailStr: string): { name: string; email: string } => {
+export const parseEmailAddress = (emailStr: string) => {
   if (!emailStr) {
     return { name: '', email: '' }
   }

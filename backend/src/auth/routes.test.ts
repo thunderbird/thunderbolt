@@ -14,7 +14,6 @@ import { createMicrosoftAuthRoutes } from './microsoft'
 
 describe('Authentication Routes', () => {
   let app: { handle: Elysia['handle'] }
-  let mockFetch: ReturnType<typeof mock>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
 
@@ -23,6 +22,9 @@ describe('Authentication Routes', () => {
       status,
       headers: { 'Content-Type': 'application/json' },
     })
+
+  const mockFetch = mock((..._args: Parameters<typeof fetch>) => Promise.resolve(createMockOAuthResponse()))
+  const fetchFn = Object.assign(mockFetch, { preconnect: globalThis.fetch.preconnect })
 
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
@@ -37,13 +39,8 @@ describe('Authentication Routes', () => {
       }),
     )
 
-    // Create mock fetch
-    mockFetch = mock(() => Promise.resolve(createMockOAuthResponse()))
-
     // Inject mock fetch into routes
-    app = new Elysia()
-      .use(createGoogleAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
-      .use(createMicrosoftAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
+    app = new Elysia().use(createGoogleAuthRoutes(mockAuth, fetchFn)).use(createMicrosoftAuthRoutes(mockAuth, fetchFn))
   })
 
   afterAll(async () => {
@@ -56,8 +53,8 @@ describe('Authentication Routes', () => {
 
     beforeAll(() => {
       unauthApp = new Elysia()
-        .use(createGoogleAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
-        .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
+        .use(createGoogleAuthRoutes(mockAuthUnauthenticated, fetchFn))
+        .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, fetchFn))
     })
 
     it('should reject unauthenticated requests to Google config', async () => {

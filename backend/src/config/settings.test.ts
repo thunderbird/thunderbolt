@@ -823,8 +823,8 @@ describe('Config Settings', () => {
 
       const settings = getSettings()
 
+      // toBe compares with Object.is, so the string '1800' would fail here.
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
-      expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
     })
 
     it('should reject zero token expiry', () => {

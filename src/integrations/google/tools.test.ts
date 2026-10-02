@@ -14,22 +14,33 @@ import type {
 } from './tools'
 import { checkCalendar, checkInbox, draftEmail, getEmail, searchEmails } from './tools'
 
+/** Google's API error envelope, as the Calendar API sends it. */
+type GoogleErrorEnvelope = {
+  error: {
+    code: number
+    message: string
+    errors?: Array<{ reason: string; domain?: string }>
+    status?: string
+    details?: Array<{ reason: string }>
+  }
+}
+
 /**
  * Mock client that fails with a real non-ok `Response`, so the client under test
  * throws the same `HttpError` (body included) it would in the browser.
  */
-const createErrorHttpClient = (status: number, body: unknown = {}): HttpClient =>
+const createErrorHttpClient = (status: number, body: GoogleErrorEnvelope): HttpClient =>
   createClient({
     fetch: async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
   })
 
-/** Mock client that records the requested URLs and returns `response` for each call. */
-const createRecordingHttpClient = (response: unknown): { client: HttpClient; urls: string[] } => {
+/** Mock client that records the requested URLs and returns an empty calendar for each call. */
+const createRecordingHttpClient = () => {
   const urls: string[] = []
   const client = createClient({
     fetch: async (input) => {
       urls.push(input instanceof Request ? input.url : input.toString())
-      return new Response(JSON.stringify(response), {
+      return new Response(JSON.stringify({ items: [], timeZone: 'UTC' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -484,7 +495,7 @@ describe('Google Tools', () => {
     it('should request the calendar named by calendar_id', async () => {
       const params: CheckCalendarParams = { days_ahead: 7, calendar_id: 'team@example.com' }
 
-      const { client, urls } = createRecordingHttpClient({ items: [], timeZone: 'UTC' })
+      const { client, urls } = createRecordingHttpClient()
       await checkCalendar(params, client, mockAuth)
 
       const url = new URL(urls[0])
@@ -497,7 +508,7 @@ describe('Google Tools', () => {
     it('should apply both schema defaults when called with raw arguments', async () => {
       // The ACP/Pi bridge calls execute with the model's raw arguments, so the
       // zod defaults never run — `{}` is a shape this function really receives.
-      const { client, urls } = createRecordingHttpClient({ items: [], timeZone: 'UTC' })
+      const { client, urls } = createRecordingHttpClient()
       await checkCalendar({} as CheckCalendarParams, client, mockAuth)
 
       expect(urls[0]).toContain('/calendars/primary/events')

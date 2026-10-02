@@ -9,7 +9,7 @@ get a ticket for it.
 **The default answer is drop.** Keep a finding only when all of these hold:
 
 - It is a real defect in the app: a user-visible failure (wrong or missing content, a broken action, lost data,
-  a form that refuses input without saying why, a layout that hides or clips content) or an error the app itself
+  a form that won't save although every visible field is filled, a layout that hides or clips content) or an error the app itself
   raises (uncaught page error, console error, HTTP 5xx from the app's backend).
 - The oracle evidence and the spec support the reported actual behaviour, and the replay failure shows that
   behaviour, not a problem with the spec (a wrong selector, a too-short timeout, a wrong assumption about the
@@ -22,6 +22,8 @@ Drop it when any of these hold:
   helper (`loginViaEmailCode`). The exception is a `stuck` oracle, where the timeout is the symptom being reported.
 - It matches an entry in the known issues list below, even loosely.
 - It describes intended behaviour, a product decision, or a matter of taste.
+- It is a disabled button or refused save while a visible field is empty, or an interface suggestion or opinion
+  (for example "a hint would help").
 - It is an environment artifact: the local test stack, the fake LLM provider and its scripted reply, the fixed
   test sign-in code, missing third-party services or keys, a real provider's outage, rate limit or overload,
   headless-browser limits, or test data left behind.

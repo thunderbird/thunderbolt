@@ -69,8 +69,11 @@ Techniques for choosing your own tests. Use the ones that fit a function, in any
   reply mid-stream.
 - Round trips: create, change, delete and create the same thing again, checking each step after a reload.
 - Combinations: one feature used inside another (a skill in a project's chat, a file in a long thread).
-- Forms: fill every required field. When a form does not save, read why, fix the input and retry; a form that
-  refuses without saying why, or with an unclear message, is an `assert-failed` finding.
+- Forms: when a submit button stays disabled or a form won't save, check every visible field and fill the empty
+  ones, even fields that are normally auto-filled (like a skill's Slug), then continue as a user would. Report a
+  finding only if the form still won't save with every visible field filled, if it saves but the data is lost or
+  changed after a reload, or if an error appears. A disabled button while a visible field is empty is not a
+  finding, and neither is a suggestion or opinion (for example "a hint would help").
 
 ## Record every attempt
 

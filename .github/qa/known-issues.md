@@ -5,4 +5,5 @@
      sees or the error text, and why it is known (tracked, accepted, or wontfix). Keep the list short: every
      entry is read by the judge on every call. -->
 
-None yet.
+- Skills form: the Slug is not generated from names without Latin letters or digits (emoji, CJK, Arabic, Hebrew),
+  so Create stays disabled until a slug is typed. Intended.

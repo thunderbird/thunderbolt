@@ -6,9 +6,11 @@ Start state: fresh user, desktop viewport. In this charter the AI is **real**: s
 prompts short and send at most 10 chat messages in total.
 
 Fill every required field each time you create or edit: a skill needs a name, a description and instructions (the
-slug fills itself from the name), a project needs a name. When a form does not save, read its validation message,
-fix the input and retry. A form that refuses to save without a message saying why, or with an unclear one, is a
-finding (`assert-failed`): quote the form's fields and its disabled button.
+slug fills itself from the name; when it stays empty, type one by hand), a project needs a name. When a submit
+button stays disabled or a form won't save, check every visible field and fill the empty ones, then continue. It is
+a finding (`assert-failed`) only if the form still won't save with every visible field filled, if it saves but the
+data is lost or changed after a reload, or if an error appears. A disabled button while a visible field is empty is
+not a finding, and neither is a suggestion or opinion.
 
 1. Skills (Settings → Skills, the "Add a skill" button on the chat home, and the slash (`/`) popup in the composer):
    create, edit, disable and enable, delete, and reorder if the UI allows it. Reload after every change.

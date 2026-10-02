@@ -10,11 +10,12 @@
  * the prompt (`createPromptParts`), which is fingerprinted for caching. Putting
  * changing data here would invalidate the prompt cache on every interaction.
  * `src/projects/project-search-tool.ts` rejected prompt injection for the same
- * reason; the state is read through the `get_app_context` tool instead.
+ * reason. The state goes in the *volatile* half instead, rebuilt every send
+ * beside the date/time — see `mini-app-context-note.ts` — with `get_app_context`
+ * for the full data and for re-reads mid-turn.
  *
  * The section exists at all because a model won't reach for a tool it hasn't
- * been told about — without this the model answers "I can't see your screen"
- * and never calls `get_app_context`.
+ * been told about, and won't look for a view it hasn't been told is there.
  */
 
 import type { EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
@@ -42,6 +43,6 @@ export const buildMiniAppPromptSection = (
   return [
     `# Mini App: ${app.name}`,
     `The user is looking at an embedded app beside this conversation. ${app.description}`,
-    'Call the `get_app_context` tool to see what they are currently viewing before answering anything about it. Their view changes as they click around, so call it again rather than reusing an earlier result when the question implies they have moved on.',
+    'What they are currently viewing is in the "Current view" section at the end of this prompt, refreshed on every message — answer from that, never from an earlier turn. Call the `get_app_context` tool when you need the full underlying data, or to re-read the screen after one of the app\'s tools has changed it.',
   ].join('\n\n')
 }

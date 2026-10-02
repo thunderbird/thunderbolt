@@ -247,15 +247,26 @@ Two channels, and the distinction is the whole design:
 so it's trusted, and it's stable for the turn, which keeps the cached prefix intact. The app's own tool
 descriptions also ride here, capped and fenced in `<app-provided-tool-list>` (see [Descriptor limits](#descriptor-limits)).
 
-**Tool calls** carry the app's _state_, on demand:
+**The volatile tail of the system prompt** carries the app's _current view_. On every send the host asks the
+frame over `ui/get-context` and appends `title`, `summary`, and `selection` as a `# Current view` note beside the
+date/time (`src/mini-apps/mini-app-context-note.ts`). That half of the prompt is rebuilt every send anyway, so
+the cacheable prefix is untouched; and a system note is never persisted, so the snapshot does not accumulate in
+the thread — turn N's request carries turn N's view, once. It is injected rather than left to a tool because a
+tool is only as fresh as the model's decision to call it: a model holding a `get_app_context` result from an
+earlier turn does not call again for "what's the total now?" — from where it sits, it already knows the total.
+Prior-turn `get_app_context` results in the history are rewritten to a one-line "superseded" placeholder before
+the request goes out, so there is exactly one description of the screen in the request.
 
-- `get_app_context` asks the frame over `ui/get-context` and returns what it answers _now_; on a timeout, a
-  navigation, or an app that never declared the capability it reports the context unavailable rather than anything
-  stale. A tool rather than an injection, because app state changes on every click and injecting it would
-  invalidate the cacheable prompt prefix on every send. There is nothing to publish and nothing to keep in sync:
-  the app supplies a `getContext()` the host calls, so the contract is "answer with what is on screen", not
-  "remember to tell us when it changes". The failure mode is an unanswered read, which the model is told about —
-  not a stale one, which it could not detect.
+**Tool calls** carry the rest, on demand:
+
+- `get_app_context` asks the frame over `ui/get-context` and returns what it answers _now_, including the `data`
+  payload the note leaves out (arbitrary app state, bounded only at 20k characters — not something to pay for on
+  every send). It is also how the model re-reads the screen mid-turn after one of the app's own tools has changed
+  it, since the note is a snapshot taken at send time. On a timeout, a navigation, or an app that never declared
+  the capability, both the note and the tool report the context unavailable rather than anything stale. There is
+  nothing to publish and nothing to keep in sync: the app supplies a `getContext()` the host calls, so the contract
+  is "answer with what is on screen", not "remember to tell us when it changes". The failure mode is an unanswered
+  read, which the model is told about — not a stale one, which it could not detect.
 - `app_<name>` calls the app's own tools. Arguments come from the model; results come back as text.
 
 ### What the model can and cannot cause
@@ -287,12 +298,14 @@ above it is our code, and worth reading with that in mind.
 2. The host asks `tools/list` if the app declared the capability, and registers what comes back as `app_*` tools.
    An app that registers through `document.modelContext` in an effect declares nothing here and sends
    `ui/notifications/tools-changed` instead, which asks the same question a moment later.
-3. The user asks a question. `src/ai/fetch.ts` builds the toolset and adds a prompt section naming the app.
-4. The model calls `get_app_context`; the host asks the frame `ui/get-context` and answers with what it says now.
+3. The user asks a question. `src/ai/fetch.ts` builds the toolset, adds a prompt section naming the app, asks the
+   frame `ui/get-context`, and puts what it says now in the volatile tail of the system prompt.
+4. The model answers from that view. If it needs the full `data`, it calls `get_app_context`, which asks the frame
+   again.
 5. The model calls `app_set_order_status`. It's a write, so the host shows the approval prompt above the composer
    and blocks. On approve, the call goes over the bridge; the app performs it and returns text.
-6. The app's state changed, and it publishes nothing — there is nothing to publish. The next
-   `get_app_context` sees it.
+6. The app's state changed, and it publishes nothing — there is nothing to publish. A `get_app_context` in the same
+   turn sees it, and so does the next send's view.
 
 ### Which document is in the frame
 

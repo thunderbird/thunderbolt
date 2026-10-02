@@ -526,6 +526,7 @@ describe('resolvePiModel — Tinfoil', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -633,6 +634,7 @@ describe('createBuiltInAdapter engine telemetry', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -672,6 +674,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const authToken = { current: 'first-token' }
     const authorizationHeaders: Array<string | null> = []
@@ -737,6 +740,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const receiptIds = ['first-receipt', 'second-receipt']
     const buildCalls: BuildAppHarnessOptions[] = []
@@ -824,6 +828,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
@@ -898,6 +903,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
+        embeddedSurface: null,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)
@@ -1126,6 +1132,7 @@ const createBudgetAdapter = (
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
+    embeddedSurface: null,
   })
   const registrations = new Set<unknown>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -1388,6 +1395,7 @@ describe('createBuiltInAdapter stop', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable prompt',
       volatileSystemPrompt: 'volatile prompt',
+      embeddedSurface: null,
     }
     const harness = {
       getTools: () => [],

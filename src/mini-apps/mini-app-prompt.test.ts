@@ -28,9 +28,11 @@ describe('buildMiniAppPromptSection', () => {
   })
 
   // Without an explicit pointer the model answers "I can't see your screen"
-  // instead of calling the tool.
-  it('tells the model to call get_app_context', () => {
-    expect(buildMiniAppPromptSection(app, 'mini-app')).toContain('get_app_context')
+  // instead of reading the view or calling the tool.
+  it('points the model at the current view and at get_app_context for the full data', () => {
+    const section = buildMiniAppPromptSection(app, 'mini-app')
+    expect(section).toContain('"Current view" section')
+    expect(section).toContain('get_app_context')
   })
 
   /*

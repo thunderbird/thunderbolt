@@ -7,7 +7,8 @@ import { loadProjectContextForThread } from '@/projects/load-project-context'
 import { createArtifactContextTool } from '@/artifacts/artifact-context-tool'
 import { getArtifactContextSnapshot } from '@/artifacts/artifact-context-store'
 import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
-import { chooseEmbeddedSurface } from '@/ai/embedded-surface'
+import { chooseEmbeddedSurface, type EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
+import { buildMiniAppContextNote, supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
@@ -479,7 +480,11 @@ export type PreparedAiRequestConfig = {
   readonly skills: readonly SkillDefinition[]
   readonly mcpToolsMetadata: UIMessageMetadata['mcpTools']
   readonly stableSystemPrompt: string
+  /** Per-send tail of the system prompt: the date/time, plus the open Mini App's
+   *  current view when that is the surface the model is answering about. */
   readonly volatileSystemPrompt: string
+  /** Which embedded surface `get_app_context` describes this send, if any. */
+  readonly embeddedSurface: EmbeddedSurfaceChoice
 }
 
 export type PrepareAiRequestConfigOptions = {
@@ -592,16 +597,22 @@ export const prepareAiRequestConfig = async ({
     artifactOpenedAt: artifactSnapshot.openedAt,
     hasArtifactTitle: artifactSnapshot.title !== null,
   })
+  // Reads the frame live rather than a cache, so state the user changed a
+  // moment ago is in the answer with no notification needed.
+  const readMiniAppContext = () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null)
   if (supportsTools && surface === 'artifact') {
     appToolset.get_app_context = createArtifactContextTool({ getSnapshot: getArtifactContextSnapshot })
   } else if (supportsTools && surface === 'mini-app') {
     appToolset.get_app_context = createMiniAppContextTool({
       getSnapshot: getMiniAppSnapshot,
-      // Reads the frame on every call rather than a cache, so state the user
-      // changed a moment ago is in the answer with no notification needed.
-      requestContext: () => useMiniAppStore.getState().requestContext?.() ?? Promise.resolve(null),
+      requestContext: readMiniAppContext,
     })
   }
+  // The view also goes into the volatile system prompt on every send, because a
+  // tool is only as fresh as the model's decision to call it — see
+  // `mini-app-context-note.ts`. Started here so the frame round trip overlaps
+  // MCP discovery below instead of adding to it.
+  const miniAppContextPromise = supportsTools && surface === 'mini-app' && miniApp ? readMiniAppContext() : null
   // Tools the app declares over the bridge. Merged the same way MCP tools are
   // (prefixed, conflicts skipped) since both are externally-defined toolsets we
   // discover at runtime.
@@ -635,6 +646,8 @@ export const prepareAiRequestConfig = async ({
     ? await mergeMcpTools(appToolset, mcpClients, reconnectClient)
     : { toolset: appToolset, summary: undefined, mcpTools: undefined }
   telemetry?.endPhase('mcp_discovery')
+  const miniAppContextNote =
+    miniAppContextPromise && miniApp ? buildMiniAppContextNote(miniApp, await miniAppContextPromise) : null
 
   const integrationStatuses = [
     integrationStatus.googleConnected && !integrationStatus.googleEnabled ? 'GOOGLE_DISABLED' : null,
@@ -695,7 +708,13 @@ export const prepareAiRequestConfig = async ({
     skills,
     mcpToolsMetadata: merged.mcpTools,
     stableSystemPrompt: prompt.stablePrompt,
-    volatileSystemPrompt: prompt.volatilePrompt,
+    // The note rides the volatile prompt rather than a separate field so every
+    // engine that composes stable + volatile (this file and the ACP harness)
+    // carries it without knowing it exists.
+    volatileSystemPrompt: miniAppContextNote
+      ? `${prompt.volatilePrompt}\n\n${miniAppContextNote}`
+      : prompt.volatilePrompt,
+    embeddedSurface: surface,
   }
 }
 
@@ -778,6 +797,7 @@ export const aiFetchStreamingResponse = async ({
     mcpToolsMetadata,
     stableSystemPrompt,
     volatileSystemPrompt,
+    embeddedSurface,
   } = await prepareAiRequestConfig({
     modelId,
     mcpClients,
@@ -993,9 +1013,13 @@ export const aiFetchStreamingResponse = async ({
         // read from IndexedDB) so the model receives them. Only the reference is
         // persisted/synced; the bytes are inlined here, in-flight to the model.
         // Quote parts are likewise flattened to Markdown blockquote text parts.
+        // With a Mini App on screen, prior-turn `get_app_context` results are
+        // superseded by the view in the system prompt — two descriptions of the
+        // screen in one request is an invitation to pick the stale one.
         telemetry?.startPhase('attachment_hydration')
+        const historyMessages = embeddedSurface === 'mini-app' ? supersedeAppContextResults(messages) : messages
         const baseMessages = await convertToModelMessages(
-          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(messages)),
+          hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(historyMessages)),
         )
         telemetry?.endPhase('attachment_hydration')
         let currentInput = assembleBuiltInModelInput(stableSystemPrompt, baseMessages, volatileSystemNotes)

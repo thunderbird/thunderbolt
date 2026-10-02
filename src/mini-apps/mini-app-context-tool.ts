@@ -20,6 +20,13 @@
  * simply slow. That is the trade, and it is the right way round — "I can't see
  * your screen right now" is recoverable, and a stale answer presented as current
  * is not (THU-910).
+ *
+ * **The model does not need this to know what is on screen.** The host reads
+ * the frame once per send and puts the view in the volatile system prompt (see
+ * `mini-app-context-note.ts`), because a tool is only as fresh as the model's
+ * decision to call it. What this tool adds is the `data` payload the note
+ * leaves out, and a re-read mid-turn after one of the app's tools has changed
+ * the screen.
  */
 
 import { tool, type Tool } from 'ai'
@@ -102,10 +109,10 @@ export const createMiniAppContextTool = ({
 }: MiniAppContextToolDeps): Tool<Record<string, never>, string> =>
   tool({
     description:
-      'Read what the user is currently looking at in the embedded app beside this chat. Returns the view they have ' +
-      'open, anything they have selected, and the underlying data. Call this before answering any question about ' +
-      '"this", "that", "the model", "the numbers", or anything else that refers to what is on their screen. Their ' +
-      'view changes as they click, so call it again on a follow-up rather than reusing an earlier result.',
+      'Read what the user is currently looking at in the embedded app beside this chat, including the full ' +
+      'underlying data. The system prompt already carries their current view as of their latest message; call ' +
+      "this when you need the complete data behind it, or to re-read the screen after one of the app's tools " +
+      'has changed it.',
     inputSchema: z.object({}),
     execute: async () => {
       const { app } = getSnapshot()

@@ -268,13 +268,25 @@
       "outcome": "The slash (/) popup fits the screen and puts the picked skill into the message"
     },
     {
+      "id": "skill-detail-fit",
+      "outcome": "A skill with a long name and long instructions opens its detail screen and its edit screen, and both fit the screen"
+    },
+    {
       "id": "project-create-delete",
       "outcome": "A project created on the phone shows in the sidebar, and once deleted it is gone",
       "reload": true
     },
     {
+      "id": "project-detail-fit",
+      "outcome": "A project with long instructions opens its detail and edit screens, and both fit the screen"
+    },
+    {
       "id": "settings-fit",
       "outcome": "Preferences, Skills, Models, Connections and Devices open and fit the screen (the overflow check finds nothing)"
+    },
+    {
+      "id": "settings-detail-fit",
+      "outcome": "The detail screen of a model in Settings → Models and of a connection in Settings → Connections fits the screen"
     },
     { "id": "pref-changes", "outcome": "A changed preferred name, theme and unit show as chosen", "reload": true }
   ]

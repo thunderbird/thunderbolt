@@ -79,6 +79,15 @@ const powersyncSettings: Settings = {
   haystackApiKey: '',
   haystackWorkspace: '',
   haystackPipelines: '',
+  agentEnabled: false,
+  agentModel: '',
+  agentMaxSteps: 8,
+  agentSystemPrompt: '',
+  agentMcpServers: '',
+  agentName: '',
+  agentDescription: '',
+  agentIcon: '',
+  allowAnonymousAgentDiscovery: false,
   minAppVersion: '',
 }
 

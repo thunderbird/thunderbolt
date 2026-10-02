@@ -6,7 +6,7 @@ import { truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
 import { http, HttpError, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
-import { buildRawMessage, extractBody, getHeader, parseEmailAddress } from './utils'
+import { buildRawMessage, extractBody, getHeader, googleApisUrl, parseEmailAddress } from './utils'
 import { ensureValidOAuthToken, getOAuthCredentials, type OAuthCredentials } from '@/integrations/oauth-credentials'
 
 // =============================================================================
@@ -183,7 +183,7 @@ export const checkInbox = async (
 
   // Get list of thread IDs instead of individual messages
   const listResponse = await httpClient
-    .get('https://www.googleapis.com/gmail/v1/users/me/threads', {
+    .get(`${googleApisUrl}/gmail/v1/users/me/threads`, {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -201,7 +201,7 @@ export const checkInbox = async (
   const threadDetails = await Promise.all(
     listResponse.threads.map(async (thread) => {
       const threadResponse = await httpClient
-        .get(`https://www.googleapis.com/gmail/v1/users/me/threads/${thread.id}`, {
+        .get(`${googleApisUrl}/gmail/v1/users/me/threads/${thread.id}`, {
           searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
           headers: { Authorization: `Bearer ${accessToken}` },
         })
@@ -266,7 +266,7 @@ export const searchEmails = async (
 
   // Get list of message IDs
   const listResponse = await httpClient
-    .get('https://www.googleapis.com/gmail/v1/users/me/messages', {
+    .get(`${googleApisUrl}/gmail/v1/users/me/messages`, {
       searchParams,
       headers: { Authorization: `Bearer ${accessToken}` },
     })
@@ -284,7 +284,7 @@ export const searchEmails = async (
   const messageDetails = await Promise.all(
     listResponse.messages.map(async (msg) => {
       const detailResponse = await httpClient
-        .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+        .get(`${googleApisUrl}/gmail/v1/users/me/messages/${msg.id}`, {
           searchParams: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' },
           headers: { Authorization: `Bearer ${accessToken}` },
         })
@@ -324,7 +324,7 @@ export const getEmail = async (
   const accessToken = await auth.ensureToken(httpClient, credentials)
 
   const response = await httpClient
-    .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.id}`, {
+    .get(`${googleApisUrl}/gmail/v1/users/me/messages/${params.id}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     .json<any>()
@@ -407,7 +407,7 @@ export const draftEmail = async (
 
   const raw = buildRawMessage(params)
 
-  const url = 'https://www.googleapis.com/gmail/v1/users/me/drafts'
+  const url = `${googleApisUrl}/gmail/v1/users/me/drafts`
 
   // If replying to an email, we need to set up threading
   const requestBody: any = {
@@ -419,7 +419,7 @@ export const draftEmail = async (
   if (params.reply_to_id) {
     // Get the original message to extract thread ID
     const originalMessage = await httpClient
-      .get(`https://www.googleapis.com/gmail/v1/users/me/messages/${params.reply_to_id}`, {
+      .get(`${googleApisUrl}/gmail/v1/users/me/messages/${params.reply_to_id}`, {
         searchParams: { format: 'metadata', metadataHeaders: 'Message-ID,References' },
         headers: { Authorization: `Bearer ${accessToken}` },
       })
@@ -518,7 +518,7 @@ export const checkCalendar = async (
 
   try {
     const response = await httpClient
-      .get(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+      .get(`${googleApisUrl}/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
         searchParams,
         headers: { Authorization: `Bearer ${accessToken}` },
       })

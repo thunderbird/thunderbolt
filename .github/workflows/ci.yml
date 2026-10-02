@@ -30,6 +30,7 @@ jobs:
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
       localization: ${{ steps.filter.outputs.localization }}
+      qa: ${{ steps.filter.outputs.qa }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +92,16 @@ jobs:
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
               - 'backend/lingui.config.ts'
+            qa:
+              - '.github/qa/**'
+              - 'scripts/notify-on-failure.ts'
+              - 'e2e/helpers.ts'
+              - 'shared/tsconfig.base.json'
+              - 'bunfig.toml'
+              - '.github/workflows/qa-weekly.yml'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
 
   typescript:
     runs-on: ubuntu-latest
@@ -295,6 +306,41 @@ jobs:
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
+
+  # The weekly QA agent in .github/qa/ is CI tooling, not app code. Its tests and
+  # type check sit outside `bun run test` and the root tsconfig, so they run here,
+  # only when the agent or a file it depends on changes.
+  qa:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.qa == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check the QA scripts
+        run: bunx tsc -p .github/qa
+
+      - name: Run QA tests (5x)
+        run: bun run test:qa --rerun-each 5
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`

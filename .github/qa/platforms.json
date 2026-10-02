@@ -1,0 +1,4 @@
+[
+  { "id": "desktop", "viewport": "1280x800", "mcp": ".github/qa/mcp.json" },
+  { "id": "phone", "viewport": "390x844", "mcp": ".github/qa/mcp.json" }
+]

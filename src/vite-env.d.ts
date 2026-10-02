@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_MODE?: 'thunderbolt' | 'sso'
   readonly VITE_AUTH_ENABLE_ANONYMOUS?: 'true' | 'false'
   readonly VITE_APP_VERSION?: string
+  readonly VITE_GOOGLE_BASE_URL?: string
 }
 
 // .po catalogs are compiled to JS message objects by @lingui/vite-plugin.

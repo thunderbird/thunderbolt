@@ -1,0 +1,13 @@
+diff --git a/src/settings/preferences.tsx b/src/settings/preferences.tsx
+index b2a8b121..0b4696c8 100644
+--- a/src/settings/preferences.tsx
++++ b/src/settings/preferences.tsx
+@@ -719,7 +719,7 @@ export default function PreferencesSettingsPage() {
+               onBlur={async (e) => {
+                 const value = e.target.value
+                 const wasSet = !!preferredName.value
+-                await preferredName.setValue(value || null)
++                if (wasSet) await preferredName.setValue(value || null)
+                 if (value.trim()) {
+                   trackEvent(wasSet ? 'settings_name_update' : 'settings_name_set')
+                 } else {

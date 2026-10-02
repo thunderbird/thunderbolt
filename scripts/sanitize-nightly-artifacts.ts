@@ -131,7 +131,10 @@ const sanitizeHtml = async (path: string): Promise<void> => {
   await writeFile(path, html.replace(matches[0][0], matches[0][0].replace(encoded, replacement)))
 }
 
-/** Sanitize every uploaded ZIP and remove Playwright data files other than traces and videos. */
+/**
+ * Sanitize every uploaded ZIP and remove Playwright data files other than traces and videos. A directory without
+ * an HTML report (the QA agent's replay output) has only its traces sanitized.
+ */
 const sanitizeDirectory = async (root: string): Promise<void> => {
   if (!existsSync(root)) return
   for (const name of new Bun.Glob('**/*.zip').scanSync({ cwd: root, onlyFiles: true })) {
@@ -144,7 +147,7 @@ const sanitizeDirectory = async (root: string): Promise<void> => {
       if (!entry.name.endsWith('.zip') && !entry.name.endsWith('.webm')) await unlink(join(data, entry.name))
     }
   }
-  await sanitizeHtml(join(root, 'index.html'))
+  if (existsSync(join(root, 'index.html'))) await sanitizeHtml(join(root, 'index.html'))
 }
 
 await sanitizeDirectory(process.argv[2]).catch(() => {

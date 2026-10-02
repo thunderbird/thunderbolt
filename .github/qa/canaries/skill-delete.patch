@@ -1,0 +1,13 @@
+diff --git a/src/skills/skills-view.tsx b/src/skills/skills-view.tsx
+index a646f57d..91e041dc 100644
+--- a/src/skills/skills-view.tsx
++++ b/src/skills/skills-view.tsx
+@@ -138,7 +138,7 @@ export const SkillsView = () => {
+       return
+     }
+     const dependents = findDependents(target.name, skills)
+-    if (dependents.length > 0) {
++    if (dependents[0].id) {
+       dispatch({ type: 'OPEN_DEPENDENTS', payload: { action: 'delete', skill: target, dependents } })
+     } else {
+       dispatch({ type: 'OPEN_DELETE', skill: target })

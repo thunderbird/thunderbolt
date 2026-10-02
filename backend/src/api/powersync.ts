@@ -288,8 +288,16 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
         // Defence in depth for the v2 keyring invariant: once an account is
         // migrated, every write to an encrypted column must be v2 ciphertext.
         // The client enforces this already, but plaintext committed here cannot
-        // be un-leaked — so reject the batch rather than trust the client. A
-        // rejected batch is retried (nothing is lost) and shows up loudly.
+        // be un-leaked — so reject the batch rather than trust the client.
+        //
+        // A rejected batch is retried, so nothing is lost — but it is NOT
+        // self-announcing. PowerSync holds the stream open and retries forever,
+        // so a client that can never produce v2 ciphertext (a below-min build
+        // against an account another device already flipped) wedges silently
+        // with its own UI still reporting itself synced. That failure mode is
+        // what `MIN_APP_VERSION` exists to pre-empt, and why the gate has to be
+        // live before any v2 client can reach a user — see the cutover runbook
+        // in docs/architecture/e2e-encryption.md.
         const encryptionMetadata = await getEncryptionMetadata(database, user.id)
         if (encryptionMetadata?.schemeVersion === 2) {
           const violation = findPlaintextViolation(operations)

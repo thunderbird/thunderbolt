@@ -1,8 +1,8 @@
 name: QA weekly
 
-# An AI agent uses the app like a person would, one charter per session. Deterministic code then replays, judges,
-# files and (optionally) fixes what it found. How it works, the secrets and variables, and the rule for calibrating
-# the caps below: .github/qa/README.md.
+# An AI agent uses the app like a person would, one charter per session, plus a free session that plays one case
+# on every platform. Deterministic code then replays, judges, files and (optionally) fixes what it found. How it
+# works, the secrets and variables, and the rule for calibrating the caps below: .github/qa/README.md.
 #
 # Trust zones: explore and replay run untrusted, model-written input, so they hold no Linear key and no write
 # token. The replay step holds no secret at all: in the real-AI leg the provider keys sit with a backend that runs as
@@ -19,7 +19,11 @@ on:
         type: boolean
         default: true
       charters:
-        description: Comma-separated charter ids, e.g. c4-skills-projects,c8-phone (empty = all)
+        description: Comma-separated charter ids or free-<platform>, e.g. c4-skills-projects,free-phone (empty = all)
+        type: string
+        default: ''
+      journey:
+        description: Case id from .github/qa/journeys.json for the free session (empty = this week's)
         type: string
         default: ''
       autofix:
@@ -99,6 +103,7 @@ jobs:
         id: plan
         env:
           CHARTERS: ${{ inputs.charters }}
+          JOURNEY: ${{ inputs.journey }}
           LIVE: ${{ vars.QA_LINEAR_ENABLED == 'true' && !inputs.dry_run && github.ref == 'refs/heads/main' }}
           AUTOFIX: >-
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
@@ -107,14 +112,15 @@ jobs:
           # Commas and spaces both separate charter ids; the same list feeds the check and the legs below.
           only=$(jq --null-input --compact-output --arg charters "$CHARTERS" '[$charters | splits("[ ,]+") | select(. != "")]')
           if [ -n "$CHARTERS" ] && [ "$only" = '[]' ]; then echo "::error::No charter id in '$CHARTERS'"; exit 1; fi
-          for charter in $(jq --raw-output '.[]' <<< "$only"); do
-            [ -f ".github/qa/charters/$charter.md" ] || { echo "::error::Unknown charter $charter"; exit 1; }
-          done
-          # The charters that explore with the real AI providers are listed once, in the QA scripts.
+          # The charters that explore with the real AI providers, free sessions included, are listed once, in the QA
+          # scripts.
           real=$(bun -e "import { realAiCharters } from './.github/qa/scripts/findings'; console.log(JSON.stringify([...realAiCharters]))")
+          # This week's case for the free session, unless the dispatch names one. It runs on every platform.
+          journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
           # shellcheck disable=SC2016 # jq variables
           # One explore session per leg. The canary leg runs c8 on a build with planted bugs and is never filed.
-          legs=$(jq --null-input --compact-output --argjson only "$only" --argjson real "$real" '
+          all=$(jq --null-input --compact-output --argjson real "$real" --arg journey "$journey" \
+            --argjson platforms "$(cat .github/qa/platforms.json)" '
             {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: ".github/qa/mcp.json", viewport: "1280x800",
              onboarding: false, real: false, postgres: false} as $leg
             | [{charter: "c1-first-run", onboarding: true},
@@ -127,8 +133,12 @@ jobs:
                {charter: "c8-phone", viewport: "390x844"},
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
-            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)
-            | map(select(.charter as $c | $only == [] or ($only | index($c))))')
+              + ($platforms | map({charter: "free-\(.id)", journey: $journey, viewport, mcp}))
+            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)')
+          unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) | join(" ")' <<< "$all")
+          if [ -n "$unknown" ]; then echo "::error::Unknown charter $unknown"; exit 1; fi
+          legs=$(jq --compact-output --argjson only "$only" \
+            'map(select(.charter as $c | $only == [] or ($only | index($c))))' <<< "$all")
           # Replay each artifact prefix on the kind of stack its sessions explored: pglite, Postgres + PowerSync for c7
           # (sync), or the real AI providers (real). Sync and real findings share qa-out and are judged with the
           # weekly ones.
@@ -184,7 +194,9 @@ jobs:
           retention-days: 1
 
   explore:
-    name: explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}
+    name: >-
+      explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}${{
+      matrix.leg.journey && format(' ({0})', matrix.leg.journey) || '' }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90 # outer bound: the explore step's own cap plus setup
@@ -224,6 +236,7 @@ jobs:
         options: --restart always
     env:
       QA_CHARTER: ${{ matrix.leg.charter }}
+      QA_JOURNEY: ${{ matrix.leg.journey }}
       QA_OUT: ${{ matrix.leg.out }}
       QA_MCP_VIEWPORT: ${{ matrix.leg.viewport }}
       DATABASE_URL: ${{ matrix.leg.postgres && 'postgresql://postgres:postgres@localhost:15434/postgres' || '' }}
@@ -876,11 +889,11 @@ jobs:
           # Session metrics come from each explore job's result message, here rather than in the explorer's job.
           # A leg without one (a crash, a tripwire, a timeout) still gets a session, marked error or timeout.
           if [ "$EXPLORE_RESULT" != skipped ]; then
-            jq -r '.[] | "\(.out) \(.charter)"' <<< "$LEGS" | while read -r out charter; do
+            jq -r '.[] | "\(.out) \(.charter) \(.journey // "")"' <<< "$LEGS" | while read -r out charter journey; do
               timed_out=()
               if [ -f "$out/$charter/timed-out" ]; then timed_out=(--timed-out); fi
               bun .github/qa/scripts/report.ts session --execution-file "$out/$charter/execution.json" --charter "$charter" \
-                --out "$out" "${timed_out[@]}"
+                --out "$out" "${timed_out[@]}" ${journey:+--journey "$journey"}
             done
           fi
           # Missing when the guard failed; report.ts needs the directory to exist.

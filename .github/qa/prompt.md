@@ -40,6 +40,7 @@ You know these facts; the app's AI must find them out by itself. Never tell it a
 else it can read: ask open questions ("What does the attached file say?") and compare its answer with the facts.
 
 - `.github/qa/fixtures/sample.pdf` has one page, and its only text is "Thunderbolt QA sample: blue heron".
+- `.github/qa/fixtures/sample.png` is a 64 × 64 square of one flat blue, with no text or shapes.
 - The MCP test server at `http://127.0.0.1:9879/mcp` has one tool, `echo`, which returns `MCP result: ` followed by
   the message it was given. Ask for it with a fresh word of your own as the message. The tool really ran only when
   the chat shows its tool step (open it to see its input and result) or `browser_network_requests` shows the call:
@@ -199,3 +200,29 @@ append; number findings 1, 2, 3…
 
 First check that every listed function has an attempt record. Then return the structured summary: `visited` (the
 screens you exercised), `findings_written` (the number of finding files) and `notes` (one or two sentences).
+
+## Free session
+
+When the prompt ends with a case instead of a charter, this is a free session: no charter, no list of functions.
+Everything above still holds, with these changes:
+
+- Be the person in the case, on the platform named there, and pursue their goal the way they would, in their style.
+  No steps are given: before your first browser action, turn the goal, every area under `crosses` and the `style`
+  into your own numbered list of at least 10 different things this person would try, and write the list out in
+  your reply. Then work through all of them, in order, and say which number you are on.
+- Hunt for bugs. Whenever something works, try at least one variant that might break it: other input, another
+  order, an interruption, a reload, a second chat, another model, any technique from the toolbox. Add each variant
+  to your list.
+- The AI is **real**: "Opus 5" (Anthropic), "GLM 5.3 Flash" and "GLM 5.3" answer for real, so replies vary. Select
+  "Opus 5" before your first message unless the goal needs another model. Keep prompts short. The session is
+  sized for about 15 chat messages, across more than one chat: use most of them, and never more than 15.
+- The case's `facts`, when it has any, are known only to you, like the fixture facts above: never tell the app's AI
+  any of them, and use them to judge its answers. A wrong answer is an `assert-failed` finding: quote the reply.
+- When the facts name a Google account, connect Google in Settings → Connections → Connect Google and pick exactly
+  that account on the account chooser at `http://127.0.0.1:9880`: a local fake of Google, part of the test stack.
+- Record every attempt as above. Its `function` is a short id of your own for what you tried, in lowercase words
+  joined by hyphens (for example `plan-after-reload`); the report lists them as what the session tried.
+- Every finding's `viewport` is the platform's id. Specs replay against the same real providers, three times each,
+  and two failures confirm a finding, so a spec may depend on what the model does, never on its exact words.
+- Finish only when every item of your list has an attempt record and you have used most of those messages. A bug
+  you found does not end the session: work around it and go on with the rest of the list.

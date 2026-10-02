@@ -2,7 +2,7 @@
 
 You review one bug report written by an exploratory QA agent that used the Thunderbolt web app (an AI chat
 client) like a normal user. Its repro spec, a Playwright test asserting the expected behaviour, already failed
-3 out of 3 times against a fresh local test stack (at least 2 out of 3 for a charter that used the real AI providers,
+3 out of 3 times against a fresh local test stack (at least 2 out of 3 for a session that used the real AI providers,
 whose replies vary); `<replay_failure>` holds the error from the first failed run. You decide whether a human should
 get a ticket for it.
 

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   type Finding,
+  findingSchema,
   fingerprint,
   hasOracle,
   lintReproSpec,
@@ -16,6 +17,8 @@ import {
   realAiCharters,
   severity,
 } from './findings'
+import cases from '../journeys.json'
+import platforms from '../platforms.json'
 import type { QaFunction } from './report'
 
 const finding: Finding = {
@@ -242,5 +245,19 @@ test('each charter names exactly the functions of its list, and says the AI is r
     expect([...new Set(named)].sort(), charter).toEqual(list.map((fn) => fn.id).sort())
     expect(text.includes('the AI is **real**'), charter).toBe(realAiCharters.has(charter))
   }
-  expect([...realAiCharters].filter((charter) => !(charter in lists))).toEqual([])
+  const charters = [...realAiCharters].filter((charter) => !charter.startsWith('free-'))
+  expect(charters.filter((charter) => !(charter in lists))).toEqual([])
+})
+
+test('every free session is real AI, on a platform whose id is a finding viewport, and every case is complete', async () => {
+  for (const { id, viewport, mcp } of platforms) {
+    expect(realAiCharters.has(`free-${id}`)).toBe(true)
+    expect(findingSchema.safeParse({ ...finding, viewport: id }).success, id).toBe(true)
+    expect(viewport).toMatch(/^\d+x\d+$/)
+    expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
+  }
+  expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length)
+  for (const { id, who, goal, crosses, pt } of cases) {
+    expect([id, who, goal, pt].every((text) => text.trim() !== '') && crosses.length > 0, id).toBe(true)
+  }
 })

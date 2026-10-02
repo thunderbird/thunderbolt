@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import ts from 'typescript'
 import { z } from 'zod'
+import platforms from '../platforms.json'
 
 const areas = [
   'chat',
@@ -36,11 +37,16 @@ const oracleTypes = [
 ] as const
 
 /**
- * Charters explored with the app's real AI providers. Their findings replay on a stack with the real providers too,
- * where two failed runs in three confirm one, and they never go to the fix agent, whose check runs on the fake AI.
- * The workflow reads this set to plan its legs.
+ * Charters explored with the app's real AI providers, and the free session on each platform (`free-<platform>`).
+ * Their findings replay on a stack with the real providers too, where two failed runs in three confirm one, and they
+ * never go to the fix agent, whose check runs on the fake AI. The workflow reads this set to plan its legs.
  */
-export const realAiCharters = new Set(['c3-models-providers', 'c4-skills-projects', 'c5-widgets-connections'])
+export const realAiCharters = new Set([
+  'c3-models-providers',
+  'c4-skills-projects',
+  'c5-widgets-connections',
+  ...platforms.map((platform) => `free-${platform.id}`),
+])
 
 export type Area = (typeof areas)[number]
 export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'

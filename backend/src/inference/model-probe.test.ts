@@ -10,7 +10,7 @@ import { resolveManagedDirectRuntime } from '@/inference/managed-models'
 import { createTestDb } from '@/test-utils/db'
 import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels } from '@shared/defaults/models'
-import { probeCatalogModels } from './model-probe'
+import { probeCatalogModels, type ModelProbeFailure } from './model-probe'
 
 const confidentialModels = defaultModels
   .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
@@ -30,6 +30,22 @@ const transport = (handler: (request: Request) => Promise<Response>): typeof fet
   Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => handler(new Request(input, init)), {
     preconnect: globalThis.fetch.preconnect,
   })
+
+/** Match the safe diagnostic fields while allowing real elapsed time. */
+const failure = (
+  model: string,
+  reason: ModelProbeFailure['reason'],
+  stage: ModelProbeFailure['stage'],
+  upstreamStatus?: number,
+) => ({
+  model,
+  reason,
+  provider: model === directModel ? 'anthropic' : 'tinfoil',
+  upstreamModel: model === directModel ? directWireModel : model,
+  elapsedMs: expect.any(Number),
+  stage,
+  ...(upstreamStatus === undefined ? {} : { upstreamStatus }),
+})
 
 describe('probeCatalogModels', () => {
   let env: Awaited<ReturnType<typeof createTestDb>>
@@ -106,7 +122,9 @@ describe('probeCatalogModels', () => {
     })
     try {
       expect(await probeCatalogModels({ database: env.db, settings, fetchFn, logger, timeoutMs: 50 })).toEqual(
-        confidentialModels.map((model) => ({ model, reason: kind === 'failure' ? 'upstream-error' : 'timeout' })),
+        confidentialModels.map((model) =>
+          failure(model, kind === 'failure' ? 'upstream-error' : 'timeout', 'attestation'),
+        ),
       )
       expect(ready).toHaveBeenCalledTimes(1)
       expect(seen).toEqual([directWireModel])
@@ -116,9 +134,7 @@ describe('probeCatalogModels', () => {
         expect(logger.warn).toHaveBeenCalledWith(
           {
             event: 'deep_health_model_probe_failed',
-            model: confidentialModels[0],
-            reason: 'upstream-error',
-            errorName: 'TypeError',
+            ...failure(confidentialModels[0], 'upstream-error', 'attestation'),
           },
           'Model health probe failed',
         )
@@ -143,12 +159,12 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })))
+    ).toEqual(defaultModels.map(({ model }) => failure(model, 'upstream-error', 'completion', status)))
     expect(calls).toHaveLength(defaultModels.length)
     expect(logger.warn).toHaveBeenCalledTimes(defaultModels.length)
     for (const { model } of defaultModels) {
       expect(logger.warn).toHaveBeenCalledWith(
-        { event: 'deep_health_model_probe_failed', model, reason: 'upstream-error', errorName: 'Error', status },
+        { event: 'deep_health_model_probe_failed', ...failure(model, 'upstream-error', 'completion', status) },
         'Model health probe failed',
       )
     }
@@ -158,7 +174,7 @@ describe('probeCatalogModels', () => {
   it('sanitises thrown network errors', async () => {
     const logger = { warn: mock(() => {}) }
     const fetchFn = transport(async () => {
-      throw new Error('secret network details')
+      throw Object.assign(new Error('secret network details HTTP 429'), { name: 'secret error name', status: 429 })
     })
     expect(
       await probeCatalogModels({
@@ -168,15 +184,15 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'upstream-error' })))
+    ).toEqual(defaultModels.map(({ model }) => failure(model, 'upstream-error', 'completion')))
     expect(logger.warn).toHaveBeenCalledTimes(defaultModels.length)
     for (const { model } of defaultModels) {
       expect(logger.warn).toHaveBeenCalledWith(
-        { event: 'deep_health_model_probe_failed', model, reason: 'upstream-error', errorName: 'Error' },
+        { event: 'deep_health_model_probe_failed', ...failure(model, 'upstream-error', 'completion') },
         'Model health probe failed',
       )
     }
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret network details')
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret')
   })
 
   it.each([
@@ -200,7 +216,7 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual(missing.map((model) => ({ model, reason: 'not-configured' })))
+    ).toEqual(missing.map((model) => failure(model, 'not-configured', 'configuration')))
     expect(seen.sort()).toEqual((key === 'anthropicApiKey' ? [...confidentialModels] : [directWireModel]).sort())
     expect(logger.warn).toHaveBeenCalledTimes(missing.length)
   })
@@ -214,7 +230,7 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'no-text' })))
+    ).toEqual(defaultModels.map(({ model }) => failure(model, 'no-text', 'completion', 200)))
   })
 
   it('joins text parts', async () => {
@@ -245,7 +261,7 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'no-text' })))
+    ).toEqual(defaultModels.map(({ model }) => failure(model, 'no-text', 'completion', 200)))
   })
 
   it('cancels timed-out upstream requests', async () => {
@@ -277,7 +293,7 @@ describe('probeCatalogModels', () => {
       for (const controller of controllers) {
         controller.abort(new DOMException('deadline', 'TimeoutError'))
       }
-      expect(await result).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'timeout' })))
+      expect(await result).toEqual(defaultModels.map(({ model }) => failure(model, 'timeout', 'completion')))
       expect(signals).toHaveLength(defaultModels.length)
       expect(signals.every((signal) => signal.aborted)).toBe(true)
     } finally {
@@ -301,7 +317,7 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual([{ model: directModel, reason: 'missing-price' }])
+    ).toEqual([failure(directModel, 'missing-price', 'price')])
     expect(seen.sort()).toEqual([...confidentialModels].sort())
   })
 
@@ -320,7 +336,7 @@ describe('probeCatalogModels', () => {
         fetchFn,
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
       }),
-    ).toEqual([{ model: missingModel, reason: 'missing-price' }])
+    ).toEqual([failure(missingModel, 'missing-price', 'price')])
     expect(seen).not.toContain(missingModel)
     expect(seen).toHaveLength(defaultModels.length - 1)
   })
@@ -335,7 +351,44 @@ describe('probeCatalogModels', () => {
         confidentialTransport: { fetch: fetchFn, baseURL: 'https://attested.test/v1' },
         timeoutMs: 5,
       }),
-    ).toEqual(defaultModels.map(({ model }) => ({ model, reason: 'timeout' })))
+    ).toEqual(defaultModels.map(({ model }) => failure(model, 'timeout', 'completion')))
+  })
+
+  it.each(['failure', 'timeout'] as const)('reports price read %s without calling providers', async (kind) => {
+    const fetchFn = mock(async () => completion())
+    const select = new Proxy(env.db.select, {
+      apply: () => {
+        if (kind === 'failure') {
+          throw new Error('secret database details')
+        }
+        return { from: () => ({ where: () => ({ limit: () => new Promise<never>(() => {}) }) }) }
+      },
+    })
+    const results = await probeCatalogModels({
+      database: { select, insert: env.db.insert.bind(env.db) },
+      settings,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+      timeoutMs: 5,
+    })
+    expect(results).toEqual(
+      defaultModels.map(({ model }) => failure(model, kind === 'failure' ? 'upstream-error' : 'timeout', 'price')),
+    )
+    expect(fetchFn).not.toHaveBeenCalled()
+  })
+
+  it('measures total elapsed time with a monotonic clock', async () => {
+    const now = spyOn(performance, 'now').mockReturnValueOnce(100).mockReturnValue(237.4)
+    try {
+      const results = await probeCatalogModels({
+        database: env.db,
+        settings,
+        models: [defaultModels.find(({ model }) => model === directModel)!],
+        fetchFn: transport(async () => completion('')),
+      })
+      expect(results).toEqual([{ ...failure(directModel, 'no-text', 'completion', 200), elapsedMs: 137 }])
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('bounds concurrency', async () => {

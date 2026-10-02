@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { z } from 'zod'
+import { defaultModels } from '@shared/defaults/models'
 import type { Settings } from '@/config/settings'
 import type { db } from '@/db/client'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
@@ -24,6 +25,7 @@ export type HealthRouteDeps = {
     Settings,
     | 'monitoringToken'
     | 'powersyncUrl'
+    | 'powersyncInternalUrl'
     | 'resendMonitoringApiKey'
     | 'anthropicApiKey'
     | 'anthropicBaseUrl'
@@ -31,7 +33,6 @@ export type HealthRouteDeps = {
   >
   database: Pick<typeof db, 'execute'> & InferenceDatabase
   fetchFn?: typeof fetch
-  probeModels?: typeof probeCatalogModels
   confidentialTransport?: ModelProbeDeps['confidentialTransport']
   logger?: ModelProbeDeps['logger']
   timeouts?: Partial<Record<'database' | 'powersync' | 'email', number>>
@@ -42,7 +43,6 @@ export const createHealthRoutes = ({
   settings,
   database,
   fetchFn = globalThis.fetch,
-  probeModels = probeCatalogModels,
   confidentialTransport,
   logger,
   timeouts = {},
@@ -84,7 +84,8 @@ export const createHealthRoutes = ({
         return status(503, { status: 'failed', reason: 'not-configured' })
       }
       try {
-        const response = await fetchFn(`${settings.powersyncUrl.replace(/\/$/, '')}/probes/liveness`, {
+        const probeUrl = settings.powersyncInternalUrl || settings.powersyncUrl
+        const response = await fetchFn(`${probeUrl.replace(/\/+$/, '')}/probes/liveness`, {
           signal: AbortSignal.timeout(timeouts.powersync ?? powersyncTimeoutMs),
         })
         if (!response.ok) {
@@ -133,8 +134,12 @@ export const createHealthRoutes = ({
         })
       }
     })
-    .get('/models', async ({ status }) => {
-      const failures = await probeModels({ database, settings, fetchFn, confidentialTransport, logger })
+    .get('/models', async ({ query, status }) => {
+      const models = defaultModels.filter(({ model }) => query.model === undefined || model === query.model)
+      if (!models.length) {
+        return status(404, { error: 'Unknown catalog model' })
+      }
+      const failures = await probeCatalogModels({ database, settings, fetchFn, confidentialTransport, logger, models })
       if (failures.length) {
         return status(503, { status: 'failed', failures })
       }

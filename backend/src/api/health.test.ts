@@ -5,7 +5,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
-import type { ModelProbeFailure } from '@/inference/model-probe'
 import { resolveManagedDirectRuntime } from '@/inference/managed-models'
 import { emailFrom } from '@/lib/resend'
 import { createTestDb } from '@/test-utils/db'
@@ -13,9 +12,6 @@ import { createTestSettings } from '@/test-utils/settings'
 import { defaultModels } from '@shared/defaults/models'
 import { createHealthRoutes } from './health'
 
-const confidentialModels = defaultModels
-  .filter(({ provider, isConfidential }) => provider === 'tinfoil' && isConfidential === 1)
-  .map(({ model }) => model)
 const directModel = defaultModels.find(({ provider }) => provider === 'thunderbolt')!.model
 const directWireModel = resolveManagedDirectRuntime(directModel)!.internalName
 
@@ -44,7 +40,7 @@ describe('deep health', () => {
     await cleanup()
   })
 
-  for (const route of ['database', 'powersync', 'email', 'models']) {
+  for (const route of ['database', 'powersync', 'email', 'models', 'models?model=opus-5', 'models?model=unknown']) {
     it.each([
       ['', headers, 403, 'Monitoring token not configured'],
       [settings.monitoringToken, {}, 401, 'Unauthorized'],
@@ -57,19 +53,20 @@ describe('deep health', () => {
           throw new Error('database must not run')
         })
         const fetchFn = mock(async () => new Response())
-        const probeModels = mock(async () => [])
+        const select = mock(() => {
+          throw new Error('database must not run')
+        })
         const app = createHealthRoutes({
           settings: { ...settings, monitoringToken: token },
-          database: { execute, select: database.select.bind(database), insert: database.insert.bind(database) },
+          database: { execute, select, insert: database.insert.bind(database) },
           fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
-          probeModels,
         })
         const response = await app.handle(new Request(`http://localhost/health/${route}`, { headers: authHeaders }))
         expect(response.status).toBe(status)
         expect(await response.json()).toEqual({ error })
         expect(execute).not.toHaveBeenCalled()
         expect(fetchFn).not.toHaveBeenCalled()
-        expect(probeModels).not.toHaveBeenCalled()
+        expect(select).not.toHaveBeenCalled()
       },
     )
   }
@@ -108,6 +105,36 @@ describe('deep health', () => {
     }).handle(request('database'))
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ status: 'failed', reason: 'timeout' })
+  })
+
+  it('powersync probes the internal URL when one is set, not the browser-facing one', async () => {
+    const targets: string[] = []
+    const fetchFn = async (input: RequestInfo | URL) => {
+      targets.push(String(input))
+      return new Response(null, { status: 200 })
+    }
+    const response = await createHealthRoutes({
+      settings: { ...settings, powersyncInternalUrl: 'http://powersync:8080' },
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('powersync'))
+    expect(response.status).toBe(200)
+    expect(targets).toEqual(['http://powersync:8080/probes/liveness'])
+  })
+
+  it('powersync falls back to the browser-facing URL when no internal one is set', async () => {
+    const targets: string[] = []
+    const fetchFn = async (input: RequestInfo | URL) => {
+      targets.push(String(input))
+      return new Response(null, { status: 200 })
+    }
+    const response = await createHealthRoutes({
+      settings,
+      database,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+    }).handle(request('powersync'))
+    expect(response.status).toBe(200)
+    expect(targets).toEqual(['https://sync.example.com/probes/liveness'])
   })
 
   for (const route of ['powersync', 'email'] as const) {
@@ -227,77 +254,86 @@ describe('deep health', () => {
     expect(await response.json()).toEqual({ status: 'failed', reason: 'domain-unverified' })
   })
 
-  it.each([
-    { failures: [] },
-    {
-      failures: [
-        { model: 'model-a', reason: 'no-text' },
-        { model: 'model-b', reason: 'timeout' },
-        { model: 'model-c', reason: 'upstream-error' },
-        { model: 'model-d', reason: 'missing-price' },
-        { model: 'model-e', reason: 'not-configured' },
-      ],
+  it.each(['', 'unknown', 'glm-5-2', 'toString', '<secret>'])(
+    'rejects non-catalog selector %j without database or provider work',
+    async (selector) => {
+      const select = mock(() => {
+        throw new Error('database must not run')
+      })
+      const fetchFn = mock(async () => new Response())
+      const response = await createHealthRoutes({
+        settings,
+        database: { execute: database.execute.bind(database), insert: database.insert.bind(database), select },
+        fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+      }).handle(request(`models?model=${encodeURIComponent(selector)}`))
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ error: 'Unknown catalog model' })
+      expect(select).not.toHaveBeenCalled()
+      expect(fetchFn).not.toHaveBeenCalled()
     },
-  ] satisfies { failures: ModelProbeFailure[] }[])('returns the catalog probe result (%j)', async ({ failures }) => {
-    const logger = { warn: mock(() => {}) }
-    const probeModels = mock(async () => failures)
-    const fetchFn = async () => new Response()
-    const response = await createHealthRoutes({
-      settings,
-      database,
-      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
-      probeModels,
-      logger,
-    }).handle(request('models'))
-    expect(response.status).toBe(failures.length ? 503 : 200)
-    expect(await response.json()).toEqual(failures.length ? { status: 'failed', failures } : { status: 'ok' })
-    expect(probeModels).toHaveBeenCalledWith({ settings, database, fetchFn, confidentialTransport: undefined, logger })
-  })
+  )
 
-  it.each(['OK', ''])('wires models to the real catalog probe with confidential content %j', async (content) => {
-    const logger = { warn: mock(() => {}) }
-    const seen: { model: string; authorization: string | null; transport: string }[] = []
-    const fake = (transport: string, text: string) =>
-      Object.assign(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          const outgoing = new Request(input, init)
-          seen.push({
-            model: (await outgoing.json()).model,
-            authorization: outgoing.headers.get('authorization'),
-            transport,
-          })
-          return Response.json({ choices: [{ message: { content: text } }] })
-        },
-        { preconnect: globalThis.fetch.preconnect },
-      )
-    const response = await createHealthRoutes({
-      settings,
-      database,
-      logger,
-      fetchFn: fake('anthropic', 'OK'),
-      confidentialTransport: { fetch: fake('confidential', content), baseURL: 'https://attested.test/v1' },
-    }).handle(request('models'))
-    expect(response.status).toBe(content ? 200 : 503)
-    expect(await response.json()).toEqual(
-      content
-        ? { status: 'ok' }
-        : {
-            status: 'failed',
-            failures: confidentialModels.map((model) => ({ model, reason: 'no-text' })),
-          },
+  for (const selector of [undefined, ...defaultModels.map(({ model }) => model)]) {
+    it.each(['OK', '', 'upstream-error'])(
+      `probes ${selector ?? 'the aggregate catalog'} with result %j`,
+      async (content) => {
+        const logger = { warn: mock(() => {}) }
+        const seen: { model: string; authorization: string | null; transport: string }[] = []
+        const fake = (transport: string) =>
+          Object.assign(
+            async (input: RequestInfo | URL, init?: RequestInit) => {
+              const outgoing = new Request(input, init)
+              seen.push({
+                model: (await outgoing.json()).model,
+                authorization: outgoing.headers.get('authorization'),
+                transport,
+              })
+              if (content === 'upstream-error') {
+                return Response.json({ error: { message: 'secret upstream details' } }, { status: 429 })
+              }
+              return Response.json({ choices: [{ message: { content } }] })
+            },
+            { preconnect: globalThis.fetch.preconnect },
+          )
+        const response = await createHealthRoutes({
+          settings,
+          database,
+          logger,
+          fetchFn: fake('anthropic'),
+          confidentialTransport: { fetch: fake('confidential'), baseURL: 'https://attested.test/v1' },
+        }).handle(request(selector === undefined ? 'models' : `models?model=${selector}`))
+        const selected = defaultModels.filter(({ model }) => selector === undefined || model === selector)
+        expect(response.status).toBe(content === 'OK' ? 200 : 503)
+        expect(await response.json()).toEqual(
+          content === 'OK'
+            ? { status: 'ok' }
+            : {
+                status: 'failed',
+                failures: selected.map(({ model }) => ({
+                  model,
+                  reason: content === '' ? 'no-text' : 'upstream-error',
+                  provider: model === directModel ? 'anthropic' : 'tinfoil',
+                  upstreamModel: model === directModel ? directWireModel : model,
+                  stage: 'completion',
+                  elapsedMs: expect.any(Number),
+                  upstreamStatus: content === '' ? 200 : 429,
+                })),
+              },
+        )
+        expect(logger.warn).toHaveBeenCalledTimes(content === 'OK' ? 0 : selected.length)
+        expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('secret upstream details')
+        expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual(
+          selected
+            .map(({ model }) => ({
+              model: model === directModel ? directWireModel : model,
+              authorization: `Bearer ${model === directModel ? settings.anthropicApiKey : settings.tinfoilApiKey}`,
+              transport: model === directModel ? 'anthropic' : 'confidential',
+            }))
+            .sort((a, b) => a.model.localeCompare(b.model)),
+        )
+      },
     )
-    expect(logger.warn).toHaveBeenCalledTimes(content ? 0 : confidentialModels.length)
-    expect(seen.sort((a, b) => a.model.localeCompare(b.model))).toEqual(
-      [
-        { model: directWireModel, authorization: `Bearer ${settings.anthropicApiKey}`, transport: 'anthropic' },
-        ...confidentialModels.map((model) => ({
-          model,
-          authorization: `Bearer ${settings.tinfoilApiKey}`,
-          transport: 'confidential',
-        })),
-      ].sort((a, b) => a.model.localeCompare(b.model)),
-    )
-  })
+  }
 
   it('mounts deep health under /v1 and preserves unconditional liveness', async () => {
     const originalToken = process.env.MONITORING_TOKEN

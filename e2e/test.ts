@@ -5,10 +5,27 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test as base } from '@playwright/test'
+import { test as base, type BrowserContext, type Page } from '@playwright/test'
 import { parseDbDiagnostic } from './db-diagnostic'
 
 export { expect, type Page, type Request, type Route } from '@playwright/test'
+
+/** Clear WebKit's cross-profile OPFS before booting the app at this origin. */
+export const resetOriginStorage = async (page: Page, origin: string) => {
+  const url = new URL('/__e2e_storage_reset__', origin).href
+  await page.route(url, (route) => route.fulfill({ status: 200, body: '<!doctype html>' }))
+  try {
+    await page.goto(url)
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory()
+      for await (const name of root.keys()) {
+        await root.removeEntry(name, { recursive: true })
+      }
+    })
+  } finally {
+    await page.unroute(url)
+  }
+}
 
 const persistentWebkit = base.extend({
   context: async ({ playwright }, use, testInfo) => {
@@ -58,16 +75,7 @@ const persistentWebkit = base.extend({
         : [baseURL]
       const testOrigins = new Set(origins.map((origin) => new URL(origin).origin))
       for (const origin of origins) {
-        const url = new URL('/__e2e_storage_reset__', origin).href
-        await page.route(url, (route) => route.fulfill({ status: 200, body: '<!doctype html>' }))
-        await page.goto(url)
-        await page.evaluate(async () => {
-          const root = await navigator.storage.getDirectory()
-          for await (const name of root.keys()) {
-            await root.removeEntry(name, { recursive: true })
-          }
-        })
-        await page.unroute(url)
+        await resetOriginStorage(page, origin)
       }
       page.on('worker', (worker) => {
         const path = new URL(worker.url()).pathname
@@ -131,4 +139,22 @@ persistentWebkit.afterEach(async (_, testInfo) => {
   )
 })
 
-export const test = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
+const browserTest = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? persistentWebkit : base
+
+/** Isolate background attestation on every page, except in real-provider projects. */
+export const isolateProviderRequests = async (context: BrowserContext, projectName: string) => {
+  if (projectName.startsWith('extended-real-')) {
+    return
+  }
+  // WebKit reports native CORS failures as pageerrors even when prewarm catches them.
+  await context.route('https://atc.tinfoil.sh/attestation', (route) =>
+    route.fulfill({ status: 503, json: { error: 'Attestation is disabled in this test project' } }),
+  )
+}
+
+export const test = browserTest.extend({
+  context: async ({ context }, use, testInfo) => {
+    await isolateProviderRequests(context, testInfo.project.name)
+    await use(context)
+  },
+})

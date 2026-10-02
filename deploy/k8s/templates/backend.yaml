@@ -28,6 +28,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.backend "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
@@ -100,8 +101,23 @@ spec:
               value: "{{ .Values.appUrl }},http://keycloak:8080"
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
+            # POWERSYNC_URL is echoed straight to the browser for real-time sync, so it
+            # must be browser-reachable. Unlike every other in-cluster service URL on
+            # this page, it can NOT be the internal DNS name. It follows whichever
+            # ingress mode is configured: the dedicated hostname when one is set, and
+            # otherwise the app's own path-based route (templates/ingress.yaml strips
+            # the `/powersync` prefix). `backend.env.powersyncUrl` overrides both.
+            {{- $psHost := "" }}
+            {{- with .Values.ingress.hostnames }}{{ $psHost = .powersync | default "" }}{{ end }}
+            {{- $psScheme := hasPrefix "https://" (lower .Values.appUrl) | ternary "https" "http" }}
+            {{- $psDefault := ternary (printf "%s://%s" $psScheme $psHost) (printf "%s/powersync" (trimSuffix "/" .Values.appUrl)) (not (empty $psHost)) }}
             - name: POWERSYNC_URL
-              value: "http://powersync:{{ .Values.powersync.service.port }}"
+              value: {{ .Values.backend.env.powersyncUrl | default $psDefault | quote }}
+            # Server-side target for GET /v1/health/powersync. POWERSYNC_URL now points
+            # at the public ingress, which this pod should not have to hairpin through,
+            # so the probe keeps using the in-cluster service.
+            - name: POWERSYNC_INTERNAL_URL
+              value: {{ .Values.backend.env.powersyncInternalUrl | default (printf "http://powersync:%v" .Values.powersync.service.port) | quote }}
             - name: POWERSYNC_JWT_SECRET
               valueFrom:
                 secretKeyRef:

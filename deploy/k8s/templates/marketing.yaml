@@ -29,6 +29,7 @@ spec:
       {{- include "thunderbolt.podAnnotations" (dict "component" .Values.marketing "root" .) | nindent 6 }}
     spec:
       {{- include "thunderbolt.imagePullSecrets" . | nindent 6 }}
+      {{- include "thunderbolt.nodeSelector" . | nindent 6 }}
       containers:
         - name: marketing
           image: "{{ .Values.marketing.image.repository }}:{{ .Values.marketing.image.tag }}"

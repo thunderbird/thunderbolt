@@ -45,6 +45,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
   powersyncUrl: '',
+  powersyncInternalUrl: '',
   powersyncJwtKid: '',
   powersyncJwtSecret: '',
   powersyncTokenExpirySeconds: 3600,

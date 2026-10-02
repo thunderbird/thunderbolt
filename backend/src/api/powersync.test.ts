@@ -41,6 +41,7 @@ const powersyncSettings: Settings = {
   waitlistEnabled: false,
   waitlistAutoApproveDomains: '',
   powersyncUrl: 'https://powersync.example.com',
+  powersyncInternalUrl: '',
   powersyncJwtKid: 'test-kid',
   powersyncJwtSecret: 'test-jwt-secret-min-32-chars-long',
   powersyncTokenExpirySeconds: 3600,

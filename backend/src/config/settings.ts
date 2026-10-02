@@ -91,6 +91,7 @@ const settingsSchema = z
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
+    powersyncInternalUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
     // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us, so a
@@ -252,6 +253,12 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    // Server-side probe target. `POWERSYNC_URL` is browser-facing, so on a
+    // cluster it points at the public ingress and is not the best address for
+    // this pod to dial. Set this to the in-cluster service URL to keep
+    // `/v1/health/powersync` on the internal network; it falls back to the
+    // public URL so single-host deployments need no extra setting.
+    powersyncInternalUrl: process.env.POWERSYNC_INTERNAL_URL || '',
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),

@@ -53,7 +53,8 @@ User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not 
 
 | Variable                         | Default | Required         | Description                                                               |
 | -------------------------------- | ------- | ---------------- | ------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service (e.g. `http://localhost:8080` for local dev) |
+| `POWERSYNC_URL`                  | —       | yes (for sync)   | URL of the PowerSync service **as the browser reaches it**. It is handed to every client, so an address that only resolves inside your network leaves sync offline |
+| `POWERSYNC_INTERNAL_URL`         | —       | no               | Address the server itself uses to probe PowerSync for `/v1/health/powersync`. Defaults to `POWERSYNC_URL`; set it when the public URL is not reachable from inside the cluster |
 | `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
 | `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
 | `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`   |                  | PowerSync JWT lifetime. PowerSync verifies this token locally and never calls back, so its TTL **is** the post-revocation read window — keep it short. |
@@ -185,7 +186,7 @@ Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 | `/v1/health/database`  | A trivial database query (5-second deadline)                                                                 |
 | `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds)                                                          |
 | `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
-| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
+| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (30 seconds per model, concurrency 3) |
 
 Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 

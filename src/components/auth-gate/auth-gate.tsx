@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Navigate, Outlet } from 'react-router'
+import { Navigate, Outlet, useLocation } from 'react-router'
 
 import Loading from '@/loading'
 import { useAuthGate, type AuthRequirement, type RedirectTarget } from './use-auth-gate'
@@ -16,6 +16,26 @@ const redirectPaths: Record<RedirectTarget, string> = {
   sso: '/sso-redirect',
   waitlist: '/waitlist',
   home: '/',
+}
+
+/**
+ * Picks where an unauthenticated visitor goes, diverting a failed sign-in to the
+ * terminal error page instead of the flow that just failed.
+ *
+ * SAML failures need this: `@better-auth/sso`'s assertion-consumer path
+ * redirects to the flow's own `callbackURL` (the app root) and never reads
+ * `onAPIError.errorURL`, so without the diversion the gate would send the user
+ * straight back to the identity provider, forever.
+ *
+ * @param target - Where the gate wants to send this visitor
+ * @param search - The current location's query string, including the leading `?`
+ * @returns The path to navigate to
+ */
+export const resolveRedirect = (target: RedirectTarget, search: string): string => {
+  if (target === 'sso' && new URLSearchParams(search).has('error')) {
+    return `/auth-error${search}`
+  }
+  return redirectPaths[target]
 }
 
 /**
@@ -42,12 +62,13 @@ const redirectPaths: Record<RedirectTarget, string> = {
  */
 export const AuthGate = ({ require }: AuthGateProps) => {
   const state = useAuthGate(require)
+  const { search } = useLocation()
 
   if (state.status === 'loading') {
     return <Loading />
   }
   if (state.status === 'redirect') {
-    return <Navigate to={redirectPaths[state.target]} replace />
+    return <Navigate to={resolveRedirect(state.target, search)} replace />
   }
 
   return <Outlet />

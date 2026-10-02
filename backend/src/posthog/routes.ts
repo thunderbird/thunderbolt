@@ -40,7 +40,11 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
         const posthogHost = settings.posthogHost || 'https://us.i.posthog.com'
 
         const baseUrl = `${posthogHost}/${path}`
-        const headers = filterHeaders(ctx.headers, defaultRequestDenylist)
+        // `referer` on top of the shared denylist: a browser sends the full page
+        // URL on a same-origin analytics request, which would forward query
+        // strings (an identity provider's error text on /auth-error, say)
+        // upstream even though before_send scrubbed them from the event body.
+        const headers = filterHeaders(ctx.headers, [...defaultRequestDenylist, 'referer'])
         const queryString = buildQueryString(ctx.query)
         const url = `${baseUrl}${queryString}`
 

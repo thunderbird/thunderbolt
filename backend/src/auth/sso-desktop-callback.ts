@@ -78,10 +78,17 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
           // Call Better Auth's SSO sign-in endpoint via HTTP. Uses the configured
           // betterAuthUrl which works behind reverse proxies. A direct internal API call
           // would avoid the network hop but couples tightly to Better Auth internals.
+          // errorCallbackURL keeps failures on the desktop path. Without it Better
+          // Auth falls back to the global `onAPIError.errorURL` (the web app's
+          // /auth-error page), which leaves this flow's loopback server waiting
+          // out its five-minute timeout with nothing to receive. The port lives
+          // in the path because the SSO plugin appends `?error=` with a literal
+          // `?`, which would corrupt an existing query string.
+          const errorCallbackURL = `${baseUrl}/v1/api/auth/sso/desktop-error/${port}`
           const ssoResponse = await fetch(`${baseUrl}/v1/api/auth/sign-in/sso`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ providerId: 'sso', callbackURL }),
+            body: JSON.stringify({ providerId: 'sso', callbackURL, errorCallbackURL }),
           })
 
           if (!ssoResponse.ok) {
@@ -118,6 +125,39 @@ export const createSsoDesktopCallbackRoutes = (settings: Settings) => {
         {
           query: t.Object({
             loopback_port: t.String(),
+          }),
+        },
+      )
+
+      // Failure path: Better Auth redirects here with `?error=` instead of
+      // completing, and we hand the error to the loopback server so the waiting
+      // app can surface it now rather than after its timeout.
+      .get(
+        '/desktop-error/:port',
+        ({ params, query }) => {
+          const port = Number(params.port)
+          if (!allowedLoopbackPorts.has(port)) {
+            return new Response(errorHtml('Invalid loopback port. Please try signing in again from the app.'), {
+              status: 400,
+              headers: { 'content-type': 'text/html' },
+            })
+          }
+
+          const loopback = new URL(`http://127.0.0.1:${port}/`)
+          loopback.searchParams.set('error', query.error || 'sso_failed')
+          if (query.error_description && query.error_description !== 'undefined') {
+            loopback.searchParams.set('error_description', query.error_description)
+          }
+
+          return new Response(null, { status: 302, headers: { location: loopback.toString() } })
+        },
+        {
+          params: t.Object({
+            port: t.String(),
+          }),
+          query: t.Object({
+            error: t.Optional(t.String()),
+            error_description: t.Optional(t.String()),
           }),
         },
       )

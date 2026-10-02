@@ -932,3 +932,60 @@ describe('debug transcript settings', () => {
     expect(parseWithEnv({ DEBUG_TRANSCRIPT_INTAKE_ENABLED: 'true' }).debugTranscriptIntakeEnabled).toBe(true)
   })
 })
+
+describe('Hosted agent settings', () => {
+  const envKeys = [
+    'AGENT_ENABLED',
+    'AGENT_MODEL',
+    'AGENT_MAX_STEPS',
+    'AGENT_SYSTEM_PROMPT',
+    'AGENT_MCP_SERVERS',
+    'AGENT_NAME',
+    'AGENT_DESCRIPTION',
+    'AGENT_ICON',
+    'ALLOW_ANONYMOUS_AGENT_DISCOVERY',
+  ]
+  const saved: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      saved[key] = process.env[key]
+      delete process.env[key]
+    }
+    clearSettingsCache()
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (saved[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = saved[key]
+      }
+    }
+    clearSettingsCache()
+  })
+
+  it('defaults off or empty when the env vars are unset', () => {
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(false)
+    expect(settings.agentModel).toBe('')
+    expect(settings.agentMaxSteps).toBe(8)
+    expect(settings.agentSystemPrompt).toBe('')
+    expect(settings.agentMcpServers).toBe('')
+    expect(settings.agentName).toBe('')
+    expect(settings.agentDescription).toBe('')
+    expect(settings.agentIcon).toBe('')
+    expect(settings.allowAnonymousAgentDiscovery).toBe(false)
+  })
+
+  it('reads the env vars when set', () => {
+    process.env.AGENT_ENABLED = 'true'
+    process.env.AGENT_MAX_STEPS = '3'
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(true)
+    expect(settings.agentMaxSteps).toBe(3)
+    expect(settings.allowAnonymousAgentDiscovery).toBe(true)
+  })
+})

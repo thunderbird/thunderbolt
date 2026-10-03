@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { RecoveryKeyDialog } from '@/components/recovery-key-dialog'
+import { setSyncEnabled } from '@/db/powersync/sync-state'
 import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
 import { useRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { useChangeRecoveryKey } from '@/settings/encryption/use-change-recovery-key'
@@ -50,6 +51,23 @@ export const UnsavedRecoveryPhrasePrompt = () => {
    * dialog the user was reading, claiming the phrase was never saved.
    */
   const [wasPendingAtStartup] = useState(pending)
+
+  /**
+   * Finishing here also finishes the SETUP this prompt exists because of.
+   *
+   * Sync is switched on by the wizard's completion callback, not by setup
+   * succeeding — so a tab closed on the phrase screen leaves the keys written,
+   * `recoveryPhrasePending` set, and sync silently off. That screen is the one
+   * that asks the user to go and write 24 words down somewhere, which makes it
+   * the likeliest place in the whole flow for the page to go away.
+   *
+   * Without this the next launch tells them "Encryption is set up on this
+   * device" — true — while nothing is syncing and nothing says so.
+   */
+  const handleDone = async () => {
+    await setSyncEnabled(true)
+    done()
+  }
 
   if ((!wasPendingAtStartup || !pending) && status !== 'display' && status !== 'stepUp') {
     return null
@@ -105,7 +123,7 @@ export const UnsavedRecoveryPhrasePrompt = () => {
         recoveryKey={newRecoveryKey ?? ''}
         title={t`Save your new recovery phrase`}
         description={t`Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again.`}
-        onDone={done}
+        onDone={handleDone}
       />
     </>
   )

@@ -6,6 +6,8 @@ import { useEffect } from 'react'
 
 import { useAuth } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts/http-client-context'
+import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
+import { HttpError } from '@/lib/http'
 import { ensureSessionBound } from '@/services/encryption'
 
 /**
@@ -33,9 +35,27 @@ export const useDeviceSessionBinding = (): void => {
     if (!sessionId) {
       return
     }
-    ensureSessionBound(httpClient).catch((error: unknown) => {
-      // Non-fatal: the device keeps working offline and rebinds on the next
-      // attempt. Trust routes fail closed in the meantime, which is the point.
+    ensureSessionBound(httpClient).catch(async (error: unknown) => {
+      // A revoked device can NEVER bind, so "rebinds on the next attempt" leaves
+      // it on "Connecting…" forever: the token route only ever reports
+      // DEVICE_NOT_BOUND, which `connector.ts` rightly treats as a retryable
+      // defer because that is what it means for every other device. This is the
+      // one place the difference is visible, so it hands off to the revocation
+      // flow and lets the user choose what happens to their local data.
+      const body =
+        error instanceof HttpError && error.response.status === 403
+          ? ((await error.response
+              .clone()
+              .json()
+              .catch(() => null)) as { code?: string } | null)
+          : null
+      if (body?.code === 'DEVICE_DISCONNECTED') {
+        window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'device_revoked' } }))
+        return
+      }
+      // Everything else is transient: the device keeps working offline and
+      // rebinds on the next attempt. Trust routes fail closed in the meantime,
+      // which is the point.
       console.warn('[device-binding] failed to bind this session to the device:', error)
     })
   }, [sessionId, httpClient])

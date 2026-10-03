@@ -175,6 +175,7 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `LOG_LEVEL`                 | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                                                                        |
 | `SWAGGER_ENABLED`           | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production)                                          |
 | `MONITORING_TOKEN`          | —                       | Bearer token for deep health routes under `/v1/health/`                                                        |
+| `EMAIL_FROM`                | `hello@auth.thunderbolt.io` | Sender address for outgoing email, and the contact address in its footer. Set this: Resend sends only from a domain your own account has verified, so the default is rejected everywhere except Thunderbird's own deployment |
 | `RESEND_MONITORING_API_KEY` | —                       | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
 
 ### Deep health

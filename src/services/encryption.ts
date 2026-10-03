@@ -53,7 +53,7 @@ import {
   type StoredKeyPair,
 } from '@/crypto'
 import { getAuthToken, getDeviceId } from '@/lib/auth-token'
-import { markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
+import { clearRecoveryPhrasePending, markRecoveryPhrasePending } from '@/lib/recovery-phrase-pending'
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
@@ -957,6 +957,14 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   )
   const ak = await reimportAsNonExtractable(extractableAK)
 
+  // Marked BEFORE the request, not after it. A lost response is not a failed
+  // request: the server may have committed and anchored recovery to this phrase,
+  // which then exists only in a local variable this throw discards — leaving an
+  // account whose recovery slot nobody can open, with nothing recording that a
+  // phrase is owed. Setting it first costs at most one unnecessary prompt when
+  // the call really did fail before committing, which is the right way round.
+  markRecoveryPhrasePending()
+
   await storeEnvelope(httpClient, {
     deviceId: getDeviceId(),
     wrappedCK,
@@ -987,11 +995,6 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // driven before any witness exists.
   await reconcileKeyringAnchor()
   invalidateKeyringCache()
-
-  // Marked at the mint, not at the display: the phrase below lives only in
-  // component state, so a reload before the user confirms would otherwise lose
-  // the account's only recovery credential with no trace that one was owed.
-  markRecoveryPhrasePending()
 
   return recovery.recoveryPhrase
 }
@@ -1493,6 +1496,14 @@ const runAKRotation = async (
   // misconfiguration and must surface as-is, not masquerade as a stale-rotation 4xx.
   const orgEnvelope = await buildOrgEnvelope(newAK)
 
+  // Marked BEFORE the request — see the note in first-device setup. In 'new'
+  // mode a lost response leaves the server anchored to a phrase this throw
+  // discards, and the OLD phrase dead with it. The two branches below that
+  // prove the rotation did not commit clear it again.
+  if (recovery.mode === 'new') {
+    markRecoveryPhrasePending()
+  }
+
   let committedKeyVersion: number
   try {
     const { key_version: keyVersion } = await postRotate(httpClient, {
@@ -1515,6 +1526,8 @@ const runAKRotation = async (
       // refresh would be noise — surface it so the caller prompts for the code.
       const body = (await err.response.json().catch(() => null)) as { code?: string } | null
       if (body?.code === 'step_up_required' || body?.code === 'step_up_invalid') {
+        // Refused at the gate: nothing committed, so no phrase is owed.
+        clearRecoveryPhrasePending()
         throw new StepUpVerificationError(body.code, { cause: err })
       }
     }
@@ -1527,6 +1540,9 @@ const runAKRotation = async (
       // server-driven key fetch inside the emergency cut — the dependency
       // THU-887 removed — and then tells the user to retry something that will
       // fail the same way.
+      // 400/409 are the server REJECTING the rotation, so it did not commit and
+      // the candidate phrase was never anchored.
+      clearRecoveryPhrasePending()
       await refreshAKForRotation(httpClient)
       throw new RotationStaleError({ cause: err })
     }
@@ -1580,12 +1596,6 @@ const runAKRotation = async (
         refreshErr,
       )
     })
-  }
-
-  // Only a freshly minted phrase is owed to the user; a silent rotation must not
-  // nag them about a phrase that never changed.
-  if (recovery.mode === 'new') {
-    markRecoveryPhrasePending()
   }
 }
 
@@ -1918,6 +1928,13 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
   // misconfiguration and must surface as-is, not be re-classified as a 409 CAS-loss.
   const orgEnvelope = await buildOrgEnvelope(newAK)
 
+  // Marked BEFORE the request — see the matching note in first-device setup. A
+  // lost response here is worse: the flip anchors recovery to this phrase AND
+  // kills the v1 one, so an unmarked loss leaves the account with no openable
+  // recovery slot at all. The 409 CAS-loss branch below clears it again, since
+  // that genuinely did not commit.
+  markRecoveryPhrasePending()
+
   let keyVersion: number
   try {
     const upgraded = await postUpgrade(httpClient, {
@@ -1944,6 +1961,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     // visible yet). Any OTHER error is a genuine pre-commit failure: the flip did
     // not happen, so the phrase was never anchored and it is safe to surface it.
     if (err instanceof HttpError && err.response.status === 409) {
+      // Another device won the CAS: this candidate phrase was never anchored,
+      // so the account does not owe one on its account.
+      clearRecoveryPhrasePending()
       return followToV2(httpClient, { getLegacyV1Sample: opts.getLegacyV1Sample })
     }
     throw err
@@ -1978,7 +1998,6 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     )
   }
 
-  markRecoveryPhrasePending()
   return { outcome: 'migrated', recoveryKey: recovery.recoveryPhrase }
 }
 

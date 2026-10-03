@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Formatters } from '@/i18n/format'
 import { useFormatters } from '@/i18n/use-formatters'
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
@@ -365,15 +365,47 @@ export default function DevicesSettingsPage() {
 
   /** Runs the confirmed action's mutation against the pending target, closing the dialog on success.
    *  The action guard makes a stale dialog's confirm a no-op if the target changed under it. */
+  /**
+   * The action currently in flight, claimed SYNCHRONOUSLY.
+   *
+   * `isPending` already disables the confirm button, and it is not enough:
+   * `mutate()` returns before TanStack's observer notification, the React
+   * render and the commit that actually puts `disabled` on the DOM node, so two
+   * clicks inside that window both see an enabled button. A ref is written in
+   * the same task as the first click, so the second one sees it. A human
+   * double-click usually loses that race; an automated one, or a main thread
+   * busy rendering a long device list, wins it.
+   *
+   * Starting a revoke twice is not harmless: the second run's revoke call is
+   * idempotent and succeeds, its rotation then 403s on key material the first
+   * run already replaced, and that pair is indistinguishable from a genuinely
+   * half-finished lockout — so the dialog tells the user their account key was
+   * never replaced when it was.
+   */
+  const inFlightAction = useRef<string | null>(null)
+
   const confirmPendingAction = (
     action: ConfirmationTarget['action'],
-    mutation: { mutate: (deviceId: string, options: { onSuccess: () => void }) => void },
+    mutation: {
+      mutate: (deviceId: string, options: { onSuccess: () => void; onSettled: () => void }) => void
+    },
   ) => {
     if (confirmationTarget?.action !== action) {
       return
     }
+    const claim = `${action}:${confirmationTarget.deviceId}`
+    if (inFlightAction.current === claim) {
+      return
+    }
+    inFlightAction.current = claim
     mutation.mutate(confirmationTarget.deviceId, {
       onSuccess: () => setConfirmationTarget(null),
+      // Released on settle, not on success: a failure leaves the dialog open as
+      // the retry affordance, and a claim that outlived it would make that
+      // button dead.
+      onSettled: () => {
+        inFlightAction.current = null
+      },
     })
   }
 

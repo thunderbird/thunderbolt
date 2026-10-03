@@ -1693,7 +1693,10 @@ export const createEncryptionRoutes = (
         }
         if (device.revokedAt != null) {
           set.status = 403
-          return { error: 'Device has been revoked' }
+          // `code`, not just prose: a revoked device can never bind, and the client
+          // has to tell that apart from the transient "not bound yet" it retries.
+          // Same code the sync path already uses for the same fact.
+          return { error: 'Device has been revoked', code: 'DEVICE_DISCONNECTED' as const }
         }
         // A keyless row (a bridge, or a v1 device that never published hybrid
         // keys) has nothing to seal to, so it can never bind — and never needs
@@ -1742,7 +1745,7 @@ export const createEncryptionRoutes = (
         }
         if (device.revokedAt != null) {
           set.status = 403
-          return { error: 'Device has been revoked' }
+          return { error: 'Device has been revoked', code: 'DEVICE_DISCONNECTED' as const }
         }
 
         // The bind is conflict-aware, so its verdict decides the response: a

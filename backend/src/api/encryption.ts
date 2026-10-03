@@ -460,47 +460,17 @@ export const createEncryptionRoutes = (
           return { error: 'CLI device IDs must use account registration' }
         }
 
-        // Check if device already exists (fast-path before transaction)
-        const existingDevice = await getDeviceById(database, deviceId)
-
-        if (existingDevice) {
-          // Device belongs to a different user
-          if (existingDevice.userId !== userId) {
-            set.status = 409
-            return { error: 'Device ID already taken' }
-          }
-
-          // Revoked — device cannot re-register
-          if (existingDevice.revokedAt != null) {
-            set.status = 403
-            return { error: 'Device has been revoked' }
-          }
-
-          // Encryption-registered device (has publicKey): return current state
-          if (existingDevice.publicKey) {
-            if (existingDevice.trusted) {
-              // NO session link here (THU-873). This branch takes an unverified
-              // client-supplied `deviceId`, so linking would let any session
-              // claim any already-trusted device — the rebind hole that made
-              // pinning `getCallerDevice` to `session.deviceId` worthless. A
-              // returning device binds through the sealed-nonce handshake
-              // (`GET /devices/me/bind-challenge` + `POST /devices/me/bind`),
-              // which proves it holds this device's private key.
-              // The envelope below is safe to return unbound: it is the AK
-              // wrapped TO this device's public keys, useless without them.
-              const envelope = await getEnvelopeByDeviceId(database, deviceId, userId)
-              return {
-                trusted: true as const,
-                envelope: envelope?.wrappedCk ?? null,
-              }
-            }
-            // Non-trusted device re-registering (reopen modal after deny/cancel):
-            // fall through to registerDevice which upserts with approvalPending=true
-          }
-
-          // Pre-encryption device (no publicKey): fall through to register with publicKey
-        }
-
+        // EVERY read that a branch decides on happens INSIDE the lock. There used
+        // to be a "fast-path" `getDeviceById` out here whose `trusted`/`revokedAt`
+        // verdicts were never re-checked under the lock, so a concurrent trust
+        // operation changed the answer after it was read: an approval landing in
+        // the window fell through to `registerDevice`, whose upsert resets
+        // `trusted`/`approvalPending` and put the device back to PENDING with its
+        // envelope already written and the approval email already sent; and a
+        // revoke landing in the window left `registerDevice`'s
+        // `setWhere isNull(revoked_at)` matching nothing, which surfaces as 409
+        // "Device ID already taken" instead of 403 "Device has been revoked".
+        //
         // The transaction alone does NOT make the limit check atomic — under
         // READ COMMITTED two concurrent registrations both read a count below
         // the cap and both insert. The advisory lock is what serializes them,
@@ -512,9 +482,37 @@ export const createEncryptionRoutes = (
             withUserDeviceRegistrationLock(tx, userId, async () => {
               const txDb: QueryableDatabase = tx
 
-              // Re-check device inside transaction to close race window
-              const freshDevice = await getDeviceById(txDb, deviceId)
-              if (!freshDevice) {
+              const existingDevice = await getDeviceById(txDb, deviceId)
+              if (existingDevice) {
+                // Device belongs to a different user
+                if (existingDevice.userId !== userId) {
+                  return { taken: true as const }
+                }
+                // Revoked — device cannot re-register
+                if (existingDevice.revokedAt != null) {
+                  return { revoked: true as const }
+                }
+                // Encryption-registered AND trusted: return current state.
+                //
+                // NO session link here (THU-873), which is why this check stays
+                // AHEAD of `linkSessionToDevice` below rather than after it as on
+                // `main`. This branch takes an unverified client-supplied
+                // `deviceId`, so linking would let any session claim any
+                // already-trusted device — the rebind hole that made pinning
+                // `getCallerDevice` to `session.deviceId` worthless. A returning
+                // device binds through the sealed-nonce handshake
+                // (`GET /devices/me/bind-challenge` + `POST /devices/me/bind`),
+                // which proves it holds this device's private key.
+                // The envelope below is safe to return unbound: it is the AK
+                // wrapped TO this device's public keys, useless without them.
+                if (existingDevice.publicKey && existingDevice.trusted) {
+                  const envelope = await getEnvelopeByDeviceId(txDb, deviceId, userId)
+                  return { alreadyTrusted: true as const, envelope: envelope?.wrappedCk ?? null }
+                }
+                // Otherwise fall through to `registerDevice`: a non-trusted device
+                // reopening the modal after deny/cancel, or a pre-encryption device
+                // with no `publicKey` yet.
+              } else {
                 const activeCount = await countActiveDevices(txDb, userId)
                 if (activeCount >= maxActiveDevicesPerUser) {
                   return { limitReached: true as const }
@@ -561,9 +559,18 @@ export const createEncryptionRoutes = (
             throw err
           })
 
+        if ('alreadyTrusted' in result) {
+          return { trusted: true as const, envelope: result.envelope }
+        }
+
         if ('limitReached' in result) {
           set.status = 422
           return { error: 'Device limit reached' }
+        }
+
+        if ('revoked' in result) {
+          set.status = 403
+          return { error: 'Device has been revoked' }
         }
 
         if ('taken' in result) {

@@ -270,6 +270,20 @@ describe('Encryption API', () => {
       const body = await response.json()
       expect(body.trusted).toBe(true)
       expect(body.envelope).toBe('my-wrapped-ck')
+
+      // The row must be UNTOUCHED. `registerDevice`'s upsert resets `trusted`
+      // and sets `approvalPending`, so a trusted-device re-register that reaches
+      // it sends an approved device back to the approval modal with its envelope
+      // already written. That is what happened when this verdict was read
+      // outside the registration lock and a concurrent approval landed in the
+      // window; the read now lives inside the lock, and this asserts the
+      // consequence so a future reordering past `registerDevice` is caught.
+      const [row] = await db
+        .select()
+        .from(devicesTable)
+        .where(eq(devicesTable.id, p('d-trusted')))
+      expect(row.trusted).toBe(true)
+      expect(row.approvalPending).toBe(false)
     })
 
     it('returns untrusted for already-pending device', async () => {

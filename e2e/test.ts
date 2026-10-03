@@ -126,10 +126,13 @@ const persistentWebkit = base.extend({
   },
 })
 
-// `_` rather than Playwright's idiomatic `{}`: this hook needs the second
-// positional argument but no fixtures, and an empty destructuring pattern is a
-// lint error under the e2e config this branch added.
-persistentWebkit.afterEach(async (_, testInfo) => {
+// Playwright requires the first positional argument to use object destructuring
+// even when no fixtures are consumed, and it REJECTS `_` at collection time: the
+// root project then reports `First argument must use the object destructuring
+// pattern` and collects 0 tests across every file, which the JSON reporter shows
+// as a pass. Same pattern (and same lint suppression) as `e2ee/fixtures.ts`.
+// eslint-disable-next-line no-empty-pattern
+persistentWebkit.afterEach(async ({}, testInfo) => {
   if (process.env.VITE_DB_DIAGNOSTIC !== 'true') {
     return
   }

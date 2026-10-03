@@ -15,10 +15,21 @@ import {
   verifyStepUpOtp,
 } from './step-up-otp'
 
+/**
+ * Per-RUN id, not just per-test. `database.transaction` COMMITs on this
+ * harness's single shared connection, so rows written through one outlive
+ * `createTestDb`'s `ROLLBACK` — and CI re-runs each file in ONE process
+ * (`--rerun-each 5`), where run N would otherwise read run N-1's cooldown row
+ * and fail. Same counter pattern as `canary.test.ts`.
+ */
+const counterKey = Symbol.for('step-up-otp-test-runId')
+;(globalThis as Record<symbol, number>)[counterKey] ??= 0
+
 describe('step-up OTP (THU-875)', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
-  const email = 'step-up@example.com'
+  let rid: number
+  let email: string
 
   const readRow = async () => {
     const [row] = await db
@@ -29,6 +40,8 @@ describe('step-up OTP (THU-875)', () => {
   }
 
   beforeEach(async () => {
+    rid = ++(globalThis as Record<symbol, number>)[counterKey]
+    email = `step-up-${rid}@example.com`
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
@@ -40,7 +53,13 @@ describe('step-up OTP (THU-875)', () => {
     }
   })
 
+  // These two assert a pure string function and touch no rows, so they use a
+  // FIXED address rather than the per-run `email`: the case test needs a known
+  // mixed-case spelling of the very same address, which a generated one cannot
+  // supply.
   describe('stepUpIdentifier', () => {
+    const fixedEmail = 'step-up@example.com'
+
     /**
      * The security property of the whole module. Better-auth composes every
      * identifier it can read or write as `toOTPIdentifier(type, email)` =
@@ -51,23 +70,24 @@ describe('step-up OTP (THU-875)', () => {
     it('is unreachable from better-auth’s OTP-type grammar', () => {
       const betterAuthTypes = ['email-verification', 'sign-in', 'forget-password', 'change-email'] as const
       for (const type of betterAuthTypes) {
-        expect(stepUpIdentifier(email)).not.toBe(`${type}-otp-${email}`)
+        expect(stepUpIdentifier(fixedEmail)).not.toBe(`${type}-otp-${fixedEmail}`)
       }
     })
 
     it('normalises case, so a differently-cased session email finds its own row', () => {
-      expect(stepUpIdentifier('Step-Up@Example.COM')).toBe(stepUpIdentifier(email))
+      expect(stepUpIdentifier('Step-Up@Example.COM')).toBe(stepUpIdentifier(fixedEmail))
     })
   })
 
   describe('requestStepUpOtp', () => {
-    // A fresh address per test, deliberately. `database.transaction` issues a
-    // real COMMIT on this harness's single shared connection, which ends the
-    // outer transaction `createTestDb` opened — so its `ROLLBACK` does not
-    // undo rows written through one, and an account's rows outlive the test
-    // that made them. The mint-only tests below never noticed because every
-    // mint deletes the identifier's rows first; a cooldown check reads them.
-    const freshEmail = (label: string) => `step-up-${label}@example.com`
+    // A fresh address per test AND per run — see `counterKey` above for why the
+    // run half matters. `database.transaction` issues a real COMMIT on this
+    // harness's single shared connection, which ends the outer transaction
+    // `createTestDb` opened — so its `ROLLBACK` does not undo rows written
+    // through one, and an account's rows outlive the test that made them. The
+    // mint-only tests below never noticed because every mint deletes the
+    // identifier's rows first; a cooldown check reads them.
+    const freshEmail = (label: string) => `step-up-${rid}-${label}@example.com`
 
     it('refuses a second request inside the cooldown, leaving the first code alive', async () => {
       const cooldownEmail = freshEmail('cooldown')

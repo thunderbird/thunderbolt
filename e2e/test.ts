@@ -18,7 +18,9 @@ export const resetOriginStorage = async (page: Page, origin: string) => {
     await page.goto(url)
     await page.evaluate(async () => {
       const root = await navigator.storage.getDirectory()
-      for await (const name of root.keys()) await root.removeEntry(name, { recursive: true })
+      for await (const name of root.keys()) {
+        await root.removeEntry(name, { recursive: true })
+      }
     })
   } finally {
     await page.unroute(url)
@@ -39,7 +41,9 @@ const persistentWebkit = base.extend({
           if (testInfo.status !== testInfo.expectedStatus) {
             for (const page of context.pages()) {
               const video = page.video()
-              if (!video) continue
+              if (!video) {
+                continue
+              }
               await page.close()
               await testInfo.attach('video', { path: await video.path(), contentType: 'video/webm' })
             }
@@ -59,7 +63,9 @@ const persistentWebkit = base.extend({
     if (process.env.VITE_DB_DIAGNOSTIC === 'true') {
       page.on('console', (message) => {
         const diagnostic = parseDbDiagnostic(message.text())
-        if (diagnostic) dbDiagnostics[diagnostic.phase] = diagnostic.label
+        if (diagnostic) {
+          dbDiagnostics[diagnostic.phase] = diagnostic.label
+        }
       })
     }
     if (baseURL) {
@@ -73,23 +79,30 @@ const persistentWebkit = base.extend({
       }
       page.on('worker', (worker) => {
         const path = new URL(worker.url()).pathname
-        if (!path.startsWith('/@powersync/worker/') || diagnostics.length >= 20) return
+        if (!path.startsWith('/@powersync/worker/') || diagnostics.length >= 20) {
+          return
+        }
         diagnostics.push(`worker started ${path}`)
         worker.on('close', () => diagnostics.push(`worker closed ${path}`))
       })
       page.on('requestfailed', (request) => {
         const url = new URL(request.url())
-        if (request.resourceType() !== 'script' || !testOrigins.has(url.origin) || diagnostics.length >= 20) return
+        if (request.resourceType() !== 'script' || !testOrigins.has(url.origin) || diagnostics.length >= 20) {
+          return
+        }
         diagnostics.push(`script failed ${url.pathname}`)
       })
       page.on('response', (response) => {
         const url = new URL(response.url())
-        if (!testOrigins.has(url.origin) || diagnostics.length >= 20) return
+        if (!testOrigins.has(url.origin) || diagnostics.length >= 20) {
+          return
+        }
         if (
           !url.pathname.startsWith('/@powersync/worker/') &&
           (response.request().resourceType() !== 'script' || response.status() < 400)
-        )
+        ) {
           return
+        }
         diagnostics.push(`${response.status()} ${response.headers()['content-type'] ?? 'unknown'} ${url.pathname}`)
       })
     }
@@ -113,8 +126,16 @@ const persistentWebkit = base.extend({
   },
 })
 
+// Playwright requires the first positional argument to use object destructuring
+// even when no fixtures are consumed, and it REJECTS `_` at collection time: the
+// root project then reports `First argument must use the object destructuring
+// pattern` and collects 0 tests across every file, which the JSON reporter shows
+// as a pass. Same pattern (and same lint suppression) as `e2ee/fixtures.ts`.
+// eslint-disable-next-line no-empty-pattern
 persistentWebkit.afterEach(async ({}, testInfo) => {
-  if (process.env.VITE_DB_DIAGNOSTIC !== 'true') return
+  if (process.env.VITE_DB_DIAGNOSTIC !== 'true') {
+    return
+  }
   await writeFile(
     testInfo.outputPath('db-diagnostic.json'),
     JSON.stringify({ status: testInfo.status, retry: testInfo.retry, readiness: 'missing', query: 'missing' }),
@@ -125,7 +146,9 @@ const browserTest = process.env.E2E_EXTENDED_WEBKIT_PERSISTENT === 'true' ? pers
 
 /** Isolate background attestation on every page, except in real-provider projects. */
 export const isolateProviderRequests = async (context: BrowserContext, projectName: string) => {
-  if (projectName.startsWith('extended-real-')) return
+  if (projectName.startsWith('extended-real-')) {
+    return
+  }
   // WebKit reports native CORS failures as pageerrors even when prewarm catches them.
   await context.route('https://atc.tinfoil.sh/attestation', (route) =>
     route.fulfill({ status: 503, json: { error: 'Attestation is disabled in this test project' } }),

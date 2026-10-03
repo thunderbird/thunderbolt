@@ -11,7 +11,12 @@ export type SessionDeviceBindingResult = { status: 'bound' } | { status: 'confli
 /** Server-only marker assigned to device-grant sessions until CLI registration binds a real device. */
 export const cliRegistrationPendingDeviceId = 'cli-registration-pending'
 
-/** Resolve an unexpired persisted Better Auth session from its raw database token. */
+/**
+ * Resolve an unexpired persisted Better Auth session from its raw database token.
+ * `deviceId` rides along because the bearer-only PowerSync token path has no
+ * Better Auth session object to read it from, and every device-scoped route
+ * resolves its caller from that column (THU-873).
+ */
 export const getActivePersistedSession = async (database: QueryableDatabase, rawToken: string) => {
   const rows = await database
     .select({ id: session.id, userId: session.userId, deviceId: session.deviceId })

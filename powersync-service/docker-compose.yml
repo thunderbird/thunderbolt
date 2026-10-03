@@ -11,7 +11,10 @@ services:
     environment:
       POWERSYNC_CONFIG_PATH: /config/config.yaml
     ports:
-      - 8080:8080
+      # Defaults preserve dev behaviour; the E2EE harness overrides via
+      # POWERSYNC_PORT / POSTGRES_PORT (scripts/run-e2ee-powersync.sh) so a
+      # running dev stack is never disturbed.
+      - "${POWERSYNC_PORT:-8080}:8080"
 
   postgres:
     image: docker.io/library/postgres:18-alpine
@@ -29,7 +32,7 @@ services:
       - pg_data:/var/lib/postgresql
       - ./init-db:/docker-entrypoint-initdb.d:Z
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     command: ["postgres", "-c", "wal_level=logical"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]

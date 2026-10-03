@@ -135,6 +135,10 @@ msgstr "⚠ This export was made by a different account ({importSourceEmail}). I
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
+msgstr "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
+
 #: src/components/pending-device-modal.tsx
 msgid "A new device is requesting access to your encrypted data."
 msgstr "A new device is requesting access to your encrypted data."
@@ -331,6 +335,10 @@ msgstr "Animals & nature"
 #: src/settings/preferences.tsx
 msgid "Anonymous Usage Data"
 msgstr "Anonymous Usage Data"
+
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
 
 #: src/widgets/ask/display.tsx
 msgid "Answer"
@@ -530,6 +538,7 @@ msgstr "Calendar"
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
 #: src/components/telemetry-required-modal.tsx
 #: src/components/telemetry-warning-modal.tsx
@@ -539,6 +548,7 @@ msgstr "Calendar"
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -557,6 +567,18 @@ msgstr "Celsius"
 #: src/settings/preferences.tsx
 msgid "Change Language?"
 msgstr "Change Language?"
+
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
+msgstr "Change recovery phrase"
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change Recovery Phrase"
+msgstr "Change Recovery Phrase"
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change your recovery phrase?"
+msgstr "Change your recovery phrase?"
 
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
@@ -956,6 +978,10 @@ msgstr "Copy URL"
 #: src/components/set-node-id-dialog.tsx
 msgid "Could not bind the pairing code"
 msgstr "Could not bind the pairing code"
+
+#: src/settings/devices.tsx
+msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr "Could not check whether a removed device still holds your account key. Reload to try again."
 
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
@@ -1573,6 +1599,10 @@ msgstr "Enabled"
 msgid "Enables location-based responses"
 msgstr "Enables location-based responses"
 
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
+msgstr "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Endpoint"
 msgstr "Endpoint"
@@ -1613,6 +1643,10 @@ msgstr "Enter your code"
 msgid "Enter your name"
 msgstr "Enter your name"
 
+#: src/components/step-up-code-dialog.tsx
+msgid "Enter your verification code"
+msgstr "Enter your verification code"
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
 msgstr "Exit voice mode"
@@ -1645,6 +1679,10 @@ msgstr "External Links"
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "Fahrenheit"
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to change the recovery phrase"
+msgstr "Failed to change the recovery phrase"
 
 #: src/hooks/use-sync-setup.ts
 msgid "Failed to check approval"
@@ -1706,6 +1744,10 @@ msgstr "Failed to remove MCP server"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Failed to resend verification code. Please check your connection."
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to send the verification code"
+msgstr "Failed to send the verification code"
+
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to send verification code. Please check your connection."
 msgstr "Failed to send verification code. Please check your connection."
@@ -1721,6 +1763,14 @@ msgstr "Failed to update integration"
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Failed to update MCP server"
 msgstr "Failed to update MCP server"
+
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr "Finish securing"
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr "Finish securing after revoking {deviceName}"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
@@ -1738,11 +1788,24 @@ msgstr "Foggy"
 msgid "Food & drink"
 msgstr "Food & drink"
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
+msgstr "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Generate a new phrase"
+msgstr "Generate a new phrase"
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Generate new phrase"
+msgstr "Generate new phrase"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr "Generating keys…"
 
 #: src/components/chat/inline-artifact-card.tsx
+#: src/components/step-up-code-dialog.tsx
 msgid "Generating…"
 msgstr "Generating…"
 
@@ -2024,6 +2087,7 @@ msgid "Last seen {lastSeen}"
 msgstr "Last seen {lastSeen}"
 
 #: src/components/download-app-banner-desktop.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr "Later"
@@ -2436,6 +2500,26 @@ msgstr "Not now"
 msgid "Not tested"
 msgstr "Not tested"
 
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this account has no recovery phrase on record. This can indicate tampering."
+msgstr "Nothing was changed — this account has no recovery phrase on record. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device refused the account key the server offered. This can indicate tampering."
+msgstr "Nothing was changed — this device refused the account key the server offered. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device's encryption keys are out of date."
+msgstr "Nothing was changed — this device's encryption keys are out of date."
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed. The device was not revoked."
+msgstr "Nothing was changed. The device was not revoked."
+
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
 msgstr "OAuth issuer mismatch — authorization rejected."
@@ -2748,6 +2832,14 @@ msgstr "Recovery failed"
 msgid "Recovery phrase"
 msgstr "Recovery phrase"
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr "Refresh keys and retry"
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr "Refreshing keys…"
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Registering this device and detecting your account status."
@@ -2830,6 +2922,10 @@ msgstr "Resend as images"
 #: src/components/chat/file-card.tsx
 msgid "Resend as text"
 msgstr "Resend as text"
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Resend code"
+msgstr "Resend code"
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Resend Email"
@@ -2937,6 +3033,12 @@ msgstr "Save Changes"
 msgid "Save failed"
 msgstr "Save failed"
 
+#: src/app.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Save your new recovery phrase"
+msgstr "Save your new recovery phrase"
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
 msgstr "Save your recovery phrase"
@@ -3043,6 +3145,10 @@ msgstr "Searching for \"{query}\"…"
 msgid "Searching…"
 msgstr "Searching…"
 
+#: src/settings/devices.tsx
+msgid "Securing…"
+msgstr "Securing…"
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "See the document on screen."
@@ -3077,6 +3183,10 @@ msgstr "Select provider"
 msgid "Select…"
 msgstr "Select…"
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Send code"
+msgstr "Send code"
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
 msgstr "Send Magic Link"
@@ -3088,6 +3198,11 @@ msgstr "Send message"
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
 msgstr "Send to the Thunderbolt team"
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Sending code…"
+msgstr "Sending code…"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 #: src/components/share-debug-transcript/use-share-debug-transcript-state.ts
@@ -3497,6 +3612,10 @@ msgstr "Testing model…"
 msgid "Testing…"
 msgstr "Testing…"
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "That code is invalid or expired. Check your email and try again."
+msgstr "That code is invalid or expired. Check your email and try again."
+
 #: src/lib/device-grant.ts
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "That code isn't valid or has already been used. Check your terminal and try again."
@@ -3529,9 +3648,29 @@ msgstr "The chat will be retained by the Thunderbolt team."
 msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 msgstr "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this account has no recovery phrase on record. This can indicate tampering."
+msgstr "The device lost access, but your account key was not replaced, so it can still read your data — this account has no recovery phrase on record. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this device refused the account key the server offered. This can indicate tampering."
+msgstr "The device lost access, but your account key was not replaced, so it can still read your data — this device refused the account key the server offered. This can indicate tampering."
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data."
+msgstr "The device lost access, but your account key was not replaced, so it can still read your data."
+
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -3615,6 +3754,10 @@ msgstr "This device has been signed out remotely. Choose what to do with your lo
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "This device has not been approved yet. Please approve it from a trusted device first."
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "This file doesn't look like a Thunderbolt export."
@@ -3658,6 +3801,10 @@ msgstr "this project"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."
@@ -3847,6 +3994,7 @@ msgstr "Trusted devices"
 
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Try again"
 msgstr "Try again"
 
@@ -4084,6 +4232,10 @@ msgstr "We don't train models on your data."
 msgid "We sent a code to <0>{email}</0>"
 msgstr "We sent a code to <0>{email}</0>"
 
+#: src/components/step-up-code-dialog.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+msgstr "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
 msgstr "We've sent an email to <0>{email}</0> with your next steps."
@@ -4186,6 +4338,10 @@ msgstr "Would you like to change the language to {suggestedLanguageLabel}?"
 msgid "Would you like to update your units based on the new location?"
 msgstr "Would you like to update your units based on the new location?"
 
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr "Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Write down these 24 words in order and store them somewhere safe. You'll need them to recover your data if you lose access to all your devices. This phrase won't be shown again."
 msgstr "Write down these 24 words in order and store them somewhere safe. You'll need them to recover your data if you lose access to all your devices. This phrase won't be shown again."
@@ -4268,6 +4424,10 @@ msgstr "You've reached your AI usage limit for the current 7-day window. Try aga
 msgid "Your account has been deleted and local data has been cleared."
 msgstr "Your account has been deleted and local data has been cleared."
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Your account keys changed while preparing the new phrase. Please try again."
+msgstr "Your account keys changed while preparing the new phrase. Please try again."
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Your agent · runs in your terminal"
 msgstr "Your agent · runs in your terminal"
@@ -4305,6 +4465,10 @@ msgstr "Your chats and settings will remain on this device for next time."
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Your chats and settings will remain on this device for offline use."
 
+#: src/app.tsx
+msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+msgstr "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
 msgstr "Your message would exceed the model's {formattedMaxTokens}-token context window."
@@ -4317,9 +4481,17 @@ msgstr "Your name"
 #~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 #~ msgstr "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr "Your private AI assistant"
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Your recovery phrase was never saved"
+msgstr "Your recovery phrase was never saved"
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."

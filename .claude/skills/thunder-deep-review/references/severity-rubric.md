@@ -13,6 +13,9 @@ Two **independent** axes: **severity** (how much it matters) ⊥ **confidence** 
 | **Real bug / concern** | genuine correctness | "This is a real bug", "this looks real" | Yes |
 | **Future-pain (architectural)** | silent maintainability cost | "this will come back to haunt us", "painful someday", "some future debugger gets burned", "this is a code smell" | Yes (even if nothing breaks today) |
 | **Hard block** | won't hold up | "I don't think this approach holds up", "we need these columns nullable" (imperative + *need*) | Yes |
+| **Security-critical** *(security dimension only)* | a headline adversary (A1/A2/A3, NOT one already holding the AK) breaks a confidentiality/takeover claim under cheap preconditions | "this is a plaintext/key leak to the server", "full-account takeover via a routine flow" | Yes — emit as output `critical` |
+
+**Security severity — derive it, don't categorize it.** For any finding on a crypto path, set severity from **preconditions × adversary class**, never from the fact that it's "security". Anchor to `docs/architecture/e2ee-threat-model.md`: `critical` is reserved for the A1/A2/A3 confidentiality/takeover breaks above. A weakness reachable only by an adversary who *already holds the AK* is not critical; if an attack needs three preconditions, say so and downgrade. Be skeptical of inflation — most security findings are `blocking` or below, and `.claude/security/fp-rules.txt` lists the accepted properties that are not findings at all.
 
 ## Confidence → register
 - **High** → direct statement + prescribed fix.

@@ -24,10 +24,19 @@ import {
 import { user as userTable } from '@/db/auth-schema'
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { cliRegistrationPendingDeviceId, linkCliSessionToDevice } from '@/dal/sessions'
-import { verifyCanaryProofWithMetadata } from '@/lib/canary'
+import { verifyChallengeSignature } from '@/lib/canary'
 import { safeErrorHandler } from '@/middleware/error-handling'
+import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Elysia schema for the shared ChallengeProof request DTO. */
+const proofSchema = t.Object({
+  signature: t.String({ maxLength: 200 }),
+  nonce: t.String({ maxLength: 128 }),
+  operation: t.Union(challengeOperations.map((op) => t.Literal(op))),
+  deviceId: t.String({ maxLength: 36 }),
+})
 
 class SessionDeviceBindingConflictError extends Error {}
 class PersistedSessionInvalidError extends Error {}
@@ -258,7 +267,7 @@ export const createAccountRoutes = (
     })
     .post(
       '/devices/:id/revoke',
-      async ({ params, body, request, set, user: sessionUser }) => {
+      async ({ params, body, request, set, user: sessionUser, session }) => {
         const userId = sessionUser!.id
 
         const callerDeviceId = request.headers.get('x-device-id')?.trim()
@@ -266,19 +275,31 @@ export const createAccountRoutes = (
           set.status = 400
           return { error: 'X-Device-ID header is required' }
         }
+        // THU-873: pin the caller to the device its session is bound to. The
+        // 'revoke' proof below only shows ACCOUNT key possession, which a
+        // revoked device retains — so without this, a surviving unlinked
+        // session could revoke a sibling while naming it as the caller.
+        if (!session.deviceId || session.deviceId !== callerDeviceId) {
+          set.status = 403
+          return { error: 'X-Device-ID does not match the authenticated device' }
+        }
 
-        // If E2EE is active (encryption metadata exists), require canary proof-of-CK-possession.
-        // Checks `metadata` (not `metadata?.canarySecretHash`) for fail-closed behavior:
-        // if metadata exists with a null hash, we still block rather than silently skip.
+        // If E2EE is active (encryption metadata exists), require a 'revoke'
+        // challenge signature. Checks `metadata` (not the signing key) for
+        // fail-closed behavior: a pre-flip v1 account (NULL signing key) fails
+        // verification closed and must upgrade before it can revoke. The
+        // client-side double-rotation (revoke access + rotate AK/DEK) runs the
+        // /rotate call separately; both take the same advisory lock below so they
+        // cannot interleave.
         const metadata = await getEncryptionMetadata(database, userId)
         if (metadata) {
-          if (!body.canarySecret) {
+          if (!body.proof) {
             set.status = 403
-            return { error: 'Canary secret required for device revocation' }
+            return { error: 'Challenge proof required for device revocation' }
           }
-          if (!(await verifyCanaryProofWithMetadata(body.canarySecret, metadata.canarySecretHash))) {
+          if (!(await verifyChallengeSignature(database, userId, body.proof, 'revoke', callerDeviceId))) {
             set.status = 403
-            return { error: 'Invalid canary secret' }
+            return { error: 'Invalid challenge proof' }
           }
 
           // Caller must be a trusted normal device (defense-in-depth)
@@ -293,6 +314,8 @@ export const createAccountRoutes = (
           }
         }
 
+        // Same per-user lock as /rotate and /upgrade so the double-rotation
+        // (revoke → rotate) can't race an in-flight rotation.
         await database.transaction((tx) =>
           withUserDeviceRegistrationLock(tx, userId, async () => {
             await deleteEnvelope(tx, params.id, userId)
@@ -308,7 +331,7 @@ export const createAccountRoutes = (
       {
         auth: true,
         body: t.Object({
-          canarySecret: t.Optional(t.String({ maxLength: 500 })),
+          proof: t.Optional(proofSchema),
         }),
       },
     )

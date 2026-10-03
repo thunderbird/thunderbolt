@@ -10,8 +10,13 @@ import { createFakeMcpServer } from './fake-mcp-server'
 test('the fake MCP server lists and calls its echo tool', async () => {
   const server = await createFakeMcpServer(0)
   try {
+    // `address()` is `string | AddressInfo | null` — the string form is a unix
+    // socket, which has no port. Narrow by type rather than with `in`, which
+    // does not accept a string operand.
     const address = server.address()
-    if (!address || !('port' in address)) throw new Error('Fake MCP server has no TCP address')
+    if (typeof address !== 'object' || address === null) {
+      throw new Error('Fake MCP server has no TCP address')
+    }
     const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${address.port}/mcp`))
     const client = new Client({ name: 'test-mcp-probe', version: '1.0.0' })
     await client.connect(transport)

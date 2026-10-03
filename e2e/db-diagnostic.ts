@@ -8,7 +8,9 @@ export const parseDbDiagnostic = (message: string): { phase: 'readiness' | 'quer
     /^\[db-diagnostic\] (readiness|query)=(pending|ready|rejected|timed_out) category=(locked|quota|schema|open|worker|wasm|sqlite|other) name=(AbortError|InvalidStateError|NoModificationAllowedError|NotAllowedError|QuotaExceededError|SQLiteError|TypeError|other)$/.exec(
       message,
     )
-  if (!match) return null
+  if (!match) {
+    return null
+  }
   return {
     phase: match[1] as 'readiness' | 'query',
     label: match[0],

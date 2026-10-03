@@ -466,6 +466,31 @@ export const plantWrappedKey = async (userId: string, keyId: string, wrappedKey:
   await sql`INSERT INTO wrapped_keys (user_id, key_id, wrapped_key) VALUES (${userId}, ${keyId}, ${wrappedKey})`
 }
 
+/**
+ * A2 — plant a trusted `devices` row whose hybrid public keys the ATTACKER
+ * generated. Models a malicious or breached server writing straight to its own
+ * database: no approval ceremony runs, so no approval email fires, and the row
+ * is indistinguishable over the wire from a device the user really approved.
+ *
+ * The column values are chosen to satisfy `listEnvelopeCapableDevices`
+ * (`backend/src/dal/devices.ts`) exactly — trusted, not revoked, both public
+ * keys present — which is the predicate that decides who a rotation MUST wrap
+ * the new Account Key for.
+ */
+export const plantTrustedDevice = async (
+  userId: string,
+  deviceId: string,
+  publicKey: string,
+  mlkemPublicKey: string,
+): Promise<void> => {
+  await sql`
+    INSERT INTO powersync.devices
+      (id, user_id, name, trusted, approval_pending, public_key, mlkem_public_key, device_type, created_at, last_seen)
+    VALUES
+      (${deviceId}, ${userId}, 'Planted device', true, false, ${publicKey}, ${mlkemPublicKey}, 'normal', now(), now())
+  `
+}
+
 export type AgentRow = { id: string; name: string; url: string; description: string | null }
 
 /** Poll for a synced `agents` row to reach Postgres, returned exactly as stored. */

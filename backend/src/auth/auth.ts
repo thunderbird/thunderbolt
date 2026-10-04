@@ -26,7 +26,7 @@ import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
-import { sso } from '@better-auth/sso'
+import { computeDiscoveryUrl, sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
@@ -100,12 +100,11 @@ const buildSsoPlugins = () => {
               pkce: true,
               clientId: settings.oidcClientId,
               clientSecret: settings.oidcClientSecret,
-              // Left undefined so Better Auth derives it from the issuer. Its own
-              // helper strips a trailing slash, which OIDC Discovery requires and
-              // our previous concatenation did not: an issuer ending in `/` gave a
-              // double slash and a 404. Providers such as Authentik publish them
-              // that way.
-              discoveryEndpoint: settings.oidcDiscoveryUrl || undefined,
+              // Better Auth's own helper rather than string concatenation: it strips a
+              // trailing slash from the issuer, as OIDC Discovery requires. Concatenating
+              // produced a double slash and a 404 for the providers that publish issuer
+              // URLs that way (Authentik among them).
+              discoveryEndpoint: settings.oidcDiscoveryUrl || computeDiscoveryUrl(settings.oidcIssuer),
               scopes: ['openid', 'profile', 'email'],
             },
           },

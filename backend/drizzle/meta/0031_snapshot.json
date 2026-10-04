@@ -2666,6 +2666,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "attestation": {
+          "name": "attestation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",

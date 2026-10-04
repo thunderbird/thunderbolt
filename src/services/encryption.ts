@@ -196,6 +196,27 @@ export class LockoutIncompleteError extends Error {
  * capture the next AK, or the account predates the attestation column — in
  * which case one explicit recovery-phrase change re-anchors it legitimately.
  */
+/**
+ * Thrown when a device in the served recipient set carries no attestation, or
+ * one that does not verify under this device's own key material.
+ *
+ * The AK envelope is ANONYMOUS — wrapping needs only public keys, which the
+ * server stores — so without this check a row the server writes into `devices`
+ * with its own keys is wrapped for by the next rotation like any other device,
+ * and the server unwraps the account key. Same shape as `RecoveryAnchorError`,
+ * same policy: NOT retryable, because retrying re-reads the same untrusted list.
+ */
+export class DeviceAnchorError extends Error {
+  constructor(deviceIds: string[], options?: ErrorOptions) {
+    super(
+      `The account key was not replaced: ${deviceIds.length} device(s) the server listed could not be ` +
+        'verified against this device. This may indicate tampering.',
+      options,
+    )
+    this.name = 'DeviceAnchorError'
+  }
+}
+
 export class RecoveryAnchorError extends Error {
   constructor(options?: ErrorOptions) {
     super(
@@ -965,9 +986,22 @@ export const completeFirstDeviceSetup = async (httpClient: HttpClient): Promise<
   // the call really did fail before committing, which is the right way round.
   markRecoveryPhrasePending()
 
+  // Self-signed: this device minted the AK and the canary, and its own public
+  // keys are the ones being attested, so there is nothing here the server could
+  // have substituted. Every later recipient's attestation chains from an epoch
+  // that starts with this one.
+  const { signDeviceAttestation } = await loadCanary()
+  const bootstrapAttestation = await signDeviceAttestation(canaryKey, {
+    userId: getUserId(),
+    deviceId: getDeviceId(),
+    ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+  })
+
   await storeEnvelope(httpClient, {
     deviceId: getDeviceId(),
     wrappedCK,
+    attestation: bootstrapAttestation,
     canaryIv,
     canaryCtext,
     signingPublicKey: publicKeySpki,
@@ -1034,7 +1068,20 @@ export const approveDevice = async (
     pendingMlkemPub,
   )
 
-  await storeEnvelope(httpClient, { deviceId: pendingDeviceId, wrappedCK, proof })
+  // The approver attests the keys it just wrapped to, so the NEXT rotation can
+  // tell this device apart from a row the server invented. Note what this does
+  // NOT prove: the pending device's public keys arrived from the server, so an
+  // approval-time substitution is signed in good faith. Closing that needs
+  // out-of-band fingerprint comparison — a POC non-goal, tracked separately.
+  const { signDeviceAttestation } = await loadCanary()
+  const attestation = await signDeviceAttestation(await getCanaryKey(httpClient), {
+    userId: getUserId(),
+    deviceId: pendingDeviceId,
+    ecdhPublicKey: pendingEcdhPublicKeyBase64,
+    mlkemPublicKey: pendingMlkemPublicKeyBase64,
+  })
+
+  await storeEnvelope(httpClient, { deviceId: pendingDeviceId, wrappedCK, attestation, proof })
 }
 
 /** Deny a pending device, gated by a 'deny' challenge proof. */
@@ -1220,7 +1267,17 @@ export const recoverWithKey = async (httpClient: HttpClient, recoveryPhrase: str
     keyPair.mlkemPublicKey,
   )
   const proof = await buildProof(httpClient, 'approve', canaryKey)
-  await storeEnvelope(httpClient, { deviceId, wrappedCK, proof })
+  // Self-attested, like bootstrap: the keys being signed are this device's own,
+  // so the server had no hand in them. The canary key comes from the AK the
+  // phrase just opened, which is what makes the signature current.
+  const { signDeviceAttestation } = await loadCanary()
+  const attestation = await signDeviceAttestation(canaryKey, {
+    userId: getUserId(),
+    deviceId,
+    ecdhPublicKey: await exportPublicKey(keyPair.ecdhPublicKey),
+    mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+  })
+  await storeEnvelope(httpClient, { deviceId, wrappedCK, attestation, proof })
 
   // DELIBERATELY NOT gated by the DEK "0" witness check: the phrase is the
   // account's break-glass, and one the thing it rescues you from can disable is
@@ -1259,6 +1316,8 @@ export type TrustedDevicePublicKeys = {
   id: string
   publicKey: string
   mlkemPublicKey: string
+  /** Null for an envelope written before the column existed; the client fails closed on it. */
+  attestation: string | null
 }
 
 /**
@@ -1282,6 +1341,7 @@ const listTrustedDeviceKeys = async (httpClient: HttpClient): Promise<TrustedDev
     id: device.device_id,
     publicKey: device.public_key,
     mlkemPublicKey: device.mlkem_public_key,
+    attestation: device.attestation,
   }))
 }
 
@@ -1295,19 +1355,80 @@ const buildDeviceEnvelopes = async (
   ak: CryptoKey,
   trustedDevices: TrustedDevicePublicKeys[],
   primaryKeyId: KeyId,
+  /**
+   * The canary key of THIS write. Every envelope ships an attestation over its
+   * recipient's id and public keys, signed with the key the NEXT rotation will
+   * derive to verify it — exactly how `buildRecoverySlot` anchors the recovery
+   * slot. Verification of the PREVIOUS epoch's attestations is the caller's job:
+   * only a rotation has a prior epoch to check against (see `runAKRotation`).
+   */
+  signWith: CryptoKey,
   excludeDeviceIds: string[] = [],
-): Promise<Array<{ deviceId: string; wrappedCK: string }>> => {
+): Promise<Array<{ deviceId: string; wrappedCK: string; attestation: string }>> => {
   const excluded = new Set(excludeDeviceIds)
-  const envelopes: Array<{ deviceId: string; wrappedCK: string }> = []
+  const { signDeviceAttestation } = await loadCanary()
+  const userId = getUserId()
+  const envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }> = []
   for (const device of trustedDevices) {
     if (excluded.has(device.id)) {
       continue
     }
     const ecdhPub = await importPublicKey(device.publicKey)
     const mlkemPub = importMlKemPublicKey(device.mlkemPublicKey)
-    envelopes.push({ deviceId: device.id, wrappedCK: await wrapAK(ak, ecdhPub, mlkemPub, primaryKeyId) })
+    envelopes.push({
+      deviceId: device.id,
+      wrappedCK: await wrapAK(ak, ecdhPub, mlkemPub, primaryKeyId),
+      attestation: await signDeviceAttestation(signWith, {
+        userId,
+        deviceId: device.id,
+        ecdhPublicKey: device.publicKey,
+        mlkemPublicKey: device.mlkemPublicKey,
+      }),
+    })
   }
   return envelopes
+}
+
+/**
+ * Refuse any device in the served recipient set whose attestation does not
+ * verify under the OLD epoch's canary key — the key this device derived from
+ * its own material, which the server cannot produce.
+ *
+ * Fails CLOSED on the whole rotation rather than silently dropping the offender:
+ * dropping it would lock a legitimate device out of the new AK on the strength
+ * of a signature check the user never saw, and an unverifiable recipient is
+ * either tampering or a pre-attestation row — both of which the user should be
+ * told about rather than quietly worked around.
+ */
+const assertDeviceAnchorsAreOurs = async (
+  trustedDevices: TrustedDevicePublicKeys[],
+  oldCanaryKey: CryptoKey,
+  excludeDeviceIds: string[] = [],
+): Promise<void> => {
+  const excluded = new Set(excludeDeviceIds)
+  const { verifyDeviceAttestation } = await loadCanary()
+  const userId = getUserId()
+  const unverified: string[] = []
+  for (const device of trustedDevices) {
+    if (excluded.has(device.id)) {
+      continue
+    }
+    const ok =
+      device.attestation != null &&
+      (await verifyDeviceAttestation(oldCanaryKey, device.attestation, {
+        userId,
+        deviceId: device.id,
+        ecdhPublicKey: device.publicKey,
+        mlkemPublicKey: device.mlkemPublicKey,
+      }))
+    if (!ok) {
+      unverified.push(device.id)
+    }
+  }
+  if (unverified.length > 0) {
+    console.error(`[e2ee] refusing to wrap the account key for unverified devices: ${unverified.join(', ')}`)
+    throw new DeviceAnchorError(unverified)
+  }
 }
 
 /**
@@ -1467,22 +1588,34 @@ const runAKRotation = async (
     throw new Error('No local primary key_id — cannot seal envelopes for this rotation')
   }
 
-  // New-AK envelope for every live trusted device, minus explicit exclusions
-  // (a just-revoked device may still look trusted through sync lag).
+  // Who the new AK goes to. THE LIST IS SERVER-SUPPLIED, so every recipient is
+  // checked against the OLD epoch's attestation before anything is wrapped —
+  // otherwise a row the server wrote into `devices` with its own keys receives
+  // the account key, and with it the whole keyring including the `"v1"` slot.
+  // Excluded ids are skipped: a device being revoked is not re-attested, and
+  // demanding a valid attestation from it would block its own revocation.
   const trustedDevices = await (opts.listTrustedDevices ?? (() => listTrustedDeviceKeys(httpClient)))()
-  const envelopes = await buildDeviceEnvelopes(newAK, trustedDevices, sealedPrimaryKeyId, opts.excludeDeviceIds)
+  await assertDeviceAnchorsAreOurs(trustedDevices, oldCanaryKey, opts.excludeDeviceIds)
 
   // New canary under the NEW AK (THU-872) + new signing keypair. Independent of
   // the phrase, so this happens in BOTH modes — and it is what revocation's
   // bite rests on: the revoked device never receives the new AK, so its signing
   // identity dies with the old epoch.
   //
-  // Minted BEFORE the recovery slot: the slot's attestation must be signed with
-  // the NEW canary key, since that is the key the next rotation will derive
-  // to verify it (THU-865).
+  // Minted BEFORE the envelopes and the recovery slot: both carry attestations
+  // that must be signed with the NEW canary key, since that is the key the next
+  // rotation will derive to verify them (THU-865).
   const { mintCanary, deriveSigningKeyPair } = await loadCanary()
   const { canaryIv, canaryCtext, canaryKey } = await mintCanary(newAK, getUserId())
   const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+
+  const envelopes = await buildDeviceEnvelopes(
+    newAK,
+    trustedDevices,
+    sealedPrimaryKeyId,
+    canaryKey,
+    opts.excludeDeviceIds,
+  )
 
   const recoverySlot = await buildRecoverySlot(
     newAK,
@@ -1915,11 +2048,20 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     id: getDeviceId(),
     publicKey: await exportPublicKey(keyPair.ecdhPublicKey),
     mlkemPublicKey: exportMlKemPublicKey(keyPair.mlkemPublicKey),
+    // Self: nothing to verify, and nothing has attested it yet.
+    attestation: null,
   }
   const devicesToCover = trustedDevices.some((device) => device.id === self.id)
     ? trustedDevices
     : [self, ...trustedDevices]
-  const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover, initialKeyId)
+  // NO verification here, and it is not an oversight: a v1 account has no prior
+  // epoch to check against — attestations begin existing at this write. So the
+  // migration is trust-on-first-use for the whole device set, the same way a
+  // brand-new device's first adoption is. A server that injects a row before an
+  // account migrates gets it attested by the migrator. Narrowing that needs
+  // out-of-band verification, not a signature; what this DOES establish is the
+  // epoch every later rotation checks against.
+  const envelopes = await buildDeviceEnvelopes(newAK, devicesToCover, initialKeyId, canaryKey)
   const recoverySlot = await buildRecoverySlot(newAK, recovery.publicKeys, recovery.kdfSalt, canaryKey, initialKeyId)
 
   const { nonce } = await fetchChallenge(httpClient, 'upgrade')

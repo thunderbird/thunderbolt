@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { db as DbType, QueryableDatabase } from '@/db/client'
-import { devicesTable, encryptionMetadataTable, wrappedKeysTable } from '@/db/schema'
+import { devicesTable, encryptionMetadataTable, envelopesTable, wrappedKeysTable } from '@/db/schema'
 import { cliDeviceIdPrefix, isCliDeviceId } from '@shared/cli-device-id'
 import { and, count, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import { createHash } from 'crypto'
@@ -269,8 +269,15 @@ export const listEnvelopeCapableDevices = async (database: QueryableDatabase, us
       id: devicesTable.id,
       publicKey: devicesTable.publicKey,
       mlkemPublicKey: devicesTable.mlkemPublicKey,
+      // LEFT join: the attestation travels with the keys so a rotating device can
+      // verify the recipient before wrapping. Null for a device whose envelope
+      // predates the column, which fails closed on the client rather than here —
+      // the server cannot verify a signature over a canary it does not hold, so
+      // it has no opinion to offer and must not pretend otherwise.
+      attestation: envelopesTable.attestation,
     })
     .from(devicesTable)
+    .leftJoin(envelopesTable, eq(envelopesTable.deviceId, devicesTable.id))
     .where(
       and(
         eq(devicesTable.userId, userId),

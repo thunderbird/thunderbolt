@@ -9,6 +9,7 @@ import {
   ecdsaKeyAlgorithm,
   ecdsaSignAlgorithm,
   encodeChallengePayload,
+  encodeDeviceAttestationPayload,
   encodeRecoveryAttestationPayload,
   signingPublicKeyFormat,
   type ChallengeOperation,
@@ -245,6 +246,69 @@ export const verifyRecoveryAttestation = async (
       base64ToUint8Array(attestation),
       // Copy so TS narrows the backing buffer to ArrayBuffer (BufferSource).
       new Uint8Array(encodeAnchor(anchor)),
+    )
+  } catch {
+    return false
+  }
+}
+
+/** The device anchor a rotation must authenticate before wrapping the AK to it. */
+export type DeviceAnchor = {
+  userId: string
+  deviceId: string
+  ecdhPublicKey: string
+  mlkemPublicKey: string
+}
+
+const encodeDeviceAnchor = (anchor: DeviceAnchor): Uint8Array =>
+  encodeDeviceAttestationPayload(anchor.userId, anchor.deviceId, anchor.ecdhPublicKey, anchor.mlkemPublicKey)
+
+/**
+ * Sign a device anchor with the signing key derived from THIS write's canary
+ * key. Called by every path that writes a device envelope — first-device setup,
+ * approval, recovery self-approval, AK rotation and the v1→v2 upgrade — so the
+ * device list a later rotation wraps to is always accompanied by signatures only
+ * a keyring holder could have produced.
+ */
+export const signDeviceAttestation = async (canaryKey: CryptoKey, anchor: DeviceAnchor): Promise<string> => {
+  const { privateKey } = await deriveSigningKeyPair(canaryKey)
+  return uint8ArrayToBase64(p256.sign(encodeDeviceAnchor(anchor), privateKey))
+}
+
+/**
+ * Verify a served device anchor against the caller's OWN key material, exactly
+ * as `verifyRecoveryAttestation` does for the recovery slot.
+ *
+ * This is what stops a row the server invented from receiving the account key:
+ * the envelope is anonymous, so a well-formed one proves nothing about who the
+ * recipient is, and only a signature made under a canary the server cannot
+ * derive distinguishes a device the account approved from one it did not.
+ *
+ * The payload is RECONSTRUCTED from `anchor`, never parsed out of the
+ * signature's input — same rule as the recovery verifier, and what keeps the
+ * domain separation meaningful.
+ *
+ * Returns false on malformed key or signature bytes rather than throwing.
+ */
+export const verifyDeviceAttestation = async (
+  canaryKey: CryptoKey,
+  attestation: string,
+  anchor: DeviceAnchor,
+): Promise<boolean> => {
+  const { publicKeySpki } = await deriveSigningKeyPair(canaryKey)
+  try {
+    const publicKey = await crypto.subtle.importKey(
+      signingPublicKeyFormat,
+      base64ToUint8Array(publicKeySpki),
+      ecdsaKeyAlgorithm,
+      false,
+      ['verify'],
+    )
+    return await crypto.subtle.verify(
+      ecdsaSignAlgorithm,
+      publicKey,
+      base64ToUint8Array(attestation),
+      new Uint8Array(encodeDeviceAnchor(anchor)),
     )
   } catch {
     return false

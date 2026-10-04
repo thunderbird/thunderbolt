@@ -128,6 +128,13 @@ const newPrimaryKeySchema = t.Object({
 const envelopeEntrySchema = t.Object({
   deviceId: t.String({ maxLength: 36 }),
   wrappedCK: t.String({ maxLength: 2200 }),
+  /**
+   * Signature over `userId ‖ deviceId ‖ the device's public keys`, made with the
+   * epoch's canary-derived key. Required, not optional: the whole point is that
+   * a recipient with no attestation cannot receive the account key, and an
+   * optional field is one a malicious client simply omits.
+   */
+  attestation: t.String({ maxLength: 200 }),
 })
 
 type CallerDeviceResult =
@@ -625,6 +632,7 @@ export const createEncryptionRoutes = (
         const { deviceId } = params
         const {
           wrappedCK,
+          attestation,
           proof,
           canaryIv,
           canaryCtext,
@@ -778,7 +786,7 @@ export const createEncryptionRoutes = (
             }
 
             // Store envelope (carries the AK)
-            await upsertEnvelope(txDb, { deviceId, userId, wrappedCk: wrappedCK })
+            await upsertEnvelope(txDb, { deviceId, userId, wrappedCk: wrappedCK, attestation })
 
             // Approval-only state transition: cap check + markDeviceTrusted only run when
             // transitioning untrusted → trusted. For re-key (already-trusted devices rotating
@@ -842,6 +850,7 @@ export const createEncryptionRoutes = (
         auth: true,
         body: t.Object({
           wrappedCK: t.String({ maxLength: 2200 }),
+          attestation: t.String({ maxLength: 200 }),
           proof: t.Optional(proofSchema),
           canaryIv: t.Optional(t.String({ maxLength: 500 })),
           canaryCtext: t.Optional(t.String({ maxLength: 500 })),
@@ -983,6 +992,7 @@ export const createEncryptionRoutes = (
             device_id: device.id,
             public_key: device.publicKey,
             mlkem_public_key: device.mlkemPublicKey,
+            attestation: device.attestation,
           })),
         }
       },
@@ -1170,7 +1180,12 @@ export const createEncryptionRoutes = (
             assertRecoveryCoverage(body)
 
             for (const envelope of body.envelopes) {
-              await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
+              await upsertEnvelope(txDb, {
+                deviceId: envelope.deviceId,
+                userId,
+                wrappedCk: envelope.wrappedCK,
+                attestation: envelope.attestation,
+              })
             }
             for (const entry of body.wrappedKeys) {
               const updated = await updateWrappedKey(txDb, userId, entry.keyId, entry.wrappedKey)
@@ -1337,7 +1352,12 @@ export const createEncryptionRoutes = (
               }
             }
             for (const envelope of body.envelopes) {
-              await upsertEnvelope(txDb, { deviceId: envelope.deviceId, userId, wrappedCk: envelope.wrappedCK })
+              await upsertEnvelope(txDb, {
+                deviceId: envelope.deviceId,
+                userId,
+                wrappedCk: envelope.wrappedCK,
+                attestation: envelope.attestation,
+              })
             }
 
             // Atomic last step: CAS scheme_version 1→2. A concurrent migrator that

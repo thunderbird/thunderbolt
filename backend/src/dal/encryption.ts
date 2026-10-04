@@ -38,7 +38,7 @@ export const hasEnvelopesForUser = async (database: QueryableDatabase, userId: s
 /** Upsert an envelope for a device. Only updates if userId matches (defense-in-depth). */
 export const upsertEnvelope = async (
   database: QueryableDatabase,
-  envelope: { deviceId: string; userId: string; wrappedCk: string },
+  envelope: { deviceId: string; userId: string; wrappedCk: string; attestation: string },
 ) =>
   database
     .insert(envelopesTable)
@@ -46,10 +46,14 @@ export const upsertEnvelope = async (
       deviceId: envelope.deviceId,
       userId: envelope.userId,
       wrappedCk: envelope.wrappedCk,
+      attestation: envelope.attestation,
     })
     .onConflictDoUpdate({
       target: envelopesTable.deviceId,
-      set: { wrappedCk: envelope.wrappedCk, updatedAt: new Date() },
+      // The attestation is rewritten with the envelope, never left behind: it is
+      // signed with the epoch's canary key, so one from the previous epoch can
+      // no longer verify and would wedge the next rotation.
+      set: { wrappedCk: envelope.wrappedCk, attestation: envelope.attestation, updatedAt: new Date() },
       setWhere: eq(envelopesTable.userId, envelope.userId),
     })
 

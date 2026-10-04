@@ -113,6 +113,7 @@ describe('encryption API client', () => {
       await storeEnvelope(httpClient, {
         deviceId: 'dev-1',
         wrappedCK: 'wrapped-base64',
+        attestation: 'device-attestation',
         canaryIv: 'iv-base64',
         canaryCtext: 'ctext-base64',
         signingPublicKey: 'spki-base64',
@@ -126,6 +127,7 @@ describe('encryption API client', () => {
       expect(req.url).toContain('/devices/dev-1/envelope')
       expect(req.body).toEqual({
         wrappedCK: 'wrapped-base64',
+        attestation: 'device-attestation',
         canaryIv: 'iv-base64',
         canaryCtext: 'ctext-base64',
         signingPublicKey: 'spki-base64',
@@ -142,6 +144,7 @@ describe('encryption API client', () => {
       await storeEnvelope(httpClient, {
         deviceId: 'dev-1',
         wrappedCK: 'wrapped-base64',
+        attestation: 'device-attestation',
         canaryIv: 'iv-base64',
         canaryCtext: 'ctext-base64',
         signingPublicKey: 'spki-base64',
@@ -157,11 +160,16 @@ describe('encryption API client', () => {
     it('sends the proof-gated approval payload', async () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ trusted: true })
 
-      await storeEnvelope(httpClient, { deviceId: 'dev/special', wrappedCK: 'wrapped', proof: sampleProof })
+      await storeEnvelope(httpClient, {
+        deviceId: 'dev/special',
+        wrappedCK: 'wrapped',
+        attestation: 'device-attestation',
+        proof: sampleProof,
+      })
 
       const req = getLastRequest()
       expect(req.url).toContain('/devices/dev%2Fspecial/envelope')
-      expect(req.body).toEqual({ wrappedCK: 'wrapped', proof: sampleProof })
+      expect(req.body).toEqual({ wrappedCK: 'wrapped', attestation: 'device-attestation', proof: sampleProof })
     })
   })
 
@@ -224,7 +232,7 @@ describe('encryption API client', () => {
       const { httpClient, getLastRequest } = createCapturingHttpClient({ key_version: 2 })
       const body = {
         proof: { ...sampleProof, operation: 'rotate' as const },
-        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w' }],
+        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w', attestation: 'att' }],
         wrappedKeys: [{ keyId: '0', wrappedKey: 'w0' }],
         canaryIv: 'iv',
         canaryCtext: 'ct',
@@ -243,7 +251,7 @@ describe('encryption API client', () => {
       const result = await postUpgrade(httpClient, {
         nonce: 'n',
         possessionProof: 'secret',
-        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w' }],
+        envelopes: [{ deviceId: 'dev-1', wrappedCK: 'w', attestation: 'att' }],
         wrappedKeys: [
           { keyId: '0', wrappedKey: 'w0' },
           { keyId: 'v1', wrappedKey: 'wv1' },

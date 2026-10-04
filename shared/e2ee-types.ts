@@ -389,6 +389,40 @@ export const encodeRecoveryAttestationPayload = (
     [recoveryAttestationDomain, userId, kdfSalt, recoveryEcdhPublicKey, recoveryMlkemPublicKey].join(payloadSeparator),
   )
 
+/**
+ * Domain tag for the DEVICE attestation. Distinct from the recovery one for the
+ * same reason that one is distinct from the challenge payload: both sign a tuple
+ * of public keys with the same epoch key, so without separate tags a recovery
+ * attestation could be replayed onto a device row, or the reverse.
+ */
+const deviceAttestationDomain = 'thunderbolt-device-attestation-v1'
+
+/**
+ * Canonical device-attestation byte layout:
+ * UTF-8(`domain ␟ userId ␟ deviceId ␟ ecdhPublicKey ␟ mlkemPublicKey`).
+ *
+ * Signed with the epoch's canary-derived signing key by whichever device writes
+ * a device's envelope — bootstrap, approval, recovery self-approval, rotation,
+ * upgrade — and verified before a rotation wraps the new AK to those keys.
+ *
+ * `deviceId` is bound in, not just the keys: without it a valid attestation for
+ * one device could be moved onto another row whose keys the attacker also
+ * controls, and the signature would still check out. That is the slot-confusion
+ * the recovery payload does not have to worry about, because there is only ever
+ * one recovery slot.
+ *
+ * No epoch/version field, for the same reason as the recovery payload: the
+ * signing key is re-derived from a fresh canary secret on every AK rotation, so
+ * an attestation from an earlier epoch cannot verify against the current key.
+ */
+export const encodeDeviceAttestationPayload = (
+  userId: string,
+  deviceId: string,
+  ecdhPublicKey: string,
+  mlkemPublicKey: string,
+): Uint8Array =>
+  utf8.encode([deviceAttestationDomain, userId, deviceId, ecdhPublicKey, mlkemPublicKey].join(payloadSeparator))
+
 /** ECDSA key algorithm — used by importKey/generateKey on both sides. */
 export const ecdsaKeyAlgorithm = { name: 'ECDSA', namedCurve: 'P-256' } as const
 
@@ -601,6 +635,18 @@ export type EnvelopeTargetsResponse = {
     device_id: string
     public_key: string
     mlkem_public_key: string
+    /**
+     * Signature over this device's id and public keys, made with a past epoch's
+     * canary-derived key. A rotating device verifies it before wrapping the new
+     * AK — the envelope is anonymous, so this is the only thing distinguishing a
+     * device the account approved from a row the server wrote for itself.
+     *
+     * Nullable on the wire so the server can serve an envelope written before
+     * the column existed. The CLIENT decides what to do with a null, and it
+     * refuses: the server cannot verify its own signature claim, so it has no
+     * verdict to offer here.
+     */
+    attestation: string | null
   }>
 }
 
@@ -657,7 +703,7 @@ export type RotateRequest = RecoverySlotRequest & {
    */
   stepUpOtp?: string
   /** The new AK wrapped per trusted device (`wrappedCK` historically named — it carries the AK). */
-  envelopes: Array<{ deviceId: string; wrappedCK: string }>
+  envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }>
   /** The FULL keyring re-wrapped under the new AK — every existing key_id, no exceptions. */
   wrappedKeys: WrappedKeyEntry[]
   /**
@@ -703,7 +749,7 @@ export type UpgradeRequest = RecoverySlotRequest & {
   /** D1 CK-possession proof: the canarySecret recovered by CK-decrypting canary_ctext (no AAD). */
   possessionProof: string
   /** The new AK wrapped per trusted device. */
-  envelopes: Array<{ deviceId: string; wrappedCK: string }>
+  envelopes: Array<{ deviceId: string; wrappedCK: string; attestation: string }>
   /** The new keyring: MUST include a fresh primary DEK "0" AND the absorbed "v1" slot. */
   wrappedKeys: WrappedKeyEntry[]
   /** The new primary — "0" for a freshly migrated account. */

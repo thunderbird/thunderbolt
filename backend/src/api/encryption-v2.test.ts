@@ -247,6 +247,7 @@ describe('Encryption API (v2)', () => {
           headers: authHeaders(p('tok'), p('d')),
           body: JSON.stringify({
             wrappedCK: 'wrapped-ak-boot',
+            attestation: 'att',
             canaryIv: 'boot-iv',
             canaryCtext: 'boot-ctext',
             signingPublicKey,
@@ -288,6 +289,7 @@ describe('Encryption API (v2)', () => {
           headers: authHeaders(p('tok'), p('d')),
           body: JSON.stringify({
             wrappedCK: 'wrapped-ak',
+            attestation: 'att',
             canaryIv: 'iv',
             canaryCtext: 'ctext',
             signingPublicKey: await exportSigningPublicKey(keypair),
@@ -315,6 +317,7 @@ describe('Encryption API (v2)', () => {
           headers: authHeaders(p('tok'), p('d')),
           body: JSON.stringify({
             wrappedCK: 'wrapped-ak',
+            attestation: 'att',
             canaryIv: 'iv',
             canaryCtext: 'ctext',
             signingPublicKey: await exportSigningPublicKey(keypair),
@@ -353,6 +356,7 @@ describe('Encryption API (v2)', () => {
           headers: authHeaders(p('tok'), p('d')),
           body: JSON.stringify({
             wrappedCK: 'wrapped-ak',
+            attestation: 'att',
             canaryIv: 'iv',
             canaryCtext: 'ctext',
             signingPublicKey: await exportSigningPublicKey(keypair),
@@ -384,7 +388,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('d')),
-          body: JSON.stringify({ wrappedCK: 'wrapped-ak' }),
+          body: JSON.stringify({ wrappedCK: 'wrapped-ak', attestation: 'att' }),
         }),
       )
 
@@ -409,7 +413,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -436,7 +440,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -457,7 +461,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -485,7 +489,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'attacker-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'attacker-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -516,7 +520,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('trusted-0')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -547,7 +551,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('trusted-0')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -571,7 +575,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('trusted-0')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('trusted-0')),
-          body: JSON.stringify({ wrappedCK: 'rotated-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'rotated-ak', attestation: 'att', proof }),
         }),
       )
 
@@ -636,7 +640,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('t1')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'ak1', proof }),
+          body: JSON.stringify({ wrappedCK: 'ak1', attestation: 'att', proof }),
         }),
       )
       expect(first.status).toBe(200)
@@ -646,7 +650,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('t2')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'ak2', proof }),
+          body: JSON.stringify({ wrappedCK: 'ak2', attestation: 'att', proof }),
         }),
       )
       expect(replay.status).toBe(403)
@@ -865,7 +869,7 @@ describe('Encryption API (v2)', () => {
 
     const rotateBody = async (keypair: CryptoKeyPair, keyIds: string[]) => ({
       proof: await proofFor(p('tok'), p('caller'), 'rotate', keypair),
-      envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+      envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak', attestation: 'att' }],
       wrappedKeys: keyIds.map((keyId) => ({ keyId, wrappedKey: `rewrapped-${keyId}` })),
       canaryIv: 'new-iv',
       canaryCtext: 'new-ctext',
@@ -1333,7 +1337,7 @@ describe('Encryption API (v2)', () => {
       return {
         nonce: await issueNonce(p('tok'), p('caller'), 'upgrade'),
         possessionProof: canarySecret,
-        envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+        envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak', attestation: 'att' }],
         wrappedKeys: [
           { keyId: initialKeyId, wrappedKey: 'fresh-dek-0' },
           { keyId: legacyKeyId, wrappedKey: 'absorbed-v1-ck' },
@@ -1590,6 +1594,7 @@ describe('Encryption API (v2)', () => {
       const keypair = await generateSigningKeypair()
       return {
         wrappedCK: 'wrapped-ak-boot',
+        attestation: 'att',
         canaryIv: 'boot-iv',
         canaryCtext: 'boot-ctext',
         signingPublicKey: await exportSigningPublicKey(keypair),
@@ -1657,7 +1662,7 @@ describe('Encryption API (v2)', () => {
           new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
             method: 'POST',
             headers: authHeaders(p('tok'), p('caller')),
-            body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+            body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
           }),
         )
 
@@ -1679,7 +1684,7 @@ describe('Encryption API (v2)', () => {
 
       const rotateBody = async (keypair: CryptoKeyPair, extra: Record<string, unknown> = {}) => ({
         proof: await proofFor(p('tok'), p('caller'), 'rotate', keypair),
-        envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+        envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak', attestation: 'att' }],
         wrappedKeys: [{ keyId: initialKeyId, wrappedKey: `rewrapped-${initialKeyId}` }],
         canaryIv: 'new-iv',
         canaryCtext: 'new-ctext',
@@ -1741,7 +1746,7 @@ describe('Encryption API (v2)', () => {
         return {
           nonce: await issueNonce(p('tok'), p('caller'), 'upgrade'),
           possessionProof: canarySecret,
-          envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak' }],
+          envelopes: [{ deviceId: p('caller'), wrappedCK: 'new-ak', attestation: 'att' }],
           wrappedKeys: [
             { keyId: initialKeyId, wrappedKey: 'fresh-dek-0' },
             { keyId: legacyKeyId, wrappedKey: 'absorbed-v1-ck' },
@@ -2077,7 +2082,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('caller')),
-          body: JSON.stringify({ wrappedCK: 'target-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'target-ak', attestation: 'att', proof }),
         }),
       )
       expect(response.status).toBe(200)
@@ -2098,7 +2103,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('target')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('target')),
-          body: JSON.stringify({ wrappedCK: 'self-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 'self-ak', attestation: 'att', proof }),
         }),
       )
       expect(response.status).toBe(200)
@@ -2119,7 +2124,7 @@ describe('Encryption API (v2)', () => {
         new Request(`${baseUrl}/devices/${p('d')}/envelope`, {
           method: 'POST',
           headers: authHeaders(p('tok'), p('d')),
-          body: JSON.stringify({ wrappedCK: 're-keyed-ak', proof }),
+          body: JSON.stringify({ wrappedCK: 're-keyed-ak', attestation: 'att', proof }),
         }),
       )
       expect(response.status).toBe(200)

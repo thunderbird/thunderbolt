@@ -28,6 +28,7 @@ CREATE TABLE "wrapped_keys" (
 	CONSTRAINT "wrapped_keys_key_id_user_id_pk" PRIMARY KEY("key_id","user_id")
 );
 --> statement-breakpoint
+ALTER TABLE "envelopes" ADD COLUMN "attestation" text;--> statement-breakpoint
 ALTER TABLE "encryption_metadata" ADD COLUMN "signing_public_key" text;--> statement-breakpoint
 ALTER TABLE "encryption_metadata" ADD COLUMN "kdf_salt" text;--> statement-breakpoint
 ALTER TABLE "encryption_metadata" ADD COLUMN "recovery_ecdh_public_key" text;--> statement-breakpoint

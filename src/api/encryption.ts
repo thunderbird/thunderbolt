@@ -78,6 +78,8 @@ export type BootstrapEnvelopeParams = RecoverySlotRequest & {
   deviceId: string
   /** Hybrid envelope carrying the AK (field name kept from v1 for wire compatibility). */
   wrappedCK: string
+  /** Signature over this device's own id and public keys — self-signed at bootstrap. */
+  attestation: string
   canaryIv: string
   canaryCtext: string
   /** Base64 SPKI ECDSA P-256 public key derived from the canary secret. */
@@ -98,6 +100,8 @@ export type ProofEnvelopeParams = {
   deviceId: string
   /** Hybrid envelope carrying the AK (field name kept from v1 for wire compatibility). */
   wrappedCK: string
+  /** Signature over the target device's id and public keys — see `signDeviceAttestation`. */
+  attestation: string
   proof: ChallengeProof
 }
 

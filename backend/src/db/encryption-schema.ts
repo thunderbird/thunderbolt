@@ -18,6 +18,26 @@ import { devicesTable } from './powersync-schema'
  * One row per trusted device. Each device fetches only its own row via API.
  * `wrapped_ck` now carries the wrapped AK (v1 naming debt retained to avoid wire
  * churn — documented, not renamed; see plan Risk 12).
+ *
+ * `attestation` is what stops the server inventing a recipient. An AK envelope
+ * is ANONYMOUS — wrapping needs only public keys, which the server stores — so a
+ * row A2 writes straight into `devices` with its own keys is wrapped for by the
+ * next rotation like any other device, and A2 unwraps the account key. The
+ * attestation signs `userId ‖ deviceId ‖ device public keys` with the epoch's
+ * canary-derived key, and a rotating device verifies it against a key derived
+ * from its OWN material before wrapping anything. Exactly the shape THU-865 gave
+ * the recovery slot, for the recipient type that never got it.
+ *
+ * It lives HERE rather than on `devices` for three reasons: it shares a lifecycle
+ * with `wrapped_ck` (both are rewritten on every AK rotation, because the signing
+ * key is epoch-scoped) rather than with the device's identity; `devices` is
+ * PowerSync-synced and this is not; and a trusted-but-keyless row (a bridge, a v1
+ * device that never published hybrid keys) can hold no envelope and needs no
+ * attestation, so "every row here has one" is a rule that can be enforced.
+ *
+ * Nullable only for rows written before the column existed, which fail closed on
+ * their next rotation — there are no such rows in production, since scheme 2 has
+ * never shipped.
  */
 export const envelopesTable = pgTable(
   'envelopes',
@@ -29,6 +49,7 @@ export const envelopesTable = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     wrappedCk: text('wrapped_ck').notNull(),
+    attestation: text('attestation'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

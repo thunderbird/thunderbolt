@@ -29,7 +29,7 @@ import {
   type KeyringAnchor,
   type StoredKeyPair,
 } from '@/crypto'
-import { deriveSigningKeyPair, mintCanary, signRecoveryAttestation } from '@/crypto/canary'
+import { deriveSigningKeyPair, mintCanary, signDeviceAttestation, signRecoveryAttestation } from '@/crypto/canary'
 import {
   decodeRecoveryKey,
   deriveRecoveryKeyPairFromSeed,
@@ -381,7 +381,17 @@ const createFakeServer = (): FakeServer => {
         .flatMap(([deviceId]) => {
           const keys = server.devicePublicKeys.get(deviceId)
           return keys
-            ? [{ device_id: deviceId, public_key: keys.publicKey, mlkem_public_key: keys.mlkemPublicKey }]
+            ? [
+                {
+                  device_id: deviceId,
+                  public_key: keys.publicKey,
+                  mlkem_public_key: keys.mlkemPublicKey,
+                  // Real signature from the seeded epoch, like the recovery one:
+                  // a stub would make every rotation fail the device-anchor check
+                  // rather than exercise it.
+                  attestation: seededDeviceAttestations.get(deviceId) ?? null,
+                },
+              ]
             : []
         })
       return jsonResponse({ devices: targets })
@@ -506,10 +516,22 @@ const generateFullKeyPair = async (): Promise<StoredKeyPair> => {
   }
 }
 
+/**
+ * Device attestations minted by the most recent `seedV2Account`, keyed by device
+ * id. Module-level for the same reason `fixtureRecoveryKeyPair` is: all 28 call
+ * sites want the helper's current signature, and the attestation they need is
+ * whatever the seeded epoch's canary key signed.
+ */
+const seededDeviceAttestations = new Map<string, string>()
+
 const deviceKeysFor = async (kp: StoredKeyPair, id: string) => ({
   id,
   publicKey: await exportPublicKey(kp.ecdhPublicKey),
   mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+  // Signed for real by `seedV2Account`, for the same reason the recovery
+  // attestation is: a stub would make every rotation fail the device-anchor
+  // check instead of exercising it.
+  attestation: seededDeviceAttestations.get(id) ?? null,
 })
 
 /** Seed a full v2 account (AK + keyring incl. a `"v1"` slot + canary + envelope). */
@@ -535,6 +557,16 @@ const seedV2Account = async (
     publicKey: await exportPublicKey(kp.ecdhPublicKey),
     mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
   })
+  seededDeviceAttestations.clear()
+  seededDeviceAttestations.set(
+    'test-device-id',
+    await signDeviceAttestation(canaryKey, {
+      userId: testUserId,
+      deviceId: 'test-device-id',
+      ecdhPublicKey: await exportPublicKey(kp.ecdhPublicKey),
+      mlkemPublicKey: exportMlKemPublicKey(kp.mlkemPublicKey),
+    }),
+  )
   // Signed for real with this epoch's canary secret, exactly as a live setup
   // would (THU-865) — a stubbed value here would make every rotation test fail
   // the anchor check instead of exercising it.

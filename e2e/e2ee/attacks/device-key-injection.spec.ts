@@ -36,12 +36,22 @@
  * fully-authenticated action and the step-up code is entered by the real user.
  *
  * Polarity: asserts the SECURE behavior — the planted device recovers NOTHING.
- * Authored as an Option C expected-failure while the vuln is open. Today the
- * assertion fails with the victim's own task text as the received value, which
- * is the point: the chain is carried all the way to plaintext rather than
- * stopping at "an envelope exists", so the spec cannot be read as theoretical.
- * Retire the `test.fail()` tag when Playwright reports "Expected to fail, but
- * passed".
+ * Authored as an Option C expected-failure; while the hole was open the final
+ * assertion failed with the victim's own task text as the received value, which
+ * is why the chain is carried all the way to plaintext rather than stopping at
+ * "an envelope exists". The tag is retired now that the attestation closes it.
+ *
+ * HOW it is closed matters, and this spec pins it: the rotation REFUSES
+ * outright rather than quietly dropping the unverifiable recipient. The
+ * observable is therefore a user-visible tampering warning and an UNCHANGED
+ * key_version, not a successful rotation that excluded one device. That is a
+ * deliberate trade — a row A2 plants also blocks the user's own rotations until
+ * it is removed — and if the policy ever becomes drop-and-continue, this spec is
+ * what fails and forces the conversation.
+ *
+ * NO TICKET YET — file one and put its id in the describe title. Left
+ * unnumbered rather than guessed: a wrong id sends the next reader to an
+ * unrelated ticket, which is worse than none.
  */
 
 import {
@@ -49,7 +59,6 @@ import {
   getTaskCiphertext,
   getTaskIds,
   plantTrustedDevice,
-  waitForConsumedChallenge,
   waitForEncryptedSetting,
   waitForNewEncryptedTasks,
   waitForUserId,
@@ -62,7 +71,6 @@ import {
   createTask,
   enableTasks,
   loginViaConsumerOtp,
-  readRecoveryPhrase,
 } from '../helpers'
 import {
   decrypt,
@@ -126,9 +134,6 @@ const attackerRecoverTaskText = async (
 
 test.describe('Unauthenticated device public keys (no ticket yet)', () => {
   test('a device A2 planted in the trusted list is handed the Account Key by the next rotation', async ({ page }) => {
-    // Expected-failure while the vuln is open — see the file header (Option C).
-    test.fail()
-
     const email = createE2eeEmail()
     const taskText = `Victim task ${crypto.randomUUID()}`
 
@@ -178,21 +183,24 @@ test.describe('Unauthenticated device public keys (no ticket yet)', () => {
     await confirmation.getByRole('button', { name: 'Send code' }).click()
     await completeStepUpCode(page, email)
 
-    const recoveryDialog = page.getByRole('dialog').filter({ hasText: 'Save your new recovery phrase' })
-    await readRecoveryPhrase(recoveryDialog)
-    await recoveryDialog.getByRole('checkbox').click()
-    await recoveryDialog.getByRole('button', { name: 'Done' }).click()
+    // SECURE 1: the rotation refuses, and says why. The recipient list is
+    // server-supplied, so the planted row carries no attestation this device can
+    // verify against its own key material — and an unverifiable recipient stops
+    // the rotation rather than silently receiving the account key.
+    // Matched on the phrase unique to the DEVICE check. "could not be verified
+    // against this device" alone also appears in `RecoveryAnchorError`, so a
+    // looser pattern would go green on a refusal that came from the recovery
+    // anchor instead — passing for the right outcome via the wrong cause.
+    await expect(page.getByText(/device\(s\) the server listed/)).toBeVisible({ timeout: 30_000 })
 
-    await waitForConsumedChallenge(userId, 'rotate')
-    await expect
-      .poll(() => getEncryptionServerSnapshot(userId), { timeout: 30_000 })
-      .toMatchObject({ keyVersion: before.keyVersion + 1 })
+    // SECURE 2: nothing moved — no new epoch, and no envelope for the planted id.
     const after = await getEncryptionServerSnapshot(userId)
+    expect(after.keyVersion).toBe(before.keyVersion)
+    expect(after.envelopes[planted.id]).toBeUndefined()
 
-    // ── What A2 walks away with ─────────────────────────────────────────────
-    // SECURE: a device the user never approved recovers nothing, because no
-    // envelope should have been written for it. The failure value today is the
-    // victim's task text in full.
+    // SECURE 3: and therefore A2 recovers nothing. Last because it is the only
+    // assertion that speaks in plaintext — while the hole was open this returned
+    // the victim's task text verbatim.
     const recovered = await attackerRecoverTaskText(
       planted,
       after.envelopes,

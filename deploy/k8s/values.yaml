@@ -33,7 +33,10 @@ oidc:
   # backend reaches the provider at a different hostname than the browser does.
   discoveryUrl: ""
   clientId: ""
-  # -- Base64-encoded client secret. Generate with: echo -n "<secret>" | base64
+  # -- Base64-encoded client secret. Generate with:
+  # printf %s "<secret>" | base64 | tr -d '\n'
+  # (plain `echo -n ... | base64` wraps at 76 characters on GNU coreutils,
+  # which breaks an unquoted `--set`; see README.md.)
   clientSecretBase64: ""
   # -- Additional origins to trust when validating the provider's discovered
   # endpoints. The issuer's own (and discoveryUrl's own, if set) origin is

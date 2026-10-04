@@ -240,8 +240,18 @@ helm upgrade thunderbolt . -n thunderbolt \
   --set keycloak.enabled=false \
   --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
   --set oidc.clientId=<client-id> \
-  --set oidc.clientSecretBase64=$(echo -n '<client-secret>' | base64)
+  --set-string oidc.clientSecretBase64="$(printf %s '<client-secret>' | base64 | tr -d '\n')"
 ```
+
+GNU coreutils `base64` (the default on Linux) wraps its output every 76
+characters; an external IdP's client secret is often long enough to wrap,
+and an unquoted `$(...)` then passes the wrapped lines to `helm` as
+separate arguments. `tr -d '\n'` strips the wrapping and the quotes keep
+the result as one argument; `--set-string` keeps a base64 value that
+happens to look numeric from being coerced. For a real deployment, put
+`oidc.clientSecretBase64` in a values file or an external secret manager
+instead of `--set` — it otherwise ends up in shell history and in the
+process list.
 
 ## Templates
 

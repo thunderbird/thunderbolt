@@ -79,3 +79,37 @@ resources:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/*
+OIDC configuration guards. Four misconfigurations render cleanly and then
+fail only at first sign-in, so reject them here instead:
+  - keycloak.enabled=false with no oidc.issuer points the backend at a
+    Service that no longer exists in the release.
+  - oidc.discoveryUrl without oidc.issuer leaves the provider's origin out
+    of TRUSTED_ORIGINS, so Better Auth rejects it.
+  - oidc.issuer without its own clientId/clientSecretBase64 silently falls
+    back to the bundled Keycloak client, whose secret is published in
+    this repo.
+  - oidc.clientId/clientSecretBase64 without oidc.issuer sends those
+    credentials to the bundled Keycloak instead, which rejects them.
+
+Usage (call once, before anything else renders):
+  {{- include "thunderbolt.validateOidc" . }}
+*/}}
+{{- define "thunderbolt.validateOidc" -}}
+{{- $external := ne (.Values.oidc.issuer | default "") "" }}
+{{- if and (not .Values.keycloak.enabled) (not $external) }}
+  {{- fail "keycloak.enabled=false requires oidc.issuer: the backend has no identity provider to point at." }}
+{{- end }}
+{{- if and (.Values.oidc.discoveryUrl) (not $external) }}
+  {{- fail "oidc.discoveryUrl requires oidc.issuer: without it the provider's origin is never added to TRUSTED_ORIGINS and sign-in fails." }}
+{{- end }}
+{{- if $external }}
+  {{- if not .Values.oidc.clientId }}{{- fail "oidc.issuer requires oidc.clientId: the bundled Keycloak client id is not valid at an external provider." }}{{- end }}
+  {{- if not .Values.oidc.clientSecretBase64 }}{{- fail "oidc.issuer requires oidc.clientSecretBase64: the bundled Keycloak client secret is published in this repository and must not be sent to your provider." }}{{- end }}
+{{- else }}
+  {{- if or .Values.oidc.clientId .Values.oidc.clientSecretBase64 }}
+    {{- fail "oidc.clientId/oidc.clientSecretBase64 require oidc.issuer: without it they are sent to the bundled Keycloak, which rejects them. Use keycloak.oidc.clientId/clientSecretBase64 for the bundled Keycloak instead." }}
+  {{- end }}
+{{- end }}
+{{- end -}}

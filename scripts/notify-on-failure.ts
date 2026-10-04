@@ -124,7 +124,7 @@ const sendEmail = async (
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
       },
-      body: JSON.stringify({ from: 'alerts@auth.thunderbolt.io', to: input.recipients, subject, text: message }),
+      body: JSON.stringify({ from: 'alerts@alerts.thunderbolt.io', to: input.recipients, subject, text: message }),
     }),
   )
 }

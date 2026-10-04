@@ -176,7 +176,7 @@ Send `Authorization: Bearer <MONITORING_TOKEN>` to these GET routes:
 | `/v1/health/database`  | A trivial database query (5-second deadline)                                                                 |
 | `/v1/health/powersync` | PowerSync's `/probes/liveness` endpoint (5 seconds)                                                          |
 | `/v1/health/email`     | Resend's authenticated domains read (10 seconds; sends no email)                                             |
-| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (20 seconds per model, concurrency 3) |
+| `/v1/health/models`    | Every catalog model, including attested, encrypted Tinfoil completions (30 seconds per model, concurrency 3) |
 
 Success returns `200 {"status":"ok"}`. Dependency failure returns `503 {"status":"failed","reason":"<code>"}`; the models route instead returns `{"status":"failed","failures":[{"model":"<catalog model>","reason":"no-text"}]}`. Model failure reasons are `no-text`, `timeout`, `upstream-error`, `missing-price`, or `not-configured`; reasons never contain upstream bodies or credentials.
 

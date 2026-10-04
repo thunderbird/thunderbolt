@@ -156,6 +156,9 @@ describe('notify-on-failure', () => {
     expect(create).toContain('"labelIds":["bug-id"]')
     expect(create).toContain('Check types')
     expect(calls.filter((call) => call.url === 'https://api.resend.com/emails')).toHaveLength(1)
+    expect(calls.find((call) => call.url === 'https://api.resend.com/emails')?.body).toContain(
+      '"from":"alerts@alerts.thunderbolt.io"',
+    )
   })
 
   test('a failed job on the second GitHub page appears in the incident and email', async () => {

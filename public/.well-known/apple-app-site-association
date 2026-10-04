@@ -7,6 +7,9 @@
         "paths": ["/oauth/callback", "/mcp/oauth/callback", "/auth/verify"]
       }
     ]
+  },
+  "webcredentials": {
+    "apps": ["BUMSKVQ3D9.net.thunderbird.thunderbolt"]
   }
 }
 

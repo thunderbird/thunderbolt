@@ -2,8 +2,10 @@
 
 The Helm chart at [`deploy/k8s/`](https://github.com/thunderbird/thunderbolt/tree/main/deploy/k8s)
 deploys the full Thunderbolt stack — frontend, backend, PostgreSQL, PowerSync,
-Keycloak, and ingress — onto any conformant Kubernetes cluster from a single
-`helm install`.
+a bundled Keycloak, and ingress — onto any conformant Kubernetes cluster from
+a single `helm install`. Keycloak is the default identity provider; see
+[Using an external identity provider](../../deploy/k8s/README.md#using-an-external-identity-provider)
+to point the chart at one instead.
 
 ## Quick Start (Local)
 
@@ -129,6 +131,11 @@ The chart's Ingress is path-based:
 | `/resources/*` | keycloak       |
 | `/powersync/*` | powersync      |
 | `/*`           | frontend       |
+
+The `/realms` and `/resources` routes only exist when the bundled Keycloak is
+enabled (`keycloak.enabled: true`, the default). An external identity
+provider serves its own endpoints directly — see
+[Using an external identity provider](../../deploy/k8s/README.md#using-an-external-identity-provider).
 
 ## Cleanup
 

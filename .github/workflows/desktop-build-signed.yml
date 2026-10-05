@@ -3,17 +3,23 @@
 #
 # Purpose: get a properly code-signed build (with the team's Apple Developer
 # identity from secrets) for features that need entitlements the local ad-hoc
-# build can't carry — e.g. passkeys / Associated Domains (THU-790). Run it against
-# any branch via the "Run workflow" button and download the .dmg from the run.
+# build can't carry — e.g. passkeys / Associated Domains (THU-790). Download the
+# .dmg from the run's artifacts.
 #
-# NOTE: workflow_dispatch only appears once this file is on the default branch.
-# After it's on main, select your feature branch as the ref to build its code.
+# HOW TO RUN: "Run workflow" with the branch set to **main** (required — see
+# below), then type the branch you want to build into the `branch` input.
 #
-# TRUST MODEL: this builds the *selected branch's* code with the Apple signing
-# cert available (needed to produce a signed, notarizable app). Treat it like a
-# release build — only dispatch branches you trust; the `thunderbolt_release`
-# environment (with its protection rules) is the gate. The updater signing key is
-# deliberately NOT provided (see the build step).
+# WHY run on main: the `thunderbolt_release` environment holds the Apple signing
+# secrets and its deployment-branch policy only allows `main`. The gate checks the
+# workflow's `github.ref`, so the run itself must be on main; we then
+# `actions/checkout` the `branch` input to build that branch's code. This mirrors
+# desktop-release.yml exactly (it runs on main and checks out the release tag) —
+# the only difference is we check out a branch instead of a tag.
+#
+# TRUST MODEL: this builds the chosen branch's code with the Apple signing cert
+# available (needed to produce a signed, notarizable app). Treat it like a release
+# build — only build branches you trust. The updater signing key is deliberately
+# NOT provided (see the build step).
 #
 # Entitlements (e.g. passkeys / Associated Domains, THU-790) come from the
 # SELECTED BRANCH's `src-tauri` config — this workflow doesn't add them. Build a
@@ -26,6 +32,10 @@ name: Desktop Build (signed, artifact-only)
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Branch to build (run this workflow on main; this selects the code to check out)'
+        type: string
+        required: true
       target:
         description: 'macOS target to build'
         type: choice
@@ -35,7 +45,7 @@ on:
           - x86_64-apple-darwin
 
 concurrency:
-  group: desktop-build-signed-${{ github.ref }}-${{ inputs.target }}
+  group: desktop-build-signed-${{ inputs.branch }}-${{ inputs.target }}
   cancel-in-progress: true
 
 permissions:
@@ -49,9 +59,11 @@ jobs:
     environment: thunderbolt_release
 
     steps:
-      # Default checkout uses the dispatched ref, i.e. the branch you picked in
-      # the "Run workflow" dropdown — that's the code that gets built.
+      # Build the `branch` input's code. The run itself is on main (to pass the
+      # environment gate); this checkout is what actually gets built.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -174,9 +186,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: thunderbolt-macos-${{ inputs.target }}
-          # The .dmg is the installer; the .app bundle is handy for codesign -d checks.
-          path: |
-            src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ inputs.target }}/release/bundle/macos/*.app
+          # Only the .dmg: it's the installer, and a single file is unaffected by
+          # upload-artifact dereferencing symlinks. Uploading the raw .app would
+          # resolve its internal symlinks (Contents/Frameworks/*/Versions/Current),
+          # inflating it and breaking the bundle's structure/signature. Install from
+          # the .dmg and run `codesign -d` against the installed app.
+          path: src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 7

@@ -309,7 +309,7 @@ describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
 // ---------------------------------------------------------------------------
 
 describe('anonymous plugin: Better Auth rate limit', () => {
-  const rateLimitEnvKeys = ['RATE_LIMIT_ENABLED', 'AUTH_RATE_LIMIT_MAX'] as const
+  const rateLimitEnvKeys = ['RATE_LIMIT_ENABLED', 'AUTH_RATE_LIMIT_MAX', 'AUTH_RATE_LIMIT_WINDOW_SECS'] as const
   let savedEnv: Partial<Record<string, string>>
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
@@ -334,12 +334,12 @@ describe('anonymous plugin: Better Auth rate limit', () => {
     await cleanup()
   })
 
-  /** Sign in anonymously `count` times over HTTP from one IP; returns each status. Better Auth's
+  /** Sign in anonymously `count` times over HTTP from one IP; returns each response. Better Auth's
    * limiter store is process-global, so every test passes its own IP. */
   const signInRepeatedly = async (count: number, ip: string) => {
     clearSettingsCache()
     const auth = createAuth(db, buildEmailDeps())
-    const statuses: number[] = []
+    const responses: Response[] = []
     for (let i = 0; i < count; i++) {
       const response = await auth.handler(
         new Request('http://localhost:8000/v1/api/auth/sign-in/anonymous', {
@@ -348,22 +348,33 @@ describe('anonymous plugin: Better Auth rate limit', () => {
           body: '{}',
         }),
       )
-      statuses.push(response.status)
+      responses.push(response)
     }
-    return statuses
+    return responses
   }
 
   it('allows 10 anonymous sign-ins per IP per minute by default', async () => {
     delete process.env.AUTH_RATE_LIMIT_MAX
-    const statuses = await signInRepeatedly(11, '198.51.100.1')
+    delete process.env.AUTH_RATE_LIMIT_WINDOW_SECS
+    const statuses = (await signInRepeatedly(11, '198.51.100.1')).map((response) => response.status)
     expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
     expect(statuses[10]).toBe(429)
   })
 
-  it('allows more than 10 per minute from one IP when AUTH_RATE_LIMIT_MAX is raised', async () => {
-    process.env.AUTH_RATE_LIMIT_MAX = '25'
-    const statuses = await signInRepeatedly(26, '198.51.100.2')
-    expect(statuses.slice(0, 25)).toEqual(Array(25).fill(200))
-    expect(statuses[25]).toBe(429)
+  // Raising the limit with anonymous auth on requires a captcha (enforced in settings), so
+  // lowering it is how this suite proves the anonymous rule reads AUTH_RATE_LIMIT_MAX.
+  it('follows AUTH_RATE_LIMIT_MAX for anonymous sign-in', async () => {
+    process.env.AUTH_RATE_LIMIT_MAX = '5'
+    const statuses = (await signInRepeatedly(6, '198.51.100.2')).map((response) => response.status)
+    expect(statuses.slice(0, 5)).toEqual(Array(5).fill(200))
+    expect(statuses[5]).toBe(429)
+  })
+
+  it('follows AUTH_RATE_LIMIT_WINDOW_SECS for anonymous sign-in', async () => {
+    process.env.AUTH_RATE_LIMIT_WINDOW_SECS = '120'
+    const responses = await signInRepeatedly(11, '198.51.100.3')
+    const blocked = responses[10]!
+    expect(blocked.status).toBe(429)
+    expect(Number(blocked.headers.get('X-Retry-After'))).toBeGreaterThan(60)
   })
 })

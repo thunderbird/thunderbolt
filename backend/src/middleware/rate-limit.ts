@@ -147,26 +147,29 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
     })
     .as('scoped')
 
+/** IP-keyed middleware for `tier` with the given limit; an empty plugin when rate limiting is disabled. */
+const createIpLimit = (
+  database: typeof DbType,
+  settings: IpRateLimitSettings,
+  tier: RateLimitTier,
+  config: RateLimitTierConfig,
+) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  return createIpRateLimitMiddleware(createLimiter(database, tier, config), settings.trustedProxy)
+}
+
 /** IP-keyed middleware for one configured tier; fails closed like createAuthIpRateLimit. */
 export const createIpTierRateLimit = (
   database: typeof DbType,
   settings: IpRateLimitSettings,
   tier: UserRateLimitTier,
-) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  return createIpRateLimitMiddleware(createLimiter(database, tier, tierConfigs[tier]), settings.trustedProxy)
-}
+) => createIpLimit(database, settings, tier, tierConfigs[tier])
 
 /** Create IP-based rate limit middleware for auth and unauthenticated routes. */
-export const createAuthIpRateLimit = (database: typeof DbType, settings: AuthIpRateLimitSettings) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  const { max, durationSecs } = settings
-  return createIpRateLimitMiddleware(createLimiter(database, 'auth', { max, durationSecs }), settings.trustedProxy)
-}
+export const createAuthIpRateLimit = (database: typeof DbType, settings: AuthIpRateLimitSettings) =>
+  createIpLimit(database, settings, 'auth', settings)
 
 type RateLimitSet = Parameters<typeof consumeOrReject>[2]
 

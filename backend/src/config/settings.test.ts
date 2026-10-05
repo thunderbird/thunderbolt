@@ -365,6 +365,7 @@ describe('Config Settings', () => {
       'AUTH_RATE_LIMIT_MAX',
       'AUTH_RATE_LIMIT_WINDOW_SECS',
       'CAPTCHA_PROVIDER',
+      'AUTH_ALLOW_ANONYMOUS',
     ] as const
 
     let savedEnv: Partial<Record<string, string>>
@@ -465,6 +466,39 @@ describe('Config Settings', () => {
       expect(settings.authRateLimitMax).toBe(200)
       expect(settings.authRateLimitWindowSecs).toBe(30)
       expect(settings.captchaProvider).toBe('altcha')
+    })
+
+    it.each([
+      ['AUTH_RATE_LIMIT_MAX', '11'],
+      ['AUTH_RATE_LIMIT_WINDOW_SECS', '59'],
+    ])('should reject %s=%s with anonymous auth on and no captcha', (key, value) => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      delete process.env.CAPTCHA_PROVIDER
+      process.env[key] = value
+      expect(() => getSettings()).toThrow(
+        'Raising the auth rate limit (AUTH_RATE_LIMIT_MAX above 10 or AUTH_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set',
+      )
+    })
+
+    it('should allow a raised auth limit when anonymous auth is off', () => {
+      delete process.env.AUTH_ALLOW_ANONYMOUS
+      delete process.env.CAPTCHA_PROVIDER
+      process.env.AUTH_RATE_LIMIT_MAX = '200'
+      expect(getSettings().authRateLimitMax).toBe(200)
+    })
+
+    it('should allow a raised auth limit with anonymous auth on when a captcha is set', () => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      process.env.CAPTCHA_PROVIDER = 'altcha'
+      process.env.AUTH_RATE_LIMIT_MAX = '200'
+      expect(getSettings().authRateLimitMax).toBe(200)
+    })
+
+    it('should allow the default auth limit with anonymous auth on and no captcha', () => {
+      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
+      delete process.env.CAPTCHA_PROVIDER
+      process.env.AUTH_RATE_LIMIT_MAX = '10'
+      expect(getSettings().authRateLimitMax).toBe(10)
     })
 
     it.each([

@@ -404,8 +404,8 @@ describe('Rate Limiting', () => {
       expect(allowedByUser.status).toBe(200)
     })
 
-    it('should apply a raised auth limit from settings', async () => {
-      const app = createIpTestApp(database, { ...ipSettings, max: 25 })
+    it('should apply the auth limit and window from settings', async () => {
+      const app = createIpTestApp(database, { ...ipSettings, max: 25, durationSecs: 120 })
 
       for (let i = 0; i < 25; i++) {
         expect((await app.handle(requestWithIp('10.0.0.9'))).status).toBe(200)
@@ -413,6 +413,7 @@ describe('Rate Limiting', () => {
       const blocked = await app.handle(requestWithIp('10.0.0.9'))
       expect(blocked.status).toBe(429)
       expect(blocked.headers.get('ratelimit-limit')).toBe('25')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(60)
     })
 
     it('should not rate limit when disabled', async () => {

@@ -7,6 +7,7 @@ import type { Settings } from '@/config/settings'
 /** Request header carrying the client's captcha solution. */
 export const captchaTokenHeader = 'x-captcha-token'
 
+/** Request details beyond the solution. Turnstile's `remoteip` needs the client IP from the headers; ALTCHA may not. */
 export type CaptchaContext = {
   headers: Headers | undefined
 }

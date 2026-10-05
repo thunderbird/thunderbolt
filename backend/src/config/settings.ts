@@ -8,6 +8,8 @@ import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
+const defaultAuthRateLimitMax = 10
+const defaultAuthRateLimitWindowSecs = 60
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
@@ -145,9 +147,9 @@ const settingsSchema = z
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
     // Per-IP limit on auth endpoints, applied by both Better Auth and our 'auth' tier.
-    // Raise only with a captcha enabled: see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust.
-    authRateLimitMax: z.coerce.number().int().positive().default(10),
-    authRateLimitWindowSecs: z.coerce.number().int().positive().default(60),
+    // Raising it with anonymous auth on requires a captcha: see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust.
+    authRateLimitMax: z.coerce.number().int().positive().default(defaultAuthRateLimitMax),
+    authRateLimitWindowSecs: z.coerce.number().int().positive().default(defaultAuthRateLimitWindowSecs),
     captchaProvider: z.enum(['altcha', 'turnstile', 'none']).default('none'),
 
     // Managed inference rolling quotas (integer cents)
@@ -202,6 +204,16 @@ const settingsSchema = z
         message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',
         path: ['powersyncJwtSecret'],
         input: '[REDACTED]',
+      })
+    }
+    const authLimitRaised =
+      data.authRateLimitMax > defaultAuthRateLimitMax || data.authRateLimitWindowSecs < defaultAuthRateLimitWindowSecs
+    if (data.authAllowAnonymous && data.captchaProvider === 'none' && authLimitRaised) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'Raising the auth rate limit (AUTH_RATE_LIMIT_MAX above 10 or AUTH_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust).',
+        path: ['captchaProvider'],
       })
     }
     const hasUpstreamUrl = data.debugTranscriptUpstreamUrl !== ''

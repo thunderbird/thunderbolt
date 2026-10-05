@@ -82,6 +82,8 @@ const skipHeaders = new Set([
   // to passthrough headers, or they would leak to external LLM/MCP upstreams.
   'x-app-version',
   'x-app-language',
+  'traceparent',
+  'tracestate',
 ])
 
 const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: RequestInit): Request => {

@@ -10,6 +10,7 @@ type AnthropicEventStream = AsyncIterable<RawMessageStreamEvent> & { controller:
 
 type CreateAnthropicSSEStreamOptions = {
   onError?: (error: unknown) => void
+  onEvent?: (event: RawMessageStreamEvent) => void
   onUsage?: (snapshot: InferenceTokenCounts) => Promise<void>
   onUsageError?: (error: unknown) => void
   onUsageMissing?: () => void
@@ -44,6 +45,7 @@ export const createAnthropicSSEStream = (
       let usage: Usage | undefined
       try {
         for await (const event of upstream) {
+          invokeObserverSafely(() => options.onEvent?.(event))
           if (event.type === 'message_start') {
             usage = event.message.usage
           } else if (event.type === 'message_delta' && usage) {

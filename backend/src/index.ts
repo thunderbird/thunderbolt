@@ -231,6 +231,7 @@ const startServer = async () => {
     await runMigrations()
 
     const app = await createApp()
+    const { spanProcessors } = await import('@/config/instrumentation')
 
     const hostname = process.env.HOST
       ? process.env.HOST
@@ -269,16 +270,22 @@ const startServer = async () => {
       },
     )
 
+    // Flush buffered spans, but never let a hung exporter block exit.
+    const flushSpans = () =>
+      Promise.race([Promise.all(spanProcessors.map((processor) => processor.shutdown())), Bun.sleep(3000)])
+
     // Graceful shutdown
     process.on('SIGINT', async () => {
       tinfoilKeepWarm.stop()
       log.info('Received SIGINT, shutting down gracefully...')
+      await flushSpans()
       process.exit(0)
     })
 
     process.on('SIGTERM', async () => {
       tinfoilKeepWarm.stop()
       log.info('Received SIGTERM, shutting down gracefully...')
+      await flushSpans()
       process.exit(0)
     })
   } catch (error) {

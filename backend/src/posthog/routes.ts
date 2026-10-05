@@ -41,6 +41,10 @@ export const createPostHogRoutes = (fetchFn: typeof fetch = globalThis.fetch) =>
 
         const baseUrl = `${posthogHost}/${path}`
         const headers = filterHeaders(ctx.headers, defaultRequestDenylist)
+        // PostHog's OTLP endpoint takes the project key as a bearer token; the denylist drops any client-sent one.
+        if (path === 'i/v0/ai/otel') {
+          headers.authorization = `Bearer ${settings.posthogApiKey}`
+        }
         const queryString = buildQueryString(ctx.query)
         const url = `${baseUrl}${queryString}`
 

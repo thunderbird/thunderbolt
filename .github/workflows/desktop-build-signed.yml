@@ -8,6 +8,19 @@
 #
 # NOTE: workflow_dispatch only appears once this file is on the default branch.
 # After it's on main, select your feature branch as the ref to build its code.
+#
+# TRUST MODEL: this builds the *selected branch's* code with the Apple signing
+# cert available (needed to produce a signed, notarizable app). Treat it like a
+# release build — only dispatch branches you trust; the `thunderbolt_release`
+# environment (with its protection rules) is the gate. The updater signing key is
+# deliberately NOT provided (see the build step).
+#
+# Entitlements (e.g. passkeys / Associated Domains, THU-790) come from the
+# SELECTED BRANCH's `src-tauri` config — this workflow doesn't add them. Build a
+# branch that carries the entitlement, or the signed app won't have it.
+#
+# Installed test builds still point at the production updater endpoint and may be
+# offered a newer prod release; decline the update to keep the test build.
 name: Desktop Build (signed, artifact-only)
 
 on:
@@ -137,16 +150,25 @@ jobs:
           RUSTFLAGS: ${{ inputs.target == 'x86_64-apple-darwin' && '-C target-cpu=x86-64' || '' }}
           CARGO_INCREMENTAL: 0
           RUSTC_WRAPPER: ''
+          # Cross-build toolchain for the Intel target (mirrors desktop-release); unset
+          # for Apple Silicon. Without these, native C/C++ deps compiled during an
+          # x86_64 build use host-arch defaults and fail to link.
+          CC_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang -target x86_64-apple-darwin' || '' }}
+          CXX_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang++ -target x86_64-apple-darwin' || '' }}
+          AR_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'ar' || '' }}
+          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang' || '' }}
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           rustup target add "$TARGET"
           if [ "$TARGET" = "x86_64-apple-darwin" ]; then
             rm -rf src-tauri/target/x86_64-apple-darwin
           fi
           bun install --frozen-lockfile
-          bun tauri build --target "$TARGET"
+          # createUpdaterArtifacts:false → no updater artifacts to sign, so the
+          # production Tauri updater signing key is NOT handed to branch-controlled
+          # build code (reduces the secret surface flagged in review). The app is
+          # still fully code-signed + notarized via the Apple cert above.
+          bun tauri build --target "$TARGET" --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Upload signed macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

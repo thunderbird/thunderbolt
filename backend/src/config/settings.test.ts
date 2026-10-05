@@ -932,3 +932,77 @@ describe('debug transcript settings', () => {
     expect(parseWithEnv({ DEBUG_TRANSCRIPT_INTAKE_ENABLED: 'true' }).debugTranscriptIntakeEnabled).toBe(true)
   })
 })
+
+describe('Hosted agent settings', () => {
+  const envKeys = [
+    'AGENT_ENABLED',
+    'AGENT_MODEL',
+    'AGENT_MAX_STEPS',
+    'AGENT_SYSTEM_PROMPT',
+    'AGENT_MCP_SERVERS',
+    'AGENT_NAME',
+    'AGENT_DESCRIPTION',
+    'AGENT_ICON',
+    'ALLOW_ANONYMOUS_AGENT_DISCOVERY',
+  ]
+  const saved: Record<string, string | undefined> = {}
+
+  beforeEach(() => {
+    for (const key of envKeys) {
+      saved[key] = process.env[key]
+      delete process.env[key]
+    }
+    clearSettingsCache()
+  })
+
+  afterEach(() => {
+    for (const key of envKeys) {
+      if (saved[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = saved[key]
+      }
+    }
+    clearSettingsCache()
+  })
+
+  it('defaults off or empty when the env vars are unset', () => {
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(false)
+    expect(settings.agentModel).toBe('')
+    expect(settings.agentMaxSteps).toBe(8)
+    expect(settings.agentSystemPrompt).toBe('')
+    expect(settings.agentMcpServers).toBe('')
+    expect(settings.agentName).toBe('')
+    expect(settings.agentDescription).toBe('')
+    expect(settings.agentIcon).toBe('')
+    expect(settings.allowAnonymousAgentDiscovery).toBe(false)
+  })
+
+  it('reads every env var when set', () => {
+    process.env.AGENT_ENABLED = 'true'
+    process.env.AGENT_MODEL = 'test-model'
+    process.env.AGENT_MAX_STEPS = '3'
+    process.env.AGENT_SYSTEM_PROMPT = 'test-system-prompt'
+    process.env.AGENT_MCP_SERVERS = '[{"url":"https://mcp.example.test"}]'
+    process.env.AGENT_NAME = 'test-name'
+    process.env.AGENT_DESCRIPTION = 'test-description'
+    process.env.AGENT_ICON = 'test-icon'
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    const settings = getSettings()
+    expect(settings.agentEnabled).toBe(true)
+    expect(settings.agentModel).toBe('test-model')
+    expect(settings.agentMaxSteps).toBe(3)
+    expect(settings.agentSystemPrompt).toBe('test-system-prompt')
+    expect(settings.agentMcpServers).toBe('[{"url":"https://mcp.example.test"}]')
+    expect(settings.agentName).toBe('test-name')
+    expect(settings.agentDescription).toBe('test-description')
+    expect(settings.agentIcon).toBe('test-icon')
+    expect(settings.allowAnonymousAgentDiscovery).toBe(true)
+  })
+
+  it('treats an empty AGENT_MAX_STEPS as unset', () => {
+    process.env.AGENT_MAX_STEPS = ''
+    expect(getSettings().agentMaxSteps).toBe(8)
+  })
+})

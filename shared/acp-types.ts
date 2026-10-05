@@ -10,9 +10,9 @@
  * identifier the discovery response carries lives in one place.
  */
 
-export type AgentType = 'built-in' | 'remote-acp' | 'managed-acp'
+export type AgentType = 'built-in' | 'remote-acp' | 'managed-acp' | 'managed-http'
 
-export type AgentTransport = 'in-process' | 'websocket'
+export type AgentTransport = 'in-process' | 'websocket' | 'http'
 
 /** Descriptor returned by `GET /agents` for remote (`remote-acp`) and
  *  server-managed (`managed-acp`) agents. The built-in agent is never on the

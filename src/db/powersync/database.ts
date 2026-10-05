@@ -458,22 +458,6 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Clear pending CRUD operations from PowerSync queue.
-   * Useful for returning users to avoid conflicts with cloud data.
-   */
-  async clearPendingCrudOperations(): Promise<void> {
-    if (!this.powerSync) {
-      return
-    }
-
-    try {
-      await this.powerSync.execute('DELETE FROM ps_crud')
-    } catch (error) {
-      console.warn('Failed to clear pending CRUD operations:', error)
-    }
-  }
-
-  /**
    * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
    * settings, models, model_profiles, devices, chat_threads). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background.

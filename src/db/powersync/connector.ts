@@ -72,6 +72,19 @@ export const handleCredentialsInvalidIfNeeded = (status: number, body: ErrorBody
 }
 
 /**
+ * Whether a queued write may create a row but must never overwrite one: a PUT
+ * uploaded before this device has ever seen the account's state (GH #1299).
+ *
+ * Scoped to PUT because PowerSync emits PUT from INSERT and PATCH from UPDATE,
+ * so a PUT is a row the device invented while a PATCH is a deliberate edit.
+ *
+ * Full rationale, the safety properties, and the known gaps:
+ * docs/architecture/powersync-account-devices.md — "Create-only writes".
+ */
+export const isCreateOnlyWrite = (op: 'PUT' | 'PATCH' | 'DELETE', hasSynced: boolean): boolean =>
+  op === 'PUT' && !hasSynced
+
+/**
  * PowerSync connector that handles authentication and data upload.
  * - fetchCredentials: Gets JWT tokens from the backend (requires auth)
  * - uploadData: Sends local changes to the backend for persistence (requires auth)
@@ -169,17 +182,29 @@ export class ThunderboltConnector implements PowerSyncBackendConnector {
       return // No changes to upload
     }
 
+    // `currentStatus` is always present; only `hasSynced` is optional.
+    const hasSynced = database.currentStatus.hasSynced ?? false
+
     try {
       // Convert CRUD operations to our API format (encrypt encrypted columns)
       const operations = await Promise.all(
-        transaction.crud.map((op) =>
-          encodeForUpload({
-            op: op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE',
+        transaction.crud.map((op) => {
+          const opName = op.op.toUpperCase() as 'PUT' | 'PATCH' | 'DELETE'
+          return encodeForUpload({
+            op: opName,
             type: op.table,
             id: op.id,
             data: op.opData,
-          }),
-        ),
+            // Omitted rather than sent as `false` so post-first-sync uploads —
+            // every write by an established device — stay byte-identical to
+            // what previous builds sent.
+            //
+            // Operational trap, kept here rather than in the doc: deploy the
+            // backend before this client. Elysia drops body fields it does not
+            // declare, so an older backend silently ignores the flag.
+            ...(isCreateOnlyWrite(opName, hasSynced) && { ifAbsent: true }),
+          })
+        }),
       )
 
       console.info(`Uploading ${operations.length} operations to backend`)

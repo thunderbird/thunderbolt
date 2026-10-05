@@ -138,6 +138,22 @@ cannot handle. It also prevents a new CLI from discovering a catalog whose
 required auth or inference contracts the deployed backend does not yet
 implement.
 
+## Hosted Agent
+
+These variables configure a server-hosted agent that ships in a later release. They have no effect today.
+
+| Variable                          | Default | Description                                            |
+| --------------------------------- | ------- | ------------------------------------------------------ |
+| `AGENT_ENABLED`                   | `false` | Enables the hosted agent                               |
+| `AGENT_MODEL`                     | `""`    | Model id the agent uses                                |
+| `AGENT_MAX_STEPS`                 | `8`     | Maximum tool-call steps per run                        |
+| `AGENT_SYSTEM_PROMPT`             | `""`    | System prompt for the agent                            |
+| `AGENT_MCP_SERVERS`               | `""`    | JSON array of MCP servers the agent may call           |
+| `AGENT_NAME`                      | `""`    | Display name shown in agent discovery                  |
+| `AGENT_DESCRIPTION`               | `""`    | Description shown in agent discovery                   |
+| `AGENT_ICON`                      | `""`    | Icon shown in agent discovery                          |
+| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets unauthenticated clients discover the hosted agent |
+
 ## Waitlist
 
 | Variable                        | Default | Description                                                       |

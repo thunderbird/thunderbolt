@@ -2,13 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { settingsTable } from '@/db/tables'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
 import { act, renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { eq } from 'drizzle-orm'
 import type { FormEvent } from 'react'
 import type { HttpClient } from '@/lib/http'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createSpyHttpClient, jsonResponse } from '@/test-utils/http-client-spy'
-import { onSignInSuccess, useSignInFormState } from './use-sign-in-form-state'
+import { useSignInFormState } from './use-sign-in-form-state'
 
 const challengeToken = 'test-challenge-token'
 const waitlistResponse = { success: true, challengeToken }
@@ -224,61 +229,61 @@ describe('useSignInFormState', () => {
       expect(result.current.state.challengeToken).toBe('')
     })
   })
-})
 
-describe('onSignInSuccess', () => {
-  type Deps = NonNullable<Parameters<typeof onSignInSuccess>[2]>
-
-  const buildDeps = () => {
-    const clearPendingCrudOperations = mock(async () => {})
-    const getDatabase = mock(() => ({ clearPendingCrudOperations })) as unknown as NonNullable<Deps['getDatabase']>
-    // updateSettings(db, ...) calls db.transaction(cb) and the callback chains drizzle builders
-    // like `tx.insert(table).values(row)`. Build a self-referential Proxy that is also a thenable,
-    // so any chained property access or call resolves cleanly.
-    const txStub: unknown = new Proxy(function () {}, {
-      get: (_target, prop) => {
-        if (prop === 'then') {
-          return (resolve: (v: unknown) => void) => resolve(undefined)
-        }
-        return txStub
-      },
-      apply: () => txStub,
-    })
-    const drizzle = {
-      transaction: mock(async (cb: (tx: unknown) => Promise<void>) => {
-        await cb(txStub)
-      }),
+  /**
+   * GH #1299: a sign-in path that forgets to mark a returning account as
+   * onboarded makes the user redo onboarding and then uploads that `false` over
+   * the real value on every other device. Each path needs its own assertion —
+   * unit-testing the helper alone is what let the magic link go unwired.
+   */
+  describe('returning-user onboarding', () => {
+    const readOnboarding = async (): Promise<string | null> => {
+      const rows = await getDb()
+        .select()
+        .from(settingsTable)
+        .where(eq(settingsTable.key, 'user_has_completed_onboarding'))
+      return (rows[0] as { value: string | null } | undefined)?.value ?? null
     }
-    const getDrizzle = mock(() => drizzle) as unknown as NonNullable<Deps['getDrizzle']>
-    return { clearPendingCrudOperations, getDatabase, getDrizzle }
-  }
 
-  it('does not clear the CRUD queue when promoting an anonymous session (wasAnonymous=true)', async () => {
-    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+    const verifyAs = async (user: { id: string; isNew?: boolean }) => {
+      const { httpClient } = createSpyHttpClient(undefined, waitlistResponse)
+      authClient = createMockAuthClient({
+        signInEmailOtp: mock(async () => ({ data: { user }, error: null })),
+      })
+      const { result } = renderHook(() =>
+        useSignInFormState({ authClient, httpClient, initialEmail: 'test@example.com', skipToOtp: true }),
+      )
 
-    await onSignInSuccess(false, true, { getDatabase, getDrizzle })
+      await act(async () => {
+        await result.current.actions.handleOtpComplete('12345678')
+      })
+    }
 
-    expect(getDatabase).not.toHaveBeenCalled()
-    expect(getDrizzle).not.toHaveBeenCalled()
-    expect(clearPendingCrudOperations).not.toHaveBeenCalled()
-  })
+    beforeAll(async () => {
+      await setupTestDatabase()
+    })
 
-  it('does not clear the CRUD queue for a new user signup (isNewUser=true)', async () => {
-    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+    afterAll(async () => {
+      await teardownTestDatabase()
+    })
 
-    await onSignInSuccess(true, false, { getDatabase, getDrizzle })
+    beforeEach(async () => {
+      await resetTestDatabase()
+      // Seeds `user_has_completed_onboarding = 'false'`, as a fresh device does
+      // at boot before it has ever seen the account.
+      await reconcileDefaults(getDb())
+    })
 
-    expect(getDatabase).not.toHaveBeenCalled()
-    expect(getDrizzle).not.toHaveBeenCalled()
-    expect(clearPendingCrudOperations).not.toHaveBeenCalled()
-  })
+    it('marks onboarding complete for an account that already existed', async () => {
+      await verifyAs({ id: 'u1', isNew: false })
 
-  it('clears the CRUD queue for a returning non-anonymous user (isNewUser=false, wasAnonymous=false)', async () => {
-    const { clearPendingCrudOperations, getDatabase, getDrizzle } = buildDeps()
+      expect(await readOnboarding()).toBe('true')
+    })
 
-    await onSignInSuccess(false, false, { getDatabase, getDrizzle })
+    it('leaves onboarding pending for a brand-new account', async () => {
+      await verifyAs({ id: 'u1', isNew: true })
 
-    expect(getDatabase).toHaveBeenCalledTimes(1)
-    expect(clearPendingCrudOperations).toHaveBeenCalledTimes(1)
+      expect(await readOnboarding()).toBe('false')
+    })
   })
 })

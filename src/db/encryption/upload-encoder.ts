@@ -10,6 +10,8 @@ type CrudOperation = {
   type: string
   id: string
   data?: Record<string, unknown>
+  /** Create-only PUT — see `isCreateOnlyWrite` in `db/powersync/connector.ts`. */
+  ifAbsent?: boolean
 }
 
 /**

@@ -93,6 +93,12 @@ When adding a new route, default to lazy unless the route is on the chat/landing
 - Remove unused variables and imports
 - Verify tests pass and no TypeScript errors exist
 
+## Helm chart (`deploy/k8s/`)
+
+- The chart is covered by [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/*_test.yaml`. Before pushing a chart change run `helm unittest deploy/k8s` and `helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==`; CI runs both whenever `deploy/k8s/**` changes. Setup and how to write a test: [docs/development/testing.md](docs/development/testing.md#helm-chart-tests).
+- **Add or update a test with every chart change.** New template behaviour or value → a new test; changed behaviour → update the test that pinned it. Never loosen or delete an assertion to get green: a failing test means the template or the expectation is wrong, so work out which.
+- **A value added after a release must tolerate being absent.** `helm upgrade --reuse-values` replaces the chart's new defaults with the previous release's values, so a new `oidc` map read as `.Values.oidc.x` fails the render with a nil pointer, and a new default-true `keycloak.enabled` reads as false and silently drops Keycloak. Read new maps through `(.Values.name | default dict)` and default-true flags through a `hasKey` helper (see `thunderbolt.keycloakEnabled` in `templates/_helpers.tpl`; `default true` cannot work, it also rewrites an explicit `false`). Cover it with `set: { name: null }`, which Helm treats as deleting the key (see `tests/keycloak-toggle_test.yaml`).
+
 ## PowerSync and synced tables
 
 See [docs/architecture/powersync-account-devices.md](docs/architecture/powersync-account-devices.md) for: synced table requirements, adding a new table (frontend + backend + schema + config.yaml + production), account deletion, device management, and backend token/revoke API.

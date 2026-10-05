@@ -253,6 +253,15 @@ happens to look numeric from being coerced. For a real deployment, put
 instead of `--set` — it otherwise ends up in shell history and in the
 process list.
 
+## Testing the chart
+
+```bash
+helm lint . --set backend.betterAuthSecretBase64=dGVzdA==
+helm unittest .
+```
+
+The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. Plugin setup, how to write a test, and how to simulate `helm upgrade --reuse-values` are in [Helm chart tests](../../docs/development/testing.md#helm-chart-tests).
+
 ## Templates
 
 | Template | Resources | Purpose |

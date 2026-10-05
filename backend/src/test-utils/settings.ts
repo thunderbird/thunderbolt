@@ -80,7 +80,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   agentMaxSteps: 8,
   agentSystemPrompt: '',
   agentMcpServers: '',
-  agentName: '',
+  agentName: 'Assistant',
   agentDescription: '',
   agentIcon: '',
   allowAnonymousAgentDiscovery: false,

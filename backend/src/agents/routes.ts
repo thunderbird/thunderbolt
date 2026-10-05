@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { getEnabledAgentsList, getSettings, type Settings } from '@/config/settings'
+import { getSettings, isAgentEnabled, type Settings } from '@/config/settings'
 import { createStandaloneLogger } from '@/config/logger'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
@@ -53,13 +53,11 @@ export const createAgentsRoutes = (auth: Auth) => {
         return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
       }
 
-      const enabledIds = getEnabledAgentsList(settings)
-      const allowedById = (id: string) => enabledIds.length === 0 || enabledIds.includes(id)
+      const visibleToCaller = (descriptor: RemoteAgentDescriptor) =>
+        isAgentEnabled(settings, descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe)
 
       const agents = collectAgents(request, settings)
-      const filtered = agents.filter(
-        (descriptor) => allowedById(descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe),
-      )
+      const filtered = agents.filter(visibleToCaller)
 
       return {
         version: '1',

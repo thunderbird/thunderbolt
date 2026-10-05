@@ -57,8 +57,8 @@ export const refreshSystemAgents = async (
 
   const fetchedAt = nowIso()
   // `agents_system` only stores `managed-acp` agents per schema. The discovery
-  // response is typed wider (`remote-acp | managed-acp`); `remote-acp` entries
-  // belong in the synced `agents` table via user opt-in and are skipped here.
+  // response is typed wider (`remote-acp | managed-acp | managed-http`); `remote-acp`
+  // entries belong in the synced `agents` table via user opt-in and are skipped here.
   const incoming = payload.data.agents.filter((a) => a.type === 'managed-acp')
   const wireIdentityChangedAgentsById = new Map<string, Agent>()
 

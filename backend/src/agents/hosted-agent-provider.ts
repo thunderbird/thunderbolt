@@ -20,7 +20,7 @@ export const createHostedAgentProvider = (): AgentProvider => ({
       ? [
           {
             id: hostedAgentId,
-            name: settings.agentName || 'Assistant',
+            name: settings.agentName,
             type: 'managed-http',
             transport: 'http',
             url: '/v1/agent/chat',

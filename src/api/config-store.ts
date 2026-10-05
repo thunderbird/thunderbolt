@@ -14,7 +14,10 @@ export type AppConfig = {
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
   debugTranscriptsEnabled?: boolean
-  /** Id of the agent new threads should default to. Absent = built-in default. */
+  /** Id of the agent new threads should default to. Absent = built-in default.
+   *  `/v1/config` is unauthenticated and cannot consult the anonymous-discovery
+   *  flag, so clients must fall back to the built-in agent when this id is not
+   *  in the discovered list. */
   defaultAgentId?: string
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */

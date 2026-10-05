@@ -84,7 +84,7 @@ const powersyncSettings: Settings = {
   agentMaxSteps: 8,
   agentSystemPrompt: '',
   agentMcpServers: '',
-  agentName: '',
+  agentName: 'Assistant',
   agentDescription: '',
   agentIcon: '',
   allowAnonymousAgentDiscovery: false,

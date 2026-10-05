@@ -182,7 +182,7 @@ const settingsSchema = z
     agentSystemPrompt: z.string().default(''),
     // JSON array of MCP server descriptors the hosted agent may call.
     agentMcpServers: z.string().default(''),
-    agentName: z.string().default(''),
+    agentName: z.string().default('Assistant'),
     agentDescription: z.string().default(''),
     agentIcon: z.string().default(''),
     allowAnonymousAgentDiscovery: z.boolean().default(false),
@@ -298,7 +298,7 @@ const parseSettings = (): Settings => {
     agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
     agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
     agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
-    agentName: process.env.AGENT_NAME || '',
+    agentName: process.env.AGENT_NAME || undefined,
     agentDescription: process.env.AGENT_DESCRIPTION || '',
     agentIcon: process.env.AGENT_ICON || '',
     allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
@@ -376,6 +376,12 @@ export const getEnabledAgentsList = (settings: Pick<Settings, 'enabledAgents'>):
     .split(',')
     .map((id) => id.trim())
     .filter((id) => id.length > 0)
+}
+
+/** Whether `ENABLED_AGENTS` lets `id` through. An empty list means no filter. */
+export const isAgentEnabled = (settings: Pick<Settings, 'enabledAgents'>, id: string): boolean => {
+  const enabledIds = getEnabledAgentsList(settings)
+  return enabledIds.length === 0 || enabledIds.includes(id)
 }
 
 /** Parse comma-separated auto-approved domains into a list */

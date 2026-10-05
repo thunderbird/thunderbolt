@@ -56,7 +56,7 @@ const customDescriptor: RemoteAgentDescriptor = {
 
 describe('GET /agents', () => {
   /** Env-var keys this suite mutates. Saved + restored to avoid cross-file leakage. */
-  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS', 'ALLOW_ANONYMOUS_AGENT_DISCOVERY'] as const
+  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS', 'ALLOW_ANONYMOUS_AGENT_DISCOVERY', 'AGENT_ENABLED'] as const
   let savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>>
 
   beforeEach(() => {
@@ -131,6 +131,20 @@ describe('GET /agents', () => {
     const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
     const res = await app.handle(new Request('http://localhost/agents'))
     expect((await res.json()).agents).toEqual([haystackDescriptor])
+  })
+
+  it('lists the hosted agent for registered and anonymous users when AGENT_ENABLED is set', async () => {
+    process.env.AGENT_ENABLED = 'true'
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    for (const isAnonymous of [false, true]) {
+      const app = buildApp(buildAuth({ id: 'user-1', isAnonymous }))
+      const res = await app.handle(new Request('http://localhost/agents'))
+      const body = await res.json()
+      expect(body.agents).toHaveLength(1)
+      expect(body.agents[0]).toMatchObject({ id: 'hosted-agent', type: 'managed-http', url: '/v1/agent/chat' })
+    }
   })
 
   it('returns 200 with the discovery envelope for an authenticated regular user', async () => {

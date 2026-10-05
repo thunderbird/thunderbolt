@@ -140,7 +140,7 @@ implement.
 
 ## Hosted Agent
 
-These variables configure a server-hosted agent. When `AGENT_ENABLED` is `true` it is advertised through agent discovery and becomes the default agent for new threads.
+These variables configure a server-hosted agent. When `AGENT_ENABLED` is `true` the backend advertises it through agent discovery and names it as `defaultAgentId` in `/v1/config` (unless `ENABLED_AGENTS` excludes it). Excluding `hosted-agent` via `ENABLED_AGENTS` hides it from discovery and `defaultAgentId` but does not unmount `POST /v1/agent/chat`, the same as the Haystack route. The frontend starts honouring both in an upcoming release, so until then the agent is not yet used by the app.
 
 | Variable                          | Default | Description                                                                |
 | --------------------------------- | ------- | -------------------------------------------------------------------------- |
@@ -149,7 +149,7 @@ These variables configure a server-hosted agent. When `AGENT_ENABLED` is `true` 
 | `AGENT_MAX_STEPS`                 | `8`     | Maximum tool-call steps per run                                            |
 | `AGENT_SYSTEM_PROMPT`             | `""`    | System prompt for the agent                                                |
 | `AGENT_MCP_SERVERS`               | `""`    | JSON array of MCP servers the agent may call                               |
-| `AGENT_NAME`                      | `""`    | Display name shown in agent discovery (default `Assistant`)                |
+| `AGENT_NAME`                      | `Assistant` | Display name shown in agent discovery                |
 | `AGENT_DESCRIPTION`               | `""`    | Description shown in agent discovery                                       |
 | `AGENT_ICON`                      | `""`    | Icon shown in agent discovery                                              |
 | `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets anonymous sessions discover agents; they see only anonymous-safe ones |

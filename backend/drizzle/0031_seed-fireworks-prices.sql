@@ -9,7 +9,9 @@
 -- https://fireworks.ai/models/fireworks/minimax-m3 (0.30 in / 1.20 out)
 -- The model column holds the id exactly as sent to the Fireworks API.
 INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
-VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400);
+VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+ON CONFLICT ("provider", "model") DO NOTHING;
 --> statement-breakpoint
 INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
-VALUES ('fireworks', 'accounts/fireworks/models/minimax-m3', 300, 1200);
+VALUES ('fireworks', 'accounts/fireworks/models/minimax-m3', 300, 1200)
+ON CONFLICT ("provider", "model") DO NOTHING;

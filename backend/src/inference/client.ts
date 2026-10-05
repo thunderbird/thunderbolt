@@ -12,7 +12,7 @@ import OpenAI from 'openai'
 import type { PostHog } from 'posthog-node'
 import type { ManagedInferenceIdentity } from './usage-ledger'
 
-export type InferenceProvider = 'fireworks' | 'anthropic' | 'tinfoil'
+export type InferenceProvider = ManagedInferenceIdentity['provider']
 
 export type InferenceClient = {
   client: OpenAI | PostHogOpenAI

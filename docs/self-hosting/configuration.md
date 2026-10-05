@@ -163,11 +163,11 @@ These variables configure a server-hosted agent that ships in a later release. T
 
 ## Managed Inference Pricing
 
-Quota-tracked inference (providers `anthropic`, `tinfoil`, `fireworks`) prices every request from the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a new model is unusable until its price is added. Prices are integers in nano-USD per token (USD per 1M tokens x 1000), for example $1.40 per 1M input tokens is `1400`.
+Quota-tracked inference looks up a price for every request in the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a price row is necessary for a model to be usable, but it is not sufficient: the model must also be registered and routed. Today the existing managed routes (`/v1/chat/completions`, `/v1/chat/v1/messages`) do not route to Fireworks: direct requests recognize only the Anthropic `claude-opus-5` model and confidential requests recognize only Tinfoil models. The first consumer of the Fireworks price rows is the hosted agent endpoint, which will select a Fireworks model through `AGENT_MODEL` in a follow-up. Prices are integers in nano-USD per token (USD per 1M tokens x 1000), for example $1.40 per 1M input tokens is `1400`.
 
 Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0031_*`); there is no admin route. To add a model:
 
-1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry.
+1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
 2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends, for Fireworks the full `accounts/fireworks/models/<name>`.
 3. Deploy; migrations run on startup.
 

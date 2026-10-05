@@ -19,6 +19,7 @@ import {
   maxPostgresInteger,
   recordInferenceUsage,
   type InferenceDatabase,
+  type ManagedInferenceIdentity,
   type InferencePrice,
   type InferenceTokenCounts,
   type RecordInferenceUsageInput,
@@ -44,10 +45,7 @@ const insertUser = async (database: TestDatabase, id: string, isAnonymous = fals
   })
 }
 
-const loadRequiredPrice = async (
-  database: TestDatabase,
-  identity: typeof deepseekIdentity | typeof opusIdentity | typeof glmIdentity | typeof fireworksGlmIdentity,
-) => {
+const loadRequiredPrice = async (database: TestDatabase, identity: ManagedInferenceIdentity) => {
   const price = await loadInferencePrice(database, identity)
   expect(price).not.toBeNull()
   return price!

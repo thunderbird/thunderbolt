@@ -114,13 +114,13 @@
   {
     "id": "calendar-planner",
     "who": "Jonas, a consultant with a crowded week. His personal Google calendar is his main one; his employer's work calendar, jonas@northwind.test, is shared into the same Google account.",
-    "goal": "Wants a free hour on Thursday for a client call that clashes with nothing in either calendar, and wants to be sure the suggestion is right before he sends the invite.",
-    "style": "Plain and direct; double-checks the suggested time against both calendars; when something fails he wants to know exactly why.",
+    "goal": "Wants a free hour on Thursday for a client call that clashes with nothing in either calendar, and wants to be sure the suggestion is right before he sends the invite. He asks for it by naming both calendars, for example 'check my calendar and also my work calendar, jonas@northwind.test'.",
+    "style": "Plain and direct; always names the work calendar by its address; double-checks the suggested time against both calendars; when something fails he wants to know exactly why.",
     "crosses": ["connections", "Google sign-in", "calendar tool", "chat", "error messages", "reload"],
     "facts": [
       "Connect Google as jonas@gmail.test on the fake's account chooser. All times are UTC; 'Thursday' is the next Thursday after today.",
       "Primary calendar, Thursday: 09:00-11:00 Client workshop (Acme), 12:00-13:00 Lunch with Ana, 13:00-15:00 Proposal writing, 16:00-18:00 Quarterly planning. Free working hours there: 11:00-12:00 and 15:00-16:00. Friday is an all-day 'Conference - Lisbon'.",
-      "Work calendar jonas@northwind.test (not primary), Thursday: 15:00-16:00 Design review. So 11:00-12:00 is the only hour free in both; a suggestion of 15:00 means the work calendar was never read.",
+      "Work calendar jonas@northwind.test (not primary), Thursday: 15:00-16:00 Design review. So 11:00-12:00 is the only hour free across both. Jonas names this calendar in his request, so a suggestion of 15:00 means the app ignored the calendar he named. The app has no way to list calendars, so he must give the address; the AI is not expected to find the calendar by itself.",
       "Other accounts on the chooser: no-calendar-scope@gmail.test (Calendar access not granted: Google 403 insufficientPermissions) and no-calendar-api@gmail.test (Calendar API disabled: 403 accessNotConfigured). The app should name the real cause, not a generic error."
     ],
     "pt": "Conecta o Google e pede um horário livre na quinta que não conflite com nada na agenda pessoal nem na do trabalho."

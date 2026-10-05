@@ -27,6 +27,8 @@ Drop it when any of these hold:
 - It is an environment artifact: the local test stack, the fake LLM provider and its scripted reply, the fixed
   test sign-in code, missing third-party services or keys, a real provider's outage, rate limit or overload,
   headless-browser limits, or test data left behind.
+- Its expectation needs a capability the app does not offer (no tool or feature for it): outside what the app
+  offers. A finding where the app ignores an input it does accept, such as a named calendar id, stays.
 - It has no user-visible effect and no error the app raises.
 - You cannot tell from the evidence which of the above applies.
 

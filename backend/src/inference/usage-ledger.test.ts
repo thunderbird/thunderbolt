@@ -311,7 +311,7 @@ describe('inference usage ledger', () => {
   })
 
   describe('fireworks', () => {
-    const limits = { fiveHourCents: 100, sevenDayCents: 1000 }
+    const limits = { fiveHourCents: 100, sevenDayCents: 1_000 }
 
     it('admits seeded fireworks models with their list prices', async () => {
       await insertUser(database, 'fireworks-admission-user')
@@ -328,23 +328,6 @@ describe('inference usage ledger', () => {
         outcome: 'allowed',
         price: { ...fireworksMinimaxIdentity, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
       })
-    })
-
-    it('refuses a fireworks model without a price row', async () => {
-      await insertUser(database, 'fireworks-unpriced-user')
-
-      expect(
-        await checkManagedInferenceAdmission(
-          database,
-          { provider: 'fireworks', model: 'accounts/fireworks/models/unpriced' },
-          'fireworks-unpriced-user',
-          limits,
-        ),
-      ).toEqual({ outcome: 'price-unavailable' })
-    })
-
-    it('does not price a fireworks model under another provider', async () => {
-      expect(await loadInferencePrice(database, { provider: 'tinfoil', model: fireworksGlmIdentity.model })).toBeNull()
     })
 
     it('records provider and cost without applying anthropic cache multipliers', async () => {

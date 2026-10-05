@@ -168,7 +168,14 @@ Quota-tracked inference looks up a price for every request in the `inference_pri
 Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0031_*`); there is no admin route. To add a model:
 
 1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
-2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends, for Fireworks the full `accounts/fireworks/models/<name>`.
+2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends, for Fireworks the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup.
+
+   ```sql
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
+   VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+   ON CONFLICT ("provider", "model") DO NOTHING;
+   ```
+
 3. Deploy; migrations run on startup.
 
 To change a price on a running deployment without a migration, run the equivalent SQL:

@@ -60,7 +60,7 @@ spec:
                 port:
                   number: {{ $.Values.backend.service.port }}
     {{- end }}
-    {{- if and .auth $.Values.keycloak.enabled }}
+    {{- if and .auth (include "thunderbolt.keycloakEnabled" $) }}
     - host: {{ .auth }}
       http:
         paths:
@@ -99,7 +99,7 @@ spec:
                 name: backend
                 port:
                   number: {{ .Values.backend.service.port }}
-          {{- if .Values.keycloak.enabled }}
+          {{- if include "thunderbolt.keycloakEnabled" . }}
           - path: /realms
             pathType: Prefix
             backend:

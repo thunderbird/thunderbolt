@@ -68,8 +68,15 @@ spec:
             - name: DATABASE_URL
               value: "postgresql://{{ .Values.postgres.credentials.user }}:$(THUNDERBOLT_POSTGRES_PASSWORD)@postgres:5432/{{ .Values.postgres.credentials.database }}?sslmode={{ .Values.postgres.sslmode | default "disable" }}"
             {{- /* Guarded by thunderbolt.validateOidc at the top of this file. */}}
-            {{- $external := ne (.Values.oidc.issuer | default "") "" }}
-            {{- $issuer := ternary .Values.oidc.issuer (printf "%s/realms/thunderbolt" .Values.appUrl) $external }}
+            {{- /*
+              `oidc` is absent on an install upgraded with --reuse-values, which
+              drops the chart's new defaults (see thunderbolt.keycloakEnabled), so
+              read it nil-safely and normalise the issuer to a string once.
+            */}}
+            {{- $oidc := .Values.oidc | default dict }}
+            {{- $oidcIssuer := $oidc.issuer | default "" }}
+            {{- $external := ne $oidcIssuer "" }}
+            {{- $issuer := ternary $oidcIssuer (printf "%s/realms/thunderbolt" .Values.appUrl) $external }}
             {{- $keycloakDiscovery := printf "http://keycloak:%v/realms/thunderbolt/.well-known/openid-configuration" .Values.keycloak.service.port }}
             {{- /*
               Set explicitly rather than left to the backend, which needs the
@@ -77,8 +84,8 @@ spec:
               stripped, as OIDC Discovery requires: several providers, Authentik
               among them, publish issuer URLs with one.
             */}}
-            {{- $externalDiscovery := printf "%s/.well-known/openid-configuration" (trimSuffix "/" .Values.oidc.issuer) }}
-            {{- $discovery := .Values.oidc.discoveryUrl | default (ternary $externalDiscovery $keycloakDiscovery $external) }}
+            {{- $externalDiscovery := printf "%s/.well-known/openid-configuration" (trimSuffix "/" $oidcIssuer) }}
+            {{- $discovery := $oidc.discoveryUrl | default (ternary $externalDiscovery $keycloakDiscovery $external) }}
             # OIDC_ISSUER must equal the `issuer` field of the provider's discovery
             # document byte-for-byte, i.e. the browser-facing URL. When the backend
             # reaches the provider at a different hostname than the browser does
@@ -89,7 +96,7 @@ spec:
             - name: OIDC_DISCOVERY_URL
               value: {{ $discovery | quote }}
             - name: OIDC_CLIENT_ID
-              value: {{ .Values.oidc.clientId | default .Values.keycloak.oidc.clientId | quote }}
+              value: {{ $oidc.clientId | default .Values.keycloak.oidc.clientId | quote }}
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -106,10 +113,10 @@ spec:
               value: {{ .Values.appUrl }}
             {{- $origins := list .Values.appUrl }}
             {{- if $external }}
-            {{- $u := urlParse .Values.oidc.issuer }}
+            {{- $u := urlParse $oidcIssuer }}
             {{- $origins = append $origins (printf "%s://%s" $u.scheme $u.host) }}
-            {{- if .Values.oidc.discoveryUrl }}
-            {{- $d := urlParse .Values.oidc.discoveryUrl }}
+            {{- if $oidc.discoveryUrl }}
+            {{- $d := urlParse $oidc.discoveryUrl }}
             {{- $origins = append $origins (printf "%s://%s" $d.scheme $d.host) }}
             {{- end }}
             {{- else }}
@@ -125,7 +132,7 @@ spec:
             # Primary CSRF defenses (SameSite cookies + `X-Challenge-Token` custom header
             # on sensitive endpoints) are unaffected.
             - name: TRUSTED_ORIGINS
-              value: {{ concat $origins (.Values.oidc.extraTrustedOrigins | default list) | uniq | join "," | quote }}
+              value: {{ concat $origins ($oidc.extraTrustedOrigins | default list) | uniq | join "," | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.appUrl }}
             # POWERSYNC_URL is echoed straight to the browser for real-time sync, so it

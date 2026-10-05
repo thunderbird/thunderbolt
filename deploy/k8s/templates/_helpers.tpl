@@ -97,19 +97,34 @@ Usage (call once, before anything else renders):
   {{- include "thunderbolt.validateOidc" . }}
 */}}
 {{- define "thunderbolt.validateOidc" -}}
-{{- $external := ne (.Values.oidc.issuer | default "") "" }}
-{{- if and (not .Values.keycloak.enabled) (not $external) }}
+{{- $oidc := .Values.oidc | default dict }}
+{{- $external := ne ($oidc.issuer | default "") "" }}
+{{- if and (not (include "thunderbolt.keycloakEnabled" .)) (not $external) }}
   {{- fail "keycloak.enabled=false requires oidc.issuer: the backend has no identity provider to point at." }}
 {{- end }}
-{{- if and (.Values.oidc.discoveryUrl) (not $external) }}
+{{- if and ($oidc.discoveryUrl) (not $external) }}
   {{- fail "oidc.discoveryUrl requires oidc.issuer: without it the provider's origin is never added to TRUSTED_ORIGINS and sign-in fails." }}
 {{- end }}
 {{- if $external }}
-  {{- if not .Values.oidc.clientId }}{{- fail "oidc.issuer requires oidc.clientId: the bundled Keycloak client id is not valid at an external provider." }}{{- end }}
-  {{- if not .Values.oidc.clientSecretBase64 }}{{- fail "oidc.issuer requires oidc.clientSecretBase64: the bundled Keycloak client secret is published in this repository and must not be sent to your provider." }}{{- end }}
+  {{- if not $oidc.clientId }}{{- fail "oidc.issuer requires oidc.clientId: the bundled Keycloak client id is not valid at an external provider." }}{{- end }}
+  {{- if not $oidc.clientSecretBase64 }}{{- fail "oidc.issuer requires oidc.clientSecretBase64: the bundled Keycloak client secret is published in this repository and must not be sent to your provider." }}{{- end }}
 {{- else }}
-  {{- if or .Values.oidc.clientId .Values.oidc.clientSecretBase64 }}
+  {{- if or $oidc.clientId $oidc.clientSecretBase64 }}
     {{- fail "oidc.clientId/oidc.clientSecretBase64 require oidc.issuer: without it they are sent to the bundled Keycloak, which rejects them. Use keycloak.oidc.clientId/clientSecretBase64 for the bundled Keycloak instead." }}
   {{- end }}
 {{- end }}
+{{- end -}}
+
+{{/*
+Whether the bundled Keycloak is deployed. Renders "true" or nothing, for use
+as `{{- if include "thunderbolt.keycloakEnabled" . }}`.
+
+`keycloak.enabled` defaults to true, but `helm upgrade --reuse-values` replaces
+the chart's built-in defaults with the previous release's values, so on an
+install that predates the key it is missing rather than true. A plain
+`.Values.keycloak.enabled` would read that as false and drop Keycloak, so test
+for the key explicitly. (`default true` cannot help: it also rewrites false.)
+*/}}
+{{- define "thunderbolt.keycloakEnabled" -}}
+{{- if ternary .Values.keycloak.enabled true (hasKey .Values.keycloak "enabled") }}true{{- end -}}
 {{- end -}}

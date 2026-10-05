@@ -57,7 +57,7 @@ data:
             kid: {{ .Values.powersync.jwt.kid }}
       telemetry:
         disable_telemetry_sharing: true
-{{- if .Values.keycloak.enabled }}
+{{- if include "thunderbolt.keycloakEnabled" . }}
 ---
 apiVersion: v1
 kind: ConfigMap

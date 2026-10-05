@@ -1,4 +1,4 @@
-{{- if .Values.keycloak.enabled }}
+{{- if include "thunderbolt.keycloakEnabled" . }}
 apiVersion: v1
 kind: Service
 metadata:

@@ -161,6 +161,29 @@ These variables configure a server-hosted agent that ships in a later release. T
 | `WAITLIST_ENABLED`              | `false` | Flip to `true` to require approval before new sign-ups can log in |
 | `WAITLIST_AUTO_APPROVE_DOMAINS` | —       | Comma-separated email domains that skip the waitlist queue        |
 
+## Managed Inference Pricing
+
+Quota-tracked inference (providers `anthropic`, `tinfoil`, `fireworks`) prices every request from the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a new model is unusable until its price is added. Prices are integers in nano-USD per token (USD per 1M tokens x 1000), for example $1.40 per 1M input tokens is `1400`.
+
+Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0031_*`); there is no admin route. To add a model:
+
+1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry.
+2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends, for Fireworks the full `accounts/fireworks/models/<name>`.
+3. Deploy; migrations run on startup.
+
+To change a price on a running deployment without a migration, run the equivalent SQL:
+
+```sql
+INSERT INTO inference_prices (provider, model, input_nano_usd_per_token, output_nano_usd_per_token)
+VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+ON CONFLICT (provider, model) DO UPDATE
+SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
+    output_nano_usd_per_token = EXCLUDED.output_nano_usd_per_token,
+    updated_at = now();
+```
+
+Migration `0031` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which slightly overstates spend.
+
 ## OpenTelemetry (Optional)
 
 OpenTelemetry traces are enabled automatically when these are set. Not part of the Zod schema — the backend reads them from `process.env` directly.

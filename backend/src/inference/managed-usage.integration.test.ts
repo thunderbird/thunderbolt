@@ -40,6 +40,8 @@ const officialPriceOracle = {
   'tinfoil/deepseek-v4-flash': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
   'anthropic/claude-opus-5': { inputNanoUsdPerToken: 5_000n, outputNanoUsdPerToken: 25_000n },
   'tinfoil/glm-5-2': { inputNanoUsdPerToken: 1_500n, outputNanoUsdPerToken: 5_250n },
+  'fireworks/glm-5p3': { inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
+  'fireworks/minimax-m3': { inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
 } as const
 
 const deepseekCounts = { promptTokens: 10_000, completionTokens: 10_000, totalTokens: 20_000 } as const
@@ -379,6 +381,16 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         })),
       ).toEqual([
         { provider: 'anthropic', model: 'claude-opus-5', ...officialPriceOracle['anthropic/claude-opus-5'] },
+        {
+          provider: 'fireworks',
+          model: 'accounts/fireworks/models/glm-5p3',
+          ...officialPriceOracle['fireworks/glm-5p3'],
+        },
+        {
+          provider: 'fireworks',
+          model: 'accounts/fireworks/models/minimax-m3',
+          ...officialPriceOracle['fireworks/minimax-m3'],
+        },
         {
           provider: 'tinfoil',
           model: 'deepseek-v4-flash',

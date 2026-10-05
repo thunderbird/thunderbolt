@@ -362,8 +362,8 @@ describe('Config Settings', () => {
     const rateLimitEnvKeys = [
       'RATE_LIMIT_ENABLED',
       'TRUSTED_PROXY',
-      'AUTH_RATE_LIMIT_MAX',
-      'AUTH_RATE_LIMIT_WINDOW_SECS',
+      'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
+      'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
       'CAPTCHA_PROVIDER',
       'AUTH_ALLOW_ANONYMOUS',
     ] as const
@@ -438,73 +438,67 @@ describe('Config Settings', () => {
       expect(() => getSettings()).toThrow()
     })
 
-    it('should default the auth limit to 10 per 60 seconds and the captcha to none', () => {
-      delete process.env.AUTH_RATE_LIMIT_MAX
-      delete process.env.AUTH_RATE_LIMIT_WINDOW_SECS
+    it('should default the anonymous sign-in limit to 10 per 60 seconds and the captcha to none', () => {
+      delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
+      delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
       delete process.env.CAPTCHA_PROVIDER
       const settings = getSettings()
-      expect(settings.authRateLimitMax).toBe(10)
-      expect(settings.authRateLimitWindowSecs).toBe(60)
+      expect(settings.anonymousSignInRateLimitMax).toBe(10)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(60)
       expect(settings.captchaProvider).toBe('none')
     })
 
-    it('should treat empty auth limit and captcha env vars as unset', () => {
-      process.env.AUTH_RATE_LIMIT_MAX = ''
-      process.env.AUTH_RATE_LIMIT_WINDOW_SECS = ''
+    it('should treat empty anonymous sign-in limit and captcha env vars as unset', () => {
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = ''
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = ''
       process.env.CAPTCHA_PROVIDER = ''
       const settings = getSettings()
-      expect(settings.authRateLimitMax).toBe(10)
-      expect(settings.authRateLimitWindowSecs).toBe(60)
+      expect(settings.anonymousSignInRateLimitMax).toBe(10)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(60)
       expect(settings.captchaProvider).toBe('none')
     })
 
-    it('should read the auth limit and captcha provider from env', () => {
-      process.env.AUTH_RATE_LIMIT_MAX = '200'
-      process.env.AUTH_RATE_LIMIT_WINDOW_SECS = '30'
-      process.env.CAPTCHA_PROVIDER = 'ALTCHA'
+    it('should read the anonymous sign-in limit and captcha provider from env', () => {
+      delete process.env.AUTH_ALLOW_ANONYMOUS
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '200'
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = '30'
+      process.env.CAPTCHA_PROVIDER = 'NONE'
       const settings = getSettings()
-      expect(settings.authRateLimitMax).toBe(200)
-      expect(settings.authRateLimitWindowSecs).toBe(30)
-      expect(settings.captchaProvider).toBe('altcha')
+      expect(settings.anonymousSignInRateLimitMax).toBe(200)
+      expect(settings.anonymousSignInRateLimitWindowSecs).toBe(30)
+      expect(settings.captchaProvider).toBe('none')
     })
 
     it.each([
-      ['AUTH_RATE_LIMIT_MAX', '11'],
-      ['AUTH_RATE_LIMIT_WINDOW_SECS', '59'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '11'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', '59'],
     ])('should reject %s=%s with anonymous auth on and no captcha', (key, value) => {
       process.env.AUTH_ALLOW_ANONYMOUS = 'true'
       delete process.env.CAPTCHA_PROVIDER
       process.env[key] = value
       expect(() => getSettings()).toThrow(
-        'Raising the auth rate limit (AUTH_RATE_LIMIT_MAX above 10 or AUTH_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set',
+        'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set',
       )
     })
 
-    it('should allow a raised auth limit when anonymous auth is off', () => {
+    it('should allow a raised anonymous sign-in limit when anonymous auth is off', () => {
       delete process.env.AUTH_ALLOW_ANONYMOUS
       delete process.env.CAPTCHA_PROVIDER
-      process.env.AUTH_RATE_LIMIT_MAX = '200'
-      expect(getSettings().authRateLimitMax).toBe(200)
-    })
-
-    it('should allow a raised auth limit with anonymous auth on when a captcha is set', () => {
-      process.env.AUTH_ALLOW_ANONYMOUS = 'true'
-      process.env.CAPTCHA_PROVIDER = 'altcha'
-      process.env.AUTH_RATE_LIMIT_MAX = '200'
-      expect(getSettings().authRateLimitMax).toBe(200)
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '200'
+      expect(getSettings().anonymousSignInRateLimitMax).toBe(200)
     })
 
     it('should allow the default auth limit with anonymous auth on and no captcha', () => {
       process.env.AUTH_ALLOW_ANONYMOUS = 'true'
       delete process.env.CAPTCHA_PROVIDER
-      process.env.AUTH_RATE_LIMIT_MAX = '10'
-      expect(getSettings().authRateLimitMax).toBe(10)
+      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '10'
+      expect(getSettings().anonymousSignInRateLimitMax).toBe(10)
     })
 
     it.each([
-      ['AUTH_RATE_LIMIT_MAX', '0'],
-      ['AUTH_RATE_LIMIT_WINDOW_SECS', 'abc'],
-      ['CAPTCHA_PROVIDER', 'recaptcha'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '0'],
+      ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['CAPTCHA_PROVIDER', 'altcha'],
     ])('should reject %s=%s', (key, value) => {
       process.env[key] = value
       expect(() => getSettings()).toThrow()

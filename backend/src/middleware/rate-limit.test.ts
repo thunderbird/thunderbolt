@@ -12,10 +12,12 @@ import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { Elysia } from 'elysia'
 import {
   createAuthIpRateLimit,
+  createAuthPluginIpRateLimit,
   createIpTierRateLimit,
   createRateLimitConsumer,
   createUserTierRateLimit,
-  type AuthIpRateLimitSettings,
+  type AuthPluginIpRateLimitSettings,
+  type IpRateLimitSettings,
   type RateLimitSettings,
   type UserRateLimitTier,
 } from './rate-limit'
@@ -37,7 +39,7 @@ const createTestApp = (
     .get('/v1/test', () => ({ ok: true }))
 
 /** Helper that creates a test app with IP-based rate limiting (trustedProxy=cloudflare). */
-const createIpTestApp = (database: typeof DbType, settings: AuthIpRateLimitSettings) =>
+const createIpTestApp = (database: typeof DbType, settings: IpRateLimitSettings) =>
   new Elysia().use(createAuthIpRateLimit(database, settings)).get('/v1/test', () => ({ ok: true }))
 
 /** Build a request with a given client IP via the CF-Connecting-IP header. */
@@ -275,7 +277,7 @@ describe('Rate Limiting', () => {
   })
 
   describe('IP-based rate limiting', () => {
-    const ipSettings: AuthIpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare', max: 10, durationSecs: 60 }
+    const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
 
     it('returns an empty IP tier plugin when disabled', async () => {
       const plugin = createIpTierRateLimit(database, { ...ipSettings, enabled: false }, 'debug-transcript-intake')
@@ -404,20 +406,8 @@ describe('Rate Limiting', () => {
       expect(allowedByUser.status).toBe(200)
     })
 
-    it('should apply the auth limit and window from settings', async () => {
-      const app = createIpTestApp(database, { ...ipSettings, max: 25, durationSecs: 120 })
-
-      for (let i = 0; i < 25; i++) {
-        expect((await app.handle(requestWithIp('10.0.0.9'))).status).toBe(200)
-      }
-      const blocked = await app.handle(requestWithIp('10.0.0.9'))
-      expect(blocked.status).toBe(429)
-      expect(blocked.headers.get('ratelimit-limit')).toBe('25')
-      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(60)
-    })
-
     it('should not rate limit when disabled', async () => {
-      const disabledSettings: AuthIpRateLimitSettings = { ...ipSettings, enabled: false }
+      const disabledSettings: IpRateLimitSettings = { enabled: false, trustedProxy: 'cloudflare' }
       const app = createIpTestApp(database, disabledSettings)
 
       for (let i = 0; i < 15; i++) {
@@ -428,7 +418,7 @@ describe('Rate Limiting', () => {
   })
 
   describe('IP rate limiting with fetch handlers (mount bypass regression)', () => {
-    const ipSettings: AuthIpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare', max: 10, durationSecs: 60 }
+    const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
 
     /** Minimal WinterCG-compatible fetch handler (simulates Better Auth's auth.handler). */
     const fakeFetchHandler = (_req: Request) =>
@@ -494,6 +484,81 @@ describe('Rate Limiting', () => {
       expect(blocked.status).toBe(429)
     })
   })
+  describe('Better Auth mount: anonymous sign-in bucket', () => {
+    const pluginSettings: AuthPluginIpRateLimitSettings = {
+      enabled: true,
+      trustedProxy: 'cloudflare',
+      anonymousSignIn: { max: 40, durationSecs: 120 },
+    }
+
+    /** Mirrors createBetterAuthPlugin: the IP limit wraps a catch-all fetch handler. */
+    const createPluginApp = (settings: AuthPluginIpRateLimitSettings) =>
+      new Elysia()
+        .use(createAuthPluginIpRateLimit(database, settings))
+        .all('/v1/api/auth/*', () => new Response('{}', { headers: { 'content-type': 'application/json' } }), {
+          parse: 'none',
+        })
+
+    const authRequest = (path: string, ip: string) =>
+      new Request(`http://localhost/v1/api/auth${path}`, { method: 'POST', headers: { 'cf-connecting-ip': ip } })
+
+    it('applies the configured limit and window to anonymous sign-in', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 40; i++) {
+        expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.1'))).status).toBe(200)
+      }
+      const blocked = await app.handle(authRequest('/sign-in/anonymous', '10.5.0.1'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('40')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeGreaterThan(60)
+    })
+
+    it('keeps OTP send and other auth routes at the fixed 10 per 60s', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 10; i++) {
+        expect((await app.handle(authRequest('/email-otp/send-verification-otp', '10.5.0.2'))).status).toBe(200)
+      }
+      const blocked = await app.handle(authRequest('/email-otp/send-verification-otp', '10.5.0.2'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('10')
+      expect(Number(blocked.headers.get('ratelimit-reset'))).toBeLessThanOrEqual(60)
+    })
+
+    it('counts anonymous sign-in and other auth routes in separate buckets', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      for (let i = 0; i < 10; i++) {
+        await app.handle(authRequest('/get-session', '10.5.0.3'))
+      }
+      expect((await app.handle(authRequest('/get-session', '10.5.0.3'))).status).toBe(429)
+      expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.3'))).status).toBe(200)
+    })
+
+    it('draws a trailing-slash anonymous sign-in from the anonymous bucket', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/sign-in/anonymous/', '10.5.0.6'))
+      expect(response.headers.get('ratelimit-limit')).toBe('40')
+    })
+
+    it('draws a lookalike path from the fixed auth bucket', async () => {
+      const app = createPluginApp(pluginSettings)
+
+      const response = await app.handle(authRequest('/x/sign-in/anonymous', '10.5.0.7'))
+      expect(response.headers.get('ratelimit-limit')).toBe('10')
+    })
+
+    it('does not rate limit when disabled', async () => {
+      const app = createPluginApp({ ...pluginSettings, enabled: false })
+
+      for (let i = 0; i < 45; i++) {
+        expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.5'))).status).toBe(200)
+      }
+    })
+  })
+
   describe('createRateLimitConsumer', () => {
     it('returns null when rate limiting is disabled', () => {
       expect(createRateLimitConsumer(database, { enabled: false }, 'debug-transcript-intake')).toBeNull()

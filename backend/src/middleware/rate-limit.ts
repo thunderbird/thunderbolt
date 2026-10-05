@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { anonymousSignInPath, authBasePath } from '@/auth/paths'
 import type { db as DbType } from '@/db/client'
 import { rateLimits } from '@/db/rate-limit-schema'
 import { extractClientIp } from '@/utils/request'
@@ -13,10 +14,19 @@ type AuthResolvedContext = {
   user?: { id: string } | null
 }
 
-type RateLimitTier = 'inference' | 'receipt' | 'pro' | 'auth' | 'debug-transcript' | 'debug-transcript-intake'
-export type UserRateLimitTier = Exclude<RateLimitTier, 'auth'>
+type RateLimitTier =
+  | 'inference'
+  | 'receipt'
+  | 'pro'
+  | 'auth'
+  | 'anonymous-sign-in'
+  | 'debug-transcript'
+  | 'debug-transcript-intake'
+/** Tiers with a hardcoded limit; 'anonymous-sign-in' is configured by the operator. */
+type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in'>
+export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
-export type RateLimitTierConfig = {
+type RateLimitTierConfig = {
   max: number
   durationSecs: number
 }
@@ -29,17 +39,19 @@ export type IpRateLimitSettings = RateLimitSettings & {
   trustedProxy: '' | 'cloudflare' | 'akamai'
 }
 
-/** The 'auth' tier's limit is operator-configured (AUTH_RATE_LIMIT_MAX / AUTH_RATE_LIMIT_WINDOW_SECS). */
-export type AuthIpRateLimitSettings = IpRateLimitSettings & RateLimitTierConfig
+export type AuthPluginIpRateLimitSettings = IpRateLimitSettings & {
+  anonymousSignIn: RateLimitTierConfig
+}
 
-/** Hardcoded per-tier limits. The 'auth' tier is configured via AuthIpRateLimitSettings. */
+/** Hardcoded per-tier limits. */
 const tierConfigs = {
   inference: { max: 60, durationSecs: 60 },
   receipt: { max: 100, durationSecs: 60 },
   pro: { max: 100, durationSecs: 60 },
+  auth: { max: 10, durationSecs: 60 },
   'debug-transcript': { max: 10, durationSecs: 60 * 60 },
   'debug-transcript-intake': { max: 600, durationSecs: 60 * 60 },
-} satisfies Record<UserRateLimitTier, RateLimitTierConfig>
+} satisfies Record<FixedRateLimitTier, RateLimitTierConfig>
 
 /** Create a rate-limiter-flexible instance for a specific tier. */
 const createLimiter = (database: typeof DbType, tier: RateLimitTier, config: RateLimitTierConfig) =>
@@ -135,7 +147,10 @@ export const createUserTierRateLimit = (
  * a non-TCP transport (e.g. a Unix-domain socket), where collectively capping
  * unattributable traffic is the safe default.
  */
-const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: IpRateLimitSettings['trustedProxy']) =>
+const createIpRateLimitMiddleware = (
+  limiterFor: (request: Request) => RateLimiterDrizzle,
+  trustedProxy: IpRateLimitSettings['trustedProxy'],
+) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
       const { set } = ctx
@@ -143,33 +158,49 @@ const createIpRateLimitMiddleware = (limiter: RateLimiterDrizzle, trustedProxy: 
       // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
       const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
       const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
-      return consumeOrReject(limiter, `ip:${clientIp}`, set)
+      return consumeOrReject(limiterFor(ctx.request), `ip:${clientIp}`, set)
     })
     .as('scoped')
-
-/** IP-keyed middleware for `tier` with the given limit; an empty plugin when rate limiting is disabled. */
-const createIpLimit = (
-  database: typeof DbType,
-  settings: IpRateLimitSettings,
-  tier: RateLimitTier,
-  config: RateLimitTierConfig,
-) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  return createIpRateLimitMiddleware(createLimiter(database, tier, config), settings.trustedProxy)
-}
 
 /** IP-keyed middleware for one configured tier; fails closed like createAuthIpRateLimit. */
 export const createIpTierRateLimit = (
   database: typeof DbType,
   settings: IpRateLimitSettings,
-  tier: UserRateLimitTier,
-) => createIpLimit(database, settings, tier, tierConfigs[tier])
+  tier: FixedRateLimitTier,
+) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const limiter = createLimiter(database, tier, tierConfigs[tier])
+  return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
+}
 
 /** Create IP-based rate limit middleware for auth and unauthenticated routes. */
-export const createAuthIpRateLimit = (database: typeof DbType, settings: AuthIpRateLimitSettings) =>
-  createIpLimit(database, settings, 'auth', settings)
+export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateLimitSettings) =>
+  createIpTierRateLimit(database, settings, 'auth')
+
+const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
+
+/** Exact match on the mounted path, ignoring trailing slashes as Better Auth's router does. */
+const isAnonymousSignIn = (request: Request) =>
+  new URL(request.url).pathname.replace(/\/+$/, '') === anonymousSignInMountPath
+
+/**
+ * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own
+ * operator-configured 'anonymous-sign-in' bucket so raising it never loosens any other
+ * auth route; everything else draws from the fixed 'auth' tier.
+ */
+export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const authLimiter = createLimiter(database, 'auth', tierConfigs.auth)
+  const anonymousSignInLimiter = createLimiter(database, 'anonymous-sign-in', settings.anonymousSignIn)
+  return createIpRateLimitMiddleware(
+    (request) => (isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter),
+    settings.trustedProxy,
+  )
+}
 
 type RateLimitSet = Parameters<typeof consumeOrReject>[2]
 
@@ -180,7 +211,7 @@ export type RateLimitConsumer = (key: string, set: RateLimitSet) => Promise<{ er
 export const createRateLimitConsumer = (
   database: typeof DbType,
   settings: RateLimitSettings,
-  tier: UserRateLimitTier,
+  tier: FixedRateLimitTier,
 ): RateLimitConsumer | null => {
   if (!settings.enabled) {
     return null

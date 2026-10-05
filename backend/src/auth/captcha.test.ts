@@ -8,11 +8,7 @@ import { createCaptchaVerifier } from './captcha'
 describe('createCaptchaVerifier', () => {
   it("passes every request when the provider is 'none'", async () => {
     const verifier = createCaptchaVerifier({ captchaProvider: 'none' })
-    expect(await verifier.verify(null, { headers: undefined })).toBe(true)
-    expect(await verifier.verify('anything', { headers: new Headers() })).toBe(true)
-  })
-
-  it.each(['altcha', 'turnstile'] as const)('refuses to start with the unbuilt %s provider', (captchaProvider) => {
-    expect(() => createCaptchaVerifier({ captchaProvider })).toThrow(`CAPTCHA_PROVIDER=${captchaProvider}`)
+    expect(await verifier.verify(null, { clientIp: 'unknown' })).toBe(true)
+    expect(await verifier.verify('anything', { clientIp: '203.0.113.7' })).toBe(true)
   })
 })

@@ -8,8 +8,8 @@ import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
-const defaultAuthRateLimitMax = 10
-const defaultAuthRateLimitWindowSecs = 60
+const defaultAnonymousSignInRateLimitMax = 10
+const defaultAnonymousSignInRateLimitWindowSecs = 60
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
@@ -146,11 +146,16 @@ const settingsSchema = z
 
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
-    // Per-IP limit on auth endpoints, applied by both Better Auth and our 'auth' tier.
-    // Raising it with anonymous auth on requires a captcha: see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust.
-    authRateLimitMax: z.coerce.number().int().positive().default(defaultAuthRateLimitMax),
-    authRateLimitWindowSecs: z.coerce.number().int().positive().default(defaultAuthRateLimitWindowSecs),
-    captchaProvider: z.enum(['altcha', 'turnstile', 'none']).default('none'),
+    // Per-IP limit on anonymous sign-in only, applied by both Better Auth and our own limiter.
+    // Raising it requires a captcha: see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust.
+    anonymousSignInRateLimitMax: z.coerce.number().int().positive().default(defaultAnonymousSignInRateLimitMax),
+    anonymousSignInRateLimitWindowSecs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(defaultAnonymousSignInRateLimitWindowSecs),
+    // Providers are added together with their verifier (backend/src/auth/captcha.ts).
+    captchaProvider: z.enum(['none']).default('none'),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -206,13 +211,16 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
-    const authLimitRaised =
-      data.authRateLimitMax > defaultAuthRateLimitMax || data.authRateLimitWindowSecs < defaultAuthRateLimitWindowSecs
-    if (data.authAllowAnonymous && data.captchaProvider === 'none' && authLimitRaised) {
+    // With 'none' the only accepted provider, this refuses every raised limit while anonymous
+    // auth is on. The captchaProvider check starts mattering once a real provider ships.
+    const anonymousSignInLimitRaised =
+      data.anonymousSignInRateLimitMax > defaultAnonymousSignInRateLimitMax ||
+      data.anonymousSignInRateLimitWindowSecs < defaultAnonymousSignInRateLimitWindowSecs
+    if (data.authAllowAnonymous && data.captchaProvider === 'none' && anonymousSignInLimitRaised) {
       ctx.addIssue({
         code: 'custom',
         message:
-          'Raising the auth rate limit (AUTH_RATE_LIMIT_MAX above 10 or AUTH_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust).',
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust).',
         path: ['captchaProvider'],
       })
     }
@@ -298,8 +306,8 @@ const parseSettings = (): Settings => {
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
-    authRateLimitMax: process.env.AUTH_RATE_LIMIT_MAX || undefined,
-    authRateLimitWindowSecs: process.env.AUTH_RATE_LIMIT_WINDOW_SECS || undefined,
+    anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
+    anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,

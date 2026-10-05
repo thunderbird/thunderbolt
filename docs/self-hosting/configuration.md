@@ -96,27 +96,26 @@ To obtain a key, contact the Thunderbolt team with a name for your deployment. T
 
 ## Rate Limiting and Proxy Trust
 
-| Variable                      | Default | Description                                                                                               |
-| ----------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED`          | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
-| `TRUSTED_PROXY`               | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
-| `AUTH_RATE_LIMIT_MAX`         | `10`    | Requests per IP per window on `/v1/api/auth/*` and waitlist join (see below)                              |
-| `AUTH_RATE_LIMIT_WINDOW_SECS` | `60`    | Window for `AUTH_RATE_LIMIT_MAX`, in seconds                                                              |
-| `CAPTCHA_PROVIDER`            | `none`  | Captcha on anonymous sign-in: `none`, `altcha`, or `turnstile`. Only `none` is supported today            |
+| Variable                                   | Default | Description                                                                                               |
+| ------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`                       | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
+| `TRUSTED_PROXY`                            | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`    | Anonymous sign-ins per IP per window (see below)                                                          |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`    | Window for `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, in seconds                                                 |
+| `CAPTCHA_PROVIDER`                         | `none`  | Captcha on anonymous sign-in. Only `none` is accepted today                                               |
 
 Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass. Leave this empty unless you know your edge.
 
-The auth limit is enforced in two places:
+The general auth limit is fixed at 10 requests per IP per 60 seconds. It covers every `/v1/api/auth/*` route and waitlist join, and it is counted by our database-backed limiter, which is shared across instances. Better Auth adds its own in-memory limiter, counted per instance, with stricter fixed rules for some routes: email sign-in is capped at 3 per 10 seconds and OTP send at 3 per 60 seconds. None of these limits are configurable.
 
-- **Our database-backed limiter**, shared across instances, applies `AUTH_RATE_LIMIT_MAX` and `AUTH_RATE_LIMIT_WINDOW_SECS` to every `/v1/api/auth/*` request plus waitlist join.
-- **Better Auth's own limiter**, in-memory and therefore counted per instance, applies the configured limit to anonymous sign-in only. Its stricter built-in rules stay in force elsewhere: email sign-in is capped at 3 per 10 seconds and OTP send at 3 per 60 seconds, whatever the configured limit.
+Only anonymous sign-in is configurable. It draws from its own bucket in both limiters, so raising `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` never loosens waitlist join, OTP send, or any other auth route. That matters because waitlist join and OTP send each trigger an email.
 
-Whether to raise the limit depends on the captcha:
+Whether to raise the anonymous sign-in limit depends on the captcha, which protects anonymous sign-in only:
 
-- **With a captcha enabled**, the captcha is the bot control. You can raise the IP limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
+- **With a captcha enabled**, the captcha is the bot control. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
 - **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
 
-The backend enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `AUTH_RATE_LIMIT_MAX` is above 10 or `AUTH_RATE_LIMIT_WINDOW_SECS` is below 60. Deployments without anonymous auth may raise the limit freely.
+The backend enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. No captcha provider is supported yet, so for now an anonymous deployment keeps the defaults.
 
 ## App Version Gate
 

@@ -19,7 +19,7 @@ import * as schema from '@/db/schema'
 import { normalizeEmail } from '@/lib/email'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { getSettings } from '@/config/settings'
-import { getTrustedIpHeaders } from '@/utils/request'
+import { extractClientIp, getTrustedIpHeaders } from '@/utils/request'
 import { createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth'
 import { makeSignature } from 'better-auth/crypto'
@@ -33,6 +33,7 @@ import {
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
 import { captchaTokenHeader, createCaptchaVerifier } from './captcha'
+import { anonymousSignInPath, authBasePath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -66,7 +67,6 @@ export const signInOtpOptions = ({
 }
 
 const otpSignInPath = '/sign-in/email-otp'
-const anonymousSignInPath = '/sign-in/anonymous'
 const deviceTokenPath = '/device/token'
 const authTokenHeader = 'set-auth-token'
 
@@ -174,7 +174,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   const ssoEnabled = settings.authMode === 'oidc' || settings.authMode === 'saml'
 
   return betterAuth({
-    basePath: '/v1/api/auth',
+    basePath: authBasePath,
     database: drizzleAdapter(database, {
       provider: 'pg',
       schema,
@@ -193,14 +193,17 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     // once a provider ships (THU-113).
     rateLimit: {
       enabled: settings.rateLimitEnabled,
-      window: settings.authRateLimitWindowSecs,
-      max: settings.authRateLimitMax,
+      window: 60,
+      max: 10,
       customRules: {
         '/get-session': { window: 1, max: 30 },
         // Better Auth's built-in rule caps every /sign-in* path at 3 per 10s, which would
-        // override a raised AUTH_RATE_LIMIT_MAX. Anonymous sign-in follows the auth limit, so
-        // at default settings its burst limit moves from 3 per 10s to 10 per 60s (accepted).
-        [anonymousSignInPath]: { window: settings.authRateLimitWindowSecs, max: settings.authRateLimitMax },
+        // override a raised ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX. Anonymous sign-in follows its own
+        // setting, so at defaults its burst limit moves from 3 per 10s to 10 per 60s (accepted).
+        [anonymousSignInPath]: {
+          window: settings.anonymousSignInRateLimitWindowSecs,
+          max: settings.anonymousSignInRateLimitMax,
+        },
       },
     },
     advanced: {
@@ -258,8 +261,11 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous
         // user. Anonymous sign-in is intentionally NOT waitlist-gated.
         if (ctx.path === anonymousSignInPath) {
-          const captchaSolved = await captchaVerifier.verify(ctx.headers?.get(captchaTokenHeader) ?? null, {
-            headers: ctx.headers,
+          // Better Auth's hook context exposes no socket address, so only a trusted proxy
+          // header can identify the client here.
+          const headers = ctx.headers ?? new Headers()
+          const captchaSolved = await captchaVerifier.verify(headers.get(captchaTokenHeader), {
+            clientIp: extractClientIp(headers, 'unknown', settings.trustedProxy),
           })
           if (!captchaSolved) {
             throw ctx.error('FORBIDDEN', { message: 'Captcha verification failed' })

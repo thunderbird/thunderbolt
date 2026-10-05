@@ -20,6 +20,7 @@ import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
 import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import {
   createAuthIpRateLimit,
+  createAuthPluginIpRateLimit,
   createIpTierRateLimit,
   createUserTierRateLimit,
   createRateLimitConsumer,
@@ -87,17 +88,18 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
-  const authIpRateLimitSettings = {
-    ...ipRateLimitSettings,
-    max: settings.authRateLimitMax,
-    durationSecs: settings.authRateLimitWindowSecs,
-  }
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
-    createAuthIpRateLimit(database, authIpRateLimitSettings),
+    createAuthPluginIpRateLimit(database, {
+      ...ipRateLimitSettings,
+      anonymousSignIn: {
+        max: settings.anonymousSignInRateLimitMax,
+        durationSecs: settings.anonymousSignInRateLimitWindowSecs,
+      },
+    }),
   )
   const auth = deps?.auth ?? createdAuth
 
@@ -200,7 +202,7 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           emailService: deps?.waitlistEmailService,
           cooldownMs: deps?.otpCooldownMs,
-          ipRateLimit: createAuthIpRateLimit(database, authIpRateLimitSettings),
+          ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings),
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))

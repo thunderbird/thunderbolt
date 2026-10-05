@@ -14,7 +14,6 @@ import { createMicrosoftAuthRoutes } from './microsoft'
 
 describe('Authentication Routes', () => {
   let app: { handle: Elysia['handle'] }
-  let mockFetch: ReturnType<typeof mock>
   let getSettingsSpy: ReturnType<typeof spyOn>
   let consoleSpies: ConsoleSpies
 
@@ -23,6 +22,9 @@ describe('Authentication Routes', () => {
       status,
       headers: { 'Content-Type': 'application/json' },
     })
+
+  const mockFetch = mock((..._args: Parameters<typeof fetch>) => Promise.resolve(createMockOAuthResponse()))
+  const fetchFn = Object.assign(mockFetch, { preconnect: globalThis.fetch.preconnect })
 
   beforeAll(async () => {
     consoleSpies = setupConsoleSpy()
@@ -37,13 +39,8 @@ describe('Authentication Routes', () => {
       }),
     )
 
-    // Create mock fetch
-    mockFetch = mock(() => Promise.resolve(createMockOAuthResponse()))
-
     // Inject mock fetch into routes
-    app = new Elysia()
-      .use(createGoogleAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
-      .use(createMicrosoftAuthRoutes(mockAuth, mockFetch as unknown as typeof fetch))
+    app = new Elysia().use(createGoogleAuthRoutes(mockAuth, fetchFn)).use(createMicrosoftAuthRoutes(mockAuth, fetchFn))
   })
 
   afterAll(async () => {
@@ -56,8 +53,8 @@ describe('Authentication Routes', () => {
 
     beforeAll(() => {
       unauthApp = new Elysia()
-        .use(createGoogleAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
-        .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, mockFetch as unknown as typeof fetch))
+        .use(createGoogleAuthRoutes(mockAuthUnauthenticated, fetchFn))
+        .use(createMicrosoftAuthRoutes(mockAuthUnauthenticated, fetchFn))
     })
 
     it('should reject unauthenticated requests to Google config', async () => {
@@ -266,6 +263,30 @@ describe('Authentication Routes', () => {
       )
       expect(response.status).toBe(200)
       expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/token')
+    })
+
+    it('posts Google token calls to the configured base URL', async () => {
+      getSettingsSpy.mockReturnValueOnce(
+        createTestSettings({
+          googleClientId: 'test-google-client-id',
+          googleClientSecret: 'test-google-secret',
+          googleBaseUrl: 'http://localhost:9880',
+        }),
+      )
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(
+        createMockOAuthResponse(200, { access_token: 'token', expires_in: 3600, token_type: 'Bearer' }),
+      )
+      const response = await app.handle(
+        new Request('http://localhost/auth/google/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: 'refresh' }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:9880/token')
     })
 
     it('allows Microsoft exchange with valid localhost redirect_uri', async () => {

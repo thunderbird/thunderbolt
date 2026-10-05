@@ -43,6 +43,39 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Google base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.GOOGLE_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.GOOGLE_BASE_URL
+      } else {
+        process.env.GOOGLE_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Google token host when the override is unset', () => {
+      delete process.env.GOOGLE_BASE_URL
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+
+    it('honours a loopback GOOGLE_BASE_URL', () => {
+      process.env.GOOGLE_BASE_URL = 'http://localhost:9880/'
+      expect(getSettings().googleBaseUrl).toBe('http://localhost:9880')
+    })
+
+    it('ignores a GOOGLE_BASE_URL on any other host', () => {
+      process.env.GOOGLE_BASE_URL = 'https://evil.example'
+      expect(getSettings().googleBaseUrl).toBe('https://oauth2.googleapis.com')
+    })
+  })
+
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }
@@ -796,8 +829,8 @@ describe('Config Settings', () => {
 
       const settings = getSettings()
 
+      // toBe compares with Object.is, so the string '1800' would fail here.
       expect(settings.powersyncTokenExpirySeconds).toBe(1800)
-      expect(typeof settings.powersyncTokenExpirySeconds).toBe('number')
     })
 
     it('should reject zero token expiry', () => {

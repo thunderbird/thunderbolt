@@ -20,6 +20,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   monitoringToken: '',
   googleClientId: '',
   googleClientSecret: '',
+  googleBaseUrl: 'https://oauth2.googleapis.com',
   microsoftClientId: '',
   microsoftClientSecret: '',
   authMode: 'consumer' as const,

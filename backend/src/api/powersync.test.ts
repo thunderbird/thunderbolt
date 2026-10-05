@@ -28,6 +28,7 @@ const powersyncSettings: Settings = {
   monitoringToken: '',
   googleClientId: '',
   googleClientSecret: '',
+  googleBaseUrl: 'https://oauth2.googleapis.com',
   microsoftClientId: '',
   microsoftClientSecret: '',
   logLevel: 'INFO',

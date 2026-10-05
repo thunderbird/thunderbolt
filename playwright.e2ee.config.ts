@@ -72,7 +72,18 @@ const backendEnv = (port: number, extra: Record<string, string> = {}): Record<st
 })
 
 export default defineConfig({
-  testDir: './e2e/e2ee',
+  // `./e2e` rather than `./e2e/e2ee`, narrowed by testMatch to the same files.
+  // The rootDir a run records is baked into its blob report, and
+  // `playwright merge-reports` refuses to combine blobs recorded under
+  // different roots — so pointing this at the subdirectory made the CI report
+  // job abort the moment this suite's blobs started being merged. Sharing
+  // `./e2e` with playwright.config.ts also keeps every path in the merged
+  // report honest (`e2ee/migration.spec.ts`, not a bare `migration.spec.ts`).
+  // Match on `e2e/e2ee/` rather than `e2ee/`: testMatch sees the absolute path,
+  // so a bare directory name can also match an ancestor (see the `artifact`
+  // project in playwright.config.ts, which hit exactly that).
+  testDir: './e2e',
+  testMatch: '**/e2e/e2ee/**/*.spec.ts',
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,

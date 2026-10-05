@@ -122,6 +122,15 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Run PowerSync E2EE suite (shard ${{ matrix.shard }})
+        # Playwright names every blob `report-<shard>.zip`, so this job's shard
+        # 1/4 and the `e2e` job's shard 1/2 both produce `report-1.zip` — and
+        # the report job's `merge-multiple: true` flattens one onto the other.
+        # Nothing reports the loser as missing: the merge proceeds with whatever
+        # survived, so half the run disappears from the HTML report, and an
+        # interleaved overwrite corrupts the zip outright. Name this suite's
+        # blobs apart; job-index keeps them unique across its own shards.
+        env:
+          PLAYWRIGHT_BLOB_OUTPUT_NAME: e2ee-report-${{ strategy.job-index }}.zip
         run: bash scripts/run-e2ee-powersync.sh --shard=${{ matrix.shard }}
 
       - name: Upload PowerSync E2EE blob report

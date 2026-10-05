@@ -140,19 +140,21 @@ implement.
 
 ## Hosted Agent
 
-These variables configure a server-hosted agent that ships in a later release. They have no effect today.
+`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the backend: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a Better Auth session (anonymous sessions are allowed), shares the `inference` rate-limit tier and inference spend quota, and calls Anthropic with `ANTHROPIC_API_KEY`. `AGENT_MODEL` must be an Anthropic model id with a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The agent has no tools yet.
 
-| Variable                          | Default | Description                                            |
-| --------------------------------- | ------- | ------------------------------------------------------ |
-| `AGENT_ENABLED`                   | `false` | Enables the hosted agent                               |
-| `AGENT_MODEL`                     | `""`    | Model id the agent uses                                |
-| `AGENT_MAX_STEPS`                 | `8`     | Maximum tool-call steps per run                        |
-| `AGENT_SYSTEM_PROMPT`             | `""`    | System prompt for the agent                            |
-| `AGENT_MCP_SERVERS`               | `""`    | JSON array of MCP servers the agent may call           |
-| `AGENT_NAME`                      | `""`    | Display name shown in agent discovery                  |
-| `AGENT_DESCRIPTION`               | `""`    | Description shown in agent discovery                   |
-| `AGENT_ICON`                      | `""`    | Icon shown in agent discovery                          |
-| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets unauthenticated clients discover the hosted agent |
+`AGENT_MCP_SERVERS` and the discovery settings (`AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_ICON`, `ALLOW_ANONYMOUS_AGENT_DISCOVERY`) ship in a later release and have no effect today.
+
+| Variable                          | Default | Description                                                             |
+| --------------------------------- | ------- | ----------------------------------------------------------------------- |
+| `AGENT_ENABLED`                   | `false` | Mounts the hosted agent endpoint; when `false` the route does not exist |
+| `AGENT_MODEL`                     | `""`    | Anthropic model id the agent uses; required when the agent is enabled   |
+| `AGENT_MAX_STEPS`                 | `8`     | Maximum model steps per run                                             |
+| `AGENT_SYSTEM_PROMPT`             | `""`    | System prompt for the agent, or `file:<path>` to read it from a file    |
+| `AGENT_MCP_SERVERS`               | `""`    | JSON array of MCP servers the agent may call (no effect yet)            |
+| `AGENT_NAME`                      | `""`    | Display name shown in agent discovery (no effect yet)                   |
+| `AGENT_DESCRIPTION`               | `""`    | Description shown in agent discovery (no effect yet)                    |
+| `AGENT_ICON`                      | `""`    | Icon shown in agent discovery (no effect yet)                           |
+| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets unauthenticated clients discover the hosted agent (no effect yet)  |
 
 ## Waitlist
 

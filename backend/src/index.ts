@@ -14,6 +14,7 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
+import { createAgentRoutes } from '@/agent/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
@@ -107,6 +108,14 @@ export const createApp = async (deps?: AppDeps) => {
       logger: appLogger,
     })
 
+  const agentRoutes = await createAgentRoutes({
+    auth,
+    database,
+    settings,
+    logger: appLogger,
+    rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
+  })
+
   return (
     configuredApp
       .use(createCorsMiddleware(settings))
@@ -171,6 +180,7 @@ export const createApp = async (deps?: AppDeps) => {
           rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
         }),
       )
+      .use(agentRoutes)
       .use(createConfigRoutes(settings))
       .use(
         createDebugTranscriptsRoutes({

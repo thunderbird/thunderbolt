@@ -174,8 +174,8 @@ const settingsSchema = z
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
 
-    // Hosted agent settings. These configure a server-hosted agent that ships in later PRs and are
-    // inert today: nothing reads them yet.
+    // Hosted agent settings (see `@/agent/routes`). The MCP and discovery settings below are inert
+    // until later PRs read them.
     agentEnabled: z.boolean().default(false),
     agentModel: z.string().default(''),
     agentMaxSteps: z.coerce.number().int().positive().default(8),

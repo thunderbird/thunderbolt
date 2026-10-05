@@ -48,6 +48,16 @@ describe('Config Routes', () => {
       expect(forbidden.body.allowCustomAgents).toBe(false)
     })
 
+    it('omits defaultAgentId when the hosted agent is disabled', async () => {
+      const { body } = await fetchConfig(createTestSettings({ agentEnabled: false }))
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('exposes defaultAgentId when the hosted agent is enabled', async () => {
+      const { body } = await fetchConfig(createTestSettings({ agentEnabled: true }))
+      expect(body.defaultAgentId).toBe('hosted-agent')
+    })
+
     it('omits minAppVersion when MIN_APP_VERSION is unset', async () => {
       const { body } = await fetchConfig(createTestSettings())
       expect(body.minAppVersion).toBeUndefined()

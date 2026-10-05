@@ -14,6 +14,8 @@ export type AppConfig = {
   builtInAgentEnabled?: boolean
   allowCustomAgents?: boolean
   debugTranscriptsEnabled?: boolean
+  /** Id of the agent new threads should default to. Absent = built-in default. */
+  defaultAgentId?: string
   /** Minimum semver string the server allows. Clients below this are hard-blocked
    *  until they upgrade. Absent/empty = no enforcement. */
   minAppVersion?: string

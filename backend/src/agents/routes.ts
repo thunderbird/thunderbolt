@@ -9,15 +9,17 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
-import { getRegisteredProviders } from './discovery'
+import { getRegisteredProviders, registerAgentProvider } from './discovery'
+import { createHostedAgentProvider } from './hosted-agent-provider'
 import type { AgentsErrorResponse } from './types'
 
 /**
  * Mounts `GET /agents`, the ACP discovery endpoint.
  *
  * - Unauthenticated → 401 `{ error: 'Unauthorized' }`
- * - Anonymous user → 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` (anonymous sessions
- *   never see system agents; the FE falls back to the built-in only)
+ * - Anonymous user → 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` (the FE falls back to
+ *   the built-in only), unless `ALLOW_ANONYMOUS_AGENT_DISCOVERY` is set, in which
+ *   case they receive only descriptors flagged `anonymousSafe`
  * - Authenticated regular user → `AgentDiscoveryResponse`
  *
  * The agent list is built from {@link getRegisteredProviders}; the Haystack
@@ -28,8 +30,10 @@ import type { AgentsErrorResponse } from './types'
  * Settings are read on every request via {@link getSettings} so tests can
  * tweak env vars + `clearSettingsCache()` between cases.
  */
-export const createAgentsRoutes = (auth: Auth) =>
-  new Elysia({ name: 'agents-routes', prefix: '/agents' })
+export const createAgentsRoutes = (auth: Auth) => {
+  registerAgentProvider(createHostedAgentProvider())
+
+  return new Elysia({ name: 'agents-routes', prefix: '/agents' })
     .onError(safeErrorHandler)
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
@@ -42,17 +46,20 @@ export const createAgentsRoutes = (auth: Auth) =>
         set.status = 401
         return { error: 'Unauthorized' }
       }
-      if (user.isAnonymous) {
+
+      const settings = getSettings()
+      if (user.isAnonymous && !settings.allowAnonymousAgentDiscovery) {
         set.status = 403
         return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
       }
 
-      const settings = getSettings()
       const enabledIds = getEnabledAgentsList(settings)
       const allowedById = (id: string) => enabledIds.length === 0 || enabledIds.includes(id)
 
       const agents = collectAgents(request, settings)
-      const filtered = agents.filter((descriptor) => allowedById(descriptor.id))
+      const filtered = agents.filter(
+        (descriptor) => allowedById(descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe),
+      )
 
       return {
         version: '1',
@@ -60,6 +67,7 @@ export const createAgentsRoutes = (auth: Auth) =>
         allowCustomAgents: settings.allowCustomAgents,
       }
     })
+}
 
 /**
  * Asks every registered provider for its descriptors and concatenates the

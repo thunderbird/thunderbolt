@@ -56,7 +56,7 @@ const customDescriptor: RemoteAgentDescriptor = {
 
 describe('GET /agents', () => {
   /** Env-var keys this suite mutates. Saved + restored to avoid cross-file leakage. */
-  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS'] as const
+  const envKeys = ['ENABLED_AGENTS', 'ALLOW_CUSTOM_AGENTS', 'ALLOW_ANONYMOUS_AGENT_DISCOVERY'] as const
   let savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>>
 
   beforeEach(() => {
@@ -96,6 +96,41 @@ describe('GET /agents', () => {
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' })
+  })
+
+  it('returns only anonymous-safe agents to anonymous users when anonymous discovery is allowed', async () => {
+    const safe: RemoteAgentDescriptor = { ...customDescriptor, id: 'safe', anonymousSafe: true }
+    registerAgentProvider({ id: 'mixed', list: () => [haystackDescriptor, safe] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.agents).toEqual([safe])
+  })
+
+  it('still applies ENABLED_AGENTS to anonymous discovery', async () => {
+    const safe: RemoteAgentDescriptor = { ...customDescriptor, id: 'safe', anonymousSafe: true }
+    registerAgentProvider({ id: 'mixed', list: () => [safe] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    process.env.ENABLED_AGENTS = 'other'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'anon-1', isAnonymous: true }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect((await res.json()).agents).toEqual([])
+  })
+
+  it('does not narrow the list for authenticated users when anonymous discovery is allowed', async () => {
+    registerAgentProvider({ id: 'haystack', list: () => [haystackDescriptor] })
+    process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+    clearSettingsCache()
+
+    const app = buildApp(buildAuth({ id: 'user-1', isAnonymous: false }))
+    const res = await app.handle(new Request('http://localhost/agents'))
+    expect((await res.json()).agents).toEqual([haystackDescriptor])
   })
 
   it('returns 200 with the discovery envelope for an authenticated regular user', async () => {

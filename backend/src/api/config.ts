@@ -5,6 +5,7 @@
 import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { hostedAgentId } from '@/agents/hosted-agent-provider'
 import { Elysia } from 'elysia'
 
 /**
@@ -27,6 +28,8 @@ export const createConfigRoutes = (settings: Settings) =>
     allowCustomAgents: settings.allowCustomAgents,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
+    // Omit when no hosted agent is configured so the frontend keeps its built-in default.
+    defaultAgentId: settings.agentEnabled ? hostedAgentId : undefined,
     defaults: {
       models: {
         version: defaultModelsVersion,

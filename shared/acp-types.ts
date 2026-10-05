@@ -14,19 +14,26 @@ export type AgentType = 'built-in' | 'remote-acp' | 'managed-acp' | 'managed-htt
 
 export type AgentTransport = 'in-process' | 'websocket' | 'http'
 
-/** Descriptor returned by `GET /agents` for remote (`remote-acp`) and
- *  server-managed (`managed-acp`) agents. The built-in agent is never on the
- *  wire — it is a hardcoded frontend constant in `src/defaults/agents.ts`. */
-export type RemoteAgentDescriptor = {
+type AgentDescriptorBase = {
   id: string
   name: string
-  type: 'remote-acp' | 'managed-acp'
-  transport: 'websocket'
   url: string
   description: string | null
   icon: string | null
   isSystem: 0 | 1
+  /** Set by the server on agents anonymous sessions may discover and use. */
+  anonymousSafe?: boolean
 }
+
+/** Descriptor returned by `GET /agents` for remote (`remote-acp`),
+ *  server-managed (`managed-acp`) and server-hosted (`managed-http`) agents.
+ *  The built-in agent is never on the wire — it is a hardcoded frontend
+ *  constant in `src/defaults/agents.ts`. `managed-http` agents carry a
+ *  same-origin path (e.g. `/v1/agent/chat`) as `url` rather than `ws(s)://`. */
+export type RemoteAgentDescriptor =
+  | (AgentDescriptorBase & { type: 'remote-acp'; transport: 'websocket' })
+  | (AgentDescriptorBase & { type: 'managed-acp'; transport: 'websocket' })
+  | (AgentDescriptorBase & { type: 'managed-http'; transport: 'http' })
 
 /** Envelope for `GET /agents`. `version` lets us evolve the shape later;
  *  `allowCustomAgents` mirrors backend `ALLOW_CUSTOM_AGENTS` env so the UI can

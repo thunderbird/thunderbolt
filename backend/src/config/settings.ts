@@ -295,7 +295,7 @@ const parseSettings = (): Settings => {
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
     agentEnabled: process.env.AGENT_ENABLED === 'true',
     agentModel: process.env.AGENT_MODEL || '',
-    agentMaxSteps: process.env.AGENT_MAX_STEPS,
+    agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
     agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
     agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
     agentName: process.env.AGENT_NAME || '',

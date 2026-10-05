@@ -144,6 +144,11 @@ const settingsSchema = z
 
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
+    // Per-IP limit on auth endpoints, applied by both Better Auth and our 'auth' tier.
+    // Raise only with a captcha enabled: see docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust.
+    authRateLimitMax: z.coerce.number().int().positive().default(10),
+    authRateLimitWindowSecs: z.coerce.number().int().positive().default(60),
+    captchaProvider: z.enum(['altcha', 'turnstile', 'none']).default('none'),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -281,6 +286,9 @@ const parseSettings = (): Settings => {
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    authRateLimitMax: process.env.AUTH_RATE_LIMIT_MAX || undefined,
+    authRateLimitWindowSecs: process.env.AUTH_RATE_LIMIT_WINDOW_SECS || undefined,
+    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,

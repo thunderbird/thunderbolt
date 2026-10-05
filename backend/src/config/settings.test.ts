@@ -359,7 +359,13 @@ describe('Config Settings', () => {
   })
 
   describe('Rate limiting settings', () => {
-    const rateLimitEnvKeys = ['RATE_LIMIT_ENABLED', 'TRUSTED_PROXY'] as const
+    const rateLimitEnvKeys = [
+      'RATE_LIMIT_ENABLED',
+      'TRUSTED_PROXY',
+      'AUTH_RATE_LIMIT_MAX',
+      'AUTH_RATE_LIMIT_WINDOW_SECS',
+      'CAPTCHA_PROVIDER',
+    ] as const
 
     let savedEnv: Partial<Record<string, string>>
 
@@ -428,6 +434,45 @@ describe('Config Settings', () => {
 
     it('should reject invalid trustedProxy values', () => {
       process.env.TRUSTED_PROXY = 'nginx'
+      expect(() => getSettings()).toThrow()
+    })
+
+    it('should default the auth limit to 10 per 60 seconds and the captcha to none', () => {
+      delete process.env.AUTH_RATE_LIMIT_MAX
+      delete process.env.AUTH_RATE_LIMIT_WINDOW_SECS
+      delete process.env.CAPTCHA_PROVIDER
+      const settings = getSettings()
+      expect(settings.authRateLimitMax).toBe(10)
+      expect(settings.authRateLimitWindowSecs).toBe(60)
+      expect(settings.captchaProvider).toBe('none')
+    })
+
+    it('should treat empty auth limit and captcha env vars as unset', () => {
+      process.env.AUTH_RATE_LIMIT_MAX = ''
+      process.env.AUTH_RATE_LIMIT_WINDOW_SECS = ''
+      process.env.CAPTCHA_PROVIDER = ''
+      const settings = getSettings()
+      expect(settings.authRateLimitMax).toBe(10)
+      expect(settings.authRateLimitWindowSecs).toBe(60)
+      expect(settings.captchaProvider).toBe('none')
+    })
+
+    it('should read the auth limit and captcha provider from env', () => {
+      process.env.AUTH_RATE_LIMIT_MAX = '200'
+      process.env.AUTH_RATE_LIMIT_WINDOW_SECS = '30'
+      process.env.CAPTCHA_PROVIDER = 'ALTCHA'
+      const settings = getSettings()
+      expect(settings.authRateLimitMax).toBe(200)
+      expect(settings.authRateLimitWindowSecs).toBe(30)
+      expect(settings.captchaProvider).toBe('altcha')
+    })
+
+    it.each([
+      ['AUTH_RATE_LIMIT_MAX', '0'],
+      ['AUTH_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['CAPTCHA_PROVIDER', 'recaptcha'],
+    ])('should reject %s=%s', (key, value) => {
+      process.env[key] = value
       expect(() => getSettings()).toThrow()
     })
   })

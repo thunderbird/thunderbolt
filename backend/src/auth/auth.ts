@@ -32,6 +32,7 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
+import { captchaTokenHeader, createCaptchaVerifier } from './captcha'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
 import { eq } from 'drizzle-orm'
@@ -65,6 +66,7 @@ export const signInOtpOptions = ({
 }
 
 const otpSignInPath = '/sign-in/email-otp'
+const anonymousSignInPath = '/sign-in/anonymous'
 const deviceTokenPath = '/device/token'
 const authTokenHeader = 'set-auth-token'
 
@@ -147,6 +149,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
   const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
   const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
+  const captchaVerifier = createCaptchaVerifier(settings)
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -185,14 +188,17 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only.
-    // TODO(THU-113): Replace with proof-of-work challenge (ALTCHA) for distributed protection.
+    // horizontally-scaled deployments. Provides single-instance defence only; the
+    // captcha on anonymous sign-in (CAPTCHA_PROVIDER) is the distributed bot control.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
-      window: 60,
-      max: 10,
+      window: settings.authRateLimitWindowSecs,
+      max: settings.authRateLimitMax,
       customRules: {
         '/get-session': { window: 1, max: 30 },
+        // Better Auth's built-in rule caps every /sign-in* path at 3 per 10s, which would
+        // override a raised AUTH_RATE_LIMIT_MAX. Anonymous sign-in follows the auth limit.
+        [anonymousSignInPath]: { window: settings.authRateLimitWindowSecs, max: settings.authRateLimitMax },
       },
     },
     advanced: {
@@ -249,7 +255,13 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         // able to acquire a new anonymous session that could shadow their real session.
         // Reject /sign-in/anonymous if caller is already authenticated as a non-anonymous
         // user. Anonymous sign-in is intentionally NOT waitlist-gated.
-        if (ctx.path === '/sign-in/anonymous') {
+        if (ctx.path === anonymousSignInPath) {
+          const captchaSolved = await captchaVerifier.verify(ctx.headers?.get(captchaTokenHeader) ?? null, {
+            headers: ctx.headers,
+          })
+          if (!captchaSolved) {
+            throw ctx.error('FORBIDDEN', { message: 'Captcha verification failed' })
+          }
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
           if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
             throw ctx.error('BAD_REQUEST', { message: 'Already authenticated' })

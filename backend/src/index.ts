@@ -87,12 +87,17 @@ export const createApp = async (deps?: AppDeps) => {
 
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
+  const authIpRateLimitSettings = {
+    ...ipRateLimitSettings,
+    max: settings.authRateLimitMax,
+    durationSecs: settings.authRateLimitWindowSecs,
+  }
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
-    createAuthIpRateLimit(database, ipRateLimitSettings),
+    createAuthIpRateLimit(database, authIpRateLimitSettings),
   )
   const auth = deps?.auth ?? createdAuth
 
@@ -195,7 +200,7 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           emailService: deps?.waitlistEmailService,
           cooldownMs: deps?.otpCooldownMs,
-          ipRateLimit: createAuthIpRateLimit(database, ipRateLimitSettings),
+          ipRateLimit: createAuthIpRateLimit(database, authIpRateLimitSettings),
         }),
       )
       .use(createPowerSyncRoutes(auth, settings, database))

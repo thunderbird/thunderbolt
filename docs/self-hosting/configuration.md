@@ -96,12 +96,22 @@ To obtain a key, contact the Thunderbolt team with a name for your deployment. T
 
 ## Rate Limiting and Proxy Trust
 
-| Variable             | Default | Description                                                                                               |
-| -------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED` | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
-| `TRUSTED_PROXY`      | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
+| Variable                      | Default | Description                                                                                               |
+| ----------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`          | `true`  | Set to `false` to disable rate limiting (local dev only)                                                  |
+| `TRUSTED_PROXY`               | `""`    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the socket IP |
+| `AUTH_RATE_LIMIT_MAX`         | `10`    | Requests per IP per window on auth endpoints (sign-in, OTP send, waitlist join)                           |
+| `AUTH_RATE_LIMIT_WINDOW_SECS` | `60`    | Window for `AUTH_RATE_LIMIT_MAX`, in seconds                                                              |
+| `CAPTCHA_PROVIDER`            | `none`  | Captcha on anonymous sign-in: `none`, `altcha`, or `turnstile`. Only `none` is supported today            |
 
 Trusting the wrong proxy header lets a client spoof its IP for rate-limit bypass. Leave this empty unless you know your edge.
+
+The auth limit is enforced twice: by our database-backed limiter, which is shared across instances, and by Better Auth's own limiter, which is in-memory and therefore counts per instance. Both read `AUTH_RATE_LIMIT_MAX` and `AUTH_RATE_LIMIT_WINDOW_SECS`, and anonymous sign-in follows the same limit.
+
+Whether to raise the limit depends on the captcha:
+
+- **With a captcha enabled**, the captcha is the bot control. You can raise the IP limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
+- **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
 
 ## App Version Gate
 

@@ -15,7 +15,7 @@ import {
   createIpTierRateLimit,
   createRateLimitConsumer,
   createUserTierRateLimit,
-  type IpRateLimitSettings,
+  type AuthIpRateLimitSettings,
   type RateLimitSettings,
   type UserRateLimitTier,
 } from './rate-limit'
@@ -37,7 +37,7 @@ const createTestApp = (
     .get('/v1/test', () => ({ ok: true }))
 
 /** Helper that creates a test app with IP-based rate limiting (trustedProxy=cloudflare). */
-const createIpTestApp = (database: typeof DbType, settings: IpRateLimitSettings) =>
+const createIpTestApp = (database: typeof DbType, settings: AuthIpRateLimitSettings) =>
   new Elysia().use(createAuthIpRateLimit(database, settings)).get('/v1/test', () => ({ ok: true }))
 
 /** Build a request with a given client IP via the CF-Connecting-IP header. */
@@ -275,7 +275,7 @@ describe('Rate Limiting', () => {
   })
 
   describe('IP-based rate limiting', () => {
-    const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
+    const ipSettings: AuthIpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare', max: 10, durationSecs: 60 }
 
     it('returns an empty IP tier plugin when disabled', async () => {
       const plugin = createIpTierRateLimit(database, { ...ipSettings, enabled: false }, 'debug-transcript-intake')
@@ -404,8 +404,19 @@ describe('Rate Limiting', () => {
       expect(allowedByUser.status).toBe(200)
     })
 
+    it('should apply a raised auth limit from settings', async () => {
+      const app = createIpTestApp(database, { ...ipSettings, max: 25 })
+
+      for (let i = 0; i < 25; i++) {
+        expect((await app.handle(requestWithIp('10.0.0.9'))).status).toBe(200)
+      }
+      const blocked = await app.handle(requestWithIp('10.0.0.9'))
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('ratelimit-limit')).toBe('25')
+    })
+
     it('should not rate limit when disabled', async () => {
-      const disabledSettings: IpRateLimitSettings = { enabled: false, trustedProxy: 'cloudflare' }
+      const disabledSettings: AuthIpRateLimitSettings = { ...ipSettings, enabled: false }
       const app = createIpTestApp(database, disabledSettings)
 
       for (let i = 0; i < 15; i++) {
@@ -416,7 +427,7 @@ describe('Rate Limiting', () => {
   })
 
   describe('IP rate limiting with fetch handlers (mount bypass regression)', () => {
-    const ipSettings: IpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare' }
+    const ipSettings: AuthIpRateLimitSettings = { enabled: true, trustedProxy: 'cloudflare', max: 10, durationSecs: 60 }
 
     /** Minimal WinterCG-compatible fetch handler (simulates Better Auth's auth.handler). */
     const fakeFetchHandler = (_req: Request) =>

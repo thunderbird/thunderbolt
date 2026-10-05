@@ -182,6 +182,19 @@ const settingsSchema = z
     // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
+
+    // Hosted agent settings. These configure a server-hosted agent that ships in later PRs and are
+    // inert today: nothing reads them yet.
+    agentEnabled: z.boolean().default(false),
+    agentModel: z.string().default(''),
+    agentMaxSteps: z.coerce.number().int().positive().default(8),
+    agentSystemPrompt: z.string().default(''),
+    // JSON array of MCP server descriptors the hosted agent may call.
+    agentMcpServers: z.string().default(''),
+    agentName: z.string().default(''),
+    agentDescription: z.string().default(''),
+    agentIcon: z.string().default(''),
+    allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -289,6 +302,15 @@ const parseSettings = (): Settings => {
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    agentEnabled: process.env.AGENT_ENABLED === 'true',
+    agentModel: process.env.AGENT_MODEL || '',
+    agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
+    agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
+    agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
+    agentName: process.env.AGENT_NAME || '',
+    agentDescription: process.env.AGENT_DESCRIPTION || '',
+    agentIcon: process.env.AGENT_ICON || '',
+    allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
   }
 
   return settingsSchema.parse(env)

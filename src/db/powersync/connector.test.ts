@@ -7,10 +7,15 @@ import { clearAuthToken, clearDeviceId, setAuthToken } from '@/lib/auth-token'
 import { getClock } from '@/testing-library'
 import { clearAllKeys, generateAK, getPrimaryKeyId, storeAK, storePrimaryKeyId } from '@/crypto'
 import { resetCodecState } from '@/db/encryption'
-import type { AbstractPowerSyncDatabase } from '@powersync/web'
+import { SyncStatus, type AbstractPowerSyncDatabase } from '@powersync/web'
 import { act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { handleCredentialsInvalidIfNeeded, powersyncCredentialsInvalid, ThunderboltConnector } from './connector'
+import {
+  handleCredentialsInvalidIfNeeded,
+  isCreateOnlyWrite,
+  powersyncCredentialsInvalid,
+  ThunderboltConnector,
+} from './connector'
 
 const authToken = 'test-auth-token'
 const backendUrl = 'https://api.test/v1'
@@ -226,6 +231,9 @@ describe('ThunderboltConnector', () => {
       const complete = mock(() => Promise.resolve())
       const database = Object.create(null) as AbstractPowerSyncDatabase
       database.getNextCrudTransaction = async () => ({ crud: [], haveMore: false, complete })
+      // `currentStatus` is non-optional on the real class, so the stub has to
+      // carry it — `uploadData` reads it to classify create-only writes.
+      database.currentStatus = new SyncStatus({})
       fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
       const connector = new ThunderboltConnector(connectorUrl, createFetchStub(fetchMock))
 
@@ -357,6 +365,10 @@ describe('ThunderboltConnector primary-key load (TD3)', () => {
   // primary-key-load path we're testing (encryption of a real column is Track C's concern).
   const makeDatabase = (): AbstractPowerSyncDatabase =>
     ({
+      // The real database always carries `currentStatus`; `uploadData` reads it
+      // before reaching the primary-key path under test. DELETE is never
+      // create-only, so the value itself is immaterial here.
+      currentStatus: { hasSynced: true },
       getNextCrudTransaction: async () => ({
         crud: [{ op: 'DELETE', table: 'tasks', id: 'row-1', opData: null }],
         complete: async () => {},
@@ -436,6 +448,10 @@ describe('ThunderboltConnector upload encryption gate', () => {
   const makeDatabase = () => {
     let completed = false
     const database = {
+      // An established device: `hasSynced` only drives the create-only tag,
+      // which never applies to the PATCH below, but the real database always
+      // carries `currentStatus` and `uploadData` reads it before the gate.
+      currentStatus: { hasSynced: true },
       getNextCrudTransaction: async () => ({
         crud: [{ op: 'PATCH', table: 'tasks', id: 'row-1', opData: { item: 'buy milk' } }],
         complete: async () => {
@@ -711,5 +727,114 @@ describe('ThunderboltConnector download encryption gate', () => {
     expect(credentials?.token).toBe('ps-token')
     expect(canaryRequested()).toBe(false)
     expect(invalidReasons()).toEqual([])
+  })
+})
+
+describe('isCreateOnlyWrite', () => {
+  it('marks a PUT queued before the first sync as create-only', () => {
+    // GH #1299: this is the seeded `user_has_completed_onboarding = false` a
+    // fresh device queues at boot. It must not beat the account's real value.
+    expect(isCreateOnlyWrite('PUT', false)).toBe(true)
+  })
+
+  it('leaves a PUT unconditional once the device has synced', () => {
+    expect(isCreateOnlyWrite('PUT', true)).toBe(false)
+  })
+
+  it('never constrains PATCH, so resetting a setting to its default still propagates', () => {
+    // A reset writes content identical to a fresh seed, hash included, so any
+    // content-based rule would swallow it. It reaches the server as a PATCH
+    // (the row already exists locally), which this rule deliberately ignores.
+    expect(isCreateOnlyWrite('PATCH', false)).toBe(false)
+    expect(isCreateOnlyWrite('PATCH', true)).toBe(false)
+  })
+
+  it('never constrains DELETE', () => {
+    expect(isCreateOnlyWrite('DELETE', false)).toBe(false)
+    expect(isCreateOnlyWrite('DELETE', true)).toBe(false)
+  })
+})
+
+describe('ThunderboltConnector.uploadData', () => {
+  let savedAuthMode: string | undefined
+
+  const crudEntry = (op: string, id: string) => ({ op, table: 'settings', id, opData: { value: 'false' } })
+
+  const stubDatabase = (hasSynced: boolean, crud: ReturnType<typeof crudEntry>[]) =>
+    ({
+      currentStatus: { hasSynced },
+      getNextCrudTransaction: async () => ({ crud, complete: async () => {} }),
+    }) as unknown as AbstractPowerSyncDatabase
+
+  /**
+   * These tests are about the create-only tag, not encryption, so the account
+   * answers the gate's probe with "E2EE was never set up" — the one state in
+   * which `uploadData` is allowed to pass plaintext through. Anything else and
+   * the gate defers the batch before a payload is ever built.
+   */
+  const uploadFetchSpy = () =>
+    mock(async (url: string) =>
+      url.includes('/encryption/canary')
+        ? new Response(JSON.stringify({ error: 'Encryption not set up' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        : Response.json({ success: true }),
+    )
+
+  /** Picks the upload call by URL — the probe above is also on the spy. */
+  const uploadedOperations = (fetchSpy: ReturnType<typeof mock>) => {
+    const call = fetchSpy.mock.calls.find(([url]) => (url as string).includes('/powersync/upload'))
+    if (!call) {
+      throw new Error('no upload request was made')
+    }
+    const [, init] = call as [string, RequestInit]
+    return (JSON.parse(init.body as string) as { operations: Record<string, unknown>[] }).operations
+  }
+
+  beforeEach(async () => {
+    savedAuthMode = import.meta.env.VITE_AUTH_MODE
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = undefined
+    setAuthToken(authToken)
+    await clearAllKeys()
+    resetCodecState()
+  })
+
+  afterEach(async () => {
+    ;(import.meta.env as Record<string, unknown>).VITE_AUTH_MODE = savedAuthMode
+    await clearAllKeys()
+    resetCodecState()
+    clearAuthToken()
+    clearDeviceId()
+  })
+
+  it('tags PUTs queued before the first sync as create-only (GH #1299)', async () => {
+    const fetchSpy = uploadFetchSpy()
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(false, [crudEntry('PUT', 'user_has_completed_onboarding')]))
+
+    expect(uploadedOperations(fetchSpy)[0].ifAbsent).toBe(true)
+  })
+
+  it('leaves the payload unchanged once the device has synced', async () => {
+    const fetchSpy = uploadFetchSpy()
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(true, [crudEntry('PUT', 'user_has_completed_onboarding')]))
+
+    // Absent rather than `false`: an established device must send exactly what
+    // previous builds sent, so the new field only appears in the window it is
+    // needed for.
+    expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
+  })
+
+  it('never tags a PATCH, so an edit made before the first sync still wins', async () => {
+    const fetchSpy = uploadFetchSpy()
+    const connector = new ThunderboltConnector(backendUrl, createFetchStub(fetchSpy))
+
+    await connector.uploadData(stubDatabase(false, [crudEntry('PATCH', 'currency')]))
+
+    expect(uploadedOperations(fetchSpy)[0]).not.toHaveProperty('ifAbsent')
   })
 })

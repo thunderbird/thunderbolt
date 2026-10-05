@@ -340,6 +340,9 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
               type: t.String(),
               id: t.String(),
               data: t.Optional(t.Record(t.String(), t.Unknown())),
+              // Create-only PUT — see `PowerSyncOperation.ifAbsent` in dal/powersync.ts.
+              // Optional so a client older than this field keeps uploading unchanged.
+              ifAbsent: t.Optional(t.Boolean()),
             }),
           ),
         }),

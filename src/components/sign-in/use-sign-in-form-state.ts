@@ -3,15 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { AuthClient } from '@/contexts'
-import { authRequestHeaders } from '@/contexts/auth-context'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
-import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
-import { updateSettings } from '@/dal'
-import { getDb, getDatabaseInstance } from '@/db/database'
 import { isValidEmailFormat } from '@/lib/utils'
 import { useReducer, type FormEvent } from 'react'
 
@@ -108,76 +106,6 @@ type UseSignInFormStateOptions = {
   initialChallengeToken?: string
 }
 
-/** Better Auth includes `isNew` on the user object at runtime but not in its types. */
-export const isNewAuthUser = (user: unknown): boolean =>
-  typeof user === 'object' && user !== null && 'isNew' in user && (user as { isNew: unknown }).isNew === true
-
-type OnSignInSuccessDeps = {
-  getDatabase?: typeof getDatabaseInstance
-  getDrizzle?: typeof getDb
-}
-
-/**
- * Sync is disabled by default after sign-in/sign-up; user can enable it in Preferences.
- * For returning non-anonymous users only: reset pending CRUD operations so that when they
- * later enable sync, local ops do not conflict with cloud data.
- *
- * `wasAnonymous` short-circuits this for the anonymous → real-account promotion case —
- * the queued PUTs in `ps_crud` are exactly the anon-session writes we WANT to upload
- * under the new identity. Wiping them here would silently destroy the user's anon-session
- * work.
- */
-/**
- * Run one piece of post-auth housekeeping without letting it fail the sign-in.
- *
- * The caller translates any throw into a "verification failed" UI even though
- * the OTP was already consumed and the user IS authenticated — so every step
- * has to contain its own errors. Each step gets its own call: sharing one
- * `try` meant a failure in the first silently abandoned the rest.
- */
-const runContained = async (label: string, step: () => Promise<void>): Promise<void> => {
-  try {
-    await step()
-  } catch (error) {
-    console.error(`Sign-in housekeeping failed (${label}):`, error)
-  }
-}
-
-export const onSignInSuccess = async (
-  isNewUser: boolean,
-  wasAnonymous: boolean,
-  deps: OnSignInSuccessDeps = {},
-): Promise<void> => {
-  if (isNewUser || wasAnonymous) {
-    // Worth a warn, not an info: these queued ops WILL upload once sync is
-    // enabled, so this line is the marker for "local writes were kept and may
-    // reach the server" — the one branch where that is intended.
-    console.warn(`[auth] Keeping pending CRUD after sign-in (isNewUser=${isNewUser}, wasAnonymous=${wasAnonymous})`)
-    return
-  }
-
-  const { getDatabase = getDatabaseInstance, getDrizzle = getDb } = deps
-
-  // Reset FIRST, then write. The old order did the reverse and wiped the
-  // onboarding flag it had just written, so that setting never left the device
-  // — and any throw from the write skipped the reset entirely, which is the
-  // failure that lets a returning device's queued defaults overwrite the
-  // account on its first connect.
-  await runContained('clear pending CRUD', async () => {
-    const database = getDatabase()
-    if (!('clearPendingCrudOperations' in database)) {
-      return
-    }
-    await (database as { clearPendingCrudOperations: () => Promise<void> }).clearPendingCrudOperations()
-  })
-
-  // A returning user has signed in before, so they necessarily completed
-  // onboarding. Sync is off by default, so there is no other way to know.
-  await runContained('mark onboarding complete', async () => {
-    await updateSettings(getDrizzle(), { user_has_completed_onboarding: true })
-  })
-}
-
 /**
  * State hook for SignInModal
  * Separates computation/logic from display for easier testing
@@ -202,7 +130,6 @@ export const useSignInFormState = ({
   })
 
   const analytics = useAnonymousPromotionAnalytics()
-  const { data: session } = authClient.useSession()
   const isValidEmail = isValidEmailFormat(state.email.trim())
 
   const handleSubmit = async (e: FormEvent) => {
@@ -238,19 +165,15 @@ export const useSignInFormState = ({
 
     await analytics.captureAnonId(authClient)
 
-    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
-    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
-    const wasAnonymous = session?.user?.isAnonymous === true
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      const result = await authClient.signIn.emailOtp({
+      // `state.challengeToken` is always a string, so the header is always sent
+      // — including empty, as before.
+      const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
-        fetchOptions: {
-          headers: authRequestHeaders({ [challengeTokenHeader]: state.challengeToken }),
-        },
+        challengeToken: state.challengeToken,
       })
 
       if (result.error) {
@@ -258,8 +181,6 @@ export const useSignInFormState = ({
         return
       }
 
-      const isNewUser = isNewAuthUser(result.data?.user)
-      await onSignInSuccess(isNewUser, wasAnonymous)
       if (result.data?.user?.id) {
         analytics.onPromotionSuccess(result.data.user.id)
       }

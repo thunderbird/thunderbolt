@@ -14,7 +14,6 @@ import { createCorsMiddleware } from '@/config/cors'
 import { getCorsOriginsList, getSettings } from '@/config/settings'
 import { runMigrations } from '@/db/client'
 import { createInferenceRoutes } from '@/inference/routes'
-import { createAgentRoutes } from '@/agent/routes'
 import { createAppVersionMiddleware } from '@/middleware/app-version'
 import { createInferenceUsageReceiptRoutes } from '@/inference/usage-receipt-routes'
 import { createErrorHandlingMiddleware } from '@/middleware/error-handling'
@@ -38,6 +37,7 @@ import { createWaitlistRoutes } from '@/waitlist/routes'
 import { createAccountRoutes } from '@/api/account'
 import { createAgentsRoutes } from '@/agents'
 import { createHaystackRoutes } from '@/haystack'
+import { createHostedAgentRoutes } from '@/hosted-agent/routes'
 import { createConfigRoutes } from '@/api/config'
 import { createEncryptionRoutes } from '@/api/encryption'
 import { createPowerSyncRoutes } from '@/api/powersync'
@@ -89,6 +89,7 @@ export const createApp = async (deps?: AppDeps) => {
   const rateLimitSettings = { enabled: settings.rateLimitEnabled }
   const ipRateLimitSettings = { ...rateLimitSettings, trustedProxy: settings.trustedProxy }
   const proRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'pro')
+  const inferenceRateLimit = createUserTierRateLimit(database, rateLimitSettings, 'inference')
 
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
@@ -108,12 +109,12 @@ export const createApp = async (deps?: AppDeps) => {
       logger: appLogger,
     })
 
-  const agentRoutes = await createAgentRoutes({
+  const hostedAgentRoutes = await createHostedAgentRoutes({
     auth,
     database,
     settings,
     logger: appLogger,
-    rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
+    rateLimit: inferenceRateLimit,
   })
 
   return (
@@ -177,10 +178,10 @@ export const createApp = async (deps?: AppDeps) => {
           database,
           fetchFn: deps?.fetchFn,
           logger: appLogger,
-          rateLimit: createUserTierRateLimit(database, rateLimitSettings, 'inference'),
+          rateLimit: inferenceRateLimit,
         }),
       )
-      .use(agentRoutes)
+      .use(hostedAgentRoutes)
       .use(createConfigRoutes(settings))
       .use(
         createDebugTranscriptsRoutes({

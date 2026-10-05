@@ -25,6 +25,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { isTauriDesktop } from '@/lib/platform'
 import { sharedHeaderHasControls } from '@/layout/shared-header'
+import { MiniAppDownloadPrompt } from './mini-app-download-prompt'
 import { useMiniAppBridge } from './use-mini-app-bridge'
 import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
@@ -119,11 +120,21 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
     return () => closeApp()
   }, [app, openApp, closeApp])
 
-  const { frameRef, status, selection, clearSelection, queryElementAt, runtimeError, handleFrameLoad, reloadFrame } =
-    useMiniAppBridge({
-      app,
-      onChatOpen: openChat,
-    })
+  const {
+    frameRef,
+    status,
+    selection,
+    clearSelection,
+    queryElementAt,
+    runtimeError,
+    handleFrameLoad,
+    reloadFrame,
+    pendingDownload,
+    answerDownload,
+  } = useMiniAppBridge({
+    app,
+    onChatOpen: openChat,
+  })
 
   const { mode, startPicking, dismiss, pointAt, pickAt } = useElementPicking({
     query: queryElementAt,
@@ -302,6 +313,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
           </>
         )}
       </ResizablePanelGroup>
+      <MiniAppDownloadPrompt appName={app.name} download={pendingDownload} onAnswer={answerDownload} />
     </div>
   )
 }

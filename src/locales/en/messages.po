@@ -86,6 +86,10 @@ msgid_plural "# skills"
 msgstr[0] "# skill"
 msgstr[1] "# skills"
 
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "{fileName} will be saved to your Downloads folder."
+msgstr "{fileName} will be saved to your Downloads folder."
+
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
 msgstr "{label} — already in this project"
@@ -3019,10 +3023,15 @@ msgstr "Run this on the machine hosting the bridge, then add it — the connecti
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
 msgstr "Save"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Save a file from {appName}?"
+msgstr "Save a file from {appName}?"
 
 #: src/projects/project-form.tsx
 msgid "Save changes"
@@ -4402,6 +4411,10 @@ msgstr "Your assistant can help you manage your email and calendar."
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "Your assistant can help you manage your email, calendar, and documents."
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Your browser will download {fileName}."
+msgstr "Your browser will download {fileName}."
 
 #: src/widgets/ask/display.tsx
 msgid "Your call"

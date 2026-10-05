@@ -21,6 +21,7 @@ export {
   type AuthToken,
   type ConnectOptions,
   type Connection,
+  type DownloadableFile,
   type HostContext,
   type MiniAppContext,
   type Platform,

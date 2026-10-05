@@ -92,6 +92,10 @@ msgstr[0] "# compétence"
 msgstr[1] "# compétences"
 msgstr[2] "# compétences"
 
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "{fileName} will be saved to your Downloads folder."
+msgstr ""
+
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
 msgstr "{label} — déjà dans ce projet"
@@ -3031,10 +3035,15 @@ msgstr "Exécutez ceci sur la machine qui héberge le bridge, puis ajoutez-le �
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
 msgstr "Enregistrer"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Save a file from {appName}?"
+msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Save changes"
@@ -4414,6 +4423,10 @@ msgstr "Votre assistant peut vous aider à gérer vos e-mails et votre agenda."
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "Votre assistant peut vous aider à gérer vos e-mails, votre agenda et vos documents."
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Your browser will download {fileName}."
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Your call"

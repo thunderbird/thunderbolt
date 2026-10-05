@@ -17,6 +17,7 @@ import {
   NotEmbeddedError,
   type AuthToken,
   type Connection,
+  type DownloadableFile,
   type HostContext,
   type MiniAppContext,
 } from './bridge'
@@ -35,6 +36,10 @@ export type ThunderboltState = {
    * or when the host has no audience configured for this app.
    */
   getAuthToken: () => Promise<AuthToken | null>
+  /** Whether the host can save files, so an export control can hide where it cannot. */
+  canDownloadFiles: boolean
+  /** Ask the host to save a file; see `Connection.downloadFile`. Rejects when not connected. */
+  downloadFile: (file: DownloadableFile) => Promise<void>
   /**
    * Why the connection failed, when it failed for a reason worth showing.
    *
@@ -82,7 +87,9 @@ export const useThunderbolt = (
     hostOrigin?: string
   } = {},
 ): ThunderboltState => {
-  const [connected, setConnected] = useState(false)
+  // One value because both settle at the same moment: when the handshake lands.
+  const [link, setLink] = useState({ connected: false, canDownloadFiles: false })
+  const { connected, canDownloadFiles } = link
   // Patched rather than replaced: host-context updates carry only what changed.
   const [hostContext, setHostContext] = useState<HostContext>({ theme: 'light', locale: 'en', platform: 'web' })
   const [connectionError, setConnectionError] = useState<string | null>(null)
@@ -146,7 +153,7 @@ export const useThunderbolt = (
      * nothing; and even when it succeeded, an app that publishes context off a
      * `connected` transition never saw one, so it never re-sent its state.
      */
-    setConnected(false)
+    setLink({ connected: false, canDownloadFiles: false })
     setConnectionError(null)
 
     const open = async (): Promise<void> => {
@@ -168,7 +175,7 @@ export const useThunderbolt = (
           return
         }
         connectionRef.current = connection
-        setConnected(true)
+        setLink({ connected: true, canDownloadFiles: connection.canDownloadFiles })
       } catch (error) {
         if (cancelled) {
           return
@@ -207,6 +214,12 @@ export const useThunderbolt = (
   // posting an identical message across the bridge each time.
   const openChat = useCallback((prompt?: string) => connectionRef.current?.openChat(prompt), [])
   const getAuthToken = useCallback(async () => (await connectionRef.current?.getAuthToken()) ?? null, [])
+  const downloadFile = useCallback(async (file: DownloadableFile) => {
+    if (!connectionRef.current) {
+      throw new Error('Not connected to Thunderbolt')
+    }
+    await connectionRef.current.downloadFile(file)
+  }, [])
 
-  return { connected, hostContext, openChat, getAuthToken, connectionError }
+  return { connected, hostContext, openChat, getAuthToken, canDownloadFiles, downloadFile, connectionError }
 }

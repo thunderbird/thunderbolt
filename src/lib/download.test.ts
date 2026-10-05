@@ -17,15 +17,18 @@ const request = { name: 'q3.html', contents: '<p>x</p>', mimeType: 'text/html' }
  * takes the module as an argument for exactly this.
  */
 const fakeFs = (taken: string[] = []) => {
-  const written: { name: string; contents: string; createNew?: boolean }[] = []
-  const fs: DownloadFs = {
-    downloadBaseDir: 7,
-    writeTextFile: mock(async (name: string, contents: string, options: { createNew?: boolean }) => {
+  const written: { name: string; contents: string | Uint8Array; createNew?: boolean; via: string }[] = []
+  const write =
+    (via: string) => async (name: string, contents: string | Uint8Array, options: { createNew?: boolean }) => {
       if (taken.includes(name)) {
         throw new Error(`File exists (os error 17): ${name}`)
       }
-      written.push({ name, contents, createNew: options.createNew })
-    }),
+      written.push({ name, contents, createNew: options.createNew, via })
+    }
+  const fs: DownloadFs = {
+    downloadBaseDir: 7,
+    writeTextFile: mock(write('writeTextFile')),
+    writeFile: mock(write('writeFile')),
   }
   return { fs, written }
 }
@@ -61,6 +64,27 @@ describe('downloadFile on the web', () => {
     expect(clicked).toEqual(['q3.html'])
   })
 
+  it('downloads bytes as a blob of the given type', async () => {
+    const blobs: Blob[] = []
+    const createObjectURL = URL.createObjectURL
+    URL.createObjectURL = (blob: Blob) => {
+      blobs.push(blob)
+      return 'blob:test'
+    }
+    try {
+      await downloadFile({
+        name: 'report.pdf',
+        contents: new Uint8Array([37, 80, 68, 70]),
+        mimeType: 'application/pdf',
+      })
+    } finally {
+      URL.createObjectURL = createObjectURL
+    }
+
+    expect(blobs[0]?.type).toBe('application/pdf')
+    expect(new Uint8Array(await blobs[0]!.arrayBuffer())).toEqual(new Uint8Array([37, 80, 68, 70]))
+  })
+
   it('cleans the anchor up', async () => {
     await downloadFile(request)
 
@@ -75,7 +99,29 @@ describe('downloadFile on the desktop', () => {
     const { fs, written } = fakeFs()
 
     expect(await downloadFile(request, fs)).toBe('q3.html')
-    expect(written).toEqual([{ name: 'q3.html', contents: '<p>x</p>', createNew: true }])
+    expect(written).toEqual([{ name: 'q3.html', contents: '<p>x</p>', createNew: true, via: 'writeTextFile' }])
+  })
+
+  /** Bytes need `writeFile` and its own grant; text keeps the `writeTextFile` it always used. */
+  it('writes bytes with writeFile and text with writeTextFile', async () => {
+    const { fs, written } = fakeFs()
+    const bytes = new Uint8Array([37, 80, 68, 70])
+    await downloadFile({ name: 'report.pdf', contents: bytes, mimeType: 'application/pdf' }, fs)
+    await downloadFile(request, fs)
+
+    expect(written.map(({ name, via }) => [name, via])).toEqual([
+      ['report.pdf', 'writeFile'],
+      ['q3.html', 'writeTextFile'],
+    ])
+    expect(written[0]?.contents).toBe(bytes)
+  })
+
+  it('suffixes a taken name for bytes too', async () => {
+    const { fs } = fakeFs(['report.pdf'])
+
+    expect(
+      await downloadFile({ name: 'report.pdf', contents: new Uint8Array([1]), mimeType: 'application/pdf' }, fs),
+    ).toBe('report (1).pdf')
   })
 
   /**
@@ -108,6 +154,9 @@ describe('downloadFile on the desktop', () => {
     const fs: DownloadFs = {
       downloadBaseDir: 7,
       writeTextFile: async () => {
+        throw new Error('forbidden path: $DOWNLOAD/q3.html')
+      },
+      writeFile: async () => {
         throw new Error('forbidden path: $DOWNLOAD/q3.html')
       },
     }

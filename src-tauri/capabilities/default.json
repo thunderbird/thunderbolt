@@ -89,6 +89,14 @@
           "path": "$DOWNLOAD/*"
         }
       ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [
+        {
+          "path": "$DOWNLOAD/*"
+        }
+      ]
     }
   ],
   "remote": {

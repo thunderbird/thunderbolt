@@ -141,6 +141,16 @@ export const miniAppGuestMethods = {
    * that wants the same treatment forwards its own errors here.
    */
   runtimeError: 'ui/notifications/error',
+  /**
+   * "Save this file for the user."
+   *
+   * The frame cannot save anything itself: its sandbox has no `allow-downloads`,
+   * and the desktop webview has no download manager at all. Name and params are
+   * MCP Apps' own (draft spec): one embedded resource whose `uri` names the file
+   * and whose `text` or base64 `blob` is the content. The host asks the user
+   * before writing anything, as that spec asks hosts to.
+   */
+  downloadFile: 'ui/download-file',
 } as const
 
 /** Methods Thunderbolt sends to the guest app. */
@@ -269,6 +279,8 @@ export type MiniAppHostCapabilities = {
    * and say so.
    */
   auth: boolean
+  /** The host answers `ui/download-file`. MCP Apps calls this capability `downloadFile` too. */
+  downloadFile: boolean
 }
 
 /**
@@ -469,11 +481,50 @@ export const requestAuthTokenSchema = envelopeSchema.extend({
 })
 
 /**
+ * `ui/download-file`: guest → host request.
+ *
+ * `params` is left to the host, which parses it with
+ * {@link downloadFileParamsSchema}. A request this envelope rejected would be
+ * dropped unanswered and the guest would wait out its deadline; parsed in the
+ * handler, a malformed one is answered with what was wrong with it.
+ */
+export const downloadFileRequestSchema = envelopeSchema.extend({
+  id: jsonRpcIdSchema,
+  method: z.literal(miniAppGuestMethods.downloadFile),
+  // Optional, or zod drops a request that omits `params` before the host can answer it.
+  params: z.unknown().optional(),
+})
+
+/**
+ * The content the host saves: exactly one MCP `EmbeddedResource`, carrying the
+ * file as UTF-8 `text` or base64 `blob`.
+ *
+ * MCP Apps also allows a `ResourceLink`, which the host fetches from a URL. Not
+ * supported: the host would be fetching on the app's behalf without the app's
+ * credentials, so the fetch would fail for any file worth protecting.
+ */
+export const downloadFileParamsSchema = z.object({
+  contents: z.tuple([
+    z.object({
+      type: z.literal('resource'),
+      resource: z.object({
+        /** The file's name is this URI's last path segment, decoded. */
+        uri: z.string(),
+        mimeType: z.string().optional(),
+        text: z.string().optional(),
+        blob: z.string().optional(),
+      }),
+    }),
+  ]),
+})
+
+/**
  * Every message the host accepts from a guest. A discriminated union on `method`
  * so an unknown method fails parsing here rather than deeper in the bridge.
  */
 export const miniAppGuestMessageSchema = z.discriminatedUnion('method', [
   requestAuthTokenSchema,
+  downloadFileRequestSchema,
   initializeRequestSchema,
   chatOpenRequestSchema,
   selectionChangedNotificationSchema,
@@ -980,6 +1031,13 @@ export const miniAppRpcErrors = {
    * asking rather than retrying a request that will never succeed.
    */
   authUnavailable: -32001,
+  /**
+   * The host did not save a file. The message says why (declined, expired,
+   * refused by policy, invalid content, asked while another prompt was open, or
+   * the save itself failed), in MCP Apps' words where it has them ("Download
+   * denied by user", "Invalid content", "Policy violation").
+   */
+  downloadRejected: -32002,
 } as const
 
 /**

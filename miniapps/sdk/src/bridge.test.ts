@@ -545,6 +545,89 @@ describe('tools', () => {
   })
 })
 
+describe('downloads', () => {
+  /** Connect to a host that advertises `downloadFile`, the way Thunderbolt does. */
+  const connectedWithDownloads = async (): Promise<Connection> => {
+    const pending = connect({ appName: 'Test App', hostOrigin })
+    fromHost({
+      jsonrpc: '2.0',
+      id: lastRequestId('ui/initialize'),
+      result: { capabilities: { downloadFile: true } },
+    })
+    return track(pending)
+  }
+
+  const lastDownloadParams = () =>
+    [...posted].reverse().find((entry) => entry.method === 'ui/download-file')?.params as {
+      contents: { type: string; resource: { uri: string; mimeType?: string; text?: string; blob?: string } }[]
+    }
+
+  /** MCP Apps' own request shape, so the same call works against any host that speaks it. */
+  it('sends the file as an MCP embedded resource, bytes as base64', async () => {
+    const connection = await connectedWithDownloads()
+    const saving = connection.downloadFile({
+      name: 'Q3 report.pdf',
+      contents: new Uint8Array([37, 80, 68, 70]),
+      mimeType: 'application/pdf',
+    })
+
+    expect(lastDownloadParams()).toEqual({
+      contents: [
+        {
+          type: 'resource',
+          resource: { uri: 'file:///Q3%20report.pdf', mimeType: 'application/pdf', blob: 'JVBERg==' },
+        },
+      ],
+    })
+
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/download-file'), result: {} })
+    await expect(saving).resolves.toBeUndefined()
+  })
+
+  it('sends text as text', async () => {
+    const connection = await connectedWithDownloads()
+    const saving = connection.downloadFile({ name: 'export.csv', contents: 'a,b' })
+
+    expect(lastDownloadParams().contents[0]?.resource).toEqual({ uri: 'file:///export.csv', text: 'a,b' })
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/download-file'), result: {} })
+    await saving
+  })
+
+  /** Encoded in chunks: a whole file spread into one call overflows the stack. */
+  it('round-trips a file larger than one encoding chunk', async () => {
+    const connection = await connectedWithDownloads()
+    const bytes = Uint8Array.from({ length: 100_000 }, (_, index) => index % 251)
+    const saving = connection.downloadFile({ name: 'big.pdf', contents: bytes.buffer })
+
+    const blob = lastDownloadParams().contents[0]?.resource.blob ?? ''
+    expect(Uint8Array.from(atob(blob), (character) => character.charCodeAt(0))).toEqual(bytes)
+    fromHost({ jsonrpc: '2.0', id: lastRequestId('ui/download-file'), result: {} })
+    await saving
+  })
+
+  it('rejects with the reason the host gives', async () => {
+    const connection = await connectedWithDownloads()
+    const saving = connection.downloadFile({ name: 'export.csv', contents: 'a,b' })
+
+    fromHost({
+      jsonrpc: '2.0',
+      id: lastRequestId('ui/download-file'),
+      error: { code: -32002, message: 'Download denied by user' },
+    })
+
+    await expect(saving).rejects.toThrow('Download denied by user')
+  })
+
+  /** An older Thunderbolt would drop the request and leave the app waiting out a deadline. */
+  it('refuses at once, without asking, on a host that cannot save files', async () => {
+    const connection = await connected()
+
+    expect(connection.canDownloadFiles).toBe(false)
+    await expect(connection.downloadFile({ name: 'export.csv', contents: 'a,b' })).rejects.toThrow('cannot save files')
+    expect(posted.some((entry) => entry.method === 'ui/download-file')).toBe(false)
+  })
+})
+
 /**
  * The guest mints an id for its own document, because the host cannot tell the
  * frame's documents apart: a cross-origin `load` event carries no identity, and

@@ -3,16 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Save generated *text* to the user's Downloads folder.
+ * Save a generated file to the user's Downloads folder, as text or bytes.
  *
- * The one place that does, for text — and text is the whole current API:
- * `contents` is a string and the desktop branch is `writeTextFile`, so anything
- * blob-backed cannot come through here. `pdf-sidebar-viewer.tsx` is the live
- * example: it still clicks its own anchor at a blob URL, which means it still
- * carries the desktop bug described below. Widening this to bytes needs a
- * `writeFile` grant in the Tauri capabilities, so it is a change of its own
- * rather than something to bolt on here — but until then, "everything goes
- * through here" would be false, and a false claim is worse than no claim.
+ * Text goes through `writeTextFile` and bytes through `writeFile`, each with its
+ * own `$DOWNLOAD` grant. Text keeps its own call rather than being encoded to
+ * bytes, so the existing text saves are unchanged. `pdf-sidebar-viewer.tsx`
+ * still clicks its own anchor at a blob URL, so it still carries the desktop
+ * bug described below until it moves here.
  *
  * The browser trick — an `<a download>` pointed at a blob URL, clicked
  * programmatically — is the only mechanism available on the web, and it does
@@ -24,13 +21,14 @@
  * So the two platforms need two mechanisms, and the difference is not a
  * refinement: on desktop we write the bytes ourselves through `plugin-fs`,
  * which needs a matching grant in `src-tauri/capabilities/default.json`
- * (`$DOWNLOAD/*` for write-text-file). Capabilities are compiled into the
- * binary, so a desktop build older than that grant denies the write no matter
- * what this file does.
+ * (`$DOWNLOAD/*` for write-text-file and write-file). Capabilities are compiled
+ * into the binary, so a desktop build older than that grant denies the write no
+ * matter what this file does.
  *
- * Every *text* save goes through here — `downloadJson` in `export-download.ts`
- * included. Anything that reimplements the anchor trick for itself is silently
- * web-only, which is the bug above wearing a different filename.
+ * Every save goes through here (`downloadJson` in `export-download.ts` and Mini
+ * App downloads included) except the PDF viewer noted above. Anything that
+ * reimplements the anchor trick for itself is silently web-only, which is the
+ * bug above wearing a different filename.
  */
 
 import { isTauri } from './platform'
@@ -38,7 +36,8 @@ import { isTauri } from './platform'
 export type DownloadRequest = {
   /** Filename including extension. Collisions get a numeric suffix. */
   name: string
-  contents: string
+  /** Text is written as UTF-8, bytes as they are. */
+  contents: string | Uint8Array<ArrayBuffer>
   mimeType: string
 }
 
@@ -54,12 +53,13 @@ export const withSuffix = (name: string, attempt: number): string => {
 /** The slice of `@tauri-apps/plugin-fs` this needs, so a test can supply it. */
 export type DownloadFs = {
   writeTextFile: (path: string, contents: string, options: { baseDir: number; createNew?: boolean }) => Promise<void>
+  writeFile: (path: string, data: Uint8Array, options: { baseDir: number; createNew?: boolean }) => Promise<void>
   downloadBaseDir: number
 }
 
 const loadTauriFs = async (): Promise<DownloadFs> => {
-  const { writeTextFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
-  return { writeTextFile, downloadBaseDir: BaseDirectory.Download }
+  const { writeTextFile, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
+  return { writeTextFile, writeFile, downloadBaseDir: BaseDirectory.Download }
 }
 
 /**
@@ -85,8 +85,11 @@ const saveViaTauri = async (request: DownloadRequest, fs: DownloadFs): Promise<s
   let lastError: unknown
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const name = withSuffix(request.name, attempt)
+    const options = { baseDir: fs.downloadBaseDir, createNew: true }
     try {
-      await fs.writeTextFile(name, request.contents, { baseDir: fs.downloadBaseDir, createNew: true })
+      await (typeof request.contents === 'string'
+        ? fs.writeTextFile(name, request.contents, options)
+        : fs.writeFile(name, request.contents, options))
       return name
     } catch (error) {
       lastError = error

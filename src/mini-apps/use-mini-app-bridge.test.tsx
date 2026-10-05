@@ -20,6 +20,8 @@ import { Wallet } from 'lucide-react'
 import {
   acceptGuestMessage,
   contextRequestTimeoutMs,
+  downloadConfirmTimeoutMs,
+  downloadRepromptDelayMs,
   handshakeTimeoutMs,
   identifyTimeoutMs,
   toolCallTimeoutMs,
@@ -930,5 +932,192 @@ describe('useMiniAppBridge message handling', () => {
     act(() => bridge.current?.handleFrameLoad())
 
     expect(posted.some((message) => 'method' in message && message.method === 'ui/identify')).toBe(false)
+  })
+})
+
+describe('useMiniAppBridge downloads', () => {
+  /** A `ui/download-file` request for a small CSV, as the SDK sends it. */
+  const downloadRequest = (id: number, uri = 'file:///export.csv') => ({
+    id,
+    method: 'ui/download-file',
+    params: { contents: [{ type: 'resource', resource: { uri, mimeType: 'text/csv', text: 'a,b' } }] },
+  })
+
+  /**
+   * Record what the web save path hands the browser. The blob is the download
+   * there, so a request that never reaches `createObjectURL` saved nothing.
+   */
+  const recordSaves = () => {
+    const saved: Blob[] = []
+    const original = URL.createObjectURL
+    URL.createObjectURL = (blob: Blob) => {
+      saved.push(blob)
+      return 'blob:test'
+    }
+    return { saved, restore: () => (URL.createObjectURL = original) }
+  }
+
+  it('tells the app at the handshake that it can save files', async () => {
+    const { replyTo, handshake } = mountBridge()
+    await handshake()
+
+    expect(replyTo(1)).toMatchObject({ result: { capabilities: { downloadFile: true } } })
+  })
+
+  it('asks the user first, and saves only once they agree', async () => {
+    const { saved, restore } = recordSaves()
+    try {
+      const { bridge, replyTo, send, envelope, handshake, settle } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+
+      expect(bridge.current?.pendingDownload).toEqual({ name: 'export.csv' })
+      expect(replyTo(9)).toBeUndefined()
+      expect(saved).toHaveLength(0)
+
+      await act(async () => bridge.current?.answerDownload(true))
+      await settle()
+
+      expect(replyTo(9)).toMatchObject({ result: {} })
+      expect(bridge.current?.pendingDownload).toBeNull()
+      expect(saved.map((blob) => blob.type)).toEqual(['text/csv'])
+    } finally {
+      restore()
+    }
+  })
+
+  it('saves nothing and says so when the user declines', async () => {
+    const { saved, restore } = recordSaves()
+    try {
+      const { bridge, replyTo, send, envelope, handshake, settle } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      await act(async () => bridge.current?.answerDownload(false))
+      await settle()
+
+      expect(replyTo(9)).toMatchObject({
+        error: { code: miniAppRpcErrors.downloadRejected, message: 'Download denied by user' },
+      })
+      expect(saved).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
+
+  /** Refused before the prompt: the user is never asked about a file that would not be saved. */
+  it('refuses a disallowed file without asking', async () => {
+    const { bridge, replyTo, send, envelope, handshake } = mountBridge()
+    await handshake()
+    await send(envelope(downloadRequest(9, 'file:///setup.exe')))
+
+    expect(replyTo(9)).toMatchObject({
+      error: { code: miniAppRpcErrors.downloadRejected, message: 'Policy violation: .exe files are not saved' },
+    })
+    expect(bridge.current?.pendingDownload).toBeNull()
+  })
+
+  it('answers a malformed request instead of leaving the app waiting', async () => {
+    const { replyTo, send, envelope, handshake } = mountBridge()
+    await handshake()
+    await send(envelope({ id: 9, method: 'ui/download-file', params: { contents: 'nope' } }))
+
+    expect(replyTo(9)).toMatchObject({ error: { code: miniAppRpcErrors.downloadRejected } })
+  })
+
+  /** One prompt at a time, so an app cannot stack prompts the user dismisses one by one. */
+  it('refuses a second request while the first is waiting', async () => {
+    const { bridge, replyTo, send, envelope, handshake } = mountBridge()
+    await handshake()
+    await send(envelope(downloadRequest(9)))
+    // Disallowed on purpose: the guard answers before the request is even parsed.
+    await send(envelope(downloadRequest(10, 'file:///setup.exe')))
+
+    expect(replyTo(10)).toMatchObject({ error: { message: 'Another download is waiting for the user' } })
+    expect(replyTo(9)).toBeUndefined()
+    expect(bridge.current?.pendingDownload).toEqual({ name: 'export.csv' })
+  })
+
+  /** Reported as expired, not denied: the user never said no. */
+  it('gives up on its own when nobody answers, without calling it a refusal', async () => {
+    const { bridge, replyTo, send, envelope, handshake, elapse } = mountBridge()
+    await handshake()
+    await send(envelope(downloadRequest(9)))
+    await elapse(downloadConfirmTimeoutMs)
+
+    expect(replyTo(9)).toMatchObject({ error: { message: 'Download expired: nobody answered the prompt' } })
+    expect(bridge.current?.pendingDownload).toBeNull()
+  })
+
+  /** The prompt is modal: re-asking the moment the user cancels would keep them from leaving. */
+  it('makes the app wait before asking again after a refusal', async () => {
+    const { bridge, replyTo, send, envelope, handshake, settle, elapse } = mountBridge()
+    await handshake()
+    await send(envelope(downloadRequest(9)))
+    await act(async () => bridge.current?.answerDownload(false))
+    await settle()
+    await send(envelope(downloadRequest(10)))
+
+    expect(replyTo(10)).toMatchObject({
+      error: { message: 'Download refused: asked again too soon after a declined or expired prompt' },
+    })
+    expect(bridge.current?.pendingDownload).toBeNull()
+
+    await elapse(downloadRepromptDelayMs)
+    await send(envelope(downloadRequest(11)))
+
+    expect(bridge.current?.pendingDownload).toEqual({ name: 'export.csv' })
+  })
+
+  it('does not hold an approved save against the next one', async () => {
+    const { saved, restore } = recordSaves()
+    try {
+      const { bridge, send, envelope, handshake, settle } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      await act(async () => bridge.current?.answerDownload(true))
+      await settle()
+      await send(envelope(downloadRequest(10, 'file:///second.csv')))
+
+      expect(bridge.current?.pendingDownload).toEqual({ name: 'second.csv' })
+      expect(saved).toHaveLength(1)
+    } finally {
+      restore()
+    }
+  })
+
+  it('saves nothing when the app goes away mid-prompt, even after the deadline', async () => {
+    const { saved, restore } = recordSaves()
+    try {
+      const { send, envelope, handshake, unmount, elapse } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      unmount()
+      await elapse(downloadConfirmTimeoutMs)
+
+      expect(saved).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
+
+  /** The platform's message reaches the app, so it can say why rather than that. */
+  it('reports a save that failed with the platform message', async () => {
+    const original = URL.createObjectURL
+    URL.createObjectURL = () => {
+      throw new Error('quota exceeded')
+    }
+    try {
+      const { bridge, replyTo, send, envelope, handshake, settle } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      await act(async () => bridge.current?.answerDownload(true))
+      await settle()
+
+      expect(replyTo(9)).toMatchObject({
+        error: { code: miniAppRpcErrors.downloadRejected, message: 'quota exceeded' },
+      })
+    } finally {
+      URL.createObjectURL = original
+    }
   })
 })

@@ -43,7 +43,9 @@ import { useResolvedTheme } from '@/lib/theme-provider'
 import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
 import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded'
 import { useHttpClient } from '@/contexts'
+import { downloadFile } from '@/lib/download'
 import { fetchMiniAppToken } from './mini-app-auth'
+import { prepareMiniAppDownload } from './mini-app-download'
 import { useMiniAppStore } from './mini-app-store'
 import type { MiniAppDefinition } from './registry'
 
@@ -72,6 +74,40 @@ export const contextRequestTimeoutMs = 2_000
 
 /** A tool call blocks a model turn, so it gets more room than discovery. */
 export const toolCallTimeoutMs = 15_000
+
+/**
+ * How long a save waits for the user before it expires.
+ *
+ * The app is waiting on the reply, and the SDK gives up after two and a half
+ * minutes. Expiring first means the app always hears the real outcome, rather
+ * than a timeout followed by a file that appears anyway.
+ */
+export const downloadConfirmTimeoutMs = 120_000
+
+/**
+ * How long an app must wait to ask again after a prompt was declined or expired.
+ *
+ * The prompt is modal, so an app that re-asked the moment the user pressed
+ * Cancel would keep them from reaching anything else, including the way out.
+ */
+export const downloadRepromptDelayMs = 5_000
+
+/** A file the app asked to save, shown to the user while they decide. */
+export type PendingMiniAppDownload = { name: string }
+
+/** How a save prompt ended. Only `declined` is the user's word. */
+type DownloadAnswer = 'approved' | 'declined' | 'expired' | 'closed'
+
+/**
+ * What the app is told when a save did not happen. Kept apart so a prompt
+ * nobody answered is not reported as a refusal, which would put words in the
+ * user's mouth. `declined` is MCP Apps' own wording.
+ */
+const downloadRefusals: Record<Exclude<DownloadAnswer, 'approved'>, string> = {
+  declined: 'Download denied by user',
+  expired: 'Download expired: nobody answered the prompt',
+  closed: 'Download cancelled: the app was closed',
+}
 
 /**
  * How long the host waits for `ui/identify` after the frame fires `load`.
@@ -276,6 +312,12 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
   // prompt or the `get_app_context` tool.
   const [selection, setSelection] = useState<MiniAppSelection | null>(null)
+  const [pendingDownload, setPendingDownload] = useState<PendingMiniAppDownload | null>(null)
+  // Answers the save on screen. Null when none is waiting, which is also what
+  // makes a second request while one is pending refusable.
+  const answerDownloadRef = useRef<((answer: DownloadAnswer) => void) | null>(null)
+  // When the app may next ask, after a prompt that was declined or expired.
+  const downloadCooldownUntilRef = useRef(0)
   const theme = useResolvedTheme()
   const locale = useActiveLocale()
   const setTools = useMiniAppStore((state) => state.setTools)
@@ -366,6 +408,29 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // navigates off mid-handshake doesn't leave a request running against a
     // frame that no longer exists.
     const lifetime = new AbortController()
+
+    /**
+     * Ask the user whether to save, settling exactly once: on their answer, on
+     * `downloadConfirmTimeoutMs`, or when this listener goes away.
+     */
+    const confirmDownload = (name: string): Promise<DownloadAnswer> =>
+      new Promise((resolve) => {
+        const settle = (answer: DownloadAnswer) => {
+          if (answerDownloadRef.current !== settle) {
+            return
+          }
+          answerDownloadRef.current = null
+          clearTimeout(timer)
+          lifetime.signal.removeEventListener('abort', close)
+          setPendingDownload(null)
+          resolve(answer)
+        }
+        const close = () => settle('closed')
+        const timer = setTimeout(() => settle('expired'), downloadConfirmTimeoutMs)
+        answerDownloadRef.current = settle
+        lifetime.signal.addEventListener('abort', close)
+        setPendingDownload({ name })
+      })
 
     // Async because two branches mint tokens over the network. `addEventListener`
     // ignores the returned promise, which is fine — nothing awaits the handler,
@@ -460,6 +525,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
             // a guest that had declared `auth` the capability didn't exist —
             // and the documented contract for that is "stop asking".
             auth: capabilities.auth === true,
+            downloadFile: true,
           },
           hostContext: {
             theme: themeRef.current,
@@ -523,6 +589,49 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
         // nothing to declare at handshake time, because the registry is still
         // empty when the handshake goes out.
         dispatch({ type: 'TOOLS_CHANGED' })
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.downloadFile) {
+        const reject = (reason: string) =>
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: { code: miniAppRpcErrors.downloadRejected, message: reason },
+          })
+        // Both checks come before the request is parsed, so a frame cannot make
+        // the host decode one large file after another while a prompt is open.
+        // One prompt at a time: queueing would stack up prompts to dismiss.
+        if (answerDownloadRef.current) {
+          reject('Another download is waiting for the user')
+          return
+        }
+        if (Date.now() < downloadCooldownUntilRef.current) {
+          reject('Download refused: asked again too soon after a declined or expired prompt')
+          return
+        }
+        const prepared = prepareMiniAppDownload(message.params)
+        if (!prepared.ok) {
+          reject(prepared.message)
+          return
+        }
+        const answer = await confirmDownload(prepared.download.name)
+        if (answer === 'declined' || answer === 'expired') {
+          downloadCooldownUntilRef.current = Date.now() + downloadRepromptDelayMs
+        }
+        if (answer !== 'approved') {
+          reject(downloadRefusals[answer])
+          return
+        }
+        try {
+          await downloadFile(prepared.download)
+          post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: {} })
+        } catch (error) {
+          // The platform's own message: a missing grant and a full disk call for
+          // different fixes, and only the original text tells them apart.
+          reject(error instanceof Error ? error.message : String(error))
+        }
         return
       }
 
@@ -867,6 +976,12 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     setContextReader(requestContext)
   }, [requestContext, setContextReader])
 
+  /** The user's answer to the save on screen. */
+  const answerDownload = useCallback(
+    (approved: boolean) => answerDownloadRef.current?.(approved ? 'approved' : 'declined'),
+    [],
+  )
+
   return {
     frameRef,
     status,
@@ -877,5 +992,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     runtimeError,
     handleFrameLoad,
     reloadFrame,
+    pendingDownload,
+    answerDownload,
   }
 }

@@ -88,6 +88,16 @@ export type AuthToken = {
   expiresAt: string
 }
 
+/** A file to hand Thunderbolt to save. */
+export type DownloadableFile = {
+  /** Name to save under, extension included: it decides the file's type. */
+  name: string
+  /** Text is saved as UTF-8; bytes as they are. */
+  contents: string | Uint8Array | ArrayBuffer
+  /** Only consulted when `name` has no extension. */
+  mimeType?: string
+}
+
 /**
  * Ambient host state. Delivered whole at connect, then partially whenever a
  * piece of it changes — so treat an update as a patch, not a replacement.
@@ -198,6 +208,21 @@ export type Connection = {
    * can sit open for hours; a token you held onto cannot.
    */
   getAuthToken: () => Promise<AuthToken | null>
+  /** Whether this Thunderbolt can save files for the app, via `downloadFile`. */
+  canDownloadFiles: boolean
+  /**
+   * Ask Thunderbolt to save a file for the user.
+   *
+   * The app cannot save one itself: Thunderbolt frames it without
+   * `allow-downloads`, and its desktop webview has no downloads at all.
+   * Thunderbolt asks the user first, so this resolves once they have agreed
+   * and the file is saved, and rejects with Thunderbolt's reason otherwise:
+   * declined, expired, a type or size it does not allow, or a failed save.
+   *
+   * Speaks MCP Apps' `ui/download-file`, so the request is the same one an MCP
+   * App would send.
+   */
+  downloadFile: (file: DownloadableFile) => Promise<void>
   /**
    * Tell the host something went wrong in here.
    *
@@ -227,6 +252,14 @@ type PendingRequest = { settle: PendingResolver; timer: ReturnType<typeof setTim
  * because that is what the host sends when a request genuinely fails.
  */
 const requestTimeoutMs = 10_000
+
+/**
+ * Longest a save waits, which includes the user deciding whether to allow it.
+ *
+ * Longer than the host's own two-minute window for that decision, so the host's
+ * answer (including "expired" when nobody answered) always arrives first.
+ */
+const downloadRequestTimeoutMs = 150_000
 
 /**
  * Debounce for selection reporting. `selectionchange` fires per character while
@@ -324,6 +357,26 @@ export class NotEmbeddedError extends Error {
 
 /** Are we actually inside a frame? Running standalone is legal — just not embedded. */
 export const isEmbedded = (): boolean => typeof window !== 'undefined' && window.parent !== window
+
+/** Base64 in chunks: spreading a whole file into `String.fromCharCode` overflows the stack. */
+const toBase64 = (contents: Uint8Array | ArrayBuffer): string => {
+  const bytes = contents instanceof Uint8Array ? contents : new Uint8Array(contents)
+  const chunk = 0x8000
+  const parts = Array.from({ length: Math.ceil(bytes.length / chunk) }, (_, index) =>
+    String.fromCharCode(...bytes.subarray(index * chunk, (index + 1) * chunk)),
+  )
+  return btoa(parts.join(''))
+}
+
+/** MCP's `EmbeddedResource` for a file: the name rides in the URI, bytes as base64. */
+const toEmbeddedResource = ({ name, contents, mimeType }: DownloadableFile) => ({
+  type: 'resource',
+  resource: {
+    uri: `file:///${encodeURIComponent(name)}`,
+    ...(mimeType ? { mimeType } : {}),
+    ...(typeof contents === 'string' ? { text: contents } : { blob: toBase64(contents) }),
+  },
+})
 
 /**
  * Connect to the Thunderbolt host.
@@ -798,6 +851,7 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
       const typed = result as
         | {
             hostContext?: HostContext
+            capabilities?: { downloadFile?: boolean }
             auth?: AuthToken
             error?: { message?: string }
           }
@@ -850,8 +904,26 @@ export const connect = (options: ConnectOptions, timeoutMs = 5_000): Promise<Con
         return currentToken
       }
 
+      const canDownloadFiles = typed?.capabilities?.downloadFile === true
+
+      const downloadFile = async (file: DownloadableFile): Promise<void> => {
+        if (!canDownloadFiles) {
+          throw new Error('This version of Thunderbolt cannot save files')
+        }
+        const reply = (await request(
+          'ui/download-file',
+          { contents: [toEmbeddedResource(file)] },
+          downloadRequestTimeoutMs,
+        )) as { error?: { message?: string } } | undefined
+        if (reply?.error) {
+          throw new Error(reply.error.message ?? 'Thunderbolt did not save the file')
+        }
+      }
+
       resolve({
         getAuthToken,
+        canDownloadFiles,
+        downloadFile,
         syncTools: () => syncOptionTools({ announce: true }),
         openChat: (prompt) => void request('ui/open-chat', prompt ? { prompt } : {}),
         reportError,

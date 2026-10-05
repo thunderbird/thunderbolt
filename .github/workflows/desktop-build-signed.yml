@@ -128,14 +128,11 @@ jobs:
           echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
 
       - name: Build signed Tauri app
-        run: |
-          rustup target add ${{ inputs.target }}
-          if [ "${{ inputs.target }}" = "x86_64-apple-darwin" ]; then
-            rm -rf src-tauri/target/x86_64-apple-darwin
-          fi
-          bun install --frozen-lockfile
-          bun tauri build --target ${{ inputs.target }}
+        # TARGET comes from a constrained `choice` input, but route it through an env
+        # var (and quote it) rather than interpolating `${{ }}` into the script —
+        # avoids the shell-injection pattern flagged by code scanning.
         env:
+          TARGET: ${{ inputs.target }}
           # x86_64 must not inherit target-cpu=native from the host runner.
           RUSTFLAGS: ${{ inputs.target == 'x86_64-apple-darwin' && '-C target-cpu=x86-64' || '' }}
           CARGO_INCREMENTAL: 0
@@ -143,6 +140,13 @@ jobs:
           VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          rustup target add "$TARGET"
+          if [ "$TARGET" = "x86_64-apple-darwin" ]; then
+            rm -rf src-tauri/target/x86_64-apple-darwin
+          fi
+          bun install --frozen-lockfile
+          bun tauri build --target "$TARGET"
 
       - name: Upload signed macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

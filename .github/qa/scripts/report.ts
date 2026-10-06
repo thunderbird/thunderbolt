@@ -460,7 +460,7 @@ const findingsSection = ({ found, verified, filed }: Findings, label: string) =>
     out.push(
       '',
       `### Dropped (${verified.dropped.length})`,
-      ...verified.dropped.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.gate}** — ${escapeCell(d.reason)}`),
+      ...verified.dropped.map((d) => `- ${d.file.charterDir}/${d.file.id}: **${d.gate}** — ${safe(d.reason, 500)}`),
     )
   }
   if (filed) {

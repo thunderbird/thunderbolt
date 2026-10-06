@@ -89,7 +89,8 @@ the outcome must survive a reload. A function that spans two areas has one owner
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 
 **Coverage** counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
-attempt's window, after a browser action, and, for a `reload` function, after a navigation that follows a change.
+attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
+change.
 Text the explorer typed never counts, and a session without a transcript covers nothing. The check proves the quote
 was seen at the right moment, not that it shows the outcome: sample covered functions by hand.
 

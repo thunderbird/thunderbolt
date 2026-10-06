@@ -334,6 +334,14 @@ describe('renderReport findings and caps', () => {
       verified,
     })
 
+  it('strips foreign links and images from a drop reason', () => {
+    const file = { charterDir: 'c8-phone', id: '4', finding: raw('chat', 'x') }
+    const reason = 'see ![x](https://evil.example/a.png) and https://evil.example/b'
+    const report = render({ ...emptyVerified, dropped: [{ file, gate: 'judge', reason }] })
+    expect(report).toContain('- c8-phone/4: **judge** — see [image removed] and [link removed]')
+    expect(report).not.toContain('evil.example')
+  })
+
   it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
     const overflow = { ...verifiedFinding('layout', 'overflow', '2'), replay: { failed: 1, runs: 3 } }
     overflow.finding = {

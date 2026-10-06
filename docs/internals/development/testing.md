@@ -297,6 +297,8 @@ Each anchor records a breakage:
 
 ### Nightly E2E
 
+It runs inside [`nightly-pipeline.yml`](../../../.github/workflows/nightly-pipeline.yml) at 04:00 UTC and gates the release.
+
 [`nightly.yml`](../../../.github/workflows/nightly.yml) runs the Playwright suite on Linux in desktop and mobile Chromium and Firefox, against PostgreSQL and PowerSync containers. On macOS it runs desktop and iPhone WebKit against in-memory test backends. The PR workflow, [`e2e.yml`](../../../.github/workflows/e2e.yml), runs Chromium only.
 
 On a Mac, install WebKit and run the extended config from the repository root:

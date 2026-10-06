@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
 describe('global config store isolation', () => {
   beforeAll(() => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
     useConfigStore.getState().setForceUpgrade('5.0.0')
   })
 

@@ -8,7 +8,7 @@ import * as samlify from 'samlify'
 import { getTestCerts } from './saml-test-certs'
 
 /** Test user claims returned by the mock IdP */
-const TEST_USER = {
+const testUser = {
   email: 'e2e-saml@thunderbolt.test',
   displayName: 'E2E SAML User',
   givenName: 'E2E',
@@ -34,7 +34,9 @@ export const createMockSamlIdp = async (port: number) => {
     entityID: issuer,
     signingCert: cert,
     privateKey,
-    singleSignOnService: [{ Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect', Location: `${issuer}/saml/sso` }],
+    singleSignOnService: [
+      { Binding: 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect', Location: `${issuer}/saml/sso` },
+    ],
     nameIDFormat: ['urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'],
     isAssertionEncrypted: false,
     wantAuthnRequestsSigned: false,
@@ -82,7 +84,7 @@ export const createMockSamlIdp = async (port: number) => {
           sp,
           { extract: { request: { id: requestId } } },
           'post',
-          TEST_USER,
+          testUser,
         )
 
         // Return an auto-submitting HTML form (standard SAML HTTP-POST binding)

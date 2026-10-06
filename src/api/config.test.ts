@@ -13,16 +13,16 @@ describe('fetchConfig', () => {
   })
 
   it('returns config from the backend and updates the store', async () => {
-    const httpClient = createMockHttpClient({ e2eeEnabled: true })
+    const httpClient = createMockHttpClient({ builtInAgentEnabled: true })
 
     const result = await fetchConfig('http://test-api.local', httpClient)
 
-    expect(result).toEqual({ e2eeEnabled: true })
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(result).toEqual({ builtInAgentEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 
   it('returns null and preserves cached store value when backend is unreachable', async () => {
-    useConfigStore.getState().updateConfig({ e2eeEnabled: true })
+    useConfigStore.getState().updateConfig({ builtInAgentEnabled: true })
 
     const httpClient = createMockHttpClient(null, 'http://unreachable.local')
     const failingClient = {
@@ -38,6 +38,6 @@ describe('fetchConfig', () => {
     const result = await fetchConfig('http://test-api.local', failingClient)
 
     expect(result).toBeNull()
-    expect(useConfigStore.getState().config).toEqual({ e2eeEnabled: true })
+    expect(useConfigStore.getState().config).toEqual({ builtInAgentEnabled: true })
   })
 })

@@ -23,7 +23,9 @@ test('a sent message gets a reply that streams in', async ({ page }) => {
     Object.assign(window, { assistantSnapshots: snapshots })
     const observer = new MutationObserver(() => {
       const text = document.querySelector('[data-quotable-message-id] .prose')?.textContent?.trim()
-      if (text && snapshots.at(-1)?.text !== text) snapshots.push({ text, at: Date.now() })
+      if (text && snapshots.at(-1)?.text !== text) {
+        snapshots.push({ text, at: Date.now() })
+      }
     })
     observer.observe(document.body, { childList: true, characterData: true, subtree: true })
   })

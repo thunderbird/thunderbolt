@@ -57,7 +57,7 @@ User-level keys (e.g. OpenAI, OpenRouter) are configured in the app itself, not 
 | `POWERSYNC_INTERNAL_URL`         | —       | no               | Address the server itself uses to probe PowerSync for `/v1/health/powersync`. Defaults to `POWERSYNC_URL`; set it when the public URL is not reachable from inside the cluster |
 | `POWERSYNC_JWT_SECRET`           | —       | yes when URL set | HS256 secret shared with PowerSync; must be **≥ 32 characters**           |
 | `POWERSYNC_JWT_KID`              | —       |                  | Key ID for PowerSync to pick among multiple secrets during rotation       |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  |                  | PowerSync JWT lifetime                                                    |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`   |                  | PowerSync JWT lifetime. PowerSync verifies this token locally and never calls back, so its TTL **is** the post-revocation read window — keep it short. |
 
 The JWT secret must match the `k` value the PowerSync service loads at runtime. For self-hosted deploys, `deploy/config/powersync-config.yaml` reads it from the `PS_JWT_KEY_BASE64` env var (base64 of the raw secret); `POWERSYNC_JWT_KID` on the backend must match `PS_JWT_KID` set on the PowerSync service. For local dev, both values are baked into `powersync-service/config/config.yaml`.
 
@@ -93,6 +93,16 @@ Users can share a chat's debug transcript with the Thunderbolt team from the cha
 | `DEBUG_TRANSCRIPT_INTAKE_ENABLED` | `false` | Mounts the intake endpoint. Only the Thunderbolt-hosted deployment enables this.      |
 
 To obtain a key, contact the Thunderbolt team with a name for your deployment. Transcripts are identified (user id and email as known by your deployment; blank for anonymous users) and are kept by the Thunderbolt team; deleting the submitting account does not remove them.
+
+## Organizational Key Escrow
+
+Off by default. When enabled, every E2EE setup, rotation, and v1→v2 upgrade must carry an escrow envelope wrapping the account key to your organization's public key, letting an operator recover an account offline. The server never holds escrow key material and cannot steer the wrap target: the client wraps only to the public key pinned into its own build (THU-866).
+
+| Variable             | Default | Description                                                                                      |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `ORG_ESCROW_ENABLED` | `false` | Require and store an escrow envelope on every setup / rotate / upgrade.                          |
+
+**Order matters.** Ship `VITE_ORG_ESCROW_PUBLIC_KEY` (see [Frontend Build Args](#frontend-build-args)) in the client build *before* turning this on, or every setup, rotation, and upgrade fails with a 400. Generate the keypair with `scripts/org-escrow-keygen.ts`; the private half stays out-of-band and must never reach the app server. Recovery is offline, via `scripts/org-escrow-decrypt.ts`, which takes the private key and the database URL from `ORG_ESCROW_PRIVATE_KEY` / `DATABASE_URL` or from `--private-key-file` / `--db-url-file` — never as arguments, which `ps` exposes to every process on the machine. See [e2e-encryption.md](../architecture/e2e-encryption.md) for the envelope format and its documented POC limits (classical P-256 only, no backfill for pre-escrow accounts).
 
 ## Rate Limiting and Proxy Trust
 
@@ -138,6 +148,22 @@ cannot handle. It also prevents a new CLI from discovering a catalog whose
 required auth or inference contracts the deployed backend does not yet
 implement.
 
+## Hosted Agent
+
+These variables configure a server-hosted agent that ships in a later release. They have no effect today.
+
+| Variable                          | Default | Description                                            |
+| --------------------------------- | ------- | ------------------------------------------------------ |
+| `AGENT_ENABLED`                   | `false` | Enables the hosted agent                               |
+| `AGENT_MODEL`                     | `""`    | Model id the agent uses                                |
+| `AGENT_MAX_STEPS`                 | `8`     | Maximum tool-call steps per run                        |
+| `AGENT_SYSTEM_PROMPT`             | `""`    | System prompt for the agent                            |
+| `AGENT_MCP_SERVERS`               | `""`    | JSON array of MCP servers the agent may call           |
+| `AGENT_NAME`                      | `""`    | Display name shown in agent discovery                  |
+| `AGENT_DESCRIPTION`               | `""`    | Description shown in agent discovery                   |
+| `AGENT_ICON`                      | `""`    | Icon shown in agent discovery                          |
+| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets unauthenticated clients discover the hosted agent |
+
 ## Waitlist
 
 | Variable                        | Default | Description                                                       |
@@ -165,6 +191,7 @@ Tested with BetterStack, Jaeger, Zipkin, New Relic, Grafana Cloud, and any OTLP-
 | `LOG_LEVEL`                 | `INFO`                  | One of `DEBUG`, `INFO`, `WARN`, `ERROR`                                                                        |
 | `SWAGGER_ENABLED`           | `false`                 | Expose `/v1/swagger` with the full OpenAPI spec (don't in production)                                          |
 | `MONITORING_TOKEN`          | —                       | Bearer token for deep health routes under `/v1/health/`                                                        |
+| `EMAIL_FROM`                | `hello@auth.thunderbolt.io` | Sender address for outgoing email, and the contact address in its footer. Set this: Resend sends only from a domain your own account has verified, so the default is rejected everywhere except Thunderbird's own deployment |
 | `RESEND_MONITORING_API_KEY` | —                       | Full access Resend key used only by `/v1/health/email`; the sending key `RESEND_API_KEY` may stay sending-only |
 
 ### Deep health
@@ -188,12 +215,13 @@ Each models call costs one tiny completion per catalog model with a price row, w
 
 ## Frontend Build Args
 
-The web/desktop bundle accepts two Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:
+The web/desktop bundle accepts these Vite env vars, passed as Dockerfile build args in `deploy/docker/frontend.Dockerfile`:
 
-| Arg                          | Default | Purpose                                                                |
-| ---------------------------- | ------- | ---------------------------------------------------------------------- |
-| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)               |
-| `VITE_AUTH_MODE`             | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer |
+| Arg                             | Default | Purpose                                                                                                          |
+| ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `VITE_THUNDERBOLT_CLOUD_URL`    | `/v1`   | Backend API URL (relative path, proxied by nginx or ALB)                                                         |
+| `VITE_AUTH_MODE`                | `sso`   | Auth mode — `sso` for enterprise SSO (OIDC or SAML), omit for consumer                                           |
+| `VITE_ORG_ESCROW_PUBLIC_KEY`    | empty   | Base64 P-256 public key the client wraps account keys to. Required in the build **before** [`ORG_ESCROW_ENABLED`](#organizational-key-escrow). |
 
 ## Validating Your Config
 

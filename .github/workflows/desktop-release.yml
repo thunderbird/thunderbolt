@@ -352,8 +352,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ inputs.version }}
+          LATEST: ${{ github.workflow != 'Desktop Release' }}
         run: |
-          gh release edit "v${RELEASE_VERSION}" --repo "$REPO" --draft=false --prerelease=false --latest
+          gh release edit "v${RELEASE_VERSION}" --repo "$REPO" --draft=false --prerelease=false --latest="$LATEST"
 
       - name: Publish to CrabNebula Cloud
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6

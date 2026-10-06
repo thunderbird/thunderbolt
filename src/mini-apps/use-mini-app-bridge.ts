@@ -96,7 +96,7 @@ export const downloadRepromptDelayMs = 5_000
 export type PendingMiniAppDownload = { name: string }
 
 /** How a save prompt ended. Only `declined` is the user's word. */
-type DownloadAnswer = 'approved' | 'declined' | 'expired' | 'closed'
+type DownloadAnswer = 'approved' | 'declined' | 'expired' | 'closed' | 'navigated'
 
 /**
  * What the app is told when a save did not happen. Kept apart so a prompt
@@ -107,6 +107,7 @@ const downloadRefusals: Record<Exclude<DownloadAnswer, 'approved'>, string> = {
   declined: 'Download denied by user',
   expired: 'Download expired: nobody answered the prompt',
   closed: 'Download cancelled: the app was closed',
+  navigated: 'Download cancelled: the app navigated away before the user answered',
 }
 
 /**
@@ -862,6 +863,10 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
    */
   const handleFrameLoad = useCallback(() => {
     const generation = (loadGenerationRef.current += 1)
+
+    // A save still on screen was asked for by the document that just left, so
+    // approving it now would save the previous page's file under the new one.
+    answerDownloadRef.current?.('navigated')
 
     // Nothing to protect: either this is the first document, or the last one
     // never introduced itself.

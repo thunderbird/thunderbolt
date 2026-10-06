@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { maxMiniAppDownloadBytes, prepareMiniAppDownload, safeFileName } from './mini-app-download'
 
 /** A `ui/download-file` params object carrying one embedded resource. */
@@ -62,6 +62,21 @@ describe('prepareMiniAppDownload', () => {
       ok: false,
       message: 'Policy violation: files over 50 MB are not saved',
     })
+  })
+
+  it('refuses text over the size cap without encoding it', () => {
+    const encode = spyOn(TextEncoder.prototype, 'encode')
+    try {
+      const text = 'a'.repeat(maxMiniAppDownloadBytes + 1)
+
+      expect(prepareMiniAppDownload(params({ uri: 'file:///notes.txt', text }))).toEqual({
+        ok: false,
+        message: 'Policy violation: files over 50 MB are not saved',
+      })
+      expect(encode.mock.calls.some(([input]) => input === text)).toBe(false)
+    } finally {
+      encode.mockRestore()
+    }
   })
 
   it('measures text in bytes, not characters', () => {

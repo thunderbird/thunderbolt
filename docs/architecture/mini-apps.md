@@ -250,13 +250,19 @@ descriptions also ride here, capped and fenced in `<app-provided-tool-list>` (se
 
 **The volatile tail of the system prompt** carries the app's _current view_. On every send the host asks the
 frame over `ui/get-context` and appends `title`, `summary`, and `selection` as a `# Current view` note beside the
-date/time (`src/mini-apps/mini-app-context-note.ts`). That half of the prompt is rebuilt every send anyway, so
+date/time (`src/mini-apps/mini-app-context-note.ts`). What the app wrote is fenced in `<app_view>` and labelled as a
+description of the screen rather than instructions, and an `app_view` tag inside the app's own text is escaped so it
+cannot close the fence early. That half of the prompt is rebuilt every send anyway, so
 the cacheable prefix is untouched; and a system note is never persisted, so the snapshot does not accumulate in
 the thread — turn N's request carries turn N's view, once. It is injected rather than left to a tool because a
 tool is only as fresh as the model's decision to call it: a model holding a `get_app_context` result from an
 earlier turn does not call again for "what's the total now?" — from where it sits, it already knows the total.
-Prior-turn `get_app_context` results in the history are rewritten to a one-line "superseded" placeholder before
-the request goes out, so there is exactly one description of the screen in the request.
+Prior-turn `get_app_context` results that read the Mini App are rewritten to a one-line "superseded" placeholder
+before the request goes out, so there is exactly one description of the screen in the request. Artifacts answer under
+the same tool name, so each turn records which surface its read described (`embeddedSurface` in the message metadata)
+and only Mini App reads are rewritten; an untagged older turn is left alone. The built-in Pi harness keeps its own
+transcript rather than taking it from the request, so it applies the same rewrite in its `context` hook as each
+request is built, matching on the call ids the history and its session share.
 
 **Tool calls** carry the rest, on demand:
 
@@ -282,13 +288,13 @@ which could perform the same action directly without asking anyone. See [Securit
 
 ### Where the trust boundaries actually are
 
-| Boundary                 | Enforced by                                                  | What it stops                                  |
-| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------- |
-| app → Thunderbolt        | origin + source check on every message; zod on every payload | Another frame impersonating the app            |
-| app → model              | length caps, `<app-provided-tool-list>` fencing              | An app's text being read as instructions       |
-| model → app              | host-side approval on write tools                            | A prompt-injected model writing through a tool |
-| app → the user's disk    | confirm prompt, type allowlist, 50 MB cap, name sanitising   | An app saving files nobody agreed to           |
-| app → Thunderbolt's data | the browser's same-origin policy                             | Reading Thunderbolt's storage, cookies, DOM    |
+| Boundary                 | Enforced by                                                      | What it stops                                  |
+| ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------- |
+| app → Thunderbolt        | origin + source check on every message; zod on every payload     | Another frame impersonating the app            |
+| app → model              | length caps, `<app-provided-tool-list>` and `<app_view>` fencing | An app's text being read as instructions       |
+| model → app              | host-side approval on write tools                                | A prompt-injected model writing through a tool |
+| app → the user's disk    | confirm prompt, type allowlist, 50 MB cap, name sanitising       | An app saving files nobody agreed to           |
+| app → Thunderbolt's data | the browser's same-origin policy                                 | Reading Thunderbolt's storage, cookies, DOM    |
 
 The last one is the only boundary the _browser_ enforces rather than us, and it is by far the strongest. Everything
 above it is our code, and worth reading with that in mind.
@@ -299,14 +305,17 @@ The frame cannot save a file itself: the iframe has no `allow-downloads`, and th
 manager. It asks with `ui/download-file`, MCP Apps' method and params (one embedded resource, `text` or base64
 `blob`, named by its `uri`). SDK: `downloadFile({ name, contents, mimeType })`, gated on `canDownloadFiles`.
 
-| Host step | Where                                       | Refuses with                            |
-| --------- | ------------------------------------------- | --------------------------------------- |
-| Parse     | `src/mini-apps/mini-app-download.ts`        | `Invalid content: …`                    |
-| Policy    | same: type allowlist, 50 MB, safe name      | `Policy violation: …`                   |
-| Confirm   | `mini-app-download-prompt.tsx`, 2 min limit | `Download denied by user`, or `expired` |
-| Save      | `src/lib/download.ts`                       | the platform's own message              |
+| Host step | Where                                       | Refuses with                                         |
+| --------- | ------------------------------------------- | ---------------------------------------------------- |
+| Parse     | `src/mini-apps/mini-app-download.ts`        | `Invalid content: …`                                 |
+| Policy    | same: type allowlist, 50 MB, safe name      | `Policy violation: …`                                |
+| Confirm   | `mini-app-download-prompt.tsx`, 2 min limit | `Download denied by user`, `expired`, or `cancelled` |
+| Save      | `src/lib/download.ts`                       | the platform's own message                           |
 
 - One prompt at a time, and after a declined or expired prompt the app cannot ask again for 5 s (the prompt is modal).
+- A prompt still open when the frame loads a new document is cancelled, so approving it cannot save the previous
+  page's file under the one that replaced it.
+- Oversized `text` is refused from its length before it is encoded, as an oversized `blob` is before it is decoded.
 - Save is disabled for 750 ms after the prompt opens, so a double-click cannot approve a file nobody read.
 - No Office documents yet: desktop saves carry no mark-of-the-web, so Office would skip Protected View.
 - Desktop bytes need the `fs:allow-write-file` grant on `$DOWNLOAD/*`, which only a new desktop build carries.

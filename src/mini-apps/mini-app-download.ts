@@ -191,6 +191,11 @@ export const prepareMiniAppDownload = (params: unknown): PreparedMiniAppDownload
   if (resource.blob !== undefined && (resource.blob.length * 3) / 4 > maxMiniAppDownloadBytes + 2) {
     return tooLarge
   }
+  // Every UTF-16 code unit encodes to at least one UTF-8 byte, so text longer than the limit in code
+  // units is refused before the encoder runs, rather than after it has built the oversized copy.
+  if (resource.text !== undefined && resource.text.length > maxMiniAppDownloadBytes) {
+    return tooLarge
+  }
   const contents = resource.text ?? decodeBase64(resource.blob ?? '')
   if (contents === null) {
     return { ok: false, message: 'Invalid content: blob is not base64' }

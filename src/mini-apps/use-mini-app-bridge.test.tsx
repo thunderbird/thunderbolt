@@ -1085,6 +1085,33 @@ describe('useMiniAppBridge downloads', () => {
     }
   })
 
+  /** The page that asked is gone, so approving now would save its file under the one that replaced it. */
+  it('cancels a waiting save when a new document loads', async () => {
+    const { saved, restore } = recordSaves()
+    try {
+      const { bridge, replyTo, send, envelope, handshake, settle } = mountBridge()
+      await handshake()
+      await send(envelope(downloadRequest(9)))
+      act(() => bridge.current?.handleFrameLoad())
+      await settle()
+
+      expect(bridge.current?.pendingDownload).toBeNull()
+      expect(replyTo(9)).toMatchObject({
+        error: {
+          code: miniAppRpcErrors.downloadRejected,
+          message: 'Download cancelled: the app navigated away before the user answered',
+        },
+      })
+
+      await act(async () => bridge.current?.answerDownload(true))
+      await settle()
+
+      expect(saved).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
+
   it('saves nothing when the app goes away mid-prompt, even after the deadline', async () => {
     const { saved, restore } = recordSaves()
     try {

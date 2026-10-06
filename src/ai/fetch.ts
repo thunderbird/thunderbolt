@@ -1041,7 +1041,12 @@ export const aiFetchStreamingResponse = async ({
           }
 
           const result = runStreamText(currentInput)
-          const messageMetadata = createMessageMetadata(modelId, sourceCollector, mcpToolsMetadata)
+          const messageMetadata = createMessageMetadata(
+            modelId,
+            sourceCollector,
+            mcpToolsMetadata,
+            embeddedSurface ?? undefined,
+          )
 
           // If this is not the last possible attempt, we need to check for empty response
           if (attemptNumber < maxAttempts) {

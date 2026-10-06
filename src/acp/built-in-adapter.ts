@@ -53,6 +53,11 @@ import { getKnownImageSupport } from '@/ai/image-support'
 import { submitInferenceUsageReceipt } from '@/ai/inference-usage-receipt'
 import type { WebToolBudget } from '@/ai/web-tool-budget'
 import { recordDebugTranscriptSystemPrompts } from '@/debug-transcript/recorder'
+import {
+  appContextToolName,
+  supersededAppContextCallIds,
+  supersededAppContextOutput,
+} from '@/mini-apps/mini-app-context-note'
 import { webToolNames } from '@/lib/tools'
 import { isSsoMode } from '@/lib/auth-mode'
 import { getAuthToken } from '@/lib/auth-token'
@@ -601,6 +606,25 @@ const prepareHarnessForSend = async (
   await record.harness.setTools(allTools, activeToolNames)
 }
 
+/**
+ * Supersede earlier Mini App `get_app_context` results in what the model sees
+ * this send: the harness half of `supersedeAppContextResults`.
+ *
+ * The persistent harness keeps every earlier result in its own session, so
+ * refreshing the volatile prompt alone leaves a stale description of the screen
+ * beside the current one. The `context` hook rewrites each request without
+ * touching the stored session, and only for the ids the request history marks
+ * as earlier Mini App reads, so a read made during this send still arrives.
+ */
+export const installAppContextSupersede = (harness: AgentHarness, callIds: ReadonlySet<string>): (() => void) =>
+  harness.on('context', ({ messages }) => ({
+    messages: messages.map((message) =>
+      message.role === 'toolResult' && callIds.has(message.toolCallId)
+        ? { ...message, content: [{ type: 'text' as const, text: supersededAppContextOutput }] }
+        : message,
+    ),
+  }))
+
 /** Reconcile the turn's live web capacity without overriding independently disabled tools. */
 const installWebToolBudgetFloor = (harness: AgentHarness, webToolBudget?: WebToolBudget): (() => void) => {
   if (!webToolBudget) {
@@ -764,6 +788,8 @@ const fetchViaHarness = async (
   }
 
   const messages = parseMessages(init)
+  const supersededCallIds =
+    config.embeddedSurface === 'mini-app' ? supersededAppContextCallIds(messages) : new Set<string>()
   const instructionBySlug = new Map(config.skills.map(({ name, instruction }) => [name, instruction]))
   const skillInstructions = resolveSkillTokenInstructions(extractLastUserText(messages), instructionBySlug)
   const { history, prompt } = await prepareBuiltInConversation(messages, skillInstructions)
@@ -797,16 +823,22 @@ const fetchViaHarness = async (
           throw new Error('Web tool budget exhausted. Retry manually to start a new research attempt.')
         }
         const removeBudgetFloor = installWebToolBudgetFloor(harness, context.webToolBudget)
+        const removeAppContextSupersede =
+          supersededCallIds.size > 0 ? installAppContextSupersede(harness, supersededCallIds) : () => undefined
         try {
           await harness.prompt(prompt.text, { images: prompt.images })
           await harness.waitForIdle()
         } finally {
           removeBudgetFloor()
+          removeAppContextSupersede()
         }
       },
       {
         initial: { modelId: context.selectedModel.id },
         toolCall: (toolName) => {
+          if (toolName === appContextToolName && config.embeddedSurface) {
+            return { modelId: context.selectedModel.id, embeddedSurface: config.embeddedSurface }
+          }
           const owner = config.mcpToolsMetadata?.[toolName]
           return owner
             ? { modelId: context.selectedModel.id, mcpTools: { [toolName]: owner } }

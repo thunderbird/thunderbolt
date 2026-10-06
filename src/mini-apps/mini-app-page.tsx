@@ -30,7 +30,7 @@ import { useMiniAppBridge } from './use-mini-app-bridge'
 import { useMiniAppChats } from '@/dal/mini-app-chats'
 import { MiniAppChatHistory } from './mini-app-chat-history'
 import { useMiniAppChatPanelState } from './use-mini-app-chat-panel-state'
-import { appPanelMinWidth, chatPanelMinWidth, useChatSplitFits } from './use-chat-split'
+import { appPanelMinWidth, chatPanelMinWidth, useChatSplitFits, useSidePaneFit } from './use-chat-split'
 import { useAsideYieldsToChat } from './use-aside-yields-to-chat'
 
 /** Default split when the side pane opens: roughly two-thirds app, one-third pane. */
@@ -71,36 +71,15 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
    * its own aside collapsed on this route (`routeHostsContentView`).
    */
   const { isOpen: isAsideOpen, close: closeAside } = useContentView()
-  const isSidePaneOpen = isChatOpen || isAsideOpen
   useAsideYieldsToChat({ isChatOpen, isAsideOpen, closeAside })
 
-  /*
-   * Below the combined floor the split cannot honour both minimums, so the pane
-   * closes rather than squeezing to an unusable width (THU-902).
-   *
-   * An effect, and one of the legitimate kinds: `useChatSplitFits` observes the
-   * element, and the response is to change state that lives in another hook.
-   * Doing it during render is illegal, and deriving it instead — merely hiding
-   * the panel while keeping it open — would leave the floating Chat button
-   * offering to reopen into a layout that still cannot hold it.
-   */
   /*
    * State, not a ref: the hook has to re-subscribe when the element attaches,
    * and a ref's assignment does not re-render.
    */
   const [splitContainer, setSplitContainer] = useState<HTMLDivElement | null>(null)
   const splitFits = useChatSplitFits(splitContainer)
-  useEffect(() => {
-    if (splitFits) {
-      return
-    }
-    if (isChatOpen) {
-      closeChat()
-    }
-    if (isAsideOpen) {
-      closeAside()
-    }
-  }, [splitFits, isChatOpen, closeChat, isAsideOpen, closeAside])
+  const isSidePaneShown = useSidePaneFit({ splitFits, isChatOpen, closeChat, isAsideOpen })
 
   const chats = useMiniAppChats(app.id)
   const openApp = useMiniAppStore((state) => state.openApp)
@@ -198,7 +177,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel
           id="mini-app"
-          defaultSize={isSidePaneOpen ? appPanelSize : '100%'}
+          defaultSize={isSidePaneShown ? appPanelSize : '100%'}
           minSize={`${appPanelMinWidth}px`}
         >
           <div className="relative flex flex-col h-full">
@@ -245,7 +224,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
                 {/* Not while an aside is up either: the chat would open
                     underneath it, out of sight. Closing the aside is the way
                     to what is beneath. */}
-                {!isSidePaneOpen && splitFits && (
+                {!isSidePaneShown && splitFits && (
                   <Button onClick={() => openChat()} size="lg" className="shadow-lg rounded-full">
                     <MessageSquare className="size-[var(--icon-size-sm)]" />
                     <Trans>Chat</Trans>
@@ -255,7 +234,7 @@ const MiniAppView = ({ app }: { app: MiniAppDefinition }) => {
             )}
           </div>
         </ResizablePanel>
-        {isSidePaneOpen && (
+        {isSidePaneShown && (
           <>
             <ResizableHandle withHandle />
             <ResizablePanel id="mini-app-side" defaultSize={sidePanelSize} minSize={`${chatPanelMinWidth}px`}>

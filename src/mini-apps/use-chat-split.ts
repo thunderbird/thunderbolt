@@ -64,3 +64,34 @@ export const useChatSplitFits = (element: HTMLElement | null): boolean => {
 
   return fits
 }
+
+type SidePaneFitOptions = {
+  splitFits: boolean
+  isChatOpen: boolean
+  closeChat: () => void
+  isAsideOpen: boolean
+}
+
+/**
+ * Whether the side pane shows, given whether the split fits.
+ *
+ * Below the floor the split cannot honour both minimums, so the pane goes rather
+ * than squeezing to an unusable width (THU-902). The two layers go differently.
+ * The chat closes: its conversation is stored, so closing loses nothing. The
+ * content-view aside is only withheld. Its artifact or preview belongs to the
+ * content view, which outlives this route and may have been opened in another
+ * chat, so closing it would discard that content because the window narrowed.
+ * It comes back when the split fits again.
+ *
+ * Closing the chat is an effect, and a legitimate one: the response to what
+ * `useChatSplitFits` observes is to change state that lives in another hook.
+ */
+export const useSidePaneFit = ({ splitFits, isChatOpen, closeChat, isAsideOpen }: SidePaneFitOptions): boolean => {
+  useEffect(() => {
+    if (!splitFits && isChatOpen) {
+      closeChat()
+    }
+  }, [splitFits, isChatOpen, closeChat])
+
+  return splitFits && (isChatOpen || isAsideOpen)
+}

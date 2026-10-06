@@ -16,6 +16,8 @@ import { clearSettingsCache } from '@/config/settings'
 import { createPowerSyncRoutes } from './powersync'
 
 const powersyncSettings: Settings = {
+  miniApps: '',
+  miniAppTokenExpirySeconds: 300,
   fireworksApiKey: '',
   anthropicApiKey: '',
   anthropicBaseUrl: 'https://api.anthropic.com',

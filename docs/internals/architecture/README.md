@@ -89,6 +89,10 @@ Local state is Zustand plus TanStack Query, with Drizzle over WA-SQLite. WA-SQLi
 
 On desktop and mobile (not web), link previews and third-party content open in an embedded Tauri `WebView`, not the system browser. Privacy trade-offs, incognito behavior, and per-platform engines: [webview.md](../../features/webview.md).
 
+### Mini Apps
+
+A customer's web app, deployed at its own URL, embedded as a page with a `postMessage` bridge so the chat beside it can read and act on what the user is looking at. These are cooperative apps in an iframe, unlike the WebView sidebar above, which exists for arbitrary sites that refuse framing. Web and desktop only. The registry and config model, identity, why not MCP Apps or WebMCP, and the security posture for a customer deployment: [mini-apps.md](mini-apps.md).
+
 ### The Widget System
 
 Assistant responses embed interactive components (weather, link previews, maps, citations) through XML-like tags the parser turns into `<WidgetRenderer />` calls. Widgets live in `src/widgets/` and register into a central registry ([widgets.md](../widgets.md)).
@@ -125,6 +129,7 @@ All groups mount on one Elysia app with `prefix: '/v1'` (`backend/src/index.ts`)
 | `/v1/preview`                               | Link-preview metadata (POST, so target URLs stay out of access logs)                                                                   |
 | `/v1/locations`                             | Geocoding lookup and lookup by id                                                                                                      |
 | `/v1/agents`, `/v1/haystack/*`              | Remote agent discovery, managed-agent file fetch, and the managed-ACP WebSocket at `/v1/haystack/ws`                                   |
+| `/v1/mini-apps/*`                           | Mini App registry and per-app identity tokens                                                                                          |
 | `/v1/debug-transcripts/*`                   | Debug transcript upload, plus the server-to-server `/intake` endpoint                                                                  |
 | `/v1/posthog/*`                             | Analytics event relay                                                                                                                  |
 | `/v1/swagger`                               | OpenAPI spec (gated by `SWAGGER_ENABLED`)                                                                                              |
@@ -193,6 +198,7 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Client Auth and Session](client-auth-and-session.md): credential storage; reload, offline boot, second tab.
 - [Sign-in and the Waitlist](sign-in-and-waitlist.md): one endpoint signs a user up, in, or onto the queue.
 - [Widgets](../widgets.md): assistant output as interactive components.
+- [Mini Apps](mini-apps.md): customer web apps beside the chat, the bridge protocol, and the security posture.
 
 ### Data and sync
 

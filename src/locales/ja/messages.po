@@ -21,6 +21,14 @@ msgstr "「{filename}」はサイズが大きすぎます（最大 {maxMegabytes
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "「{filename}」はサポートされていないファイル形式です。"
 
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "# item selected"
+#~ msgid_plural "# items selected"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -34,6 +42,19 @@ msgstr[0] "# 個の MCP サーバー"
 msgid "# tool"
 msgid_plural "# tools"
 msgstr[0] "# 個のツール"
+
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Ask about it"
+#~ msgid_plural "Ask about them"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-page.tsx
+msgid "{0} is only available on desktop"
+msgstr ""
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
@@ -58,6 +79,10 @@ msgstr[0] "# 件のスキルがこれを参照しています。無効にする�
 msgid "# skill"
 msgid_plural "# skills"
 msgstr[0] "# 個のスキル"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "{fileName} will be saved to your Downloads folder."
+msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
@@ -370,6 +395,7 @@ msgstr "このプロジェクトのすべてのチャットに適用されます
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "承認"
@@ -410,6 +436,10 @@ msgstr "アーティファクト"
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
 msgstr "確認"
+
+#: src/components/embedded/selection-popover.tsx
+msgid "Ask about this"
+msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
@@ -572,6 +602,10 @@ msgstr ""
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "変更は保存されましたが、再接続に失敗しました。もう一度お試しください。"
 
+#: src/mini-apps/mini-app-page.tsx
+msgid "Chat"
+msgstr ""
+
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
 msgstr "チャットの操作"
@@ -585,6 +619,10 @@ msgstr "チャット名"
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "チャット"
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "Chats from this app"
+msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Chats in a project inherit its instructions."
@@ -735,6 +773,10 @@ msgstr "クリップボードを利用できません。上のフレーズを選
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "閉じる"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Close chat"
+#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -1039,6 +1081,10 @@ msgstr "更新をダウンロードできませんでした: {error}"
 msgid "Couldn't download the update."
 msgstr "更新をダウンロードできませんでした。"
 
+#: src/components/embedded/surface-status.tsx
+msgid "Couldn't load {name}"
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "絵文字の一覧を読み込めませんでした。このピッカーを閉じて開き直してください。"
@@ -1046,6 +1092,10 @@ msgstr "絵文字の一覧を読み込めませんでした。このピッカー
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "このアプリのペアリング ID を読み込めませんでした: {error}"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Couldn't load your apps. Check your connection and reload."
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -1070,6 +1120,10 @@ msgstr "{fieldName}を保存できませんでした。もう一度お試しく�
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't save the new order."
 msgstr "新しい並び順を保存できませんでした。"
+
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
@@ -1301,6 +1355,7 @@ msgstr "強い着氷性の霧雨"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "拒否"
@@ -1776,6 +1831,11 @@ msgstr "霧"
 msgid "Food & drink"
 msgstr "食べ物と飲み物"
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From {0}"
+msgstr ""
+
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
 msgstr ""
@@ -2122,6 +2182,10 @@ msgstr "聞いています"
 msgid "Load models"
 msgstr "モデルを読み込む"
 
+#: src/components/embedded/surface-status.tsx
+msgid "Loading {name}…"
+msgstr ""
+
 #: src/settings/devices.tsx
 msgid "Loading code…"
 msgstr "コードを読み込んでいます…"
@@ -2210,6 +2274,18 @@ msgstr "メッセージ"
 #: src/i18n/unit-labels.ts
 msgid "Metric"
 msgstr "メートル法"
+
+#: src/settings/preferences.tsx
+#~ msgid "Mini Apps"
+#~ msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Mini Apps are only available on desktop"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+#~ msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Minimize"
@@ -2314,6 +2390,7 @@ msgstr "ネットワークリクエストに失敗しました（ブラウザー
 msgid "New Agent"
 msgstr "新しいエージェント"
 
+#: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "新しいチャット"
@@ -2373,6 +2450,10 @@ msgstr "まだチャットはありません"
 #: src/projects/project-detail-panel.tsx
 msgid "No chats yet."
 msgstr "まだチャットはありません。"
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "No chats yet. Anything you ask beside this app shows up here."
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
@@ -2488,6 +2569,20 @@ msgstr "後で"
 msgid "Not tested"
 msgstr "未テスト"
 
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
+msgstr ""
+
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgstr ""
+
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Nothing to ask about there. Try covering some content."
+#~ msgstr ""
+
 #: src/services/revoke-failure.ts
 msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
 msgstr ""
@@ -2561,6 +2656,14 @@ msgstr "{skillName} を開く"
 msgid "Open {title}"
 msgstr "{title} を開く"
 
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Open app"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Open chat"
+#~ msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "外部リンクを開く"
@@ -2589,6 +2692,10 @@ msgstr "サイドバーで開く"
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
 msgstr "サイドバーで開く"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
@@ -2903,6 +3010,10 @@ msgstr "リクエストが拒否されました"
 msgid "Request expired"
 msgstr "リクエストの有効期限が切れました"
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Requested by {appName}"
+msgstr ""
+
 #: src/components/chat/file-card.tsx
 msgid "Resend as images"
 msgstr "画像として再送信"
@@ -3004,10 +3115,15 @@ msgstr "ブリッジをホストしているマシンでこれを実行してか
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
 msgstr "保存"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Save a file from {appName}?"
+msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Save changes"
@@ -3144,6 +3260,11 @@ msgstr "画面のドキュメントをご覧ください。"
 #: src/voice/speakable.ts
 msgid "See the equation on screen."
 msgstr "画面の数式をご覧ください。"
+
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Select"
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
@@ -3455,6 +3576,15 @@ msgstr "Thunderbolt を使い始める"
 #: src/voice/ui/voice-mode-button.tsx
 msgid "Start voice mode"
 msgstr "音声モードを開始"
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from {0}"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an app that is no longer available"
+msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Starting…"
@@ -3980,6 +4110,7 @@ msgstr "旅行と場所"
 msgid "Trusted devices"
 msgstr "信頼済みのデバイス"
 
+#: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
@@ -4039,6 +4170,7 @@ msgid "Unreachable {relative}"
 msgstr "{relative}に到達不能"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "無題のチャット"
 
@@ -4199,6 +4331,10 @@ msgstr "音声モード: {status}"
 #: src/settings/devices.tsx
 msgid "Waiting for approval"
 msgstr "承認を待っています"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
@@ -4435,6 +4571,10 @@ msgstr "アシスタントがメールとカレンダーの管理をお手伝い
 #: src/components/onboarding/onboarding-auth-step.tsx
 msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "アシスタントがメール、カレンダー、ドキュメントの管理をお手伝いします。"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Your browser will download {fileName}."
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Your call"

@@ -4,7 +4,7 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { isOriginAllowed } from '@/config/settings'
+import { isRequestOriginAllowed } from '@/config/settings'
 import {
   applyOperation,
   cliDeviceIdPrefix,
@@ -83,18 +83,6 @@ const validateDeviceForSync = async (
   }
 
   return { ok: true }
-}
-
-/**
- * Defense-in-depth: rejects cross-origin requests whose Origin doesn't match allowed CORS origins.
- * Absent Origin (non-browser / server-to-server clients) is allowed.
- */
-const validateOrigin = (request: Request, appSettings: Settings): boolean => {
-  const origin = request.headers.get('origin')
-  if (!origin) {
-    return true
-  }
-  return isOriginAllowed(origin, appSettings)
 }
 
 /**
@@ -190,7 +178,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       return { user: sessionUser ?? null, boundDeviceId }
     })
     .get('/token', async ({ powersyncJwt, request, set, user, boundDeviceId }) => {
-      if (!validateOrigin(request, settings)) {
+      if (!isRequestOriginAllowed(request, settings)) {
         set.status = 403
         return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
       }
@@ -261,7 +249,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     .put(
       '/upload',
       async ({ body, request, set, user, boundDeviceId }) => {
-        if (!validateOrigin(request, settings)) {
+        if (!isRequestOriginAllowed(request, settings)) {
           set.status = 403
           return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
         }

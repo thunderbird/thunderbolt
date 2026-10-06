@@ -227,6 +227,21 @@ HAYSTACK_PIPELINES='[{"id":"rag-chat","name":"RAG Chat","pipelineName":"rag-chat
 
 A pipeline that should accept file attachments needs `"supportedContent": {"text": true, "files": true}`. Without it attachments never reach the pipeline, and it is run as a chat pipeline rather than a generative one.
 
+## Mini Apps
+
+A Mini App is a web app you host at its own URL, shown as a page in Thunderbolt with the chat beside it. Web and desktop only.
+
+| Variable                        | Default                                     | What it does                                                                                                                                                                    |
+| ------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MINI_APPS`                     | empty (the starter template in development) | JSON object keyed by app id. Each entry needs `name`, `origin`, and a `secret` of at least 32 characters; `description`, `icon`, and `url` (defaults to `origin`) are optional. |
+| `MINI_APP_TOKEN_EXPIRY_SECONDS` | `300`                                       | Lifetime of the identity token an app is given for the signed-in user.                                                                                                          |
+
+```bash
+MINI_APPS='{"order-book":{"name":"Order Book","icon":"table","origin":"https://orders.example.com","secret":"<at least 32 characters>"}}'
+```
+
+An app appears in the sidebar as soon as it is registered. An entry that fails validation is dropped with the reason logged at startup, so that app never appears. Each app gets its own secret, so one app cannot forge another's token. Restart the API after a change. The app itself must send three headers, or it renders as a blank panel with no error: `frame-ancestors` naming your origin, `Cross-Origin-Embedder-Policy: credentialless`, and `Cross-Origin-Resource-Policy: cross-origin` ([details](../internals/architecture/mini-apps.md#the-embedding-headers)).
+
 ## Email
 
 Sign-in codes are sent through Resend.

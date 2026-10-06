@@ -371,7 +371,7 @@ describe('Chat Threads DAL', () => {
       const threadId = uuidv7()
       const modelId = await createTestModel()
 
-      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, 'haystack-rag')
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, { agentId: 'haystack-rag' })
       expect(thread?.agentId).toBe('haystack-rag')
 
       const stored = await getChatThread(getDb(), threadId)
@@ -391,11 +391,53 @@ describe('Chat Threads DAL', () => {
       const modelId = await createTestModel()
 
       // First call creates with one agent
-      await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-a')
+      await getOrCreateChatThread(getDb(), threadId, modelId, { agentId: 'agent-a' })
 
       // Second call should return existing thread unchanged
-      const second = await getOrCreateChatThread(getDb(), threadId, modelId, 'agent-b')
+      const second = await getOrCreateChatThread(getDb(), threadId, modelId, { agentId: 'agent-b' })
       expect(second?.agentId).toBe('agent-a')
+    })
+
+    it('stamps the Mini App a chat was started from', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, { miniAppId: 'patient-journeys' })
+      expect(thread?.miniAppId).toBe('patient-journeys')
+    })
+
+    it('leaves an ordinary chat with no Mini App', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId)
+      expect(thread?.miniAppId).toBeNull()
+    })
+
+    /**
+     * A chat started from an app while a project is open belongs to both. The
+     * two origins are independent, and neither may clobber the other.
+     */
+    it('keeps project and Mini App origins independent', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      const thread = await getOrCreateChatThread(getDb(), threadId, modelId, {
+        projectId: 'project-1',
+        miniAppId: 'finance',
+      })
+      expect(thread?.projectId).toBe('project-1')
+      expect(thread?.miniAppId).toBe('finance')
+    })
+
+    /** The row is written once, on first save; a later call must not re-stamp it. */
+    it('does not re-stamp the Mini App of an existing thread', async () => {
+      const threadId = uuidv7()
+      const modelId = await createTestModel()
+
+      await getOrCreateChatThread(getDb(), threadId, modelId, { miniAppId: 'finance' })
+      const second = await getOrCreateChatThread(getDb(), threadId, modelId, { miniAppId: 'patient-journeys' })
+      expect(second?.miniAppId).toBe('finance')
     })
 
     it('should work correctly with different thread IDs', async () => {

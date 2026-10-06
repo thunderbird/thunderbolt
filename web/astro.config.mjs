@@ -48,6 +48,7 @@ export default defineConfig({
 		'/docs/architecture/iroh-relay-self-hosting': `${repoBlobUrl}/docs/internals/architecture/iroh-relay-self-hosting.md`,
 		'/docs/architecture/e2ee-threat-model': `${repoBlobUrl}/docs/internals/architecture/e2ee-threat-model.md`,
 		'/docs/architecture/red-team-harness': `${repoBlobUrl}/docs/internals/architecture/red-team-harness.md`,
+		'/docs/architecture/mini-apps': `${repoBlobUrl}/docs/internals/architecture/mini-apps.md`,
 		'/docs/development/mobile-setup': `${repoBlobUrl}/docs/internals/development/mobile-setup.md`,
 		'/docs/development/testing': `${repoBlobUrl}/docs/internals/development/testing.md`,
 		'/docs/dev-tooling/storybook': `${repoBlobUrl}/docs/internals/dev-tooling/storybook.md`,

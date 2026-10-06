@@ -171,6 +171,8 @@ describe('lintReproSpec', () => {
     ["test['use']({ viewport: null })", '"use" is not allowed'],
     ["const fixtures = test.extend({ proxy: { server: 'http://evil.test' } })", '"extend" is not allowed'],
     ["test.only('focused', async () => {})", '"only" is not allowed'],
+    ["test.skip('never runs', async () => {})", '"skip" is not allowed'],
+    ["test.fixme('never runs', async () => {})", '"fixme" is not allowed'],
     ["const download = await page.waitForEvent('download'); await download.saveAs('x')", '"saveAs" is not allowed'],
     ["await page.video()?.saveAs('x')", '"saveAs" is not allowed'],
     ["await page.screenshot({ path: 'x' })", '"path" is not allowed'],

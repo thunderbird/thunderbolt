@@ -156,8 +156,11 @@ const forbiddenNames = new Set([
   // Overrides the same options as `test.use`, which `useProblem` limits. `use` itself passes only there.
   'extend',
   'use',
-  // `test.only` would make the replay skip every other finding's spec.
+  // `test.only` would make the replay skip every other finding's spec; `skip` and `fixme` make it run 0 times, which
+  // reads as "not reproduced".
   'only',
+  'skip',
+  'fixme',
 ])
 
 /** The only options a spec may give `test.use`: the page's shape and locale, and c1's onboarding build URL. */

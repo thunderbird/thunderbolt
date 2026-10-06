@@ -4,7 +4,7 @@
 
 import { truncateText } from '@/lib/utils'
 import type { ToolConfig } from '@/types'
-import { http, type HttpClient } from '@/lib/http'
+import { http, HttpError, type HttpClient } from '@/lib/http'
 import { z } from 'zod'
 import { buildRawMessage, extractBody, getHeader, parseEmailAddress } from './utils'
 import { ensureValidOAuthToken, getOAuthCredentials, type OAuthCredentials } from '@/integrations/oauth-credentials'
@@ -444,6 +444,48 @@ export const draftEmail = async (
   }
 }
 
+type GoogleApiErrorBody = {
+  error?: {
+    message?: string
+    errors?: Array<{ reason?: string }>
+    details?: Array<{ reason?: string }>
+  }
+}
+
+/** Reads a Google API error envelope, tolerating a non-JSON body from an intermediary. */
+const readGoogleApiError = async (response: Response): Promise<GoogleApiErrorBody['error']> => {
+  try {
+    const body = (await response.json()) as GoogleApiErrorBody
+    return body.error
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Explains a 403/404 from the Calendar API.
+ *
+ * The two usual causes — the Calendar API disabled on the Cloud project, and a
+ * token that never carried the calendar scope — are indistinguishable from the
+ * status alone and differ only in the `reason` Google puts in the body, so read
+ * it rather than reporting one generic failure that hides which happened.
+ */
+const describeCalendarAccessError = async (response: Response, calendarId: string): Promise<string> => {
+  const error = await readGoogleApiError(response)
+  const reasons = [...(error?.errors ?? []), ...(error?.details ?? [])].map((entry) => entry.reason)
+
+  if (reasons.includes('accessNotConfigured') || reasons.includes('SERVICE_DISABLED')) {
+    return 'The Google Calendar API is not enabled for this Google Cloud project. Enable it in the Google Cloud console under APIs & Services → Library → Google Calendar API, then try again.'
+  }
+  if (reasons.includes('insufficientPermissions') || reasons.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+    return 'The connected Google account has not granted calendar access. Disconnect Google in Settings → Connections and connect it again to approve the calendar scope.'
+  }
+  if (response.status === 404) {
+    return `Calendar "${calendarId}" was not found. Use "primary" for the account's default calendar.`
+  }
+  return error?.message ?? 'Calendar access not available.'
+}
+
 /**
  * Check calendar events for upcoming days
  */
@@ -455,12 +497,19 @@ export const checkCalendar = async (
   const credentials = await auth.getCredentials()
   const accessToken = await auth.ensureToken(httpClient, credentials)
 
+  // The ACP/Pi bridge (`toPiAgentTools`) hands `execute` the model's raw
+  // arguments without running them through the zod schema, so neither schema
+  // default can be relied on here — only the AI SDK path applies them. An
+  // absent `days_ahead` would otherwise reach `toISOString()` as NaN and throw
+  // past the catch below, turning a missing argument into an opaque crash.
+  const calendarId = params.calendar_id || 'primary'
+  const daysAhead = params.days_ahead ?? 7
+
   const now = new Date()
   const futureDate = new Date()
-  futureDate.setDate(now.getDate() + params.days_ahead)
+  futureDate.setDate(now.getDate() + daysAhead)
 
   const searchParams = new URLSearchParams()
-  searchParams.set('calendarId', params.calendar_id)
   searchParams.set('timeMin', now.toISOString())
   searchParams.set('timeMax', futureDate.toISOString())
   searchParams.set('singleEvents', 'true')
@@ -469,7 +518,7 @@ export const checkCalendar = async (
 
   try {
     const response = await httpClient
-      .get('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      .get(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
         searchParams,
         headers: { Authorization: `Bearer ${accessToken}` },
       })
@@ -506,13 +555,12 @@ export const checkCalendar = async (
       events,
       timezone: response.timeZone || 'UTC',
     }
-  } catch (error: any) {
-    // Calendar API might not be enabled or accessible
-    if (error.response?.status === 403 || error.response?.status === 404) {
+  } catch (error) {
+    if (error instanceof HttpError && (error.response.status === 403 || error.response.status === 404)) {
       return {
         events: [],
         timezone: 'UTC',
-        error: 'Calendar access not available. Please enable Google Calendar API access.',
+        error: await describeCalendarAccessError(error.response, calendarId),
       }
     }
     throw error

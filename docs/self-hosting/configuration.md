@@ -147,12 +147,13 @@ Enabling `CONFIDENTIAL_API_KEYS_ENABLED`, `false` by default, lets a personal ac
 
 The sync service (PowerSync) is a separate component of the deployment, replicating each user's data to their other devices. Leave `POWERSYNC_URL` unset to run without sync; the app still works on one device at a time.
 
-| Variable                         | Default | What it does                                                                                    |
-| -------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `POWERSYNC_URL`                  | none    | URL of your sync service, as the browser reaches it. Setting it turns sync on.                  |
-| `POWERSYNC_JWT_SECRET`           | none    | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.             |
-| `POWERSYNC_JWT_KID`              | none    | Key identifier, so the sync service can pick between secrets during a rotation.                 |
-| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `3600`  | Lifetime, in seconds, of the short-lived token each client uses to connect to the sync service. |
+| Variable                         | Default         | What it does                                                                                                                                                                                                     |
+| -------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POWERSYNC_URL`                  | none            | URL of your sync service, as the browser reaches it. Setting it turns sync on.                                                                                                                                   |
+| `POWERSYNC_INTERNAL_URL`         | `POWERSYNC_URL` | Address the API itself uses to check the sync service for `/v1/health/powersync`. Set it when the public URL does not resolve inside your network.                                                               |
+| `POWERSYNC_JWT_SECRET`           | none            | Shared signing secret. Required once `POWERSYNC_URL` is set, minimum 32 characters.                                                                                                                              |
+| `POWERSYNC_JWT_KID`              | none            | Key identifier, so the sync service can pick between secrets during a rotation.                                                                                                                                  |
+| `POWERSYNC_TOKEN_EXPIRY_SECONDS` | `300`           | Lifetime, in seconds, of the token each client uses to connect to the sync service. The sync service checks it without asking the API, so a revoked device keeps syncing until its token expires. Keep it short. |
 
 The secret and key identifier must match the values your sync service loads. If you generate the secret in base64, use base64url: a value containing `+`, `/`, or `=` is rejected by the sync service.
 
@@ -170,6 +171,16 @@ Apps read the setting from the API at startup, so there is no matching client se
 
 > Because the servers then hold only ciphertext, an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
 
+### Organizational key escrow
+
+Off by default. When on, every encryption setup, key rotation and v1 to v2 upgrade must include an escrow envelope that wraps the account key to your organization's public key, so an operator can recover an account offline. The server never holds escrow key material and cannot change the key an account is wrapped to: the app wraps only to the public key built into it.
+
+| Variable             | Default | What it does                                                                 |
+| -------------------- | ------- | ---------------------------------------------------------------------------- |
+| `ORG_ESCROW_ENABLED` | `false` | Requires and stores an escrow envelope on every setup, rotation and upgrade. |
+
+**Order matters.** Build `VITE_ORG_ESCROW_PUBLIC_KEY` into the app (see [Frontend build settings](#frontend-build-settings)) before turning this on, or every setup, rotation and upgrade fails with a `400`. Generate the key pair with `scripts/org-escrow-keygen.ts` and keep the private half away from the app server. Recover offline with `scripts/org-escrow-decrypt.ts`, which reads the private key and database URL from `ORG_ESCROW_PRIVATE_KEY` and `DATABASE_URL`, or from `--private-key-file` and `--db-url-file`, never from command-line arguments, which `ps` shows to every process on the machine. Escrow is a proof of concept: classical P-256 only, and accounts set up before it was enabled are not backfilled.
+
 ## Agents
 
 An agent is the assistant behind a conversation. Thunderbolt ships a built-in one and can offer others alongside it, including ones you run yourself.
@@ -179,6 +190,22 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `ENABLED_AGENTS`         | empty   | Comma-separated list of agent identifiers to offer. Empty means offer all of them.                 |
 | `ALLOW_CUSTOM_AGENTS`    | `true`  | `false` hides the option to add a custom agent, so users cannot connect their own.                 |
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
+
+### Hosted agent
+
+Reserved for a server-hosted agent in a later release. None of these has any effect yet.
+
+| Variable                          | Default | What it does                                       |
+| --------------------------------- | ------- | -------------------------------------------------- |
+| `AGENT_ENABLED`                   | `false` | Turns the hosted agent on.                         |
+| `AGENT_MODEL`                     | empty   | Model the agent uses.                              |
+| `AGENT_MAX_STEPS`                 | `8`     | Most tool-call steps per run.                      |
+| `AGENT_SYSTEM_PROMPT`             | empty   | System prompt for the agent.                       |
+| `AGENT_MCP_SERVERS`               | empty   | JSON array of MCP servers the agent may call.      |
+| `AGENT_NAME`                      | empty   | Name shown when clients discover the agent.        |
+| `AGENT_DESCRIPTION`               | empty   | Description shown when clients discover the agent. |
+| `AGENT_ICON`                      | empty   | Icon shown when clients discover the agent.        |
+| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false` | Lets signed-out clients discover the hosted agent. |
 
 ### Deepset (Haystack) pipelines
 
@@ -201,12 +228,13 @@ A pipeline that should accept file attachments needs `"supportedContent": {"text
 
 Sign-in codes are sent through Resend.
 
-| Variable                    | Default | What it does                                                                                                                                          |
-| --------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RESEND_API_KEY`            | none    | Sending key. Leave it unset and no mail is sent. Fine for local evaluation, and fine on OIDC or SAML, but it breaks email-code sign-in in production. |
-| `RESEND_MONITORING_API_KEY` | none    | Separate full-access key used only by the email health check, so the sending key can stay send-only.                                                  |
+| Variable                    | Default                     | What it does                                                                                                                                          |
+| --------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RESEND_API_KEY`            | none                        | Sending key. Leave it unset and no mail is sent. Fine for local evaluation, and fine on OIDC or SAML, but it breaks email-code sign-in in production. |
+| `RESEND_MONITORING_API_KEY` | none                        | Separate full-access key used only by the email health check, so the sending key can stay send-only.                                                  |
+| `EMAIL_FROM`                | `hello@auth.thunderbolt.io` | Sender address for outgoing mail, and the contact address in its footer.                                                                              |
 
-Mail goes out from a Thunderbolt-owned sender address, `hello@auth.thunderbolt.io`. There is no setting to change the from address or to use your own SMTP server.
+Set `EMAIL_FROM` to an address on a domain your Resend account has verified: Resend rejects the default everywhere except Thunderbird's own deployment. There is no setting to use your own SMTP server.
 
 ## Browser access
 
@@ -286,7 +314,7 @@ curl -H "Authorization: Bearer $MONITORING_TOKEN" https://api.example.com/v1/hea
 | `/v1/health/database`  | A trivial query against PostgreSQL, 5 second deadline.                                       |
 | `/v1/health/powersync` | Sync service liveness, 5 seconds.                                                            |
 | `/v1/health/email`     | That Resend accepts your key and your sending domain is verified, 10 seconds. Sends no mail. |
-| `/v1/health/models`    | One tiny completion against every model offered, 20 seconds each.                            |
+| `/v1/health/models`    | One tiny completion against every model offered, 30 seconds each.                            |
 
 Healthy is `200` with `{"status":"ok"}`, unhealthy is `503` with a short reason. Reasons never include upstream response bodies or credentials. Don't poll the models check on a tight interval: every call spends real money on a completion. We recommend 15 minutes.
 
@@ -310,10 +338,11 @@ Contact the team with a deployment name to get a key.
 
 The web app is a static bundle, so these are fixed when its image is built, not when it runs. The published frontend image accepts them as Docker build arguments.
 
-| Build argument               | Default | What it does                                                                         |
-| ---------------------------- | ------- | ------------------------------------------------------------------------------------ |
-| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Where the app calls the API. A relative path works when a reverse proxy fronts both. |
-| `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for email sign-in codes.                       |
+| Build argument               | Default | What it does                                                                                                                                              |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_THUNDERBOLT_CLOUD_URL` | `/v1`   | Where the app calls the API. A relative path works when a reverse proxy fronts both.                                                                      |
+| `VITE_AUTH_MODE`             | `sso`   | `sso` for OIDC or SAML, anything else for email sign-in codes.                                                                                            |
+| `VITE_ORG_ESCROW_PUBLIC_KEY` | empty   | Base64 P-256 public key the app wraps account keys to, for [organizational key escrow](#organizational-key-escrow). Build it in before turning escrow on. |
 
 Several further settings are read when the app is built but are not offered as build arguments, so you can only set them by building the image yourself. Anonymous sessions need `VITE_AUTH_ENABLE_ANONYMOUS=true` **and** `VITE_BYPASS_WAITLIST=true` alongside `AUTH_ALLOW_ANONYMOUS`; with only the first two a visitor still meets the sign-in wall. `VITE_APP_VERSION` is what makes a client send `X-App-Version`, so the version gate depends on it. `VITE_IROH_RELAY_URL` points the command-line bridge at a relay of your own instead of the public ones.
 

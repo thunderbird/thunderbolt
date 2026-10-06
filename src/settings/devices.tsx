@@ -14,12 +14,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Formatters } from '@/i18n/format'
 import { useFormatters } from '@/i18n/use-formatters'
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useApproveDevice } from '@/hooks/use-approve-device'
 import { useDenyDevice } from '@/hooks/use-deny-device'
-import { useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useRefreshKeys, useRevokeDevice } from '@/hooks/use-revoke-device'
+import { useFinishLockout, useLockoutPending } from '@/hooks/use-lockout-pending'
+import { describeRevokeFailure } from '@/services/revoke-failure'
 import { useRemoveDevice } from '@/hooks/use-remove-device'
 import { useSetDeviceNodeId } from '@/hooks/use-set-device-node-id'
 import { useDevicePairing } from '@/hooks/use-device-pairing'
@@ -124,8 +127,12 @@ type TrustedDeviceRowProps = {
   isRevokingThisDevice: boolean
   isRemovePending: boolean
   isRemovingThisDevice: boolean
+  /** Revoked, but the AK rotation that locks it out never landed (THU-887). */
+  isAwaitingLockout: boolean
+  isFinishingLockout: boolean
   onRevoke: () => void
   onRemove: () => void
+  onFinishLockout: () => void
   onToggleQr: () => void
   onOpenPairingDialog: () => void
 }
@@ -139,8 +146,11 @@ const TrustedDeviceRow = ({
   isRevokingThisDevice,
   isRemovePending,
   isRemovingThisDevice,
+  isAwaitingLockout,
+  isFinishingLockout,
   onRevoke,
   onRemove,
+  onFinishLockout,
   onToggleQr,
   onOpenPairingDialog,
 }: TrustedDeviceRowProps) => {
@@ -222,6 +232,37 @@ const TrustedDeviceRow = ({
         </div>
       </div>
 
+      {/*
+        Revoked, but the rotation that makes its account key worthless never
+        landed (THU-887). The "Revoked" badge above is, on its own, the lie this
+        ticket is about — so say what is still true and offer the one action that
+        fixes it. Every device on the account sees this, because the server
+        derives it rather than the client that failed remembering it.
+      */}
+      {isAwaitingLockout && (
+        <div className="mt-3 flex flex-col gap-2 border-t pt-3">
+          <p className="text-[length:var(--font-size-sm)] text-destructive" role="alert">
+            <Trans>
+              This device lost access, but your account key was not replaced — so it can still read data it already has,
+              and anything written since. Finish securing your account to lock it out.
+            </Trans>
+          </p>
+          <div className="grid grid-cols-1 md:flex md:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={t`Finish securing after revoking ${deviceName}`}
+              onClick={onFinishLockout}
+              disabled={isFinishingLockout}
+              isLoading={isFinishingLockout}
+              loadingLabel={t`Securing…`}
+            >
+              <Trans>Finish securing</Trans>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {!isRevoked && supportsPairing && (
         <div className="mt-3 flex flex-col gap-2 border-t pt-3">
           <p className="text-[length:var(--font-size-xs)] font-medium uppercase tracking-wide text-muted-foreground">
@@ -272,7 +313,7 @@ const TrustedDeviceRow = ({
 }
 
 export default function DevicesSettingsPage() {
-  const { t } = useLingui()
+  const { i18n, t } = useLingui()
   const db = useDatabase()
   const currentDeviceId = getDeviceId()
   const { data: devices = [], isLoading } = useQuery({
@@ -285,14 +326,24 @@ export default function DevicesSettingsPage() {
   })
   const [confirmationTarget, setConfirmationTarget] = useState<ConfirmationTarget | null>(null)
 
+  const awaitingLockout = useLockoutPending()
+  const finishLockoutMutation = useFinishLockout()
+
   const visibleDevices = devices.filter((d) => {
     if (d.revokedAt != null) {
-      return Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
+      // The visibility window is cosmetic tidying, and it used to dispose of the
+      // evidence: a device whose lockout rotation never landed still holds a
+      // usable account key, so hiding it would hide the one thing the user needs
+      // to act on (THU-887). It stays until the rotation actually happens.
+      return (
+        awaitingLockout.deviceIds.has(d.id) || Date.now() - new Date(d.revokedAt).getTime() < revokedDeviceVisibilityMs
+      )
     }
     return !!d.trusted
   })
 
   const revokeMutation = useRevokeDevice()
+  const refreshKeysMutation = useRefreshKeys()
   const removeMutation = useRemoveDevice()
   const denyMutation = useDenyDevice()
   const approveMutation = useApproveDevice(pendingDevices)
@@ -314,19 +365,63 @@ export default function DevicesSettingsPage() {
 
   /** Runs the confirmed action's mutation against the pending target, closing the dialog on success.
    *  The action guard makes a stale dialog's confirm a no-op if the target changed under it. */
+  /**
+   * The action currently in flight, claimed SYNCHRONOUSLY.
+   *
+   * `isPending` already disables the confirm button, and it is not enough:
+   * `mutate()` returns before TanStack's observer notification, the React
+   * render and the commit that actually puts `disabled` on the DOM node, so two
+   * clicks inside that window both see an enabled button. A ref is written in
+   * the same task as the first click, so the second one sees it. A human
+   * double-click usually loses that race; an automated one, or a main thread
+   * busy rendering a long device list, wins it.
+   *
+   * Starting a revoke twice is not harmless: the second run's revoke call is
+   * idempotent and succeeds, its rotation then 403s on key material the first
+   * run already replaced, and that pair is indistinguishable from a genuinely
+   * half-finished lockout — so the dialog tells the user their account key was
+   * never replaced when it was.
+   */
+  const inFlightAction = useRef<string | null>(null)
+
   const confirmPendingAction = (
     action: ConfirmationTarget['action'],
-    mutation: { mutate: (deviceId: string, options: { onSuccess: () => void }) => void },
+    mutation: {
+      mutate: (deviceId: string, options: { onSuccess: () => void; onSettled: () => void }) => void
+    },
   ) => {
     if (confirmationTarget?.action !== action) {
       return
     }
+    const claim = `${action}:${confirmationTarget.deviceId}`
+    if (inFlightAction.current === claim) {
+      return
+    }
+    inFlightAction.current = claim
     mutation.mutate(confirmationTarget.deviceId, {
       onSuccess: () => setConfirmationTarget(null),
+      // Released on settle, not on success: a failure leaves the dialog open as
+      // the retry affordance, and a claim that outlived it would make that
+      // button dead.
+      onSettled: () => {
+        inFlightAction.current = null
+      },
     })
   }
 
   const hasPendingDevices = pendingDevices.length > 0
+
+  /**
+   * The revoke failure, scoped to the device the dialog is currently about.
+   * Scoping by `variables` rather than resetting the mutation on open gets the
+   * same staleness protection per-device instead of globally, and also covers
+   * dismissing the dialog mid-flight — where a reset-on-open would have dropped
+   * the failure that arrived afterwards.
+   */
+  const revokeFailure =
+    revokeMutation.error && revokeMutation.variables === confirmationTarget?.deviceId
+      ? describeRevokeFailure(revokeMutation.error)
+      : null
 
   return (
     <SettingsPageShell className="gap-6 md:pb-12">
@@ -335,6 +430,27 @@ export default function DevicesSettingsPage() {
       {removeMutation.error && (
         <p className="text-sm text-destructive" role="alert">
           {removeMutation.error.message}
+        </p>
+      )}
+
+      {/* Without this, a failed fetch is indistinguishable from "nothing owed"
+          — the page would quietly claim every revoked device is locked out. */}
+      {awaitingLockout.error && (
+        <p className="text-sm text-destructive" role="alert">
+          <Trans>Could not check whether a removed device still holds your account key. Reload to try again.</Trans>
+        </p>
+      )}
+
+      {/* The lockout retry has no dialog of its own, so its failure surfaces here. */}
+      {finishLockoutMutation.error && (
+        <p className="text-sm text-destructive" role="alert">
+          {i18n._(describeRevokeFailure(finishLockoutMutation.error).message)}
+        </p>
+      )}
+
+      {approveMutation.error && (
+        <p className="text-sm text-destructive" role="alert">
+          {approveMutation.error.message}
         </p>
       )}
 
@@ -387,8 +503,11 @@ export default function DevicesSettingsPage() {
                   isRevokingThisDevice={isMutatingDevice(revokeMutation, device.id)}
                   isRemovePending={removeMutation.isPending}
                   isRemovingThisDevice={isMutatingDevice(removeMutation, device.id)}
+                  isAwaitingLockout={awaitingLockout.deviceIds.has(device.id)}
+                  isFinishingLockout={finishLockoutMutation.isPending}
                   onRevoke={() => setConfirmationTarget({ action: 'revoke', deviceId: device.id })}
                   onRemove={() => setConfirmationTarget({ action: 'remove', deviceId: device.id })}
+                  onFinishLockout={() => finishLockoutMutation.mutate()}
                   onToggleQr={() => pairing.toggleQr(device.id)}
                   onOpenPairingDialog={() => pairing.openDialog(device.id)}
                 />
@@ -411,6 +530,59 @@ export default function DevicesSettingsPage() {
         onConfirm={() => confirmPendingAction('revoke', revokeMutation)}
         isPending={revokeMutation.isPending}
         variant={revokeDevice?.deviceType === 'cli' ? 'cli' : 'trusted'}
+        error={revokeFailure && i18n._(revokeFailure.message)}
+        errorAction={
+          revokeFailure?.action === 'refreshKeys' ? (
+            // The revoke NEVER refreshes keys as a silent side effect (THU-872)
+            // — adopting a server-supplied account key inside an emergency cut
+            // is exactly the dependency THU-887 removed. One explicit action:
+            // refresh (witness-gated), then retry the same revoke.
+            <div className="flex flex-col gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={refreshKeysMutation.isPending}
+                loadingLabel={t`Refreshing keys…`}
+                onClick={() =>
+                  refreshKeysMutation.mutate(undefined, {
+                    onSuccess: () => confirmPendingAction('revoke', revokeMutation),
+                  })
+                }
+              >
+                <Trans>Refresh keys and retry</Trans>
+              </Button>
+              {refreshKeysMutation.error && (
+                <p className="text-[length:var(--font-size-xs)] text-destructive" role="alert">
+                  {refreshKeysMutation.error.message}
+                </p>
+              )}
+              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                <Trans>
+                  Another device changed the account keys. Refreshing fetches the current key, then the revoke runs
+                  again.
+                </Trans>
+              </p>
+            </div>
+          ) : revokeFailure?.action === 'phraseChange' ? (
+            // A link, not a sentence: the section lives in Settings →
+            // Preferences → Data, so naming it in prose leaves the user to find
+            // it. The cost is stated because it is irreversible — the phrase
+            // they hold today stops working.
+            <div className="flex flex-col gap-1">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/settings/preferences">
+                  <Trans>Change recovery phrase</Trans>
+                </Link>
+              </Button>
+              <p className="text-[length:var(--font-size-xs)] text-muted-foreground">
+                <Trans>
+                  This replaces your 24-word phrase. The one you have now will stop working, and you will need to save
+                  the new one.
+                </Trans>
+              </p>
+            </div>
+          ) : null
+        }
       />
 
       <RevokeDeviceDialog
@@ -419,6 +591,11 @@ export default function DevicesSettingsPage() {
         onConfirm={() => confirmPendingAction('deny', denyMutation)}
         isPending={denyMutation.isPending}
         variant="pending"
+        error={
+          denyMutation.error && denyMutation.variables === confirmationTarget?.deviceId
+            ? denyMutation.error.message
+            : null
+        }
       />
 
       <RemoveBridgeDialog

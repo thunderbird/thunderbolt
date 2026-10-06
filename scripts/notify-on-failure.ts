@@ -57,7 +57,7 @@ const requestJson = async <T>(
   const response = await request().catch(() => {
     throw new Error(`${context} request failed`)
   })
-  if (!response.ok) throw new Error(`${context} HTTP ${response.status}`)
+  if (!response.ok) {throw new Error(`${context} HTTP ${response.status}`)}
   const body = (await response.json().catch(() => {
     throw new Error(`${context} HTTP ${response.status} invalid JSON`)
   })) as T
@@ -82,8 +82,8 @@ const linear = async <T>(
         body: JSON.stringify({ query, variables }),
       }),
   )
-  if (result.errors?.length) throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors`)
-  if (!result.data) throw new Error(`Linear ${operation} HTTP ${status} returned no data`)
+  if (result.errors?.length) {throw new Error(`Linear ${operation} HTTP ${status} GraphQL errors`)}
+  if (!result.data) {throw new Error(`Linear ${operation} HTTP ${status} returned no data`)}
   return result.data
 }
 
@@ -98,13 +98,13 @@ const failedJobs = async (fetchFn: typeof fetch, input: NotificationInput): Prom
       ),
     )
     for (const job of response.jobs) {
-      if (job.conclusion !== 'failure' && job.conclusion !== 'timed_out') continue
+      if (job.conclusion !== 'failure' && job.conclusion !== 'timed_out') {continue}
       const steps = job.steps?.filter((step) => step.conclusion === 'failure' || step.conclusion === 'timed_out') ?? []
       lines.push(
         `- ${job.name}: ${job.html_url}${steps.length ? `\n${steps.map((step) => `  - ${step.name}`).join('\n')}` : ''}`,
       )
     }
-    if (response.jobs.length < 100) return lines.join('\n') || '- No failed jobs reported by GitHub.'
+    if (response.jobs.length < 100) {return lines.join('\n') || '- No failed jobs reported by GitHub.'}
   }
 }
 
@@ -124,7 +124,7 @@ const sendEmail = async (
         'Content-Type': 'application/json',
         'Idempotency-Key': idempotencyKey,
       },
-      body: JSON.stringify({ from: 'alerts@auth.thunderbolt.io', to: input.recipients, subject, text: message }),
+      body: JSON.stringify({ from: 'alerts@alerts.thunderbolt.io', to: input.recipients, subject, text: message }),
     }),
   )
 }
@@ -153,7 +153,7 @@ const readState = (issue: Incident, input: NotificationInput) => {
   const markerAt = description.lastIndexOf(stateMarker)
   const match =
     markerAt < 0 ? null : /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(description.slice(markerAt + stateMarker.length))
-  if (!match) throw new Error('Invalid incident state; manual repair required')
+  if (!match) {throw new Error('Invalid incident state; manual repair required')}
   const body = description.slice(0, markerAt)
   const expected = createHmac('sha256', input.linearApiKey).update(`${body}\n${match[1]}`).digest()
   const actual = Buffer.from(match[2], 'base64url')
@@ -204,13 +204,13 @@ const runOrder = async (fetchFn: typeof fetch, input: NotificationInput): Promis
     !Number.isSafeInteger(run.run_attempt) ||
     run.run_attempt < input.runAttempt
   )
-    throw new Error('GitHub run identity mismatch')
+    {throw new Error('GitHub run identity mismatch')}
   return { createdAt, runId: input.runId, attempt: input.runAttempt, workflowId: run.workflow_id }
 }
 
 /** Compare run creation, run ID, then attempt for reruns of one run. */
 const compareRuns = (a: RunOrder, b: RunOrder): number => {
-  if (a.workflowId !== b.workflowId) throw new Error('GitHub workflow identity mismatch')
+  if (a.workflowId !== b.workflowId) {throw new Error('GitHub workflow identity mismatch')}
   return a.createdAt - b.createdAt || a.runId - b.runId || a.attempt - b.attempt
 }
 
@@ -248,8 +248,8 @@ const hasNewerFailure = async (
       ),
     )
     for (const run of history.workflow_runs) {
-      if (!['schedule', 'push', 'workflow_dispatch'].includes(run.event) || run.head_branch !== 'main') continue
-      if (run.repository?.full_name !== input.repository) throw new Error('GitHub workflow run history mismatch')
+      if (!['schedule', 'push', 'workflow_dispatch'].includes(run.event) || run.head_branch !== 'main') {continue}
+      if (run.repository?.full_name !== input.repository) {throw new Error('GitHub workflow run history mismatch')}
       const createdAt = Date.parse(run.created_at)
       if (!Number.isFinite(createdAt) || !Number.isSafeInteger(run.id) || !Number.isSafeInteger(run.run_attempt)) {
         throw new Error('Invalid GitHub workflow run history')
@@ -261,9 +261,9 @@ const hasNewerFailure = async (
           currentRun,
         ) > 0
       )
-        return true
+        {return true}
     }
-    if (history.workflow_runs.length < 100) return false
+    if (history.workflow_runs.length < 100) {return false}
   }
   throw new Error('GitHub workflow run history exceeded safe pagination limit')
 }
@@ -281,7 +281,7 @@ export const notify = async (
     log(`Ignoring ${input.conclusion} workflow conclusion`)
     return
   }
-  if (!input.recipients.length) throw new Error('No alert recipients configured')
+  if (!input.recipients.length) {throw new Error('No alert recipients configured')}
   if (
     !Number.isSafeInteger(input.runId) ||
     input.runId <= 0 ||
@@ -301,7 +301,7 @@ export const notify = async (
     'query Teams { teams(first: 100) { nodes { id name } } }',
   )
   const teamId = teams.teams.nodes.find((team) => team.name === 'Thunderbolt')?.id
-  if (!teamId) throw new Error('Thunderbolt team not found')
+  if (!teamId) {throw new Error('Thunderbolt team not found')}
 
   const data = await linear<{
     issues: { nodes: Incident[] }
@@ -317,7 +317,7 @@ export const notify = async (
   }`,
     { teamId, title },
   )
-  if (data.issues.nodes.length > 1) throw new Error(`Multiple open incidents for ${title}`)
+  if (data.issues.nodes.length > 1) {throw new Error(`Multiple open incidents for ${title}`)}
   const incident = data.issues.nodes[0]
   if (input.conclusion === 'success' && !incident) {
     return log(`No open incident for ${input.workflowName}; nothing to recover`)
@@ -333,25 +333,25 @@ export const notify = async (
       `mutation ${mutationName}($id: String!, $description: String!) { issueUpdate(id: $id, input: { description: $description }) { success } }`,
       { id: issue.id, description },
     )
-    if (!updated.issueUpdate.success) throw new Error('Linear did not update incident state')
+    if (!updated.issueUpdate.success) {throw new Error('Linear did not update incident state')}
     issue.description = description
   }
 
   /** Complete a previously created incident's first email before further transitions. */
   const finishOpeningEmail = async (issue: Incident): Promise<void> => {
     const { body, state } = readState(issue, input)
-    if (!state.pendingOpening) return
+    if (!state.pendingOpening) {return}
     if (state.openingRecipientsHash !== recipientsHash(input)) {
       throw new Error(
         'Alert recipients changed while opening email is pending; restore prior configuration before retry',
       )
     }
-    if (input.dryRun) return log(`Dry run: would send pending opening email for ${issue.url}`)
+    if (input.dryRun) {return log(`Dry run: would send pending opening email for ${issue.url}`)}
     await sendEmail(fetchFn, input, title, `${body}\nIncident: ${issue.url}`, `ci-failure/${issue.id}`)
     await updateState(issue, body, { ...state, pendingOpening: false }, 'MarkFailureEmailSent')
   }
 
-  if (incident) await finishOpeningEmail(incident)
+  if (incident) {await finishOpeningEmail(incident)}
 
   if (input.conclusion === 'success' && incident) {
     const { body: incidentBody, state } = readState(incident, input)
@@ -359,8 +359,8 @@ export const notify = async (
       return log(`Ignoring recovery older than latest failure for ${incident.url}`)
     }
     const done = data.workflowStates.nodes.find((state) => state.type === 'completed')
-    if (!done) throw new Error('Completed Linear state not found')
-    if (input.dryRun) return log(`Dry run: would close ${incident.url} and email recovery for ${runUrl}`)
+    if (!done) {throw new Error('Completed Linear state not found')}
+    if (input.dryRun) {return log(`Dry run: would close ${incident.url} and email recovery for ${runUrl}`)}
     const currentRecipientsHash = recipientsHash(input)
     if (state.recoveryRecipientsHash && state.recoveryRecipientsHash !== currentRecipientsHash) {
       throw new Error(
@@ -388,14 +388,14 @@ export const notify = async (
       'mutation CloseIssue($id: String!, $stateId: String!) { issueUpdate(id: $id, input: { stateId: $stateId }) { success } }',
       { id: incident.id, stateId: done.id },
     )
-    if (!closed.issueUpdate.success) throw new Error('Linear did not close the incident')
+    if (!closed.issueUpdate.success) {throw new Error('Linear did not close the incident')}
     return log(`Closed ${incident.url} and sent recovery email`)
   }
 
   const failures = await failedJobs(fetchFn, input)
   const body = `Workflow: ${input.workflowName}\nRun: ${runUrl}\nFailed jobs and steps:\n${failures}`
   if (incident) {
-    if (input.dryRun) return log(`Dry run: would comment on ${incident.url}\n${body}`)
+    if (input.dryRun) {return log(`Dry run: would comment on ${incident.url}\n${body}`)}
     const { body: incidentBody, state } = readState(incident, input)
     const order = compareRuns(currentRun, state.latestFailure)
     if (order < 0) {
@@ -417,17 +417,17 @@ export const notify = async (
       'mutation Comment($issueId: String!, $body: String!) { commentCreate(input: { issueId: $issueId, body: $body }) { success } }',
       { issueId: incident.id, body },
     )
-    if (!commented.commentCreate.success) throw new Error('Linear did not add the failure comment')
+    if (!commented.commentCreate.success) {throw new Error('Linear did not add the failure comment')}
     return log(`Commented on ${incident.url}`)
   }
 
   const backlog = data.workflowStates.nodes.find((state) => state.name === 'Backlog' && state.type === 'backlog')
   const bug = data.issueLabels.nodes.find((label) => label.name === 'Bug' && (label.team?.id === teamId || !label.team))
-  if (!backlog || !bug) throw new Error('Backlog state or Bug label not found')
+  if (!backlog || !bug) {throw new Error('Backlog state or Bug label not found')}
   if (input.dryRun)
-    return log(
+    {return log(
       `Dry run: would create ${title} in Backlog with Bug label and email ${input.recipients.length} recipients\n${body}`,
-    )
+    )}
   const pendingDescription = signedDescription(
     body,
     {
@@ -454,7 +454,7 @@ export const notify = async (
       },
     },
   )
-  if (!created.issueCreate.success) throw new Error('Linear did not create the incident')
+  if (!created.issueCreate.success) {throw new Error('Linear did not create the incident')}
   await finishOpeningEmail({ ...created.issueCreate.issue, description: pendingDescription })
   log(`Created ${created.issueCreate.issue.url} and sent failure email`)
 }
@@ -463,7 +463,7 @@ if (import.meta.main) {
   const env = Bun.env
   const required = (name: string): string => {
     const value = env[name]
-    if (!value) throw new Error(`Missing ${name}`)
+    if (!value) {throw new Error(`Missing ${name}`)}
     return value
   }
   await notify({

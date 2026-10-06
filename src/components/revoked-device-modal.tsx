@@ -16,13 +16,15 @@ import {
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal'
 import { SelectableCard, type DataOption } from '@/components/ui/selectable-card'
-import { clearLocalData } from '@/lib/cleanup'
+import { clearLocalData as clearLocalData_default } from '@/lib/cleanup'
 
 type RevokedDeviceModalProps = {
   open: boolean
+  /** Inject for tests, so they needn't replace the cleanup module process-wide. */
+  clearLocalData?: typeof clearLocalData_default
 }
 
-export const RevokedDeviceModal = ({ open }: RevokedDeviceModalProps) => {
+export const RevokedDeviceModal = ({ open, clearLocalData = clearLocalData_default }: RevokedDeviceModalProps) => {
   const { t } = useLingui()
   const [selectedOption, setSelectedOption] = useState<DataOption>('keep')
   const [isProcessing, setIsProcessing] = useState(false)

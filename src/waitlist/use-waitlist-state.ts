@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isNewAuthUser, onSignInSuccess } from '@/components/sign-in/use-sign-in-form-state'
+import { isNewAuthUser } from '@/lib/returning-user-onboarding'
+import { signInWithOtp } from '@/lib/sign-in-with-otp'
 import { useWelcomeStore } from '@/components/welcome-dialog'
 import type { AuthClient } from '@/contexts'
-import { authRequestHeaders } from '@/contexts/auth-context'
 import { useHttpClient } from '@/contexts'
 import { i18n } from '@/i18n'
 import { msg } from '@lingui/core/macro'
-import { challengeTokenHeader, otpLength } from '@/lib/constants'
+import { otpLength } from '@/lib/constants'
 import { useAnonymousPromotionAnalytics } from '@/lib/analytics/use-anonymous-promotion-analytics'
 import { getOtpErrorMessage } from '@/lib/otp-error-messages'
 import { isValidEmailFormat } from '@/lib/utils'
@@ -84,7 +84,6 @@ type UseWaitlistStateOptions = {
 export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOptions) => {
   const httpClient = useHttpClient()
   const analytics = useAnonymousPromotionAnalytics()
-  const { data: session } = authClient.useSession()
   const [state, dispatch] = useReducer(reducer, initialState)
 
   const isValidEmail = isValidEmailFormat(state.email.trim())
@@ -118,19 +117,13 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
 
     await analytics.captureAnonId(authClient)
 
-    // Snapshot BEFORE the sign-in mutation — after it resolves, the session has flipped
-    // to the new identity and `isAnonymous` no longer reflects the pre-promotion state.
-    const wasAnonymous = session?.user?.isAnonymous === true
-
     dispatch({ type: 'START_VERIFYING' })
 
     try {
-      const result = await authClient.signIn.emailOtp({
+      const result = await signInWithOtp(authClient, {
         email: state.email.trim(),
         otp: value,
-        fetchOptions: {
-          headers: authRequestHeaders({ [challengeTokenHeader]: state.challengeToken }),
-        },
+        challengeToken: state.challengeToken,
       })
 
       if (result.error) {
@@ -139,7 +132,6 @@ export const useWaitlistState = ({ authClient, onVerified }: UseWaitlistStateOpt
       }
 
       const isNewUser = isNewAuthUser(result.data.user)
-      await onSignInSuccess(isNewUser, wasAnonymous)
       analytics.onPromotionSuccess(result.data.user.id)
 
       if (!isNewUser) {

@@ -50,10 +50,15 @@ export const regionForUnitDefaults = (
  * Seeds the unit settings from the user's region the first time they are
  * needed, mirroring `useAppLanguage`'s contract for the `language` setting.
  *
- * Each setting ships as null and is written with `recomputeHash` so it stays a
- * seeded default rather than a user edit — that is what lets reconcile's
+ * Each setting ships without a value, and reconcile creates no row for it (see
+ * `shipsWithoutValue`), so "unset" reads the same whether the row is absent or
+ * null. The write below uses `recomputeHash` so the value stays a seeded
+ * default rather than a user edit — that is what lets reconcile's
  * `wouldOverwriteUserValue` guard preserve it across a `defaultSettingsVersion`
- * bump, and what keeps a later reset meaning "back to auto".
+ * bump, and what keeps a later reset meaning "back to auto". Because no
+ * placeholder row exists, that write is an INSERT and uploads as a PUT, so the
+ * create-only guard stops a fresh device overwriting an established device's
+ * units (GH #1299).
  *
  * Seeding fires only from the shipped null, so two devices with different
  * browser languages cannot ping-pong the synced rows, and a user who has

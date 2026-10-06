@@ -132,6 +132,8 @@ jobs:
       (needs.approve-fork.result == 'success' || needs.approve-fork.result == 'skipped')
     uses: ./.github/workflows/images-publish.yml
     with:
+      # Preview stacks run on amd64 Fargate; skip the emulated arm64 build.
+      platforms: linux/amd64
       tag_override: pr-${{ needs.resolve.outputs.pr_number }}-${{ needs.resolve.outputs.head_sha }}
       ref: ${{ needs.resolve.outputs.head_sha }}
       vite_backend_url: https://api-pr-${{ needs.resolve.outputs.pr_number }}.preview.thunderbolt.io/v1

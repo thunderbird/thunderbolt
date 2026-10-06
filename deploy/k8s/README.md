@@ -139,10 +139,11 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `backend.env.cliDeviceRegistrationEnabled` | `"false"`                                               | Server-owned CLI device registration gate                                                                                                                                                                                                            |
 | `marketing.image.repository`               | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image                                                                                                                                                                                                                                 |
 | `imagePullSecrets`                         | `[]`                                                    | Registry pull secrets (leave empty for the public images)                                                                                                                                                                                            |
-| `nodeSelector`                             | `{}`                                                    | Node selector applied to every pod (e.g. `kubernetes.io/arch: amd64` on a mixed-arch cluster)                                                                                                                                                        |
+| `nodeSelector`                             | `{}`                                                    | Node selector applied to every pod, to pin workloads to a node pool (e.g. `kubernetes.io/arch: amd64`)                                                                                                                                               |
 | `ingress.enabled`                          | `true`                                                  | Create Ingress resource                                                                                                                                                                                                                              |
 | `ingress.host`                             | `""`                                                    | Set to your hostname for production                                                                                                                                                                                                                  |
 | `postgres.storage`                         | `5Gi`                                                   | Postgres PVC size                                                                                                                                                                                                                                    |
+| `postgres.storageClassName`                | `""` (uses cluster default)                             | StorageClass for the Postgres PVC. Set explicitly on clusters with a node-local default or node churn; `"-"` binds a PV you provisioned yourself. New installs only, see below                                                                       |
 | `postgres.sslmode`                         | `disable`                                               | TLS mode, wired into both the backend's `DATABASE_URL` and PowerSync's replication/storage config. `disable` matches the in-cluster StatefulSet, which ships without TLS; use `require` (or stricter) against a TLS-terminating Postgres such as RDS |
 | `powersync.jwt.secretBase64`               | built-in dev secret                                     | PowerSync JWT signing secret, **base64url**-encoded                                                                                                                                                                                                  |
 | `keycloak.demoUserEnabled`                 | `true`                                                  | Include the `demo@thunderbolt.io` user in the imported realm                                                                                                                                                                                         |
@@ -180,7 +181,81 @@ the only PVC — so the dev-mode Keycloak database lives in the pod's filesystem
 The restart re-imports the realm from scratch, which drops the demo user, but
 also discards anything else configured in Keycloak since the pod started.
 
-See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
+See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#command-line-client-rollout) before enabling registration.
+
+### Changing Postgres storage after install
+
+`postgres.storage` and `postgres.storageClassName` both render into the
+StatefulSet's `volumeClaimTemplates`, which Kubernetes will not let you change
+on an existing object, so `helm upgrade` fails outright. The two need very
+different remedies, and only one of them touches your data.
+
+**Resizing the volume (`postgres.storage`) is not destructive.** Delete the
+StatefulSet while leaving its pod and claim in place, then upgrade: the claim
+keeps its identity and the data stays where it is.
+
+```bash
+kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
+helm upgrade thunderbolt . -n thunderbolt --reuse-values --set postgres.storage=10Gi
+```
+
+That updates the template. On a StorageClass with `allowVolumeExpansion: true`,
+which is the default on the major clouds, grow the existing disk too:
+
+```bash
+kubectl patch pvc pg-data-postgres-0 -n thunderbolt \
+  -p '{"spec":{"resources":{"requests":{"storage":"10Gi"}}}}'
+```
+
+**Changing the StorageClass is destructive**, because the new class provisions a
+new volume and nothing copies the old one across. Budget downtime, and treat the
+dump as your only copy.
+
+```bash
+# 1. Stop anything that writes, then dump, then verify the dump is readable.
+kubectl scale -n thunderbolt deploy/backend deploy/powersync --replicas=0
+kubectl exec -n thunderbolt postgres-0 -- \
+  pg_dump -U postgres -Fc postgres > thunderbolt.dump
+pg_restore --list thunderbolt.dump > /dev/null && echo "dump OK"
+
+# 2. Keep the old volume even if the class reclaims it, as a fallback.
+kubectl patch pv "$(kubectl get pvc pg-data-postgres-0 -n thunderbolt \
+  -o jsonpath='{.spec.volumeName}')" \
+  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+
+# 3. Remove the StatefulSet and its claim. The orphaned pod still mounts the
+#    volume, so it has to go before the claim will delete rather than hang.
+kubectl delete statefulset postgres -n thunderbolt --cascade=orphan
+kubectl delete pod postgres-0 -n thunderbolt
+kubectl delete pvc pg-data-postgres-0 -n thunderbolt
+
+# 4. Recreate on the new class, with the writers still down. The upgrade resets
+#    both replica counts, so pin them to 0 here.
+helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+  --set postgres.storageClassName=<class> \
+  --set backend.replicas=0 --set powersync.replicas=0
+
+# 5. Wait for the new volume to bind and Postgres to finish initialising.
+#    Provisioning takes a minute or two on a cloud StorageClass.
+kubectl rollout status statefulset/postgres -n thunderbolt --timeout=10m
+
+# 6. Restore, and only bring the writers back if it succeeded. Step 4 saved
+#    replicas=0 into the release, so --reuse-values alone would leave them
+#    stopped: pass the counts you were running before.
+kubectl exec -i -n thunderbolt postgres-0 -- \
+  pg_restore -U postgres -d postgres --clean --if-exists < thunderbolt.dump
+helm upgrade thunderbolt . -n thunderbolt --reuse-values \
+  --set postgres.storageClassName=<class> \
+  --set backend.replicas=1 --set powersync.replicas=1
+```
+
+Do not skip step 5. `helm upgrade` returns as soon as the objects are accepted,
+long before the volume is bound, and a `pg_restore` against a pod that is still
+starting fails in ways that are easy to miss.
+
+The sync service's own `powersync_storage` database is deliberately not in the
+dump. It rebuilds itself from the application database, so after this every
+client does one full re-sync.
 
 ## Templates
 

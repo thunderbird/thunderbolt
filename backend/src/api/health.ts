@@ -25,6 +25,7 @@ export type HealthRouteDeps = {
     Settings,
     | 'monitoringToken'
     | 'powersyncUrl'
+    | 'powersyncInternalUrl'
     | 'resendMonitoringApiKey'
     | 'anthropicApiKey'
     | 'anthropicBaseUrl'
@@ -83,7 +84,8 @@ export const createHealthRoutes = ({
         return status(503, { status: 'failed', reason: 'not-configured' })
       }
       try {
-        const response = await fetchFn(`${settings.powersyncUrl.replace(/\/$/, '')}/probes/liveness`, {
+        const probeUrl = settings.powersyncInternalUrl || settings.powersyncUrl
+        const response = await fetchFn(`${probeUrl.replace(/\/+$/, '')}/probes/liveness`, {
           signal: AbortSignal.timeout(timeouts.powersync ?? powersyncTimeoutMs),
         })
         if (!response.ok) {

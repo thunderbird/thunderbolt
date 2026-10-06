@@ -17,13 +17,17 @@ export const hashSetting = (setting: Setting): string => {
 
 /**
  * Default settings shipped with the application
- * These are upserted on app start and serve as the baseline for diff comparisons
+ * These serve as the baseline for diff comparisons. Reconcile upserts the ones
+ * that carry a value; the null-valued ones below are deliberately left
+ * uncreated (see `shipsWithoutValue`).
  *
  * Settings the user owns (`preferred_name`, `location_*`, the unit settings,
  * `language`) ship with a **null** value rather than being left out. That null
- * is load-bearing: it is what lets reconcile's `wouldOverwriteUserValue` guard
- * recognize a seeded or user-set value and preserve it across a
- * `defaultSettingsVersion` bump. A setting genuinely absent from this array is
+ * is load-bearing twice over: reconcile's `wouldOverwriteUserValue` guard uses
+ * it to recognize a seeded or user-set value and preserve it across a
+ * `defaultSettingsVersion` bump, and reconcile skips creating a placeholder row
+ * for it so the eventual seed uploads as a PUT rather than a PATCH (GH #1299).
+ * A setting genuinely absent from this array is
  * unmanaged instead — `anonymous_id` and `selected_model`, which are generated
  * per device and per user.
  */
@@ -266,3 +270,19 @@ export const defaultSettings: ReadonlyArray<Setting> = [
  * file's defaults without a matching version bump.
  */
 export const defaultSettingsVersion = 6
+
+/**
+ * Whether the bundle ships no value for a setting, leaving something else to
+ * supply it — `language` from the browser, the unit settings from the region,
+ * `preferred_name` and `location_*` from the user.
+ *
+ * Two behaviours key off this, which is why it lives here instead of being
+ * re-derived at each site:
+ *
+ * - Reconcile creates no row for it at all, so the eventual seed is an INSERT
+ *   (uploaded as a PUT, covered by the create-only guard) rather than an UPDATE
+ *   (a PATCH, which is not) — GH #1299.
+ * - `isSettingModified` treats an unstamped row for one of these as modified,
+ *   because reconcile was never there to stamp it with a default hash.
+ */
+export const shipsWithoutValue = (setting: Setting): boolean => setting.value === null

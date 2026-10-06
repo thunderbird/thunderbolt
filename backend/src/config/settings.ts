@@ -91,9 +91,13 @@ const settingsSchema = z
 
     // PowerSync settings
     powersyncUrl: z.string().default(''),
+    powersyncInternalUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
-    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(3600),
+    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us, so a
+    // revoked device keeps reading the sync stream until its current token expires. This value
+    // therefore *is* the post-revocation read window for downloads — keep it short.
+    powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(300),
 
     // CORS settings — comma-separated list of exact origins.
     // `corsAllowHeaders` is no longer consumed by any production mount: both
@@ -107,8 +111,14 @@ const settingsSchema = z
     // Protocol-required: frontend proxy-fetch.ts unwrap needs these visible cross-origin (cors does not echo expose-headers).
     corsExposeHeaders: z.string().default(defaultCorsExposeHeaders),
 
-    // E2E encryption — when true, devices must complete the trust flow before syncing
-    e2eeEnabled: z.boolean().default(false),
+    // Org escrow (THU-804 POC) — operator-controlled AK recipient. When enabled, every
+    // AK create/change (setup / rotate / upgrade) must include an org envelope, and the
+    // server rejects the write without one. That is the whole of the server's role:
+    // the escrow public key lives only in the client build (`VITE_ORG_ESCROW_PUBLIC_KEY`,
+    // THU-866), so the server never holds escrow key material and cannot steer the wrap
+    // target. Recovery runs offline via scripts/org-escrow-decrypt.ts with the
+    // operator-held private key.
+    orgEscrowEnabled: z.boolean().default(false),
 
     // Intake role: mounts POST /v1/debug-transcripts/intake. Thunderbolt production only.
     debugTranscriptIntakeEnabled: z.boolean().default(false),
@@ -116,7 +126,7 @@ const settingsSchema = z
     // Both set = the share feature is enabled for this deployment's users.
     debugTranscriptUpstreamUrl: z.string().trim().default(''),
     debugTranscriptUpstreamKey: z.string().trim().default(''),
-    // Rollout order: docs/self-hosting/configuration.md#cli-device-rollout.
+    // Rollout order: docs/self-hosting/configuration.md#command-line-client-rollout.
     // Kill switch for the server-owned CLI device row.
     cliDeviceRegistrationEnabled: z.boolean().default(false),
 
@@ -172,6 +182,19 @@ const settingsSchema = z
     // JSON array of pipeline descriptors: [{id, name, pipelineName, pipelineId, description?, icon?}].
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
+
+    // Hosted agent settings. These configure a server-hosted agent that ships in later PRs and are
+    // inert today: nothing reads them yet.
+    agentEnabled: z.boolean().default(false),
+    agentModel: z.string().default(''),
+    agentMaxSteps: z.coerce.number().int().positive().default(8),
+    agentSystemPrompt: z.string().default(''),
+    // JSON array of MCP server descriptors the hosted agent may call.
+    agentMcpServers: z.string().default(''),
+    agentName: z.string().default(''),
+    agentDescription: z.string().default(''),
+    agentIcon: z.string().default(''),
+    allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.powersyncUrl && data.powersyncJwtSecret.length < 32) {
@@ -243,16 +266,22 @@ const parseSettings = (): Settings => {
     // value defaults to '' so the schema's superRefine guard correctly rejects
     // an empty JWT secret whenever POWERSYNC_URL is set explicitly.
     powersyncUrl: process.env.POWERSYNC_URL || (isDevelopment ? 'http://localhost:8080' : ''),
+    // Server-side probe target. `POWERSYNC_URL` is browser-facing, so on a
+    // cluster it points at the public ingress and is not the best address for
+    // this pod to dial. Set this to the in-cluster service URL to keep
+    // `/v1/health/powersync` on the internal network; it falls back to the
+    // public URL so single-host deployments need no extra setting.
+    powersyncInternalUrl: process.env.POWERSYNC_INTERNAL_URL || '',
     powersyncJwtKid: process.env.POWERSYNC_JWT_KID || (isDevelopment ? 'powersync-dev' : ''),
     powersyncJwtSecret:
       process.env.POWERSYNC_JWT_SECRET || (isDevelopment ? 'powersync-dev-secret-change-in-production' : ''),
-    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '3600',
+    powersyncTokenExpirySeconds: process.env.POWERSYNC_TOKEN_EXPIRY_SECONDS || '300',
     corsOrigins: process.env.CORS_ORIGINS || 'http://localhost:1420,tauri://localhost,http://tauri.localhost',
     corsAllowCredentials: process.env.CORS_ALLOW_CREDENTIALS !== 'false',
     corsAllowMethods: process.env.CORS_ALLOW_METHODS || 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
     corsAllowHeaders: process.env.CORS_ALLOW_HEADERS || '',
     corsExposeHeaders: process.env.CORS_EXPOSE_HEADERS || defaultCorsExposeHeaders,
-    e2eeEnabled: process.env.E2EE_ENABLED === 'true',
+    orgEscrowEnabled: process.env.ORG_ESCROW_ENABLED === 'true',
     debugTranscriptIntakeEnabled: process.env.DEBUG_TRANSCRIPT_INTAKE_ENABLED === 'true',
     debugTranscriptUpstreamUrl: process.env.DEBUG_TRANSCRIPT_UPSTREAM_URL || '',
     debugTranscriptUpstreamKey: process.env.DEBUG_TRANSCRIPT_UPSTREAM_KEY || '',
@@ -273,6 +302,15 @@ const parseSettings = (): Settings => {
     haystackApiKey: process.env.HAYSTACK_API_KEY || '',
     haystackWorkspace: process.env.HAYSTACK_WORKSPACE || '',
     haystackPipelines: process.env.HAYSTACK_PIPELINES || '',
+    agentEnabled: process.env.AGENT_ENABLED === 'true',
+    agentModel: process.env.AGENT_MODEL || '',
+    agentMaxSteps: process.env.AGENT_MAX_STEPS || undefined,
+    agentSystemPrompt: process.env.AGENT_SYSTEM_PROMPT || '',
+    agentMcpServers: process.env.AGENT_MCP_SERVERS || '',
+    agentName: process.env.AGENT_NAME || '',
+    agentDescription: process.env.AGENT_DESCRIPTION || '',
+    agentIcon: process.env.AGENT_ICON || '',
+    allowAnonymousAgentDiscovery: process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY === 'true',
   }
 
   return settingsSchema.parse(env)

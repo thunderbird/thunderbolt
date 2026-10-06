@@ -5,7 +5,7 @@
 // Registers the framer-motion `mock.module` so `animate` resolves
 // synchronously and `useMotionValue`/`useDragControls` return inert values. The
 // named import also lets tests assert on the animations the component starts.
-import { animateSpy, registerFramerMotionMock } from '@/test-utils/framer-motion-mock'
+import { animateSpy, dragControlsStartSpy, registerFramerMotionMock } from '@/test-utils/framer-motion-mock'
 
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer'
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
@@ -30,9 +30,11 @@ registerFramerMotionMock()
 // mock applies, which would leave `animateSpy` empty and silently run the suite
 // against the real animation runtime (see framer-motion-mock.ts).
 const {
+  canArmSidebarSwipe,
   canStartSidebarDrag,
   isInHorizontalScroller,
   MobileSidebar,
+  resolveSwipeAxis,
   shouldNotifyMobileSidebarClose,
   shouldOpenMobileSidebar,
   useMobileSidebarState,
@@ -40,6 +42,7 @@ const {
 
 beforeEach(() => {
   animateSpy.mockClear()
+  dragControlsStartSpy.mockClear()
 })
 
 /** Controlled wrapper mirroring how `Sidebar` drives the drawer (open is parent-owned). */
@@ -76,6 +79,17 @@ const Harness = ({
 const getSidebar = () => document.querySelector<HTMLElement>('[data-slot="sidebar"]')!
 const getMain = () => document.querySelector<HTMLElement>('[data-slot="sidebar-main"]')!
 const getCloseSurface = () => document.querySelector<HTMLElement>('[data-sidebar-drag-surface]')!
+
+/** Puts a single finger down on `target`, arming (but not starting) a drag.
+ *  Defaults to the left edge, the only place an opening swipe may start. */
+const touchDown = (target: HTMLElement, clientX = 10) =>
+  fireEvent.pointerDown(target, { pointerType: 'touch', isPrimary: true, pointerId: 1, clientX, clientY: 100 })
+
+/** Fires a native touchstart; returns false when the sidebar claimed the touch. */
+const edgeTouchStart = (target: HTMLElement, clientX: number, fingers = 1) =>
+  fireEvent.touchStart(target, {
+    touches: Array.from({ length: fingers }, () => ({ clientX, clientY: 100 })),
+  })
 
 const flushAnimations = async () => {
   await act(async () => {
@@ -194,6 +208,26 @@ describe('MobileSidebar', () => {
     }
   })
 
+  it('locks a swipe to its dominant axis once it clears the slop', () => {
+    expect(resolveSwipeAxis(5, 3)).toBeNull()
+    expect(resolveSwipeAxis(-7, 7)).toBeNull()
+    // The fast diagonal framer-motion's own lock read as vertical.
+    expect(resolveSwipeAxis(30, 14)).toBe('x')
+    expect(resolveSwipeAxis(-30, 14)).toBe('x')
+    expect(resolveSwipeAxis(12, 40)).toBe('y')
+    // A 45-degree tie belongs to the scroller, not the menu.
+    expect(resolveSwipeAxis(10, 10)).toBe('y')
+  })
+
+  it('arms an opening swipe only from the left edge', () => {
+    expect(canArmSidebarSwipe(10, false)).toBe(true)
+    expect(canArmSidebarSwipe(24, false)).toBe(true)
+    expect(canArmSidebarSwipe(25, false)).toBe(false)
+    expect(canArmSidebarSwipe(200, false)).toBe(false)
+    // Closing drags the whole foreground, wherever the finger lands.
+    expect(canArmSidebarSwipe(200, true)).toBe(true)
+  })
+
   it('closes from the exposed foreground surface', async () => {
     const onOpenChange = mock()
     render(<Harness onOpenChange={onOpenChange} />)
@@ -265,6 +299,118 @@ describe('MobileSidebar', () => {
     render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
 
     expect(getMain().querySelector('[data-slot="mobile-foreground-portal"]')).toBeInTheDocument()
+  })
+
+  it('takes an edge gesture whole, from its first pixel', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    touchDown(getMain())
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
+
+    // Any direction: the touch is already ours, so there is no axis to wait on.
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 11, clientY: 108 })
+
+    expect(dragControlsStartSpy).toHaveBeenCalledTimes(1)
+    expect(dragControlsStartSpy.mock.calls[0]?.[1]).toEqual({ distanceThreshold: 0 })
+  })
+
+  it('cancels the edge touch so the compositor cannot scroll it first', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    expect(edgeTouchStart(getMain(), 10)).toBe(false)
+  })
+
+  it('leaves touches outside the edge, second fingers, and buttons to scroll', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    expect(edgeTouchStart(getMain(), 200)).toBe(true)
+    expect(edgeTouchStart(getMain(), 10, 2)).toBe(true)
+    expect(edgeTouchStart(screen.getByRole('button', { name: 'main content' }), 10)).toBe(true)
+  })
+
+  it('leaves an open sidebar to claim nothing, so its list still scrolls', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    expect(edgeTouchStart(getMain(), 10)).toBe(true)
+  })
+
+  it('leaves a vertical swipe to the scroller for the rest of the gesture', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    touchDown(getCloseSurface(), 200)
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 206, clientY: 140 })
+    // Turning horizontal mid-gesture must not hand the menu a late drag.
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 220, clientY: 150 })
+
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
+  })
+
+  it('leaves a mid-screen swipe to the content', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    touchDown(getMain(), 200)
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 260, clientY: 105 })
+
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
+  })
+
+  it('drags an open sidebar closed from anywhere on the foreground', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    touchDown(getCloseSurface(), 200)
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 160, clientY: 105 })
+
+    expect(dragControlsStartSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the armed gesture when an unrelated finger lands or lifts', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    touchDown(getMain())
+    fireEvent.pointerDown(getMain(), {
+      pointerType: 'touch',
+      isPrimary: false,
+      pointerId: 2,
+      clientX: 10,
+      clientY: 100,
+    })
+    fireEvent.pointerUp(window, { pointerId: 2 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 11, clientY: 108 })
+
+    expect(dragControlsStartSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores moves that belong to another finger', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    touchDown(getCloseSurface(), 200)
+    fireEvent.pointerMove(window, { pointerId: 2, clientX: 100, clientY: 100 })
+
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
+  })
+
+  it('disarms the gesture when the browser cancels the pointer', () => {
+    render(<Harness onOpenChange={() => {}} />)
+
+    touchDown(getCloseSurface(), 200)
+    fireEvent.pointerCancel(window, { pointerId: 1 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 100, clientY: 100 })
+
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
+  })
+
+  it('never arms a navigation gesture from a mouse', () => {
+    render(<Harness initiallyOpen={false} onOpenChange={() => {}} />)
+
+    fireEvent.pointerDown(getMain(), {
+      pointerType: 'mouse',
+      pointerId: 1,
+      clientX: 10,
+      clientY: 100,
+    })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 200, clientY: 100 })
+
+    expect(dragControlsStartSpy).not.toHaveBeenCalled()
   })
 
   it('preserves the foreground subtree across the mobile breakpoint', () => {

@@ -3,7 +3,13 @@
 # same validated runtime. Bun implements the node:fs globSync API that
 # @lingui/cli/api needs (Node >=22.19 equivalent), verified by building this
 # image; bump this tag and CI together.
-FROM oven/bun:1.3.14 AS build
+#
+# --platform=$BUILDPLATFORM: this stage only produces a platform-independent
+# static bundle (HTML/CSS/JS), so it runs natively on the build host instead
+# of under QEMU emulation for the target platform — faster, and sidesteps any
+# arch-specific quirks in bun's/rollup's native build tooling. Only the final
+# nginx stage below is built per target platform.
+FROM --platform=$BUILDPLATFORM oven/bun:1.3.14 AS build
 
 WORKDIR /app
 
@@ -25,8 +31,15 @@ COPY .storybook ./.storybook
 # Build args — baked into the static bundle at build time
 ARG VITE_THUNDERBOLT_CLOUD_URL="/v1"
 ARG VITE_AUTH_MODE="sso"
+# Organizational key escrow. Empty = no escrow (the default). It must be baked
+# in HERE, not set at runtime: the client wraps the account key to it during
+# setup, so the value has to exist in the static bundle before
+# ORG_ESCROW_ENABLED is switched on server-side — see
+# docs/self-hosting/configuration.md#organizational-key-escrow.
+ARG VITE_ORG_ESCROW_PUBLIC_KEY=""
 ENV VITE_THUNDERBOLT_CLOUD_URL=$VITE_THUNDERBOLT_CLOUD_URL
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+ENV VITE_ORG_ESCROW_PUBLIC_KEY=$VITE_ORG_ESCROW_PUBLIC_KEY
 
 RUN bunx vite build && \
     find dist -name '*.map' -delete

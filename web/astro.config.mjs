@@ -46,6 +46,8 @@ export default defineConfig({
 		'/docs/architecture/composite-primary-keys-and-default-data': `${repoBlobUrl}/docs/internals/architecture/composite-primary-keys-and-default-data.md`,
 		'/docs/architecture/export-format': `${repoBlobUrl}/docs/internals/architecture/export-format.md`,
 		'/docs/architecture/iroh-relay-self-hosting': `${repoBlobUrl}/docs/internals/architecture/iroh-relay-self-hosting.md`,
+		'/docs/architecture/e2ee-threat-model': `${repoBlobUrl}/docs/internals/architecture/e2ee-threat-model.md`,
+		'/docs/architecture/red-team-harness': `${repoBlobUrl}/docs/internals/architecture/red-team-harness.md`,
 		'/docs/development/mobile-setup': `${repoBlobUrl}/docs/internals/development/mobile-setup.md`,
 		'/docs/development/testing': `${repoBlobUrl}/docs/internals/development/testing.md`,
 		'/docs/dev-tooling/storybook': `${repoBlobUrl}/docs/internals/dev-tooling/storybook.md`,

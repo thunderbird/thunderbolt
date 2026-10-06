@@ -6,9 +6,8 @@
 
 const { google } = require('googleapis')
 const fs = require('fs')
-const path = require('path')
 
-async function uploadToPlayStore() {
+const uploadToPlayStore = async () => {
   try {
     // Get environment variables
     const serviceAccountFile = process.env.SERVICE_ACCOUNT_FILE

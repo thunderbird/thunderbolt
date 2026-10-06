@@ -30,7 +30,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-12** Tauri loopback ports fixed `[17421,17422,17423]`, shared Rust↔backend; PKCE per RFC 8252.
 - **INV-13** Post-update redirect flag set before relaunch; consumed once.
 
-## E2E Encryption (E2EE_ENABLED)
+## E2E Encryption (always on)
 - **INV-14** CK is AES-256-GCM, single algo/length everywhere.
 - **INV-15** Hybrid envelope V1 (`0x01`), exactly 1194 bytes.
 - **INV-16** Wrapping key one-shot, HKDF-SHA-256 over `ssEcdh||ssMlkem`.

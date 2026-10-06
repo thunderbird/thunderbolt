@@ -53,6 +53,19 @@ type PowerSyncOperation = {
   type: string
   id: string
   data?: Record<string, unknown>
+  /**
+   * Create-only PUT: insert the row when it is absent, never overwrite an
+   * existing one. Clients set it on writes queued before the device completed
+   * its first sync (GH #1299).
+   *
+   * Only PUT honours it, because PUT is the op with no user intent behind it —
+   * constraining PATCH would swallow deliberate offline edits, including
+   * resetting a setting to its default.
+   *
+   * Full rationale, the safety properties, and the known gaps:
+   * docs/internals/architecture/powersync-account-devices.md — "Create-only writes".
+   */
+  ifAbsent?: boolean
 }
 
 /** DB column names that use Drizzle timestamp(); JSON sends them as ISO strings, so we convert to Date. */
@@ -83,6 +96,29 @@ const toSchemaRecord = (
     }
   }
   return out
+}
+
+/**
+ * A PATCH or DELETE whose row does not exist for this user.
+ *
+ * Accepted rather than rejected, for the same reason as the empty-patch no-op
+ * below: a 4xx here stops the client calling `complete()`, so the operation is
+ * retried forever, the CRUD queue never drains, and — because PowerSync defers
+ * applying a checkpoint while local writes are pending — the device stops
+ * syncing in *both* directions with no client-side recovery. Dropping one
+ * unapplicable write is strictly better than bricking the account.
+ *
+ * It should not happen under current clients: every local row either arrived
+ * from the server or has a preceding PUT in the same queue. It does happen for
+ * devices carrying rows left behind by the pre-GH-#1299 `DELETE FROM ps_crud`,
+ * which removed the seeding PUTs while keeping the rows — those devices upload
+ * PATCHes for rows the account has never held. Logged so that population stays
+ * visible rather than silently discarded.
+ */
+const logMissingTarget = (op: PowerSyncOperation, userId: string): void => {
+  console.warn(
+    `[powersync] ${op.op} on ${op.type}/${op.id} matched no row for user ${userId}; accepting so the upload queue can drain`,
+  )
 }
 
 /**
@@ -141,14 +177,14 @@ export const applyOperation = async (
       delete updateSet.userId
 
       const insertQuery = database.insert(table).values(schemaValues as never)
-      if (Object.keys(updateSet).length > 0) {
+      if (op.ifAbsent || Object.keys(updateSet).length === 0) {
+        await insertQuery.onConflictDoNothing({ target: conflictTarget })
+      } else {
         await insertQuery.onConflictDoUpdate({
           target: conflictTarget,
           set: updateSet as never,
           setWhere: eq(tableWithUserId.userId, userId),
         })
-      } else {
-        await insertQuery.onConflictDoNothing({ target: conflictTarget })
       }
       return true
     }
@@ -178,7 +214,10 @@ export const applyOperation = async (
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
         .returning()
 
-      return patched.length > 0
+      if (patched.length === 0) {
+        logMissingTarget(op, userId)
+      }
+      return true
     }
     case 'DELETE': {
       if (uploadDenyDelete.has(tableName)) {
@@ -190,7 +229,11 @@ export const applyOperation = async (
         .where(and(eq(pkColumn, op.id), eq(tableWithUserId.userId, userId)))
         .returning()
 
-      return deleted.length > 0
+      // A delete whose row is already gone has reached its intended end state.
+      if (deleted.length === 0) {
+        logMissingTarget(op, userId)
+      }
+      return true
     }
   }
   return false

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import 'fake-indexeddb/auto'
 import { i18n } from '@/i18n'
 import { getFormatters } from '@/i18n/format'
 import '@testing-library/jest-dom'
@@ -11,6 +12,7 @@ import { Cloud, CloudAlert, CloudOff, Loader2 } from 'lucide-react'
 import { type ReactElement, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 
+import { clearAllKeys, generateAK, mintDEK, storeAK, storeDEK } from '@/crypto'
 import { setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createTestProvider } from '@/test-utils/test-provider'
@@ -227,11 +229,20 @@ describe('sync retry flow', () => {
   // The test database is bun-sqlite (no PowerSync instance), so usePowerSyncStatus
   // reports 'not-configured' — with sync enabled that is exactly the
   // "needs attention" state that surfaces the Retry button.
-  beforeEach(() => {
+  //
+  // The premise is a device that HOLDS its keyring but is offline, so one is
+  // staged for real (fake-indexeddb): without it, useSyncEnabledToggle's mount
+  // check (`needsSyncSetupWizard`) auto-disables sync and the Retry state never
+  // exists — or crashes outright when no earlier test file installed indexedDB.
+  beforeEach(async () => {
+    const ak = await generateAK()
+    await storeAK(ak)
+    await storeDEK('0', (await mintDEK(ak, '0')).wrappedKey)
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', true)
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await clearAllKeys()
     useLocalSettingsStore.getState().setLocalSetting('syncEnabled', false)
   })
 

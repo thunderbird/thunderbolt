@@ -32,7 +32,7 @@ const allowedPaths = /^(src|shared|backend\/src)\//
 const sensitivePaths =
   /^(src|backend\/src)\/db\/|auth|sso|session|device|sign-?in|log-?(in|out)|otp|approv|recovery|secret|credential|crypto|encrypt|powersync|drizzle|migration/i
 /** True when `path` (repo-relative) is sensitive app code that no automated change may touch. */
-export const isSensitive = (path: string) => sensitivePaths.test(path)
+const isSensitive =(path: string) => sensitivePaths.test(path)
 /** True when a fix PR must not touch `path` (repo-relative): anything outside app code, or sensitive app code. */
 export const isDenied = (path: string) => !allowedPaths.test(path) || isSensitive(path)
 

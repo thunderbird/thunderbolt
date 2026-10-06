@@ -7,12 +7,20 @@
 import { writeFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { realAiCharters } from './findings'
-import { isSensitive, type Run, runCommand } from './fix'
+import { type Run, runCommand } from './fix'
 
 /** A recent bug fix whose reversal the canary build carries. `keywords` come from its title. */
 export type Canary = { sha: string; title: string; charter: string; keywords: string[] }
 
 const fixTitle = /^fix(\([^)]*\))?!?:\s*/
+/** The explorer's browser (Playwright MCP) cannot swipe, drag or pinch, so fixes for those can never be found. */
+const gestureTitle = /swipe|gesture|drag|pinch|long-?press/i
+/**
+ * Sensitive app code, matched on directory names. `fix.ts` keeps its looser substring match for auto-fix, which must
+ * stay strict; a canary only needs to avoid these areas, so `revoked-device-modal.tsx` in chat is fine.
+ */
+export const isSensitive = (path: string) =>
+  /(^|\/)(db|devices?|crypto|encryption|auth|sso|sessions?|sign-?in|powersync|sync|drizzle|migrations?)\//.test(path)
 /** App code a reversal may touch: `src/` without tests, test helpers, docs and translations. */
 const isAppCode = (path: string) =>
   path.startsWith('src/') && !/\.test\.|(^|\/)test-utils\/|\/locales\/|\.md$/.test(path)
@@ -92,6 +100,10 @@ export const selectCanaries = async ({
     if (canaries.length === max) break
     const [sha, title] = line.split('\t')
     if (!fixTitle.test(title)) continue
+    if (gestureTitle.test(title)) {
+      log(`skip ${sha.slice(0, 9)} ${title}: the explorer cannot do touch gestures`)
+      continue
+    }
     const changed = await run(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', sha])
     const paths = changed.split('\n').filter(isAppCode)
     const skip = (reason: string) => log(`skip ${sha.slice(0, 9)} ${title}: ${reason}`)

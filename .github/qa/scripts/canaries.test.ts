@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { selectCanaries, titleKeywords } from './canaries'
+import { isSensitive, selectCanaries, titleKeywords } from './canaries'
 import { type Run, runCommand } from './fix'
 
 let dir: string
@@ -104,6 +104,25 @@ describe('selectCanaries', () => {
   it('selects nothing when no fix qualifies', async () => {
     await commit('feat: skills', { 'src/skills/list.ts': 'export const list = 2\n' })
     expect(await selectCanaries({ run, ref: 'main', log: () => {} })).toEqual({ canaries: [], patch: '' })
+  })
+})
+
+it('skips gesture fixes', async () => {
+  await commit('fix(chat): open the drawer with a left-edge Swipe', {
+    'src/components/chat/input.ts': 'export const input = 2\n',
+  })
+  const log: string[] = []
+  const { canaries } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
+  expect(canaries).toEqual([])
+  expect(log[0]).toContain('touch gestures')
+})
+
+describe('isSensitive', () => {
+  it('matches sensitive directories, not look-alike file names', () => {
+    expect(isSensitive('src/components/chat/revoked-device-modal.tsx')).toBe(false)
+    expect(isSensitive('src/devices/list.tsx')).toBe(true)
+    expect(isSensitive('src/crypto/keys.ts')).toBe(true)
+    expect(isSensitive('src/db/schema.ts')).toBe(true)
   })
 })
 

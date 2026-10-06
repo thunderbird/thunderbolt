@@ -2,11 +2,11 @@
 
 Once a week an AI agent uses the web app the way a person would. It tests one area per session: the area's list
 of **functions** that must work (`functions.json`), with a **charter** of steps to follow (`charters/`). A **free
-session** also plays one person's goal, with no steps, on every platform (see "Free session"). It records
-every attempt as it goes. When something breaks, it writes a finding and a Playwright spec that fails because of the bug. Plain code then checks the attempts
-against what the browser really returned, replays each spec, asks a second model whether the finding is real, and
-files the confirmed ones in Linear. It can also hand a few of them to a fix agent that opens draft PRs. The workflow
-never merges, approves or marks anything ready.
+session** also plays one person's goal, with no steps, on every platform. When something breaks, the agent writes a
+finding and a Playwright spec that fails because of the bug. Plain code then checks its attempts against what the
+browser really returned, replays each spec, asks a second model whether the finding is real, and files the
+confirmed ones in Linear. A fix agent can open draft PRs for a few. The workflow never merges, approves or marks
+anything ready.
 
 The workflow is `.github/workflows/qa-weekly.yml`. It runs on Mondays at 07:00 UTC, and by hand with
 `workflow_dispatch`. It does nothing until the `QA_AGENT_ENABLED` variable is `true`.
@@ -25,13 +25,10 @@ Only the `build` job saves caches, because it runs before any untrusted code. Th
 because the replayed specs may have changed files in the replay job's checkout.
 
 The browser tools can write files anywhere in the explore job's checkout, so no repo code runs there after the
-explorer. The stack is killed inline from pid files outside the checkout (`$RUNNER_TEMP/qa-stack.pid*`). A
-`sha256sum` check of every tracked file must pass, or the job fails and uploads nothing. Only then does `jq` cut the
-public transcript out of the execution file with `transcript.jq`, a filter (jq runs no commands and opens no files)
-that the checksum check covers. The session output must not hold any key the job has (an exact-value check, inline),
-or nothing is uploaded. The session metrics and the coverage check run later, in the report job. The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so
-no command they start inherits the Anthropic key in its environment. The fix job also installs bubblewrap, so those
-commands run in a sandbox and cannot read the key from the CLI's own process either.
+explorer: the stack is stopped inline, a checksum of every tracked file must still match, and the session output
+must hold no key the job has, or nothing is uploaded. Metrics and coverage are computed later, in the report job.
+The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so no command they start inherits the
+Anthropic key; the fix job also runs those commands in a bubblewrap sandbox.
 
 Never add `--allow-unrestricted-file-access` to `mcp.json` or set `PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS`.
 The MCP blocks `file:` URLs by default, and that block keeps local files out of the explorer's reach.
@@ -60,94 +57,52 @@ it imports everything at start. If that changes, run it from a copy the job's us
 
 ## Pipeline and files
 
-1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
-   stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
-2. **explore**: one job per charter, and one per platform for the free session (`free-<case>-<platform>`), with
-   `claude-code-action` and the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser). The prompt is
-   `prompt.md`, then the charter, then the area's function list (a free session: the case instead). The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
-   `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
-   The job uploads the counters of the session's result message and `transcript.json`: the browser tool calls and
-   their results (each cut to 20,000 characters), without the prompt or any model text. The report job turns the
-   counters into `session.json` with `scripts/report.ts session`. Every finding names an oracle from `prompt.md`.
-   With the real AI that includes `ai-reported-failure`: the app's AI says a tool, search, connection, file or
-   integration failed, which the console and the network often do not show (an AI that could not read the user's
-   calendar).
-3. **replay** (`scripts/verify.ts replay`): schema check, oracle check (`noise.txt` turns console noise into
-   observations), spec lint, then up to 20 specs per leg run 3 times each (`playwright.config.ts` here) next to the
-   control spec; the rest are deferred.
-   3 of 3 failures = confirmed, 1 or 2 = flaky (report only), 0 = dropped. c7's findings (artifact prefix
-   `qa-sync`) replay in their own leg on Postgres + PowerSync. The real-AI charters' findings (`realAiCharters` in
-   `scripts/findings.ts`, today c3, c4, c5 and every `free-<case>-<platform>`; artifact prefix `qa-real`) replay
-   in their own leg against the real providers, where replies vary: 2 or 3 failures of 3 = confirmed, 1 = flaky,
-   0 = dropped. The rest replay on pglite with the fake AI. The judge takes all three.
-4. **judge** (`verify.ts judge`): one fresh Opus call per confirmed finding with `judge.md` and `known-issues.md`,
-   at most 15 per leg and only while their worst-case cost stays under $2; the rest are deferred, never filed. The
+1. **build**: the normal, onboarding (c1) and canary builds, then the guard: a fresh stack must pass
+   `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
+2. **explore**: one leg per charter and one per free-session platform (`free-<case>-<platform>`), with
+   `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
+   prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
+   keeps its work.
+3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
+   failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
+   (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,
+   the rest on pglite with the fake AI.
+4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`. The
    default answer is drop. Writes `verified.json`.
-5. **file** (`scripts/file-findings.ts`): fingerprint, dedupe against Linear, severity from a table in code,
-   at most 8 new tickets plus one roll-up (security findings: 3 more plus their own roll-up, without the run link),
-   secret refusal, video upload. Dry run unless `--live`.
-6. **fix** (off by default): `scripts/fix.ts route` picks at most 3 tickets in fixable areas, never a real-AI
-   finding: its check below runs on the fake AI, so it could not show the fix works. Those go to a person. The fix agent
-   (`fix.md`) writes a patch without git. A step without secrets then replays the original spec 3 times on the
-   patched code. A session that did not finish, or a spec that still fails, becomes a diagnosis, so the ticket goes
-   to a person. `fix.ts publish` rejects paths it does not allow, edited specs and empty patches, then opens a draft PR on
-   `qa-fix/<fp>`, or labels the ticket `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*`
-   PRs; a maintainer can still dispatch one.
-7. **report** (`report.ts summary`): the job summary with sessions, evidence-supported coverage, gate yield, every
-   flaky finding with its evidence, the deferred and drop lists, what was filed, canary recall and the calibration
-   table.
+5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
+   Dry run unless `--live`.
+6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas. The original spec
+   must pass 3 times on the patch before `publish` opens a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
+   `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
+7. **report** (`report.ts summary`): the job summary.
 
-The **canary leg** runs c8 against a build with the planted bugs in `canaries/` (`canaries.json` describes them).
-Its findings replay on the canary build, then again on the normal build. A canary counts as found only when its
-finding fails on the canary build, passes on the normal build and mentions that canary's keywords.
-Canary findings are never filed.
+The **canary leg** runs c8 on a build with the bugs from `canaries/` planted. A canary counts as found only when its
+finding fails on the canary build, passes on the normal build and names that canary's keywords. Canary findings are
+never filed.
 
-Run-time output goes to `qa-out*/` (gitignored). `fixtures/` holds the PDF and image the charters upload; `prompt.md`
-tells the explorer what they contain, and forbids it to tell the app's AI.
+Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
 
-## Functions and charters
+## Functions, coverage and the free session
 
-`functions.json` holds one list per area (c1 to c8): what must work, as an id and an observable outcome, plus
-`reload: true` where the outcome must survive a reload. A function that spans two areas has one owner: how project
-instructions change a real reply is c4's `project-instructions-reply`. Integrations are in no list: Google is
-covered only by the free session's Google cases, through the fake Google below, and Microsoft not at all. Each
-charter (`charters/`) lists steps and edge cases to follow, each naming the function ids it covers.
+`functions.json` lists per area (c1 to c8) what must work: an id, an observable outcome, and `reload: true` when
+the outcome must survive a reload. A function that spans two areas has one owner. Each charter in `charters/` names
+the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 
-**Coverage** (`report.ts summary`) counts a function only when one of its `passed` or `failed` attempts quotes text
-that a browser tool returned, inside that attempt's window (since the previous record), after a browser action in
-that window, and, for a passed `reload` function, after a navigation that follows a change. The code a tool echoes
-back (what the explorer typed) never counts. Every function in the list is in the denominator, so a missing one is
-"unattempted". A session without a transcript (a timeout, a broken save) covers nothing. The check proves the
-quote was really seen at the right moment, not that it shows the outcome, and that some reload followed some change
-in the attempt, not that it followed the change under test: sample covered functions by hand.
+**Coverage** counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
+attempt's window, after a browser action, and, for a `reload` function, after a navigation that follows a change.
+Text the explorer typed never counts, and a session without a transcript covers nothing. The check proves the quote
+was seen at the right moment, not that it shows the outcome: sample covered functions by hand.
 
-## Free session
+The **free session** plays one case from `journeys.json` (a person, a goal with no steps, and `facts` the explorer
+uses to judge the AI's answers) on every platform in `platforms.json`, with the real AI.
 
-Each run also plays one **case** from `journeys.json` on every platform in `platforms.json`, with the real AI. A
-case is a person (`who`), a goal with no steps (`goal`), an optional `style`, the areas it crosses (`crosses`), a
-summary in Portuguese for people (`pt`, left out of the prompt) and sometimes `facts`: what the explorer knows to
-judge the AI's answers and never tells it, so a wrong answer is an `assert-failed` finding. The "Free session"
-section of `prompt.md` makes the explorer pursue the goal as that person and, whenever something works, try a
-variant that might break it. It records attempts and findings like a charter session.
-
-- **Which case.** `explore.sh journey` picks it: the number of weeks since 1970 modulo the number of cases, so
-  consecutive Mondays take consecutive cases and every case runs once before any repeats. A dispatch's `journey`
-  input forces one; add `charters: free` to run only the free session.
-- **Add a case.** Append an object with a new `id` to `journeys.json`. Adding one shifts the rotation once.
-  `bun run test:qa` checks that every case has its fields.
-- **Platforms.** One entry each in `platforms.json`: the `id` (also the findings' `viewport`), the screen size and
-  the Playwright MCP config. Each platform is one explore leg, `free-<case>-<id>` (so the id has no hyphen), and a
-  new platform is one entry. That name is the session's everywhere: job, artifact, report and the ticket's Charter
-  line. Every `free-*` leg counts as a real-AI charter (`realAiCharters` in `findings.ts`): its findings replay in
-  the `real` leg, where two failures in three confirm one, and never go to the fix agent. A native platform will
-  also need its driver (an MCP config and a build or launch step) and a new `viewport` value in the finding schema.
-- **Report.** The free sessions get their own section: case and platform, metrics, what each tried (the names of
-  its own attempt records, each checked against the transcript like a charter function, instead of a share
-  covered) and their own gate yield, drop and filing lists. A session cut by a cap shows under INCOMPLETE like any
-  other.
-- **Cost.** One case on two platforms is two real-AI explore sessions a week, at most 15 chat messages each on the
-  app side, plus three replays of each spec: about $1.3 a week measured (see "Budget calibration"). Each new
-  platform adds about half of that.
+- `explore.sh journey` picks the case: weeks since 1970 modulo the number of cases, so every case runs once before
+  any repeats. A dispatch's `journey` input forces one; `charters: free` runs only the free session.
+- Add a case by appending an object with a new `id` (it shifts the rotation once). `bun run test:qa` checks it.
+- A platform is one entry (an `id` without a hyphen, a viewport, an MCP config) and one explore leg. A native
+  platform also needs its driver and a new `viewport` value in the finding schema.
+- `free-*` legs are real-AI charters: two failures in three confirm, and they never go to the fix agent. One case
+  on two platforms costs about $1.3 a week; each platform adds about half of that.
 
 ## Run it locally
 
@@ -187,14 +142,13 @@ Then the rest of the pipeline:
 # Replay: no keys in this shell, and the stack running with the fake AI (real providers for c3–c5 and free-*)
 bun .github/qa/scripts/verify.ts replay --out qa-out
 ANTHROPIC_API_KEY=… bun .github/qa/scripts/verify.ts judge --out qa-out
-bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run: one line per finding, text in filed.json
+bun .github/qa/scripts/file-findings.ts --out qa-out    # dry run; LINEAR_API_KEY adds dedupe and scorecard.json
 bun .github/qa/scripts/fix.ts route --out qa-out
 bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.md
 ```
 
-A filer dry run logs one line per finding (fingerprint, severity, action), because the Actions log is public. The
-would-be ticket text is `preview` in `filed.json`, except for security findings, which get none. With
-`LINEAR_API_KEY` set it also writes `scorecard.json`.
+A filer dry run logs only one line per finding, because the Actions log is public. The would-be ticket text is
+`preview` in `filed.json`, except for security findings, which get none.
 
 **Canary leg:** build the canary frontend from a patched copy, so your checkout stays clean:
 
@@ -313,17 +267,12 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 
 ## Budget calibration
 
-Each step type has its own caps, in one place each: the `env` block at the top of `qa-weekly.yml` for explore
-and fix (budget, turns, timeout), and the constants at the top of `verify.ts` for the judge's `max_tokens` and the
-aggregate caps. The first values are generous on purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns /
-60 min.
-
-The aggregate caps bound a whole leg, whatever the sessions found: at most 20 findings replayed per replay leg (four
-legs at most) and 15 judged per judge leg (weekly, canary), and a judge leg spends at most $2. The judge admits a
-call only if its worst case fits: the prompt's UTF-8 bytes (a token covers at least one byte) plus `max_tokens` of
-output, at Opus prices. Findings over a cap are listed as deferred in the report and are never filed. The app's own
-provider calls in c3, c4 and c5 are **not measured**: the backend logs no token counts for them, so watch the QA provider
-keys' dashboards; the report says so whenever a real-AI charter ran.
+Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
+turns, timeout), and the constants at the top of `verify.ts` for the judge. The first values are generous on
+purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
+and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes plus
+`max_tokens`, at Opus prices). Findings over a cap are listed as deferred and never filed. The app's own provider
+calls in real-AI sessions are **not measured**: watch the QA provider keys' dashboards.
 
 **Rule:** per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
 for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions.
@@ -340,32 +289,19 @@ Measured locally on 2026-09-30 (Sonnet 5.5 explorer, Opus 5.5 judge and fix agen
 | judge (Opus 5.5, one call per finding, 4–5 findings per run) | 4 runs   | $0.05–0.08 per run | –       | –           | –                     |
 | fix agent (one overflow bug)                                 | 1        | $0.26              | 21      | 3.1 min     | finished, spec passes |
 
-A full set of 8 charters plus the canary leg cost about $7 in explore sessions, 30 min of session time in total.
-Cache reads are most of every explore session's cost. c3 and c5 also spend on the app's own providers (38 real
-Opus 5 calls over two runs); the backend logs no token counts for them. c7 has not been measured yet. Since
-2026-10-02 c4 uses the real AI too: up to 10 chat messages on Opus 5 a session (its cap), and 3 replays of each
-spec it writes. Its first local session cost $1.72 (283 turns, the most so far, 9.2 min) plus $0.14 for 6 Opus 5
-calls on the app side; a c3 session with a conversation per model cost $0.85 plus $0.09 for 3 Opus 5 calls (its
-GLM calls were not metered).
-
-The free session, measured on 2026-10-02 with the case `contract-reader` on both platforms: $0.49 and $0.50 (78
-and 83 turns, 4.3 and 4.4 min, both finished). The app side made 10 Opus 5 calls for the two sessions and 9 more
-for the 6 replays, about $0.25 in all; the judge cost $0.04. So one case on two platforms costs about $1.3 a week.
-Earlier wordings of the prompt ended after 3 chat messages and 4 or 5 attempts ($0.25–0.37): the explorer now
-writes its own list of at least 10 things to try first, and still used only 5 of its 15 messages.
-
-With these numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That
-is one local sample per charter and a single fix, so keep the initial caps until two scheduled runs have reported.
+A full set of charters plus the canary leg cost about $7 in explore sessions. c7 has not been measured. Later
+samples (2026-10-02): c4 on the real AI, $1.72 and 283 turns in 9.2 min, plus $0.14 on the app side; the free
+session, $0.49 and $0.50 per platform plus about $0.25 on the app side for sessions and replays. With the table's
+numbers the rule gives explore ≈ $1.8 / 341 turns / 11 min and fix ≈ $0.4 / 32 turns / 5 min. That is one local
+sample per charter, so keep the initial caps until two scheduled runs have reported.
 
 ## Cut sessions
 
 A session stopped by its budget, its turn cap or the step timeout keeps every finding it wrote, and they are
-verified like any other. The report lists cut sessions first, under "⚠️ N INCOMPLETE session(s)", marks their
-stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**. A timed-out step leaves no execution file, so its cost shows as $0.00 and its coverage as **no
-transcript**: its attempt records stay unchecked. Look at the Anthropic
-workspace's usage for the real figure. A leg that crashed, or whose explore job failed the checksum check, shows
-as **ERROR** with no findings. When every explore session of the weekly charters, or of the canary leg, ends in
-an error or a timeout, `report.ts summary` exits 1 and the report job fails, so `notify-on-failure` fires.
+verified like any other. The report lists cut sessions first, under "INCOMPLETE". A timed-out step leaves no
+execution file: its cost shows as $0.00 (check the Anthropic workspace's usage) and its attempts stay unchecked.
+When every explore session of the weekly charters, or of the canary leg, ends in an error or a timeout,
+`report.ts summary` exits 1, so `notify-on-failure` fires.
 
 ## Promote a confirmed spec to `e2e/`
 
@@ -382,9 +318,10 @@ needs its own project before it can live in `e2e/`.
 
 ## Owners
 
-The Monitoring / E2E Tests project lead owns `functions.json`, the charters, `noise.txt`, `known-issues.md`
-and the canaries, and turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is tracked or
-accepted, and remove it once it is fixed. Whoever triages on Monday puts one `qa:` label on every `qa-agent` ticket.
+The Monitoring / E2E Tests project lead owns `functions.json`, the charters, `noise.txt`, `known-issues.md` and the
+canaries, and turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is
+tracked or accepted, and remove it once it is fixed. Whoever triages on Monday puts one `qa:` label on every
+`qa-agent` ticket.
 
 Charters carry no step budget on purpose. With "about 200 tool calls" in c4, the explorer stopped near that
 number and skipped items "out of budget" with 70% of its money left.

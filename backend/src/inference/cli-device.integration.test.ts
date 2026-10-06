@@ -4,19 +4,18 @@
 
 import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e'
 import { clearSettingsCache } from '@/config/settings'
-import { user as userTable } from '@/db/auth-schema'
+import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, waitlist } from '@/db/schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
-import { encryptionMetadataTable } from '@/db/encryption-schema'
+import { challengeNoncesTable, encryptionMetadataTable } from '@/db/encryption-schema'
 import { countActiveDevices } from '@/dal'
-import { hashCanarySecret } from '@/lib/canary'
+import { exportSigningPublicKey, generateSigningKeypair, signChallenge } from '@/test-utils/e2ee'
 import { inferenceUsageReceiptPath } from '@shared/inference-usage'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { getSharedIsolatedTestDb } from '@/test-utils/db'
 
 const authBaseUrl = 'http://localhost/v1/api/auth'
-const canarySecret = 'cli-acceptance-canary-secret'
 
 type DeviceCodeResponse = {
   readonly device_code: string
@@ -241,6 +240,7 @@ describe('CLI device cross-stack acceptance', () => {
       const sessionBody = (await session.json()) as { readonly user: { readonly id: string } }
       acceptanceUserId = sessionBody.user.id
       const now = new Date()
+      const signingKeypair = await generateSigningKeypair()
       await harness.db.insert(devicesTable).values({
         id: trustedAppId,
         userId: sessionBody.user.id,
@@ -251,13 +251,40 @@ describe('CLI device cross-stack acceptance', () => {
         createdAt: now,
         lastSeen: now,
       })
+      // v2 E2EE account: the caller proves possession with a signed 'revoke'
+      // challenge, and the web session must be bound to its device (THU-873).
       await harness.db.insert(encryptionMetadataTable).values({
         userId: sessionBody.user.id,
         canaryIv: 'acceptance-iv',
         canaryCtext: 'acceptance-ciphertext',
-        canarySecretHash: await hashCanarySecret(canarySecret),
+        signingPublicKey: await exportSigningPublicKey(signingKeypair),
+        kdfSalt: 'acceptance-salt',
+        schemeVersion: 2,
+        primaryKeyId: '0',
+        keyVersion: 1,
         createdAt: now,
       })
+      await harness.db
+        .update(sessionTable)
+        .set({ deviceId: trustedAppId })
+        .where(eq(sessionTable.token, harness.bearerToken.split('.')[0]))
+
+      const revokeNonce = crypto.randomUUID()
+      await harness.db.insert(challengeNoncesTable).values({
+        nonce: revokeNonce,
+        userId: sessionBody.user.id,
+        operation: 'revoke',
+        deviceId: trustedAppId,
+        expiresAt: new Date(now.getTime() + 3600_000),
+        consumed: false,
+        createdAt: now,
+      })
+      const revokeProof = {
+        signature: await signChallenge(signingKeypair.privateKey, revokeNonce, 'revoke', trustedAppId),
+        nonce: revokeNonce,
+        operation: 'revoke' as const,
+        deviceId: trustedAppId,
+      }
 
       const revoke = await harness.app.handle(
         new Request(`http://localhost/v1/account/devices/${cliDeviceId}/revoke`, {
@@ -267,7 +294,7 @@ describe('CLI device cross-stack acceptance', () => {
             'Content-Type': 'application/json',
             'X-Device-ID': trustedAppId,
           },
-          body: JSON.stringify({ canarySecret }),
+          body: JSON.stringify({ proof: revokeProof }),
         }),
       )
       expect(revoke.status).toBe(204)

@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { I18nProvider } from '@lingui/react'
+import { useLingui } from '@lingui/react/macro'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
@@ -38,6 +39,7 @@ import { useUnitDefaults } from '@/hooks/use-unit-defaults'
 import { useDeepLinkListener } from '@/hooks/use-deep-link-listener'
 import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
+import { useDeviceSessionBinding } from '@/hooks/use-device-session-binding'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
@@ -55,6 +57,9 @@ import { ContentViewProvider } from './content-view/context'
 import { useAppInitialization } from './hooks/use-app-initialization'
 import { useAppVersionUnsupportedListener } from './hooks/use-app-version-unsupported-listener'
 import { useCredentialEvents } from './hooks/use-credential-events'
+import { useMigrationRecoveryKey } from './hooks/use-migration-recovery-key'
+import { RecoveryKeyDialog } from './components/recovery-key-dialog'
+import { UnsavedRecoveryPhrasePrompt } from './components/unsaved-recovery-phrase-prompt'
 import { useSafeAreaInset } from './hooks/use-safe-area-inset'
 import Layout from './layout'
 import { loadSearchPalette } from '@/search/palette/search-palette-loader'
@@ -178,6 +183,7 @@ const useBootstrapSystemAgents = () => {
 }
 
 const AppContent = ({ initData }: { initData: InitData }) => {
+  useDeviceSessionBinding()
   useMcpSync()
   useBootstrapSystemAgents()
   useAppLanguage()
@@ -294,12 +300,41 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
   )
 }
 
+/**
+ * The seamless v1→v2 migration's one-time phrase dialog.
+ *
+ * Its own component purely so the copy can go through `useLingui`: `App`
+ * renders the `I18nProvider`, so a hook call there would read the context from
+ * ABOVE it and never follow a language change.
+ */
+const MigrationRecoveryKeyDialog = ({
+  open,
+  recoveryKey,
+  onDone,
+}: {
+  open: boolean
+  recoveryKey: string
+  onDone: () => void
+}) => {
+  const { t } = useLingui()
+  return (
+    <RecoveryKeyDialog
+      open={open}
+      recoveryKey={recoveryKey}
+      title={t`Save your new recovery phrase`}
+      description={t`Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again.`}
+      onDone={onDone}
+    />
+  )
+}
+
 export const App = () => {
   // Lazy initializer = runs exactly once on first render; records the
   // "React mounted" mark for startup telemetry.
   useState(markAppMounted)
   const { initData, initError, isInitializing, clearDatabase } = useAppInitialization()
   const { revokedDeviceOpen } = useCredentialEvents()
+  const { migrationRecoveryKey, clearMigrationRecoveryKey } = useMigrationRecoveryKey()
   useAppVersionUnsupportedListener()
 
   // Start the palette's chunk during boot so it is in memory by the time
@@ -375,6 +410,26 @@ export const App = () => {
                             <ContentViewProvider>
                               <ExternalLinkDialogProvider>
                                 <AppContent initData={initData} />
+                                {/* Catches every phrase that was minted but never
+                                    confirmed — reload, crash, or a dialog that
+                                    never got the chance to render. Must live
+                                    INSIDE HttpClientProvider: it rotates the key
+                                    through the http client, and `useHttpClient`
+                                    throws outside its provider.
+
+                                    NOT rendered while the migration dialog is
+                                    showing a phrase. Both read the same pending
+                                    flag, and the migration marks it the moment
+                                    it mints — but this subtree only mounts once
+                                    `initData` resolves, which races the
+                                    fire-and-forget `runEncryptionInit`. Lose
+                                    that race and the prompt mounts with the
+                                    flag already set and tells the user the
+                                    phrase "was never saved" on top of the
+                                    dialog displaying it. The prompt's own
+                                    mount-time snapshot cannot see this — only
+                                    the parent holding both can. */}
+                                {migrationRecoveryKey == null && <UnsavedRecoveryPhrasePrompt />}
                               </ExternalLinkDialogProvider>
                             </ContentViewProvider>
                           </HapticsProvider>
@@ -402,6 +457,15 @@ export const App = () => {
           {/* The upgrade blocker replaces the whole app, so it must win over the
               revoked-device modal that renders outside renderAppContent. */}
           <RevokedDeviceModal open={revokedDeviceOpen && !upgradeRequired} />
+          {/* Seamless v1→v2 migration completed at init — show the new recovery
+              phrase once. Blocked while the upgrade screen owns the viewport; the
+              phrase is not lost in that case, because the mint marked it pending
+              and `UnsavedRecoveryPhrasePrompt` picks it up once the app is usable. */}
+          <MigrationRecoveryKeyDialog
+            open={migrationRecoveryKey != null && !upgradeRequired}
+            recoveryKey={migrationRecoveryKey ?? ''}
+            onDone={clearMigrationRecoveryKey}
+          />
         </LazyMotion>
       </ThemeProvider>
     </I18nProvider>

@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { getKnownImageSupport } from '@/ai/image-support'
 import { defaultDeliveryMode, getTransformer, hasTransformer } from '@/files/transformers'
+import type { ImageSupportModel } from '@shared/defaults/models'
 import { getAttachments, isAttachmentPart } from '@/lib/attachments'
 import { isContentRejectionError } from '@/lib/error-utils'
 import { getAttachment } from '@/lib/file-blob-storage'
@@ -59,11 +61,16 @@ const hasExtractableText = async (attachment: AttachmentData): Promise<boolean> 
 const currentMode = (attachment: AttachmentData): DeliverAs | undefined =>
   attachment.deliverAs ?? defaultDeliveryMode(attachment.mimeType)
 
+/** Whether rendering a file as images is worth a retry: not when the model is known
+ *  not to read images, since the adapter would strip them and the model would see a label. */
+const readsImages = (model: ImageSupportModel | undefined): boolean =>
+  model === undefined || getKnownImageSupport(model) !== 'unsupported'
+
 /** Decide the next delivery mode for one attachment, inspecting its text layer on the first hop. */
-const pickTarget = async (attachment: AttachmentData): Promise<DeliverAs | null> => {
+const pickTarget = async (attachment: AttachmentData, canReadImages: boolean): Promise<DeliverAs | null> => {
   const mode = currentMode(attachment)
   const canText = hasTransformer(attachment.mimeType, 'text')
-  const canImages = hasTransformer(attachment.mimeType, 'images')
+  const canImages = canReadImages && hasTransformer(attachment.mimeType, 'images')
   // Only the native→? hop needs to distinguish a digital doc from a scan.
   const hasUsableText = canText && mode === undefined ? await hasExtractableText(attachment) : false
   return nextRemediationTarget(mode, { canText, canImages, hasUsableText })
@@ -75,15 +82,16 @@ const pickTarget = async (attachment: AttachmentData): Promise<DeliverAs | null>
  * minus the scan inspection, so the UI can decide *during render* whether an
  * auto-remediation is coming — and suppress the error flash before it paints.
  */
-const canAdvance = (attachment: AttachmentData): boolean => {
+const canAdvance = (attachment: AttachmentData, canReadImages: boolean): boolean => {
   const mode = currentMode(attachment)
+  const canImages = canReadImages && hasTransformer(attachment.mimeType, 'images')
   if (mode === 'images') {
     return false
   }
   if (mode === 'text') {
-    return hasTransformer(attachment.mimeType, 'images')
+    return canImages
   }
-  return hasTransformer(attachment.mimeType, 'text') || hasTransformer(attachment.mimeType, 'images')
+  return hasTransformer(attachment.mimeType, 'text') || canImages
 }
 
 /** Identity of a turn's delivery state — changes each time an attachment advances a rung. */
@@ -103,6 +111,9 @@ type UseAttachmentRemediationParams = {
   error?: Error | null
   /** True when an error is settled (not actively streaming/retrying) — gate for auto-fire. */
   active: boolean
+  /** The built-in agent's model, whose known image support rules out the images rung.
+   *  Undefined for agents that deliver files themselves. */
+  model?: ImageSupportModel
 }
 
 type AttachmentRemediation = {
@@ -134,6 +145,7 @@ export const useAttachmentRemediation = ({
   regenerate,
   error,
   active,
+  model,
 }: UseAttachmentRemediationParams): AttachmentRemediation => {
   const lastUserMessage = useMemo(() => messages.findLast((m) => m.role === 'user'), [messages])
 
@@ -195,11 +207,12 @@ export const useAttachmentRemediation = ({
   // Whether an auto-remediation is *about* to fire — computed synchronously so
   // the error UI can be suppressed on the very first error frame, before the
   // effect below runs. Mirrors the effect's gate (minus the async scan check).
+  // `readsImages` reads the image-support cache, so it runs only past the error gates.
   const willAutoRemediate =
     active &&
     isRemediableError &&
     !!lastUserMessage &&
-    getAttachments(lastUserMessage).some(canAdvance) &&
+    getAttachments(lastUserMessage).some((attachment) => canAdvance(attachment, readsImages(model))) &&
     !attemptedSignatures.current.has(signatureOf(lastUserMessage))
 
   useEffect(() => {
@@ -221,7 +234,8 @@ export const useAttachmentRemediation = ({
       return
     }
     const attachments = getAttachments(lastUserMessage)
-    if (!attachments.some(canAdvance)) {
+    const canReadImages = readsImages(model)
+    if (!attachments.some((attachment) => canAdvance(attachment, canReadImages))) {
       return
     }
     const signature = signatureOf(lastUserMessage)
@@ -236,7 +250,7 @@ export const useAttachmentRemediation = ({
       try {
         await Promise.all(
           attachments.map(async (attachment) => {
-            const target = await pickTarget(attachment)
+            const target = await pickTarget(attachment, canReadImages)
             if (target) {
               decisions.set(attachment.localFileId, target)
             }
@@ -257,7 +271,7 @@ export const useAttachmentRemediation = ({
         setRemediating(false)
       }
     })()
-  }, [active, error, isRemediableError, lastUserMessage, applyTargets, remediating])
+  }, [active, error, isRemediableError, lastUserMessage, applyTargets, remediating, model])
 
   // The turn failed with a file the model couldn't read and there's no rung left
   // to try automatically — surface file-specific guidance rather than a retry.
@@ -267,7 +281,7 @@ export const useAttachmentRemediation = ({
     isRemediableError &&
     !!lastUserMessage &&
     getAttachments(lastUserMessage).length > 0 &&
-    !getAttachments(lastUserMessage).some(canAdvance)
+    !getAttachments(lastUserMessage).some((attachment) => canAdvance(attachment, readsImages(model)))
 
   return {
     suppressError: willAutoRemediate || remediating,

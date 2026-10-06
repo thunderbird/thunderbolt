@@ -31,6 +31,7 @@ jobs:
       crate-src: ${{ steps.filter.outputs.crate-src }}
       localization: ${{ steps.filter.outputs.localization }}
       miniapps: ${{ steps.filter.outputs.miniapps }}
+      helm: ${{ steps.filter.outputs.helm }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,6 +96,9 @@ jobs:
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
               - 'backend/lingui.config.ts'
+            helm:
+              - 'deploy/k8s/**'
+              - '.github/workflows/ci.yml'
 
   typescript:
     runs-on: ubuntu-latest
@@ -255,6 +259,40 @@ jobs:
             exit 1
           fi
           echo "No untransformed Lingui macros in the bundle."
+
+  # Chart unit tests (helm-unittest). Runs only when the chart or this workflow
+  # changes. helm-unittest is installed from its release tarball, pinned by
+  # version and sha256, rather than with `helm plugin install`: on Helm 4 that
+  # needs `--verify=false` and runs the plugin repo's install script.
+  helm:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HELM_UNITTEST_VERSION: 1.2.1
+      # sha256 of helm-unittest-linux-amd64-<version>.tgz, from the release's
+      # helm-unittest-checksum.sha. When bumping, first verify that file's GPG
+      # signature (helm-unittest-checksum.sha.asc) against public-key.asc in the
+      # helm-unittest repo, then paste the new hash here.
+      HELM_UNITTEST_SHA256: 48e86ecc1467b009630e5954375e5d8494139f73b466df5fe8c04fa45b634939
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install helm-unittest
+        run: |
+          archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
+          curl -fsSLO "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
+          echo "${HELM_UNITTEST_SHA256}  ${archive}" | sha256sum -c -
+          plugin_dir="$(helm env HELM_PLUGINS)/helm-unittest"
+          mkdir -p "${plugin_dir}"
+          tar -xzf "${archive}" -C "${plugin_dir}"
+
+      - name: Lint chart
+        run: helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
+
+      - name: Test chart
+        run: helm unittest deploy/k8s
 
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
   # are NOT part of the default `bun run test`. Include dependency/build changes:

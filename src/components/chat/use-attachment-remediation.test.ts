@@ -71,6 +71,51 @@ describe('useAttachmentRemediation', () => {
     expect(result.current.suppressError).toBe(expectedRegenerations > 0)
     expect(result.current.deliveryExhausted).toBe(expectedRegenerations > 0)
   })
+
+  test('skips rendering a file as images for a model known not to read them', async () => {
+    const regenerate = mock(() => {})
+    const glm53 = { provider: 'tinfoil', model: 'glm-5-3', url: null, vendor: 'zhipu' } as const
+    const { result, rerender } = renderHook(
+      ({ active }) => {
+        const [messages, setMessages] = useState<ThunderboltUIMessage[]>([
+          {
+            id: 'user-1',
+            role: 'user',
+            parts: [
+              buildAttachmentPart({
+                localFileId: 'pdf-1',
+                filename: 'scan.pdf',
+                mimeType: 'application/pdf',
+                deliverAs: 'text',
+              }),
+            ],
+          },
+        ])
+        const remediation = useAttachmentRemediation({
+          messages,
+          setMessages,
+          regenerate,
+          error: new Error('400: invalid file content'),
+          active,
+          model: glm53,
+        })
+        return { messages, ...remediation }
+      },
+      { initialProps: { active: false } },
+    )
+
+    rerender({ active: true })
+    await act(async () => {
+      await getClock().runAllAsync()
+    })
+
+    // The adapter would strip page images for this model, so the ladder ends here
+    // with the file-specific message instead of a retry the model can't use.
+    expect(getAttachments(result.current.messages[0])[0].deliverAs).toBe('text')
+    expect(regenerate).not.toHaveBeenCalled()
+    expect(result.current.suppressError).toBe(false)
+    expect(result.current.deliveryExhausted).toBe(true)
+  })
 })
 
 describe('nextRemediationTarget', () => {

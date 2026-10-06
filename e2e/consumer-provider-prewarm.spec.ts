@@ -40,7 +40,9 @@ test('app startup isolates default-model prewarm on a second device', async ({
   playwright,
   baseURL,
 }, testInfo) => {
-  if (!baseURL) throw new Error('Consumer prewarm project needs a baseURL')
+  if (!baseURL) {
+    throw new Error('Consumer prewarm project needs a baseURL')
+  }
   // WebKit needs a persistent profile for the app's OPFS database, as in the main fixture.
   const profile = await mkdtemp(join(tmpdir(), 'thunderbolt-prewarm-'))
   try {
@@ -56,7 +58,9 @@ test('app startup isolates default-model prewarm on a second device', async ({
       })
       await isolateProviderRequests(context, testInfo.project.name)
       const page = await context.newPage()
-      if (browserName === 'webkit') await resetOriginStorage(page, baseURL)
+      if (browserName === 'webkit') {
+        await resetOriginStorage(page, baseURL)
+      }
       await expectIsolatedPrewarm(page)
       expect(upstreamRequests).toEqual([])
     } finally {

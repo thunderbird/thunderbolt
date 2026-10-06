@@ -12,14 +12,17 @@ import { useSettings } from './use-settings'
 /**
  * Owns the synced `language` setting's runtime side effects:
  *
- * - **Seeding** — the setting ships as null; while it still holds that default
- *   and is unmodified, infer the
- *   language from `navigator.languages` and store it with `recomputeHash` so
- *   it stays a seeded default rather than a user edit (same mechanic as the
- *   country-derived unit defaults, whose null shipped default lets reconcile's
- *   `wouldOverwriteUserValue` guard preserve the seeded value across
- *   `defaultSettingsVersion` bumps). Seeding only fires from the shipped
- *   default, so devices with different browser languages never ping-pong the
+ * - **Seeding** — the setting ships without a value, and reconcile creates no
+ *   row for it (see `shipsWithoutValue`), so "unset" reads the same whether the
+ *   row is absent or null. While it still holds that default and is unmodified,
+ *   infer the language from `navigator.languages` and store it with
+ *   `recomputeHash` so it stays a seeded default rather than a user edit (same
+ *   mechanic as the country-derived unit defaults). The null shipped value is
+ *   what lets reconcile's `wouldOverwriteUserValue` guard preserve the seeded
+ *   value across `defaultSettingsVersion` bumps, and what makes this first
+ *   write an INSERT — uploaded as a PUT, so the create-only guard stops it
+ *   overwriting another device's choice (GH #1299). Seeding only fires from the
+ *   shipped default, so devices with different browser languages never ping-pong the
  *   synced row; resetting the setting returns it to null and re-seeds — i.e.
  *   "back to auto".
  * - **Lingui catalog** — activates the resolved locale via `activateLocale`,

@@ -11,17 +11,34 @@ import { createTestDb } from '@/test-utils/db'
 
 const oidcIssuerUrl = 'https://oidc.test'
 
+/**
+ * Issuer carrying a path, the shape Authentik and similar providers publish. A
+ * double slash only survives to the wire when the issuer has a path — `betterFetch`
+ * collapses one that sits directly after the host — so the trailing-slash test below
+ * is only meaningful against an issuer like this one.
+ */
+const oidcPathIssuerUrl = `${oidcIssuerUrl}/application/o/thunderbolt`
+
+const discoveryDocumentFor = (issuer: string) => ({
+  issuer,
+  authorization_endpoint: `${issuer}/authorize`,
+  token_endpoint: `${issuer}/token`,
+  jwks_uri: `${issuer}/jwks`,
+})
+
+/** Discovery URLs the stub was asked for, so tests can assert how one was derived. */
+const requestedDiscoveryUrls: string[] = []
+
 const oidcDiscoveryFetchImpl = async (input: RequestInfo | URL) => {
   const url = input instanceof Request ? input.url : input.toString()
-  if (url !== `${oidcIssuerUrl}/.well-known/openid-configuration`) {
+  requestedDiscoveryUrls.push(url)
+  const issuer = [oidcIssuerUrl, oidcPathIssuerUrl].find(
+    (candidate) => url === `${candidate}/.well-known/openid-configuration`,
+  )
+  if (!issuer) {
     throw new Error(`Unexpected OIDC request: ${url}`)
   }
-  return Response.json({
-    issuer: oidcIssuerUrl,
-    authorization_endpoint: `${oidcIssuerUrl}/authorize`,
-    token_endpoint: `${oidcIssuerUrl}/token`,
-    jwks_uri: `${oidcIssuerUrl}/jwks`,
-  })
+  return Response.json(discoveryDocumentFor(issuer))
 }
 const oidcDiscoveryFetch = Object.assign(oidcDiscoveryFetchImpl, { preconnect: () => {} }) as unknown as typeof fetch
 
@@ -40,6 +57,7 @@ const withOidcFetch = async (fn: () => Promise<void>) => {
   const savedOrigins = process.env.TRUSTED_ORIGINS
   globalThis.fetch = oidcDiscoveryFetch
   process.env.TRUSTED_ORIGINS = `http://localhost:1420,${oidcIssuerUrl}`
+  requestedDiscoveryUrls.length = 0
 
   try {
     await fn()
@@ -154,6 +172,40 @@ describe('OIDC Integration', () => {
         expect(scope).toContain('openid')
         expect(scope).toContain('profile')
         expect(scope).toContain('email')
+      })
+    })
+  })
+
+  // Several providers (Authentik among them) publish an issuer URL ending in `/`.
+  // OIDC Discovery requires stripping it before appending the well-known path;
+  // concatenating produced a double slash and a 404.
+  describe('issuer with a trailing slash', () => {
+    beforeEach(() => {
+      getSettingsSpy = spyOn(settingsModule, 'getSettings').mockReturnValue({
+        ...baseSettings,
+        oidcIssuer: `${oidcPathIssuerUrl}/`,
+      })
+    })
+
+    it('should derive a single-slash discovery URL and still sign in', async () => {
+      await withOidcFetch(async () => {
+        const { createAuth } = await import('./auth')
+        const auth = createAuth(db)
+        const app = new Elysia({ prefix: '/v1' }).mount(auth.handler)
+
+        const res = await app.handle(
+          new Request('http://localhost/v1/api/auth/sign-in/sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              providerId: 'sso',
+              callbackURL: 'http://localhost:1420/',
+            }),
+          }),
+        )
+
+        expect(requestedDiscoveryUrls).toEqual([`${oidcPathIssuerUrl}/.well-known/openid-configuration`])
+        expect(res.ok).toBe(true)
       })
     })
   })

@@ -38,6 +38,10 @@ type LocalSettingsState = {
   isNativeFetchEnabled: boolean
   hapticsEnabled: boolean
   syncEnabled: boolean
+  /** A recovery phrase was minted but the user has not confirmed saving it.
+   *  Survives reload/crash so the app can re-prompt — the phrase itself is
+   *  unrecoverable (AK = PBKDF2(seed, salt)), so the prompt offers a rotation. */
+  recoveryPhrasePending: boolean
   theme: 'light' | 'dark' | 'system'
   voiceProvider: VoiceProviderConfig
 }
@@ -55,6 +59,7 @@ export const initialLocalSettings: LocalSettingsState = {
   isNativeFetchEnabled: false,
   hapticsEnabled: true,
   syncEnabled: false,
+  recoveryPhrasePending: false,
   theme: 'system',
   voiceProvider: defaultVoiceProvider,
 }
@@ -77,6 +82,7 @@ export const useLocalSettingsStore = create<LocalSettingsStore>()(
         isNativeFetchEnabled: s.isNativeFetchEnabled,
         hapticsEnabled: s.hapticsEnabled,
         syncEnabled: s.syncEnabled,
+        recoveryPhrasePending: s.recoveryPhrasePending,
         theme: s.theme,
         voiceProvider: s.voiceProvider,
       }),

@@ -87,7 +87,9 @@ const hasHeader = (content: string): boolean =>
   content.includes('Mozilla Public License') || content.includes('mozilla.org/MPL')
 
 const isInScope = (path: string): boolean => {
-  if (skipPathPatterns.some((re) => re.test(path))) return false
+  if (skipPathPatterns.some((re) => re.test(path))) {
+    return false
+  }
   return styleByExt[extname(path).toLowerCase()] !== undefined
 }
 
@@ -95,14 +97,18 @@ const applyHeader = (content: string, path: string): string => {
   const ext = extname(path).toLowerCase()
   const style = styleByExt[ext]
 
-  if (style === 'astro') return applyAstroHeader(content)
+  if (style === 'astro') {
+    return applyAstroHeader(content)
+  }
 
   const header = renderHeader(style)
   const lines = content.split('\n')
   let insertAt = 0
 
   // Preserve shebang on line 1
-  if (lines[0]?.startsWith('#!')) insertAt = 1
+  if (lines[0]?.startsWith('#!')) {
+    insertAt = 1
+  }
 
   // Preserve a leading directive ("use client"/"use server"/"use strict")
   if (
@@ -119,7 +125,11 @@ const applyHeader = (content: string, path: string): string => {
   const leadingNewlineForHeader = before.length > 0 ? '\n' : ''
 
   return (
-    (before.length ? before.join('\n') + '\n' : '') + leadingNewlineForHeader + header + trailingBlank + after.join('\n')
+    (before.length ? before.join('\n') + '\n' : '') +
+    leadingNewlineForHeader +
+    header +
+    trailingBlank +
+    after.join('\n')
   )
 }
 
@@ -154,7 +164,9 @@ const main = () => {
       continue
     }
 
-    if (hasHeader(content)) continue
+    if (hasHeader(content)) {
+      continue
+    }
 
     if (checkOnly) {
       missing.push(relPath)
@@ -171,7 +183,9 @@ const main = () => {
       process.exit(0)
     }
     console.error(`Missing MPL 2.0 license header in ${missing.length} file(s):`)
-    for (const p of missing) console.error(`  ${p}`)
+    for (const p of missing) {
+      console.error(`  ${p}`)
+    }
     console.error('\nRun `bun run license:fix` to add headers automatically.')
     process.exit(1)
   }

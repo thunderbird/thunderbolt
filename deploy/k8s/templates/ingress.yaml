@@ -18,6 +18,8 @@ spec:
            Each hostname gets a dedicated rule routing to its service.
         2. Path-based (enterprise-style): set .Values.ingress.host (optional) and all paths go under one host
            Everything under one hostname with /v1, /realms, /powersync, / routing.
+           The /realms, /resources paths and the .auth hostname rule only apply when
+           .Values.keycloak.enabled (they route to the bundled Keycloak).
       If both are set, host-header rules take precedence (they're separate rules). Path-based stays as the fallback.
     */}}
 
@@ -58,7 +60,7 @@ spec:
                 port:
                   number: {{ $.Values.backend.service.port }}
     {{- end }}
-    {{- if .auth }}
+    {{- if and .auth (include "thunderbolt.keycloakEnabled" $) }}
     - host: {{ .auth }}
       http:
         paths:
@@ -97,6 +99,7 @@ spec:
                 name: backend
                 port:
                   number: {{ .Values.backend.service.port }}
+          {{- if include "thunderbolt.keycloakEnabled" . }}
           - path: /realms
             pathType: Prefix
             backend:
@@ -111,6 +114,7 @@ spec:
                 name: keycloak
                 port:
                   number: {{ .Values.keycloak.service.port }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:

@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { updateSettings } from '@/dal'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
+import { getDb } from '@/db/database'
+import { reconcileDefaults } from '@/lib/reconcile-defaults'
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import { act, screen } from '@testing-library/react'
+import { getClock } from '@/testing-library'
 import { mockLocationData } from '@/test-utils/http-client'
 import { createTestProvider } from '@/test-utils/test-provider'
 import { render, waitFor } from '@testing-library/react'
@@ -87,6 +93,57 @@ describe('OnboardingDialog', () => {
       await waitFor(() => {
         expect(true).toBe(true)
       })
+    })
+  })
+
+  /**
+   * GH #1299. `isOpen` used to be mirrored into state by an effect that only
+   * ever called `setIsOpen(true)`, so nothing closed the wizard once the flag
+   * flipped — a device that learned it was already onboarded, from sign-in or a
+   * sync download, kept it on screen. It is derived during render now.
+   *
+   * The flip is driven through react-query invalidation because the PowerSync
+   * test mock's `onChangeWithCallback` is a no-op, so a watched query never
+   * re-emits on its own. Asserting only the two mount states would not
+   * discriminate: the old effect also left the dialog closed when the flag
+   * started true.
+   */
+  describe('closing when the flag flips', () => {
+    const wizardTitle = 'Onboarding Wizard'
+
+    let queryClient: QueryClient | undefined
+    const GrabQueryClient = () => {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    // `waitFor` cannot poll here — the global fake clock makes its timer path
+    // throw — so flush the clock explicitly, as the other suites do.
+    const flush = async () => {
+      await act(async () => {
+        await getClock().runAllAsync()
+      })
+    }
+
+    it('closes once the account is marked onboarded', async () => {
+      await reconcileDefaults(getDb())
+      render(
+        <>
+          <OnboardingDialog />
+          <GrabQueryClient />
+        </>,
+        { wrapper: createRouterWrapper() },
+      )
+      await flush()
+      expect(screen.queryByText(wizardTitle)).not.toBeNull()
+
+      await updateSettings(getDb(), { user_has_completed_onboarding: true })
+      await act(async () => {
+        await queryClient?.invalidateQueries()
+      })
+      await flush()
+
+      expect(screen.queryByText(wizardTitle)).toBeNull()
     })
   })
 })

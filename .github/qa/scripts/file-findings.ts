@@ -314,14 +314,16 @@ type FileOptions = {
 }
 
 /**
- * File the confirmed findings of a run in Linear (or describe what would be filed) and write `filed.json`.
- * Needs no LLM. `live` is downgraded to a dry run when the last 28 days of triage show low precision.
+ * File the confirmed findings of a run in Linear (or describe what would be filed) and write `filed.json`, plus
+ * `scorecard.json` when there is a key. Needs no LLM. `live` is downgraded to a dry run when the last 28 days of
+ * triage show low precision.
  */
 export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   const { outDir, runUrl, sha, key, fetchFn = fetch, log = console.log, now = Date.now() } = opts
   if (opts.live && !key) throw new Error('--live needs LINEAR_API_KEY')
-  const card = opts.live && key ? await computeScorecard(fetchFn, key) : undefined
-  const braked = card !== undefined && shouldBrake(card)
+  const card = key ? await computeScorecard(fetchFn, key) : undefined
+  if (card) await writeFile(join(outDir, 'scorecard.json'), JSON.stringify(card, null, 2))
+  const braked = opts.live && card !== undefined && shouldBrake(card)
   if (braked) {
     log(
       `PRECISION BRAKE: ${card.labelled} non-duplicate triaged tickets, precision ${card.precision?.toFixed(2)} < ${brakeMinPrecision}. Forcing a dry run.`,
@@ -435,29 +437,18 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
 }
 
 if (import.meta.main) {
-  const { positionals, values } = parseArgs({
-    allowPositionals: true,
+  const { values } = parseArgs({
     options: {
       out: { type: 'string', default: 'qa-out' },
       live: { type: 'boolean', default: false },
       'run-url': { type: 'string' },
     },
   })
-  const key = Bun.env.LINEAR_API_KEY
-  if (positionals[0] === 'scorecard') {
-    if (!key) throw new Error('Missing LINEAR_API_KEY')
-    const card = await computeScorecard(fetch, key)
-    await writeFile(join(values.out, 'scorecard.json'), JSON.stringify(card, null, 2))
-    console.log(JSON.stringify(card, null, 2))
-  } else if (positionals.length === 0) {
-    await fileFindings({
-      outDir: values.out,
-      live: values.live,
-      runUrl: values['run-url'],
-      sha: Bun.env.GITHUB_SHA,
-      key,
-    })
-  } else {
-    throw new Error('usage: file-findings.ts [scorecard] --out DIR [--live] [--run-url URL]')
-  }
+  await fileFindings({
+    outDir: values.out,
+    live: values.live,
+    runUrl: values['run-url'],
+    sha: Bun.env.GITHUB_SHA,
+    key: Bun.env.LINEAR_API_KEY,
+  })
 }

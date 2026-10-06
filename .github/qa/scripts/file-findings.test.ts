@@ -404,6 +404,7 @@ describe('dry run', () => {
     expect(entry.would).toBe('created')
     expect(lines[0]).toContain('No LINEAR_API_KEY')
     expect(JSON.parse(await readFile(join(outDir, 'filed.json'), 'utf8'))).toHaveLength(1)
+    expect(await Bun.file(join(outDir, 'scorecard.json')).exists()).toBe(false)
   })
 
   test('--live without a key is an error', async () => {
@@ -443,6 +444,16 @@ describe('scorecard and precision brake', () => {
     const card = await computeScorecard(api.fetchFn, 'k')
     expect(card.labelled).toBe(7)
     expect(shouldBrake(card)).toBe(false)
+  })
+
+  test('a dry run with a key writes the scorecard once and does not brake', async () => {
+    await writeVerified([{}])
+    const api = fakeLinear({ scorecard: tickets({ 'qa:valid': 1, 'qa:not-a-bug': 7 }) })
+    const lines: string[] = []
+    await run(api.fetchFn, { live: false, log: (l) => lines.push(l) })
+    expect(JSON.parse(await readFile(join(outDir, 'scorecard.json'), 'utf8'))).toMatchObject({ labelled: 8 })
+    expect(api.ops.filter((o) => o.op === 'Scorecard')).toHaveLength(1)
+    expect(lines.join('\n')).not.toContain('PRECISION BRAKE')
   })
 
   test('a live run under the brake becomes a dry run and says so', async () => {

@@ -589,7 +589,6 @@ jobs:
       plan: ${{ steps.route.outputs.plan }}
     env:
       QA_OUT: qa-out
-      HAS_LINEAR_KEY: ${{ secrets.QA_LINEAR_API_KEY != '' }}
     steps:
       - *checkout
       - *setup-bun
@@ -606,16 +605,12 @@ jobs:
         with:
           name: qa-verified-weekly
           path: qa-out
+      # With a Linear key it also writes scorecard.json, the triage precision the brake reads.
       - name: File the confirmed findings
         env:
           LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bun .github/qa/scripts/file-findings.ts --out qa-out --run-url "$RUN_URL" ${{ needs.build.outputs.live == 'true' && '--live' || '' }}
-      - name: Scorecard
-        if: env.HAS_LINEAR_KEY == 'true'
-        env:
-          LINEAR_API_KEY: ${{ secrets.QA_LINEAR_API_KEY }}
-        run: bun .github/qa/scripts/file-findings.ts scorecard --out qa-out
       - name: Route fixable tickets
         id: route
         if: needs.build.outputs.autofix == 'true'

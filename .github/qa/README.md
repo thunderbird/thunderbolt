@@ -193,8 +193,8 @@ bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.m
 ```
 
 A filer dry run logs one line per finding (fingerprint, severity, action), because the Actions log is public. The
-would-be ticket text is `preview` in `filed.json`, except for security findings, which get none.
-`file-findings.ts scorecard` needs a Linear key, so it cannot run offline.
+would-be ticket text is `preview` in `filed.json`, except for security findings, which get none. With
+`LINEAR_API_KEY` set it also writes `scorecard.json`.
 
 **Canary leg:** build the canary frontend from a patched copy, so your checkout stays clean:
 
@@ -282,7 +282,7 @@ Used by `explore`, the real-AI `replay` leg, `judge`, `file`, `fix`, `publish` a
 | `QA_ANTHROPIC_API_KEY`                         | explore, judge, fix, real-AI backend, replay | one key from a dedicated Anthropic workspace with a monthly spend limit: the agent, the judge, the fix agent and the app's backend in real-AI sessions |
 | `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI backend, replay                      | QA-only Tinfoil access for the GLM models                                                                                                              |
 | `QA_EXA_API_KEY`                               | real-AI backend, replay                      | QA-only Exa key for search and link previews                                                                                                           |
-| `QA_LINEAR_API_KEY`                            | file, publish, scorecard                     | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files                                                      |
+| `QA_LINEAR_API_KEY`                            | file, publish                                | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files                                                      |
 | `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                                      | the GitHub App below                                                                                                                                   |
 | `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
 

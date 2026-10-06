@@ -40,7 +40,7 @@ Thunderbolt is [undergoing a security audit and is not yet intended for producti
 ## Out of Scope
 
 - **Evaluation defaults in a self-hosted stack.** `deploy/docker-compose.yml` hardcodes a PowerSync JWT secret, an OIDC client secret and Postgres credentials so the stack comes up unattended — `BETTER_AUTH_SECRET` is the one value it refuses to default. Replacing them before exposing a deployment is the operator's job; see [self-hosting configuration](./docs/self-hosting/configuration.md). A report that these published values are published is not a finding.
-- **Plaintext server-side storage where E2EE is off.** `E2EE_ENABLED` defaults to `false` (`backend/src/config/settings.ts`). That is documented behaviour, not a leak.
+- **Readable fields and pre-upgrade rows.** End-to-end encryption covers the columns in `encryptedColumnsMap` (`shared/e2ee-types.ts`); ids, timestamps and the other fields outside it are readable server-side by design. So are rows synced in plain text before a deployment upgraded to always-on encryption, which are not re-encrypted. Both are documented behaviour, not leaks.
 - **Third-party services.** Model providers, MCP servers, OAuth and OIDC identity providers, and the other upstreams a deployment is pointed at. Report those to their owners.
 
 ## What to Expect

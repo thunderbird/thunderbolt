@@ -100,9 +100,8 @@ views do not support `ON CONFLICT`.
 ### `settings.value` is encrypted, so the backend cannot read it
 
 `settings: ['value']` is the first entry in `encryptedColumnsMap`
-([`src/db/encryption/config.ts:31`](../../../src/db/encryption/config.ts)), so with E2EE on the server
-holds ciphertext for every value. E2EE is opt-in, but the design must hold for users who enable it:
-**no server-side feature may depend on reading a setting row.** Hence the resolved UI language
+([`shared/e2ee-types.ts`](../../../shared/e2ee-types.ts)), so the server holds ciphertext for every
+value: **no server-side feature may depend on reading a setting row.** Hence the resolved UI language
 travels as an `X-App-Language` header ([AGENTS.md](../../../AGENTS.md#the-x-app-language-header),
 [e2e-encryption.md](e2e-encryption.md)).
 

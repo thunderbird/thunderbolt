@@ -2,7 +2,7 @@
 
 Each install keeps its own copy of your data and works on its own. Sync is optional, and you control it per device.
 
-> **Preview.** Cross-device sync is in preview, and the optional end-to-end encryption that protects synced data has not yet had a cryptography audit.
+> **Preview.** Cross-device sync is in preview, and the end-to-end encryption that protects synced data has not yet had a cryptography audit.
 
 ## Where Thunderbolt runs
 
@@ -30,11 +30,11 @@ Every install holds a full local database. Reads and writes go there first, so t
 
 ## Turning sync on and off
 
-Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**, and repeated as **Cloud Sync** in the sidebar account menu. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app turns sync on for that device; where the deployment has end-to-end encryption enabled, a short setup step runs first, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
+Sync is a per-device switch under **Settings → Preferences → Data**, labeled **Sync This Device With Cloud**, and repeated as **Cloud Sync** in the sidebar account menu. A device that has never been signed in has sync off, and anonymous sessions cannot sync at all. Signing in from inside the app runs a short setup step on that device, and sync turns on when it finishes. You can turn it back off from the same screen at any time. That leaves the local database intact and stops the device exchanging changes.
 
-Whether the data is encrypted on the server is the operator's decision, and a user cannot change it. With encryption off, synced data is stored on the server in a form the server can read, and every device the account signs in on syncs immediately. With encryption on, each new device has to be approved before it can read anything.
+Synced data is always end-to-end encrypted. The first device you set up shows a 24 word recovery phrase once; save it, because it is the only way back in if you lose every device. Each later device has to be approved before it can read anything.
 
-Encryption covers the columns that hold your content. Structural fields, and the external agents you add, are stored readable either way.
+Encryption covers the columns that hold your content, including the names, addresses and descriptions of the external agents you add. Structural fields and device names are stored readable.
 
 ## What syncs and what does not
 
@@ -65,14 +65,14 @@ File attachments do not follow a chat. The message carries the file's name but n
 
 ## Adding a device
 
-Install or open Thunderbolt on the new device and sign in with the same account. With encryption off, the device starts syncing immediately. With encryption on, it registers as pending and shows an "Approve this device" screen until you either:
+Install or open Thunderbolt on the new device and sign in with the same account. It registers as pending and shows an "Approve this device" screen until you either:
 
 - Approve it from an already trusted device under **Settings → Devices**, or
 - Enter the 24 word recovery key you saved when you first set up sync.
 
 The pending device checks for approval on its own, so nothing needs re-entering once you approve.
 
-Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. Where the deployment has end-to-end encryption enabled, an account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on `thunderbolt login` fails outright. A command line client authenticated with an API token never registers a device and has no entry in the list.
+Device names are generated, for example "Thunderbolt on macOS" or "Chrome on Windows", and they cannot be renamed. Every tab of the same browser profile counts as one device; a different browser, or a different profile in the same browser, is separate. An account can have **10 active devices**. Devices still waiting for approval do not count toward the limit, and revoked ones do not either, so more devices can queue for approval than there are free slots; the extras are refused at approval rather than at registration. Headless bridges appear in the device list labeled **Bridge**. Command line installs appear labeled **CLI**, but only where the operator has set `CLI_DEVICE_REGISTRATION_ENABLED=true`; it is off by default, and until it is on `thunderbolt login` fails outright. A command line client authenticated with an API token never registers a device and has no entry in the list.
 
 ## Approving, denying, and revoking
 

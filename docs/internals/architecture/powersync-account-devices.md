@@ -145,7 +145,7 @@ Account-first onboarding, stable `cli-<uuid>` installation; contract in [CLI Dev
 Both live in `localStorage` under fixed keys ([src/lib/auth-token.ts](../../../src/lib/auth-token.ts)).
 
 - **Auth token:** fixed key so `getAuthToken()` stays synchronous, as Better Auth requires. Not synced. Cleared by `clearAuthToken()` on session expiry, or via `clearLocalData()` for a full reset. Nothing calls `localStorage.clear()`.
-- **Device id:** created on first read, sent as `X-Device-ID` with `X-Device-Name` on PowerSync requests so the backend can register or update the row and enforce revocation. A missing name becomes `Unknown device`.
+- **Device id:** created on first read, sent as `X-Device-ID` with `X-Device-Name` on PowerSync requests so the backend can update the row and enforce revocation. A missing name becomes `Unknown device`.
 
 ---
 
@@ -160,24 +160,25 @@ Both live in `localStorage` under fixed keys ([src/lib/auth-token.ts](../../../s
 
 ### PowerSync Upload (`PUT /powersync/upload`)
 
-- Requires an authenticated, non-anonymous user, an `X-Device-ID` header and the same `validateDeviceForSync`, except that the device must already exist. Only the token route creates one (`allowNewDevice: true`), and only while E2EE is off: with E2EE on, a device that has not been through the envelope flow is untrusted and rejected.
+- Requires an authenticated, non-anonymous user, an `X-Device-ID` header and the same `validateDeviceForSync`. Neither route creates a device: it must already be registered through `POST /v1/devices` and trusted through the envelope flow.
 - A rejected operation returns **400** `UPLOAD_OPERATION_FAILED` deliberately, so the client skips `transaction.complete()` and PowerSync retries the batch. Ops for a `legacyPowerSyncTableNames` table are accepted and ignored instead (see [Removing a Synced Table](#removing-a-synced-table)).
 
 Both routes answer **403** `ORIGIN_NOT_ALLOWED` for a cross-origin request whose `Origin` is not in the CORS set; an absent `Origin` (non-browser clients) is allowed.
 
 Only rows with a client reason change app state ([src/db/powersync/connector.ts](../../../src/db/powersync/connector.ts) maps status and code to a `CredentialsInvalidReason`, section 7). Otherwise `fetchCredentials` returns `null` and PowerSync retries on its own schedule.
 
-| Status | Code                       | Meaning                                                           | Client reason                          |
-| ------ | -------------------------- | ----------------------------------------------------------------- | -------------------------------------- |
-| 410    | `ACCOUNT_DELETED`          | the user row is gone                                              | `account_deleted`: full reset          |
-| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                                | `device_revoked`: revoked-device modal |
-| 403    | `DEVICE_NOT_TRUSTED`       | a `cli-` prefixed id, or (E2EE on) an unknown or untrusted device | none (expected while approval pends)   |
-| 403    | `ANONYMOUS_SYNC_FORBIDDEN` | anonymous session                                                 | `sync_not_permitted`: sync disabled    |
-| 403    | `ORIGIN_NOT_ALLOWED`       | `Origin` outside the CORS allowlist                               | none                                   |
-| 409    | `DEVICE_ID_TAKEN`          | the id is registered to another user                              | `device_id_taken`: full reset          |
-| 400    | `DEVICE_ID_REQUIRED`       | no `X-Device-ID` header                                           | `device_id_required`: full reset       |
-| 401    | (none)                     | missing, unsigned, or expired bearer token                        | `session_expired`: sign-in modal       |
-| 503    | (none)                     | `/token` only: secret set but `POWERSYNC_URL` empty               | none                                   |
+| Status | Code                       | Meaning                                                 | Client reason                          |
+| ------ | -------------------------- | ------------------------------------------------------- | -------------------------------------- |
+| 410    | `ACCOUNT_DELETED`          | the user row is gone                                    | `account_deleted`: full reset          |
+| 403    | `DEVICE_DISCONNECTED`      | `revoked_at` is set on this device                      | `device_revoked`: revoked-device modal |
+| 403    | `DEVICE_NOT_BOUND`         | the session is not bound to this `X-Device-ID`          | none: sync waits for the bind          |
+| 403    | `DEVICE_NOT_TRUSTED`       | a `cli-` prefixed id, or an unknown or untrusted device | none (expected while approval pends)   |
+| 403    | `ANONYMOUS_SYNC_FORBIDDEN` | anonymous session                                       | `sync_not_permitted`: sync disabled    |
+| 403    | `ORIGIN_NOT_ALLOWED`       | `Origin` outside the CORS allowlist                     | none                                   |
+| 409    | `DEVICE_ID_TAKEN`          | the id is registered to another user                    | `device_id_taken`: full reset          |
+| 400    | `DEVICE_ID_REQUIRED`       | no `X-Device-ID` header                                 | `device_id_required`: full reset       |
+| 401    | (none)                     | missing, unsigned, or expired bearer token              | `session_expired`: sign-in modal       |
+| 503    | (none)                     | `/token` only: secret set but `POWERSYNC_URL` empty     | none                                   |
 
 #### Create-only writes (`ifAbsent`)
 

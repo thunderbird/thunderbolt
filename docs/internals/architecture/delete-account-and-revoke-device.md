@@ -25,9 +25,10 @@ The outcomes differ on purpose: a deleted account leaves the local copy nothing 
 ### Revoke Device
 
 1. User confirms "Revoke" on another device in **Settings > Devices**.
-2. `revokeDeviceWithProof` calls `POST /v1/account/devices/:id/revoke` (`src/hooks/use-revoke-device.ts:14-20`), attaching a canary secret as proof-of-CK-possession when E2EE is active and omitting it otherwise (`src/services/encryption.ts:222-233`).
-3. The backend deletes the device's envelope, sets `revoked_at`, and revokes that device's sessions. PowerSync syncs the row to all clients.
-4. The revoked device opens the modal on whichever comes first: the watched `revokedAt` on its synced row (`src/hooks/use-powersync-credentials-invalid-listener.ts:153-162`), or a **403** `code: 'DEVICE_DISCONNECTED'` on token refresh (`src/db/powersync/connector.ts:43-63`).
+2. `useRevokeDevice` (`src/hooks/use-revoke-device.ts`) runs `revokeDeviceAndRotate` (`src/services/encryption.ts`) on a device holding the account keys, and a bare `revokeDeviceWithProof` on a pre-E2EE account.
+3. `POST /v1/account/devices/:id/revoke` carries a `revoke` challenge proof signed with the canary-derived key; pre-E2EE accounts and v1 leftovers send none. In one transaction the backend deletes the device's envelope, sets `revoked_at`, and revokes that device's sessions. PowerSync syncs the row to all clients.
+4. `POST /v1/encryption/rotate` then replaces the account key and mints a new primary data key, with envelopes for every device except the revoked one. If it fails, the server reports the device as awaiting lockout and any trusted device can finish it ([e2e-encryption.md](e2e-encryption.md#device-revocation)).
+5. The revoked device opens the modal on whichever comes first: the watched `revokedAt` on its synced row (`src/hooks/use-powersync-credentials-invalid-listener.ts:153-162`), or a **403** `code: 'DEVICE_DISCONNECTED'` on token refresh (`src/db/powersync/connector.ts:43-63`).
 
 The modal cannot be dismissed. "Keep data on device" and "Delete data from device" both disable sync, wipe encryption keys, and clear the auth token and device id before redirecting to `/`; only the second drops the local database (`src/components/revoked-device-modal.tsx:30-34`, `src/lib/cleanup.ts:33-87`).
 

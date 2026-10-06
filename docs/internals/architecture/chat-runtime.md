@@ -184,7 +184,7 @@ reasoning part left `streaming`, and persists a partial answer.
 `SavePartialAssistantMessagesHandler`
 (`src/chats/save-partial-assistant-messages-handler.ts`) throttles writes to
 `streamingSaveThrottleMs = 500` because each one serializes the whole growing
-message and, under E2EE, re-encrypts it. Its own `useChat` subscription is
+message and re-encrypts it. Its own `useChat` subscription is
 unthrottled on purpose: it renders nothing, so per-token cost is already O(1),
 and throttling would widen the window in which an aborted stream's last partial
 goes unsaved.

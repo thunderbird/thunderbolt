@@ -28,7 +28,7 @@ Get `APP_URL` and `BETTER_AUTH_URL` wrong and sign-in redirects land on the wron
 
 ## Database
 
-Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When sync is turned on, the database also holds the server-side copy of each user's synced data (conversations, settings, devices and the rest). With end-to-end encryption on, that copy is ciphertext your servers cannot read.
+Thunderbolt stores accounts, sessions, and usage records in PostgreSQL. When sync is turned on, the database also holds the server-side copy of each user's synced data (conversations, settings, devices and the rest). Its content fields are encrypted on the device before upload, so your servers hold them as ciphertext they cannot read.
 
 | Variable             | Default    | What it does                                                                                                                                                                |
 | -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -163,13 +163,16 @@ openssl rand 32 | basenc --base64url --wrap=0
 
 ## Encryption
 
-| Variable       | Default | What it does                                                                                                                          |
-| -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2EE_ENABLED` | `false` | Encrypts message content on the device before it syncs, and requires each new device to be approved from one the user already trusts. |
+End-to-end encryption is always on, with nothing to set. The device encrypts message content and the other covered fields before they sync, and each new device has to be approved from one the user already trusts, or recovered with their recovery phrase. The apps decide this from their own key material, not from the server, so a compromised server cannot switch it off.
 
-Apps read the setting from the API at startup, so there is no matching client setting.
+> Because the servers hold only ciphertext for that content, an administrator cannot recover a user's data for them unless you run [organizational key escrow](#organizational-key-escrow). Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
 
-> Because the servers then hold only ciphertext, an administrator cannot recover a user's data for them. Each user is shown a 24-word recovery phrase once, at setup, and it is the only way back in if every trusted device is lost.
+**Upgrading from a release before 0.1.135**, where encryption was the `E2EE_ENABLED` setting:
+
+1. Set `MIN_APP_VERSION=0.1.135` in the same deploy that moves the backend to 0.1.135 or later. Older apps then show an upgrade screen instead of uploading plain text or silently failing to sync.
+2. Remove `E2EE_ENABLED`. Nothing reads it any more.
+
+Rows synced in plain text before the upgrade stay in plain text on your server; there is no re-encryption pass. Devices set up afterwards never download them, so that data stays only on the devices that already had it. A device that was syncing without encryption has sync switched off when it updates, and resumes once the user finishes setup. Accounts that already used encryption are upgraded in place: the first device to open the new version shows the user a new recovery phrase once, and the old phrase stops working.
 
 ### Organizational key escrow
 

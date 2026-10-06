@@ -16,7 +16,7 @@ The microphone stays open while the assistant thinks and speaks. Talking over it
 
 ## What a voice turn is
 
-A voice turn is a regular chat turn. It uses the model you have selected, the same tools, the same chat history, and any project instructions or skills that apply. Messages are stored and synced like typed ones, and encrypted if you have end-to-end encryption enabled. What changes is the reply: because it will be read aloud, the model is asked to keep it short and free of Markdown, links and formatting. Citation markers and display equations are skipped. On-screen results such as maps and charts are pointed at instead of read out ("Take a look at the map on screen").
+A voice turn is a regular chat turn. It uses the model you have selected, the same tools, the same chat history, and any project instructions or skills that apply. Messages are stored, synced and encrypted like typed ones. What changes is the reply: because it will be read aloud, the model is asked to keep it short and free of Markdown, links and formatting. Citation markers and display equations are skipped. On-screen results such as maps and charts are pointed at instead of read out ("Take a look at the map on screen").
 
 ## What leaves your device
 

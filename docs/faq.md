@@ -38,27 +38,22 @@ Not currently, but there is enterprise support available.
 
 In two places: a local database on each device, and, once you sign in, your deployment's PostgreSQL database.
 
-Every client reads and writes its local database first, so the app keeps working against local data even when the network is down. Signing in turns on cross-device sync for that device, and synced rows are then also stored on your deployment's server so your other devices can pick them up.
+Every client reads and writes its local database first, so the app keeps working against local data even when the network is down. Signing in sets up cross-device sync for that device, and synced rows are then also stored on your deployment's server so your other devices can pick them up.
 
-Whether the server copy is encrypted depends on the deployment: when the server has end-to-end encryption enabled (`E2EE_ENABLED`), what is sent to and stored on the server is encrypted. Either way, the copy on the device stays readable locally so the app can search and render it.
+The server copy is end-to-end encrypted: the device encrypts content before sending it. The copy on the device stays readable locally so the app can search and render it.
 
 ### Can the server read my chats?
 
-By default, yes. Synced rows land in your PostgreSQL in plaintext, readable by anyone with database access.
+Not what it stores. End-to-end encryption (E2EE) is always on, so the server holds only ciphertext for the fields listed below: the keys that would unscramble it exist on the user's devices and nowhere on your infrastructure. It also shapes how devices join. The first device on an account creates the keys and shows a recovery phrase, and every later one must be approved from an already trusted device or with that phrase.
 
-Turn on end-to-end encryption (E2EE) in the backend configuration and the server holds only ciphertext for the fields listed below, because the keys that would unscramble it exist on the user's devices and nowhere on your infrastructure. E2EE applies to the whole deployment, so a user cannot turn it on for one account, and it changes how new devices join: they must be approved from an already trusted device or with the recovery phrase.
-
-```ini
-E2EE_ENABLED=true
-```
-
-| Encrypted with E2EE on                        | Never encrypted                                  |
+| Encrypted                                     | Never encrypted                                  |
 | --------------------------------------------- | ------------------------------------------------ |
 | Chat titles and message content               | Record ids, timestamps, ordering, deletion flags |
 | Tasks, saved prompts, skills                  | Project icons and pin order                      |
-| Project names, descriptions, and instructions | Custom agent names, URLs, and descriptions       |
+| Project names, descriptions, and instructions | Device names                                     |
 | Model names, endpoints, and tuning profiles   |                                                  |
-| Setting values and device names               |                                                  |
+| Custom agent names, URLs, and descriptions    |                                                  |
+| Setting values                                |                                                  |
 
 End-to-end encryption is in preview. It has not yet had a cryptography audit.
 
@@ -169,15 +164,13 @@ Ten active devices. Devices awaiting approval do not count against the limit.
 
 ### What happens if a device is lost or stolen?
 
-Revoke it from _Settings → Devices_ on another device. It can no longer ask for a new sync token, so an online device is cut off within the hour and an offline one when it reconnects. With end-to-end encryption on, the copy of the account key held for that device is deleted on the server and its sign-in sessions end at once. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
+Revoke it from _Settings → Devices_ on another device. It can no longer ask for a new sync token, so an online device is cut off within 5 minutes and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
 
 Revocation is not a remote wipe. The next time the revoked device runs, it shows a message the user cannot dismiss, offering to keep or delete its local copy of the data. Whatever was already on that device stays readable until its holder chooses to delete it, or until you wipe the device through whatever endpoint management you already use.
 
 ### What if all devices are lost?
 
-With end-to-end encryption off, signing in on a new device pulls the synced data back from your database.
-
-With it on, the 24-word recovery phrase shown once at setup is the only way back. Without that phrase, the encrypted data cannot be recovered by the user, by you, or by anyone with access to the server. We recommend making it part of your onboarding.
+The 24-word recovery phrase shown once at setup is the only way back. Without that phrase, the encrypted data cannot be recovered by the user, by you, or by anyone with access to the server, unless you run [organizational key escrow](self-hosting/configuration.md#organizational-key-escrow). We recommend making the phrase part of your onboarding.
 
 ### What happens when a user deletes their account?
 
@@ -202,7 +195,7 @@ Mobile builds are not publicly listed in the app stores yet. Every platform runs
 | ------------------------------ | ------------------------------------------------ | ------------------------ |
 | Where conversations are stored | Your device, and your database if sync is on     | The vendor's servers     |
 | Who chooses the model          | You, per chat, across providers and local models | The vendor               |
-| Server access to content       | None for covered fields with E2EE on             | Full                     |
+| Server access to content       | None for encrypted fields                        | Full                     |
 | Where it runs                  | Your infrastructure, including on-prem           | The vendor's cloud       |
 | Cost model                     | Software free, you pay for inference             | Per seat, per month      |
 

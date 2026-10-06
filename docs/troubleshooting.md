@@ -2,7 +2,7 @@
 
 ## Check these first
 
-Three checks account for most problems. `curl https://your-host/v1/health` needs no credentials and returns `200` quickly when the API is up. `curl https://your-host/v1/config` is unauthenticated JSON showing what the apps see: whether encryption is on, whether the built-in and custom agents are allowed, the minimum app version you enforce, and the model catalog you ship. `GET /v1/agents` lists the agents themselves.
+Three checks account for most problems. `curl https://your-host/v1/health` needs no credentials and returns `200` quickly when the API is up. `curl https://your-host/v1/config` is unauthenticated JSON showing what the apps see: whether the built-in and custom agents are allowed, the minimum app version you enforce, and the model catalog you ship. `GET /v1/agents` lists the agents themselves.
 
 The server logs name the setting behind every startup failure. The command to follow them depends on the deployment:
 
@@ -126,7 +126,7 @@ openssl rand 32 | basenc --base64url --wrap=0
 | A second `powersync_storage` database                   | On the same server                                                                                                                                                                          |
 | `DATABASE_DRIVER=postgres`                              | PGlite runs in-process, so the sync service has nothing to connect to. The server does not notice and keeps handing out sync tokens, so sync fails quietly rather than reporting itself off |
 
-**6. With encryption on, the device is waiting for approval.** A new device registers as pending and shows an approval screen. Approve it from an already trusted device under **Settings → Devices**, or enter the 24-word recovery phrase. With every trusted device lost and no recovery phrase, the encrypted history cannot be recovered, by the user or by you. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot.
+**6. The device is waiting for approval.** A new device registers as pending and shows an approval screen. Approve it from an already trusted device under **Settings → Devices**, or enter the 24-word recovery phrase. With every trusted device lost and no recovery phrase, the encrypted history cannot be recovered, by the user or by you. An account is limited to 10 active devices; revoke one under **Settings → Devices** to free a slot. On an account's first device there is nothing to approve, but sync starts only once the user confirms they saved the recovery phrase.
 
 Once those are settled, confirm the sync service is alive with `/v1/health/powersync`.
 

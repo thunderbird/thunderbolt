@@ -6,7 +6,7 @@ Each install of Thunderbolt is a device on someone's account.
 
 ## Who does what
 
-Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**. Turning end-to-end encryption on or off for the deployment belongs to the operator, who sets `E2EE_ENABLED` (see the [configuration reference](../self-hosting/configuration.md)).
+Device management is self-service. Each person manages the devices on their own account under **Settings → Devices**, approving, denying, or revoking from another device on the same account that is already trusted. The account owner can also delete the account and its server-side data, from **Settings → Preferences → Data**.
 
 There is no server-side admin console for browsing or revoking other people's devices. If an employee leaves and you need their access cut off, disable or delete the account in your identity provider. That stops new sign-ins; it does not by itself end existing sessions on devices already signed in.
 
@@ -21,9 +21,9 @@ A device is one install signed in to the account, identified by an ID stored loc
 
 ## Adding a device
 
-Sign in on the new device with the same account, then open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**. With encryption off the device starts syncing right away, with no confirmation step. Turn encryption on and it registers as pending instead, unable to read synced data until it is approved. Either way the person has to be signed in to a real account first, because anonymous sessions cannot sync.
+Sign in on the new device with the same account. If the setup wizard does not open on its own, open **Settings → Preferences → Data** and turn on **Sync This Device With Cloud**. The device registers as pending, unable to read synced data until it is approved. The person has to be signed in to a real account first, because anonymous sessions cannot sync.
 
-## Approving a device (encryption on)
+## Approving a device
 
 A pending device shows an "Approve this device" screen and polls for the result, so nothing has to be re-entered once you approve it. There are two ways to clear it:
 
@@ -34,11 +34,13 @@ A pending device shows an "Approve this device" screen and polls for the result,
 
 ## The recovery key
 
-At first setup on an account, Thunderbolt generates one encryption key for the account and shows a 24 word recovery phrase that encodes it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
+At first setup on an account, Thunderbolt generates the account's encryption keys and shows a 24 word recovery phrase that can unlock them. Sync starts once the person confirms they saved it. The phrase is shown **once**; there is no way to view it again later. It is the only way back in if every device on the account is lost or wiped.
+
+To replace a lost or exposed phrase, choose **Change Recovery Phrase** under **Settings → Preferences → Data** on a trusted device and enter the code emailed to the account. The old phrase stops working.
 
 > Without it and without a trusted device, synced message content is not recoverable. The server holds ciphertext for that content; ids, timestamps, relationships and device names stay readable. See [Security and privacy](security-and-privacy.md) for the full list.
 
-With encryption off there is no recovery key, because the server can read the synced data and any newly signed-in device gets it directly.
+The one exception is [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow): on a deployment that runs it, the operator can decrypt an account's data offline.
 
 ## Revoking a device
 
@@ -46,11 +48,9 @@ Use this when a device is lost or stolen, or when someone should no longer have 
 
 ### What revoking does
 
-Uploads and sync-token renewal are refused at once. Downstream sync stops when the device's current sync token expires, within `POWERSYNC_TOKEN_EXPIRY_SECONDS` (one hour by default); rotate `POWERSYNC_JWT_SECRET` to cut it off sooner.
+Uploads and sync-token renewal are refused at once, and the device's sign-in sessions are deleted. Downstream sync stops when the device's current sync token expires, within `POWERSYNC_TOKEN_EXPIRY_SECONDS` (5 minutes by default); rotate `POWERSYNC_JWT_SECRET` to cut it off sooner.
 
-With encryption on, the device's sign-in sessions are deleted too. With encryption off the session was never bound to a device, so it survives revocation: the device stops syncing but can still reach other API routes until that session expires.
-
-- The server-side copy of the account key wrapped for that device is deleted, so it can never fetch the key again.
+- The revoking device replaces the account key and the key used for new writes, and hands the new account key only to the devices that remain. The revoked device cannot read anything written afterwards, and the recovery phrase keeps working. If that step fails, every trusted device shows **Finish securing** on the revoked entry until someone completes it.
 - Its pairing identity is cleared, so other devices on the account stop accepting direct connections from it.
 - The entry stays in the list marked **Revoked** for 24 hours, then drops off.
 
@@ -82,7 +82,7 @@ Where CLI registration is enabled, a command line install is revoked from the sa
 | **Revoke**         | Sessions ended, sync and decryption blocked for that device | Kept or deleted, the person holding it chooses                                                                | Unaffected           |
 | **Delete account** | Account and all synced data removed                         | Deleted on devices with sync on that reconnect while their token is live; others sign out and keep their copy | All of them sign out |
 
-The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again. Signing out does not revoke the device on the server, so its entry stays in the trusted list and holds one of the ten slots until someone revokes it. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again when encryption is on.
+The log out prompt offers **Leave data on device** or **Delete data from device**; the account and everything synced to it are untouched either way, and signing back in pulls the synced data down again once the device is approved. Signing out does not revoke the device on the server, so its entry stays in the trusted list and holds one of the ten slots until someone revokes it. Signing out also clears the device's encryption keys, so the next sign-in on that device is treated as a new device and needs approval again.
 
 A separate **Delete All Local Data** control appears under **Settings → Preferences → Data** in an anonymous session, so only on deployments that allow anonymous access. It wipes that device's local database and nothing else.
 
@@ -115,4 +115,4 @@ Deleting the account in Thunderbolt does not delete the user in your identity pr
 ## Related pages
 
 - [Apps and Sync](../using/apps-and-sync.md) covers what syncs, what stays local, and offline behavior.
-- [Configuration reference](../self-hosting/configuration.md) covers `E2EE_ENABLED` and the other deployment settings.
+- [Configuration reference](../self-hosting/configuration.md) covers `POWERSYNC_TOKEN_EXPIRY_SECONDS`, `CLI_DEVICE_REGISTRATION_ENABLED` and the other deployment settings.

@@ -34,9 +34,9 @@ Both rewrite the `defaultHash` that reconciliation reads as its "has the user ed
 
 ## Why content migrations cannot run on the server
 
-Under E2EE the columns carrying user content (`name`, `label`, `description`, `instruction`, `prompt`, `title` and siblings) are encrypted before leaving the device; the server holds ciphertext and no key. `encryptedColumnsMap` ([src/db/encryption/config.ts](../../../src/db/encryption/config.ts)) is the authoritative list, rendered as a table in [e2e-encryption.md](e2e-encryption.md#what-is-and-isnt-encrypted).
+The columns carrying user content (`name`, `label`, `description`, `instruction`, `prompt`, `title` and siblings) are end-to-end encrypted before leaving the device; the server holds ciphertext and no key. `encryptedColumnsMap` ([shared/e2ee-types.ts](../../../shared/e2ee-types.ts)) is the authoritative list ([e2e-encryption.md](e2e-encryption.md#what-gets-encrypted)).
 
-Backend SQL can rename or add a column, but cannot read a skill's instruction, slugify a title, or recompute a content hash. E2EE is opt-in and off by default; the design still has to hold for accounts that enable it, so content migrations always take the client path.
+Backend SQL can rename or add a column, but cannot read a skill's instruction, slugify a title, or recompute a content hash, so content migrations always take the client path.
 
 ## The contract: four rules
 

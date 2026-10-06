@@ -76,7 +76,7 @@ The exporter walks the same name → Drizzle table map PowerSync uses (`syncedTa
 
 ## Encryption
 
-With E2E encryption enabled, synced columns arrive in local SQLite **already decrypted** by the sync middleware ([`powersync-sync-middleware.md`](powersync-sync-middleware.md)). The export reads the local DB, so `chat_messages.content`, `chat_messages.parts` and other encrypted columns are plaintext in the file.
+Encrypted synced columns arrive in local SQLite **already decrypted** by the sync middleware ([`powersync-sync-middleware.md`](powersync-sync-middleware.md)). The export reads the local DB, so `chat_messages.content`, `chat_messages.parts` and other encrypted columns are plaintext in the file.
 
 ## Import behavior
 

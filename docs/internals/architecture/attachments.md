@@ -44,7 +44,7 @@ invalidated file poisons the conversation. Hence the one-time `detachBytes` copy
 ### What follows from the invariant
 
 - **Attachments do not follow a chat to another device.** The reference syncs (inside `chat_messages.parts`,
-  encrypted when E2EE is on, [`src/db/encryption/config.ts`](../../../src/db/encryption/config.ts)), the bytes do not.
+  end-to-end encrypted, [`src/db/encryption/config.ts`](../../../src/db/encryption/config.ts)), the bytes do not.
   `getAttachment` returns `null` there: the AI SDK path sends the turn without it, the built-in and ACP transports
   substitute a note naming the file. The card renders the filename, not the thumbnail.
 - **Attachments are absent from the data export.** The exporter walks Drizzle tables

@@ -8,7 +8,7 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
 - **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls go through the universal proxy at `/v1/proxy`, which maps caller headers to `X-Proxy-Passthrough-*` and forwards the caller's credentials (`src/lib/proxy-fetch.ts`). Only a Tauri build compiled with the `native_fetch` Cargo feature can skip it (when `proxy_enabled` is off), but that feature defaults to off and no build in this repo passes it, so every shipped build proxies ([tauri-shell.md](tauri-shell.md#the-native_fetch-cargo-feature)). Managed models use `/v1/chat/*` instead.
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
-- **E2E encrypted (optional).** When enabled, data is encrypted before leaving the device and the server stores only ciphertext ([E2E Encryption](e2e-encryption.md)).
+- **E2E encrypted.** Always on: content is encrypted before leaving the device and the server stores only ciphertext for it ([E2E Encryption](e2e-encryption.md)).
 
 ## System Diagram
 
@@ -19,7 +19,7 @@ graph TB
       UI["React Frontend<br/>React 19 · Vite · Radix UI"]
       STATE["State & Data<br/>Zustand · TanStack Query · Drizzle"]
       AI["AI Chat<br/>Vercel AI SDK · MCP Client"]
-      CRYPTO["E2E Encryption (optional)"]
+      CRYPTO["E2E Encryption"]
       SQLITE[("SQLite<br/>Offline-first")]
 
       UI --- STATE
@@ -205,6 +205,8 @@ Both run the transformer in a worker and end with decrypted data in local SQLite
 - [Composite Primary Keys and Default Data](composite-primary-keys-and-default-data.md): why some tables key on `(id, user_id)`.
 - [Client Data Migrations](client-data-migrations.md): why content migrations run on-device, and adding one.
 - [End-to-End Encryption](e2e-encryption.md): key hierarchy, device approval, ciphertext columns.
+- [E2EE Threat Model](e2ee-threat-model.md): adversaries, security claims, and the C/A ids findings cite.
+- [Red-Team Harness](red-team-harness.md): how arguments for a vulnerability become executed proof.
 - [Delete Account and Revoke Device](delete-account-and-revoke-device.md): the hard-delete paths.
 - [User Data Export Format](export-format.md): the versioned JSON snapshot behind Export My Data.
 

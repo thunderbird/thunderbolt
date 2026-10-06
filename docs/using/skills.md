@@ -76,7 +76,7 @@ When you connect an external agent, Thunderbolt hands it the full text of every 
 
 ## Privacy and portability
 
-When end-to-end encryption is enabled for your account, a skill's name, slug, description and instructions are encrypted before leaving the device. Skill events sent to usage analytics carry an anonymized identifier, never the name or the text. **Settings → Preferences → Export My Data** includes every skill.
+A skill's name, slug, description and instructions are end-to-end encrypted before leaving the device. Skill events sent to usage analytics carry an anonymized identifier, never the name or the text. **Settings → Preferences → Export My Data** includes every skill.
 
 Skills belong to one account. Sharing a skill directly with another user is not supported.
 

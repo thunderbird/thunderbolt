@@ -42,16 +42,16 @@
 
 Every denied column is written by server code only, each by a small fixed set of writers.
 
-| Column                           | Written by                                                                                                                                                                                                                    |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `public_key`, `mlkem_public_key` | `registerDevice`, on `POST /v1/devices` ([backend/src/api/encryption.ts](../../../backend/src/api/encryption.ts)); the only route that sets a key value                                                                       |
-| `trusted`, `approval_pending`    | `registerDevice` (pending), `markDeviceTrusted`, `denyDevice` and `revokeDevice` ([backend/src/dal/devices.ts](../../../backend/src/dal/devices.ts)); also auto-trusted by `upsertDevice` on the token route when E2EE is off |
-| `revoked_at`                     | `revokeDevice` only, via `POST /v1/account/devices/:id/revoke`                                                                                                                                                                |
-| `app_version`                    | `upsertDevice` from the `X-App-Version` header on the token route, and `upsertCliDevice` on CLI registration                                                                                                                  |
-| `device_type`                    | The bridge and CLI registration routes; `normal` is the column default, so any other upsert produces one. Discriminates a bridge from a normal device and drives the account allowlist                                        |
-| `node_id`, `node_id_attested_at` | The canary-gated `POST /v1/devices/:deviceId/node-id`, the session-pinned `POST /v1/devices/me/node-id`, and bridge registration; revoke, deny and re-registration clear them                                                 |
+| Column                           | Written by                                                                                                                                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public_key`, `mlkem_public_key` | `registerDevice`, on `POST /v1/devices` ([backend/src/api/encryption.ts](../../../backend/src/api/encryption.ts)); the only route that sets a key value                                |
+| `trusted`, `approval_pending`    | `registerDevice` (pending), `markDeviceTrusted`, `denyDevice` and `revokeDevice` ([backend/src/dal/devices.ts](../../../backend/src/dal/devices.ts))                                   |
+| `revoked_at`                     | `revokeDevice` only, via `POST /v1/account/devices/:id/revoke`                                                                                                                         |
+| `app_version`                    | `upsertDevice` from the `X-App-Version` header on the token route, and `upsertCliDevice` on CLI registration                                                                           |
+| `device_type`                    | The bridge and CLI registration routes; `normal` is the column default, so any other upsert produces one. Discriminates a bridge from a normal device and drives the account allowlist |
+| `node_id`, `node_id_attested_at` | The canary-gated `POST /v1/devices/:deviceId/node-id`, the session-pinned `POST /v1/devices/me/node-id`, and bridge registration; revoke, deny and re-registration clear them          |
 
-Only `name`, `last_seen` and `created_at` stay client-writable on a device's own row, which is what makes `devices` safe to sync. Under E2EE `name` arrives as ciphertext: `devices.name` is in `encryptedColumnsMap` ([src/db/encryption/config.ts](../../../src/db/encryption/config.ts)) and `encodeForUpload` encrypts it in the connector.
+Only `name`, `last_seen` and `created_at` stay client-writable on a device's own row, which is what makes `devices` safe to sync. An uploaded `name` arrives as ciphertext: `devices.name` is in `encryptedColumnsMap` ([src/db/encryption/config.ts](../../../src/db/encryption/config.ts)) and `encodeForUpload` encrypts it in the connector. The backend still writes the plaintext name itself, at registration and from `X-Device-Name` on every token request, so device names stay readable server-side.
 
 See also [e2e-encryption.md](e2e-encryption.md) (server-set `device_type` is load-bearing for the bridge allowlist) and [delete-account-and-revoke-device.md](delete-account-and-revoke-device.md) (the revoke path the delete ban forces writes through).
 

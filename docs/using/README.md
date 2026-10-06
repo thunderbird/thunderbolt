@@ -70,4 +70,4 @@ Attached files stay on the device that added them too: the message syncs, the fi
 
 Tasks is a to-do list the assistant can also read and write. It is off by default and is enabled under Preferences → Preview Features, which adds a Tasks entry to the sidebar. Where a deployment has usage analytics configured, Tasks also requires anonymous usage data to be on, and turning that off turns Tasks off.
 
-The custom voice provider and cross-device sync are in preview as well, and the optional end-to-end encryption that protects synced data has not had a cryptography audit. Everything else described here is on by default.
+The custom voice provider and cross-device sync are in preview as well, and the end-to-end encryption that protects synced data has not had a cryptography audit. Everything else described here is on by default.

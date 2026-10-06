@@ -146,7 +146,7 @@ Where the server supplies model access, the per-user spending caps are sums over
 
 ## End-to-end encryption and restores
 
-End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it is on, the server holds ciphertext for the fields on its encrypted-columns list: message content, thread and prompt titles, settings values, tasks, skills, projects, model configuration and device names. It also holds a copy of the account's content key locked separately for each approved device. A few synced fields stay readable, notably each connected agent's name, address and description.
+End-to-end encryption is always on. The server holds ciphertext for the fields on its encrypted-columns list: message content, thread and prompt titles, settings values, tasks, skills, projects, model configuration, and each connected agent's name, address and description. It also holds the account's data keys, locked under an account key, and a copy of that account key locked separately for each approved device and for the recovery key. Device names stay readable.
 
 | Situation                                    | What a database restore does                                                                                        |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -155,7 +155,7 @@ End-to-end encryption is optional and off by default (`E2EE_ENABLED`). When it i
 | Every device lost, recovery key kept         | The user enters the 24-word recovery key and reads their restored data.                                             |
 | Every device lost, recovery key lost         | The data is unrecoverable. You hold ciphertext and nothing that opens it.                                           |
 
-> There is no administrative override and no key escrow. Neither you nor Thunderbolt can decrypt an account whose keys are gone, and the recovery key is shown once. Make sure your users know that.
+> There is no administrative override unless you run [organizational key escrow](configuration.md#organizational-key-escrow). Without it, neither you nor Thunderbolt can decrypt an account whose keys are gone, and the recovery key is shown once. Make sure your users know that.
 
 ## The identity provider
 
@@ -171,7 +171,7 @@ The only way to capture what never reaches the server is from the device that ho
 
 The export leaves out attached files, the account's encryption keys, its device trust records, and Google and Microsoft connections.
 
-With end-to-end encryption on, an import lands locally straight away, but the device still has to be approved from a trusted one, or recovered with the recovery key, before sync carries any of it anywhere.
+An import lands locally straight away, but sync carries none of it anywhere until the device has finished encryption setup.
 
 > The export is plaintext JSON, API keys included. Tell users to treat the file like a password.
 

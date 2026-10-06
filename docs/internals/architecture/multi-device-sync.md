@@ -2,7 +2,7 @@
 
 Built on [PowerSync](https://powersync.com). Every device holds a local SQLite database; the sync service streams deltas between it and the backend's PostgreSQL. Writes land locally first.
 
-> **Note.** Cross-device sync and optional end-to-end encryption are in **Preview**.
+> **Note.** Cross-device sync and end-to-end encryption are in **Preview**.
 
 ## How It Works
 

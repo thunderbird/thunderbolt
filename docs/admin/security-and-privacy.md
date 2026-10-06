@@ -7,9 +7,10 @@ operator of a deployment.
 
 ## The short version
 
-Conversations live on each device first, and reach your server only once sync is on for that device. With
-sync on and encryption off you can read a user's chats from your database; with encryption on you
-cannot read them from your database, though every turn still passes through your relay in plaintext. Provider API keys stay on the device that entered them and never reach your server or
+Conversations live on each device first, and reach your server only once sync is on for that device.
+Synced content is encrypted on the device, so you cannot read a user's chats from your database
+unless you run organizational key escrow, though every turn still passes through your relay in
+plaintext. Provider API keys stay on the device that entered them and never reach your server or
 another device. Uploaded files stay on the device too, and are sent only inside the request that
 answers that turn.
 
@@ -36,9 +37,8 @@ A **tool server** here means an MCP server: a small service a user points the ap
 call its tools.
 
 Every device keeps a full local database and reads and writes there first, so the app works offline
-once the user is signed in. Sync is per device and off by default, but signing in through the in-app
-sign-in modal turns it on: silently when encryption is off, and by opening the device-setup wizard
-when it is on. With `POWERSYNC_URL`
+once the user is signed in. Sync is per device and off by default. Signing in through the in-app sign-in modal opens the
+device-setup wizard, and sync turns on once the wizard finishes. With `POWERSYNC_URL`
 unset there is no sync at all and your server never receives conversation data. Even with sync on,
 uploaded file contents, provider API keys, and tool server and external agent credentials never
 leave the device: a file attached on a laptop is not readable from the same account's phone, and a
@@ -46,50 +46,50 @@ tool server has to be added again on each device.
 
 ## End-to-end encryption
 
-Off by default. We recommend turning it on before your first users sign in, because rows synced
-in plain text stay that way:
+Always on, with nothing to configure. There used to be a server setting, and it was removed because
+a compromised server could switch it off to collect plain text.
 
-```ini
-E2EE_ENABLED=true
-```
+**How it works**
 
-The server is the source of truth for the setting, and apps read it at startup. There is no client
-setting to match.
-
-**What changes when it is on**
-
-- Each device generates its own key pair. Private keys never leave the device.
-- One account-wide content key encrypts the data. A copy of it is sealed to each device's public
-  key and stored on your server, so only that device can open its own copy.
-- A new device stays in a pending state until an already-trusted device approves it.
-- The user is shown a 24-word recovery phrase once, at setup. It is the only way back in if every
-  trusted device is lost. You cannot recover it for them.
-- Revoking a device deletes its sealed copy of the content key from your server, so it cannot fetch
-  the key again. That does not lock what is already there: the local database holds decrypted rows,
-  and the key stays on the device until its holder confirms the wipe.
+- Each device generates its own key pairs, one classical and one post-quantum. Private keys never
+  leave the device.
+- Data keys encrypt the content, and a single account key unlocks the data keys. Your server stores
+  the data keys sealed under the account key, and a copy of the account key sealed to each device's
+  public keys, so only that device can open its own copy.
+- The first device on an account creates the keys and shows the user a 24-word recovery phrase,
+  once. Sync turns on when they confirm it.
+- Every later device stays pending until an already-trusted device approves it, or the user enters
+  the recovery phrase on it.
+- The recovery phrase is the only way back in if every trusted device is lost. You cannot recover
+  it for them, unless you run organizational key escrow.
+- Revoking a device ends its sessions and replaces both the account key and the data key used for
+  new writes, so the revoked device never receives the new ones. The recovery phrase keeps working.
+  That does not lock what is already there: the local database holds decrypted rows, and the old
+  keys stay on the device until it signs out.
 
 **What it covers**
 
 Before upload the device encrypts message content, chat titles, task text, saved prompts, skill
 text, project names, descriptions and instructions, setting values, model names and endpoints and
-descriptions, per-model tuning overrides, and automation schedule times. Anything not in that list
-syncs as plain text.
+descriptions, per-model tuning overrides, automation schedule times, and external agent names,
+addresses and descriptions. Anything not in that list syncs as plain text.
 
-Record ids, timestamps, relationships, ordering, deletion markers and on/off flags stay readable on
-the server. So do device names, which the app sends in a header on every sync-token request, and
-external agent entries: an agent's name, address, description and icon sync in the clear. The external agent gap is a known omission rather than a design decision, and a fix is
-planned.
+Record ids, timestamps, relationships, ordering, deletion markers, on/off flags and icons stay
+readable on the server. So do device names, which the app sends in a header on every sync-token
+request.
 
-**Limits worth knowing before you commit**
+**Limits worth knowing**
 
 - Encryption covers what is synced, not what the model provider sees: the prompt is decrypted on the
   device and sent to the provider that answers it.
-- Turning encryption on later does not re-encrypt rows already synced in plain text.
+- Rows synced in plain text before a deployment upgraded to always-on encryption are not
+  re-encrypted. See the [upgrade note](../self-hosting/configuration.md#encryption).
 - A user is capped at 10 trusted devices per account.
 - No cryptography audit yet.
 
-> With encryption off, the server auto-trusts each device: no approval step, no recovery phrase, and
-> your database holds readable conversation content.
+> With [organizational key escrow](../self-hosting/configuration.md#organizational-key-escrow) on,
+> each account key is also sealed to your organization's public key when it is created or replaced,
+> so whoever holds the private half can decrypt that account's data offline.
 
 ## What leaves your deployment
 
@@ -196,7 +196,8 @@ user's conversations. What follows is about direct access to your own database a
 - Managed inference usage per account: model, token counts, and cost.
 - Server logs and traces: request paths, status codes, and the hostnames of upstreams a proxied
   request reached.
-- With sync on and encryption off, everything a user synced, including message content.
+- Every field outside the encrypted list above, for every account with sync on.
+- Rows synced in plain text before a deployment upgraded to always-on encryption.
 - Plaintext prompts, replies and attachments in transit, for every model except one on the user's own
   loopback address. Encryption covers stored rows, not the relay.
 
@@ -205,8 +206,8 @@ user's conversations. What follows is about direct access to your own database a
 - Provider API keys, tool server credentials, or external agent credentials. None are ever uploaded.
 - Uploaded file contents, which never reach your server for storage.
 - Prompts or responses on the confidential inference tier.
-- Encrypted content when `E2EE_ENABLED` is on, including messages, with no way to recover it for a
-  user who loses every device and their recovery phrase.
+- Encrypted content, including messages, with no way to recover it for a user who loses every
+  device and their recovery phrase. Organizational key escrow is the exception.
 - Anything on a device whose owner never enabled sync.
 
 ## What a user controls
@@ -214,8 +215,8 @@ user's conversations. What follows is about direct access to your own database a
 | Action                   | Where                         | Effect                                                                                                                       |
 | ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Turn sync on or off      | Settings → Preferences → Data | Off keeps everything local to that device                                                                                    |
-| Approve or deny a device | Settings → Devices            | With encryption on, an unapproved device cannot decrypt anything                                                             |
-| Revoke a device          | Settings → Devices            | Ends its sessions and deletes its copy of the content key. The user chooses whether the local data is wiped                  |
+| Approve or deny a device | Settings → Devices            | An unapproved device cannot decrypt anything                                                                                 |
+| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. The user chooses whether the local data is wiped                            |
 | Export data              | Settings → Preferences → Data | A single JSON file with chats, settings, models, skills, and configuration                                                   |
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |
@@ -236,8 +237,8 @@ An export file does not include attached file contents.
 | Leave `RATE_LIMIT_ENABLED` at `true`                                  | Sign-in and inference limits protect spend and accounts                                                    |
 | Set `TRUSTED_PROXY` only if you know what fronts the server           | The wrong value lets a client claim any IP and walk past those limits                                      |
 | Set `MONITORING_TOKEN`                                                | The deeper health checks refuse to run without it                                                          |
-| Turn on `E2EE_ENABLED` before onboarding users                        | Rows synced before you enable it stay readable                                                             |
-| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire an hour after issue by default                       |
+| Set `MIN_APP_VERSION=0.1.135` when upgrading from an older release    | Older apps can upload plain text, or silently stop syncing                                                 |
+| Rotate `POWERSYNC_JWT_SECRET` to cut off every outstanding sync token | Individual sync tokens cannot be revoked. They expire 5 minutes after issue by default                     |
 
 Full variable reference: [Configuration](../self-hosting/configuration.md).
 
@@ -249,9 +250,10 @@ open a public issue. Triage, questions, and the fix confirmation all happen in t
 and you are credited when it is published unless you ask otherwise.
 
 Two areas are meant to take attacker-influenced input and are the most interesting targets: the
-request forwarder, which fetches a URL the client supplies, and the optional end-to-end encryption.
-Known non-findings: the published credentials in the evaluation Compose file, and plaintext
-server-side storage when `E2EE_ENABLED` is off. Third-party services a deployment is pointed at,
+request forwarder, which fetches a URL the client supplies, and the end-to-end encryption.
+Known non-findings: the published credentials in the evaluation Compose file, the fields the
+encrypted list leaves readable, and rows synced in plain text before a deployment upgraded to
+always-on encryption. Third-party services a deployment is pointed at,
 including model providers and identity providers, are out of scope here; report those to their
 owners.
 

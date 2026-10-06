@@ -59,11 +59,14 @@ jobs:
       judge: ${{ steps.plan.outputs.judge }}
       live: ${{ steps.plan.outputs.live }}
       autofix: ${{ steps.plan.outputs.autofix }}
+      canaries: ${{ steps.canaries.outputs.count }}
     steps:
       - &checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Only the build job needs main's history, to pick the canaries. A string: a bare 0 is falsy here.
+          fetch-depth: ${{ github.job == 'build' && '0' || '1' }}
 
       - &setup-bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -99,6 +102,14 @@ jobs:
           bunx playwright install --with-deps chromium
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
 
+      # Up to two recent fixes from main whose reversal applies to this tree: the canary build carries their bugs
+      # again. The log says why every other fix was skipped.
+      - name: Pick the canaries
+        id: canaries
+        run: |
+          bun .github/qa/scripts/canaries.ts --out "$RUNNER_TEMP/qa-canaries.json" --patch "$RUNNER_TEMP/qa-canary.patch"
+          echo "count=$(jq length "$RUNNER_TEMP/qa-canaries.json")" >> "$GITHUB_OUTPUT"
+
       - name: Plan the legs
         id: plan
         env:
@@ -118,9 +129,9 @@ jobs:
           # This week's case for the free session, unless the dispatch names one. It runs on every platform.
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
           # shellcheck disable=SC2016 # jq variables
-          # One explore session per leg. The canary leg runs c8 on a build with planted bugs and is never filed.
+          # One explore session per leg. Each canary leg runs its fix's charter on the canary build and is never filed.
           all=$(jq --null-input --compact-output --argjson real "$real" --arg journey "$journey" \
-            --argjson platforms "$(cat .github/qa/platforms.json)" '
+            --argjson platforms "$(cat .github/qa/platforms.json)" --slurpfile canaries "$RUNNER_TEMP/qa-canaries.json" '
             {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: ".github/qa/mcp.json", viewport: "1280x800",
              onboarding: false, real: false, postgres: false} as $leg
             | [{charter: "c1-first-run", onboarding: true},
@@ -131,11 +142,11 @@ jobs:
                {charter: "c6-settings-data"},
                {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp.json .github/qa/mcp-two-devices.json",
                 artifact: "qa-sync"},
-               {charter: "c8-phone", viewport: "390x844"},
-               {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
-                artifact: "qa-canary"}]
+               {charter: "c8-phone", viewport: "390x844"}]
               + ($platforms | map({charter: "free-\($journey)-\(.id)", viewport, mcp}))
-            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)')
+            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)
+            | . + [$canaries[0][] as $canary | .[] | select(.charter == $canary.charter)
+                   | .dist = "qa-dist-canary" | .out = "qa-out-canary" | .artifact = "qa-canary"]')
           # "free" selects the free session on every platform.
           unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) - ["free"] | join(" ")' <<< "$all")
           if [ -n "$unknown" ]; then echo "::error::Unknown charter $unknown"; exit 1; fi
@@ -155,8 +166,12 @@ jobs:
                      real: true}]
               else [] end
             + if any(.[]; .artifact == "qa-canary")
-              then [{name: "canary", out: "qa-out-canary", artifact: "qa-canary", dist: "qa-dist-canary", onboarding: false,
-                     postgres: false}]
+              # The canary findings replay on the canary build, then on the normal one: a canary counts only when its
+              # finding fails on the first and passes on the second. canaries.ts picks charters of one kind of AI.
+              then any(.[]; .artifact == "qa-canary" and .real) as $real
+                | [{name: "canary", out: "qa-out-canary", dist: "qa-dist-canary"},
+                   {name: "canary-baseline", out: "qa-out-canary-baseline", dist: "qa-dist"}]
+                | map(. + {artifact: "qa-canary", onboarding: false, postgres: false, real: $real})
               else [] end' <<< "$legs")
           {
             echo "legs=$legs"
@@ -166,13 +181,15 @@ jobs:
             echo "autofix=$AUTOFIX"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build the frontend (onboarding off, onboarding on, canaries planted)
+      - name: Build the frontend (onboarding off, onboarding on, canary fixes reverted)
         run: |
           .github/qa/scripts/stack.sh build qa-dist
           .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding
-          git apply .github/qa/canaries/*.patch
-          .github/qa/scripts/stack.sh build qa-dist-canary
-          git apply --reverse .github/qa/canaries/*.patch
+          if [ -s "$RUNNER_TEMP/qa-canary.patch" ]; then
+            git apply --reverse "$RUNNER_TEMP/qa-canary.patch"
+            .github/qa/scripts/stack.sh build qa-dist-canary
+            git apply "$RUNNER_TEMP/qa-canary.patch"
+          fi
 
       - name: Guard - smoke-test a fresh stack
         run: |
@@ -189,11 +206,17 @@ jobs:
           name: qa-dist-onboarding
           path: qa-dist-onboarding/
           retention-days: 1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - if: steps.canaries.outputs.count != '0'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qa-dist-canary
           path: qa-dist-canary/
           retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qa-canaries
+          path: ${{ runner.temp }}/qa-canaries.json
+          retention-days: 7
 
   explore:
     name: explore ${{ matrix.leg.charter }}${{ matrix.leg.artifact == 'qa-canary' && ' (canary)' || '' }}
@@ -439,8 +462,9 @@ jobs:
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # This job runs model-written specs. Only the real leg has an environment, for the provider keys that its start
-    # step hands to a backend running as another user; the replay step holds no secret.
+    # This job runs model-written specs. Only the real-AI legs (real, and the canary ones on real-AI charters) have an
+    # environment, for the provider keys that their start step hands to a backend running as another user; the replay
+    # step holds no secret.
     environment: ${{ matrix.leg.real && 'qa-agent' || '' }}
     permissions:
       contents: read
@@ -477,22 +501,6 @@ jobs:
           mkdir -p "$QA_OUT"
           bun .github/qa/scripts/verify.ts replay --out "$QA_OUT"
 
-      - name: Download the normal build
-        if: matrix.leg.name == 'canary'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: qa-dist
-          path: qa-dist
-      # A canary counts as found only when its finding fails on the canary build and passes on the normal one, so the
-      # same findings replay again on the normal build. Playwright wipes the copied replay/ output first.
-      - name: Replay the canary findings on the normal build
-        if: matrix.leg.name == 'canary'
-        run: |
-          .github/qa/scripts/stack.sh stop
-          cp -R "$QA_OUT/." qa-out-canary-baseline
-          .github/qa/scripts/stack.sh start qa-dist
-          bun .github/qa/scripts/verify.ts replay --out qa-out-canary-baseline
-
       - name: Remove credentials and network data from traces
         id: sanitize
         if: always()
@@ -506,13 +514,6 @@ jobs:
         with:
           name: qa-replay-${{ matrix.leg.name }}
           path: ${{ matrix.leg.out }}/
-          retention-days: 7
-      - name: Upload the canary baseline
-        if: always() && matrix.leg.name == 'canary'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qa-baseline-canary
-          path: qa-out-canary-baseline/candidates.json
           retention-days: 7
 
   judge:
@@ -567,12 +568,20 @@ jobs:
         if: matrix.leg.name == 'canary'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qa-baseline-canary
+          name: qa-replay-canary-baseline
           path: qa-out-canary-baseline
+      - name: Download the canaries
+        if: matrix.leg.name == 'canary'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: qa-canaries
+          path: qa-canaries
       # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
-        run: bun .github/qa/scripts/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline
+        run: |
+          bun .github/qa/scripts/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline \
+            --canaries qa-canaries/qa-canaries.json
       # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every finding).
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -877,6 +886,7 @@ jobs:
       - name: Report
         env:
           LEGS: ${{ needs.build.outputs.legs }}
+          CANARIES: ${{ needs.build.outputs.canaries }}
           EXPLORE_RESULT: ${{ needs.explore.result }}
         run: |
           # Session metrics come from each explore job's result message, here rather than in the explorer's job.
@@ -895,8 +905,11 @@ jobs:
           # while the jobs stayed green. Write both reports, then fail the step so notify-on-failure fires.
           status=0
           bun .github/qa/scripts/report.ts summary --out qa-out || status=1
-          if [ -d qa-out-canary ]; then
-            echo '# Canary leg: c8 on a build with planted bugs, never filed' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$CANARIES" = 0 ]; then
+            echo '# Canary leg skipped: no recent fix from main could be reverted (the build log says why)' \
+              >> "$GITHUB_STEP_SUMMARY"
+          elif [ -d qa-out-canary ]; then
+            echo '# Canary leg: recent fixes reverted, never filed' >> "$GITHUB_STEP_SUMMARY"
             bun .github/qa/scripts/report.ts summary --out qa-out-canary || status=1
           fi
           exit "$status"

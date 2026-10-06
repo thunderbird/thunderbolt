@@ -76,11 +76,27 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
-The **canary leg** runs c8 on a build with the bugs from `canaries/` planted. A canary counts as found only when its
-finding fails on the canary build, passes on the normal build and names that canary's keywords. Canary findings are
-never filed.
-
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
+
+## Canaries
+
+A canary is a bug we know is there, used to check that the explorer still finds bugs. Each week the build job runs
+`scripts/canaries.ts`. It takes the `fix:` commits merged to `main` in the last 8 weeks, newest first, and keeps
+at most two that:
+
+- change app code under `src/` (tests, test helpers, docs and translations are left alone);
+- touch no sensitive path: the same list that keeps the fix agent away (`isSensitive` in `fix.ts`);
+- map to a charter in the script's one table (c2 to c6 and c8), one canary per charter, both on the same kind of AI;
+- can be reverted on the current tree with `git apply -R --check`.
+
+The canary build reverts those fixes. Each one gets an explore session with its charter on that build, so at most
+2 sessions a week. A canary counts as found only when a finding fails on the canary build, passes on the normal
+build and names a word from the fix's title. The report lists each fix (title, sha, charter, found or missed).
+Canary findings are never filed.
+
+Why real fixes: they are bugs users really hit, nobody tuned the prompts for them, and they rotate by themselves as
+new fixes land. When nothing qualifies, the leg is skipped and the report says so; the build log has one line per
+skipped fix with the reason. Most often a later change touched the same lines; that clears up with the next fixes.
 
 ## Functions, coverage and the free session
 
@@ -151,18 +167,21 @@ bun .github/qa/scripts/report.ts summary --out qa-out   # writes qa-out/report.m
 A filer dry run logs only one line per finding, because the Actions log is public. The would-be ticket text is
 `preview` in `filed.json`, except for security findings, which get none.
 
-**Canary leg:** build the canary frontend from a patched copy, so your checkout stays clean:
+**Canary leg:** pick the canaries, then build the canary frontend from a reverted copy, so your checkout stays clean:
 
 ```sh
+git fetch origin main
+bun .github/qa/scripts/canaries.ts --out /tmp/qa-canaries.json --patch /tmp/qa-canary.patch
 rm -rf /tmp/qa-canary && mkdir /tmp/qa-canary && git archive HEAD | tar -x -C /tmp/qa-canary
 ln -s "$PWD/node_modules" /tmp/qa-canary/node_modules
-(cd /tmp/qa-canary && git apply .github/qa/canaries/*.patch)
+(cd /tmp/qa-canary && git apply --reverse /tmp/qa-canary.patch)
 /tmp/qa-canary/.github/qa/scripts/stack.sh build "$PWD/qa-dist-canary"
 ```
 
-Serve `qa-dist-canary`, run c8 into `qa-out-canary` and replay it there. Then serve `qa-dist`,
+Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and replay it there. Then serve `qa-dist`,
 `cp -R qa-out-canary/. qa-out-canary-baseline`, replay that dir, judge `qa-out-canary`, and run
-`bun .github/qa/scripts/report.ts canary --out qa-out-canary --baseline qa-out-canary-baseline`.
+`bun .github/qa/scripts/report.ts canary --out qa-out-canary --baseline qa-out-canary-baseline --canaries
+/tmp/qa-canaries.json`.
 
 **Fix agent:** run it in a separate checkout (it edits the working tree), with
 `.github/qa/scripts/stack.sh serve dev` from that checkout and the flags of the `fix` job. Collect the patch like
@@ -286,7 +305,7 @@ Measured locally on 2026-09-30 (Sonnet 5.5 explorer, Opus 5.5 judge and fix agen
 | ------------------------------------------------------------ | -------- | ------------------ | ------- | ----------- | --------------------- |
 | explore, fake AI (c1, c2, c4, c6, c8)                        | 12       | $0.44–1.22         | 91–227  | 2.6–6.2 min | all finished          |
 | explore, real providers (c3, c5)                             | 4        | $0.48–1.11         | 81–134  | 3.3–7.4 min | all finished          |
-| explore, canary leg (c8)                                     | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
+| explore, canary leg (c8, hand-written canaries)              | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
 | judge (Opus 5.5, one call per finding, 4–5 findings per run) | 4 runs   | $0.05–0.08 per run | –       | –           | –                     |
 | fix agent (one overflow bug)                                 | 1        | $0.26              | 21      | 3.1 min     | finished, spec passes |
 
@@ -320,7 +339,7 @@ needs its own project before it can live in `e2e/`.
 ## Owners
 
 The Monitoring / E2E Tests project lead owns `functions.json`, the charters, `noise.txt`, `known-issues.md` and the
-canaries, and turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is
+canary charter table in `scripts/canaries.ts`, and turns confirmed specs into permanent tests. Add a `known-issues.md` entry for every bug that is
 tracked or accepted, and remove it once it is fixed. Whoever triages on Monday puts one `qa:` label on every
 `qa-agent` ticket.
 
@@ -365,7 +384,7 @@ Also:
 - The judge is a model: a borderline finding can be kept in one run and dropped in the next (the Custom provider
   placeholder request in c3 was).
 - Repro specs are model-written. A spec that fails before its assertion is dropped by the judge even when the bug
-  is real, which is how the skill-delete canary was missed locally (recall 2/3).
+  is real, which is how a hand-written skill-delete canary was missed locally (recall 2/3).
 - A security finding's ticket carries no run link, but its finding JSON and repro spec still sit in the explore
   and replay artifacts for their 7-day retention. This repo is public, so any signed-in GitHub user can download
   them.

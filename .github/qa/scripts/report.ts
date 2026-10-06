@@ -8,6 +8,7 @@ import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
+import type { Canary } from './canaries'
 import { type Filed, sanitize, type Scorecard } from './file-findings'
 import { type FindingFile, loadFindings, realAiCharters } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
@@ -87,8 +88,6 @@ export const sessionFromExecution = async (path: string, charter: string, timedO
 /** Suggested cap = max observed + 50%; undefined without samples. A run has at most nine sessions per step. */
 export const suggestCap = (samples: number[]) => (samples.length === 0 ? undefined : Math.max(...samples) * 1.5)
 
-/** The fields of `.github/qa/canaries/canaries.json` the matcher reads; the rest is for people. */
-type Canary = { patch: string; keywords: string[] }
 type CanaryResult = {
   found: number
   total: number
@@ -108,7 +107,7 @@ const mentions = (canary: Canary, f: FindingFile) =>
 
 /**
  * A canary is found when a canary-leg finding (confirmed or flaky) replays on the normal build without failing, so
- * the canary patch caused it, and mentions one of the canary's keywords; one finding finds one canary at most.
+ * the reverted fixes caused it, and mentions one of the canary's keywords; one finding finds one canary at most.
  * Area and oracle type are not compared: the explorer files the same bug under different ones. A finding the
  * baseline never ran, or ran on an unhealthy stack, is not proven canary-caused and counts as real.
  */
@@ -550,7 +549,10 @@ export const renderReport = (input: ReportInput) => {
     out.push(
       '',
       `## Canary recall: ${canary.found}/${canary.total}`,
-      ...canary.results.map((r) => `- ${r.found ? 'found' : '**MISSED**'} ${r.patch}`),
+      'Each canary is a recent fix from main, reverted in the canary build.',
+      ...canary.results.map(
+        (r) => `- ${r.found ? 'found' : '**MISSED**'} ${safe(r.title, 150)} (${r.sha.slice(0, 9)}, ${r.charter})`,
+      ),
       `Unattributed canary-caused findings: ${canary.unattributed.join(', ') || 'none'}`,
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
     )
@@ -632,15 +634,11 @@ export const runSummary = async (
 }
 
 /**
- * Canary leg: match its confirmed and flaky findings against `canaries.json` and the baseline (the same findings
- * replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees the canary
- * leg: the file job downloads only the weekly leg's `verified.json`.
+ * Canary leg: match its confirmed and flaky findings against the canaries `canaries.ts` picked and the baseline (the
+ * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
+ * the canary leg: the file job downloads only the weekly leg's `verified.json`.
  */
-export const runCanary = async (
-  outDir: string,
-  baselineDir: string,
-  canariesPath = '.github/qa/canaries/canaries.json',
-) => {
+export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string) => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
   const canaries: Canary[] = await Bun.file(canariesPath).json()
@@ -658,6 +656,7 @@ if (import.meta.main) {
       charter: { type: 'string' },
       'timed-out': { type: 'boolean', default: false },
       baseline: { type: 'string' },
+      canaries: { type: 'string' },
     },
   })
   const out = values.out
@@ -675,10 +674,10 @@ if (import.meta.main) {
       process.exitCode = 1
     }
   } else if (positionals[0] === 'canary') {
-    if (!values.baseline) throw new Error('canary needs --baseline')
-    const result = await runCanary(out, values.baseline)
+    if (!values.baseline || !values.canaries) throw new Error('canary needs --baseline and --canaries')
+    const result = await runCanary(out, values.baseline, values.canaries)
     console.log(`canary recall ${result.found}/${result.total}`)
   } else {
-    throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir]')
+    throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json]')
   }
 }

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Canary } from './canaries'
 import type { RawFinding } from './findings'
 import {
   checkCoverage,
@@ -28,6 +29,13 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'qa-report-'))
 })
 afterEach(() => rm(dir, { recursive: true, force: true }))
+
+const canary = (name: string, charter: string, keywords: string[] = []): Canary => ({
+  sha: name.repeat(40),
+  title: `fix: ${name}`,
+  charter,
+  keywords,
+})
 
 const modelUsage = {
   'claude-sonnet-5-5': {
@@ -221,8 +229,8 @@ describe('renderReport', () => {
         found: 1,
         total: 2,
         results: [
-          { patch: 'a.patch', keywords: [], found: true },
-          { patch: 'b.patch', keywords: [], found: false },
+          { ...canary('a', 'c8-phone'), found: true },
+          { ...canary('b', 'c2-chat-power-user'), found: false },
         ],
         real: ['c8-phone/7'],
         unattributed: [],
@@ -236,7 +244,7 @@ describe('renderReport', () => {
     expect(report).toContain('dry-run (would created) abcd1234 Medium')
     expect(report).toContain('Judge: $0.12')
     expect(report).toContain('Canary recall: 1/2')
-    expect(report).toContain('**MISSED** b.patch')
+    expect(report).toContain('**MISSED** fix: b (bbbbbbbbb, c2-chat-power-user)')
     expect(report).toContain('Real bugs seen in the canary leg (not counted): c8-phone/7')
   })
 
@@ -641,9 +649,9 @@ describe('runSummary', () => {
 
 describe('canaries', () => {
   const canaries = [
-    { patch: 'a.patch', keywords: ['preferred name'] },
-    { patch: 'b.patch', keywords: ['delet'] },
-    { patch: 'c.patch', keywords: ['subtitle'] },
+    canary('a', 'c6-settings-data', ['preferred name']),
+    canary('b', 'c4-skills-projects', ['delet']),
+    canary('c', 'c8-phone', ['subtitle']),
   ]
   const finding = (id: string, title: string, area = 'other', type = 'console-error') => ({
     ...verifiedFinding(area, type, id),

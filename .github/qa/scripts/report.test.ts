@@ -192,9 +192,7 @@ describe('renderReport', () => {
   })
 
   it('has no incomplete banner when every session finished', () => {
-    expect(
-      renderReport({ sessions: [session({})], coverage: new Map(), found: [] }),
-    ).not.toContain('INCOMPLETE')
+    expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('INCOMPLETE')
   })
 
   it('reports gate yield, the full drop list, filed actions and canary recall', () => {
@@ -562,9 +560,7 @@ describe('checkCoverage', () => {
       ]),
       found: [],
     })
-    expect(report).toContain(
-      '- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n',
-    )
+    expect(report).toContain('- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n')
     expect(report).toContain(
       '- **c8**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
         'unknown function ids: blocked\n',

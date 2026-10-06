@@ -25,6 +25,9 @@ bun run test:backend:watch
 # Run end-to-end tests (Playwright)
 bun run e2e
 bun run e2e:headed   # with a visible browser
+
+# Run the Helm chart tests (needs Helm and the helm-unittest plugin, see "Helm chart tests")
+helm unittest deploy/k8s
 ```
 
 **Never run `bun test` from the project root.** [`bunfig.toml`](../../../bunfig.toml)'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suite and the Playwright specs, but is a silent no-op on Bun below 1.3.11, and a root run has no per-test timeout, no `--randomize`, and walks `shared/agent-core/` (own runner).
@@ -328,3 +331,30 @@ These errors in CI while tests pass locally mean a new test file mocked a shared
 - `Export named 'X' not found in module`
 - `TypeError: X is not a function`
 - `undefined is not an object`
+
+## Helm chart tests
+
+The chart in `deploy/k8s/` has [helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `deploy/k8s/tests/`. They render the templates and assert on the output, so they need Helm but no cluster. CI runs them, plus `helm lint`, in the `helm` job of [`ci.yml`](../../../.github/workflows/ci.yml) whenever `deploy/k8s/**` changes.
+
+### Install the plugin
+
+Use the version CI pins (`HELM_UNITTEST_VERSION` in `ci.yml`). `helm plugin install <git URL>` works, but on Helm 4 it needs `--verify=false` and runs the plugin repo's install script. CI instead extracts the release tarball, which already contains the binary, after checking its sha256:
+
+```sh
+v=1.2.1                # keep in step with ci.yml
+os=macos-arm64         # or linux-amd64, macos-amd64
+curl -fsSLO "https://github.com/helm-unittest/helm-unittest/releases/download/v$v/helm-unittest-$os-$v.tgz"
+# compare with helm-unittest-checksum.sha on the release before extracting
+mkdir -p "$(helm env HELM_PLUGINS)/helm-unittest"
+tar -xzf "helm-unittest-$os-$v.tgz" -C "$(helm env HELM_PLUGINS)/helm-unittest"
+```
+
+Then run `helm unittest deploy/k8s`.
+
+### Writing a test
+
+- Put it in `deploy/k8s/tests/<topic>_test.yaml`. `secrets.yaml` requires `backend.betterAuthSecretBase64`, so set it at suite level.
+- Select what to assert on with `template:` per test or assertion. A template can hold several documents (`ingress.yaml` renders two Ingresses, `backend.yaml` a Service and a Deployment): pin one with `documentSelector` or `documentIndex`, otherwise the assertion runs against all of them.
+- Assert a render-time guard with `failedTemplate: { errorPattern: ... }`.
+- **Simulate `helm upgrade --reuse-values`.** That flag replaces the chart's new defaults with the previous release's values, so a key added in a later chart version is missing on an existing install. Helm deletes a key set to `null`, so `set: { oidc: null }` reproduces it without a second values file. Every value added after a release needs such a test; see `tests/keycloak-toggle_test.yaml`.
+- Check the test can fail: revert your template change and confirm it goes red.

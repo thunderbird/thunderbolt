@@ -1,20 +1,20 @@
 # Kubernetes
 
-One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except registry egress for the images, and an AI provider if you configure one.
+One `helm install` brings up the whole stack: the app, the API, PostgreSQL, the sync service, Keycloak, and an Ingress that routes between them. Nothing outside the cluster is required except registry egress for the images, and an AI provider if you configure one. Keycloak is the default identity provider, and you can [point the chart at your own](#your-own-identity-provider) instead.
 
 If you only want to see Thunderbolt working, we recommend [Docker Compose](./docker-compose.md) or the [local cluster walkthrough](#try-it-on-a-local-cluster) below.
 
 ## What the chart deploys
 
-| Workload   | Runs as     | Notes                                                                    |
-| ---------- | ----------- | ------------------------------------------------------------------------ |
-| Frontend   | Deployment  | The chat app, served as static files.                                    |
-| Backend    | Deployment  | The API. Health-probed, migrates the database on startup.                |
-| PostgreSQL | StatefulSet | One instance with a persistent volume. Holds the app and sync databases. |
-| PowerSync  | Deployment  | The sync service that keeps devices in agreement.                        |
-| Keycloak   | Deployment  | Identity provider. Its sign-in configuration is imported when it starts. |
-| Marketing  | Deployment  | The landing page and these docs. Deployed unconditionally.               |
-| Ingress    | Ingress     | Routes every path to the right service.                                  |
+| Workload   | Runs as     | Notes                                                                                                     |
+| ---------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| Frontend   | Deployment  | The chat app, served as static files.                                                                     |
+| Backend    | Deployment  | The API. Health-probed, migrates the database on startup.                                                 |
+| PostgreSQL | StatefulSet | One instance with a persistent volume. Holds the app and sync databases.                                  |
+| PowerSync  | Deployment  | The sync service that keeps devices in agreement.                                                         |
+| Keycloak   | Deployment  | Identity provider, unless `keycloak.enabled=false`. Its sign-in configuration is imported when it starts. |
+| Marketing  | Deployment  | The landing page and these docs. Deployed unconditionally.                                                |
+| Ingress    | Ingress     | Routes every path to the right service.                                                                   |
 
 Replica counts are configurable for `frontend`, `backend` and `marketing`. PostgreSQL is fixed at one instance and the chart has no high-availability database option. Keycloak and PowerSync expose a `replicas` value but must stay at one: the bundled Keycloak keeps its database inside the pod, so each replica would hold a different one, and PowerSync runs the `unified` role with a single replicator.
 
@@ -89,7 +89,7 @@ The Ingress routes by path under a single hostname. Set `ingress.enabled=false` 
 | `/powersync/`   | PowerSync |
 | Everything else | Frontend  |
 
-Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is how the local walkthrough works on `localhost`.
+Leave `ingress.host` empty and the path rules apply to any hostname that reaches the controller, which is how the local walkthrough works on `localhost`. The two Keycloak paths, and the `auth` hostname below, exist only while the bundled Keycloak is deployed.
 
 > The `/powersync/` rule strips its prefix correctly, but sync still does not work through it: the chart sets `POWERSYNC_URL` to the in-cluster `http://powersync:8080` and offers no value to change it, so that is the address the browser is handed. Multi-device sync needs `ingress.hostnames.powersync` below.
 
@@ -138,6 +138,8 @@ Whichever you choose, set `appUrl` to the `https://` URL. It decides which brows
 | `keycloak.oidc.clientSecretBase64`    | a published dev secret  | Base64 of the sign-in client secret. Replace it.                                                                                                                 |
 | `powersync.db.passwordBase64`         | a published dev secret  | Base64 of the sync service's database password. Replace it.                                                                                                      |
 | `keycloak.demoUserEnabled`            | `true`                  | Whether `demo@thunderbolt.io` exists. Set `false` for real deployments.                                                                                          |
+| `keycloak.enabled`                    | `true`                  | Whether the chart deploys Keycloak. `false` requires `oidc.issuer`.                                                                                              |
+| `oidc.issuer`                         | empty                   | Issuer URL of [your own identity provider](#your-own-identity-provider).                                                                                         |
 | `backend.aiSecrets.*`                 | empty                   | Base64 provider keys: `anthropicApiKeyBase64`, `fireworksApiKeyBase64`, `exaApiKeyBase64`, `thunderboltInferenceApiKeyBase64`. Empty means that provider is off. |
 | `backend.env.rateLimitEnabled`        | `"false"`               | Per-client rate limiting on the API.                                                                                                                             |
 | `backend.env.minAppVersion`           | empty                   | Reject clients older than this version. Empty disables the check.                                                                                                |
@@ -234,9 +236,26 @@ kind delete cluster --name thunderbolt
 - Back up the PostgreSQL volume. It holds accounts, sessions and the server copy of synced data.
 - Decide how users reach a model: a provider key on the server, or each user's own key.
 
-**Don't use the bundled Keycloak past evaluation.** It runs in development mode with its database inside the pod and no persistent volume, so anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. Point Thunderbolt at your own identity provider instead. The chart has no values for that, so you set the API's identity settings yourself. See [Configuration](./configuration.md#oidc).
+**Don't use the bundled Keycloak past evaluation.** It runs in development mode with its database inside the pod and no persistent volume, so anything you configure in its admin console is lost when the pod restarts, and the sign-in configuration is re-imported from scratch. Point Thunderbolt at [your own identity provider](#your-own-identity-provider) instead.
 
 The database is always the one the chart deploys. There is no value for pointing at an external PostgreSQL such as RDS: `postgres.sslmode` exists for a database that terminates TLS, but the connection target itself is fixed to the in-cluster instance.
+
+## Your own identity provider
+
+Register `<appUrl>/v1/api/auth/sso/callback/sso` as the callback URL with your provider, then turn the bundled Keycloak off and point the chart at it:
+
+```yaml
+keycloak:
+  enabled: false
+oidc:
+  issuer: https://idp.example.com/application/o/thunderbolt/
+  clientId: <client-id>
+  clientSecretBase64: <base64 of the client secret>
+```
+
+`issuer` must match the `issuer` field of the provider's discovery document exactly, or sign-in fails with `issuer_mismatch`. Set `oidc.discoveryUrl` only when the API reaches the provider at a different hostname than browsers do. The chart refuses to render a half-configured provider, such as `keycloak.enabled=false` without `oidc.issuer`, or an issuer without its own client ID and secret.
+
+Encode the secret with `printf %s '<secret>' | base64 | tr -d '\n'`, because GNU `base64` wraps long output. The [chart README](../../deploy/k8s/README.md#using-an-external-identity-provider) has the equivalent `helm upgrade` command.
 
 ## Upgrades and rollbacks
 

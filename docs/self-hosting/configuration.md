@@ -70,12 +70,12 @@ To let in one address outside those domains, set its row in the `waitlist` table
 
 ### OIDC
 
-| Variable             | Default                                           | What it does                                                                                              |
-| -------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `OIDC_ISSUER`        | none                                              | Issuer URL. Required when `AUTH_MODE=oidc`.                                                               |
-| `OIDC_CLIENT_ID`     | none                                              | Client ID registered with your provider.                                                                  |
-| `OIDC_CLIENT_SECRET` | none                                              | Client secret.                                                                                            |
-| `OIDC_DISCOVERY_URL` | `${OIDC_ISSUER}/.well-known/openid-configuration` | Override when the API reaches the provider at an internal hostname but tokens carry a browser-facing one. |
+| Variable             | Default                                     | What it does                                                                                                                                               |
+| -------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OIDC_ISSUER`        | none                                        | Issuer URL. Required when `AUTH_MODE=oidc`.                                                                                                                |
+| `OIDC_CLIENT_ID`     | none                                        | Client ID registered with your provider.                                                                                                                   |
+| `OIDC_CLIENT_SECRET` | none                                        | Client secret.                                                                                                                                             |
+| `OIDC_DISCOVERY_URL` | `<issuer>/.well-known/openid-configuration` | Override when the API reaches the provider at an internal hostname but tokens carry a browser-facing one. A trailing slash on the issuer is dropped first. |
 
 Works with any OIDC provider: Keycloak, Okta, Auth0, Entra ID, and others.
 

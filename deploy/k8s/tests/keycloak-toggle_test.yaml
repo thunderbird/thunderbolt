@@ -1,0 +1,97 @@
+suite: Bundled Keycloak toggle
+templates:
+  - templates/keycloak.yaml
+  - templates/configmaps.yaml
+  - templates/ingress.yaml
+set:
+  ingress.hostnames.auth: auth.example.com
+tests:
+  - it: deploys the bundled Keycloak and routes to it by default
+    asserts:
+      # Service + Deployment
+      - hasDocuments: { count: 2 }
+        template: templates/keycloak.yaml
+      # The realm ConfigMap sits between powersync-config and postgres-init.
+      - equal: { path: metadata.name, value: keycloak-realm }
+        template: templates/configmaps.yaml
+        documentIndex: 1
+      # Host rule for the auth hostname, plus the path-based fallback rule. Document 0 is
+      # the main Ingress; document 1 is the separate PowerSync Ingress.
+      - lengthEqual: { path: spec.rules, count: 2 }
+        template: templates/ingress.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.rules[1].http.paths
+          content:
+            path: /realms
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+        template: templates/ingress.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.rules[1].http.paths
+          content:
+            path: /resources
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+        template: templates/ingress.yaml
+        documentIndex: 0
+
+  - it: removes every Keycloak object and route when disabled
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com
+      oidc.clientId: external-client
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - hasDocuments: { count: 0 }
+        template: templates/keycloak.yaml
+      # With the realm ConfigMap gone, postgres-init takes its place.
+      - equal: { path: metadata.name, value: postgres-init }
+        template: templates/configmaps.yaml
+        documentIndex: 1
+      # Only the path-based fallback rule is left, without the Keycloak paths.
+      - lengthEqual: { path: spec.rules, count: 1 }
+        template: templates/ingress.yaml
+        documentIndex: 0
+      - notContains:
+          path: spec.rules[0].http.paths
+          content:
+            path: /realms
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+        template: templates/ingress.yaml
+        documentIndex: 0
+      - notContains:
+          path: spec.rules[0].http.paths
+          content:
+            path: /resources
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+        template: templates/ingress.yaml
+        documentIndex: 0
+
+  # `helm upgrade --reuse-values` drops keys the previous release never had, so
+  # an install that predates keycloak.enabled must keep its Keycloak. The key is
+  # deleted by setting it to null, and oidc with it, as in a real old release.
+  - it: keeps the bundled Keycloak when an upgrade predates keycloak.enabled
+    set:
+      oidc: null
+      keycloak.enabled: null
+    asserts:
+      - hasDocuments: { count: 2 }
+        template: templates/keycloak.yaml
+      - equal: { path: metadata.name, value: keycloak-realm }
+        template: templates/configmaps.yaml
+        documentIndex: 1
+      - lengthEqual: { path: spec.rules, count: 2 }
+        template: templates/ingress.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.rules[1].http.paths
+          content:
+            path: /realms
+            pathType: Prefix
+            backend: { service: { name: keycloak, port: { number: 8080 } } }
+        template: templates/ingress.yaml
+        documentIndex: 0

@@ -148,6 +148,11 @@ See [values.yaml](values.yaml) for all configurable options. Key values:
 | `powersync.jwt.secretBase64`               | built-in dev secret                                     | PowerSync JWT signing secret, **base64url**-encoded                                                                                                                                                                                                  |
 | `keycloak.demoUserEnabled`                 | `true`                                                  | Include the `demo@thunderbolt.io` user in the imported realm                                                                                                                                                                                         |
 | `backend.aiSecrets.anthropicApiKeyBase64`  | `""`                                                    | Server-side Anthropic key (avoids browser CORS)                                                                                                                                                                                                      |
+| `keycloak.enabled`                         | `true`                                                  | Deploy the bundled Keycloak. Set `false` when using an external `oidc.issuer`                                                                                                                                                                        |
+| `oidc.issuer`                              | `""`                                                    | External IdP issuer URL (leave empty to use the bundled Keycloak)                                                                                                                                                                                    |
+| `oidc.discoveryUrl`                        | `""`                                                    | Override the discovery document URL when it differs from `<issuer>/.well-known/openid-configuration`                                                                                                                                                 |
+| `oidc.clientId`                            | `""`                                                    | External IdP client ID                                                                                                                                                                                                                               |
+| `oidc.clientSecretBase64`                  | `""`                                                    | Base64-encoded external IdP client secret                                                                                                                                                                                                            |
 | `podAnnotations`                           | `{}`                                                    | Annotations applied to every pod in the chart                                                                                                                                                                                                        |
 | `<component>.podAnnotations`               | `{}`                                                    | Per-component annotations, merged over `podAnnotations` (per-component keys win)                                                                                                                                                                     |
 | `<component>.resources`                    | `{}`                                                    | Requests/limits for that component's container                                                                                                                                                                                                       |
@@ -256,6 +261,43 @@ starting fails in ways that are easy to miss.
 The sync service's own `powersync_storage` database is deliberately not in the
 dump. It rebuilds itself from the application database, so after this every
 client does one full re-sync.
+
+### Using an external identity provider
+
+Set `keycloak.enabled=false` and the `oidc.*` values instead. Whatever OIDC
+provider you use, register this callback URL with it:
+
+```
+<appUrl>/v1/api/auth/sso/callback/sso
+```
+
+```bash
+helm upgrade thunderbolt . -n thunderbolt \
+  --reuse-values \
+  --set keycloak.enabled=false \
+  --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
+  --set oidc.clientId=<client-id> \
+  --set-string oidc.clientSecretBase64="$(printf %s '<client-secret>' | base64 | tr -d '\n')"
+```
+
+GNU coreutils `base64` (the default on Linux) wraps its output every 76
+characters; an external IdP's client secret is often long enough to wrap,
+and an unquoted `$(...)` then passes the wrapped lines to `helm` as
+separate arguments. `tr -d '\n'` strips the wrapping and the quotes keep
+the result as one argument; `--set-string` keeps a base64 value that
+happens to look numeric from being coerced. For a real deployment, put
+`oidc.clientSecretBase64` in a values file or an external secret manager
+instead of `--set` — it otherwise ends up in shell history and in the
+process list.
+
+## Testing the chart
+
+```bash
+helm lint . --set backend.betterAuthSecretBase64=dGVzdA==
+helm unittest .
+```
+
+The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. Plugin setup, how to write a test, and how to simulate `helm upgrade --reuse-values` are in [Helm chart tests](../../docs/internals/development/testing.md#helm-chart-tests).
 
 ## Templates
 

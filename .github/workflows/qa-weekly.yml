@@ -291,7 +291,7 @@ jobs:
           # as the OS user qa-backend: stack.sh moves the keys into a file only that user can read.
           QA_REAL_PROVIDERS: ${{ matrix.leg.real }}
           QA_BACKEND_USER: ${{ matrix.leg.real && 'qa-backend' || '' }}
-          ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_PROVIDER_ANTHROPIC_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ matrix.leg.real && secrets.QA_ANTHROPIC_API_KEY || '' }}
           TINFOIL_API_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
           TINFOIL_ENCLAVE_URL: ${{ matrix.leg.real && secrets.QA_TINFOIL_ENCLAVE_URL || '' }}
           EXA_API_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
@@ -405,11 +405,10 @@ jobs:
         if: always() && steps.tripwire.outcome == 'success'
         env:
           QA_KEY: ${{ secrets.QA_ANTHROPIC_API_KEY }}
-          PROVIDER_KEY: ${{ matrix.leg.real && secrets.QA_PROVIDER_ANTHROPIC_API_KEY || '' }}
           TINFOIL_KEY: ${{ matrix.leg.real && secrets.QA_TINFOIL_API_KEY || '' }}
           EXA_KEY: ${{ matrix.leg.real && secrets.QA_EXA_API_KEY || '' }}
         run: |
-          for key in "$QA_KEY" "$PROVIDER_KEY" "$TINFOIL_KEY" "$EXA_KEY"; do
+          for key in "$QA_KEY" "$TINFOIL_KEY" "$EXA_KEY"; do
             if [ -n "$key" ] && grep -rqF -- "$key" "$QA_OUT/$QA_CHARTER"; then
               echo "::error::The session output holds a secret, so nothing is uploaded."
               exit 1

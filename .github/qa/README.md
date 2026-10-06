@@ -230,16 +230,16 @@ so a build with a wrong value still talks to the real Google.
 Connect it in Settings → Connections → Connect Google, then pick an account. Times are UTC and move with today:
 "Thursday" is the next Thursday. On a Thursday, the calendar tool's 7-day window cuts that day short.
 
-| Account (`@gmail.test`) | What it does |
-|---|---|
-| `jonas` | Primary calendar plus the work calendar `jonas@northwind.test`; on Thursday only 11:00–12:00 is free in both |
-| `camille` | 8 emails from the last two days, 6 unread |
-| `expired` | Tokens say `expires_in: 1`, so every call refreshes first |
-| `revoked` | Refreshing fails with `invalid_grant` |
-| `no-calendar-api` | Calendar answers 403 `accessNotConfigured`; Gmail works |
-| `no-calendar-scope` | Consent drops the calendar scope; Calendar answers 403 `insufficientPermissions` |
-| `empty` | Empty inbox and calendar |
-| `big` | 1,200 emails and 80 events in the next 7 days, over the tool's 50 |
+| Account (`@gmail.test`) | What it does                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `jonas`                 | Primary calendar plus the work calendar `jonas@northwind.test`; on Thursday only 11:00–12:00 is free in both |
+| `camille`               | 8 emails from the last two days, 6 unread                                                                    |
+| `expired`               | Tokens say `expires_in: 1`, so every call refreshes first                                                    |
+| `revoked`               | Refreshing fails with `invalid_grant`                                                                        |
+| `no-calendar-api`       | Calendar answers 403 `accessNotConfigured`; Gmail works                                                      |
+| `no-calendar-scope`     | Consent drops the calendar scope; Calendar answers 403 `insufficientPermissions`                             |
+| `empty`                 | Empty inbox and calendar                                                                                     |
+| `big`                   | 1,200 emails and 80 events in the next 7 days, over the tool's 50                                            |
 
 The four failure accounts get Jonas's calendars and Camille's inbox. Codes and tokens live in the fake's memory, so
 restarting the stack disconnects Google.
@@ -277,15 +277,14 @@ The `build` job has no environment, so these must be repository variables.
 Used by `explore`, the real-AI `replay` leg, `judge`, `file`, `fix`, `publish` and `report`. No required reviewers
 (the schedule would hang). Limit its deployment branches to `main`.
 
-| Secret                                         | Used by                  | What it is                                                                                        |
-| ---------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------- |
-| `QA_ANTHROPIC_API_KEY`                         | explore, judge, fix      | a key from a dedicated Anthropic workspace with a monthly spend limit                             |
-| `QA_PROVIDER_ANTHROPIC_API_KEY`                | real-AI backend, replay  | the app's own Anthropic key for the real-provider sessions, QA-only, low limit                    |
-| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI backend, replay  | QA-only Tinfoil access for the GLM models                                                         |
-| `QA_EXA_API_KEY`                               | real-AI backend, replay  | QA-only Exa key for search and link previews                                                      |
-| `QA_LINEAR_API_KEY`                            | file, publish, scorecard | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files |
-| `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                  | the GitHub App below                                                                              |
-| `QA_HEARTBEAT_URL`                             | report                   | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                  |
+| Secret                                         | Used by                                      | What it is                                                                                                                                             |
+| ---------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QA_ANTHROPIC_API_KEY`                         | explore, judge, fix, real-AI backend, replay | one key from a dedicated Anthropic workspace with a monthly spend limit: the agent, the judge, the fix agent and the app's backend in real-AI sessions |
+| `QA_TINFOIL_API_KEY`, `QA_TINFOIL_ENCLAVE_URL` | real-AI backend, replay                      | QA-only Tinfoil access for the GLM models                                                                                                              |
+| `QA_EXA_API_KEY`                               | real-AI backend, replay                      | QA-only Exa key for search and link previews                                                                                                           |
+| `QA_LINEAR_API_KEY`                            | file, publish, scorecard                     | Linear key for team Thunderbolt: read issues and labels, create issues and comments, upload files                                                      |
+| `QA_APP_CLIENT_ID`, `QA_APP_PRIVATE_KEY`       | publish                                      | the GitHub App below                                                                                                                                   |
+| `QA_HEARTBEAT_URL`                             | report                                       | optional BetterStack heartbeat, sent after a scheduled run on `main` that worked                                                                       |
 
 These names differ from nightly's on purpose: if an environment secret were missing, a same-named repository
 secret would be used without warning. `notify` uses the existing repository secrets `RESEND_API_KEY` and

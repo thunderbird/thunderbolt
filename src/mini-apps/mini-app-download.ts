@@ -215,7 +215,7 @@ export const prepareMiniAppDownload = (params: unknown): PreparedMiniAppDownload
     return tooLarge
   }
   // Every UTF-16 code unit encodes to at least one UTF-8 byte, so text longer than the limit in code
-  // units is refused before the encoder runs, rather than after it has built the oversized copy.
+  // units is refused from its length alone, before the byte count below has to walk it.
   if (resource.text !== undefined && resource.text.length > maxMiniAppDownloadBytes) {
     return tooLarge
   }

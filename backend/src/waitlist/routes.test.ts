@@ -7,6 +7,7 @@ import { waitlist } from '@/db/schema'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
 import { createTestDb } from '@/test-utils/db'
+import { uniqueTestIp } from '@/test-utils/ip'
 import { createAuth } from '@/auth/auth'
 import type { AppLocale } from '@shared/i18n/locales'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -499,13 +500,14 @@ describe('Waitlist API', () => {
       process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '40'
       clearSettingsCache()
       const limitedApp = await createApp({ database: db, otpCooldownMs: 0 })
+      const clientIp = uniqueTestIp()
 
       const statuses: number[] = []
       for (let i = 0; i < 11; i++) {
         const response = await limitedApp.handle(
           new Request('http://localhost/v1/waitlist/join', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.40' },
+            headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': clientIp },
             body: JSON.stringify({ email: `flood-${i}@example.com` }),
           }),
         )

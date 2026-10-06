@@ -13,7 +13,7 @@
 # `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<charter>/{findings,repro,attempts}/ (the explorer),
 # execution.json + session.json (metrics) and transcript.json (the tool calls, for the coverage check).
 # The phone charter needs QA_MCP_VIEWPORT=390x844, the two-device charter
-# QA_MCP_CONFIG=.github/qa/mcp-two-devices.json. The free session of a case in journeys.json on a platform in
+# QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' (its second browser). The free session of a case in journeys.json on a platform in
 # platforms.json is the charter free-<case>-<platform> (its viewport and MCP config come from platforms.json), e.g.
 # `run "free-$(.github/qa/scripts/explore.sh journey)-phone" qa-out` for this week's case on the phone.
 # Keep the claude flags in step with the explore job in .github/workflows/qa-weekly.yml.
@@ -70,6 +70,7 @@ run() {
   mkdir -p "$dir"
   config=$(mktemp -d)
   # An empty config dir: no user settings, hooks, memory or login. The exit code is read from the result instead.
+  # shellcheck disable=SC2086 # QA_MCP_CONFIG holds one config file per word
   QA_OUT=$out CLAUDE_CONFIG_DIR=$config claude -p "$(prompt "$charter" "$out")" \
     --model claude-sonnet-5-5 \
     --setting-sources user \
@@ -77,7 +78,7 @@ run() {
     --tools Write \
     --allowedTools "mcp__playwright__*" "mcp__playwright_b__*" "Edit($out/**)" \
     --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe \
-    --strict-mcp-config --mcp-config "${QA_MCP_CONFIG:-.github/qa/mcp.json}" \
+    --strict-mcp-config --mcp-config ${QA_MCP_CONFIG:-.github/qa/mcp.json} \
     --max-budget-usd "${3:-2}" --max-turns 400 \
     --output-format stream-json --verbose --no-session-persistence < /dev/null > "$dir/run.jsonl" || true
   rm -rf "$config"

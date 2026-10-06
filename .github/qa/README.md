@@ -63,7 +63,7 @@ it imports everything at start. If that changes, run it from a copy the job's us
 1. **build**: three frontend builds (normal, onboarding on for c1, canaries planted), then the **guard**: a fresh
    stack must pass `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
 2. **explore**: one job per charter, and one per platform for the free session (`free-<case>-<platform>`), with
-   `claude-code-action` and the Playwright MCP (`mcp.json`, `mcp-two-devices.json` for c7). The prompt is
+   `claude-code-action` and the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser). The prompt is
    `prompt.md`, then the charter, then the area's function list (a free session: the case instead). The explorer writes `qa-out/<charter>/attempts/<n>.json` after each attempt, and
    `findings/<n>.json` and `repro/<n>.spec.ts` as soon as it finds each bug, so a cut session keeps what it did.
    The job uploads the counters of the session's result message and `transcript.json`: the browser tool calls and
@@ -179,7 +179,7 @@ QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run 
   `stack.sh lock` are for CI's throwaway Linux runners (`lock` would take your sudo away for good).
 - **c7** needs Postgres and PowerSync. Start them as `nightly.yml` does, run `bunx drizzle-kit migrate` in
   `backend/`, start the stack with `DATABASE_URL` and `POWERSYNC_URL` set, and run the session with
-  `QA_MCP_CONFIG=.github/qa/mcp-two-devices.json`.
+  `QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json'` (the second file adds its second browser).
 
 Then the rest of the pipeline:
 

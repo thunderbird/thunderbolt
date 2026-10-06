@@ -129,7 +129,8 @@ jobs:
                {charter: "c4-skills-projects"},
                {charter: "c5-widgets-connections"},
                {charter: "c6-settings-data"},
-               {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp-two-devices.json", artifact: "qa-sync"},
+               {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp.json .github/qa/mcp-two-devices.json",
+                artifact: "qa-sync"},
                {charter: "c8-phone", viewport: "390x844"},
                {charter: "c8-phone", viewport: "390x844", dist: "qa-dist-canary", out: "qa-out-canary",
                 artifact: "qa-canary"}]
@@ -308,7 +309,12 @@ jobs:
 
       - name: Build the prompt
         id: prompt
+        env:
+          QA_MCP: ${{ matrix.leg.mcp }}
         run: |
+          # The action keeps only the last of several --mcp-config files, so c7's two configs become one file.
+          # shellcheck disable=SC2086 # one path per word
+          jq --slurp '{mcpServers: (map(.mcpServers) | add)}' $QA_MCP > "$RUNNER_TEMP/qa-mcp.json"
           {
             echo 'text<<QA_PROMPT_EOF'
             .github/qa/scripts/explore.sh prompt "$QA_CHARTER" "$QA_OUT"
@@ -347,7 +353,7 @@ jobs:
             --allowedTools "mcp__playwright__*" "mcp__playwright_b__*" "Edit(${{ env.QA_OUT }}/**)"
             --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe
             --strict-mcp-config
-            --mcp-config ${{ matrix.leg.mcp }}
+            --mcp-config ${{ runner.temp }}/qa-mcp.json
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 

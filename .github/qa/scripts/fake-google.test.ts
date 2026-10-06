@@ -2,50 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { type Subprocess } from 'bun'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { request, type IncomingHttpHeaders } from 'node:http'
 import { z } from 'zod'
-import { fakeGoogleClientId, fakeGoogleClientSecret } from './fake-google'
+import { createFakeGoogle, fakeGoogleClientId, fakeGoogleClientSecret } from './fake-google'
 
 const scope = ['openid', 'gmail.readonly', 'gmail.compose', 'calendar.readonly']
   .map((name) => (name === 'openid' ? name : `https://www.googleapis.com/auth/${name}`))
   .join(' ')
 const verifier = 'a-pkce-verifier-that-is-long-enough-for-the-test'
 
-let fake: Subprocess<'ignore', 'pipe', 'inherit'>
-let base: URL
-beforeAll(async () => {
-  // Its own process, started the way stack.sh starts it: the test preload swaps fetch, Request and Response for
-  // happy-dom's, which Bun.serve cannot return and which follow redirects.
-  const start = `import { createFakeGoogle } from '${import.meta.dir}/fake-google'; console.log(createFakeGoogle(0).url.href)`
-  fake = Bun.spawn(['bun', '-e', start], { stdin: 'ignore', stdout: 'pipe', stderr: 'inherit' })
-  const { value } = await fake.stdout.getReader().read()
-  base = new URL(new TextDecoder().decode(value).split('\n')[0])
-})
-afterAll(() => fake.kill())
+// `test:qa` runs from this directory, so the root bunfig's happy-dom preload (its own fetch) stays out.
+const fake = createFakeGoogle(0)
+afterAll(() => fake.stop(true))
 
-type Reply = { status: number; headers: IncomingHttpHeaders; body: string }
+type Reply = { status: number; headers: Headers; body: string }
 type Call = { method?: string; headers?: Record<string, string>; body?: string }
 
 /** A real HTTP call to the fake that never follows redirects. */
-const call = (path: string, { method = 'GET', headers = {}, body = '' }: Call = {}) =>
-  new Promise<Reply>((resolve, reject) => {
-    const outgoing = request(new URL(path, base), { method, headers }, (response) => {
-      const chunks: Buffer[] = []
-      response.on('data', (chunk: Buffer) => chunks.push(chunk))
-      response.on('end', () =>
-        resolve({
-          status: response.statusCode ?? 0,
-          headers: response.headers,
-          body: Buffer.concat(chunks).toString(),
-        }),
-      )
-    })
-    outgoing.on('error', reject)
-    outgoing.end(body)
-  })
+const call = async (path: string, { method = 'GET', headers = {}, body }: Call = {}): Promise<Reply> => {
+  const response = await fetch(new URL(path, fake.url), { method, headers, body, redirect: 'manual' })
+  return { status: response.status, headers: response.headers, body: await response.text() }
+}
 
 const parse = <T>(schema: z.ZodType<T>, reply: Reply) => schema.parse(JSON.parse(reply.body))
 
@@ -92,7 +70,7 @@ const authorize = async (account: string) => {
   })
   const reply = await call(`/o/oauth2/v2/auth?${params}`)
   expect(reply.status).toBe(302)
-  const location = new URL(reply.headers.location ?? '')
+  const location = new URL(reply.headers.get('location') ?? '')
   expect(location.origin + location.pathname).toBe(callback)
   expect(location.searchParams.get('state')).toBe('s1')
   return location.searchParams.get('code') ?? ''
@@ -229,7 +207,7 @@ describe('fake Google', () => {
       headers: { Origin: 'http://localhost:1424', 'Access-Control-Request-Headers': 'authorization' },
     })
     expect(preflight.status).toBe(204)
-    expect(preflight.headers['access-control-allow-origin']).toBe('*')
-    expect(preflight.headers['access-control-allow-headers']).toBe('authorization')
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('authorization')
   })
 })

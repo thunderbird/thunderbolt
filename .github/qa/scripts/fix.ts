@@ -134,6 +134,8 @@ export const route = async ({
     }
     const spec = join(outDir, charterDir, finding.repro_spec)
     if (plan.fixes.length === maxFixes || pending.has(fp) || !(await Bun.file(spec).exists())) continue
+    // Two charters can confirm one bug (same fp) in a run; a second fix job would fight over `qa-fix/<fp>`.
+    pending.add(fp)
     plan.fixes.push({ ...ticket, charterDir, spec, finding: ticketView(finding) })
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))

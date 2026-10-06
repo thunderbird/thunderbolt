@@ -229,6 +229,28 @@ describe('route', () => {
     expect(plan.humanRequired.map((t) => [t.fp, t.area])).toEqual([['fp-real', 'chat']])
   })
 
+  test('routes one fix when two findings of a run share a fingerprint', async () => {
+    const filed: Filed[] = [
+      { fp: 'fp-same', charterDir: 'c2-chat-power-user', id: '1', severity: 'High', action: 'created' },
+      { fp: 'fp-same', charterDir: 'c6-settings-data', id: '1', severity: 'High', action: 'commented' },
+    ]
+    const confirmed: VerifiedFinding[] = filed.map(({ charterDir }) => ({
+      charterDir,
+      id: '1',
+      finding: finding('chat'),
+      replay: { failed: 3, runs: 3 },
+      artifacts: {},
+    }))
+    const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
+    await put(join(outDir, 'filed.json'), JSON.stringify(filed))
+    await put(join(outDir, 'verified.json'), JSON.stringify(verified))
+    for (const { charterDir } of filed) await put(join(outDir, charterDir, 'repro', '1.spec.ts'), spec)
+
+    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+
+    expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual([['fp-same', 'c2-chat-power-user']])
+  })
+
   test('refuses a live run without a Linear key', async () => {
     await setup()
     await expect(route({ outDir, live: true, run: fakeRun([], branches), log: () => {} })).rejects.toThrow(

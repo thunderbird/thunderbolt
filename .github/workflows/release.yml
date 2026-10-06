@@ -1,10 +1,22 @@
 name: Release
-run-name: Release triggered by ${{ github.actor }}
 
 on:
-  schedule:
-    # Nightly build at midnight EST (05:00 UTC)
-    - cron: '0 5 * * *'
+  workflow_call:
+    inputs:
+      platform:
+        description: 'Platform for the release (all, ios, android, desktop)'
+        required: false
+        type: string
+        default: 'all'
+      version:
+        description: 'Explicit version to set (e.g., 1.2.3). Leave empty for auto-detection.'
+        required: false
+        type: string
+      version_type:
+        description: 'Type of version bump (auto, patch, minor, major)'
+        required: false
+        type: string
+        default: 'auto'
   workflow_dispatch:
     inputs:
       platform:
@@ -33,8 +45,8 @@ on:
           - major
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -45,62 +57,57 @@ jobs:
     uses: ./.github/workflows/version-bump.yml
     secrets: inherit
     with:
-      platform: ${{ inputs.platform || 'all' }}
+      platform: ${{ inputs.platform }}
       version: ${{ inputs.version }}
-      version_type: ${{ inputs.version_type || 'auto' }}
-      nightly: ${{ github.event_name == 'schedule' }}
+      version_type: ${{ inputs.version_type }}
 
   desktop:
     name: Desktop Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop' || github.event_name == 'schedule')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'desktop')
     uses: ./.github/workflows/desktop-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
-      nightly: ${{ github.event_name == 'schedule' }}
 
   ios:
     name: iOS Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios' || github.event_name == 'schedule')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'ios')
     uses: ./.github/workflows/ios-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
-      nightly: ${{ github.event_name == 'schedule' }}
 
   android:
     name: Android Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android' || github.event_name == 'schedule')
+    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || inputs.platform == 'android')
     uses: ./.github/workflows/android-release.yml
     secrets: inherit
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
-      nightly: ${{ github.event_name == 'schedule' }}
 
   # The CLI rides the unified `v{version}` release tag: its binaries attach to the
   # same GitHub Release, and the desktop workflow's publish job flips that shared
-  # tag to public. It therefore builds only for `all` and nightly runs — not for
+  # tag to public. It therefore builds only for `all` runs — not for
   # single-platform (ios/android/desktop) dispatches, which produce RC tags the
   # CLI would not belong to.
   cli:
     name: CLI Release
     needs: version_bump
-    if: needs.version_bump.result == 'success' && (inputs.platform == 'all' || github.event_name == 'schedule')
+    if: needs.version_bump.result == 'success' && inputs.platform == 'all'
     uses: ./.github/workflows/cli-release.yml
     with:
       version: ${{ needs.version_bump.outputs.new_version }}
-      nightly: ${{ github.event_name == 'schedule' }}
 
   notify:
     needs: [version_bump, desktop, ios, android, cli]
     if: >-
-      always() && !cancelled() && (
+      always() && !cancelled() && github.workflow == 'Release' && (
         contains(needs.*.result, 'failure') ||
         needs.version_bump.result == 'success' && (
-          (github.event_name == 'schedule' || inputs.platform == 'all') &&
+          inputs.platform == 'all' &&
           needs.desktop.result == 'success' && needs.ios.result == 'success' &&
           needs.android.result == 'success' && needs.cli.result == 'success'
         )

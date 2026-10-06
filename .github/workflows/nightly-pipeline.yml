@@ -1,0 +1,44 @@
+name: Nightly Pipeline
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-pipeline
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  e2e:
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/nightly.yml
+    secrets: inherit
+
+  release:
+    needs: e2e
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      platform: all
+      version_type: patch
+    secrets: inherit
+
+  notify:
+    needs: [e2e, release]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped')) }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

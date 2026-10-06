@@ -100,7 +100,7 @@ jobs:
       - name: Calculate versionCode
         id: version_code
         run: |
-          # THU-643: Minutes since a fixed cutover keep codes increasing across all
+          # Minutes since a fixed cutover keep codes increasing across all
           # entry points and re-runs; GITHUB_RUN_NUMBER belongs to the top-level caller.
           NOW=$(date +%s)
           VERSION_CODE=$((49718 + (NOW - 1791244800) / 60))

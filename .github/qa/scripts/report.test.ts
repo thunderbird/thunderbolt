@@ -733,6 +733,19 @@ describe('canaries', () => {
     expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8'))).toEqual(result)
   })
 
+  it('measures only the canaries whose charter a dispatch ran', async () => {
+    const baselineDir = join(dir, 'baseline')
+    await mkdir(baselineDir)
+    await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(emptyVerified))
+    await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))
+    await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
+
+    const result = await runCanary(dir, baselineDir, join(dir, 'canaries.json'), 'c4-skills-projects, free')
+
+    expect(result).toMatchObject({ total: 1, found: 0 })
+    expect(result.results.map((r) => r.charter)).toEqual(['c4-skills-projects'])
+  })
+
   it('fails loudly without a baseline', async () => {
     await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
     await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))

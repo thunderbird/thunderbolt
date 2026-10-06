@@ -636,12 +636,15 @@ export const runSummary = async (
 /**
  * Canary leg: match its confirmed and flaky findings against the canaries `canaries.ts` picked and the baseline (the
  * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
- * the canary leg: the file job downloads only the weekly leg's `verified.json`.
+ * the canary leg: the file job downloads only the weekly leg's `verified.json`. A dispatch's `charters` list runs only
+ * some canary legs; the canaries of the others never ran, so they are left out rather than counted as missed.
  */
-export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string) => {
+export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string, chartersInput = '') => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
-  const canaries: Canary[] = await Bun.file(canariesPath).json()
+  const picked: Canary[] = await Bun.file(canariesPath).json()
+  const ran = chartersInput.split(/[ ,]+/).filter(Boolean)
+  const canaries = ran.length === 0 ? picked : picked.filter((c) => ran.includes(c.charter))
   const result = matchCanaries(canaries, [...verified.confirmed, ...verified.flaky], baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
   return result
@@ -657,6 +660,7 @@ if (import.meta.main) {
       'timed-out': { type: 'boolean', default: false },
       baseline: { type: 'string' },
       canaries: { type: 'string' },
+      charters: { type: 'string', default: '' },
     },
   })
   const out = values.out
@@ -675,7 +679,7 @@ if (import.meta.main) {
     }
   } else if (positionals[0] === 'canary') {
     if (!values.baseline || !values.canaries) throw new Error('canary needs --baseline and --canaries')
-    const result = await runCanary(out, values.baseline, values.canaries)
+    const result = await runCanary(out, values.baseline, values.canaries, values.charters)
     console.log(`canary recall ${result.found}/${result.total}`)
   } else {
     throw new Error('usage: report.ts session|summary|canary --out qa-out [--baseline dir --canaries manifest.json]')

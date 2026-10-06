@@ -579,9 +579,11 @@ jobs:
       # Writes canary.json. The canary leg is never filed: the file job reads only qa-verified-weekly.
       - name: Measure canary recall
         if: matrix.leg.name == 'canary'
+        env:
+          CHARTERS: ${{ inputs.charters }}
         run: |
           bun .github/qa/scripts/report.ts canary --out "$QA_OUT" --baseline qa-out-canary-baseline \
-            --canaries qa-canaries/qa-canaries.json
+            --canaries qa-canaries/qa-canaries.json --charters "$CHARTERS"
       # Also when the judge failed: verified.json then shows why (an unhealthy stack drops every finding).
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

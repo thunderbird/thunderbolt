@@ -296,11 +296,8 @@ export const checkCoverage = (
   }
 }
 
-type Summary = { visited: string[] }
-
 type ReportInput = {
   sessions: Session[]
-  summaries: Map<string, Summary>
   coverage: Map<string, Coverage>
   /** The charter directory of every finding file the explorers wrote, valid or not. */
   found: string[]
@@ -357,13 +354,8 @@ const coverageParts = (charter: string, { verdicts, records, invalid, unknown, t
   ]
 }
 
-const coverageLine = (charter: string, coverage?: Coverage, summary?: Summary) => {
-  const parts = coverage ? coverageParts(charter, coverage) : ['no function list']
-  const visited = summary
-    ? `visited ${summary.visited.map((screen) => safe(screen, 60)).join(', ') || 'none'}`
-    : 'no summary (session cut)'
-  return `- **${charter}**: ${[...parts, visited].join('; ')}`
-}
+const coverageLine = (charter: string, coverage?: Coverage) =>
+  `- **${charter}**: ${(coverage ? coverageParts(charter, coverage) : ['no function list']).join('; ')}`
 
 /** A flaky finding with its evidence. A security finding's text stays out of the public summary. */
 const flakyLine = ({ charterDir, id, finding, replay }: VerifiedFinding) => {
@@ -495,7 +487,7 @@ const cutNote = (s: Session) => {
 }
 
 /** The free sessions, apart from the charters: one case on every platform, what each tried, and their findings. */
-const freeSection = ({ coverage, summaries }: ReportInput, free: Session[], findings: Findings) => [
+const freeSection = ({ coverage }: ReportInput, free: Session[], findings: Findings) => [
   '',
   '## Free session',
   'One case, played on every platform with the real AI. What a session tried is its own attempt records, each ' +
@@ -508,13 +500,13 @@ const freeSection = ({ coverage, summaries }: ReportInput, free: Session[], find
   `Total: ${total(free)}.`,
   '',
   '### What was tried',
-  ...free.map((s) => coverageLine(s.charter, coverage.get(s.charter), summaries.get(s.charter))),
+  ...free.map((s) => coverageLine(s.charter, coverage.get(s.charter))),
   ...findingsSection(findings, ' (free session)'),
 ]
 
 /** Render the run report as Markdown. Cut and failed sessions come first so an incomplete charter never looks clean. */
 export const renderReport = (input: ReportInput) => {
-  const { sessions, summaries, coverage, verified, scorecard, canary } = input
+  const { sessions, coverage, verified, scorecard, canary } = input
   const out: string[] = ['# Weekly QA run']
   const explore = sessions.filter((s) => !isFix(s))
   const fixes = sessions.filter(isFix)
@@ -545,7 +537,7 @@ export const renderReport = (input: ReportInput) => {
     '## Coverage',
     'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
       'and after a reload where the function needs one.',
-    ...chartered.map((s) => coverageLine(s.charter, coverage.get(s.charter), summaries.get(s.charter))),
+    ...chartered.map((s) => coverageLine(s.charter, coverage.get(s.charter))),
     ...findingsSection(
       findingsOf(input, (charterDir) => !isFree(charterDir)),
       '',
@@ -611,12 +603,9 @@ export const runSummary = async (
   const sessions = await loadSessions(outDir)
   const lists: Record<string, QaFunction[]> = await Bun.file(join(qaDir, 'functions.json')).json()
   const functions = new Map(Object.entries(lists))
-  const summaries = new Map<string, Summary>()
   const coverage = new Map<string, Coverage>()
   for (const s of sessions) {
     const dir = join(outDir, s.charter)
-    const summary = await readJson<Summary>(join(dir, 'findings.json'))
-    if (summary) summaries.set(s.charter, summary)
     const attempts = await loadAttempts(dir)
     // A free session has no list: each name it gave its own attempts counts as one function.
     const tried = new Set(attempts.flatMap((f) => (f.attempt ? [f.attempt.function] : [])))
@@ -630,7 +619,6 @@ export const runSummary = async (
   const { valid, rejected } = await loadFindings(outDir)
   const report = renderReport({
     sessions,
-    summaries,
     coverage,
     found: [...valid, ...rejected].map((f) => f.charterDir),
     verified: await readJson<Verified>(join(outDir, 'verified.json')),

@@ -361,8 +361,7 @@ is one local sample per charter and a single fix, so keep the initial caps until
 
 A session stopped by its budget, its turn cap or the step timeout keeps every finding it wrote, and they are
 verified like any other. The report lists cut sessions first, under "⚠️ N INCOMPLETE session(s)", marks their
-stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**, and shows "no summary (session cut)" under
-Coverage. A timed-out step leaves no execution file, so its cost shows as $0.00 and its coverage as **no
+stop as **BUDGET CAP**, **TURN CAP**, **TIMEOUT** or **ERROR**. A timed-out step leaves no execution file, so its cost shows as $0.00 and its coverage as **no
 transcript**: its attempt records stay unchecked. Look at the Anthropic
 workspace's usage for the real figure. A leg that crashed, or whose explore job failed the checksum check, shows
 as **ERROR** with no findings. When every explore session of the weekly charters, or of the canary leg, ends in

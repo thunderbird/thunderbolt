@@ -173,14 +173,13 @@ const verifiedFinding = (area: string, type: string, id = '1'): VerifiedFinding 
 const emptyVerified: Verified = { confirmed: [], flaky: [], observations: [], dropped: [] }
 
 describe('renderReport', () => {
-  it('flags cut sessions at the top and says when a charter has no summary', () => {
+  it('flags cut sessions at the top', () => {
     const report = renderReport({
       sessions: [
         session({ charter: 'c1' }),
         session({ charter: 'c2', stop: 'max_budget' }),
         session({ charter: 'c3', stop: 'timeout' }),
       ],
-      summaries: new Map([['c1', { visited: ['chat'] }]]),
       coverage: new Map(),
       found: [],
     })
@@ -188,13 +187,13 @@ describe('renderReport', () => {
     expect(firstSection).toContain('2 INCOMPLETE')
     expect(firstSection).toContain('**c2**: BUDGET CAP')
     expect(firstSection).toContain('**c3**: TIMEOUT')
-    expect(report).toContain('- **c1**: no function list; visited chat')
-    expect(report).toContain('- **c2**: no function list; no summary (session cut)')
+    expect(firstSection).not.toContain('**c1**')
+    expect(report).toContain('- **c1**: no function list')
   })
 
   it('has no incomplete banner when every session finished', () => {
     expect(
-      renderReport({ sessions: [session({})], summaries: new Map(), coverage: new Map(), found: [] }),
+      renderReport({ sessions: [session({})], coverage: new Map(), found: [] }),
     ).not.toContain('INCOMPLETE')
   })
 
@@ -212,7 +211,6 @@ describe('renderReport', () => {
     }
     const report = renderReport({
       sessions: [session({})],
-      summaries: new Map(),
       coverage: new Map(),
       found: Array(6).fill('c1'),
       verified,
@@ -250,7 +248,6 @@ describe('renderReport', () => {
         session({ cost_usd: 2, turns: 30 }),
         session({ charter: 'c2', cost_usd: 4, turns: 60, duration_ms: 1_200_000 }),
       ],
-      summaries: new Map(),
       coverage: new Map(),
       found: [],
     })
@@ -265,7 +262,6 @@ describe('renderReport', () => {
         session({ cost_usd: 2, turns: 30 }),
         session({ charter: 'fix-ab12cd34', cost_usd: 8, turns: 90, stop: 'max_turns' }),
       ],
-      summaries: new Map(),
       coverage: new Map(),
       found: [],
     })
@@ -286,7 +282,6 @@ describe('renderReport', () => {
         session({ charter: desktop }),
         session({ charter: phone, stop: 'max_budget' }),
       ],
-      summaries: new Map(),
       coverage: new Map([
         [
           desktop,
@@ -320,7 +315,7 @@ describe('renderReport', () => {
     )
     expect(charters).not.toContain(`${phone}/2`)
     expect(freePart).toContain('| free-trip-planner-phone | $2.00 | 30 | 10.0 min |')
-    expect(freePart).toContain('- **free-trip-planner-desktop**: tried 1; passed: plan-after-reload; no summary')
+    expect(freePart).toContain('- **free-trip-planner-desktop**: tried 1; passed: plan-after-reload\n')
     expect(freePart).toContain('## Gate yield (free session)')
     expect(freePart).toContain(
       'found 2 → oracle 2 → lint 2 → replay 1 (1 flaky, 0 deferred) → judge 0 (0 deferred) → filed 0',
@@ -336,7 +331,6 @@ describe('renderReport findings and caps', () => {
   const render = (verified: Verified, charter = 'c1') =>
     renderReport({
       sessions: [session({ charter })],
-      summaries: new Map(),
       coverage: new Map(),
       found: Array(3).fill('c8-phone'),
       verified,
@@ -562,7 +556,6 @@ describe('checkCoverage', () => {
     const files = [attempt('1', 'done', 'failed', 'Skill Alpha One'), attempt('2', 'blocked', 'blocked', 'no control')]
     const report = renderReport({
       sessions: [session({ charter: 'c4' }), session({ charter: 'c8' })],
-      summaries: new Map([['c4', { visited: ['Skills'] }]]),
       coverage: new Map([
         ['c4', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
         ['c8', checkCoverage(fns('done'), files)],
@@ -570,11 +563,11 @@ describe('checkCoverage', () => {
       found: [],
     })
     expect(report).toContain(
-      '- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing; visited Skills',
+      '- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n',
     )
     expect(report).toContain(
       '- **c8**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
-        'unknown function ids: blocked; no summary (session cut)',
+        'unknown function ids: blocked\n',
     )
   })
 })
@@ -592,7 +585,6 @@ describe('runSummary', () => {
     await mkdir(join(outDir, 'c8'))
     await writeFile(join(outDir, 'c8/session.json'), JSON.stringify(session({ charter: 'c8' })))
     await writeFile(join(outDir, 'c8/transcript.json'), '[{"message":')
-    await writeFile(join(outDir, 'c4/findings.json'), JSON.stringify({ visited: ['Skills'], findings_written: 0 }))
     const observed = 'button "Skill Alpha One"'
     await writeFile(
       join(outDir, 'c4/attempts/1.json'),
@@ -631,7 +623,7 @@ describe('runSummary', () => {
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
 
-    expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2; visited Skills')
+    expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2\n')
     expect(report).toContain(
       '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
     )

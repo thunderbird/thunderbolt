@@ -313,7 +313,6 @@ jobs:
             echo 'text<<QA_PROMPT_EOF'
             .github/qa/scripts/explore.sh prompt "$QA_CHARTER" "$QA_OUT"
             echo 'QA_PROMPT_EOF'
-            echo "schema=$(jq --compact-output . .github/qa/findings.schema.json)"
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
@@ -349,7 +348,6 @@ jobs:
             --disallowedTools mcp__playwright__browser_run_code_unsafe mcp__playwright_b__browser_run_code_unsafe
             --strict-mcp-config
             --mcp-config ${{ matrix.leg.mcp }}
-            --json-schema '${{ steps.prompt.outputs.schema }}'
             --max-budget-usd ${{ env.QA_EXPLORE_MAX_BUDGET_USD }}
             --max-turns ${{ env.QA_EXPLORE_MAX_TURNS }}
 
@@ -378,13 +376,12 @@ jobs:
         if: always() && steps.tripwire.outcome == 'success'
         env:
           EXECUTION_FILE: ${{ steps.explore.outputs.execution_file || format('{0}/claude-execution-output.json', runner.temp) }}
-          SUMMARY: ${{ steps.explore.outputs.structured_output }}
           START: ${{ steps.prompt.outputs.start }}
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
           # The explorer can write into its out dir: only what this step writes may reach the report.
-          rm -f "$dir/execution.json" "$dir/timed-out" "$dir/findings.json" "$dir/transcript.json"
+          rm -f "$dir/execution.json" "$dir/timed-out" "$dir/transcript.json"
           # Only the result message's counters, and the tool calls with capped results for the coverage check: the
           # full execution file also holds the prompt and everything the model wrote.
           if [ -f "$EXECUTION_FILE" ]; then
@@ -394,7 +391,6 @@ jobs:
           fi
           # A step killed by its timeout leaves no execution file; the marker tells report.ts why.
           if [ $(( $(date +%s) - ${START:-$(date +%s)} )) -ge $(( QA_EXPLORE_TIMEOUT_MINUTES * 60 )) ]; then touch "$dir/timed-out"; fi
-          if [ -n "$SUMMARY" ]; then printf '%s\n' "$SUMMARY" > "$dir/findings.json"; fi
 
       # Artifacts are public, and GitHub masks secrets in logs only. The pages the explorer read could show a key (a
       # backend bug in a real-AI leg), so any key this job holds, found anywhere in the session output, means no
@@ -425,7 +421,6 @@ jobs:
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings/*.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/repro/*.spec.ts
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/attempts/*.json
-            ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/findings.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/execution.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/transcript.json
             ${{ env.QA_OUT }}/${{ matrix.leg.charter }}*/timed-out

@@ -198,8 +198,7 @@ append; number findings 1, 2, 3…
 
 ## Finish
 
-First check that every listed function has an attempt record. Then return the structured summary: `visited` (the
-screens you exercised), `findings_written` (the number of finding files) and `notes` (one or two sentences).
+Before you stop, check that every listed function has an attempt record.
 
 ## Free session
 

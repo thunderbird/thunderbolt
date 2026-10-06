@@ -7,11 +7,6 @@ on:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
@@ -40,8 +35,8 @@ on:
         type: boolean
 
 concurrency:
-  group: android-release-${{ inputs.version }}
-  cancel-in-progress: true
+  group: android-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -81,12 +76,8 @@ jobs:
 
       - name: Display version information
         env:
-          INPUT_NIGHTLY: ${{ inputs.nightly }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "$INPUT_NIGHTLY" == "true" ]; then
-            echo "🌙 Nightly build"
-          fi
           if [ -n "$INPUT_VERSION" ]; then
             echo "🏷️ Using specified version: $INPUT_VERSION"
           else
@@ -106,19 +97,15 @@ jobs:
           BUILD_VERSION: ${{ steps.determine_version.outputs.build_version }}
         run: echo "BUILD_VERSION=$BUILD_VERSION" >> $GITHUB_ENV
 
-      - name: Calculate versionCode from git history
+      - name: Calculate versionCode
         id: version_code
         run: |
-          # versionCode must be strictly monotonic across uploads: Play permanently
-          # burns any code it has accepted, so neither a re-dispatch nor a "Re-run"
-          # of the same workflow can reuse a code. RUN_NUMBER increments per new
-          # dispatch but not on re-runs, RUN_ATTEMPT increments on every re-run —
-          # combining them (RUN_NUMBER * 100 + RUN_ATTEMPT) covers both. See THU-643.
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          BASE_OFFSET=2000
-          VERSION_CODE=$((BASE_OFFSET + COMMIT_COUNT + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
-          echo "versionCode=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "📱 Calculated versionCode: $VERSION_CODE (base $BASE_OFFSET + $COMMIT_COUNT commits + run #$GITHUB_RUN_NUMBER attempt $GITHUB_RUN_ATTEMPT)"
+          # THU-643: Minutes since a fixed cutover keep codes increasing across all
+          # entry points and re-runs; GITHUB_RUN_NUMBER belongs to the top-level caller.
+          NOW=$(date +%s)
+          VERSION_CODE=$((49718 + (NOW - 1791244800) / 60))
+          echo "versionCode=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "📱 Calculated versionCode: $VERSION_CODE (base 49718 + minutes since 2026-10-06T00:00:00Z)"
 
       - name: Set build version and versionCode locally for Android
         run: |

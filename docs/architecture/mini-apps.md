@@ -315,7 +315,8 @@ manager. It asks with `ui/download-file`, MCP Apps' method and params (one embed
 - One prompt at a time, and after a declined or expired prompt the app cannot ask again for 5 s (the prompt is modal).
 - A prompt still open when the frame loads a new document is cancelled, so approving it cannot save the previous
   page's file under the one that replaced it.
-- Oversized `text` is refused from its length before it is encoded, as an oversized `blob` is before it is decoded.
+- `text` is sized without being encoded, so a request over the cap is refused without building a copy of it, as an
+  oversized `blob` is refused before it is decoded.
 - Save is disabled for 750 ms after the prompt opens, so a double-click cannot approve a file nobody read.
 - No Office documents yet: desktop saves carry no mark-of-the-web, so Office would skip Protected View.
 - Desktop bytes need the `fs:allow-write-file` grant on `$DOWNLOAD/*`, which only a new desktop build carries.

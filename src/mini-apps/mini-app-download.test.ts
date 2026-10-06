@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, spyOn } from 'bun:test'
-import { maxMiniAppDownloadBytes, prepareMiniAppDownload, safeFileName } from './mini-app-download'
+import { maxMiniAppDownloadBytes, prepareMiniAppDownload, safeFileName, utf8ByteLength } from './mini-app-download'
 
 /** A `ui/download-file` params object carrying one embedded resource. */
 const params = (resource: Record<string, unknown>) => ({ contents: [{ type: 'resource', resource }] })
@@ -79,11 +79,17 @@ describe('prepareMiniAppDownload', () => {
     }
   })
 
-  it('measures text in bytes, not characters', () => {
-    // Three bytes each in UTF-8, so this is over the cap while its length is not.
-    const text = '€'.repeat(Math.floor(maxMiniAppDownloadBytes / 3) + 1)
+  it('measures text in bytes, not characters, without encoding it', () => {
+    const encode = spyOn(TextEncoder.prototype, 'encode')
+    try {
+      // Three bytes each in UTF-8, so this is over the cap while its length is not.
+      const text = '€'.repeat(Math.floor(maxMiniAppDownloadBytes / 3) + 1)
 
-    expect(prepareMiniAppDownload(params({ uri: 'file:///notes.txt', text })).ok).toBe(false)
+      expect(prepareMiniAppDownload(params({ uri: 'file:///notes.txt', text })).ok).toBe(false)
+      expect(encode.mock.calls.some(([input]) => input === text)).toBe(false)
+    } finally {
+      encode.mockRestore()
+    }
   })
 
   /** Bounded before the name is parsed: a long run of dots made the trimming quadratic and froze the host. */
@@ -179,5 +185,20 @@ describe('safeFileName', () => {
   it('bounds the stem to 200 UTF-8 bytes without splitting a character', () => {
     expect(safeFileName(`${'😀'.repeat(200)}.pdf`).stem).toBe('😀'.repeat(50))
     expect(safeFileName(`${'漢'.repeat(120)}.pdf`).stem).toBe('漢'.repeat(66))
+  })
+})
+
+describe('utf8ByteLength', () => {
+  it.each([
+    ['empty', ''],
+    ['ASCII', 'a,b\n1,2'],
+    ['two-byte', 'café'],
+    ['three-byte', '€ and 漢字'],
+    ['a surrogate pair', 'chart 📈 up'],
+    ['a lone high surrogate', 'a\ud800b'],
+    ['a lone low surrogate', 'a\udc00b'],
+    ['a high surrogate at the end', 'abc\ud800'],
+  ])('agrees with TextEncoder on %s', (_label, text) => {
+    expect(utf8ByteLength(text)).toBe(new TextEncoder().encode(text).byteLength)
   })
 })

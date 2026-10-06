@@ -77,6 +77,29 @@ const boundBytes = (value: string): string =>
     { text: '', bytes: 0, full: false },
   ).text
 
+/**
+ * The UTF-8 size of `text`, counted without building the encoded copy.
+ *
+ * `TextEncoder` would allocate up to three bytes per code unit only for the
+ * copy to be measured and dropped, and a frame can ask for that on every
+ * request. A surrogate pair is one four-byte character; a lone surrogate counts
+ * three, because the encoder writes it as U+FFFD.
+ */
+export const utf8ByteLength = (text: string): number => {
+  let bytes = 0
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index)
+    const pairsWithNext = code >= 0xd800 && code <= 0xdbff && (text.charCodeAt(index + 1) & 0xfc00) === 0xdc00
+    if (pairsWithNext) {
+      bytes += 4
+      index++
+    } else {
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : 3
+    }
+  }
+  return bytes
+}
+
 /** The URI's last path segment, decoded. MCP Apps names the file this way. */
 const lastSegment = (uri: string): string => {
   const segment =
@@ -200,7 +223,7 @@ export const prepareMiniAppDownload = (params: unknown): PreparedMiniAppDownload
   if (contents === null) {
     return { ok: false, message: 'Invalid content: blob is not base64' }
   }
-  const size = typeof contents === 'string' ? encoder.encode(contents).byteLength : contents.byteLength
+  const size = typeof contents === 'string' ? utf8ByteLength(contents) : contents.byteLength
   if (size > maxMiniAppDownloadBytes) {
     return tooLarge
   }

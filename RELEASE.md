@@ -273,6 +273,14 @@ Desktop builds are `fail-fast: false`, and the `publish` job runs on `!cancelled
 - **iOS TestFlight**: Testers with access are notified
 - **Android Play Store**: Available on internal track for testing
 
+## Desktop Nightly Releases
+
+Scheduled desktop nightlies (`v{version}-nightly.YYYYMMDD`) are published as **full** GitHub Releases (not prerelease) and marked **Latest**, so the current build appears in the repository Releases sidebar.
+
+- The release title/body still label the build as nightly and warn that it may be unstable.
+- CrabNebula auto-update uploads remain skipped for nightlies so unstable builds are not pushed to the in-app updater.
+- The CLI workflow must not create the shared draft with `--prerelease`, or it would race desktop and hide the build from the sidebar.
+
 ## Platform-Specific Releases
 
 `release.yml` takes a `platform` input (`all`, `ios`, `android`, `desktop`) and gates each child job on it, so `gh workflow run release.yml -f platform=ios` is the one-step route: it bumps, tags and builds. Dispatching `version-bump.yml` on its own only bumps and tags — the fan-out lives in `release.yml`, so you then dispatch the platform workflow yourself.

@@ -194,6 +194,7 @@ append; number findings 1, 2, 3…
    - Plain JavaScript besides Playwright: no `process`, `fetch`, `require`, `eval`, `Function`, `globalThis`,
      `Object`, `Reflect`, `Error`, `crypto`, `Bun`, `constructor`, `prototype`, names starting with `_`,
      `test.only` or `test.extend`. For unique values use `Date.now()` or `Math.random()`.
+   - Specs only read the page; they never save files, so no `path` option, `saveAs` or snapshot matchers.
    - One test per file, named after the finding. No `waitForTimeout` longer than 2 s.
 
 ## Finish

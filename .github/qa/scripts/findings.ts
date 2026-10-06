@@ -137,6 +137,22 @@ const forbiddenNames = new Set([
   'connectOverCDP',
   'connectOptions',
   'executablePath',
+  // Playwright calls that write a file where the caller says. Later replay steps run code from this checkout, so a
+  // written file could become code. `path` is the option of `screenshot`, `pdf`, `storageState`, `tracing.stop`
+  // and `recordHar`. Snapshot matchers write a missing baseline under any name. `outputDir` on the test info
+  // moves where Playwright saves the video and trace. A CDP session can send downloads to any folder.
+  // ponytail: a denylist, so a write API added by a Playwright upgrade gets through; the fallback is a
+  // read-only checkout during replay.
+  'saveAs',
+  'path',
+  'routeFromHAR',
+  'recordVideo',
+  'tracing',
+  'toMatchSnapshot',
+  'toHaveScreenshot',
+  'toMatchAriaSnapshot',
+  'outputDir',
+  'newCDPSession',
   // Overrides the same options as `test.use`, which `useProblem` limits. `use` itself passes only there.
   'extend',
   'use',

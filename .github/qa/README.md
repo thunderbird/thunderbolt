@@ -51,9 +51,9 @@ A spec that gets past the lint then runs as a user that cannot read the key file
 the runner's memory. The `real` replay leg is the only replay leg with an environment (`qa-agent`), for the keys its
 start step hands over. Its replay step holds none.
 
-Residual risk: the backend runs code from the job user's checkout, which a spec can rewrite (Playwright can save a
-download anywhere). A module the backend first imported after the specs started would run as `qa-backend`. Today
-it imports everything at start. If that changes, run it from a copy the job's user cannot write.
+Residual risk: the lint refuses Playwright's file writes by name. That is a denylist, so a write API added in a
+Playwright upgrade would get through and could rewrite the checkout that later replay steps and the backend run
+code from. The fallback is a checkout the job's user cannot write during replay.
 
 ## Pipeline and files
 

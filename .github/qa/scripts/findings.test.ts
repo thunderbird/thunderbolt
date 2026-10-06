@@ -104,6 +104,17 @@ describe('lintReproSpec', () => {
     expect(lintReproSpec(spec(body))).toEqual([])
   })
 
+  test('passes a spec that reads a download and a screenshot without saving them', () => {
+    const body = `
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('chat.md')
+  const image = await page.screenshot()
+  expect(image.length).toBeGreaterThan(0)`
+    expect(lintReproSpec(spec(body))).toEqual([])
+  })
+
   test('passes test.use with the allowed options written inline', () => {
     const body = `
   const viewport = { width: 390, height: 844 }
@@ -160,6 +171,22 @@ describe('lintReproSpec', () => {
     ["test['use']({ viewport: null })", '"use" is not allowed'],
     ["const fixtures = test.extend({ proxy: { server: 'http://evil.test' } })", '"extend" is not allowed'],
     ["test.only('focused', async () => {})", '"only" is not allowed'],
+    ["const download = await page.waitForEvent('download'); await download.saveAs('x')", '"saveAs" is not allowed'],
+    ["await page.video()?.saveAs('x')", '"saveAs" is not allowed'],
+    ["await page.screenshot({ path: 'x' })", '"path" is not allowed'],
+    ["await page.getByRole('main').screenshot({ path: 'x' })", '"path" is not allowed'],
+    ["await page.pdf({ path: 'x' })", '"path" is not allowed'],
+    ["await page.context().storageState({ path: 'x' })", '"path" is not allowed'],
+    ["await page.context().tracing.stop({ path: 'x' })", '"tracing" is not allowed'],
+    ["const path = 'x'; await page.screenshot({ path })", '"path" is not allowed'],
+    ["await page.context().browser()?.newContext({ recordHar: { path: 'x' } })", '"path" is not allowed'],
+    ["await page.context().browser()?.newContext({ recordVideo: { dir: 'x' } })", '"recordVideo" is not allowed'],
+    ["await page.routeFromHAR('x', { update: true })", '"routeFromHAR" is not allowed'],
+    ["expect('x').toMatchSnapshot(['..', 'x.ts'])", '"toMatchSnapshot" is not allowed'],
+    ["await expect(page).toHaveScreenshot(['..', 'x.png'])", '"toHaveScreenshot" is not allowed'],
+    ["await expect(page.locator('body')).toMatchAriaSnapshot({ name: 'x' })", '"toMatchAriaSnapshot" is not allowed'],
+    ["test.info().outputDir = 'x'", '"outputDir" is not allowed'],
+    ['const cdp = await page.context().newCDPSession(page)', '"newCDPSession" is not allowed'],
     ['const o = Object.getOwnPropertyDescriptors([])', '"Object" is not a known global'],
     ['const o = Reflect.ownKeys([])', '"Reflect" is not a known global'],
     ['const o = { page, secret }', '"secret" is not a known global'],

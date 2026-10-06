@@ -105,7 +105,6 @@ Kubernetes and AWS publish no host ports. Traffic arrives at the ingress or load
 | ---------------------------------------------------- | ------------ | ------------------------------------------- |
 | `ghcr.io`, `quay.io`, `registry-1.docker.io`         | Every node   | Pulling container images                    |
 | `api.anthropic.com`                                  | Backend      | `ANTHROPIC_API_KEY` is set                  |
-| `api.fireworks.ai`                                   | Backend      | `FIREWORKS_API_KEY` is set                  |
 | `inference.tinfoil.sh`                               | Backend      | Confidential models are in use              |
 | `api.exa.ai`                                         | Backend      | `EXA_API_KEY` is set, for web search        |
 | `api.resend.com`                                     | Backend      | `RESEND_API_KEY` is set, for sign-in email  |

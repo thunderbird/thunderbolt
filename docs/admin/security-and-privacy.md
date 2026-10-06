@@ -132,10 +132,10 @@ a link a user pastes or a model returns becomes a request from your infrastructu
 "Managed" means your deployment holds the provider key and any signed-in user can chat without
 configuring anything. There are two tiers.
 
-| Tier         | Enabled by                                 | What your server sees                                                                            |
-| ------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Direct       | `ANTHROPIC_API_KEY` or `FIREWORKS_API_KEY` | The full request and the response stream                                                         |
-| Confidential | `TINFOIL_API_KEY`                          | Neither. The device encrypts the request for a verified enclave and your server relays the bytes |
+| Tier         | Enabled by          | What your server sees                                                                            |
+| ------------ | ------------------- | ------------------------------------------------------------------------------------------------ |
+| Direct       | `ANTHROPIC_API_KEY` | The full request and the response stream                                                         |
+| Confidential | `TINFOIL_API_KEY`   | Neither. The device encrypts the request for a verified enclave and your server relays the bytes |
 
 An **enclave** is a hardware-isolated environment the model runs inside. Before sending anything,
 the device checks the enclave's attestation, a signed statement of exactly which software is running

@@ -35,7 +35,7 @@ const renderMermaidDiagrams = async () => {
 	});
 	hosts.forEach((host) => {
 		host.removeAttribute('data-processed');
-		host.textContent = host.dataset.source ?? host.textContent;
+		host.textContent = host.dataset.source!;
 	});
 	await mermaid.run({ querySelector: '.mermaid' });
 };

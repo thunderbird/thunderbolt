@@ -31,8 +31,10 @@ const allowedPaths = /^(src|shared|backend\/src)\//
 /** Sensitive app code: database schema, migrations, sync, and any path naming sign-in, sessions, devices or keys. */
 const sensitivePaths =
   /^(src|backend\/src)\/db\/|auth|sso|session|device|sign-?in|log-?(in|out)|otp|approv|recovery|secret|credential|crypto|encrypt|powersync|drizzle|migration/i
+/** True when `path` (repo-relative) is sensitive app code that no automated change may touch. */
+export const isSensitive = (path: string) => sensitivePaths.test(path)
 /** True when a fix PR must not touch `path` (repo-relative): anything outside app code, or sensitive app code. */
-export const isDenied = (path: string) => !allowedPaths.test(path) || sensitivePaths.test(path)
+export const isDenied = (path: string) => !allowedPaths.test(path) || isSensitive(path)
 
 type Ticket = Pick<Filed, 'fp' | 'severity' | 'issueId' | 'identifier' | 'url'>
 /** One fix-job matrix entry. `finding` holds the only ticket fields the fix agent sees. */
@@ -45,11 +47,15 @@ export type FixTask = Ticket & {
 export type FixPlan = { fixes: FixTask[]; humanRequired: (Ticket & { area: Area })[] }
 
 /** Runs a command without a shell and returns its stdout. */
-export type Run = (cmd: string[], opts?: { env?: Record<string, string>; stdin?: string }) => Promise<string>
+export type Run = (
+  cmd: string[],
+  opts?: { env?: Record<string, string>; stdin?: string; cwd?: string },
+) => Promise<string>
 
 /** The error names only the command, never its arguments. */
-const runCommand: Run = async (cmd, { env, stdin } = {}) => {
+export const runCommand: Run = async (cmd, { env, stdin, cwd } = {}) => {
   const proc = Bun.spawn(cmd, {
+    cwd,
     env: { ...process.env, ...env },
     stdin: stdin === undefined ? 'ignore' : new Response(stdin),
     stdout: 'pipe',

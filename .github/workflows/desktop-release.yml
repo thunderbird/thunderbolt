@@ -26,20 +26,11 @@ jobs:
   draft:
     name: Create Draft Release
     runs-on: ubuntu-24.04
-    outputs:
-      version: ${{ steps.set-version.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v${{ inputs.version }}
-
-      - name: Set version
-        id: set-version
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          echo "version=v$INPUT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Create CrabNebula Draft Release
         uses: crabnebula-dev/cloud-release@1a8803698ba41de6b23e42abc5dcc3721308233c # v0.2.6

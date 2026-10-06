@@ -27,7 +27,6 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       platform: all
-      version_type: patch
     secrets: inherit
 
   notify:

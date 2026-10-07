@@ -143,7 +143,7 @@
     "input-otp": "^1.4.2",
     "jsqr": "^1.4.0",
     "just-bash": "^3.0.2",
-    "katex": "^0.16.0",
+    "katex": "^0.18.9",
     "lucide-react": "^1.8.0",
     "mammoth": "^1.12.0",
     "maplibre-gl": "^6.11.2",
@@ -244,6 +244,7 @@
     "webdriverio": "^9.31.9"
   },
   "overrides": {
+    "katex": "^0.18.9",
     "semver": "^7.7.3"
   }
 }

@@ -5,7 +5,8 @@
 import type { Auth } from '@/auth/elysia-plugin'
 import { createAuthMacro } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { debugTranscriptSubmissionSchema, readBoundedJson } from '@/debug-transcripts/body'
+import { debugTranscriptSubmissionSchema } from '@/debug-transcripts/body'
+import { readBoundedJson } from '@/utils/request-body'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
   debugTranscriptIntakePath,

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings } from '@/config/settings'
+import { getSettings, type Settings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { elapsedMs } from '@/utils/timing'
 import Anthropic from '@anthropic-ai/sdk'
@@ -199,6 +199,45 @@ export const createInferenceFetch = ({
   return instrumentedFetch
 }
 
+/** Derive the OpenAI-compatible endpoint from the Anthropic API root. */
+export const getAnthropicOpenAIBaseUrl = (root: string): string => `${root.replace(/\/$/, '')}/v1/`
+
+type ManagedProvider = Exclude<InferenceProvider, 'tinfoil'>
+type ManagedProviderSettings = Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'fireworksApiKey'>
+
+const managedProviderEndpoints = {
+  anthropic: (settings) => ({
+    name: 'Anthropic',
+    apiKey: settings.anthropicApiKey,
+    baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl),
+  }),
+  fireworks: (settings) => ({
+    name: 'Fireworks',
+    apiKey: settings.fireworksApiKey,
+    baseURL: 'https://api.fireworks.ai/inference/v1',
+  }),
+} satisfies Record<
+  ManagedProvider,
+  (settings: ManagedProviderSettings) => { name: string; apiKey: string; baseURL: string }
+>
+
+/**
+ * Key, `/v1` API root and instrumented fetch for one managed provider. The OpenAI SDK constructor and the AI
+ * SDK provider factories (`createAnthropic`) both take this shape as-is, so every SDK client of a managed
+ * provider shares the per-attempt telemetry of {@link createInferenceFetch} and the `fetchFn` seam.
+ */
+export const createManagedProviderConnection = (
+  provider: ManagedProvider,
+  settings: ManagedProviderSettings,
+  { fetchFn, logger, nowFn }: InferenceClientOptions = {},
+) => {
+  const { name, apiKey, baseURL } = managedProviderEndpoints[provider](settings)
+  if (!apiKey) {
+    throw new Error(`${name} API key not configured`)
+  }
+  return { apiKey, baseURL, fetch: createInferenceFetch({ provider, fetchFn, logger, nowFn }) }
+}
+
 /**
  * Lazily initialized Fireworks client
  */
@@ -219,18 +258,8 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
     return fireworksClient
   }
 
-  const settings = getSettings()
-
-  if (!settings.fireworksApiKey) {
-    throw new Error('Fireworks API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.fireworksApiKey,
-    baseURL: 'https://api.fireworks.ai/inference/v1',
-    fetch: createInferenceFetch({ provider: 'fireworks', fetchFn, logger, nowFn }),
-    // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
-  }
+  // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
+  const params = createManagedProviderConnection('fireworks', getSettings(), { fetchFn, logger, nowFn })
 
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({
@@ -246,9 +275,6 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
   return client
 }
 
-/** Derive the OpenAI-compatible endpoint from the Anthropic API root. */
-export const getAnthropicOpenAIBaseUrl = (root: string): string => `${root.replace(/\/$/, '')}/v1/`
-
 /**
  * Get the Anthropic AI client using OpenAI-compatible API
  */
@@ -258,17 +284,7 @@ const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | Post
     return anthropicClient
   }
 
-  const settings = getSettings()
-
-  if (!settings.anthropicApiKey) {
-    throw new Error('Anthropic API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.anthropicApiKey,
-    baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl),
-    fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
-  }
+  const params = createManagedProviderConnection('anthropic', getSettings(), { fetchFn, logger, nowFn })
 
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({

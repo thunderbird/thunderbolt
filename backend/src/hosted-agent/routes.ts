@@ -3,19 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { createAuthMacro } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
+import { createManagedProviderConnection } from '@/inference/client'
+import { admitManagedRequest, createUsageCallbacks, recordLanguageModelUsage } from '@/inference/managed-request'
+import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import { streamingResponseHeaders } from '@/inference/routes'
-import {
+import type {
   checkManagedInferenceAdmission,
-  getInferenceQuotaLimits,
+  InferenceDatabase,
+  ManagedInferenceIdentity,
   recordInferenceUsage,
-  type InferenceDatabase,
-  type InferenceTokenCounts,
-  type ManagedInferenceIdentity,
 } from '@/inference/usage-ledger'
-import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
 import {
   createErrorResponse,
   getSafeErrorMessage,
@@ -23,16 +21,9 @@ import {
   safeErrorHandler,
 } from '@/middleware/error-handling'
 import { registerAgentProvider } from '@/agents'
-import { readBodyWithinLimit } from '@/utils/request-body'
+import { readBoundedJson } from '@/utils/request-body'
 import { createAnthropic } from '@ai-sdk/anthropic'
-import {
-  APICallError,
-  convertToModelMessages,
-  RetryError,
-  streamText,
-  type LanguageModel,
-  type LanguageModelUsage,
-} from 'ai'
+import { APICallError, convertToModelMessages, RetryError, streamText, type LanguageModel } from 'ai'
 import { Elysia, type AnyElysia } from 'elysia'
 import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
@@ -49,7 +40,9 @@ export type CreateHostedAgentRoutesOptions = {
   auth: Auth
   database: InferenceDatabase
   settings: Settings
-  logger?: Pick<Logger, 'error'>
+  /** Upstream fetch for the default model; tests pass a stub, like the other route groups. */
+  fetchFn?: typeof fetch
+  logger?: Pick<Logger, 'error' | 'info'>
   rateLimit?: AnyElysia
   /** Defaults to `AGENT_MODEL` on the managed Anthropic key. */
   model?: LanguageModel
@@ -57,21 +50,6 @@ export type CreateHostedAgentRoutesOptions = {
   recordUsage?: typeof recordInferenceUsage
   /** Defaults to `agentUpstreamTimeoutMs`. */
   upstreamTimeoutMs?: number
-}
-
-/** Map AI SDK usage, summed across steps, onto the ledger's token counts; null when the provider sent none. */
-const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null => {
-  if (usage.inputTokens === undefined) {
-    return null
-  }
-  const completionTokens = usage.outputTokens ?? 0
-  return {
-    promptTokens: usage.inputTokens,
-    completionTokens,
-    totalTokens: usage.inputTokens + completionTokens,
-    cacheCreationTokens: usage.inputTokenDetails.cacheWriteTokens,
-    cacheReadTokens: usage.inputTokenDetails.cacheReadTokens,
-  }
 }
 
 /** Upstream HTTP status of a failed run. Retried failures arrive wrapped in a `RetryError`. */
@@ -89,7 +67,7 @@ const createRunInProgressResponse = (): Response =>
  * `AGENT_ENABLED` is set, and registers the agent with discovery.
  */
 export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions) => {
-  const { auth, database, settings, logger, rateLimit } = options
+  const { auth, database, settings, fetchFn, logger, rateLimit, checkAdmission, recordUsage } = options
   // Registered even when disabled, like Haystack: the provider itself emits nothing without `AGENT_ENABLED`.
   registerAgentProvider(createHostedAgentProvider())
   if (!settings.agentEnabled) {
@@ -102,17 +80,12 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
     throw new Error('ANTHROPIC_API_KEY is required when AGENT_ENABLED is true')
   }
 
-  const checkAdmission = options.checkAdmission ?? checkManagedInferenceAdmission
-  const recordUsage = options.recordUsage ?? recordInferenceUsage
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
   const identity: ManagedInferenceIdentity = { provider: 'anthropic', model: settings.agentModel }
   const system = settings.agentSystemPrompt || undefined
   const model =
     options.model ??
-    createAnthropic({
-      apiKey: settings.anthropicApiKey,
-      baseURL: `${settings.anthropicBaseUrl.replace(/\/$/, '')}/v1`,
-    })(settings.agentModel)
+    createAnthropic(createManagedProviderConnection('anthropic', settings, { fetchFn, logger }))(settings.agentModel)
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
   // One run per user closes that gap. The set is per process, which is sufficient while the agent runs
   // as a single instance; a multi-instance deployment needs a shared lock.
@@ -120,105 +93,95 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
 
   return new Elysia({ name: 'hosted-agent-routes', prefix: '/agent' })
     .onError(safeErrorHandler)
-    .use(createAuthMacro(auth))
-    .guard({ auth: true }, (guardedApp) => {
-      guardedApp.onBeforeHandle(({ request, session, user }) =>
-        rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, { request, session, user }),
-      )
-      if (rateLimit) {
-        guardedApp.use(rateLimit)
-      }
+    .use(
+      createMeteredRouteGuard({
+        auth,
+        database,
+        cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        rateLimit,
+      }),
+    )
+    .post(
+      '/chat',
+      async (ctx) => {
+        const body = await readBoundedJson(ctx.request, maxRequestBytes)
+        if (!body.ok && body.reason === 'too_large') {
+          ctx.set.status = 413
+          return createErrorResponse(getSafeErrorMessage(413))
+        }
+        const chatRequest = body.ok ? parseAgentChatRequest(body.value) : null
+        if (!chatRequest) {
+          ctx.set.status = 400
+          return createErrorResponse(getSafeErrorMessage(400))
+        }
+        const messages = await convertToModelMessages(chatRequest.messages)
 
-      return guardedApp.post(
-        '/chat',
-        async (ctx) => {
-          const rawBody = await readBodyWithinLimit(ctx.request, maxRequestBytes)
-          if (rawBody === null) {
-            ctx.set.status = 413
-            return createErrorResponse(getSafeErrorMessage(413))
-          }
-          const chatRequest = parseAgentChatRequest(rawBody)
-          if (!chatRequest) {
-            ctx.set.status = 400
-            return createErrorResponse(getSafeErrorMessage(400))
-          }
-          const messages = await convertToModelMessages(chatRequest.messages)
+        const userId = ctx.user.id
+        const admission = await admitManagedRequest({ database, settings, identity, user: ctx.user, checkAdmission })
+        if (admission instanceof Response) {
+          return admission
+        }
+        if (usersWithRunInFlight.has(userId)) {
+          return createRunInProgressResponse()
+        }
 
-          const userId = ctx.user.id
-          const admission = await checkAdmission(
-            database,
-            identity,
-            userId,
-            getInferenceQuotaLimits(settings, ctx.user.isAnonymous === true),
+        const usageEventId = crypto.randomUUID()
+        const logContext = { provider: identity.provider, model: identity.model, eventId: usageEventId }
+        /** Name and status only: provider error messages and bodies can echo conversation content. */
+        const logRunFailure = (error: unknown) => {
+          // PostHog capture for the hosted agent is deferred to the usage/analytics follow-up (GTM-31).
+          const errorName = error instanceof Error ? error.name : undefined
+          logger?.error(
+            { event: 'agent_stream_failed', ...logContext, errorName, status: getUpstreamStatus(error) },
+            'Agent stream failed',
           )
-          if (admission.outcome === 'price-unavailable') {
-            return createPriceUnavailableResponse()
-          }
-          if (admission.outcome === 'quota-exceeded') {
-            return createQuotaExceededResponse(admission.decision)
-          }
-          if (usersWithRunInFlight.has(userId)) {
-            return createRunInProgressResponse()
-          }
+        }
+        const usageCallbacks = createUsageCallbacks({
+          database,
+          eventId: usageEventId,
+          userId,
+          price: admission.price,
+          recordUsage,
+          telemetry: {
+            onMissing: () => logger?.error({ event: 'agent_usage_missing', ...logContext }, 'Agent usage missing'),
+            onFailed: (error) =>
+              logger?.error(
+                { event: 'agent_usage_record_failed', ...logContext, error: getSafeLogMessage(error) },
+                'Agent usage record failed',
+              ),
+          },
+        })
 
-          const usageEventId = crypto.randomUUID()
-          const logContext = { provider: identity.provider, model: identity.model, eventId: usageEventId }
-          /** Name and status only: provider error messages and bodies can echo conversation content. */
-          const logRunFailure = (error: unknown) => {
-            // PostHog capture for the hosted agent is deferred to the usage/analytics follow-up (GTM-31).
-            const errorName = error instanceof Error ? error.name : undefined
-            logger?.error(
-              { event: 'agent_stream_failed', ...logContext, errorName, status: getUpstreamStatus(error) },
-              'Agent stream failed',
-            )
+        const result = streamText({
+          model,
+          system,
+          messages,
+          maxOutputTokens: agentMaxOutputTokens,
+          timeout: { totalMs: upstreamTimeoutMs },
+          onFinish: ({ totalUsage }) => recordLanguageModelUsage(usageCallbacks, totalUsage),
+          onError: ({ error }) => logRunFailure(error),
+          // A timeout aborts the run without reaching onError. It is the only abort source: the client's
+          // disconnect is deliberately not wired in, so the run (and its usage) outlives the socket.
+          onAbort: () => {
+            logger?.error({ event: 'agent_run_timed_out', ...logContext, upstreamTimeoutMs }, 'Agent run timed out')
+          },
+        })
+        // Drive the run to completion even if the client disconnects, so usage is recorded. consumeStream
+        // settles after onFinish, on a stream error, or once an abandoned run ends, so the slot is always
+        // released.
+        const runToCompletion = async () => {
+          try {
+            await result.consumeStream({ onError: logRunFailure })
+          } finally {
+            usersWithRunInFlight.delete(userId)
           }
-
-          const result = streamText({
-            model,
-            system,
-            messages,
-            maxOutputTokens: agentMaxOutputTokens,
-            timeout: { totalMs: upstreamTimeoutMs },
-            onFinish: async ({ totalUsage }) => {
-              const counts = toTokenCounts(totalUsage)
-              if (!counts) {
-                logger?.error({ event: 'agent_usage_missing', ...logContext }, 'Agent usage missing')
-                return
-              }
-              // The AI SDK swallows errors thrown from onFinish, so a failed ledger write must be logged here.
-              try {
-                await recordUsage(database, { id: usageEventId, userId, counts, price: admission.price })
-              } catch (error) {
-                logger?.error(
-                  { event: 'agent_usage_record_failed', ...logContext, error: getSafeLogMessage(error) },
-                  'Agent usage record failed',
-                )
-              }
-            },
-            onError: ({ error }) => logRunFailure(error),
-            // A timeout aborts the run without reaching onError. It is the only abort source: the client's
-            // disconnect is deliberately not wired in, so the run (and its usage) outlives the socket.
-            onAbort: () => {
-              logger?.error({ event: 'agent_run_timed_out', ...logContext, upstreamTimeoutMs }, 'Agent run timed out')
-            },
-          })
-          // Drive the run to completion even if the client disconnects, so usage is recorded. consumeStream
-          // settles after onFinish, on a stream error, or once an abandoned run ends, so the slot is always
-          // released.
-          const runToCompletion = async () => {
-            try {
-              await result.consumeStream({ onError: logRunFailure })
-            } finally {
-              usersWithRunInFlight.delete(userId)
-            }
-          }
-          // Taken only now, right before the run that releases it, so nothing in between can leave the slot held.
-          usersWithRunInFlight.add(userId)
-          void runToCompletion()
-          return result.toUIMessageStreamResponse({ headers: streamingResponseHeaders(ctx.set.headers) })
-        },
-        // The handler reads the raw stream itself under a byte cap.
-        { parse: 'none' },
-      )
-    })
+        }
+        // Taken only now, right before the run that releases it, so nothing in between can leave the slot held.
+        usersWithRunInFlight.add(userId)
+        void runToCompletion()
+        return result.toUIMessageStreamResponse({ headers: streamingResponseHeaders(ctx.set.headers) })
+      },
+      // The handler reads the raw stream itself under a byte cap.
+      { parse: 'none' },
+    )
 }

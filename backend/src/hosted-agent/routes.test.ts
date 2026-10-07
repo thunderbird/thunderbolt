@@ -110,7 +110,7 @@ describe('createHostedAgentRoutes', () => {
   let model: MockLanguageModelV3
   let checkAdmission: ReturnType<typeof mock<CheckAdmission>>
   let recordUsage: ReturnType<typeof mock<typeof recordInferenceUsage>>
-  let logger: { error: ReturnType<typeof mock> }
+  let logger: { error: ReturnType<typeof mock>; info: ReturnType<typeof mock> }
 
   const createMockedApp = ({ auth = mockAuth, settings = {} }: { auth?: Auth; settings?: Partial<Settings> } = {}) =>
     createApp({ auth, settings, model, checkAdmission, recordUsage, logger })
@@ -119,7 +119,7 @@ describe('createHostedAgentRoutes', () => {
     model = createModel()
     checkAdmission = mock(allowed)
     recordUsage = mock(async () => 'inserted' as const)
-    logger = { error: mock() }
+    logger = { error: mock(), info: mock() }
   })
 
   it('mounts no route when AGENT_ENABLED is off', async () => {
@@ -433,7 +433,7 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
   })
 
   it('logs a provider stream that dies mid-reply and writes no zero-cost row', async () => {
-    const logger = { error: mock() }
+    const logger = { error: mock(), info: mock() }
     const model = new MockLanguageModelV3({
       doStream: async () => ({
         stream: new ReadableStream<StreamPart>({

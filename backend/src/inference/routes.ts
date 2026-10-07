@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { classifyInferenceError } from '@/inference/error-kind'
 import { createErrorResponse, getErrorStatus, getSafeErrorMessage, safeErrorHandler } from '@/middleware/error-handling'
@@ -33,16 +32,9 @@ import {
   type InferenceProxyLatencyLog,
 } from './client'
 import { resolveManagedDirectRuntime, type ManagedDirectRuntime } from './managed-models'
-import {
-  checkManagedInferenceAdmission,
-  getInferenceQuotaLimits,
-  recordInferenceUsage,
-  type InferenceDatabase,
-  type InferencePrice,
-  type InferenceTokenCounts,
-} from './usage-ledger'
-import { createPriceUnavailableResponse, createQuotaExceededResponse } from './usage-responses'
-import { rejectUnregisteredCliDevice } from './cli-device'
+import { admitManagedRequest, createUsageCallbacks, type UsageTelemetry } from './managed-request'
+import { createMeteredRouteGuard } from './metered-route-guard'
+import type { InferenceDatabase, InferenceTokenCounts } from './usage-ledger'
 
 type Message = { role: string; content: unknown }
 
@@ -98,8 +90,6 @@ type LatencyRecorderOptions = {
   route: string
 }
 
-type LatencyRecorder = ReturnType<typeof createLatencyRecorder>
-
 /** Emit route phase telemetry in structured logs and response headers. */
 const createLatencyRecorder = ({
   attemptTracker,
@@ -148,45 +138,34 @@ const getApiErrorMetadata = (error: unknown) => {
   }
 }
 
-type UsageCallbacksOptions = {
-  database: InferenceDatabase
+type UsageTelemetryOptions = {
   eventId: string
   logger?: InferenceLogger
   model: string
-  price: InferencePrice
   provider: InferenceProvider
   route: string
-  userId: string
 }
 
-/** Build the shared persistence and telemetry callbacks for a managed stream. */
-const createUsageCallbacks = ({
-  database,
-  eventId,
-  logger,
-  model,
-  price,
-  provider,
-  route,
-  userId,
-}: UsageCallbacksOptions) => ({
-  onUsage: async (counts: InferenceTokenCounts) => {
+/** The `/v1/chat` usage log events around the shared ledger write. */
+const createUsageTelemetry = ({ eventId, logger, model, provider, route }: UsageTelemetryOptions): UsageTelemetry => ({
+  onRecording: () => {
     logInferenceSafely(
       logger,
       { event: 'inference_usage_completed', provider, model, eventId, transport: 'direct' },
       'Inference usage completed',
     )
-    const outcome = await recordInferenceUsage(database, { id: eventId, userId, counts, price })
+  },
+  onRecorded: (outcome) => {
     logInferenceSafely(
       logger,
       { event: 'inference_usage_inserted', provider, model, eventId, outcome },
       'Inference usage inserted',
     )
   },
-  onUsageMissing: () => {
+  onMissing: () => {
     logger?.info({ event: 'inference_usage_missing', provider, model, route }, 'Inference usage missing')
   },
-  onUsageError: () => {
+  onFailed: () => {
     logger?.info(
       { event: 'inference_usage_callback_failed', provider, model, route },
       'Inference usage callback failed',
@@ -223,29 +202,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
     ((provider: ManagedDirectRuntime['provider']) => getInferenceClient(provider, { fetchFn, logger, nowFn }))
   const getMessagesClient = options.getMessagesClient ?? (() => getAnthropicMessagesClient({ fetchFn, logger, nowFn }))
 
-  /** Gate a managed request on price and quota; a returned Response is the rejection to send. */
-  const admitManagedRequest = async (
-    { provider, internalName }: ManagedDirectRuntime,
-    user: { id: string; isAnonymous?: boolean | null },
-    recordLatency: LatencyRecorder,
-  ): Promise<{ price: InferencePrice } | Response> => {
-    const admission = await checkManagedInferenceAdmission(
-      database,
-      { provider, model: internalName },
-      user.id,
-      getInferenceQuotaLimits(settings, user.isAnonymous === true),
-    )
-    if (admission.outcome === 'price-unavailable') {
-      recordLatency(503, nowFn(), null)
-      return createPriceUnavailableResponse()
-    }
-    if (admission.outcome === 'quota-exceeded') {
-      recordLatency(429, nowFn(), null)
-      return createQuotaExceededResponse(admission.decision)
-    }
-    return admission
-  }
-
   const app = new Elysia({
     prefix: '/chat',
   })
@@ -259,15 +215,16 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
       ctx.inferenceRequestStartedAt = nowFn()
     })
 
-  return app.use(createAuthMacro(auth)).guard({ auth: true }, (guardedApp) => {
-    guardedApp.onBeforeHandle(({ request, session, user }) =>
-      rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, { request, session, user }),
+  return app
+    .use(
+      createMeteredRouteGuard({
+        auth,
+        database,
+        cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        rateLimit,
+      }),
     )
-    if (rateLimit) {
-      guardedApp.use(rateLimit)
-    }
-
-    guardedApp.post('/completions', async (ctx) => {
+    .post('/completions', async (ctx) => {
       const handlerStartedAt = nowFn()
       const body = await ctx.request.json()
 
@@ -294,8 +251,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         route,
       })
 
-      const admission = await admitManagedRequest(modelConfig, ctx.user, recordLatency)
+      const admission = await admitManagedRequest({
+        database,
+        settings,
+        identity: { provider, model: internalName },
+        user: ctx.user,
+      })
       if (admission instanceof Response) {
+        recordLatency(admission.status, nowFn(), null)
         return admission
       }
       const { price } = admission
@@ -332,12 +295,9 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
           ...createUsageCallbacks({
             database,
             eventId: usageEventId,
-            logger,
-            model: internalName,
-            price,
-            provider,
-            route,
             userId: ctx.user.id,
+            price,
+            telemetry: createUsageTelemetry({ eventId: usageEventId, logger, model: internalName, provider, route }),
           }),
           onError: (error) => {
             captureInferenceErrorFn({
@@ -386,8 +346,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return createErrorResponse(getSafeErrorMessage(status))
       }
     })
-
-    guardedApp.post('/v1/messages', async (ctx) => {
+    .post('/v1/messages', async (ctx) => {
       const handlerStartedAt = nowFn()
       let requestBody: unknown
       try {
@@ -421,8 +380,14 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         route,
       })
 
-      const admission = await admitManagedRequest(modelConfig, ctx.user, recordLatency)
+      const admission = await admitManagedRequest({
+        database,
+        settings,
+        identity: { provider, model: internalName },
+        user: ctx.user,
+      })
       if (admission instanceof Response) {
+        recordLatency(admission.status, nowFn(), null)
         return admission
       }
       const { price } = admission
@@ -479,12 +444,9 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         const usageCallbacks = createUsageCallbacks({
           database,
           eventId: usageEventId,
-          logger,
-          model: internalName,
-          price,
-          provider,
-          route,
           userId: ctx.user.id,
+          price,
+          telemetry: createUsageTelemetry({ eventId: usageEventId, logger, model: internalName, provider, route }),
         })
         const stream = createAnthropicSSEStream(upstream, {
           ...usageCallbacks,
@@ -525,9 +487,6 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         return createErrorResponse(getSafeErrorMessage(status))
       }
     })
-
-    return guardedApp
-  })
 }
 
 /**

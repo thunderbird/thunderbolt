@@ -123,9 +123,12 @@ apply and the other item is not applicable.
    ```
 
    Use the exact id the first jq prints (zai ids use dots, `glm-5.2`; deepseek ids use dashes,
-   `deepseek-v4-flash`). If Y's id is absent, alias it to the closest listed id and refresh the
-   comment above `modelAliases` with the pi-ai version from `package.json` (it still names
-   0.80.7). Keep X's alias. Compare the alias target's `thinkingLevelMap` with the profile's
+   `deepseek-v4-flash`). Three cases. Y's id is listed: add no alias, and if an earlier swap left
+   an alias or override for Y, remove them so Pi's own metadata applies. Y's id is absent: alias
+   it to the closest listed id and refresh the comment above `modelAliases` with the pi-ai
+   version from `package.json` (it still names 0.80.7). Either way keep X's alias. A later pi-ai
+   upgrade that ships a model this table aliases is the moment to delete that alias. Then compare
+   the `thinkingLevelMap` of Y's entry (or of the alias target) with the profile's
    `reasoningEffort`: a level mapped to `null` is unsupported and Pi's `clampThinkingLevel`
    silently substitutes the nearest supported level (Pi's deepseek entries map `minimal`, `low`
    and `medium` to `null`), so add or extend the per-slug override in

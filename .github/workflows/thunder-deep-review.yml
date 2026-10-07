@@ -63,8 +63,8 @@ jobs:
 
     # Cap total runner time so a hung model API call can't hold the
     # runner indefinitely. Sized for: 60s debounce + diff preparation + TWO
-    # model steps (the recall pass runs at xhigh effort with a
-    # 40-turn budget, so it is the long pole).
+    # model steps (the recall pass runs at high effort with a
+    # $45 API budget, so it is the long pole).
     timeout-minutes: 30
 
     env:
@@ -214,13 +214,13 @@ jobs:
       #        Read/Grep/Glob need no permission but are listed for clarity. The
       #        skill + its subagents under `.claude/{skills,agents}/` are auto-
       #        discovered because the SDK loads the `project` setting source by default.
-      # SHA pinned to v1.
+      # SHA pinned to v1.0.244, which installs Claude Code 2.1.292.
       # PIN the model id LITERALLY here — do NOT source from vars.* (a
       #         mutable repo/org var changes review behavior with no PR/audit trail).
       # ─────────────────────────────────────────────────────────────────────
       - name: thunder-deep-review (step 1 — recall pass, candidate findings)
         id: review_model
-        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c # v1
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Pass the workflow token so the action authenticates to GitHub WITH it
@@ -237,14 +237,9 @@ jobs:
           allowed_bots: "thunderbolt-automation-agent[bot]"
           use_sticky_comment: "false" # we own the inline review via the post step
           # Model id pinned LITERALLY (a mutable vars.* would change review
-          # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
-          # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
-          # --effort xhigh: the vendor-recommended setting for agentic coding work
-          # on this model, and the primary lever for tool-use triggering — the
-          # skill's verification bar requires actually Reading cross-file context
-          # before asserting architecture/security claims, so effort is a recall
-          # lever here, not a luxury. Set EXPLICITLY (never rely on the CLI
-          # default, which is not pinned across versions).
+          # behavior with no PR/audit trail). Opus 5.5 high keeps cross-file
+          # judgment in the recall pass; the gate uses medium for verification.
+          # Set effort explicitly rather than relying on the CLI default.
           # --allowedTools: Skill (invokes the review skill — permission-required,
           # so it MUST be allow-listed or the headless run denies it and no-ops),
           # Task AND Agent (the skill's read-only sub-reviewer fan-out — also
@@ -252,11 +247,11 @@ jobs:
           # versions and `Agent` in others, so both names are listed), and
           # Read,Grep,Glob (read-only working-tree access). NO Bash,
           # NO write tools — the model is fully READ-ONLY and CANNOT write a file.
-          # --max-turns caps the agent loop. Sized at 40 for the full fan-out
-          # (11 lane sub-reviewers + domain subagents + micro-specialists in deep
-          # mode, plus reference/diff Reads) — a mid-review cap does not fail the
-          # step, it silently TRUNCATES recall, so the cap must comfortably exceed
-          # the worst-case fan-out, and the job timeout-minutes is the real guard.
+          # --max-budget-usd replaces the turn cap: $45 leaves headroom above
+          # the estimated Opus 5.5 p95 ($30–40) and includes subagent spend.
+          # Budget exhaustion ends with error_max_budget_usd (no partial structured_output):
+          # a failed step; the action logs the subtype and telemetry keeps the cost.
+          # Client-side estimate, not a billing ceiling.
           # --json-schema: the model is read-only, so it can't write the candidates
           # file directly. Instead it returns candidates as the action's STRUCTURED
           # OUTPUT (action.yml `outputs.structured_output`, populated only when a
@@ -272,10 +267,10 @@ jobs:
           #   (string|null); evidence (string|null — the quoted offending line,
           #   internal grounding for the gate, never rendered).
           claude_args: >-
-            --model claude-opus-4-8
-            --effort xhigh
+            --model claude-opus-5-5
+            --effort high
             --allowedTools Read,Grep,Glob,Skill,Task,Agent
-            --max-turns 40
+            --max-budget-usd 45
             --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             Use the thunder-deep-review skill to review this pull request. This is
@@ -443,7 +438,7 @@ jobs:
         if: >-
           steps.persist_candidates.outputs.count != '' &&
           steps.persist_candidates.outputs.count != '0'
-        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c # v1
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -452,17 +447,15 @@ jobs:
           use_sticky_comment: "false" # we own the inline review via the post step
           # Same model + same findings schema as STEP 1 so the kept subset round-
           # trips into readModelFindings unchanged (title/body/rule/evidence stay
-          # VERBATIM; the gate's only permitted edit is DEMOTING severity). Fewer
-          # turns: this is one judgment over an already-enumerated list, not a
-          # fresh review. --effort high (explicit, never the unpinned CLI
-          # default): a focused verify-and-judge pass, one notch below the recall
-          # pass's xhigh — it re-checks evidence against the diff but does not
-          # fan out.
+          # VERBATIM; the gate's only permitted edit is DEMOTING severity).
+          # --effort medium: verify the enumerated candidates without fan-out.
+          # $3 leaves headroom over the expected $0.2–0.4 gate cost; exhaustion
+          # fails without partial structured_output, as in the recall pass.
           claude_args: >-
-            --model claude-opus-4-8
-            --effort high
+            --model claude-opus-5-5
+            --effort medium
             --allowedTools Read,Grep,Glob
-            --max-turns 12
+            --max-budget-usd 3
             --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             You are the PRECISION GATE for a code review. The file

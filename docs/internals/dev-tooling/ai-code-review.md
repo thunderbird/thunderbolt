@@ -42,8 +42,8 @@ model call.
 
 | Step                    | Configuration                                           | Job                                                                     |
 | ----------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Recall (`:197`)         | `thunder-deep-review` skill, `--effort xhigh`, 40 turns | Over-generates _candidate_ findings, including unsure ones              |
-| Precision gate (`:403`) | `--effort high`, 12 turns                               | Decides which candidates a senior engineer would leave in a real review |
+| Recall (`:197`)         | `thunder-deep-review` skill, `--effort high`, $45 budget | Over-generates _candidate_ findings, including unsure ones              |
+| Precision gate (`:403`) | `--effort medium`, $3 budget                            | Decides which candidates a senior engineer would leave in a real review |
 
 The split fixes the "always finds something" failure mode of single-pass review bots: high recall alone buries real
 bugs in noise, one precision-tuned pass misses things.

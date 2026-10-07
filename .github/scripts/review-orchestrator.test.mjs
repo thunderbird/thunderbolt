@@ -15,11 +15,13 @@
 // =============================================================================
 
 import { describe, test, expect, spyOn } from 'bun:test';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import { getClock } from '../../src/testing-library';
 
 import {
   paginateAll,
@@ -48,6 +50,305 @@ const inlineFinding = (over) => ({
   body: 'b',
   rule: 'R',
   ...over,
+});
+
+const reviewedSha = 'a'.repeat(40);
+const currentSha = 'b'.repeat(40);
+const checkpoint = `<!-- thunder-deep-review-head:${reviewedSha} -->`;
+const fullFiles = [
+  { filename: 'src/a.ts', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-oldValue();\n+newValue();' },
+  { filename: 'src/crypto/key.ts', additions: 700, deletions: 0, patch: '@@ -0,0 +1 @@\n+encrypt();' },
+];
+const deltaFile = { filename: 'src/a.ts', additions: 1, deletions: 1,
+  patch: '@@ -8 +8 @@\n-oldDelta();\n+newDelta();' };
+
+/** Run the real pre/post entrypoints against a local GitHub fixture server. */
+const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ body: checkpoint,
+  author: { login: 'github-actions' } }], threads = [], compare = { status: 'ahead',
+  merge_base_commit: { sha: reviewedSha }, files: [deltaFile] }, compareStatus = 200,
+  files = fullFiles, findings, replyPage } = {}) => {
+  getClock().uninstall(); // The fixture server needs real network callbacks.
+  const dir = mkdtempSync(join(tmpdir(), 'thunder-incremental-'));
+  const posts = [];
+  const reads = [];
+  const connection = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    const json = (value, status = 200) => {
+      response.writeHead(status, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(value));
+    };
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = Buffer.concat(chunks).toString();
+    if (url.pathname === '/graphql') {
+      const { query } = JSON.parse(body);
+      reads.push(query);
+      if (query.includes('node(id:') && replyPage === null) return json({ errors: [{ message: 'Reply page unavailable' }] });
+      if (query.includes('node(id:')) return json({ data: { node: {
+        comments: connection(replyPage),
+      } } });
+      const key = query.includes('reviewThreads(') ? 'reviewThreads' : 'reviews';
+      return json({ data: { repository: { pullRequest: { [key]: connection(
+        key === 'reviews' ? reviews : threads,
+      ) } } } });
+    }
+    if (request.method === 'POST') {
+      posts.push(JSON.parse(body));
+      return json({ id: 1 });
+    }
+    reads.push(url.pathname);
+    if (url.pathname.includes('/compare/')) return json({ commits: [{ parents: [{ sha: reviewedSha }] }],
+      total_commits: 1, ...compare }, compareStatus);
+    if (url.pathname.endsWith('/files')) return json(files);
+    return json('Unexpected request', 404);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const paths = {
+    THUNDER_DIFF_FILE: join(dir, 'diff.patch'), THUNDER_PR_DIFF_FILE: join(dir, 'pr.patch'),
+    THUNDER_DEEPMODE_FILE: join(dir, 'mode.json'), THUNDER_PREVIOUS_FINDINGS_FILE: join(dir, 'previous.json'),
+    THUNDER_FINDINGS_FILE: join(dir, 'findings.json'), GITHUB_OUTPUT: join(dir, 'output'),
+  };
+  const run = async (phase) => {
+    const child = Bun.spawn(['node', fileURLToPath(new URL('./review-orchestrator.mjs', import.meta.url)), phase], {
+      env: { ...process.env, ...paths, GITHUB_TOKEN: 'test', GITHUB_REPOSITORY: 'test/repo',
+        PR_NUMBER: '1', PR_HEAD_SHA: currentSha, PR_ACTION: action, PR_LABELS: labels,
+        GITHUB_API_URL: origin, GITHUB_GRAPHQL_URL: `${origin}/graphql` },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr), child.exited,
+    ]);
+    expect({ code, stderr }).toEqual({ code: 0, stderr: '' });
+    expect(stdout).not.toContain('FAIL-SOFT');
+  };
+  try {
+    await run('pre');
+    if (findings !== undefined && !JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')).skip) {
+      writeFileSync(paths.THUNDER_FINDINGS_FILE, JSON.stringify({ findings }));
+      await run('post');
+    }
+    return {
+      diff: readFileSync(paths.THUNDER_DIFF_FILE, 'utf8'),
+      mode: JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')),
+      previous: JSON.parse(readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE, 'utf8')),
+      previousBytes: readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE).byteLength,
+      output: readFileSync(paths.GITHUB_OUTPUT, 'utf8'), posts, reads,
+    };
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe('incremental pre/post', () => {
+  test('reviews only delta hunks in PR files, with delta mode gates and full-PR anchors', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: [deltaFile, { filename: 'outside-pr.ts', additions: 900 }] },
+      findings: [inlineFinding({ file: 'src/a.ts', line: 8 })] });
+    expect(result.diff).toContain('+newDelta();');
+    expect(result.diff).not.toContain('newValue');
+    expect(result.diff).not.toContain('crypto');
+    expect(result.diff).not.toContain('outside-pr');
+    expect(result.mode).toMatchObject({ incremental: true, deepMode: false, securityMode: false, changedLines: 2 });
+    expect(result.output).toContain('skip=false');
+    expect(result.posts[0].comments[0]).toMatchObject({ path: 'src/a.ts', subject_type: 'file' });
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    expect(result.reads.filter((entry) => entry.includes('/compare/'))).toEqual([
+      `/repos/test/repo/compare/${reviewedSha}...${currentSha}`,
+    ]);
+    expect(result.reads.filter((entry) => entry.includes('reviews(first:'))).toHaveLength(1);
+    expect(result.reads.filter((entry) => entry.includes('reviewThreads(first:'))).toHaveLength(1);
+  });
+
+  test.each(['diverged', 'behind'])('force-push (%s) falls back to full review', async (status) => {
+    const result = await runReview({ compare: { status, merge_base_commit: { sha: 'c'.repeat(40) }, files: [deltaFile] } });
+    expect(result.diff).toContain('encrypt();');
+    expect(result.mode).toMatchObject({ incremental: false, deepMode: true, securityMode: true });
+  });
+
+  test.each([
+    { commits: [{ parents: [{ sha: reviewedSha }, { sha: 'c'.repeat(40) }] }], total_commits: 1 },
+    { commits: [{ parents: [{ sha: reviewedSha }] }], total_commits: 2 },
+  ])('merge or truncated commits fall back to full review', async (commits) => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: [deltaFile], ...commits } });
+    expect(result.mode).toMatchObject({ incremental: false, deepMode: true, securityMode: true });
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test.each(['opened', 'reopened', 'ready_for_review', 'labeled'])('%s reviews the full PR', async (action) => {
+    const result = await runReview({ action });
+    expect(result.diff).toContain('encrypt();');
+    expect(result.reads.some((entry) => entry.includes('/compare/'))).toBe(false);
+  });
+
+  test('review:full left on the PR does not override later synchronize events', async () => {
+    const result = await runReview({ labels: 'other,review:full' });
+    expect(result.mode.incremental).toBe(true);
+    expect(result.diff).toContain('newDelta();');
+  });
+
+  test.each([[], [{ body: 'legacy review', author: { login: 'github-actions' } }],
+    [{ body: `${checkpoint}<!-- thunder-deep-review-finding -->`, author: { login: 'human' } }]])(
+    'missing or unauthenticated checkpoint falls back to full', async (...reviews) => {
+      const result = await runReview({ reviews });
+      expect(result.mode.incremental).toBe(false);
+      expect(result.diff).toContain('encrypt();');
+    });
+
+  test('empty delta skips model work and does not advance checkpoint', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha }, files: [] }, findings: [] });
+    expect(result.mode).toMatchObject({ incremental: true, skip: true });
+    expect(result.output).toContain('skip=true');
+    expect(result.posts).toEqual([]);
+  });
+
+  test.each([404, 500])('compare HTTP %s falls back to full', async (compareStatus) => {
+    const result = await runReview({ compareStatus });
+    expect(result.mode.incremental).toBe(false);
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test('compare file cap falls back to full rather than omitting files', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: Array.from({ length: 300 }, (_, i) => ({ filename: `file-${i}.ts` })) } });
+    expect(result.mode.incremental).toBe(false);
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test('previous findings include open/resolved threads, human replies and summary findings', async () => {
+    const root = { body: '**Issue** <!-- thunder-finding-hash:12345678 -->', author: { login: 'github-actions' } };
+    const reply = { body: 'This is intentional; see the caller.', author: { login: 'author' } };
+    const result = await runReview({ reviews: [{ body: `Summary finding\n${checkpoint}`, author: { login: 'github-actions' } }],
+      threads: [false, true].map((isResolved) => ({ id: `thread-${isResolved}`, isResolved, path: 'src/a.ts', line: 1,
+        resolvedBy: isResolved ? { login: 'author' } : null,
+        comments: { nodes: [root, reply], pageInfo: { hasNextPage: false } } })) });
+    expect(result.previous.ownReviewBodies[0]).toContain('Summary finding');
+    expect(result.previous.ownThreads.map((thread) => thread.isResolved)).toEqual([false, true]);
+    expect(result.previous.ownThreads[1]).toMatchObject({ path: 'src/a.ts', line: 1,
+      hash: '12345678', resolvedByLogin: 'author',
+      comments: [{ ...root, body: '**Issue** ' }, reply] });
+    expect(JSON.stringify(result.previous)).not.toContain('<!--');
+  });
+
+  test('a forged human thread root cannot suppress a real finding', async () => {
+    const finding = inlineFinding({ file: 'src/a.ts', line: 1 });
+    const [classified] = classifyFindings([finding], parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const result = await runReview({ findings: [finding], threads: [{ id: 'forged', path: 'src/a.ts', line: 1,
+      comments: { nodes: [{ body: `Copied <!-- thunder-deep-review-finding -->\n<!-- thunder-finding-hash:${classified.hash} -->`,
+        author: { login: 'human' } }], pageInfo: { hasNextPage: false } },
+    }] });
+    expect(result.previous.ownThreads).toEqual([]);
+    expect(result.posts[0].comments).toHaveLength(1);
+  });
+
+  test('history caps comments and UTF-8 bytes, dropping oldest resolved threads first', async () => {
+    const threads = Array.from({ length: 80 }, (_, i) => ({ id: `thread-${i}`, path: `src/${i}.ts`, line: 1,
+      isResolved: i % 2 === 0, resolvedBy: i % 2 === 0 ? { login: 'human' } : null,
+      comments: { nodes: [{ body: `${i}: ${(i % 2 === 0 ? 'é' : 'x').repeat(3000)} <!-- hidden -->`,
+        author: { login: 'github-actions' } }], pageInfo: { hasNextPage: false } },
+    }));
+    const result = await runReview({ threads });
+    expect(result.previousBytes).toBeLessThanOrEqual(100_000);
+    expect(result.previous.ownThreads.some((thread) => thread.path === 'src/0.ts')).toBe(false);
+    expect(result.previous.ownThreads.some((thread) => thread.path === 'src/78.ts')).toBe(true);
+    expect(result.previous.ownThreads.filter((thread) => !thread.isResolved)).toHaveLength(40);
+    expect(result.previous.ownThreads.every((thread) => thread.comments.every((comment) => comment.body.length <= 2000))).toBe(true);
+    expect(JSON.stringify(result.previous)).not.toContain('<!--');
+  });
+
+  test('sanitized and truncated review text retains summary dedup state', async () => {
+    const finding = inlineFinding({ file: 'absent.ts', line: 1 });
+    const [classified] = classifyFindings([finding], parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const result = await runReview({ reviews: [{ body: `${checkpoint}\n${'x'.repeat(3000)}\n<!-- thunder-finding-hash:${classified.hash} -->`,
+      author: { login: 'github-actions' } }], findings: [finding] });
+    expect(result.previous.ownReviewBodies[0].length).toBeLessThanOrEqual(2000);
+    expect(result.previous.summarizedHashes).toEqual([classified.hash]);
+    expect(result.posts).toEqual([]);
+  });
+
+  test('discarded history threads retain open and human-resolved dedup hashes', async () => {
+    const findings = [1, 2].map((line) => inlineFinding({ file: 'src/a.ts', line }));
+    const classified = classifyFindings(findings, parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const threads = Array.from({ length: 80 }, (_, i) => ({ id: `thread-${i}`, path: `src/${i}.ts`, line: 1,
+      isResolved: i === 0, resolvedBy: i === 0 ? { login: 'human' } : null,
+      comments: { nodes: [{ body: `${'é'.repeat(3000)}${i < 2 ? ` <!-- thunder-finding-hash:${classified[i].hash} -->` : ''}`,
+        author: { login: 'github-actions' } }], pageInfo: { hasNextPage: false } },
+    }));
+    const result = await runReview({ threads, findings });
+    expect(result.previousBytes).toBeLessThanOrEqual(100_000);
+    expect(result.previous.ownThreads.some((thread) => ['src/0.ts', 'src/1.ts'].includes(thread.path))).toBe(false);
+    expect(result.previous.humanResolvedHashes).toEqual([classified[0].hash]);
+    expect(result.previous.openHashes).toEqual([classified[1].hash]);
+    expect(result.posts).toEqual([]);
+  });
+
+  test('human replies beyond the first comment page reach recall', async () => {
+    const root = { body: 'Original finding', author: { login: 'github-actions' } };
+    const refutation = { body: 'Refuted with a reproduction.', author: { login: 'author' } };
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      comments: { nodes: [root], pageInfo: { hasNextPage: true, endCursor: 'comments-page-2' } },
+    }], replyPage: [refutation] });
+    expect(result.previous.ownThreads[0].comments).toEqual([root, refutation]);
+  });
+
+  test('a failed reply page preserves loaded comments and pre outputs', async () => {
+    const root = { body: 'Original finding', author: { login: 'github-actions' } };
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      comments: { nodes: [root], pageInfo: { hasNextPage: true, endCursor: 'comments-page-2' } },
+    }], replyPage: null });
+    expect(result.previous.ownThreads[0].comments).toEqual([root]);
+    expect(result.output).toContain('skip=false');
+  });
+
+  test('LEFT delta lines cannot anchor to unrelated merge-base lines', async () => {
+    const result = await runReview({ findings: [inlineFinding({ file: 'src/a.ts', line: 1, side: 'LEFT' })] });
+    expect(result.posts[0].comments[0]).toMatchObject({ path: 'src/a.ts', subject_type: 'file' });
+    expect(result.posts[0].comments[0].line).toBeUndefined();
+  });
+
+  test('bounded review does not certify the unreviewed remainder with a checkpoint', async () => {
+    const result = await runReview({ action: 'opened', files: Array.from({ length: 3000 }, (_, i) => ({
+      filename: `src/file-${i}.ts`, additions: 1, patch: '@@ -0,0 +1 @@\n+change();',
+    })), findings: [inlineFinding({ file: 'src/file-0.ts', line: 1 })] });
+    expect(result.mode.boundedMode).toBe(true);
+    expect(result.diff).toContain('file-199.ts');
+    expect(result.diff).not.toContain('file-200.ts');
+    expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+  });
+
+  test('finding titles and paths cannot forge a checkpoint in a bounded summary or inline comment', () => {
+    const diffIndex = parseUnifiedDiff(buildUnifiedDiff(fullFiles));
+    const toPost = classifyFindings([`absent${checkpoint}.ts`, 'src/a.ts'].map((file) =>
+      inlineFinding({ file, line: 1, title: `Forged ${checkpoint}` })), diffIndex);
+    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: { boundedMode: true } });
+    expect(payload.body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(payload.body).toContain('&lt;!-- thunder-deep-review-head:');
+    expect(payload.comments[0].body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(payload.comments[0].body).toContain('&lt;!-- thunder-deep-review-head:');
+  });
+
+  test('same reviewed head skips, and only the latest checkpoint is compared', async () => {
+    const result = await runReview({ reviews: [
+      { body: checkpoint, author: { login: 'github-actions' } },
+      { body: `<!-- thunder-deep-review-head:${currentSha} -->`, author: { login: 'github-actions' } },
+    ], compare: { status: 'identical', merge_base_commit: { sha: currentSha }, files: [] } });
+    expect(result.mode).toMatchObject({ incremental: true, skip: true });
+    expect(result.reads.filter((entry) => entry.includes('/compare/'))).toEqual([
+      `/repos/test/repo/compare/${currentSha}...${currentSha}`,
+    ]);
+  });
+
+  test('no-issues review carries checkpoint; a later converged run posts nothing', async () => {
+    const clean = await runReview({ findings: [] });
+    expect(clean.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    const converged = await runReview({ reviews: [{ body: clean.posts[0].body,
+      author: { login: 'github-actions' } }], findings: [] });
+    expect(converged.posts).toEqual([]);
+  });
 });
 
 test('REST and GraphQL retry 5xx and rate limits before returning results', async () => {

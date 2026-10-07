@@ -40,7 +40,7 @@
 //   vars set in the workflow (see below).
 // =============================================================================
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { argv } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -53,15 +53,16 @@ import { join } from 'node:path';
 // Identity of OUR OWN review comments, so we can dedup against only
 // our own threads (never touch Bugbot's or a human's). The orchestrator runs
 // under the default GITHUB_TOKEN, so the author login is github-actions[bot]
-// (THUNDER_BOT_LOGIN, see env below). We also stamp every comment body with a
-// hidden marker (SELF_COMMENT_MARKER) as the robust secondary signal.
+// (THUNDER_BOT_LOGIN, see env below). The hidden marker identifies our format,
+// but only the author login establishes ownership.
 const SELF_COMMENT_MARKER = '<!-- thunder-deep-review-finding -->';
+const REVIEW_HEAD_RE = /<!-- thunder-deep-review-head:([0-9a-f]{40}) -->/;
 
 // Hidden marker on the affirmative "Reviewed — no issues found" review body. It
 // lets the next run recognize that our LATEST own review is already the
 // no-issues note and skip re-posting an identical one every push (so a clean PR
 // converges to a single affirmative review, not a treadmill of duplicates). It
-// also carries SELF_COMMENT_MARKER so isOwnAuthor still recognizes it as ours.
+// also carries SELF_COMMENT_MARKER to identify the review format.
 const NO_ISSUES_MARKER = '<!-- thunder-deep-review-no-issues -->';
 
 // Severity enum the model output is validated against. Anything else is dropped.
@@ -129,6 +130,8 @@ const MAX_INLINE_COMMENTS = 50; // overflow rolls into the review summary body.
 // File handoff between the two phases / the model step.
 // Paths come from the THUNDER_*_FILE env vars set in thunder-deep-review.yml.
 const DIFF_FILE = process.env.THUNDER_DIFF_FILE ?? '/tmp/thunder-diff.patch';
+const PR_DIFF_FILE = process.env.THUNDER_PR_DIFF_FILE ?? '/tmp/thunder-pr-diff.patch';
+const PREVIOUS_FINDINGS_FILE = process.env.THUNDER_PREVIOUS_FINDINGS_FILE ?? '/tmp/thunder-previous-findings.json';
 const FINDINGS_FILE = process.env.THUNDER_FINDINGS_FILE ?? '/tmp/thunder-findings.json';
 const DEEPMODE_FILE = process.env.THUNDER_DEEPMODE_FILE ?? '/tmp/thunder-deepmode.json';
 
@@ -136,6 +139,7 @@ const DEEPMODE_FILE = process.env.THUNDER_DEEPMODE_FILE ?? '/tmp/thunder-deepmod
 // ENVIRONMENT (read once, validated in main)
 // -----------------------------------------------------------------------------
 
+const labels = (process.env.PR_LABELS ?? '').split(',').map((s) => s.trim());
 const env = {
   token: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '',
   repoFull: process.env.GITHUB_REPOSITORY ?? '', // "owner/repo"
@@ -147,11 +151,10 @@ const env = {
   apiBase: process.env.GITHUB_API_URL ?? 'https://api.github.com',
   graphqlBase: process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql',
   // Login OUR review comments are authored as. The orchestrator posts via the
-  // default GITHUB_TOKEN, so the author login is github-actions[bot]. The hidden
-  // marker (SELF_COMMENT_MARKER) is the robust secondary match.
+  // default GITHUB_TOKEN, so the author login is github-actions[bot].
   selfLogin: process.env.THUNDER_BOT_LOGIN ?? 'github-actions[bot]',
   // Allow a `review:deep` label to force deep mode in addition to the size gate.
-  hasDeepLabel: (process.env.PR_LABELS ?? '').split(',').map((s) => s.trim()).includes('review:deep'),
+  hasDeepLabel: labels.includes('review:deep'),
 };
 
 const [owner, repo] = env.repoFull.split('/');
@@ -339,6 +342,25 @@ const fetchPrFiles = async () => {
     log('pre: PR files fetch failed — degrading to empty diff / non-deep:', err.message);
     return { items: [], truncated: false };
   }
+};
+
+/** Use a completed ancestor's delta only when the compare response covers every file. */
+const selectReviewScope = async (prFiles, ownReviewBodies) => {
+  const full = { ...prFiles, incremental: false };
+  if (env.eventAction !== 'synchronize' || prFiles.truncated) return full;
+  const reviewedSha = ownReviewBodies.map((body) => body.match(REVIEW_HEAD_RE)?.[1]).findLast(Boolean);
+  if (!reviewedSha) return full;
+  const comparison = await githubFetch(apiUrl(`/compare/${reviewedSha}...${env.headSha}`));
+  const delta = comparison.json;
+  // Compare files are capped at 300 even with pagination; never checkpoint a partial delta.
+  if (!comparison.ok || delta?.merge_base_commit?.sha !== reviewedSha ||
+      !['ahead', 'identical'].includes(delta.status) || !Array.isArray(delta.files) || delta.files.length >= 300 ||
+      delta.commits.some((commit) => commit.parents.length > 1) || delta.total_commits > delta.commits.length) {
+    log('pre: compare unavailable, non-ancestor, merged or capped — reviewing full PR.');
+    return full;
+  }
+  const prPaths = new Set(prFiles.items.map((file) => file.filename));
+  return { items: delta.files.filter((file) => prPaths.has(file.filename)), truncated: false, incremental: true };
 };
 
 /**
@@ -620,10 +642,10 @@ const livenessWindowFor = (seq, line) => {
 /** Load the pre-computed diff index; a missing diff falls back to summary findings. */
 const loadDiffIndex = async () => {
   try {
-    const patch = await readFile(DIFF_FILE, 'utf8');
+    const patch = await readFile(PR_DIFF_FILE, 'utf8');
     return parseUnifiedDiff(patch);
   } catch (err) {
-    log('diff: could not read/parse DIFF_FILE (all findings fall back to summary):', err.message);
+    log('diff: could not read/parse PR_DIFF_FILE (all findings fall back to summary):', err.message);
     return new Map();
   }
 };
@@ -726,12 +748,6 @@ const hashesFromBody = (body) => [...(body ?? '').matchAll(/<!-- thunder-finding
 const isSelfLogin = (login) => login.replace(/\[bot\]$/, '') === env.selfLogin.replace(/\[bot\]$/, '');
 
 /**
- * Did WE author this review/comment? Login match, with the hidden
- * SELF_COMMENT_MARKER as the canonical fallback.
- */
-const isOwnAuthor = (login, body) => isSelfLogin(login) || (body ?? '').includes(SELF_COMMENT_MARKER);
-
-/**
  * Does the LATEST of our own reviews say "no issues"? `bodies` is the list of
  * our own review bodies in chronological order (oldest→newest, the GraphQL
  * `reviews` connection default). We avoid re-posting an identical affirmative
@@ -782,7 +798,8 @@ const fetchOwnReviewBodies = async () => {
     }
     const conn = r.data.repository?.pullRequest?.reviews;
     for (const node of conn?.nodes ?? []) {
-      if (!isOwnAuthor(node.author?.login ?? '', node.body)) continue;
+      // A copied marker in a human review must never become a checkpoint.
+      if (!isSelfLogin(node.author?.login ?? '')) continue;
       bodies.push(node.body ?? '');
     }
     if (!conn?.pageInfo?.hasNextPage) break;
@@ -798,7 +815,7 @@ const summarizedHashesFromBodies = (bodies) => {
   return out;
 };
 
-/** Fetch own thread hashes and resolution state; preserve human dismissals. */
+/** Fetch own findings, replies and resolution state for recall context and post dedup. */
 const fetchOwnThreads = async () => {
   const query = `
     query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
@@ -807,9 +824,11 @@ const fetchOwnThreads = async () => {
           reviewThreads(first:100, after:$cursor) {
             pageInfo { hasNextPage endCursor }
             nodes {
+              id path line
               isResolved
               resolvedBy { login }
-              comments(first:1) {
+              comments(first:100) {
+                pageInfo { hasNextPage endCursor }
                 nodes { body author { login } }
               }
             }
@@ -836,8 +855,30 @@ const fetchOwnThreads = async () => {
     for (const node of conn?.nodes ?? []) {
       const root = node.comments?.nodes?.[0];
       if (!root) continue;
-      if (!isOwnAuthor(root.author?.login ?? '', root.body)) continue;
+      if (!isSelfLogin(root.author?.login ?? '')) continue;
+      const comments = [...node.comments.nodes];
+      let pageInfo = node.comments.pageInfo;
+      while (pageInfo?.hasNextPage) {
+        const replies = await graphqlFetch(`
+          query($id:ID!, $cursor:String!) {
+            node(id:$id) { ... on PullRequestReviewThread {
+              comments(first:100, after:$cursor) {
+                pageInfo { hasNextPage endCursor }
+                nodes { body author { login } }
+              }
+            } }
+          }`, { id: node.id, cursor: pageInfo.endCursor });
+        if (!replies.ok || !replies.data?.node) {
+          log('own-threads: reply page unavailable — keeping comments already loaded.');
+          break;
+        }
+        comments.push(...replies.data.node.comments.nodes);
+        pageInfo = replies.data.node.comments.pageInfo;
+      }
       out.push({
+        path: node.path,
+        line: node.line,
+        comments,
         isResolved: Boolean(node.isResolved),
         resolvedByLogin: node.resolvedBy?.login ?? null,
         hash: hashFromOwnBody(root.body),
@@ -847,6 +888,32 @@ const fetchOwnThreads = async () => {
     cursor = conn.pageInfo.endCursor;
   }
   return out;
+};
+
+/** Bound recall history while retaining dedup state outside the sanitized text. */
+const buildPreviousFindings = (ownThreads, ownReviewBodies) => {
+  const clean = (body) => body.replace(/<!--[\s\S]*?-->/g, '').slice(0, 2000);
+  const history = {
+    openHashes: ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash),
+    humanResolvedHashes: ownThreads.filter((t) => t.isResolved && t.hash &&
+      t.resolvedByLogin && !isSelfLogin(t.resolvedByLogin)).map((t) => t.hash),
+    ownThreads: ownThreads.map((thread) => ({ ...thread,
+      comments: thread.comments.map((comment) => ({ ...comment, body: clean(comment.body) })),
+    })),
+    ownReviewBodies: ownReviewBodies.map(clean),
+    summarizedHashes: [...summarizedHashesFromBodies(ownReviewBodies)],
+    latestReviewNoIssues: latestOwnReviewIsNoIssues(ownReviewBodies),
+  };
+  // ponytail: bounded history drops oldest context; raise the cap if repeats become material.
+  while (Buffer.byteLength(JSON.stringify(history)) > 100_000) {
+    const resolved = history.ownThreads.findIndex((thread) => thread.isResolved);
+    if (resolved !== -1) history.ownThreads.splice(resolved, 1);
+    else if (history.ownReviewBodies.length > 0) history.ownReviewBodies.shift();
+    else if (history.ownThreads.length > 0) history.ownThreads.shift();
+    else if (history.summarizedHashes.length > 0) history.summarizedHashes.shift();
+    else break;
+  }
+  return JSON.stringify(history);
 };
 
 // =============================================================================
@@ -878,7 +945,11 @@ const reviewHeader = ({ tagline, deepInfo }) =>
   `${tagline} ` +
   `Never approves, never requests changes, never gates merge.\n` +
   `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
-  `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n`;
+  `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n` +
+  // ponytail: converged runs keep the checkpoint; PUT needs raw review bodies beyond
+  // the capped, sanitized history (>15 lines). Revisit if cumulative deltas stay costly.
+  // Bounded reviews cannot certify coverage of the entire head.
+  (deepInfo.boundedMode ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`);
 
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
@@ -887,7 +958,7 @@ const renderCommentBody = (f) => {
   // in a PR comment, so they are never rendered into the comment body.
   // `confidence` and `evidence` are likewise internal-only (precision-gate
   // grounding) and intentionally not rendered.
-  const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
+  const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title.replaceAll('<!--', '&lt;!--')}**`;
   const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->`;
   const body = `${head}\n\n${f.body}${stamp}`;
   // Unreachable while readModelFindings caps title@300 + body@4000 (well under
@@ -943,11 +1014,11 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo }) => {
 
   const summaryLines = [];
   for (const f of overflow) {
-    const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
+    const loc = f.file ? `\`${f.file.replaceAll('<!--', '&lt;!--')}${f.line ? `:${f.line}` : ''}\`` : '';
     // Trailing hidden hash so the NEXT run can see this summary finding was
     // already reported (summary findings have no thread, so reviewThreads can't
     // dedup them — summarizedHashesFromBodies reads these markers back).
-    summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title} <!-- thunder-finding-hash:${f.hash} -->`);
+    summaryLines.push(`- **${SEVERITY_LABEL[f.severity]}** ${loc} — ${f.title.replaceAll('<!--', '&lt;!--')} <!-- thunder-finding-hash:${f.hash} -->`);
   }
 
   const header = reviewHeader({
@@ -966,10 +1037,8 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo }) => {
  * Build the affirmative "Reviewed — no issues found" review payload (Korbit-
  * style), posted when the precision gate returned a genuinely empty result so
  * silence reads as a completed review rather than a broken bot. event=COMMENT
- * with zero inline comments. It carries BOTH the SELF_COMMENT_MARKER (so the
- * ownership recognition in isOwnAuthor treats it identically to a findings
- * comment, surviving any login mismatch) and the NO_ISSUES_MARKER (so the next
- * run recognizes this as the latest state and won't re-post an identical note).
+ * with zero inline comments. It carries SELF_COMMENT_MARKER for the format and
+ * NO_ISSUES_MARKER so the next run won't re-post an identical note.
  */
 const buildNoIssuesPayload = ({ deepInfo }) => {
   const header = reviewHeader({ tagline: 'Reviewed the diff — no issues to report. ✅', deepInfo });
@@ -1069,7 +1138,8 @@ const selectFindingsToPost = (findings, { openHashes, humanResolvedHashes, summa
  * runPost calls this (rather than inlining the branch) so logic and tests share
  * one source and can't drift.
  */
-const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain, diffAvailable = true }) => {
+const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain, diffAvailable = true,
+  latestReviewNoIssues = latestOwnReviewIsNoIssues(ownReviewBodies) }) => {
   if (findingCount === 0) {
     // Never affirm "no issues" when we never actually had a diff to review. A
     // real PR always has ≥1 changed file, so an empty file set means the Files
@@ -1080,7 +1150,7 @@ const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, open
     if (!diffAvailable) return { action: 'skip', reason: 'diff-unavailable' };
     if (eventAction === 'reopened') return { action: 'skip', reason: 'reopened-no-findings' };
     if (openThreadsRemain) return { action: 'skip', reason: 'open-threads-remain' };
-    if (latestOwnReviewIsNoIssues(ownReviewBodies)) return { action: 'skip', reason: 'already-no-issues' };
+    if (latestReviewNoIssues) return { action: 'skip', reason: 'already-no-issues' };
     return { action: 'no-issues' };
   }
   return { action: 'post-findings' };
@@ -1092,21 +1162,21 @@ const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, open
 
 /** PRE phase: write the diff and mode flags for the model step. */
 const runPre = async () => {
-  const prFiles = await fetchPrFiles();
-  const deepInfo = computeDeepMode(prFiles.items, prFiles.truncated);
-  // Build the unified diff IN-SCRIPT from the List-pull-request-files API. The
-  // `.diff` media type caps at 20k lines / 1 MB and returns 406 on large PRs (the
-  // failure this fixes), so we reconstruct from /pulls/{n}/files — the same
-  // merge-base..head "Files changed" set GitHub validates review anchors against,
-  // just delivered per-file and paginated. In bounded mode (past the 3000-file
-  // cliff) we clip to the first BOUNDED_MODE_FILE_LIMIT files so the model's scope
-  // is a REAL, enforced limit, not just a prompt hint.
-  const diffFiles = deepInfo.boundedMode ? prFiles.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : prFiles.items;
+  const [prFiles, ownThreads, ownReviewBodies] = await Promise.all([
+    fetchPrFiles(), fetchOwnThreads(), fetchOwnReviewBodies(),
+  ]);
+  const scope = await selectReviewScope(prFiles, ownReviewBodies);
+  const diffFiles = scope.truncated ? scope.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : scope.items;
+  const deepInfo = { ...computeDeepMode(diffFiles, scope.truncated),
+    incremental: scope.incremental, skip: diffFiles.length === 0 };
   await Promise.all([
     writeFile(DIFF_FILE, buildUnifiedDiff(diffFiles)),
+    writeFile(PR_DIFF_FILE, buildUnifiedDiff(prFiles.items)),
+    writeFile(PREVIOUS_FINDINGS_FILE, buildPreviousFindings(ownThreads, ownReviewBodies)),
     writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
   ]);
-  log(`pre: wrote ${diffFiles.length}-file diff; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `skip=${deepInfo.skip}\n`);
+  log(`pre: wrote ${diffFiles.length}-file ${scope.incremental ? 'incremental' : 'full'} diff; skip=${deepInfo.skip}; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
 };
 
 /**
@@ -1123,23 +1193,20 @@ const runPost = async () => {
   } catch {
     /* best-effort metadata only */
   }
-
   // 1) Map findings to diff positions (inline / file / summary) + stable hash.
   const diffIndex = await loadDiffIndex();
-  const findings = classifyFindings(rawFindings, diffIndex);
+  // Incremental LEFT lines refer to the previous head, not the PR's merge-base.
+  const findings = classifyFindings(rawFindings.map((finding) =>
+    deepInfo.incremental && finding.side === 'LEFT' ? { ...finding, line: null } : finding), diffIndex);
 
-  // 2) Fetch our own prior state: open inline THREADS (hash + resolution) and
-  //    our own prior review BODIES — the latter gives us both the hashes we
-  //    already SUMMARIZED (summary findings have no thread, so without this each
-  //    push reposts the same notes) and whether our latest review is already the
-  //    affirmative "no issues" note (so a clean PR doesn't re-post it every push).
-  const [ownThreads, ownReviewBodies] = await Promise.all([fetchOwnThreads(), fetchOwnReviewBodies()]);
-  const summarizedHashes = summarizedHashesFromBodies(ownReviewBodies);
-  const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
+  // 2) Reuse the pre-phase snapshot also given to recall; no second history fetch.
+  const { ownThreads, ownReviewBodies, openHashes: priorOpenHashes,
+    humanResolvedHashes: priorHumanResolvedHashes, summarizedHashes: priorHashes, latestReviewNoIssues } =
+    JSON.parse(await readFile(PREVIOUS_FINDINGS_FILE, 'utf8'));
+  const summarizedHashes = new Set(priorHashes);
+  const openHashes = new Set(priorOpenHashes);
   // Preserve human dismissals rather than re-posting the same finding.
-  const humanResolvedHashes = new Set(
-    ownThreads.filter((t) => t.isResolved && t.hash && t.resolvedByLogin && !isSelfLogin(t.resolvedByLogin)).map((t) => t.hash),
-  );
+  const humanResolvedHashes = new Set(priorHumanResolvedHashes);
 
   // 3) Dedup: post only findings NOT already present as an OPEN own-thread, NOT
   //    human-resolved (respect the human's decision), and — for summary-placement
@@ -1164,6 +1231,7 @@ const runPost = async () => {
     findingCount: findings.length,
     eventAction: env.eventAction,
     ownReviewBodies,
+    latestReviewNoIssues,
     openThreadsRemain,
     // A real PR always has ≥1 changed file; totalFileCount 0 (or a missing deep-mode
     // file) means the Files API fetch failed and the diff is empty — don't post

@@ -12,6 +12,26 @@ concurrency:
 permissions: {}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        run: |
+          release_tags=$(git tag --points-at HEAD --list 'v*')
+          if [ -z "$release_tags" ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
     permissions:
       actions: read
@@ -20,7 +40,8 @@ jobs:
     secrets: inherit
 
   release:
-    needs: e2e
+    needs: [e2e, changes]
+    if: needs.changes.outputs.changed == 'true'
     permissions:
       actions: read
       contents: write
@@ -30,8 +51,8 @@ jobs:
     secrets: inherit
 
   notify:
-    needs: [e2e, release]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped')) }}
+    needs: [e2e, changes, release]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || needs.e2e.result == 'success') }}
     permissions:
       actions: read
       contents: read

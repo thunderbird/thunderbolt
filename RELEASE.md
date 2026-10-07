@@ -318,6 +318,7 @@ RC tags are excluded from the changelog on purpose: `cliff.toml:59` sets `tag_pa
 ## Nightly Pipeline
 
 `nightly-pipeline.yml` runs daily at 04:00 UTC and on manual dispatch. It runs Nightly E2E first, then Release for all platforms only if E2E passes, with one failure alert for the pipeline.
+The release is skipped when main has no new commits since the last release.
 
 Every release bumps the patch version with a commit on `main`, tags `vX.Y.Z` and publishes a normal GitHub release marked Latest with a "may be unstable" warning. It ships to the CrabNebula updater, TestFlight and the Play internal track.
 

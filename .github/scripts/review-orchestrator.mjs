@@ -364,8 +364,7 @@ const selectReviewScope = async (prFiles, ownReviewBodies) => {
     log('pre: compare unavailable, non-ancestor, merged or capped — reviewing full PR.');
     return full;
   }
-  const prPaths = new Set(prFiles.items.map((file) => file.filename));
-  return { items: delta.files.filter((file) => prPaths.has(file.filename)), truncated: false, incremental: true };
+  return { items: delta.files, truncated: false, incremental: true };
 };
 
 /**
@@ -899,6 +898,7 @@ const fetchOwnThreads = async () => {
 const buildPreviousFindings = (ownThreads, ownReviewBodies) => {
   const clean = (body) => body.replace(/<!--[\s\S]*?-->/g, '').slice(0, 2000);
   const history = {
+    openThreadsRemain: ownThreads.some((t) => !t.isResolved),
     openHashes: ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash),
     humanResolvedHashes: ownThreads.filter((t) => t.isResolved && t.hash &&
       t.resolvedByLogin && !isSelfLogin(t.resolvedByLogin)).map((t) => t.hash),
@@ -1208,7 +1208,7 @@ const runPost = async () => {
     deepInfo.incremental && finding.side === 'LEFT' ? { ...finding, line: null } : finding), diffIndex);
 
   // 2) Reuse the pre-phase snapshot also given to recall; no second history fetch.
-  const { ownThreads, ownReviewBodies, openHashes: priorOpenHashes,
+  const { ownReviewBodies, openThreadsRemain, openHashes: priorOpenHashes,
     humanResolvedHashes: priorHumanResolvedHashes, summarizedHashes: priorHashes, latestReviewNoIssues } =
     JSON.parse(await readFile(PREVIOUS_FINDINGS_FILE, 'utf8'));
   const summarizedHashes = new Set(priorHashes);
@@ -1221,8 +1221,6 @@ const runPost = async () => {
   //    findings, which have no thread — not already listed in a prior review's
   //    "Additional notes" body.
   const toPost = selectFindingsToPost(findings, { openHashes, humanResolvedHashes, summarizedHashes });
-
-  const openThreadsRemain = ownThreads.some((t) => !t.isResolved);
 
   // 4) Terminal action (computed by decideTerminalAction so logic ⇄ tests can't drift):
   //    - 'no-issues'     : gate cleared the diff AND no prior thread stays open →

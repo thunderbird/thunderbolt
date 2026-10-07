@@ -171,15 +171,15 @@ describe('incremental pre/post', () => {
     expect(generatedOnly.output).toContain('skip=true');
   });
 
-  test('reviews only delta hunks in PR files, with delta mode gates and full-PR anchors', async () => {
+  test('reviews delta hunks including files outside the PR, with delta mode gates and full-PR anchors', async () => {
     const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
       files: [deltaFile, { filename: 'outside-pr.ts', additions: 900 }] },
       findings: [inlineFinding({ file: 'src/a.ts', line: 8 })] });
     expect(result.diff).toContain('+newDelta();');
     expect(result.diff).not.toContain('newValue');
     expect(result.diff).not.toContain('crypto');
-    expect(result.diff).not.toContain('outside-pr');
-    expect(result.mode).toMatchObject({ incremental: true, deepMode: false, securityMode: false, changedLines: 2 });
+    expect(result.diff).toContain('outside-pr');
+    expect(result.mode).toMatchObject({ incremental: true, deepMode: true, securityMode: false, changedLines: 902 });
     expect(result.output).toContain('skip=false');
     expect(result.posts[0].comments[0]).toMatchObject({ path: 'src/a.ts', subject_type: 'file' });
     expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
@@ -188,6 +188,35 @@ describe('incremental pre/post', () => {
     ]);
     expect(result.reads.filter((entry) => entry.includes('reviews(first:'))).toHaveLength(1);
     expect(result.reads.filter((entry) => entry.includes('reviewThreads(first:'))).toHaveLength(1);
+  });
+
+  test('removing a previously added helper outside the current PR diff does not skip review', async () => {
+    const files = [{ filename: 'caller.ts', status: 'added', additions: 1, deletions: 0,
+      patch: '@@ -0,0 +1 @@\n+import "./helper";' }];
+    const removed = { filename: 'helper.ts', status: 'removed', additions: 0, deletions: 1,
+      patch: '@@ -1 +0,0 @@\n-export const helper = 1;' };
+    const result = await runReview({ files, compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [removed] },
+      findings: [inlineFinding({ file: 'helper.ts', line: 1, side: 'LEFT' })] });
+    expect(result.mode.skip).toBe(false);
+    expect(result.diff).toContain('-export const helper = 1;');
+    expect(result.posts).toHaveLength(1);
+    expect(result.posts[0].comments).toEqual([]);
+    expect(result.posts[0].body).toContain('helper.ts');
+  });
+
+  test.each(['', ` <!-- thunder-finding-hash:${'a'.repeat(16)} -->`])(
+    'an open thread discarded from prompt history prevents a clean review (hash marker: %s)', async (marker) => {
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      isResolved: false, resolvedBy: null,
+      comments: { nodes: [{ body: `Original finding${marker}`,
+        author: { login: 'github-actions' } }, ...Array.from({ length: 60 }, () => ({
+        body: 'x'.repeat(2000), author: { login: 'human' },
+      }))], pageInfo: { hasNextPage: false } },
+    }], findings: [] });
+    expect(result.previous.ownThreads).toEqual([]);
+    expect(result.previous.openHashes).toEqual(marker ? ['a'.repeat(16)] : []);
+    expect(result.posts).toEqual([]);
   });
 
   test.each(['diverged', 'behind'])('force-push (%s) falls back to full review', async (status) => {

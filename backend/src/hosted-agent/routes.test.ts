@@ -341,7 +341,9 @@ describe('createHostedAgentRoutes', () => {
       })
       const app = createApp({ model, checkAdmission, recordUsage, logger, upstreamTimeoutMs: 50 })
 
-      await postChat(app).then((response) => response.text().catch(() => ''))
+      const response = await postChat(app)
+      // A timed-out run ends the client's stream cleanly, unlike a provider that errors mid-reply.
+      await response.text()
       await settleRun()
 
       expect(logger.error).toHaveBeenCalledWith(

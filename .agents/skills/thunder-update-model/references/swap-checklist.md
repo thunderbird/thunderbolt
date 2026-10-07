@@ -64,20 +64,22 @@ translated). Never run bare `bun test` at the repo root. Never commit; the devel
 
 ## C. Backend route and price
 
-When X and Y use different routes, each item depends on the route of X or Y. Item 12 applies when
-X or Y is confidential (for X: the legacy allowance; for Y: the derived allowlist). Item 13 applies
-when X or Y is direct (for X: its runtime entry leaves; for Y: its entry is added).
+Items 12 and 13 each have a leaving half and an incoming half. Run the leaving half for X's route
+and the incoming half for Y's route; when both models share a route, both halves of that item
+apply and the other item is not applicable.
 
-12. confidential. `backend/src/inference/managed-models.ts`: the allowlist derives from
-    `defaultModels`, no per-model line. Append X's slug to `legacyConfidentialModels` (receipts
-    issued before the deploy, edited rows, old builds). If the export that the no-header fallback
-    in `backend/src/tinfoil/routes.ts` imports was renamed, repoint it. Done when
-    `managed-models.test.ts` lists Y among the confidential slugs and X still resolves as legacy.
-13. direct. Add `managedDirectRuntimes[<y-slug>]` with `provider`, `internalName`,
-    `supportsStreamUsage` and `omitTemperature` in the same file. `managed-models.test.ts` asserts
-    that `Object.keys(managedDirectRuntimes)` equals the non-confidential default slugs exactly, so
-    X's entry leaves with X; there is no legacy map for direct slugs, and an old client still
-    sending X's slug gets "Model not found" (say so in the report). `getInferenceClient`
+12. confidential, in `backend/src/inference/managed-models.ts`. Leaving half (X confidential):
+    append X's slug to `legacyConfidentialModels` (receipts issued before the deploy, edited rows,
+    old builds); if the export that the no-header fallback in `backend/src/tinfoil/routes.ts`
+    imports was renamed, repoint it. Done when X still resolves as legacy in
+    `managed-models.test.ts`. Incoming half (Y confidential): nothing to add, the allowlist derives
+    from `defaultModels`. Done when `managed-models.test.ts` lists Y among the confidential slugs.
+13. direct, in the same file. Leaving half (X direct): X's `managedDirectRuntimes` entry leaves with
+    X; `managed-models.test.ts` asserts that `Object.keys(managedDirectRuntimes)` equals the
+    non-confidential default slugs exactly, there is no legacy map for direct slugs, and an old
+    client still sending X's slug gets "Model not found" (say so in the report). Incoming half (Y
+    direct): add `managedDirectRuntimes[<y-slug>]` with `provider`, `internalName`,
+    `supportsStreamUsage` and `omitTemperature`. `getInferenceClient`
     (`backend/src/inference/client.ts`) has `anthropic` and `fireworks` clients, and
     `ManagedDirectRuntime.provider` admits only `'anthropic'`, so a Fireworks runtime widens that
     union; a vendor with no client is new-provider work (item 25). Done when the parity test passes.
@@ -93,8 +95,11 @@ when X or Y is direct (for X: its runtime entry leaves; for Y: its entry is adde
    ON CONFLICT ("provider", "model") DO NOTHING;
    ```
 
-   The key is the upstream identity: the public slug for confidential, the `internalName` for
-   direct. Copy X's numbers from its own seed migration; `0029` is the precedent and its comment
+   Both columns name the upstream identity, never the catalog's `provider` field: confidential
+   rows are `('tinfoil', <public slug>)`; direct rows are `(<runtime provider>, <internalName>)`
+   from Y's `managedDirectRuntimes` entry, `('anthropic', 'claude-opus-5')` today. A row keyed
+   `thunderbolt` is never looked up and every request answers `INFERENCE_PRICE_UNAVAILABLE`. Copy
+   X's numbers from its own seed migration; `0029` is the precedent and its comment
    states the policy (`0033` seeded Fireworks list prices for rows that never shipped and is no
    precedent for a swap). Commit the SQL, `meta/00NN_snapshot.json` and the new `_journal.json`
    entry together; a migration numbered by hand with an older `when` is silently skipped. If the
@@ -143,10 +148,12 @@ when X or Y is direct (for X: its runtime entry leaves; for Y: its entry is adde
     client lacks throws nothing and yields wrong request bodies (reasoning off or rejected). The
     backend cannot redirect a confidential slug: the body is HPKE-sealed and only the enclave reads
     the model inside it, so older builds are retired with `MIN_APP_VERSION` (set by hand on Render
-    after the client release ships; `426 Upgrade Required` replaces a mid-chat failure). Done when
-    the report names the order (clients with the alias first, then the backend; or hold the
-    backend), the first client version that carries the alias, and that version as the
-    `MIN_APP_VERSION` value to set once it is released.
+    after the client release ships; `426 Upgrade Required` replaces a mid-chat failure). Any
+    client-side change in item 16 (`modelAliases`, `thinkingLevelMap`, a Pi `compat` override, or
+    a profile the old build lacks) makes the row incompatible with older builds, so the order is:
+    release the clients, set `MIN_APP_VERSION` to that release, then deploy the backend. Done when
+    the report lists every client-side change from item 16, names the order, the first client
+    version that carries those changes, and that version as the `MIN_APP_VERSION` value.
 
 ## E. Eval, e2e, scripts and docs
 
@@ -202,8 +209,8 @@ when X or Y is direct (for X: its runtime entry leaves; for Y: its entry is adde
    ```
 
    `test:agent-core:browser` is needed when `shared/agent-core/**` changed; the backend suite
-   needs the test database (`docs/internals/development/testing.md`); `bun run i18n:check` only
-   if a UI string changed. Done when every command exits 0; paste the tail of each into the report. When provider
+   runs on in-memory PGlite from its preload (`backend/docs/testing.md`), no database to start;
+   `bun run i18n:check` only if a UI string changed. Done when every command exits 0; paste the tail of each into the report. When provider
     credentials are available locally, send one text message, one image message and one
     tool-calling message through the app with Y and record the outcome in the report.
 25. new-provider. A vendor with no client in `getInferenceClient` needs a settings key with its
@@ -214,12 +221,14 @@ when X or Y is direct (for X: its runtime entry leaves; for Y: its entry is adde
 
 ## Deploy note for the report
 
-When item 16 added no alias, deploy the backend first or together with the clients. The price
-migration runs at backend boot on Render, so the row exists before any client asks; a same-id swap
-reaches old clients OTA because `/config` publishes `shared/defaults/models.ts` with its version.
-The row arrives without the compatibility code: a client older than the build carrying Y's
-`modelAliases` entry throws `compatibility-missing` on every send once the backend ships the row,
-so when item 16 added an alias, the rollout order from item 18 applies instead. A new client against an old backend gets "Model not found" or is priced as the
-fallback model. After deploy,
+When item 16 changed nothing on the client side, deploy the backend first or together with the
+clients. The price migration runs at backend boot on Render, so the row exists before any client
+asks; a same-id swap reaches old clients OTA because `/config` publishes
+`shared/defaults/models.ts` with its version. The row arrives without the compatibility code: a
+client older than the build carrying Y's alias, thinking map, `compat` override or profile either
+throws `compatibility-missing` on every send or sends a request shape the provider rejects, so
+when item 16 changed anything client-side, the rollout order from item 18 applies instead
+(clients, then `MIN_APP_VERSION`, then the backend). A new client against an old backend gets
+"Model not found" or is priced as the fallback model. After deploy,
 `curl -H "Authorization: Bearer $MONITORING_TOKEN" "https://<api>/v1/health/models?model=<y-slug>"`
 probes the price row and a real completion; it bypasses the client's Pi compatibility path.

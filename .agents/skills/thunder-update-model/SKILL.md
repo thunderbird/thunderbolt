@@ -49,7 +49,7 @@ Run from any checkout or worktree; Orca worktrees are normal here. Record the ma
 refresh `main`:
 
 ```bash
-MAIN=$(git worktree list --porcelain | head -1 | cut -d' ' -f2)
+MAIN=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 git fetch origin main
 ```
 
@@ -165,7 +165,7 @@ generates: the Linear MCP `get_issue` returns it as `gitBranchName`; the `linear
 installed, returns `branchName` from `linear issue view THU-nnn --json --no-pager`. Then:
 
 ```bash
-MAIN=$(git worktree list --porcelain | head -1 | cut -d' ' -f2)
+MAIN=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 git -C "$MAIN" worktree add "$MAIN/.claude/worktrees/<branch with / replaced by ->" -b <branch> origin/main
 ```
 
@@ -203,7 +203,7 @@ Done when the report arrives with those three things.
 
 Present, in this order: the checklist table from the implementer's report, the tail of each
 verification command, the grep report, the deploy note from the checklist (it carries the OTA
-hazard: a new compatibility alias must reach clients before the backend publishes the row), the
+hazard: any client-side change from checklist item 16 must reach clients before the backend publishes the row), the
 manual follow-up below, and the exact next command: `/thunderpush`. CI runs the deep review on the
 PR, so do not start it here. Stop there; committing and pushing are the developer's call.
 
@@ -212,7 +212,7 @@ the swap is published, set `MIN_APP_VERSION` on the Render backend service to th
 version so older builds get `426 Upgrade Required` instead of failing mid-chat (the gate is
 `createAppVersionMiddleware`; the value applies on the next backend deploy). State the trigger
 in the hand-off: a provider cutoff date (older clients break on that day regardless) or a new
-compatibility alias from checklist item 16 (older clients break as soon as the row arrives).
+client-side change from checklist item 16 (older clients break as soon as the row arrives).
 Name the release version from checklist item 18 and say it is the developer's call to make,
 after the release, by hand.
 

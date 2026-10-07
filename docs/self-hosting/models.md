@@ -63,6 +63,36 @@ Confidential usage is counted from a receipt the client posts back after it decr
 
 Bring-your-own-key and custom-endpoint traffic is never counted.
 
+### Model prices
+
+Quota accounting looks up a price for every deployment-provided request in the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a price row is necessary for a model to be usable, but not sufficient: the model must also be registered and routed. The managed chat routes recognize the Anthropic and confidential models only; the first consumer of the Fireworks rows is the hosted agent, which selects a Fireworks model through `AGENT_MODEL` in a follow-up release. Prices are integers in nano-USD per token (USD per million tokens x 1000), so $1.40 per million input tokens is `1400`.
+
+Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`); there is no admin route. To add a model:
+
+1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
+2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends; for Fireworks that is the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup.
+
+   ```sql
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
+   VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+   ON CONFLICT ("provider", "model") DO NOTHING;
+   ```
+
+3. Deploy; migrations run on startup.
+
+To change a price on a running deployment without a migration, run the equivalent SQL:
+
+```sql
+INSERT INTO inference_prices (provider, model, input_nano_usd_per_token, output_nano_usd_per_token)
+VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+ON CONFLICT (provider, model) DO UPDATE
+SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
+    output_nano_usd_per_token = EXCLUDED.output_nano_usd_per_token,
+    updated_at = now();
+```
+
+Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which slightly overstates spend.
+
 ## Confidential inference
 
 The confidential models run inside a hardware enclave: an isolated, memory-encrypted part of a server that can prove which software it is running and that nobody, not even whoever operates the machine, can read what is inside. Before sending anything, the app checks that proof and then encrypts the request so that only that enclave can open it. Your server relays sealed bytes it cannot read, in either direction.

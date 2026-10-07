@@ -18,6 +18,7 @@ import { clearSettingsCache } from '@/config/settings'
 import type { RemoteAgentDescriptor } from '@shared/acp-types'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Elysia } from 'elysia'
+import { createHostedAgentProvider } from '@/hosted-agent/provider'
 import { registerAgentProvider, resetAgentProvidersForTesting } from './discovery'
 import { createAgentsRoutes } from './routes'
 
@@ -134,6 +135,7 @@ describe('GET /agents', () => {
   })
 
   it('lists the hosted agent for registered and anonymous users when AGENT_ENABLED is set', async () => {
+    registerAgentProvider(createHostedAgentProvider())
     process.env.AGENT_ENABLED = 'true'
     process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
     clearSettingsCache()
@@ -152,6 +154,10 @@ describe('GET /agents', () => {
       const app = buildApp(buildAuth(user))
       return (await app.handle(new Request('http://localhost/agents'))).json()
     }
+
+    beforeEach(() => {
+      registerAgentProvider(createHostedAgentProvider())
+    })
 
     it('names the hosted agent when it is enabled and visible', async () => {
       process.env.AGENT_ENABLED = 'true'

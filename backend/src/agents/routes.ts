@@ -9,8 +9,8 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
-import { getRegisteredProviders, registerAgentProvider } from './discovery'
-import { createHostedAgentProvider, hostedAgentId } from './hosted-agent-provider'
+import { hostedAgentId } from '@/hosted-agent/provider'
+import { getRegisteredProviders } from './discovery'
 import type { AgentsErrorResponse } from './types'
 
 /**
@@ -30,10 +30,8 @@ import type { AgentsErrorResponse } from './types'
  * Settings are read on every request via {@link getSettings} so tests can
  * tweak env vars + `clearSettingsCache()` between cases.
  */
-export const createAgentsRoutes = (auth: Auth) => {
-  registerAgentProvider(createHostedAgentProvider())
-
-  return new Elysia({ name: 'agents-routes', prefix: '/agents' })
+export const createAgentsRoutes = (auth: Auth) =>
+  new Elysia({ name: 'agents-routes', prefix: '/agents' })
     .onError(safeErrorHandler)
     .derive(async ({ request }) => {
       const session = await auth.api.getSession({ headers: request.headers })
@@ -68,7 +66,6 @@ export const createAgentsRoutes = (auth: Auth) => {
           : undefined,
       }
     })
-}
 
 /**
  * Asks every registered provider for its descriptors and concatenates the

@@ -196,15 +196,19 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 
 ### Hosted agent
 
-When `AGENT_ENABLED` is `true`, the backend offers a server-hosted agent through agent discovery and names it as the default agent in the discovery response (unless `ENABLED_AGENTS` excludes it). Excluding `hosted-agent` via `ENABLED_AGENTS` hides it from discovery but does not unmount `POST /v1/agent/chat`, the same as the Haystack route. The app starts honouring the default in an upcoming release, so until then it does not use the agent yet.
+`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls Anthropic with `ANTHROPIC_API_KEY`. `AGENT_MODEL` must be an Anthropic model with a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The agent has no tools yet.
+
+The agent is also offered through agent discovery, and the discovery response names it as the default agent unless `ENABLED_AGENTS` excludes it. Excluding `hosted-agent` there hides it from discovery but does not unmount the route, the same as the Haystack route. The app starts honouring the default in an upcoming release.
+
+A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that), and a reply stops at 8,192 output tokens or after 2 minutes upstream.
 
 | Variable                          | Default     | What it does                                                                |
 | --------------------------------- | ----------- | --------------------------------------------------------------------------- |
-| `AGENT_ENABLED`                   | `false`     | Turns the hosted agent on.                                                  |
-| `AGENT_MODEL`                     | empty       | Model the agent uses.                                                       |
-| `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run.                                               |
+| `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.             |
+| `AGENT_MODEL`                     | empty       | Anthropic model the agent uses. Required once the agent is on.              |
+| `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run. No effect until MCP tools land.               |
 | `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                |
-| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call.                               |
+| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call. No effect yet.                |
 | `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                 |
 | `AGENT_DESCRIPTION`               | empty       | Description shown when clients discover the agent.                          |
 | `AGENT_ICON`                      | empty       | Icon shown when clients discover the agent.                                 |
@@ -267,14 +271,17 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 ## Rate limiting
 
-| Variable             | Default | What it does                                                                                                               |
-| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED` | `true`  | Set `false` to switch limits off. Local evaluation only.                                                                   |
-| `TRUSTED_PROXY`      | empty   | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
+| Variable                                   | Default | What it does                                                                                                               |
+| ------------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`                       | `true`  | Set `false` to switch limits off. Local evaluation only.                                                                   |
+| `TRUSTED_PROXY`                            | empty   | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`    | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                         |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`    | Length of that window, in seconds.                                                                                         |
+| `CAPTCHA_PROVIDER`                         | `none`  | Captcha on anonymous sign-in. Only `none` is accepted today.                                                               |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 
-The limits themselves are not configurable:
+Apart from anonymous sign-in, the limits are not configurable:
 
 | Request group                                                                    | Limit          |
 | -------------------------------------------------------------------------------- | -------------- |
@@ -287,6 +294,17 @@ The limits themselves are not configurable:
 The third row is one shared bucket per user, not one per group. Authenticated requests are counted per user, anonymous accounts included, since those have a user record too. Sign-in requests have no session and are counted per IP address; when an IP cannot be determined they share a single bucket rather than skipping the limit, so that protection cannot quietly turn itself off.
 
 Rejections return `429` with a `Retry-After` header.
+
+### Anonymous sign-in
+
+Anonymous sign-in has its own bucket, separate from the sign-in row above, so raising its limit never loosens waitlist join, email sign-in or the code that is emailed for it. Those keep their fixed limits because each one sends an email. The API's own limiter is the only one that counts anonymous sign-in. It keys on the client IP as resolved through `TRUSTED_PROXY`, is shared across every API instance, and uses a fixed window: the count starts at the first sign-in and resets in full when the window ends, however steady the traffic.
+
+Whether to raise the limit depends on the captcha, which protects anonymous sign-in only:
+
+- **With a captcha enabled**, the captcha is the bot control. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
+- **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
+
+The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. No captcha provider is supported yet, so for now an anonymous deployment keeps the defaults.
 
 ## Minimum client version
 

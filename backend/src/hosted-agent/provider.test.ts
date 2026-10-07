@@ -4,7 +4,7 @@
 
 import { createTestSettings } from '@/test-utils/settings'
 import { describe, expect, it } from 'bun:test'
-import { createHostedAgentProvider } from './hosted-agent-provider'
+import { createHostedAgentProvider } from './provider'
 
 const request = new Request('http://localhost/agents')
 

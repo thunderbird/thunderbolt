@@ -9,6 +9,8 @@ import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
 })
+const defaultAnonymousSignInRateLimitMax = 10
+const defaultAnonymousSignInRateLimitWindowSecs = 60
 const defaultCorsExposeHeaders = `set-auth-token,X-Proxy-Final-Url,X-Proxy-Passthrough-Content-Type,X-Proxy-Passthrough-Mcp-Session-Id,X-Proxy-Passthrough-Mcp-Protocol-Version,X-Proxy-Passthrough-Location,X-Proxy-Passthrough-Anthropic-Version,WWW-Authenticate,Ehbp-Response-Nonce,X-Proxy-Timing,Server-Timing,${inferenceUsageReceiptHeader}`
 
 /**
@@ -185,6 +187,17 @@ const settingsSchema = z
 
     // Rate limiting
     rateLimitEnabled: z.boolean().default(true),
+    // Per-IP limit on anonymous sign-in, enforced only by our DB-backed limiter (fixed window,
+    // keyed on the TRUSTED_PROXY-resolved IP); Better Auth skips this path.
+    // Raising it requires a captcha: see docs/self-hosting/configuration.md#anonymous-sign-in.
+    anonymousSignInRateLimitMax: z.coerce.number().int().positive().default(defaultAnonymousSignInRateLimitMax),
+    anonymousSignInRateLimitWindowSecs: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(defaultAnonymousSignInRateLimitWindowSecs),
+    // Providers are added together with their verifier (backend/src/auth/captcha.ts).
+    captchaProvider: z.enum(['none']).default('none'),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -215,10 +228,11 @@ const settingsSchema = z
     // `id` is the public slug; `pipelineName` is the Deepset URL slug; `pipelineId` is the Deepset UUID.
     haystackPipelines: z.string().default(''),
 
-    // Hosted agent settings. These configure a server-hosted agent that ships in later PRs and are
-    // inert today: nothing reads them yet.
+    // Hosted agent settings (see `@/hosted-agent/routes`). Name, description, icon and anonymous discovery
+    // feed `GET /agents` (see `@/hosted-agent/provider`). The max-steps and MCP settings have no effect yet.
     agentEnabled: z.boolean().default(false),
     agentModel: z.string().default(''),
+    // No effect until MCP tools land (GTM-28): without tools every run is a single step.
     agentMaxSteps: z.coerce.number().int().positive().default(8),
     agentSystemPrompt: z.string().default(''),
     // JSON array of MCP server descriptors the hosted agent may call.
@@ -226,6 +240,7 @@ const settingsSchema = z
     agentName: z.string().default('Assistant'),
     agentDescription: z.string().default(''),
     agentIcon: z.string().default(''),
+    // When true, anonymous sessions may call `GET /agents` and see only anonymous-safe agents.
     allowAnonymousAgentDiscovery: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
@@ -238,6 +253,19 @@ const settingsSchema = z
         message: 'powersyncJwtSecret must be at least 32 characters when powersyncUrl is set',
         path: ['powersyncJwtSecret'],
         input: '[REDACTED]',
+      })
+    }
+    // With 'none' the only accepted provider, this refuses every raised limit while anonymous
+    // auth is on. The captchaProvider check starts mattering once a real provider ships.
+    const anonymousSignInLimitRaised =
+      data.anonymousSignInRateLimitMax > defaultAnonymousSignInRateLimitMax ||
+      data.anonymousSignInRateLimitWindowSecs < defaultAnonymousSignInRateLimitWindowSecs
+    if (data.authAllowAnonymous && data.captchaProvider === 'none' && anonymousSignInLimitRaised) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#anonymous-sign-in).',
+        path: ['captchaProvider'],
       })
     }
     const hasUpstreamUrl = data.debugTranscriptUpstreamUrl !== ''
@@ -464,6 +492,9 @@ const parseSettings = (): Settings => {
     minAppVersion: process.env.MIN_APP_VERSION || '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+    anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
+    anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
+    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,

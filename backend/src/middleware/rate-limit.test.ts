@@ -536,11 +536,11 @@ describe('Rate Limiting', () => {
       expect((await app.handle(authRequest('/sign-in/anonymous', '10.5.0.3'))).status).toBe(200)
     })
 
-    it('draws a trailing-slash anonymous sign-in from the anonymous bucket', async () => {
+    it('draws a trailing-slash path from the fixed auth bucket, since Better Auth 404s it', async () => {
       const app = createPluginApp(pluginSettings)
 
       const response = await app.handle(authRequest('/sign-in/anonymous/', '10.5.0.6'))
-      expect(response.headers.get('ratelimit-limit')).toBe('40')
+      expect(response.headers.get('ratelimit-limit')).toBe('10')
     })
 
     it('draws a lookalike path from the fixed auth bucket', async () => {

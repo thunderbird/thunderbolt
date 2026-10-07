@@ -30,6 +30,8 @@ jobs:
       wasm-artifact: ${{ steps.filter.outputs.wasm-artifact }}
       crate-src: ${{ steps.filter.outputs.crate-src }}
       localization: ${{ steps.filter.outputs.localization }}
+      miniapps: ${{ steps.filter.outputs.miniapps }}
+      helm: ${{ steps.filter.outputs.helm }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +55,9 @@ jobs:
               - 'vite.config.ts'
               - 'package.json'
               - 'bun.lock'
+              - '.github/workflows/ci.yml'
+            miniapps:
+              - 'miniapps/**'
               - '.github/workflows/ci.yml'
             cli:
               - 'cli/**'
@@ -91,6 +96,9 @@ jobs:
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
               - 'backend/lingui.config.ts'
+            helm:
+              - 'deploy/k8s/**'
+              - '.github/workflows/ci.yml'
 
   typescript:
     runs-on: ubuntu-latest
@@ -252,6 +260,40 @@ jobs:
           fi
           echo "No untransformed Lingui macros in the bundle."
 
+  # Chart unit tests (helm-unittest). Runs only when the chart or this workflow
+  # changes. helm-unittest is installed from its release tarball, pinned by
+  # version and sha256, rather than with `helm plugin install`: on Helm 4 that
+  # needs `--verify=false` and runs the plugin repo's install script.
+  helm:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HELM_UNITTEST_VERSION: 1.2.1
+      # sha256 of helm-unittest-linux-amd64-<version>.tgz, from the release's
+      # helm-unittest-checksum.sha. When bumping, first verify that file's GPG
+      # signature (helm-unittest-checksum.sha.asc) against public-key.asc in the
+      # helm-unittest repo, then paste the new hash here.
+      HELM_UNITTEST_SHA256: 48e86ecc1467b009630e5954375e5d8494139f73b466df5fe8c04fa45b634939
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install helm-unittest
+        run: |
+          archive="helm-unittest-linux-amd64-${HELM_UNITTEST_VERSION}.tgz"
+          curl -fsSLO "https://github.com/helm-unittest/helm-unittest/releases/download/v${HELM_UNITTEST_VERSION}/${archive}"
+          echo "${HELM_UNITTEST_SHA256}  ${archive}" | sha256sum -c -
+          plugin_dir="$(helm env HELM_PLUGINS)/helm-unittest"
+          mkdir -p "${plugin_dir}"
+          tar -xzf "${archive}" -C "${plugin_dir}"
+
+      - name: Lint chart
+        run: helm lint deploy/k8s --set backend.betterAuthSecretBase64=dGVzdA==
+
+      - name: Test chart
+        run: helm unittest deploy/k8s
+
   # shared/agent-core is an isolated module (also consumed by cli/). Its unit tests
   # are NOT part of the default `bun run test`. Include dependency/build changes:
   # a passing Bun import does not establish compatibility with browser runtimes.
@@ -295,6 +337,60 @@ jobs:
 
       - name: Check production agent-core in browsers
         run: bun run test:agent-core:browser
+
+  miniapps:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.miniapps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Cache Bun dependencies (miniapps)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.bun/install/cache
+            miniapps/node_modules
+            miniapps/sdk/node_modules
+            miniapps/template/node_modules
+            miniapps/samples/finance/node_modules
+          key: miniapps-bun-${{ hashFiles('miniapps/bun.lock') }}
+          restore-keys: |
+            miniapps-bun-
+
+      # Lint and format live at miniapps/; each package installs and typechecks on
+      # its own, matching how cli/ and backend/ are set up. Without this job the
+      # root `eslint src shared` never sees these files and nothing enforces them.
+      - name: Install miniapps tooling
+        run: cd miniapps && bun install --frozen-lockfile
+
+      - name: Lint miniapps
+        run: cd miniapps && bun run lint
+
+      - name: Check miniapps formatting
+        run: cd miniapps && bun run format-check
+
+      # One install at the workspace root covers every package (THU-906), so the
+      # per-package `bun install` this loop used to run is gone.
+      - name: Type check each package
+        run: |
+          for pkg in sdk template samples/finance; do
+            echo "== $pkg"
+            (cd "miniapps/$pkg" && bunx tsc --noEmit)
+          done
+
+      # The guest SDK bridge is 480 lines of postMessage protocol and had no
+      # tests, so guest origin filtering, request/reply disambiguation and
+      # disconnect settlement were covered by nothing. The host-side suite does
+      # not stand in for it: that exercises Thunderbolt's half.
+      - name: Test miniapps
+        run: cd miniapps && bun run test
 
   # cli/ has its own bun.lock but imports selected shared runtime contracts, so its
   # tests and typecheck aren't reached by the `typescript` job. Gate on the `cli`

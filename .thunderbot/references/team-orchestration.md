@@ -8,7 +8,7 @@ For single-agent subagent patterns, see `references/subagent-playbook.md` instea
 
 1. When to Use Team Mode — activation conditions
 2. Team Roles — Architect (opus), Implementer (sonnet), QA (sonnet), Team Lead (orchestrator)
-3. Coordination Protocol — file-based (.team/) and Agent Teams fallback
+3. Coordination Protocol — file-based (.team/) by default, Agent Teams when enabled
 4. Workflow — architecture → implementation waves → QA → integration
 5. Module Contracts — file ownership, interfaces, conflict resolution
 6. Security Integration — STRIDE per role, minimum security checklist
@@ -125,13 +125,15 @@ Communication happens through the `.team/` directory:
   progress.txt          # Running log of learnings and decisions
 ```
 
-### Agent Teams (When Available)
+### Agent Teams (When Enabled)
 
-If `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is set, consensus and review phases use direct messaging between agents instead of file-based coordination. This is faster (50-70% for consensus, 60-80% for code review) but requires the experimental feature flag.
+Agent Teams is an experimental Claude Code feature, disabled by default and turned on by setting `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in the environment or in a `settings.json` `env` block. With it on, teammates are full Claude Code sessions that message each other directly and share a task list, so the consensus and review phases skip the file round-trips of the `.team/` protocol. The trade-off is cost, not capability: each teammate carries its own context window, so a team consumes substantially more tokens than the same work run through subagents.
 
-**Important limitation**: Agent Teams currently requires ALL members to run Opus 4.6. Per-role model selection (e.g., Sonnet for Implementers) only works in subagent fallback mode. When using Agent Teams, the cost is higher but communication is faster.
+**Per-role model routing works in team mode too.** A teammate's model is resolved from the spawn prompt first, then from the `model` field of the subagent definition it was spawned from, then from `CLAUDE_CODE_SUBAGENT_MODEL`, and finally from the lead's model. Name the model per role when spawning and the role table above holds as written. The one thing that overrides it is `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`, which drops the first two sources so every member runs `CLAUDE_CODE_SUBAGENT_MODEL`, or the lead's model when that is unset.
 
-**Fallback**: When Agent Teams is not available, all coordination uses the file-based protocol above with subagents. In this mode, per-role model routing works as specified (Architect: opus, Implementers: sonnet, QA: sonnet). The workflow is the same -- only the communication channel and model routing differ.
+**The daemon never gets a team.** `.thunderbot/daemon.ts:201` runs `claude --print --dangerously-skip-permissions -p "/thunderbot {task}"`, and Claude Code does not spawn teammates in non-interactive mode. Unattended runs therefore always take the subagent path, which is why the file-based protocol has to stay sufficient on its own rather than becoming a degraded mode nobody maintains.
+
+**Fallback**: When Agent Teams is off, all coordination uses the file-based protocol above with subagents. The workflow is the same — only the communication channel differs. Subagents that the orchestrator names when spawning them remain addressable by that name, so point-to-point questions still work without a team.
 
 ---
 
@@ -188,7 +190,7 @@ The Team Lead (you, the orchestrator):
 
 1. Reviews all implemented code for integration issues
 2. Verifies module interfaces align
-3. Runs `make check` and `bun test` across the full project
+3. Runs `make check`, `bun run test` and `bun run test:backend` across the full project
 4. Runs `/thunderimprove` on the combined diff
 5. Creates the PR via `/thunderpush` and the PR workflow
 

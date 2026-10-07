@@ -81,7 +81,7 @@ const persistSecret = (hex: string): void => {
  * wiped secret — the next dial re-binds a fresh NodeId instead.
  *
  * TODO: store the secret behind the encryption middleware so it never sits in
- * plaintext — see docs/architecture/e2e-encryption.md (same path the auth-token
+ * plaintext — see docs/internals/architecture/e2e-encryption.md (same path the auth-token
  * TODO tracks).
  */
 export const clearIrohClientSecret = (): void => {

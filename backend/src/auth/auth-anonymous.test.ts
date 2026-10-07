@@ -16,8 +16,8 @@ import { challengeTokenHeader } from '@/auth/otp-constants'
 import { createAuth, type AuthEmailDeps } from '@/auth/auth'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
-import { createTestDb } from '@/test-utils/db'
-import { uniqueTestIp } from '@/test-utils/ip'
+import { rateLimits } from '@/db/rate-limit-schema'
+import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createTestChallenge } from '@/test-utils/otp-challenge'
 import { eq } from 'drizzle-orm'
 import { createHmac } from 'node:crypto'
@@ -157,6 +157,22 @@ describe('anonymous plugin — session-fixation guard', () => {
     const body = (await result.json()) as { user?: { isAnonymous?: boolean }; token?: string }
     expect(body.user?.isAnonymous).toBe(true)
     expect(body.token).toBeDefined()
+  })
+
+  // The before-hook (captcha + fixation guard) and the IP limiter both match the path exactly.
+  // That is only safe while Better Auth refuses to route a trailing slash, so pin it here.
+  it('does not route /sign-in/anonymous/ (trailing slash) to the anonymous endpoint', async () => {
+    const usersBefore = (await db.select().from(userTable)).length
+    const response = await auth.handler(
+      new Request('http://localhost:8000/v1/api/auth/sign-in/anonymous/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+    )
+    expect(response.status).toBe(404)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await db.select().from(userTable)).length).toBe(usersBefore)
   })
 
   it('allows an anonymous session to access protected routes', async () => {
@@ -306,28 +322,36 @@ describe('anonymous plugin — gated by AUTH_ALLOW_ANONYMOUS', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Suite: Better Auth's per-IP limit on anonymous sign-in follows ANONYMOUS_SIGN_IN_RATE_LIMIT_*
+// Suite: our DB-backed limiter is the only rate limit on anonymous sign-in
 // ---------------------------------------------------------------------------
 
-describe('anonymous plugin: Better Auth rate limit', () => {
+describe('anonymous sign-in: rate limit', () => {
   const rateLimitEnvKeys = [
     'RATE_LIMIT_ENABLED',
+    'TRUSTED_PROXY',
     'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
     'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
   ] as const
   let savedEnv: Partial<Record<string, string>>
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
+
+  // RateLimiterDrizzle commits its own transactions, which would end the shared createTestDb
+  // BEGIN and leak rows across files and --rerun-each passes (see test-setup.ts).
+  beforeAll(async () => {
+    db = (await getSharedIsolatedTestDb()).db
+  })
 
   beforeEach(async () => {
     savedEnv = Object.fromEntries(rateLimitEnvKeys.map((key) => [key, process.env[key]]))
     process.env.RATE_LIMIT_ENABLED = 'true'
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
+    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
+    clearSettingsCache()
+    await db.delete(rateLimits)
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     for (const key of rateLimitEnvKeys) {
       if (savedEnv[key] === undefined) {
         delete process.env[key]
@@ -336,59 +360,72 @@ describe('anonymous plugin: Better Auth rate limit', () => {
       }
     }
     clearSettingsCache()
-    await cleanup()
   })
 
-  /** Call a Better Auth endpoint `count` times over HTTP from one fresh IP (anonymous sign-in by
-   * default); returns each response. Better Auth's limiter store is process-global and outlives
-   * `--rerun-each` repetitions, so every call gets an IP nothing in this process has used. */
-  const callRepeatedly = async (count: number, path = '/sign-in/anonymous', method = 'POST') => {
-    const ip = uniqueTestIp()
-    clearSettingsCache()
-    const auth = createAuth(db, buildEmailDeps())
+  const signInRequest = (url: string, ip: string) =>
+    new Request(url, {
+      method: 'POST',
+      headers: { 'cf-connecting-ip': ip, 'content-type': 'application/json' },
+      body: '{}',
+    })
+
+  /** Sign in anonymously `count` times through the full app from one IP; returns each response. */
+  const signInThroughApp = async (count: number, ip: string) => {
+    const app = await createApp({ database: db })
     const responses: Response[] = []
     for (let i = 0; i < count; i++) {
-      const response = await auth.handler(
-        new Request(`http://localhost:8000/v1/api/auth${path}`, {
-          method,
-          headers: { 'x-forwarded-for': ip, 'content-type': 'application/json' },
-          body: method === 'POST' ? '{}' : undefined,
-        }),
-      )
-      responses.push(response)
+      responses.push(await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip)))
     }
     return responses
   }
 
-  it('allows 10 anonymous sign-ins per IP per minute by default', async () => {
-    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
-    delete process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
-    const statuses = (await callRepeatedly(11)).map((response) => response.status)
-    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
-    expect(statuses[10]).toBe(429)
+  it('is not rate limited by Better Auth on its own', async () => {
+    const auth = createAuth(db, buildEmailDeps())
+    for (let i = 0; i < 15; i++) {
+      const response = await auth.handler(
+        signInRequest('http://localhost:8000/v1/api/auth/sign-in/anonymous', '198.51.100.1'),
+      )
+      expect(response.status).toBe(200)
+    }
+  })
+
+  it('allows 10 per IP per minute by default', async () => {
+    const responses = await signInThroughApp(11, '198.51.100.2')
+    expect(responses.slice(0, 10).map((response) => response.status)).toEqual(Array(10).fill(200))
+    expect(responses[10]!.status).toBe(429)
+    expect(responses[10]!.headers.get('ratelimit-limit')).toBe('10')
   })
 
   // Raising the limit with anonymous auth on requires a captcha (enforced in settings), so
-  // lowering it is how this suite proves the anonymous rule reads ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX.
-  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX for anonymous sign-in', async () => {
+  // lowering it is how this suite proves the limiter reads ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX.
+  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', async () => {
     process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '5'
-    const statuses = (await callRepeatedly(6)).map((response) => response.status)
-    expect(statuses.slice(0, 5)).toEqual(Array(5).fill(200))
-    expect(statuses[5]).toBe(429)
+    const responses = await signInThroughApp(6, '198.51.100.3')
+    expect(responses.slice(0, 5).map((response) => response.status)).toEqual(Array(5).fill(200))
+    expect(responses[5]!.status).toBe(429)
   })
 
-  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS for anonymous sign-in', async () => {
+  it('follows ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', async () => {
     process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS = '120'
-    const responses = await callRepeatedly(11)
-    const blocked = responses[10]!
-    expect(blocked.status).toBe(429)
-    expect(Number(blocked.headers.get('X-Retry-After'))).toBeGreaterThan(60)
+    const responses = await signInThroughApp(11, '198.51.100.4')
+    expect(responses[10]!.status).toBe(429)
+    expect(Number(responses[10]!.headers.get('retry-after'))).toBeGreaterThan(60)
   })
 
-  it('keeps other Better Auth routes at the fixed 10 per 60s', async () => {
+  it('does not route a lookalike path to Better Auth, and still counts the real path', async () => {
     process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '5'
-    const statuses = (await callRepeatedly(11, '/ok', 'GET')).map((response) => response.status)
-    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
-    expect(statuses[10]).toBe(429)
+    const app = await createApp({ database: db })
+    const usersBefore = (await db.select().from(userTable)).length
+
+    const lookalike = await app.handle(
+      signInRequest('http://localhost/v1/x/v1/api/auth/sign-in/anonymous', '198.51.100.5'),
+    )
+    expect(lookalike.status).toBe(404)
+    expect((await db.select().from(userTable)).length).toBe(usersBefore)
+
+    const real = await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', '198.51.100.5'))
+    expect(real.status).toBe(200)
+    expect(real.headers.get('ratelimit-limit')).toBe('5')
+    expect(real.headers.get('ratelimit-remaining')).toBe('4')
   })
 })

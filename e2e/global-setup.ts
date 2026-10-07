@@ -35,7 +35,9 @@ const globalSetup = async () => {
       })
       return
     }
-    if (!request.body.code) throw new Error('Mock OIDC authorization code is missing')
+    if (!request.body.code) {
+      throw new Error('Mock OIDC authorization code is missing')
+    }
     const suffix = createHash('sha256').update(request.body.code).digest('hex').slice(0, 16)
     token.payload.sub = `e2e-${suffix}`
     token.payload.email = `e2e-${suffix}@thunderbolt.test`

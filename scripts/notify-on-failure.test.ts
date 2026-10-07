@@ -63,7 +63,7 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
       })
     }
     if (url.includes('/actions/runs/'))
-      return Response.json({
+      {return Response.json({
         jobs: [
           {
             name: 'typescript',
@@ -72,7 +72,7 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
             steps: [{ name: 'Check types', conclusion: 'failure' }],
           },
         ],
-      })
+      })}
     if (url === 'https://api.resend.com/emails') {
       if (state?.failEmailCount) {
         state.failEmailCount--
@@ -81,9 +81,9 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
       return Response.json({ id: 'email-id' })
     }
     if (body.includes('query Teams'))
-      return Response.json({ data: { teams: { nodes: [{ id: 'team-id', name: 'Thunderbolt' }] } } })
+      {return Response.json({ data: { teams: { nodes: [{ id: 'team-id', name: 'Thunderbolt' }] } } })}
     if (body.includes('query Incident'))
-      return Response.json({
+      {return Response.json({
         data: {
           issues: {
             nodes:
@@ -99,7 +99,7 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
           },
           issueLabels: { nodes: [{ id: 'bug-id', name: 'Bug', team: null }] },
         },
-      })
+      })}
     if (body.includes('mutation CreateIssue')) {
       if (state) {
         const requestBody = JSON.parse(body) as { variables: { input: { description: string } } }
@@ -119,16 +119,16 @@ const fakeFetch = (existingIssue: boolean, calls: Call[], state?: FakeState): ty
         state.failMarkCount--
         return Response.json({ errors: [{ message: 'Linear update failed' }] })
       }
-      if (state) state.description = (JSON.parse(body) as { variables: { description: string } }).variables.description
+      if (state) {state.description = (JSON.parse(body) as { variables: { description: string } }).variables.description}
       return Response.json({ data: { issueUpdate: { success: true } } })
     }
-    if (body.includes('mutation Comment')) return Response.json({ data: { commentCreate: { success: true } } })
+    if (body.includes('mutation Comment')) {return Response.json({ data: { commentCreate: { success: true } } })}
     if (body.includes('mutation CloseIssue')) {
       if (state?.failCloseCount) {
         state.failCloseCount--
         return Response.json({ errors: [{ message: 'Close failed' }] })
       }
-      if (state) state.created = false
+      if (state) {state.created = false}
       return Response.json({ data: { issueUpdate: { success: true } } })
     }
     throw new Error(`Unexpected request: ${url}`)
@@ -355,7 +355,7 @@ describe('notify-on-failure', () => {
       expect((error as Error).message).toContain('Linear Incident')
       expect((error as Error).message).not.toContain(secret)
       expect((error as Error).message).toContain(`HTTP ${response.status}`)
-      if (response.status === 200) expect((error as Error).message).toContain('GraphQL errors')
+      if (response.status === 200) {expect((error as Error).message).toContain('GraphQL errors')}
     }
   })
 
@@ -389,7 +389,7 @@ describe('notify-on-failure', () => {
     expect((malformedError as Error).message).not.toContain(secret)
 
     const networkFetch: typeof fetch = (async (request, init) => {
-      if (String(request).includes('/actions/runs/')) throw new Error(secret)
+      if (String(request).includes('/actions/runs/')) {throw new Error(secret)}
       return baseFetch(request, init)
     }) as typeof fetch
     const networkError = await notify(input, networkFetch).catch((caught: Error) => caught)

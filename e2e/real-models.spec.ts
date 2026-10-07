@@ -20,7 +20,9 @@ for (const model of defaultModels) {
       .click()
 
     page.on('response', (response) => {
-      if (response.request().method() !== 'POST' || !response.ok()) return
+      if (response.request().method() !== 'POST' || !response.ok()) {
+        return
+      }
       const path = new URL(response.url()).pathname
       const headers = response.headers()
       // Tinfoil streams authenticated EHBP frames, not plaintext SSE on the wire.

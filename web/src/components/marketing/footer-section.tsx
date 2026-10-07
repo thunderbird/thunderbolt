@@ -44,7 +44,7 @@ export const FooterSection = ({ className = '' }: FooterSectionProps) => (
         <p className="max-w-[638px] text-center text-xs leading-4 text-[#667085] lg:text-left">
           Thunderbolt is a product of{' '}
           <a href="https://blog.thunderbird.net/2020/01/thunderbirds-new-home/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">
-            MZLA Technologies Corporation
+            Thunderbird Technologies Corporation
           </a>
           , a wholly owned subsidiary of the not-for-profit Mozilla.org. Portions of this content are &copy;1998&ndash;2026 by individual contributors. Content available under a{' '}
           <a href="https://www.mozilla.org/foundation/licensing/website-content/" className="border-b border-[#667085]/40" target="_blank" rel="noopener noreferrer">

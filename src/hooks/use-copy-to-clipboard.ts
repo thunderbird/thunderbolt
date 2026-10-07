@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
+import { useTransientFlag } from './use-transient-flag'
 
 /**
  * Hook for copying text to clipboard with a temporary "copied" feedback state.
@@ -11,27 +12,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * @returns `copy(text)` function and `isCopied` state
  */
 export const useCopyToClipboard = (resetMs = 2000) => {
-  const [isCopied, setIsCopied] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
+  const { isSet: isCopied, flag } = useTransientFlag(resetMs)
 
   const copy = useCallback(
     async (text: string) => {
       await navigator.clipboard.writeText(text)
-      setIsCopied(true)
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-      timeoutRef.current = setTimeout(() => setIsCopied(false), resetMs)
+      flag()
     },
-    [resetMs],
+    [flag],
   )
 
   return { copy, isCopied }

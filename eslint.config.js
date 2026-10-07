@@ -101,5 +101,48 @@ export default [
     },
     rules: sharedRules,
   },
+  {
+    // Playwright specs and their harness. Node-side test code that also runs
+    // browser snippets inside `page.evaluate`, so both global sets apply.
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: sharedParserOptions,
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: sharedRules,
+  },
+  {
+    // Repo tooling run under Bun, never bundled. Previously matched no block at
+    // all, so `scripts/org-escrow-{decrypt,keygen}.ts` — which handle the org
+    // escrow private key — were the only unlinted TypeScript in the repo.
+    files: ['scripts/**/*.{ts,mjs,cjs,js}'],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: { ...sharedParserOptions, sourceType: 'module' },
+      globals: {
+        ...globals.node,
+        ...globals.commonjs,
+        Bun: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescript,
+    },
+    rules: {
+      ...sharedRules,
+      // These are CLIs: stdout/stderr IS the interface. `org-escrow-decrypt`
+      // writes recovered plaintext to stdout and diagnostics to stderr by
+      // contract, and the release/licence scripts report progress the same way.
+      'no-console': 'off',
+    },
+  },
   ...storybook.configs['flat/recommended'],
 ]

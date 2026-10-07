@@ -26,7 +26,7 @@ import { makeSignature } from 'better-auth/crypto'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { anonymous, bearer, deviceAuthorization, emailOTP, type TimeString } from 'better-auth/plugins'
 import { apiKey } from '@better-auth/api-key'
-import { sso } from '@better-auth/sso'
+import { computeDiscoveryUrl, sso } from '@better-auth/sso'
 import {
   isAutoApprovedDomain,
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
@@ -102,7 +102,11 @@ const buildSsoPlugins = () => {
               pkce: true,
               clientId: settings.oidcClientId,
               clientSecret: settings.oidcClientSecret,
-              discoveryEndpoint: settings.oidcDiscoveryUrl || `${settings.oidcIssuer}/.well-known/openid-configuration`,
+              // Better Auth's own helper rather than string concatenation: it strips a
+              // trailing slash from the issuer, as OIDC Discovery requires. Concatenating
+              // produced a double slash and a 404 for the providers that publish issuer
+              // URLs that way (Authentik among them).
+              discoveryEndpoint: settings.oidcDiscoveryUrl || computeDiscoveryUrl(settings.oidcIssuer),
               scopes: ['openid', 'profile', 'email'],
             },
           },
@@ -188,22 +192,20 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only; the
-    // captcha on anonymous sign-in (CAPTCHA_PROVIDER) will be the distributed bot control
-    // once a provider ships (THU-113).
+    // horizontally-scaled deployments. Provides single-instance defence only. The captcha
+    // on anonymous sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once a
+    // provider ships (THU-113).
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
       max: 10,
       customRules: {
         '/get-session': { window: 1, max: 30 },
-        // Better Auth's built-in rule caps every /sign-in* path at 3 per 10s, which would
-        // override a raised ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX. Anonymous sign-in follows its own
-        // setting, so at defaults its burst limit moves from 3 per 10s to 10 per 60s (accepted).
-        [anonymousSignInPath]: {
-          window: settings.anonymousSignInRateLimitWindowSecs,
-          max: settings.anonymousSignInRateLimitMax,
-        },
+        // Anonymous sign-in is limited only by our DB-backed limiter (createAuthPluginIpRateLimit):
+        // a true fixed window, shared across instances and keyed on the TRUSTED_PROXY-resolved IP.
+        // Better Auth's limiter resets only after a full idle window and falls back to
+        // x-forwarded-for, so steady venue traffic would be refused well under the limit.
+        [anonymousSignInPath]: false,
       },
     },
     advanced: {

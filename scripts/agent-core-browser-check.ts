@@ -15,12 +15,15 @@ const server = Bun.serve({
   port: 0,
   fetch: (request) => {
     const pathname = new URL(request.url).pathname
-    if (pathname === '/')
+    if (pathname === '/') {
       return new Response('<!doctype html><title>Agent core regression</title><div id="root"></div>', {
         headers: { 'Content-Type': 'text/html' },
       })
+    }
     const file = resolve(dist, `.${pathname}`)
-    if (!file.startsWith(`${dist}/`)) return new Response(null, { status: 403 })
+    if (!file.startsWith(`${dist}/`)) {
+      return new Response(null, { status: 403 })
+    }
     return new Response(Bun.file(file))
   },
 })
@@ -74,7 +77,9 @@ try {
               'find',
             ]) {
               Reflect.deleteProperty(prototype, helper)
-              if (Reflect.has(iterator, helper)) throw new Error(`Iterator helper ${helper} still exists`)
+              if (Reflect.has(iterator, helper)) {
+                throw new Error(`Iterator helper ${helper} still exists`)
+              }
             }
           })
         }
@@ -141,7 +146,9 @@ try {
           }
           const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
           const written = await env.writeFile('persist.txt', 'survives reload')
-          if (!written.ok) throw written.error
+          if (!written.ok) {
+            throw written.error
+          }
           return { backend, conversations }
         }, chunkUrl)
         assert.equal(results.backend, 'opfs')
@@ -161,7 +168,9 @@ try {
           const backend = await core.mountAgentFs()
           const env = new core.BrowserExecutionEnv({ cwd: core.workspaceDirFor('openrouter') })
           const read = await env.readTextFile('persist.txt')
-          if (!read.ok) throw read.error
+          if (!read.ok) {
+            throw read.error
+          }
           return { backend, text: read.value }
         }, chunkUrl)
         assert.deepEqual(persisted, { backend: 'opfs', text: 'survives reload' })

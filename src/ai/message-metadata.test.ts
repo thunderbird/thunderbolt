@@ -306,6 +306,33 @@ describe('createMessageMetadata', () => {
     })
   })
 
+  describe('embeddedSurface', () => {
+    it('tags a get_app_context call with the surface it read', () => {
+      const metadata = createMessageMetadata(modelId, undefined, undefined, 'mini-app')
+      Date.now = () => 1000
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'get_app_context' } })
+
+      expect(result).toEqual({ modelId, reasoningStartTimes: { 'call-1': 1000 }, embeddedSurface: 'mini-app' })
+    })
+
+    it('leaves every other tool call untagged', () => {
+      const metadata = createMessageMetadata(modelId, undefined, undefined, 'mini-app')
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'search' } })
+
+      expect(result).not.toHaveProperty('embeddedSurface')
+    })
+
+    it('leaves a get_app_context call untagged when no surface was chosen', () => {
+      const metadata = createMessageMetadata(modelId)
+
+      const result = metadata({ part: { type: 'tool-call', toolCallId: 'call-1', toolName: 'get_app_context' } })
+
+      expect(result).not.toHaveProperty('embeddedSurface')
+    })
+  })
+
   describe('mcpTools propagation', () => {
     const mcpTools = {
       render_list_services: { name: 'Render', url: 'https://render.com/mcp', toolName: 'list_services' },

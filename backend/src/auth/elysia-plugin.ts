@@ -7,8 +7,16 @@ import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
 
-/** Resolve a session while translating credential rejection into an unauthenticated result. */
-const resolveAuthSession = async (auth: Auth, headers: Headers) => {
+/**
+ * Resolve a session while translating credential rejection into an unauthenticated result.
+ *
+ * Exported because a route that calls `auth.api.getSession` directly does not
+ * get this: Better Auth *throws* an `APIError` for a rejected credential — a
+ * stray `x-api-key` trips its before-hook — and an unhandled throw reaches the
+ * error handler as a 500 rather than the 401 it is. Any route resolving its own
+ * session should come through here.
+ */
+export const resolveAuthSession = async (auth: Auth, headers: Headers) => {
   try {
     return await auth.api.getSession({ headers })
   } catch (error) {
@@ -52,7 +60,10 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   }
   // Use .all() instead of .mount() — Elysia's mount() short-circuits the
   // request pipeline before onBeforeHandle, silently bypassing rate limiting.
-  plugin.all('/*', ({ request }) => auth.handler(request), { parse: 'none' })
+  // Mounted at Better Auth's basePath (under the app's /v1 prefix), not '/*': Better Auth
+  // routes on whatever follows the first /api/auth, so a catch-all would let a lookalike
+  // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
+  plugin.all('/api/auth/*', ({ request }) => auth.handler(request), { parse: 'none' })
 
   return { plugin, auth }
 }

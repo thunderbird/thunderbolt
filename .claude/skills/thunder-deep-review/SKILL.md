@@ -50,13 +50,15 @@ This review rewards high reasoning effort — if your runtime exposes an effort/
 ```
 
 ### Execution model — category fan-out (CRITICAL for recall)
-**Do not review the whole diff in one mental pass — you will skim and miss the majority of issues, especially on large diffs.** Instead run the scan as **separate, exhaustive, category-scoped passes**: **ALWAYS spawn one read-only sub-reviewer per lane A–J, in parallel, in BOTH deployment contexts — never review the lanes inline in a single pass, even if the diff looks small.** Inline single-pass review is this skill's #1 failure mode and it fails silently. If the runtime genuinely provides no subagent-spawn tool, run each lane as its OWN separate, sequential, full-diff pass (never one merged pass) and state prominently in your output that fan-out was unavailable and the review ran in degraded sequential mode. Each pass cares about ONE category and must walk **every changed hunk in every changed file** for that category — no sampling, no "representative" subset. For diffs over ~800 lines, process the file list in chunks and confirm you covered every file before emitting. The single most common failure is a short, shallow finding list on a big diff; treat fewer findings than changed-files as a red flag that you skimmed.
+**Do not review the whole diff in one mental pass — you will skim and miss the majority of issues, especially on large diffs.** Instead run the scan as **separate, exhaustive, category-scoped passes**: **ALWAYS spawn one read-only sub-reviewer per lane A–K, in parallel, in BOTH deployment contexts — never review the lanes inline in a single pass, even if the diff looks small.** Inline single-pass review is this skill's #1 failure mode and it fails silently. If the runtime genuinely provides no subagent-spawn tool, run each lane as its OWN separate, sequential, full-diff pass (never one merged pass) and state prominently in your output that fan-out was unavailable and the review ran in degraded sequential mode. Each pass cares about ONE category and must walk **every changed hunk in every changed file** for that category — no sampling, no "representative" subset. For diffs over ~800 lines, process the file list in chunks and confirm you covered every file before emitting. The single most common failure is a short, shallow finding list on a big diff; treat fewer findings than changed-files as a red flag that you skimmed.
 
 **Spawn budget by mode:**
-- **CI, deep-mode flag false** → the 10 lane sub-reviewers + the domain subagents (`powersync-sync-reviewer` / `react-effect-reviewer`) when the diff touches their areas.
+- **CI, deep-mode flag false** → the 11 lane sub-reviewers + the domain subagents (`powersync-sync-reviewer` / `react-effect-reviewer`) when the diff touches their areas.
 - **CI, deep-mode flag true** → all of the above + the six micro-specialists. Never decide spend yourself in CI — the flags file decides.
-- **Local, default** → the 10 lanes + domain subagents when triggered.
+- **CI, `securityMode` flag true** (independent of deep mode) → ALSO spawn the Security dimension (below), scoped to `sensitiveFiles`. A tiny crypto-path diff runs it without deep mode.
+- **Local, default** → the 11 lanes + domain subagents when triggered.
 - **Local, escalate to deep mode** (add micro-specialists) only when the developer explicitly asks, or the diff exceeds ~600 changed lines / ~40 files (the same threshold CI uses).
+- **Local, any crypto/E2EE path in the diff** → ALSO run the Security dimension (below), the local analogue of the `securityMode` flag.
 
 **When you spawn ANY sub-reviewer** (a lane pass, a micro-specialist, or a domain subagent below), include the diff/patch file path you were given in its `Task` prompt and tell it to `Read` that file. A spawned subagent **cannot** reconstruct the diff itself — in CI `main` is not checked out, so `git diff main...HEAD` fails. The patch file you were handed is the single source of truth every worker reviews.
 
@@ -79,7 +81,7 @@ Enumeration is the difference between ~45% and ~80% recall (measured on a prior 
 A single fan-out catches a strong but incomplete slice; independent runs miss *different* items. For high-stakes PRs, run the full category fan-out **2–3 times** (the specialists are stochastic) and **union** the findings, deduping only exact root-cause+location duplicates. Measured effect: a 2-run union lifts recall ~7–8 points over a single run (measured on a prior model — treat as directional, re-benchmark before trusting spend decisions). Default (cheap) mode is one run; reach for multi-run union when completeness matters more than cost. Multi-run economics were measured on a prior model and need re-benchmarking; in CI never self-select multi-run — only the deep-mode flags file decides spend.
 
 ### Deep mode (micro-specialists — for the highest recall)
-The broad lenses (A–J) skim the *boring, enumerable* gaps. To close them, add **six narrow micro-specialists**, each a single exhaustive job, and **union** their findings onto the broad-lane + multi-run results. Measured effect: micro-specialists lift recall from ~52% to **~63%** (measured on a prior model — treat as directional, re-benchmark before trusting spend decisions; e.g. they newly catch dead guards, `.then/.catch`, capture-await, drop-unused-export, split-component, restructure-to-flat-tree). Each runs as its own read-only sub-reviewer:
+The broad lenses (A–K) skim the *boring, enumerable* gaps. To close them, add **six narrow micro-specialists**, each a single exhaustive job, and **union** their findings onto the broad-lane + multi-run results. Measured effect: micro-specialists lift recall from ~52% to **~63%** (measured on a prior model — treat as directional, re-benchmark before trusting spend decisions; e.g. they newly catch dead guards, `.then/.catch`, capture-await, drop-unused-export, split-component, restructure-to-flat-tree). Each runs as its own read-only sub-reviewer:
 1. **dead-code** — every `if`-guard (provably always-true → dead?), unreachable branch, empty block, redundant `?.`, `||`-should-be-`??`, leftover no-op.
 2. **async-hygiene** — every `.then/.catch` (→async/await?), unawaited fire-and-forget, ignored resolved `{error}` (Better-Auth-style APIs don't throw), empty/swallowing catch, un-awaited capture/track.
 3. **naming-casing** — every NEW identifier: vague/misleading/wrong-flow/boolean-prefix + frontend ALL_CAPS↔camelCase and JSON-wire-value UPPER_CASE.
@@ -94,6 +96,17 @@ For narrow, high-stakes domains the repo ships dedicated read-only reviewer suba
 - **`react-effect-reviewer`** — invoke on `.tsx`/`.ts` React diffs for the full `useEffect`-discipline catalogue.
 Treat their `blocker` findings as blocking. These are the "narrow + durable + reusable" checks that correctly live as their own agent files, not as prose lanes.
 
+### Security dimension (path-conditional — E2EE / crypto paths only)
+A dedicated, threat-model-grounded security pass that goes far deeper than lane H. **It is PATH-CONDITIONAL: spawn it iff the flags file sets `securityMode: true`** (the orchestrator sets it deterministically when the diff touches a crypto/E2EE path — `src/crypto/**`, `src/db/encryption/**`, `backend/src/api/encryption.ts`, `backend/src/lib/{canary,org-escrow}.ts`, `shared/e2ee-types.ts`, `backend/drizzle/**`; the matching files are listed in the flags file's `sensitiveFiles`). Do NOT decide this yourself — honor the flag, exactly as with deep/bounded mode. When `securityMode` is false, skip this dimension entirely; lane H still runs.
+
+> **The matcher under-covers today — do not read `securityMode: false` as "no crypto in this diff."** `SECURITY_PATH_MATCHERS` in `.github/scripts/review-orchestrator.mjs` names `backend/src/lib/org-escrow.ts`, which does not exist (the escrow server side lives in `backend/src/{api/encryption.ts,api/config.ts,dal/encryption.ts,config/settings.ts}`), and it omits real E2EE boundaries: `src/services/encryption.ts`, `src/db/powersync/middleware/EncryptionMiddleware.ts`, `backend/src/api/powersync.ts`, `backend/src/lib/encrypted-payload.ts` and `backend/src/lib/device-bind.ts`. A diff confined to those files skips this dimension silently. Until the matcher is corrected, raise a security finding on them from lane H.
+
+Run it as its own read-only sub-reviewer scoped to the `sensitiveFiles`. Its **required reading BEFORE reviewing** (beyond the usual heuristics/house-rules):
+- `docs/internals/architecture/e2ee-threat-model.md` — the single source of truth. Its adversaries (A1–A10), claims (C1–C15), v1 regressions, and "Known and accepted" list are the review frame. Findings MUST name the C-id/A-id they bear on (e.g. "C2 under A2"). The claim list grows — read the file rather than trusting this range.
+- `.claude/security/fp-rules.txt` — the exclusion list. A candidate that reduces to a documented, accepted property there is **not a finding** — drop it. (New exposure *through* an accepted property still counts; the exclusion covers the documented behaviour, not everything adjacent.)
+
+Charter: for each crypto-path hunk, ask which claim it could falsify and under which adversary — plaintext or a key-yielding value reaching the server (C1); a server-supplied public key / metadata (`kdf_salt`, `key_version`, `scheme_version`, org-escrow key, recovery-slot key) steering a wrap or derivation the server can open (C2/C9/C11); AAD/placement gaps (C3); v1 downgrade (C4); revocation/identity coupling (C5); nonce/challenge reuse (C6); at-rest extractability (C10); authorization/IDOR on an encryption route (C14). **Severity derives from preconditions × adversary class, never from category** (see `references/severity-rubric.md`): reserve output `critical` for an A1/A2/A3 confidentiality/takeover break under cheap preconditions; a weakness reachable only by an adversary already holding the AK is not critical. Anchor to the threat model and be skeptical of inflation.
+
 ### 1. PASS A — SCAN (recall pass, over-generate)
 Walk **every changed hunk** (per the execution model). List **every** candidate concern — aim to surface the real issues a meticulous senior reviewer would raise, which is typically **one finding per ~60–120 changed lines** (measured on a prior model — treat as directional), not 3–5 for the whole PR. That density figure is strictly a red-flag heuristic for detecting a skimmed review (too FEW findings) — never a target count to anchor toward. **Over-generate — do not self-censor; a missed issue costs far more than a candidate dropped in Pass B.** For each candidate record: `file:line`, one-line concern, suspected category, suspected severity. Run these category lenses over the diff (use `references/review-heuristics.md` trigger table + IF–THEN rules + the deep correctness checklist):
 
@@ -107,6 +120,7 @@ Walk **every changed hunk** (per the execution model). List **every** candidate 
 - **H. Security / privacy** — endpoint without auth/session; denylist where allowlist fits; per-IP rate limit on an authed route; PII/owned-domain/real-IP/seeded-UUID in code; unescaped model output in HTML/widget attrs; hard-delete of user data (must soft-delete); non-nullable column on a synced table (+ two-PR deploy); migration missing `_journal.json` entry.
 - **I. Docs-intent / completeness / scope** — undocumented magic reference / missing rationale ("what is this constant/flag?"); incompleteness ("should the sibling cases be handled too?"); inconsistency with a sibling path; unrelated changes mixed in (split PR); leftover/dead code; no-value comments restating the next line.
 - **J. Readability / simplification** *(dedicated pass — high-frequency, easy to under-call)* — hard-to-follow branching that should be a **flat decision tree** ("has session → allowed; no session → branch on mode"); deep nesting that should be **early-return**; a repeated condition that should become a **named const** (`const isFullUser = isAuthenticated && !isAnonymous`); a `deps`-object that reads cleaner as **flat params**; an unnecessary wrapper/indirection; a presentation/display component that should be **split out** of its data-fetching component; over-engineered logic (e.g. dot-notation nested-path parsing) that should be a **simple flat lookup**; 5 lines that collapse to 1. Frame as "this is hard to follow — restructure as …".
+- **K. Localization** *(silent-failure class — see the `R-I18N*` family in `references/house-rules.md`)* — user-facing string (including `aria-label`/`title`/`placeholder`) not wrapped in `<Trans>` / `` t`…` ``; `` t`…` `` evaluated at module scope, where it freezes the boot locale (must be a `` msg`…` `` descriptor resolved with `i18n._()`); inline `Intl.*Format`/`toLocaleString` instead of `useFormatters()`/`getFormatters()`; `new Date(str)` instead of `toDate`; `select`/`selectOrdinal`; a sentence assembled from concatenated fragments; a reworded English source string (it is the message id); a Lingui macro imported anywhere under `backend/src/`. Most of these fail only in production or only after a language switch, which is why a lane owns them rather than a test.
 
 ### 2. Cross-file context expansion
 For every A/B/G/H candidate, Read the relevant cross-file targets (DAL, schema, `config.yaml`, `shared/powersync-tables.ts`, `app.tsx`, `CLAUDE.md`, the importing/imported modules) and confirm the claim against actual code. Under-contextualized long functions are where false positives spike — expand context before asserting.
@@ -121,7 +135,7 @@ For each Pass-A candidate, KEEP it only if it can **(1) quote the exact offendin
 
 ### 5. Noise suppression (mandatory — but never at the cost of a real rule-cited finding)
 - The nit cap is **LOCAL-only**: it applies **only to purely cosmetic nits that carry no `R-*`/`INV-*` id** (e.g. spacing/wording taste): surface at most 5, append "plus N similar". In CI there is NO nit cap — emit every grounded nit as a candidate (the gate owns volume control). **Any finding that cites a real rule or invariant id is ALWAYS surfaced — never capped, collapsed, or dropped for volume.** A convention violation (camelCase, `let`, naming, JSDoc, deps-object, `.then/.catch`) and a docs-intent catch (undocumented marker/constant) are rule-grounded findings, not cosmetic nits.
-- **Skip** (in BOTH modes) only what `/thundercheck` (eslint/prettier/tsc) mechanically auto-fixes (pure formatting/import-order), generated files, `*.lock`/`bun.lockb`, auto-generated Drizzle SQL, vendored deps. Do NOT skip naming, typing, error-handling, or structural conventions — those are not auto-fixed.
+- **Skip** (in BOTH modes) only what `/thundercheck` (eslint/prettier/tsc) mechanically auto-fixes (pure formatting/import-order), generated files, `*.lock` (incl. `bun.lock`), auto-generated Drizzle SQL, vendored deps. Do NOT skip naming, typing, error-handling, or structural conventions — those are not auto-fixed.
 - Lead with **"No blocking issues"** when true (but only after the full per-hunk scan — an empty list on a non-trivial diff almost always means you skimmed).
 
 ### 6. Self-validation gate
@@ -143,25 +157,29 @@ Severity ⊥ confidence (two independent axes). Down-weight low confidence, **ne
 
 | Tier | Examples | Block? |
 |---|---|---|
+| **Critical** *(security dimension only)* | a headline adversary (A1/A2/A3 — NOT one already holding the AK) breaks a confidentiality/takeover C-claim under cheap preconditions: plaintext or a key-yielding value reaches the server; a server-substituted public key steers a wrap the server can open; full-account takeover via a routine flow (cf. THU-865) | Advisory |
 | **Blocker** | real correctness bug; error-swallowing on trusted path; frontend hard-delete; `useEffect` anti-pattern; PII in logs; unscoped query; non-nullable synced column; migration w/o journal entry; **"this will haunt us" maintainability/architecture cost** | Yes |
 | **Convention** | `any`; `interface` over `type`; `function` kw; `let` where const+early-return works; ALL_CAPS const; 3+ `useState`; non-lazy route; `.spec`/vitest | Soft |
 | **Nit / note** | cosmetic, no-value comment, numeric separators | No |
 | **Pre-existing** | issue already in base — context only, not a new blocker | No |
 
-**Severity mapping (mandatory when merging sub-reviewer output).** Every producer tier maps onto the output enum — never emit a severity outside {`blocking`, `convention`, `nit`}; out-of-enum severities are silently dropped downstream:
+**Severity mapping (mandatory when merging sub-reviewer output).** Every producer tier maps onto the output enum — never emit a severity outside {`critical`, `blocking`, `convention`, `nit`}; out-of-enum severities are silently dropped downstream:
 
 | Producer tier | Output severity |
 |---|---|
+| security finding at the threat-model **Critical** bar (headline adversary A1/A2/A3 — NOT one who already holds the AK — breaks a confidentiality/takeover C-claim under cheap preconditions) | `critical` |
 | real bug / future-pain (architectural) / hard block (rubric) · `blocker` (domain subagents) | `blocking` |
 | convention (rubric) · `warning` (domain subagents) | `convention` |
 | nit / non-blocking idea (rubric) · `note` (domain subagents) | `nit` |
 | praise (rubric) | omit as a finding (may appear as one line of report prose in local mode) |
 
+`critical` is the **only** tier reserved for the security dimension — apply it strictly (derive severity from preconditions and adversary class, never from category; anchor to `docs/internals/architecture/e2ee-threat-model.md` and be skeptical of inflation). Everything else maps to `blocking` or below.
+
 **Voice.** Whoever writes the final human-facing `title`/`body` — a lane sub-reviewer or the merging parent — MUST have read `references/style-exemplars.md` first and match that register (warm, collaborative, question-led). If merged sub-reviewer prose is terse or robotic, the parent rewrites it to register before emitting.
 
 ## Reference files (read on demand — progressive disclosure)
 - `references/review-heuristics.md` — IF–THEN heuristics + the diff-signal → comment trigger table (the core review intelligence). **Read this for Pass A.**
-- `references/house-rules.md` — TS / React / data conventions with rule ids (`R-*`), incl. the full `useEffect` anti-pattern catalogue.
+- `references/house-rules.md` — TS / React / data / localization conventions with rule ids (`R-*`), incl. the full `useEffect` anti-pattern catalogue and the `R-I18N*` family.
 - `references/testing-rules.md` — the test-file standard with rule ids (`R-NOMOCKSHARED`, `R-DITEST`, `R-FAKETIMERS`, `R-SUPPRESSCONSOLE`, `R-BUNTESTCWD`). **Read this whenever the diff changes a `*.test.ts(x)` file.**
 - `references/architecture-invariants.md` — all 80 invariants (`INV-01..INV-80`), titles indexed up top.
 - `references/severity-rubric.md` — the severity ladder, tone calibration, confidence rules.

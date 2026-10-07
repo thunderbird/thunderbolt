@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans } from '@lingui/react/macro'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { useDatabase } from '@/contexts'
@@ -30,26 +30,23 @@ export const OnboardingDialog = () => {
   const { userHasCompletedOnboarding } = useSettings({
     user_has_completed_onboarding: false,
   })
-  const [isOpen, setIsOpen] = useState(false)
   const { state, actions } = useOnboardingState()
+
+  /**
+   * Derived during render rather than mirrored into state. The previous effect
+   * only ever called `setIsOpen(true)`, so nothing closed the wizard when the
+   * flag flipped to true — a device that learned it was already onboarded, via
+   * sign-in or a sync download, kept it on screen (GH #1299).
+   */
+  const isOpen =
+    import.meta.env.VITE_SKIP_ONBOARDING !== 'true' &&
+    !userHasCompletedOnboarding.isLoading &&
+    !userHasCompletedOnboarding.value
 
   // Owned here (the connected container) so the auth step stays presentational.
   const handleProviderDisconnect = async (provider: OAuthProvider) => {
     await deleteIntegrationCredentials(db, provider)
     await queryClient.invalidateQueries({ queryKey: ['integrationStatus'] })
-  }
-
-  useEffect(() => {
-    if (import.meta.env.VITE_SKIP_ONBOARDING === 'true') {
-      return
-    }
-    if (!userHasCompletedOnboarding.isLoading && !userHasCompletedOnboarding.value) {
-      setIsOpen(true)
-    }
-  }, [userHasCompletedOnboarding.value, userHasCompletedOnboarding.isLoading])
-
-  const handleClose = () => {
-    setIsOpen(false)
   }
 
   // Celebration step completion handler
@@ -63,7 +60,6 @@ export const OnboardingDialog = () => {
     setIsCompleting(true)
     await Promise.all([userHasCompletedOnboarding.setValue(true), onboardingCurrentStep.setValue('1')])
     setIsCompleting(false)
-    handleClose()
   }
 
   // Unified action handlers

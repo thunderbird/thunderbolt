@@ -6,11 +6,11 @@ import { user } from '@/db/auth-schema'
 import { waitlist } from '@/db/schema'
 import { clearSettingsCache } from '@/config/settings'
 import { createApp } from '@/index'
-import { createTestDb } from '@/test-utils/db'
-import { uniqueTestIp } from '@/test-utils/ip'
+import { rateLimits } from '@/db/rate-limit-schema'
+import { createTestDb, getSharedIsolatedTestDb } from '@/test-utils/db'
 import { createAuth } from '@/auth/auth'
 import type { AppLocale } from '@shared/i18n/locales'
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 
 describe('Waitlist API', () => {
@@ -468,54 +468,63 @@ describe('Waitlist API', () => {
       expect(sendSignInEmail).toHaveBeenCalledWith(expect.objectContaining({ locale: 'fr' }))
     })
   })
+})
 
-  describe('IP rate limit', () => {
-    const rateLimitEnvKeys = [
-      'RATE_LIMIT_ENABLED',
-      'TRUSTED_PROXY',
-      'AUTH_ALLOW_ANONYMOUS',
-      'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
-    ] as const
-    let savedEnv: Partial<Record<string, string>>
+// RateLimiterDrizzle commits its own transactions, which would end the shared createTestDb
+// BEGIN and leak rows across files and --rerun-each passes (see test-setup.ts), so this suite
+// runs on the shared isolated DB and clears what it writes.
+describe('Waitlist API: IP rate limit', () => {
+  const rateLimitEnvKeys = [
+    'RATE_LIMIT_ENABLED',
+    'TRUSTED_PROXY',
+    'AUTH_ALLOW_ANONYMOUS',
+    'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
+  ] as const
+  let savedEnv: Partial<Record<string, string>>
+  let db: Awaited<ReturnType<typeof getSharedIsolatedTestDb>>['db']
 
-    beforeEach(() => {
-      savedEnv = Object.fromEntries(rateLimitEnvKeys.map((key) => [key, process.env[key]]))
-    })
+  beforeAll(async () => {
+    db = (await getSharedIsolatedTestDb()).db
+  })
 
-    afterEach(() => {
-      for (const key of rateLimitEnvKeys) {
-        if (savedEnv[key] === undefined) {
-          delete process.env[key]
-        } else {
-          process.env[key] = savedEnv[key]
-        }
+  beforeEach(async () => {
+    savedEnv = Object.fromEntries(rateLimitEnvKeys.map((key) => [key, process.env[key]]))
+    await db.delete(rateLimits)
+    await db.delete(waitlist)
+  })
+
+  afterEach(() => {
+    for (const key of rateLimitEnvKeys) {
+      if (savedEnv[key] === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = savedEnv[key]
       }
-      clearSettingsCache()
-    })
+    }
+    clearSettingsCache()
+  })
 
-    it('keeps waitlist join at 10 per IP per minute when the anonymous sign-in limit is raised', async () => {
-      process.env.RATE_LIMIT_ENABLED = 'true'
-      process.env.TRUSTED_PROXY = 'cloudflare'
-      process.env.AUTH_ALLOW_ANONYMOUS = 'false'
-      process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '40'
-      clearSettingsCache()
-      const limitedApp = await createApp({ database: db, otpCooldownMs: 0 })
-      const clientIp = uniqueTestIp()
+  it('keeps waitlist join at 10 per IP per minute when the anonymous sign-in limit is raised', async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true'
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    process.env.AUTH_ALLOW_ANONYMOUS = 'false'
+    process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX = '40'
+    clearSettingsCache()
+    const limitedApp = await createApp({ database: db, otpCooldownMs: 0 })
 
-      const statuses: number[] = []
-      for (let i = 0; i < 11; i++) {
-        const response = await limitedApp.handle(
-          new Request('http://localhost/v1/waitlist/join', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': clientIp },
-            body: JSON.stringify({ email: `flood-${i}@example.com` }),
-          }),
-        )
-        statuses.push(response.status)
-      }
+    const statuses: number[] = []
+    for (let i = 0; i < 11; i++) {
+      const response = await limitedApp.handle(
+        new Request('http://localhost/v1/waitlist/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.40' },
+          body: JSON.stringify({ email: `flood-${i}@example.com` }),
+        }),
+      )
+      statuses.push(response.status)
+    }
 
-      expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
-      expect(statuses[10]).toBe(429)
-    })
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
+    expect(statuses[10]).toBe(429)
   })
 })

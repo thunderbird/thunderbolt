@@ -1,12 +1,13 @@
 # Shared Preview Stack Architecture
 
-PR preview environments today create the entire stack per PR — VPC, NAT, ALB,
+PR preview environments used to create the entire stack per PR — VPC, NAT, ALB,
 ECS cluster, EFS, Postgres, Keycloak, PowerSync, plus the actual app services
-(backend / frontend / marketing). At ~5 concurrent PRs we're at default AWS
-quota for NAT gateways, EIPs, and VPCs in the region, and burning ~$300–500/mo
-on fixed costs (NATs + ALBs) before any compute.
+(backend / frontend / marketing). That hit the region's default AWS quota for NAT
+gateways, EIPs, and VPCs at ~5 concurrent PRs, and burned ~$300–500/mo on fixed
+costs (NATs + ALBs) before any compute.
 
-This doc describes the split-stack architecture that fixes that.
+This doc describes the split-stack architecture that fixes that. It is in place
+today — see "Status" below for the entry points.
 
 ## Two stacks
 
@@ -34,8 +35,10 @@ Owns only what genuinely differs per PR:
 - 3 ECS services + task definitions: backend, frontend, marketing
 - 3 target groups (frontend, backend, marketing) bound to the shared ALB
 - 3 host-header listener rules on the shared ALB
-- 5 Cloudflare CNAMEs (`marketing-pr-<n>`, `app-pr-<n>`, `api-pr-<n>`, `auth-pr-<n>`, `powersync-pr-<n>`)
-- Per-PR Secrets Manager entries: `BETTER_AUTH_SECRET`, `OIDC_CLIENT_SECRET`
+- 3 Cloudflare CNAMEs (`thunderbolt-pr-<n>`, `app-pr-<n>`, `api-pr-<n>`) pointing at the
+  shared ALB — `auth.shared.*` and `powersync.shared.*` belong to the shared stack
+- Per-PR Secrets Manager entries: Better Auth secret, OIDC client secret, debug
+  transcript upstream key, `DATABASE_URL`, `POSTGRES_ADMIN_URL`
 - Per-PR Postgres database (provisioned at backend startup against shared instance)
 - Per-PR Keycloak OIDC client in the shared `thunderbolt` realm
 
@@ -45,14 +48,14 @@ Reads shared infra via Pulumi `StackReference("previews-shared")`.
 
 Per PR (rough us-east-1 numbers):
 
-| Resource | Before | After | Per-PR savings |
-| --- | --- | --- | --- |
-| NAT Gateway | 1 ($32/mo idle) | 0 | $32/mo |
-| EIP | 1 | 0 | $0 (free when attached) but unblocks quota |
-| ALB | 1 ($22/mo idle) | 0 (shares listener) | $22/mo |
-| Fargate (postgres + keycloak + powersync) | 2.5 vCPU + 5 GB | 0 (shared) | $40–50/mo |
-| Secrets Manager (AI keys × 5) | 5 × $0.40/mo | 0 | $2/mo |
-| **Total** | — | — | **~$95–105/mo per PR** |
+| Resource                                  | Before          | After               | Per-PR savings                             |
+| ----------------------------------------- | --------------- | ------------------- | ------------------------------------------ |
+| NAT Gateway                               | 1 ($32/mo idle) | 0                   | $32/mo                                     |
+| EIP                                       | 1               | 0                   | $0 (free when attached) but unblocks quota |
+| ALB                                       | 1 ($22/mo idle) | 0 (shares listener) | $22/mo                                     |
+| Fargate (postgres + keycloak + powersync) | 2.5 vCPU + 5 GB | 0 (shared)          | $40–50/mo                                  |
+| Secrets Manager (AI keys × 5)             | 5 × $0.40/mo    | 0                   | $2/mo                                      |
+| **Total**                                 | —               | —                   | **~$95–105/mo per PR**                     |
 
 Plus quota relief: VPC, EIP, and NAT default limits go from 5 PRs to N PRs without
 a quota request.
@@ -66,14 +69,14 @@ a quota request.
    stack. PRs that need realm-config changes either coordinate with shared-stack
    updates or fall back to the legacy monolithic path (see "Legacy escape hatch").
 3. **PowerSync sync-rule changes.** Same shape: shared instance, shared rules.
-   PRs that change sync rules use the legacy path until Phase 3 (per-PR PowerSync
-   tenants) lands.
+   PRs that change sync rules use the legacy path until per-PR PowerSync tenants
+   land.
 4. **ALB target-group cap.** ALB caps at 100 TGs per LB. With 3 TGs per PR
    (frontend / backend / marketing — keycloak + powersync shared), that's ~33
    concurrent PRs per ALB. If we exceed, add a second shared ALB.
 5. **Single point of failure.** If shared Postgres goes down, all PR previews
-   are unavailable. Mitigation: snapshot/restore automation; secondary region
-   (Phase 4 if needed).
+   are unavailable. Mitigation: snapshot/restore automation; a secondary region
+   if needed.
 
 ## Legacy escape hatch
 
@@ -83,50 +86,63 @@ through to the existing monolithic `createServices()` path. This keeps:
 - the `dev` Pulumi stack working
 - the `jkab-org/demo` Pulumi stack working
 - enterprise customer stacks working
-- per-PR stacks for PRs that *need* an isolated Keycloak / PowerSync (set the
+- per-PR stacks for PRs that _need_ an isolated Keycloak / PowerSync (set the
   config explicitly to opt out)
 
-We can deprecate the monolithic path entirely once all preview-pr stacks are
-on the shared model.
+No PR preview takes this path any more, but `dev`, `jkab-org/demo`, and
+enterprise customer stacks still do, so it stays.
 
-## Phasing
+## Status
 
-- **Phase 1 (this commit):** scaffolding — `src/shared.ts`, `src/per-pr-stack.ts`,
-  branching in `index.ts`. Both new paths are stubbed (throw) so nothing
-  accidentally activates them. Existing stacks unaffected.
-- **Phase 2:** move VPC + EFS + cluster + namespace + ALB into `createSharedStack()`.
-  Move `createServices()`'s postgres / keycloak / powersync blocks into shared too.
-  Define complete `SharedStackOutputs` shape.
-- **Phase 3:** implement `createPerPrStack()` — backend / frontend / marketing
-  services, target groups, host-header rules, Cloudflare CNAMEs. Per-PR DB +
-  Keycloak client provisioning via Pulumi `Command` + `@pulumi/keycloak` providers.
-- **Phase 4:** workflow updates — new `previews-shared-deploy.yml`, update
-  `preview-deploy.yml` to consume `sharedStackName` from a workflow var.
-- **Phase 5:** migrate live preview-pr stacks: destroy each, redeploy on shared
-  model, validate, repeat. `dev` and `jkab-org/demo` stay on monolithic.
+Shipped — the split above is what runs today.
 
-## Open questions / TODOs
+`index.ts` picks one of three shapes by stack name and config. `previews-shared` builds
+the shared stack via `createSharedStack()` (`index.ts:45`, `src/shared.ts`); any stack with
+a `sharedStackName` config value resolves that stack's outputs through a `StackReference`
+and builds the slim per-PR stack (`index.ts:95`, `src/per-pr-stack.ts`); everything else
+falls through to the monolithic `createServices()` path (`index.ts:150`).
 
-- **Per-PR DB provisioning mechanism.** Three options:
-  1. Backend's entrypoint runs `CREATE DATABASE pr_<n> IF NOT EXISTS` before
-     drizzle-kit migrate, using admin creds it can read from Secrets Manager.
-     Simplest; couples DB lifecycle to backend lifecycle (DB orphaned on stack
-     destroy unless backend cleans up — acceptable, gets cleaned on shared-stack
-     rebuild).
-  2. Pulumi `command.local.Command` runs `psql` via SSM Session Manager against
-     a private bastion task in the shared cluster. Cleaner separation; needs
-     bastion infra.
-  3. Lambda triggered by Pulumi.
-  Phase 3 will pick option 1 unless we hit issues.
-- ~~**Per-PR Keycloak OIDC client.** Use `@pulumi/keycloak` provider against the
-  shared Keycloak admin API. Provider needs admin creds — shared stack exports
-  them. Resource: `keycloak.openid.Client`.~~ Done — `per-pr-stack.ts` provisions
-  `thunderbolt-app-<stack>` with exact-match redirect/origin URIs. Required
-  because Keycloak only honors `*` as a trailing path wildcard (no hostname
-  wildcards), so the prior shared-client + `api-pr-*.…` redirect URI approach
-  never matched any real PR.
-- **PowerSync wildcard JWT issuer.** Per-PR backends sign JWTs with the shared
-  PowerSync JWT secret. PowerSync verifies signatures regardless of which PR
-  issued them. ✓ no per-PR config needed.
-- **Drift detection** on the shared stack. CI scheduled job that runs
-  `pulumi preview` and alerts if anything drifts.
+The shared stack is deployed by `.github/workflows/previews-shared-deploy.yml` — manual
+`workflow_dispatch`, plus a Monday 07:00 UTC `pulumi up` that doubles as the drift check
+(it should be a no-op when nothing has drifted).
+
+Every PR preview is on the shared model: `.github/workflows/preview-deploy.yml:164` passes
+`shared_stack_name: previews-shared` unconditionally, and `stack-deploy.yml:228` turns that
+input into `pulumi config set sharedStackName`. `dev`, `jkab-org/demo`, and enterprise
+customer stacks remain on the monolithic path (see "Legacy escape hatch").
+
+## Resolved design questions
+
+**Per-PR database provisioning — the backend entrypoint does it.** When
+`POSTGRES_ADMIN_URL` is set, `deploy/docker/backend-entrypoint.sh:45-65` connects as the
+admin on the default database, creates the per-stack database if it does not already
+exist, and only then runs `drizzle-kit migrate` against `DATABASE_URL`. The name comes
+from the Pulumi stack name with every non-alphanumeric character replaced by `_`
+(`preview-pr-846` → `preview_pr_846`, `src/per-pr-stack.ts:67`; the JSDoc a line above it
+still shows an older `pr_846` shape), and both URLs reach the task as Secrets Manager
+entries. This couples the database lifecycle to the backend's — destroying a PR stack
+leaves its logical database behind until the shared Postgres is rebuilt — which is the
+price of not needing extra infrastructure. The
+alternatives considered were a Pulumi `command.local.Command` running `psql` through a
+private bastion task, and a Pulumi-triggered Lambda; both add a component the entrypoint
+does not.
+
+**Per-PR Keycloak OIDC client.** `src/per-pr-stack.ts:235` provisions
+`thunderbolt-app-<stack>` in the shared `thunderbolt` realm through a `@pulumi/keycloak`
+provider authenticated with the shared stack's admin credentials, with exact-match
+redirect and origin URIs. It has to be per-PR: Keycloak only honors `*` as a trailing path
+wildcard in `validRedirectUris` and has no hostname wildcards, so an `api-pr-*.…` redirect
+URI on one shared client never matches a real PR.
+
+**PowerSync JWT issuance needs no per-PR config.** Per-PR backends sign with the shared
+PowerSync JWT secret (`src/per-pr-stack.ts:401` reads `shared.powersyncJwtSecretArn`) and
+PowerSync verifies the signature regardless of which PR issued it.
+
+## Still open
+
+- Per-PR PowerSync tenants, for PRs that change sync rules (trade-off 3 above).
+- Snapshot/restore automation for the shared Postgres (trade-off 5 above).
+- Replication of the per-PR databases. The shared PowerSync has one replication source
+  — `PS_PG_URI` points at the shared instance's `postgres` database
+  (`src/shared.ts:480`) — while each PR's backend writes to its own `preview_pr_<n>`
+  database, so per-PR rows never reach PowerSync.

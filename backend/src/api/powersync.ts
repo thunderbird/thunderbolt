@@ -4,15 +4,17 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { isOriginAllowed } from '@/config/settings'
+import { isRequestOriginAllowed } from '@/config/settings'
 import {
   applyOperation,
   cliDeviceIdPrefix,
   getActivePersistedSession,
   getDeviceById,
+  getEncryptionMetadata,
   getUserById,
   upsertDevice,
 } from '@/dal'
+import { findPlaintextViolation } from '@/lib/encrypted-payload'
 import type { db as DbType } from '@/db/client'
 import { verifySignedBearerToken } from '@/auth/bearer-token'
 import type { User } from '@shared/types/auth'
@@ -23,33 +25,41 @@ import { Elysia, t } from 'elysia'
 type DeviceValidationResult =
   | { ok: true }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 type IssuePowerSyncTokenResult =
   | { ok: true; token: string; expiresAt: string; powerSyncUrl: string }
   | { ok: false; status: 400; body: { code: 'DEVICE_ID_REQUIRED' } }
-  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' } }
+  | { ok: false; status: 403; body: { code: 'DEVICE_DISCONNECTED' | 'DEVICE_NOT_TRUSTED' | 'DEVICE_NOT_BOUND' } }
   | { ok: false; status: 409; body: { code: 'DEVICE_ID_TAKEN' } }
 
 /**
- * Validates that the device belongs to the user, is not revoked, and (when E2EE is enabled) is trusted.
- * When E2EE is disabled, the trust check is skipped — devices don't go through the envelope flow.
+ * Validates that the device belongs to the user, is not revoked, and is trusted.
+ * The device must already exist (registered via the envelope/trust flow) — a device
+ * that doesn't exist yet is always rejected.
  *
- * @param allowNewDevice When true and E2EE is off, a device that doesn't exist yet is allowed
- *   through (the caller is expected to create it via upsertDevice). Only the token endpoint sets
- *   this — upload always requires the device to already exist.
+ * THU-873: `X-Device-ID` is client-set, so it must match `boundDeviceId` — the
+ * device this session proved possession of. Without that, a session could name
+ * any trusted sibling and keep syncing, which is how a revoked device with a
+ * surviving unlinked session retained read access to the stream.
+ *
+ * `DEVICE_NOT_BOUND` is deliberately its own code: the client maps it to NO
+ * credentials-invalid reason, so an unbound session defers sync and retries once
+ * the bind handshake completes, instead of tripping the revoked-device reset.
  */
 const validateDeviceForSync = async (
   userId: string,
   request: Request,
   database: typeof DbType,
-  { e2eeEnabled }: Pick<Settings, 'e2eeEnabled'>,
-  { allowNewDevice = false } = {},
+  boundDeviceId: string | null,
 ): Promise<DeviceValidationResult> => {
   const deviceId = request.headers.get('x-device-id')?.trim()
   if (!deviceId) {
     return { ok: false, status: 400, body: { code: 'DEVICE_ID_REQUIRED' } }
+  }
+  if (!boundDeviceId || boundDeviceId !== deviceId) {
+    return { ok: false, status: 403, body: { code: 'DEVICE_NOT_BOUND' } }
   }
 
   if (deviceId.startsWith(cliDeviceIdPrefix)) {
@@ -59,11 +69,6 @@ const validateDeviceForSync = async (
   const deviceRow = await getDeviceById(database, deviceId)
 
   if (!deviceRow) {
-    // When E2EE is disabled, the FE never calls POST /devices to register, so the device
-    // may not exist yet. Allow it through only for the token path — upsertDevice will create it.
-    if (!e2eeEnabled && allowNewDevice) {
-      return { ok: true }
-    }
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -73,7 +78,7 @@ const validateDeviceForSync = async (
   if (deviceRow.revokedAt != null) {
     return { ok: false, status: 403, body: { code: 'DEVICE_DISCONNECTED' } }
   }
-  if (e2eeEnabled && !deviceRow.trusted) {
+  if (!deviceRow.trusted) {
     return { ok: false, status: 403, body: { code: 'DEVICE_NOT_TRUSTED' } }
   }
 
@@ -81,30 +86,23 @@ const validateDeviceForSync = async (
 }
 
 /**
- * Defense-in-depth: rejects cross-origin requests whose Origin doesn't match allowed CORS origins.
- * Absent Origin (non-browser / server-to-server clients) is allowed.
- */
-const validateOrigin = (request: Request, appSettings: Settings): boolean => {
-  const origin = request.headers.get('origin')
-  if (!origin) {
-    return true
-  }
-  return isOriginAllowed(origin, appSettings)
-}
-
-/**
  * Shared logic for issuing a PowerSync JWT: device revocation check, JWT signing, device upsert.
  * Used by both session-based and bearer-only token paths.
  * Requires x-device-id so revocation can always be enforced; a revoked device cannot bypass by omitting it.
+ *
+ * The JWT carries a `device_id` claim so the token's blast radius is device-scoped. It is trustworthy
+ * because `validateDeviceForSync` has already pinned x-device-id to the session's bound device
+ * (THU-873), so the value is server-asserted, not client-asserted.
  */
 const issuePowerSyncToken = async (
   userId: string,
   request: Request,
-  powersyncJwt: { sign: (payload: { sub: string; user_id: string }) => Promise<string> },
+  powersyncJwt: { sign: (payload: { sub: string; user_id: string; device_id: string }) => Promise<string> },
   settings: Settings,
   database: typeof DbType,
+  boundDeviceId: string | null,
 ): Promise<IssuePowerSyncTokenResult> => {
-  const validation = await validateDeviceForSync(userId, request, database, settings, { allowNewDevice: true })
+  const validation = await validateDeviceForSync(userId, request, database, boundDeviceId)
   if (!validation.ok) {
     return validation
   }
@@ -126,7 +124,6 @@ const issuePowerSyncToken = async (
     name: deviceName,
     lastSeen: now,
     createdAt: now,
-    ...(!settings.e2eeEnabled ? { trusted: true } : {}),
     ...(appVersion ? { appVersion } : {}),
   })
 
@@ -134,7 +131,7 @@ const issuePowerSyncToken = async (
     return { ok: false, status: 409, body: { code: 'DEVICE_ID_TAKEN' } }
   }
 
-  const token = await powersyncJwt.sign({ sub: userId, user_id: userId })
+  const token = await powersyncJwt.sign({ sub: userId, user_id: userId, device_id: deviceId })
   const expiresAt = new Date(Date.now() + settings.powersyncTokenExpirySeconds * 1000).toISOString()
 
   return { ok: true, token, expiresAt, powerSyncUrl: settings.powersyncUrl }
@@ -175,10 +172,13 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       // Better Auth populates session.user with `additionalFields` (including `isAnonymous`),
       // so `user.isAnonymous` is available here without an extra DB lookup.
       const sessionUser = session?.user as User | undefined
-      return { user: sessionUser ?? null }
+      // `session.deviceId` is the server-set device binding (THU-873) — the only
+      // trustworthy answer to "which device is asking".
+      const boundDeviceId = (session?.session as { deviceId?: string | null } | undefined)?.deviceId ?? null
+      return { user: sessionUser ?? null, boundDeviceId }
     })
-    .get('/token', async ({ powersyncJwt, request, set, user }) => {
-      if (!validateOrigin(request, settings)) {
+    .get('/token', async ({ powersyncJwt, request, set, user, boundDeviceId }) => {
+      if (!isRequestOriginAllowed(request, settings)) {
         set.status = 403
         return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
       }
@@ -195,7 +195,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database)
+        const result = await issuePowerSyncToken(user.id, request, powersyncJwt, settings, database, boundDeviceId)
         if (!result.ok) {
           set.status = result.status
           return result.body
@@ -239,7 +239,7 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
       }
 
       const userId = sessionRow.userId
-      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database)
+      const result = await issuePowerSyncToken(userId, request, powersyncJwt, settings, database, sessionRow.deviceId)
       if (!result.ok) {
         set.status = result.status
         return result.body
@@ -248,8 +248,8 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
     })
     .put(
       '/upload',
-      async ({ body, request, set, user }) => {
-        if (!validateOrigin(request, settings)) {
+      async ({ body, request, set, user, boundDeviceId }) => {
+        if (!isRequestOriginAllowed(request, settings)) {
           set.status = 403
           return { error: 'Forbidden', code: 'ORIGIN_NOT_ALLOWED' }
         }
@@ -265,13 +265,41 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
           return { error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' }
         }
 
-        const validation = await validateDeviceForSync(user.id, request, database, settings)
+        const validation = await validateDeviceForSync(user.id, request, database, boundDeviceId)
         if (!validation.ok) {
           set.status = validation.status
           return validation.body
         }
 
         const operations = body.operations
+
+        // Defence in depth for the v2 keyring invariant: once an account is
+        // migrated, every write to an encrypted column must be v2 ciphertext.
+        // The client enforces this already, but plaintext committed here cannot
+        // be un-leaked — so reject the batch rather than trust the client.
+        //
+        // A rejected batch is retried, so nothing is lost — but it is NOT
+        // self-announcing. PowerSync holds the stream open and retries forever,
+        // so a client that can never produce v2 ciphertext (a below-min build
+        // against an account another device already flipped) wedges silently
+        // with its own UI still reporting itself synced. That failure mode is
+        // what `MIN_APP_VERSION` exists to pre-empt, and why the gate has to be
+        // live before any v2 client can reach a user — see the cutover runbook
+        // in docs/internals/architecture/e2e-encryption.md.
+        const encryptionMetadata = await getEncryptionMetadata(database, user.id)
+        if (encryptionMetadata?.schemeVersion === 2) {
+          const violation = findPlaintextViolation(operations)
+          if (violation) {
+            set.status = 400
+            return {
+              error: 'Encrypted column carried a non-encrypted value',
+              code: 'PLAINTEXT_UPLOAD_REJECTED',
+              table: violation.table,
+              id: violation.id,
+              column: violation.column,
+            }
+          }
+        }
 
         // Process operations sequentially to maintain order.
         // If any operation fails, return 4xx so the client does not call transaction.complete()
@@ -300,6 +328,9 @@ export const createPowerSyncRoutes = (auth: Auth, settings: Settings, database: 
               type: t.String(),
               id: t.String(),
               data: t.Optional(t.Record(t.String(), t.Unknown())),
+              // Create-only PUT — see `PowerSyncOperation.ifAbsent` in dal/powersync.ts.
+              // Optional so a client older than this field keeps uploading unchanged.
+              ifAbsent: t.Optional(t.Boolean()),
             }),
           ),
         }),

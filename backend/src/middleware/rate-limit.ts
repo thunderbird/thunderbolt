@@ -181,9 +181,8 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
 
 const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
 
-/** Exact match on the mounted path, ignoring trailing slashes as Better Auth's router does. */
-const isAnonymousSignIn = (request: Request) =>
-  new URL(request.url).pathname.replace(/\/+$/, '') === anonymousSignInMountPath
+/** Exact match, as Better Auth routes it: a trailing slash or lookalike prefix is a 404 there. */
+const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname === anonymousSignInMountPath
 
 /**
  * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own

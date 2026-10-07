@@ -15,6 +15,7 @@ import { v7 as uuidv7 } from 'uuid'
 import { useDatabase } from '@/contexts'
 import type { AnyDrizzleDatabase } from '../db/database-interface'
 import { chatMessagesTable, chatThreadsTable, projectsTable } from '../db/tables'
+import { useChatsWithLastActivity, type ChatWithLastActivity } from './chats-with-last-activity'
 import { nowIso, uuidv7ToDate } from '../lib/utils'
 import { renderHtmlToolName } from '@/artifacts/constants'
 import { isRenderHtmlPart, renderHtmlInput } from '@/artifacts/render-html-tool'
@@ -218,40 +219,11 @@ export const useProjectChatCounts = (): Record<string, number> => {
 /**
  * Live chats in a project with their last-activity time.
  *
- * `MAX(id)` over UUIDv7 message ids is both the newest message and when it
- * happened — `chat_messages` has no timestamp column. Sorting happens in JS
- * because the value is derived after the query.
+ * Shares its query with `useMiniAppChats` — see {@link useChatsWithLastActivity}
+ * for the `MAX(id)`-as-timestamp trick and the sort.
  */
-export const useProjectChats = (
-  projectId: string | undefined,
-): { id: string; title: string | null; lastActivityAt: Date }[] => {
-  const db = useDatabase()
-  const { data = [] } = useQuery({
-    queryKey: ['projectChats', projectId ?? 'none'],
-    query: toCompilableQuery(
-      db
-        .select({
-          id: chatThreadsTable.id,
-          title: chatThreadsTable.title,
-          lastMessageId: sql<string | null>`max(${chatMessagesTable.id})`.as('last_message_id'),
-        })
-        .from(chatThreadsTable)
-        .leftJoin(
-          chatMessagesTable,
-          and(eq(chatMessagesTable.chatThreadId, chatThreadsTable.id), isNull(chatMessagesTable.deletedAt)),
-        )
-        .where(and(eq(chatThreadsTable.projectId, projectId ?? ''), isNull(chatThreadsTable.deletedAt)))
-        .groupBy(chatThreadsTable.id, chatThreadsTable.title),
-    ),
-  })
-  return (data as { id: string; title: string | null; lastMessageId: string | null }[])
-    .map((row) => ({
-      id: row.id,
-      title: row.title,
-      lastActivityAt: uuidv7ToDate(row.lastMessageId ?? row.id),
-    }))
-    .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime())
-}
+export const useProjectChats = (projectId: string | undefined): ChatWithLastActivity[] =>
+  useChatsWithLastActivity(['projectChats', projectId ?? 'none'], eq(chatThreadsTable.projectId, projectId ?? ''))
 
 /** Live `render_html` artifacts across a project's chats, newest first. */
 export const useProjectArtifacts = (projectId: string | undefined): ProjectArtifact[] => {

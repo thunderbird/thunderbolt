@@ -19,7 +19,9 @@ export const createFakeMcpServer = (port: number) =>
         return
       }
       const chunks: Buffer[] = []
-      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      for await (const chunk of request) {
+        chunks.push(Buffer.from(chunk))
+      }
       const rpc = JSON.parse(Buffer.concat(chunks).toString()) as RpcRequest
       if (rpc.id === undefined) {
         response.writeHead(202).end()

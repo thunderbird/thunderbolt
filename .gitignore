@@ -57,6 +57,10 @@ mise.toml
 !.claude/skills/
 !.claude/skills/thunder-deep-review/
 !.claude/skills/thunder-deep-review/**
+!.claude/security/
+!.claude/security/**
+!.claude/skills/thunder-red-team/
+!.claude/skills/thunder-red-team/**
 .zed/**
 .zedscratches/**
 .mcp.json
@@ -80,3 +84,9 @@ Pulumi.*.yaml
 
 # Astro
 .astro/
+
+# Red-team scratch — throwaway attack attempts, never committed.
+e2e/e2ee/attacks/scratch/
+
+# Red-team findings ledger — local run state, never committed (Linear is the shared record).
+.red-team/

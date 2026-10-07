@@ -6,14 +6,18 @@ import type { Settings } from '@/config/settings'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
 import { session as sessionTable, user as userTable } from '@/db/auth-schema'
 import { devicesTable, modelsTable, promptsTable, settingsTable } from '@/db/schema'
+import { encryptionMetadataTable } from '@/db/encryption-schema'
 import { betterAuthTestSecret, signTestToken as signToken } from '@/test-utils/auth-token'
 import { createTestDb } from '@/test-utils/db'
 import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { Elysia } from 'elysia'
 import { clearSettingsCache } from '@/config/settings'
 import { createPowerSyncRoutes } from './powersync'
 
 const powersyncSettings: Settings = {
+  miniApps: '',
+  miniAppTokenExpirySeconds: 300,
   fireworksApiKey: '',
   anthropicApiKey: '',
   anthropicBaseUrl: 'https://api.anthropic.com',
@@ -54,7 +58,7 @@ const powersyncSettings: Settings = {
   deviceAuthExpiresIn: '30m',
   deviceAuthInterval: '5s',
   apiKeyDefaultExpiresInSeconds: 90 * 24 * 60 * 60,
-  e2eeEnabled: true,
+  orgEscrowEnabled: false,
   debugTranscriptIntakeEnabled: false,
   debugTranscriptUpstreamUrl: '',
   debugTranscriptUpstreamKey: '',
@@ -172,6 +176,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'some-device',
       })
 
       // Token exists in DB but is sent unsigned — must be rejected
@@ -207,6 +212,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'revoked-device-id',
       })
 
       const revokedAt = new Date()
@@ -251,6 +257,10 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId: userB,
+        // Bound to user A's device: unreachable through the real bind handshake
+        // (it requires same-user ownership), so this pins the ownership guard
+        // behind the binding check as defense-in-depth.
+        deviceId: sharedDeviceId,
       })
 
       await db.insert(devicesTable).values({
@@ -295,6 +305,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-that-does-not-exist',
       })
 
       const response = await app.handle(
@@ -331,6 +342,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'untrusted-device-id',
       })
 
       await db.insert(devicesTable).values({
@@ -353,6 +365,85 @@ describe('PowerSync API', () => {
       expect(response.status).toBe(403)
       const data = await response.json()
       expect(data).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+    })
+
+    it('returns 403 DEVICE_NOT_BOUND when the session is not bound to any device', async () => {
+      // THU-873: fail closed. An unlinked session — the state a re-authenticated
+      // device starts in — gets no sync token even while naming a trusted device.
+      const userId = 'user-unbound-session'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Unbound Session User',
+        email: 'unbound-session@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-unbound',
+        expiresAt,
+        token: 'bearer-unbound',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+      })
+      await insertTrustedDevice('trusted-device-unbound', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-unbound')}`,
+            'x-device-id': 'trusted-device-unbound',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
+    })
+
+    it('returns 403 DEVICE_NOT_BOUND when the session is bound to a different device', async () => {
+      // The residual THU-873 closed here: a revoked device with a surviving
+      // unlinked session could previously name a trusted sibling and keep
+      // syncing the stream after revocation.
+      const userId = 'user-sibling-spoof'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'Sibling Spoof User',
+        email: 'sibling-spoof@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await insertTrustedDevice('own-device-spoof', userId)
+      await insertTrustedDevice('sibling-device-spoof', userId)
+      await db.insert(sessionTable).values({
+        id: 'session-sibling-spoof',
+        expiresAt,
+        token: 'bearer-sibling-spoof',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'own-device-spoof',
+      })
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-sibling-spoof')}`,
+            'x-device-id': 'sibling-device-spoof',
+          },
+        }),
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
     })
 
     it('rejects a registered CLI device from PowerSync token issuance', async () => {
@@ -530,6 +621,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'nonexistent-device',
       })
 
       // Device ID 'nonexistent-device' is NOT in the DB
@@ -567,6 +659,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'original-device',
       })
 
       // Register and revoke a device
@@ -601,9 +694,13 @@ describe('PowerSync API', () => {
           },
         }),
       )
-      // Must NOT succeed — unknown device IDs should be rejected
+      // Must NOT succeed. Since THU-873 it is refused one step earlier than it
+      // used to be: the session is bound to 'original-device', so naming an
+      // invented id fails the binding check before the trust check is reached.
+      // The device cannot bind to the invented id either — `bind-challenge`
+      // 404s on a device row that does not exist.
       expect(bypassResponse.status).toBe(403)
-      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
+      expect(await bypassResponse.json()).toEqual({ code: 'DEVICE_NOT_BOUND' })
     })
 
     it('returns token and powerSyncUrl when authenticated via session with x-device-id', async () => {
@@ -627,6 +724,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-session-token',
       })
       await insertTrustedDevice('device-session-token', userId)
 
@@ -644,6 +742,53 @@ describe('PowerSync API', () => {
       expect(data.token).toEqual(expect.any(String))
       expect(data.expiresAt).toBeDefined()
       expect(data.powerSyncUrl).toBe('https://powersync.example.com')
+    })
+
+    it('stamps the bound device_id into the PowerSync JWT', async () => {
+      const userId = 'user-powersync-device-claim'
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 3600 * 1000)
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'PowerSync Claim User',
+        email: 'powersync-claim@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-powersync-claim',
+        expiresAt,
+        token: 'bearer-powersync-claim',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        deviceId: 'device-claim',
+      })
+      await insertTrustedDevice('device-claim', userId)
+
+      const response = await app.handle(
+        new Request('http://localhost/powersync/token', {
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-powersync-claim')}`,
+            'x-device-id': 'device-claim',
+          },
+        }),
+      )
+      expect(response.status).toBe(200)
+      const { token } = (await response.json()) as { token: string }
+
+      // Decode the JWT payload (middle segment) without verifying the signature — we only
+      // assert the claim was stamped, not that PowerSync would accept it.
+      const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as {
+        sub: string
+        user_id: string
+        device_id: string
+      }
+      expect(claims.device_id).toBe('device-claim')
+      expect(claims.sub).toBe(userId)
+      expect(claims.user_id).toBe(userId)
     })
 
     it('updates device name when x-device-name is provided on token request', async () => {
@@ -667,6 +812,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-123',
       })
       await insertTrustedDevice('device-123', userId)
 
@@ -708,6 +854,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-empty-name',
       })
       await insertTrustedDevice('device-empty-name', userId)
 
@@ -748,6 +895,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-long-name',
       })
       await insertTrustedDevice('device-long-name', userId)
 
@@ -789,6 +937,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-100-char',
       })
       await insertTrustedDevice('device-100-char', userId)
 
@@ -830,6 +979,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-1-char',
       })
       await insertTrustedDevice('device-1-char', userId)
 
@@ -870,6 +1020,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version',
       })
       await insertTrustedDevice('device-app-version', userId)
 
@@ -910,6 +1061,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version-keep',
       })
       await insertTrustedDevice('device-app-version-keep', userId)
       await db.update(devicesTable).set({ appVersion: '0.1.80' }).where(eq(devicesTable.id, 'device-app-version-keep'))
@@ -949,6 +1101,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'device-app-version-long',
       })
       await insertTrustedDevice('device-app-version-long', userId)
 
@@ -1041,6 +1194,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'revoked-upload-device',
       })
 
       await db.insert(devicesTable).values({
@@ -1087,6 +1241,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'unknown-upload-device',
       })
 
       // Device 'unknown-upload-device' is NOT registered
@@ -1169,6 +1324,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1203,6 +1359,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1232,6 +1389,54 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userId)
     })
 
+    it('honours ifAbsent on the wire: create-only PUT cannot overwrite (GH #1299)', async () => {
+      const userId = 'user-upload-if-absent'
+      const now = new Date()
+
+      await db.insert(userTable).values({
+        id: userId,
+        name: 'If Absent User',
+        email: 'upload-if-absent@example.com',
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      await db.insert(sessionTable).values({
+        id: 'session-upload-if-absent',
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token: 'bearer-upload-if-absent',
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        // THU-873: the session must be bound to the device it names in
+        // `X-Device-ID`, or the route answers DEVICE_NOT_BOUND before any
+        // operation is applied.
+        deviceId: 'test-device-id',
+      })
+      await insertTrustedDevice('test-device-id', userId)
+
+      const upload = (data: Record<string, unknown>, ifAbsent?: boolean) =>
+        app.handle(
+          new Request('http://localhost/powersync/upload', {
+            method: 'PUT',
+            headers: uploadHeaders('bearer-upload-if-absent'),
+            body: JSON.stringify({
+              operations: [{ op: 'PUT' as const, type: 'settings', id: 'onboarding', data, ...{ ifAbsent } }],
+            }),
+          }),
+        )
+
+      expect((await upload({ value: 'true' })).status).toBe(200)
+
+      // The seeded default a second device queues offline. It must reach the
+      // route (so the row is created where absent) and be refused where not.
+      const seeded = await upload({ value: 'false' }, true)
+
+      expect(seeded.status).toBe(200)
+      const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'onboarding'))
+      expect(rows[0]?.value).toBe('true')
+    })
+
     it('ignores user_id and id in PUT payload, always uses session user', async () => {
       const userId = 'user-put-owns-row'
       const now = new Date()
@@ -1252,6 +1457,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1292,7 +1498,15 @@ describe('PowerSync API', () => {
       ])
       await db.insert(sessionTable).values([
         { id: 'session-a-same', expiresAt, token: 'bearer-a-same', createdAt: now, updatedAt: now, userId: userA },
-        { id: 'session-b-same', expiresAt, token: 'bearer-b-same', createdAt: now, updatedAt: now, userId: userB },
+        {
+          id: 'session-b-same',
+          expiresAt,
+          token: 'bearer-b-same',
+          createdAt: now,
+          updatedAt: now,
+          userId: userB,
+          deviceId: 'test-device-b-same',
+        },
       ])
       await insertTrustedDevice('test-device-b-same', userB)
 
@@ -1351,6 +1565,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1403,6 +1618,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1459,6 +1675,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1491,7 +1708,7 @@ describe('PowerSync API', () => {
       expect(rows[0]?.userId).toBe(userId)
     })
 
-    it('returns 400 when PATCH targets non-existent record', async () => {
+    it('accepts a PATCH against a non-existent record so the queue can drain', async () => {
       const userId = 'user-patch-nonexistent'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1511,6 +1728,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       // No settings row exists for 'nonexistent_key'
@@ -1531,12 +1749,13 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // Accepted so the client's queue can drain; rejecting wedges sync in
+      // both directions for devices carrying rows the account never held.
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ success: true })
     })
 
-    it('returns 400 when PATCH targets record belonging to another user', async () => {
+    it('never applies a PATCH to another user’s record, though it accepts the op', async () => {
       const userA = 'user-patch-owner'
       const userB = 'user-patch-attacker'
       const now = new Date()
@@ -1576,6 +1795,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-patch-attacker',
         },
       ])
       await insertTrustedDevice('test-device-patch-attacker', userB)
@@ -1601,9 +1821,9 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // Acceptance is queue liveness, never authority — the write is scoped
+      // by user_id, so the owner's row is untouched.
+      expect(response.status).toBe(200)
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_setting'))
       expect(rows).toHaveLength(1)
@@ -1631,6 +1851,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(settingsTable).values({
@@ -1683,6 +1904,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.insert(promptsTable).values({
@@ -1741,6 +1963,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1765,7 +1988,7 @@ describe('PowerSync API', () => {
       expect(rows).toHaveLength(0)
     })
 
-    it('returns 400 when DELETE targets non-existent record', async () => {
+    it('accepts a DELETE against a non-existent record', async () => {
       const userId = 'user-delete-nonexistent'
       const now = new Date()
       const expiresAt = new Date(now.getTime() + 3600 * 1000)
@@ -1785,6 +2008,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       // No settings row exists for 'nonexistent_to_delete'
@@ -1798,12 +2022,12 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      // The intended end state — row absent — already holds.
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ success: true })
     })
 
-    it('returns 400 when DELETE targets record belonging to another user', async () => {
+    it('never deletes another user’s record, though it accepts the op', async () => {
       const userA = 'user-delete-owner'
       const userB = 'user-delete-attacker'
       const now = new Date()
@@ -1843,6 +2067,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-delete-attacker',
         },
       ])
       await insertTrustedDevice('test-device-delete-attacker', userB)
@@ -1861,9 +2086,7 @@ describe('PowerSync API', () => {
           }),
         }),
       )
-      expect(response.status).toBe(400)
-      const body = (await response.json()) as { code: string }
-      expect(body.code).toBe('UPLOAD_OPERATION_FAILED')
+      expect(response.status).toBe(200)
 
       const rows = await db.select().from(settingsTable).where(eq(settingsTable.key, 'owner_only_to_delete'))
       expect(rows).toHaveLength(1)
@@ -1890,6 +2113,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
       await db.update(devicesTable).set({ appVersion: '0.1.90' }).where(eq(devicesTable.id, 'test-device-id'))
@@ -1938,6 +2162,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -1991,6 +2216,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -2047,8 +2273,24 @@ describe('PowerSync API', () => {
         },
       ])
       await db.insert(sessionTable).values([
-        { id: 'session-multi-a', expiresAt, token: 'bearer-multi-a', createdAt: now, updatedAt: now, userId: userA },
-        { id: 'session-multi-b', expiresAt, token: 'bearer-multi-b', createdAt: now, updatedAt: now, userId: userB },
+        {
+          id: 'session-multi-a',
+          expiresAt,
+          token: 'bearer-multi-a',
+          createdAt: now,
+          updatedAt: now,
+          userId: userA,
+          deviceId: 'test-device-multi-a',
+        },
+        {
+          id: 'session-multi-b',
+          expiresAt,
+          token: 'bearer-multi-b',
+          createdAt: now,
+          updatedAt: now,
+          userId: userB,
+          deviceId: 'test-device-multi-b',
+        },
       ])
       await insertTrustedDevice('test-device-multi-a', userA)
       await insertTrustedDevice('test-device-multi-b', userB)
@@ -2115,6 +2357,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userA,
+          deviceId: 'test-device-isolated-a',
         },
         {
           id: 'session-isolated-b',
@@ -2123,6 +2366,7 @@ describe('PowerSync API', () => {
           createdAt: now,
           updatedAt: now,
           userId: userB,
+          deviceId: 'test-device-isolated-b',
         },
       ])
       await insertTrustedDevice('test-device-isolated-a', userA)
@@ -2208,6 +2452,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -2257,6 +2502,7 @@ describe('PowerSync API', () => {
         createdAt: now,
         updatedAt: now,
         userId,
+        deviceId: 'test-device-id',
       })
       await insertTrustedDevice('test-device-id', userId)
 
@@ -2302,6 +2548,8 @@ describe('PowerSync cross-origin injection protection', () => {
       createdAt: now,
       updatedAt: now,
       userId,
+      // Bound to the device these requests name (THU-873).
+      deviceId: trustedDeviceId,
     })
     if (trustedDeviceId) {
       await db.insert(devicesTable).values({
@@ -2521,299 +2769,6 @@ describe('PowerSync cross-origin injection protection', () => {
   })
 })
 
-describe('PowerSync API (E2EE disabled)', () => {
-  let app: ReturnType<typeof createPowerSyncRoutes>
-  let db: Awaited<ReturnType<typeof createTestDb>>['db']
-  let cleanup: () => Promise<void>
-
-  const e2eeDisabledSettings: Settings = { ...powersyncSettings, e2eeEnabled: false }
-
-  beforeEach(async () => {
-    const testEnv = await createTestDb()
-    db = testEnv.db
-    cleanup = testEnv.cleanup
-    const { auth } = createBetterAuthPlugin(db)
-    app = createPowerSyncRoutes(auth, e2eeDisabledSettings, db)
-  })
-
-  afterEach(async () => {
-    if (cleanup) {
-      await cleanup()
-    }
-  })
-
-  it('allows untrusted device to get token when E2EE is disabled', async () => {
-    const userId = 'user-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'E2EE Off User',
-      email: 'e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-e2ee-off',
-      expiresAt,
-      token: 'bearer-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    await db.insert(devicesTable).values({
-      id: 'untrusted-device-e2ee-off',
-      userId,
-      name: 'Untrusted Device',
-      trusted: false,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-e2ee-off')}`,
-          'x-device-id': 'untrusted-device-e2ee-off',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-    const data = await response.json()
-    expect(data.token).toBeDefined()
-    expect(data.powerSyncUrl).toBe('https://powersync.example.com')
-  })
-
-  it('creates and trusts a brand-new device on token request when E2EE is disabled', async () => {
-    const userId = 'user-new-device-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'New Device User',
-      email: 'new-device-e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-new-device-e2ee-off',
-      expiresAt,
-      token: 'bearer-new-device-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    // No device inserted — device does not exist in DB at all
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-new-device-e2ee-off')}`,
-          'x-device-id': 'brand-new-device',
-          'x-device-name': 'My New Phone',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-    const data = await response.json()
-    expect(data.token).toBeDefined()
-    expect(data.powerSyncUrl).toBe('https://powersync.example.com')
-
-    // Verify device was auto-created and trusted
-    const device = await db
-      .select({ userId: devicesTable.userId, trusted: devicesTable.trusted, name: devicesTable.name })
-      .from(devicesTable)
-      .where(eq(devicesTable.id, 'brand-new-device'))
-      .then((rows) => rows[0])
-    expect(device).toBeDefined()
-    expect(device.userId).toBe(userId)
-    expect(device.trusted).toBe(true)
-    expect(device.name).toBe('My New Phone')
-  })
-
-  it('does not auto-create a reserved cli- device when E2EE is disabled', async () => {
-    const userId = 'user-cli-autocreate-rejected'
-    const token = 'bearer-cli-autocreate-rejected'
-    const deviceId = 'cli-019f0000-0000-7000-8000-000000000103'
-    const now = new Date()
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'CLI Auto-create User',
-      email: 'cli-autocreate-rejected@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-    await db.insert(sessionTable).values({
-      id: 'session-cli-autocreate-rejected',
-      expiresAt: new Date(now.getTime() + 3600_000),
-      token,
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken(token)}`,
-          'x-device-id': deviceId,
-          'x-device-name': 'Squat Attempt',
-        },
-      }),
-    )
-
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
-    expect(await db.select().from(devicesTable).where(eq(devicesTable.id, deviceId))).toHaveLength(0)
-  })
-
-  it('auto-trusts new device on upsert when E2EE is disabled', async () => {
-    const userId = 'user-auto-trust'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Auto Trust User',
-      email: 'auto-trust@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-auto-trust',
-      expiresAt,
-      token: 'bearer-auto-trust',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    // Insert untrusted device — the token endpoint should upgrade it to trusted
-    await db.insert(devicesTable).values({
-      id: 'device-auto-trust',
-      userId,
-      name: 'Device',
-      trusted: false,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-auto-trust')}`,
-          'x-device-id': 'device-auto-trust',
-        },
-      }),
-    )
-    expect(response.status).toBe(200)
-
-    // Verify device was marked trusted in DB
-    const device = await db
-      .select({ trusted: devicesTable.trusted })
-      .from(devicesTable)
-      .where(eq(devicesTable.id, 'device-auto-trust'))
-      .then((rows) => rows[0])
-    expect(device.trusted).toBe(true)
-  })
-
-  it('rejects non-existent device on upload even when E2EE is disabled', async () => {
-    const userId = 'user-upload-no-device'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Upload No Device',
-      email: 'upload-no-device@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-upload-no-device',
-      expiresAt,
-      token: 'bearer-upload-no-device',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/upload', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${signToken('bearer-upload-no-device')}`,
-          'X-Device-ID': 'device-does-not-exist',
-        },
-        body: JSON.stringify({
-          operations: [{ op: 'PUT', type: 'settings', id: 'k', data: { value: 'v' } }],
-        }),
-      }),
-    )
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ code: 'DEVICE_NOT_TRUSTED' })
-  })
-
-  it('still rejects revoked device when E2EE is disabled', async () => {
-    const userId = 'user-revoked-e2ee-off'
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + 3600 * 1000)
-
-    await db.insert(userTable).values({
-      id: userId,
-      name: 'Revoked E2EE Off',
-      email: 'revoked-e2ee-off@example.com',
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(sessionTable).values({
-      id: 'session-revoked-e2ee-off',
-      expiresAt,
-      token: 'bearer-revoked-e2ee-off',
-      createdAt: now,
-      updatedAt: now,
-      userId,
-    })
-
-    await db.insert(devicesTable).values({
-      id: 'revoked-device-e2ee-off',
-      userId,
-      name: 'Revoked Device',
-      trusted: false,
-      revokedAt: now,
-      lastSeen: now,
-      createdAt: now,
-    })
-
-    const response = await app.handle(
-      new Request('http://localhost/powersync/token', {
-        headers: {
-          Authorization: `Bearer ${signToken('bearer-revoked-e2ee-off')}`,
-          'x-device-id': 'revoked-device-e2ee-off',
-        },
-      }),
-    )
-    expect(response.status).toBe(403)
-    const data = await response.json()
-    expect(data).toEqual({ code: 'DEVICE_DISCONNECTED' })
-  })
-})
-
 describe('PowerSync API — anonymous sync guard', () => {
   let db: Awaited<ReturnType<typeof createTestDb>>['db']
   let cleanup: () => Promise<void>
@@ -2904,6 +2859,7 @@ describe('PowerSync API — anonymous sync guard', () => {
       createdAt: now,
       updatedAt: now,
       userId,
+      deviceId,
     })
 
     await db.insert(devicesTable).values({
@@ -2960,7 +2916,7 @@ describe('PowerSync API — anonymous sync guard', () => {
   })
 
   it('GET /powersync/token Path 2 (Bearer only) — non-anonymous user → 200 (regression)', async () => {
-    const app = createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db)
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('path2-ok')
 
@@ -3008,8 +2964,68 @@ describe('PowerSync API — anonymous sync guard', () => {
     expect(data).toEqual({ error: 'Forbidden', code: 'ANONYMOUS_SYNC_FORBIDDEN' })
   })
 
+  describe('PUT /powersync/upload — plaintext rejection on a v2 account', () => {
+    const ciphertext = '__enc:v2:0:aXYtYmFzZTY0:Y3QtYmFzZTY0'
+
+    /** Mark an account as migrated to the v2 keyring. */
+    const seedV2Metadata = (userId: string, schemeVersion: number) =>
+      db.insert(encryptionMetadataTable).values({
+        userId,
+        canaryIv: 'iv',
+        canaryCtext: 'ct',
+        signingPublicKey: 'spki',
+        kdfSalt: 'salt',
+        schemeVersion,
+      })
+
+    /** `settings.value` is an encrypted column, and a PUT upserts cleanly. */
+    const upload = async (suffix: string, schemeVersion: number, value: string) => {
+      const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
+      const { userId, signedBearer, deviceId } = await seedRegularUser(suffix)
+      await seedV2Metadata(userId, schemeVersion)
+
+      return app.handle(
+        new Request('http://localhost/powersync/upload', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${signedBearer}`,
+            'X-Device-ID': deviceId,
+          },
+          body: JSON.stringify({
+            operations: [{ op: 'PUT' as const, type: 'settings', id: 'data_collection', data: { value } }],
+          }),
+        }),
+      )
+    }
+
+    it('rejects plaintext in an encrypted column with 400 PLAINTEXT_UPLOAD_REJECTED', async () => {
+      const response = await upload('plaintext-v2', 2, 'enabled')
+
+      expect(response.status).toBe(400)
+      const data = (await response.json()) as { code: string; table: string; column: string }
+      expect(data.code).toBe('PLAINTEXT_UPLOAD_REJECTED')
+      expect(data.table).toBe('settings')
+      expect(data.column).toBe('value')
+    })
+
+    it('accepts v2 ciphertext', async () => {
+      const response = await upload('ciphertext-v2', 2, ciphertext)
+
+      expect(response.status).toBe(200)
+    })
+
+    it('does not enforce on a pre-flip v1 account', async () => {
+      // v1 accounts are not on the keyring yet — the cutover, not this guard,
+      // is what moves them; enforcing here would break the migration path.
+      const response = await upload('plaintext-v1', 1, 'enabled')
+
+      expect(response.status).toBe(200)
+    })
+  })
+
   it('PUT /powersync/upload — non-anonymous user → 200 (regression)', async () => {
-    const app = createPowerSyncRoutes(auth, { ...powersyncSettings, e2eeEnabled: false }, db)
+    const app = new Elysia().use(createPowerSyncRoutes(auth, powersyncSettings, db)) as unknown as Elysia
 
     const { signedBearer, deviceId } = await seedRegularUser('upload-ok')
 

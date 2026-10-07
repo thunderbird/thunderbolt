@@ -36,10 +36,12 @@ import { getLocalSetting } from '@/stores/local-settings-store'
 import type { RequestOptions } from '@/lib/http'
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
+import { supersededAppContextOutput } from '@/mini-apps/mini-app-context-note'
 import {
   createBuiltInAdapter,
   composeAppHarnessSystemPrompt,
   harnessSignature,
+  installAppContextSupersede,
   isPiModelCandidate,
   readProfileThinkingLevel,
   resolvePiModel,
@@ -568,6 +570,7 @@ describe('resolvePiModel — Tinfoil', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -675,6 +678,7 @@ describe('createBuiltInAdapter engine telemetry', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const aiFetch = mock(async () => new Response('legacy'))
     const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -714,6 +718,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const authToken = { current: 'first-token' }
     const authorizationHeaders: Array<string | null> = []
@@ -779,6 +784,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const receiptIds = ['first-receipt', 'second-receipt']
     const buildCalls: BuildAppHarnessOptions[] = []
@@ -866,6 +872,7 @@ describe('createBuiltInAdapter persistent harness', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable',
       volatileSystemPrompt: 'volatile',
+      embeddedSurface: null,
     } satisfies PreparedAiRequestConfig
     const activeToolNames: Array<string[] | undefined> = []
     const harness = {
@@ -940,6 +947,7 @@ describe('createBuiltInAdapter persistent harness', () => {
         mcpToolsMetadata: undefined,
         stableSystemPrompt: 'stable prompt',
         volatileSystemPrompt: `timestamp ${index + 1}`,
+        embeddedSurface: null,
       }),
     )
     const prepareConfig = mock(async () => configs.shift()!)
@@ -1168,6 +1176,7 @@ const createBudgetAdapter = (
     mcpToolsMetadata: undefined,
     stableSystemPrompt: 'Complete the report.',
     volatileSystemPrompt: 'Now.',
+    embeddedSurface: null,
   })
   const registrations = new Set<unknown>()
   const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
@@ -1430,6 +1439,7 @@ describe('createBuiltInAdapter stop', () => {
       mcpToolsMetadata: undefined,
       stableSystemPrompt: 'stable prompt',
       volatileSystemPrompt: 'volatile prompt',
+      embeddedSurface: null,
     }
     const harness = {
       getTools: () => [],
@@ -1628,5 +1638,124 @@ describe('research promotion through the real Pi adapter', () => {
     } finally {
       run.adapter.disconnect()
     }
+  })
+})
+
+describe('Mini App reads on the persistent harness', () => {
+  type ContextHandler = (event: { messages: unknown[] }) => { messages: unknown[] }
+
+  const appContextRead = (toolCallId: string, text: string) => ({
+    role: 'toolResult' as const,
+    toolCallId,
+    toolName: 'get_app_context',
+    content: [{ type: 'text' as const, text }],
+    isError: false,
+    timestamp: 0,
+  })
+
+  /** Only the hook registry: `installAppContextSupersede` touches nothing else. */
+  const hookRegistry = () => {
+    const hooks: { context?: ContextHandler } = {}
+    const harness = {
+      on: (type: string, handler: ContextHandler) => {
+        if (type === 'context') {
+          hooks.context = handler
+        }
+        return () => {
+          delete hooks.context
+        }
+      },
+    } as never
+    return { harness, hooks }
+  }
+
+  it('supersedes the listed reads in the request without touching the stored ones', () => {
+    const { harness, hooks } = hookRegistry()
+    const remove = installAppContextSupersede(harness, new Set(['earlier']))
+    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
+    const current = appContextRead('current', 'Currently viewing: Q3')
+
+    const { messages } = hooks.context!({ messages: [earlier, current] })
+
+    expect(messages[0]).toEqual({ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] })
+    expect(messages[1]).toBe(current)
+    expect(earlier.content[0].text).toBe('Currently viewing: Q2')
+
+    remove()
+
+    expect(hooks.context).toBeUndefined()
+  })
+
+  /** The rewrite the legacy path applies to the request history, carried to the harness's own session. */
+  it("rewrites earlier Mini App reads during a send and tags this send's reads", async () => {
+    const model = tinfoilModel()
+    const config = {
+      model,
+      profile: null,
+      supportsTools: true,
+      sourceCollector: [],
+      toolset: {},
+      skills: [],
+      mcpToolsMetadata: undefined,
+      stableSystemPrompt: 'stable',
+      volatileSystemPrompt: 'volatile',
+      embeddedSurface: 'mini-app',
+    } satisfies PreparedAiRequestConfig
+    const { harness: registry, hooks } = hookRegistry()
+    const earlier = appContextRead('earlier', 'Currently viewing: Q2')
+    let requested: unknown[] = []
+    let toolCallMetadata: Record<string, unknown> | undefined
+    const harness = {
+      ...(registry as object),
+      getTools: () => [],
+      setTools: async () => {},
+      prompt: async () => {
+        requested = hooks.context?.({ messages: [earlier] }).messages ?? []
+      },
+      waitForIdle: async () => {},
+      abort: async () => ({ aborted: true }),
+      env: { remove: async () => {} },
+    }
+    const agentCore = {
+      ...tinfoilAgentCore,
+      buildAppHarness: async () => harness as never,
+      workspaceDirFor: (threadId: string) => `/workspace/${threadId}`,
+      toPiAgentTools: async () => [],
+      piHarnessToUiMessageStream: (
+        _harness: AgentHarness,
+        runPrompt: () => Promise<void>,
+        metadata: { toolCall?: (toolName: string) => Record<string, unknown> | undefined },
+      ) =>
+        new ReadableStream<Uint8Array>({
+          start: async (controller) => {
+            toolCallMetadata = metadata.toolCall?.('get_app_context')
+            await runPrompt()
+            controller.close()
+          },
+        }),
+    } as never
+    const adapter = createBuiltInAdapter({ id: 'built-in', type: 'built-in' } as Agent, {
+      loadAgentCore: async () => agentCore,
+      prepareConfig: async () => config,
+      getSystemTinfoilClient: async () => createSecureClient(),
+    })
+    const messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'What is the total?' }] },
+      {
+        id: 'a1',
+        role: 'assistant',
+        metadata: { embeddedSurface: 'mini-app' },
+        parts: [
+          { type: 'tool-get_app_context', toolCallId: 'earlier', state: 'output-available', input: {}, output: 'Q2' },
+        ],
+      },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'And now?' }] },
+    ]
+
+    await (await adapter.fetch({ body: JSON.stringify({ messages }) }, tinfoilContext(model))).text()
+
+    expect(requested).toEqual([{ ...earlier, content: [{ type: 'text', text: supersededAppContextOutput }] }])
+    expect(hooks.context).toBeUndefined()
+    expect(toolCallMetadata).toEqual({ modelId: model.id, embeddedSurface: 'mini-app' })
   })
 })

@@ -1,0 +1,196 @@
+# Build a SIGNED + notarized macOS desktop app on demand and upload it as a
+# workflow artifact — no GitHub Release, no tag, no CrabNebula/auto-updater.
+#
+# Purpose: get a properly code-signed build (with the team's Apple Developer
+# identity from secrets) for features that need entitlements the local ad-hoc
+# build can't carry — e.g. passkeys / Associated Domains (THU-790). Download the
+# .dmg from the run's artifacts.
+#
+# HOW TO RUN: "Run workflow" with the branch set to **main** (required — see
+# below), then type the branch you want to build into the `branch` input.
+#
+# WHY run on main: the `thunderbolt_release` environment holds the Apple signing
+# secrets and its deployment-branch policy only allows `main`. The gate checks the
+# workflow's `github.ref`, so the run itself must be on main; we then
+# `actions/checkout` the `branch` input to build that branch's code. This mirrors
+# desktop-release.yml exactly (it runs on main and checks out the release tag) —
+# the only difference is we check out a branch instead of a tag.
+#
+# TRUST MODEL: this builds the chosen branch's code with the Apple signing cert
+# available (needed to produce a signed, notarizable app). Treat it like a release
+# build — only build branches you trust. The updater signing key is deliberately
+# NOT provided (see the build step).
+#
+# Entitlements (e.g. passkeys / Associated Domains, THU-790) come from the
+# SELECTED BRANCH's `src-tauri` config — this workflow doesn't add them. Build a
+# branch that carries the entitlement, or the signed app won't have it.
+#
+# Installed test builds still point at the production updater endpoint and may be
+# offered a newer prod release; decline the update to keep the test build.
+name: Desktop Build (signed, artifact-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build (run this workflow on main; this selects the code to check out)'
+        type: string
+        required: true
+      target:
+        description: 'macOS target to build'
+        type: choice
+        default: aarch64-apple-darwin
+        options:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+
+concurrency:
+  group: desktop-build-signed-${{ inputs.branch }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build signed macOS app (${{ inputs.target }})
+    runs-on: macos-latest
+    # Same environment as desktop-release so the Apple signing secrets resolve.
+    environment: thunderbolt_release
+
+    steps:
+      # Build the `branch` input's code. The run itself is on main (to pass the
+      # environment gate); this checkout is what actually gets built.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 'lts/*'
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: stable
+          cache: false
+          rustflags: ''
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-build-signed-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-signed-
+
+      # Imports the team's Apple Developer certificate from secrets and exports the
+      # signing + notarization env vars. Copied verbatim from desktop-release.yml so
+      # the signed output is identical to a real release build (incl. entitlements).
+      - name: Setup macOS code signing and notarization
+        env:
+          APPLE_DEVELOPER_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE }}
+          APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_DEVELOPER_CERTIFICATE" ] || [ -z "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" ]; then
+            echo "Required secrets are not set"
+            exit 1
+          fi
+
+          CLEAN_CERT=$(echo "$APPLE_DEVELOPER_CERTIFICATE" | tr -d '\n\r\t ' | tr -d '[:space:]')
+          echo "$CLEAN_CERT" | base64 --decode > certificate.p12
+          if [ ! -s certificate.p12 ]; then
+            echo "Failed to decode certificate"
+            exit 1
+          fi
+
+          security create-keychain -p "build" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "build" build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
+
+          # OpenSSL 3 needs -legacy for Apple's p12 ciphers; LibreSSL rejects the flag.
+          LEGACY_FLAG=""
+          if openssl version 2>/dev/null | grep -q '^OpenSSL 3'; then
+            LEGACY_FLAG="-legacy"
+          fi
+          openssl pkcs12 -in certificate.p12 -out temp_cert.pem -clcerts -nokeys $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -in certificate.p12 -out temp_key.pem -nocerts -nodes $LEGACY_FLAG -passin pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD"
+          openssl pkcs12 -export -out macos_certificate.p12 -inkey temp_key.pem -in temp_cert.pem -passout pass:"$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+
+          security import macos_certificate.p12 -k build.keychain -P "$APPLE_DEVELOPER_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          rm temp_cert.pem temp_key.pem macos_certificate.p12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "build" build.keychain
+          rm certificate.p12
+
+          DETECTED_IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          if [ -z "$DETECTED_IDENTITY" ]; then
+            echo "No valid signing identity found in keychain"
+            exit 1
+          fi
+
+          mkdir -p ~/private_keys
+          if echo "$APP_STORE_CONNECT_API_KEY" | base64 --decode > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8 2>/dev/null; then
+            echo "Decoded base64 API key"
+          else
+            echo "$APP_STORE_CONNECT_API_KEY" > ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+          fi
+          chmod 600 ~/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8
+
+          echo "APPLE_SIGNING_IDENTITY=$DETECTED_IDENTITY" >> $GITHUB_ENV
+          echo "APPLE_API_ISSUER=$APP_STORE_CONNECT_ISSUER_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY=$APP_STORE_CONNECT_API_KEY_ID" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_PATH=$HOME/private_keys/AuthKey_$APP_STORE_CONNECT_API_KEY_ID.p8" >> $GITHUB_ENV
+          echo "APPLE_TEAM_ID=$APPLE_TEAM_ID" >> $GITHUB_ENV
+
+      - name: Build signed Tauri app
+        # TARGET comes from a constrained `choice` input, but route it through an env
+        # var (and quote it) rather than interpolating `${{ }}` into the script —
+        # avoids the shell-injection pattern flagged by code scanning.
+        env:
+          TARGET: ${{ inputs.target }}
+          # x86_64 must not inherit target-cpu=native from the host runner.
+          RUSTFLAGS: ${{ inputs.target == 'x86_64-apple-darwin' && '-C target-cpu=x86-64' || '' }}
+          CARGO_INCREMENTAL: 0
+          RUSTC_WRAPPER: ''
+          # Cross-build toolchain for the Intel target (mirrors desktop-release); unset
+          # for Apple Silicon. Without these, native C/C++ deps compiled during an
+          # x86_64 build use host-arch defaults and fail to link.
+          CC_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang -target x86_64-apple-darwin' || '' }}
+          CXX_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang++ -target x86_64-apple-darwin' || '' }}
+          AR_x86_64_apple_darwin: ${{ inputs.target == 'x86_64-apple-darwin' && 'ar' || '' }}
+          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: ${{ inputs.target == 'x86_64-apple-darwin' && 'clang' || '' }}
+          VITE_THUNDERBOLT_CLOUD_URL: ${{ vars.VITE_THUNDERBOLT_CLOUD_URL }}
+        run: |
+          rustup target add "$TARGET"
+          if [ "$TARGET" = "x86_64-apple-darwin" ]; then
+            rm -rf src-tauri/target/x86_64-apple-darwin
+          fi
+          bun install --frozen-lockfile
+          # createUpdaterArtifacts:false → no updater artifacts to sign, so the
+          # production Tauri updater signing key is NOT handed to branch-controlled
+          # build code (reduces the secret surface flagged in review). The app is
+          # still fully code-signed + notarized via the Apple cert above.
+          bun tauri build --target "$TARGET" --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Upload signed macOS build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: thunderbolt-macos-${{ inputs.target }}
+          # Only the .dmg: it's the installer, and a single file is unaffected by
+          # upload-artifact dereferencing symlinks. Uploading the raw .app would
+          # resolve its internal symlinks (Contents/Frameworks/*/Versions/Current),
+          # inflating it and breaking the bundle's structure/signature. Install from
+          # the .dmg and run `codesign -d` against the installed app.
+          path: src-tauri/target/${{ inputs.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7

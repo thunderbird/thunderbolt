@@ -63,7 +63,9 @@ export const createAgentsRoutes = (auth: Auth) => {
         version: '1',
         agents: filtered,
         allowCustomAgents: settings.allowCustomAgents,
-        defaultAgentId: filtered.some(({ id }) => id === hostedAgentId) ? hostedAgentId : undefined,
+        defaultAgentId: filtered.some(({ id, type }) => id === hostedAgentId && type === 'managed-http')
+          ? hostedAgentId
+          : undefined,
       }
     })
 }

@@ -165,6 +165,13 @@ describe('GET /agents', () => {
       expect('defaultAgentId' in body).toBe(false)
     })
 
+    it('is omitted when another provider reuses the hosted agent id and AGENT_ENABLED is off', async () => {
+      registerAgentProvider({ id: 'haystack', list: () => [{ ...haystackDescriptor, id: 'hosted-agent' }] })
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect(body.agents).toHaveLength(1)
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
     it('is omitted when ENABLED_AGENTS excludes the hosted agent', async () => {
       process.env.AGENT_ENABLED = 'true'
       process.env.ENABLED_AGENTS = 'other'

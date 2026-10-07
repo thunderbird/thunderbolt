@@ -187,7 +187,10 @@ the brief below is your own contract. The brief carries:
 - the worktree's absolute path and, when you used the `cd` prefix, "all paths absolute, every
   shell command prefixed with `cd <path> &&`";
 - "Read `.agents/skills/thunder-update-model/references/swap-checklist.md` and work through every
-  item".
+  item";
+- "`AGENTS.md` (Testing, After Each Task), `backend/docs/testing.md` and
+  `docs/internals/development/testing.md` bind every test you write or edit; the report names the
+  three and gives one line per test file saying which behaviour that test proves".
 
 Completion criterion for the implementer, verbatim in the brief: every checklist item accounted
 for, the final suites in checklist item 24 pass, and the item 23 grep report has no hit left in

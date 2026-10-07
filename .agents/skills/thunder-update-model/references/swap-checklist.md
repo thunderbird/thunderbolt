@@ -15,6 +15,17 @@ Guardrails: never edit an existing migration SQL or snapshot under `backend/driz
 translated). Never run bare `bun test` at the repo root. Never commit; the developer runs
 `/thunderpush`.
 
+Tests follow the repo's own guides: `AGENTS.md` (Testing, After Each Task),
+`backend/docs/testing.md` and `docs/internals/development/testing.md` bind every test the swap
+touches; open them before writing one. A swap test proves a behaviour the application depends on:
+the request body sent for the incoming slug at each reasoning level, the price row the admission
+check finds for the upstream identity, the fallback the no-header path picks, the lineage moving
+an edited row off the retired slug. A test that restates its fixture or asserts a constant against
+itself adds nothing. Derive fixtures from `defaultModels` and the real profiles rather than
+hardcoded ids and names, so the next swap carries them along. Inject dependencies instead of
+calling `mock.module`, run backend tests on the PGlite harness (`createTestDb`), and look in
+`src/test-utils/` (frontend and backend) before writing a new mock; the guides detail each rule.
+
 ## A. Catalog, `shared/defaults/models.ts`
 
 1. universal. same-id: edit the leaving model's export in place (`name`, `model`, `vendor`,

@@ -105,12 +105,17 @@ const SECURITY_PATH_MATCHERS = [
   (p) => p === 'src/services/encryption.ts',
   (p) => p === 'src/db/powersync/middleware/EncryptionMiddleware.ts',
 ];
+const GENERATED_CATALOG_OR_LOCKFILE_RE = /(?:^|\/)(?:[^/]+\.lock|package-lock\.json|locales\/(?:.*\/)?messages\.ts)$/;
+
+/** Files whose patches contain only generated output. */
+const isGeneratedFile = (filename) => GENERATED_CATALOG_OR_LOCKFILE_RE.test(filename) ||
+  /^backend\/drizzle\/meta\/[^/]+_snapshot\.json$/.test(filename) || filename.startsWith('src/acp/iroh/pkg/');
+
 /** Files whose volume should not trigger extra model passes. */
 const excludesExtraPasses = (filename = '') =>
   (!filename?.startsWith('.claude/') && !/(?:^|\/)(?:AGENTS|CLAUDE)\.md$/.test(filename) && /\.mdx?$/.test(filename)) ||
   /^docs\//.test(filename) ||
-  /(?:^|\/)(?:[^/]+\.lock|package-lock\.json)$/.test(filename) ||
-  /\.po$/.test(filename) || /(?:^|\/)locales\/(?:.*\/)?messages\.ts$/.test(filename);
+  GENERATED_CATALOG_OR_LOCKFILE_RE.test(filename) || /\.po$/.test(filename);
 
 const matchesSecurityPath = (filename = '') =>
   !excludesExtraPasses(filename) && SECURITY_PATH_MATCHERS.some((m) => m(filename ?? ''));
@@ -1167,16 +1172,19 @@ const runPre = async () => {
   ]);
   const scope = await selectReviewScope(prFiles, ownReviewBodies);
   const diffFiles = scope.truncated ? scope.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : scope.items;
+  const reviewedFiles = diffFiles.filter((file) => !isGeneratedFile(file.filename));
+  const omittedFiles = diffFiles.filter((file) => isGeneratedFile(file.filename)).map((file) => file.filename);
+  const omittedNotice = omittedFiles.length ? `Generated files omitted from this patch: ${JSON.stringify(omittedFiles)}\n` : '';
   const deepInfo = { ...computeDeepMode(diffFiles, scope.truncated),
-    incremental: scope.incremental, skip: diffFiles.length === 0 };
+    incremental: scope.incremental, skip: reviewedFiles.length === 0 };
   await Promise.all([
-    writeFile(DIFF_FILE, buildUnifiedDiff(diffFiles)),
+    writeFile(DIFF_FILE, `${omittedNotice}${buildUnifiedDiff(reviewedFiles)}`),
     writeFile(PR_DIFF_FILE, buildUnifiedDiff(prFiles.items)),
     writeFile(PREVIOUS_FINDINGS_FILE, buildPreviousFindings(ownThreads, ownReviewBodies)),
     writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
   ]);
   if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `skip=${deepInfo.skip}\n`);
-  log(`pre: wrote ${diffFiles.length}-file ${scope.incremental ? 'incremental' : 'full'} diff; skip=${deepInfo.skip}; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
+  log(`pre: wrote ${reviewedFiles.length}-file ${scope.incremental ? 'incremental' : 'full'} diff (${omittedFiles.length} generated files omitted); skip=${deepInfo.skip}; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
 };
 
 /**

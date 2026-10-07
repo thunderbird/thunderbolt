@@ -144,6 +144,33 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
 };
 
 describe('incremental pre/post', () => {
+  test('pre omits generated patches, lists their paths and keeps reviewable files', async () => {
+    const omitted = ['bun.lock', 'cli/bun.lock', 'src-tauri/Cargo.lock', 'web/package-lock.json',
+      'backend/src/emails/locales/en/messages.ts', 'backend/drizzle/meta/0001_snapshot.json',
+      'src/acp/iroh/pkg/thunderbolt_acp_client.js', 'src/acp/iroh/pkg/thunderbolt_acp_client_bg.wasm'];
+    const retained = ['docs/guide.md', 'src/locales/en/messages.po', 'backend/drizzle/meta/_journal.json',
+      'backend/drizzle/0001_migration.sql', 'src/feature.ts', 'src-tauri/gen/android/app/build.gradle.kts'];
+    const files = [...omitted, ...retained].map((filename, index) => ({ filename, status: 'added',
+      additions: 1, deletions: 0, patch: `@@ -0,0 +1 @@\n+content-${index}` }));
+    for (const action of ['opened', 'synchronize']) {
+      const result = await runReview({ action, files, compare: { status: 'ahead',
+        merge_base_commit: { sha: reviewedSha }, files } });
+      const [notice, ...patch] = result.diff.split('\n');
+      for (const [index, filename] of omitted.entries()) {
+        expect(notice).toContain(JSON.stringify(filename));
+        expect(patch.join('\n')).not.toContain(filename);
+        expect(result.diff).not.toContain(`+content-${index}\n`);
+      }
+      for (const [index, filename] of retained.entries()) {
+        expect(result.diff).toContain(`diff --git a/${filename} b/${filename}`);
+        expect(result.diff).toContain(`+content-${index + omitted.length}\n`);
+      }
+      expect(result.mode.skip).toBe(false);
+    }
+    const generatedOnly = await runReview({ action: 'opened', files: files.slice(0, omitted.length) });
+    expect(generatedOnly.output).toContain('skip=true');
+  });
+
   test('reviews only delta hunks in PR files, with delta mode gates and full-PR anchors', async () => {
     const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
       files: [deltaFile, { filename: 'outside-pr.ts', additions: 900 }] },

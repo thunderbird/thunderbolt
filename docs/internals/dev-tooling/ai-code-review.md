@@ -75,6 +75,10 @@ dependencies, built-in `fetch`). Two phases surround the model steps; a telemetr
   on large PRs, so the orchestrator paginates `/pulls/{n}/files` (`buildUnifiedDiff`, `review-orchestrator.mjs:878`).
   That endpoint returns the merge-base..head set `POST /pulls/{n}/reviews` anchors against; a two-dot `base..head`
   diff would use base's _current_ tip and 422 the review by injecting base-only commits as reverse diffs.
+- The model's patch omits lockfiles (`bun.lock`, `*.lock`, `package-lock.json`), compiled Lingui
+  `locales/**/messages.ts`, `backend/drizzle/meta/*_snapshot.json`, and `src/acp/iroh/pkg/**`.
+  Its first line lists omitted paths. Docs, `.po` catalogs, `_journal.json` and SQL migrations remain in the patch;
+  a scope containing only generated files skips the model steps.
 - Everything reconciles to the PR head SHA, never the synthetic merge ref.
 - Unit-tested (`.github/scripts/review-orchestrator.test.mjs`) as part of `bun run test`.
 

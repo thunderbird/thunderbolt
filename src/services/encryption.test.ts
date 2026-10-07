@@ -210,6 +210,8 @@ type FakeServer = {
   boundDeviceId: string | null
   /** Nonce the last bind-challenge sealed, so a test can assert it never leaked. */
   lastBindNonce: string | null
+  /** Status GET /devices/me/envelope answers with, instead of serving the envelope. */
+  failEnvelopeFetchWith?: number
   fetch: (input: Request) => Promise<Response>
 }
 
@@ -319,6 +321,9 @@ const createFakeServer = (): FakeServer => {
       return jsonResponse({ trusted: false })
     }
     if (path === '/devices/me/envelope' && method === 'GET') {
+      if (server.failEnvelopeFetchWith) {
+        return jsonResponse({ error: 'envelope fetch failed' }, server.failEnvelopeFetchWith)
+      }
       const env = server.envelopes.get(callerDeviceId)
       if (!env) {
         return jsonResponse({ error: 'not found' }, 404)
@@ -1890,6 +1895,40 @@ describe('encryption service (v2)', () => {
     })
   })
 
+  describe('migrateToV2 — this device has no envelope yet', () => {
+    it('reports awaiting-approval rather than surfacing the envelope 404', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      // Enrolled but not yet approved: the row exists, the envelope does not.
+      // Every device joining a v1 account passes through this state.
+      server.envelopes.delete('test-device-id')
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+      })
+
+      expect(result.outcome).toBe('awaiting-approval')
+      expect(server.metadata!.schemeVersion).toBe(1)
+      expect(storedAK).toBeNull()
+    })
+
+    it('still propagates a non-404 failure from the envelope fetch', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      await seedV1Account(server, kp)
+      server.failEnvelopeFetchWith = 503
+
+      await expect(
+        migrateToV2(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        }),
+      ).rejects.toThrow(/503/)
+    })
+  })
+
   describe('migrateToV2 — forged v1 envelope (THU-877)', () => {
     /** A2 swaps BOTH the envelope and the canary, so the D1 possession proof is self-consistent. */
     const forgeEnvelopeAndCanary = async (server: FakeServer, kp: StoredKeyPair): Promise<void> => {
@@ -2002,6 +2041,69 @@ describe('encryption service (v2)', () => {
     })
   })
 
+  // Nothing here is forged: the server serves this account's real envelope and
+  // real canary, so the CK the migrator unwraps IS the account key. What varies
+  // is whether anything local can still prove that. The sampler can only ever
+  // return a value that FAILED to decode (a successful decode is stored as
+  // plaintext), so its pool is exactly the rows least likely to prove anything —
+  // which is why a single unreadable one must not be able to refuse a genuine
+  // key. It refused, and nothing commits, so the account re-aborted on every
+  // launch forever (field-reported).
+  describe('migrateToV2 — genuine CK, unopenable legacy row', () => {
+    /**
+     * A row this account can never read: a previous account's leftover, an upload
+     * sealed under a stale cached CK, or a torn write. At the sampler it is
+     * indistinguishable from a row that merely arrived before the CK was staged.
+     */
+    const orphanRow = async () => encrypt('orphan', await generateDEK(true))
+
+    it('still refuses when nothing local can vouch for the offer (no retained CK)', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+
+      // The offer is genuine, and provably so: it reads a row this account wrote.
+      const realRow = await encrypt('hello legacy', legacyCK)
+      expect(await decrypt(realRow, legacyCK)).toBe('hello legacy')
+
+      await expect(
+        migrateToV2(clientFor(server), {
+          listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+          getLegacyV1Sample: orphanRow,
+        }),
+      ).rejects.toThrow(/cannot decrypt this account's own legacy/)
+
+      // Wedged rather than degraded: nothing commits, so every later launch
+      // repeats this — which is what makes it permanent without intervention.
+      expect(server.metadata!.schemeVersion).toBe(1)
+      expect(storedAK).toBeNull()
+      expect(storedDEKs.has('v1')).toBe(false)
+    })
+
+    // Regression for the wedge above. A successful GCM open is proof — an auth
+    // tag cannot be forged — so any positive settles the question, while a
+    // failure is only evidence, the sampled row being possibly unreadable by
+    // anyone. The retained CK is the strongest anchor there is (a server cannot
+    // influence it), so a failing row defers to it rather than refusing outright.
+    it('migrates when the retained v1 CK confirms the offer, whatever the sample says', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const { legacyCK } = await seedV1Account(server, kp)
+      storedLegacyCK = legacyCK
+
+      const result = await migrateToV2(clientFor(server), {
+        listTrustedDevices: async () => [await deviceKeysFor(kp, 'test-device-id')],
+        getLegacyV1Sample: orphanRow,
+      })
+
+      expect(result.outcome).toBe('migrated')
+      expect(storedDEKs.has('v1')).toBe(true)
+      expect(server.metadata!.schemeVersion).toBe(2)
+    })
+  })
+
   describe('followToV2', () => {
     it('unwraps the AK, stages the keyring, and passes the continuity check', async () => {
       const server = createFakeServer()
@@ -2034,6 +2136,26 @@ describe('encryption service (v2)', () => {
       // Nothing persisted: a rejected keyring must not leave key material behind.
       expect(storedAK).toBeNull()
       expect(storedDEKs.size).toBe(0)
+    })
+
+    // Regression for the follower half of the same rule — the state a device
+    // lands in once a sibling has migrated the account. The served "v1" slot is
+    // genuine and this device's own retained CK proves it; an unreadable local
+    // row must not be allowed to outvote that proof.
+    it('follows when the retained v1 CK confirms the served slot, whatever the sample says', async () => {
+      const server = createFakeServer()
+      const kp = await generateFullKeyPair()
+      storedKeyPair = kp
+      const realCK = await generateDEK(true)
+      await seedV2Account(server, kp, realCK)
+      storedLegacyCK = realCK
+      const orphanSample = await encrypt('orphan', await generateDEK(true))
+
+      const result = await followToV2(clientFor(server), { getLegacyV1Sample: async () => orphanSample })
+
+      expect(result.outcome).toBe('followed')
+      expect(storedAK).not.toBeNull()
+      expect(storedDEKs.has('v1')).toBe(true)
     })
 
     it('re-runs the continuity check on the next attempt after a rejection', async () => {

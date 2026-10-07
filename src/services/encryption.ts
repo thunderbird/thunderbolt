@@ -1918,19 +1918,25 @@ const ckMatchesLocal = async (localCK: CryptoKey, candidate: CryptoKey): Promise
  * throws rather than returning `not-eligible` because a provably-wrong CK is
  * tampering, not an ineligible device, and must not be retried silently at boot.
  *
- * Order matters. A candidate that decrypts this account's own legacy ciphertext
- * IS the CK — a GCM auth tag cannot be forged — so that check settles the
- * question and returns. Only when no legacy row has synced yet does the locally
- * retained CK become the anchor.
+ * ANY POSITIVE SETTLES IT; ONLY A CONFIRMED NEGATIVE REFUSES. A GCM auth tag
+ * cannot be forged, so a candidate that opens real account material IS the CK
+ * and the check is over. A failure proves much less: the sampler can only ever
+ * return a row that already FAILED to decode (a successful decode is stored as
+ * plaintext), so its pool is exactly the rows least likely to prove anything —
+ * a previous account's leftover, an upload sealed under a stale cached CK, a
+ * torn write. Treating one such row as proof of tampering wedged accounts on v1
+ * permanently, since nothing commits and every later launch repeats the abort.
  *
- * That ordering is deliberate: comparing against the local CK FIRST would reject
- * a legitimate migration on a browser carrying a previous account's leftover CK
- * (a wipe that threw and was logged-and-continued, `src/lib/cleanup.ts`). Once a
- * sample has settled it, the local copy is never consulted, so that false
- * positive is confined to the no-sample case — where it is loud, and where the
- * alternative is poisoning the keyring for every device on the account.
+ * So the sample is consulted first and believed only when it SUCCEEDS. When it
+ * fails, the retained local CK decides: a match proves the offer genuine and the
+ * row merely unreadable; a mismatch is the one negative strong enough to refuse
+ * on, because that copy is the only legacy key material a server cannot
+ * influence. Order still matters — asking the local copy first would reject a
+ * legitimate migration on a browser carrying a previous account's leftover CK
+ * (a wipe that threw and was logged-and-continued, `src/lib/cleanup.ts`), which
+ * a synced row settles cleanly.
  *
- * Residual: with neither a synced legacy row nor a local CK there is nothing to
+ * Residual: with neither a readable legacy row nor a local CK there is nothing to
  * verify against and a forged envelope is still absorbed. Siblings then refuse the
  * poisoned keyring in `followToV2`, so it cannot spread past this device.
  */
@@ -1939,21 +1945,25 @@ const assertCandidateCKIsOurs = async (
   getSample: () => Promise<LegacyV1Sample | null>,
 ): Promise<void> => {
   const sample = await getSample()
-  if (sample) {
-    if (!(await ckOpensLegacySample(candidate, sample))) {
-      throw new Error(
-        "E2EE migration aborted — the legacy key the server offered cannot decrypt this account's own legacy " +
-          'data, so absorbing it would orphan every pre-migration row (THU-877)',
-      )
-    }
+  if (sample && (await ckOpensLegacySample(candidate, sample))) {
     return
   }
 
   const localCK = await getLegacyCK()
-  if (localCK && !(await ckMatchesLocal(localCK, candidate))) {
+  if (localCK) {
+    if (await ckMatchesLocal(localCK, candidate)) {
+      return
+    }
     throw new Error(
       'E2EE migration aborted — the legacy key the server offered does not match the one this device kept from ' +
         'v1 (THU-877)',
+    )
+  }
+
+  if (sample) {
+    throw new Error(
+      "E2EE migration aborted — the legacy key the server offered cannot decrypt this account's own legacy " +
+        'data, and this device kept no v1 key to check it against (THU-877)',
     )
   }
 }
@@ -1964,9 +1974,23 @@ const resolveLegacyCK = async (
   canary: { iv: string; ctext: string },
   keyPair: StoredKeyPair,
   getSample: () => Promise<LegacyV1Sample | null>,
-): Promise<AbsorbedLegacyCK | null> => {
-  const { wrappedCK } = await fetchMyEnvelope(httpClient)
-  const legacyCK = await unwrapLegacyCK(wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey).catch(() => null)
+): Promise<AbsorbedLegacyCK | 'awaiting-approval' | null> => {
+  // A device enrolled against a v1 account has no envelope until a trusted
+  // sibling approves it. Scoped to the envelope fetch and mirroring `followToV2`:
+  // without it an ordinary pending device reports a raw `404` on the setup screen
+  // instead of the approval-waiting state, with no way forward from there.
+  const envelope = await fetchMyEnvelope(httpClient).catch((err: unknown) => {
+    if (err instanceof HttpError && err.response.status === 404) {
+      return null
+    }
+    throw err
+  })
+  if (!envelope) {
+    return 'awaiting-approval'
+  }
+  const legacyCK = await unwrapLegacyCK(envelope.wrappedCK, keyPair.ecdhPrivateKey, keyPair.mlkemSecretKey).catch(
+    () => null,
+  )
   if (!legacyCK) {
     return null
   }
@@ -2021,6 +2045,9 @@ export const migrateToV2 = async (httpClient: HttpClient, opts: MigrateToV2Optio
     keyPair,
     opts.getLegacyV1Sample ?? defaultGetLegacyV1Sample,
   )
+  if (absorbed === 'awaiting-approval') {
+    return { outcome: 'awaiting-approval' }
+  }
   if (!absorbed) {
     return { outcome: 'not-eligible' }
   }
@@ -2249,9 +2276,21 @@ const runContinuityCheck = async (
     return
   }
   const v1Dek = await unwrapDEK(wrappedV1, ak, legacyKeyId)
-  if (!(await ckOpensLegacySample(v1Dek, sample))) {
-    throw new Error('E2EE continuity check failed — the staged keyring could not decrypt legacy data')
+  if (await ckOpensLegacySample(v1Dek, sample)) {
+    return
   }
+  // The sample did not open — which is not yet evidence of tampering, since the
+  // only values the sampler can return are ones that already failed to decode.
+  // Consult the one anchor a server cannot influence before rejecting: a
+  // retained v1 CK that matches the served slot proves the slot genuine and the
+  // row merely unreadable. Used as a POSITIVE only; a device without one, or
+  // carrying a previous account's leftover, is left exactly where it was, so
+  // this cannot newly block an unlock.
+  const localCK = await getLegacyCK()
+  if (localCK && (await ckMatchesLocal(localCK, v1Dek))) {
+    return
+  }
+  throw new Error('E2EE continuity check failed — the staged keyring could not decrypt legacy data')
 }
 
 /**

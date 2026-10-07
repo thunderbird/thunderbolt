@@ -7,7 +7,7 @@ import { getDb } from '@/db/database'
 import { modelsTable } from '@/db/tables'
 import {
   defaultModelGlm53,
-  defaultModelGlm53Flash,
+  defaultModelDeepSeekV41Flash,
   defaultModelOpus5,
   hashModel,
   type SharedModel,
@@ -156,13 +156,14 @@ describe('normalizeModelDefault', () => {
 })
 
 // `legacyVendor` is the vendor the row shipped with before the rename. Flash
-// moved deepseek → zhipu, so an edited Flash row that keeps `deepseek` resolves
-// Pi compatibility against the wrong vendor and breaks; seeding the old vendor
-// here proves the migration carries it (and the description) to the target.
+// moved deepseek → zhipu → deepseek, so an edited Flash row that keeps `zhipu`
+// resolves Pi compatibility against the wrong vendor and breaks; seeding the old
+// vendor here proves the migration carries it (and the description) to the target.
 for (const [target, model, name, legacyVendor] of [
   [defaultModelGlm53, 'glm-5-1', 'GLM 5.1', 'zhipu'],
   [defaultModelGlm53, 'glm-5-2', 'GLM 5.2', 'zhipu'],
-  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek'],
+  [defaultModelDeepSeekV41Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek'],
+  [defaultModelDeepSeekV41Flash, 'glm-5-3-flash', 'GLM 5.3 Flash', 'zhipu'],
 ] as const) {
   const legacyMetadata = { vendor: legacyVendor, description: 'legacy description' }
   describe(`${model} lineage`, () => {

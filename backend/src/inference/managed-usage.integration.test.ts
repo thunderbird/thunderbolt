@@ -393,6 +393,11 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         },
         {
           provider: 'tinfoil',
+          model: 'deepseek-v4-1-flash',
+          ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
+        },
+        {
+          provider: 'tinfoil',
           model: 'deepseek-v4-flash',
           ...officialPriceOracle['tinfoil/deepseek-v4-flash'],
         },

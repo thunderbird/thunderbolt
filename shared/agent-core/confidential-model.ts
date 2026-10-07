@@ -19,8 +19,28 @@ import { inferenceUsageReceiptHeader, type InferenceUsageReceiptRequest } from '
 import { buildOpenAiCompatModel, type OpenAiCompatFetch } from './openai-compat-model.ts'
 
 const vendorAliases = { zhipu: 'zai' } as const
-// pi-ai 0.80.7 has no glm-5.3; swap the alias for the real catalog id when upgrading Pi
-const modelAliases = { 'glm-5-2': 'glm-5.2', 'glm-5-3': 'glm-5.2', 'glm-5-3-flash': 'glm-5.2' } as const
+// pi-ai 0.82.1 has no glm-5.3 and no deepseek-v4-1-flash; swap each alias for the real catalog id when upgrading Pi
+const modelAliases = {
+  'glm-5-2': 'glm-5.2',
+  'glm-5-3': 'glm-5.2',
+  'glm-5-3-flash': 'glm-5.2',
+  'deepseek-v4-1-flash': 'deepseek-v4-flash',
+} as const
+
+// Tinfoil's DeepSeek V4.1 Flash takes reasoning through `chat_template_kwargs`
+// (`{ thinking: true, reasoning_effort }` on, `{ thinking: false }` off) with its
+// own effort map, while Pi's deepseek format sends top-level `thinking` and
+// `reasoning_effort` and maps low/medium to null (clamped up to high).
+const deepseekV41FlashThinking = {
+  thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'high', high: 'xhigh', xhigh: 'xhigh', max: 'xhigh' },
+  compat: {
+    thinkingFormat: 'chat-template',
+    chatTemplateKwargs: {
+      thinking: { $var: 'thinking.enabled' },
+      reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true },
+    },
+  },
+} as const satisfies Pick<Model<'openai-completions'>, 'thinkingLevelMap' | 'compat'>
 
 /** Stable structural codes surfaced by confidential model construction and transport. */
 export type ConfidentialModelErrorCode = 'compatibility-missing' | 'attestation-failed'
@@ -103,6 +123,13 @@ export const resolveConfidentialModelCompatibility = (
     return {
       ...resolved,
       thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
+    }
+  }
+  if (model.modelId === 'deepseek-v4-1-flash') {
+    return {
+      ...resolved,
+      thinkingLevelMap: deepseekV41FlashThinking.thinkingLevelMap,
+      compat: { ...resolved.compat, ...deepseekV41FlashThinking.compat },
     }
   }
   return resolved

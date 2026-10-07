@@ -13,13 +13,13 @@ Both tiers share one admission check, one price table, and one usage ledger: [`b
 
 Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../../shared/defaults/models.ts):
 
-| Model         | Default row (`models.ts`)      | `provider`    | Public slug     | Upstream identity             | Route           |
-| ------------- | ------------------------------ | ------------- | --------------- | ----------------------------- | --------------- |
-| Opus 5        | `defaultModelOpus5`, L85       | `thunderbolt` | `opus-5`        | `anthropic` / `claude-opus-5` | `/v1/chat/*`    |
-| GLM 5.3 Flash | `defaultModelGlm53Flash`, L105 | `tinfoil`     | `glm-5-3-flash` | `tinfoil` / `glm-5-3-flash`   | `/v1/tinfoil/*` |
-| GLM 5.3       | `defaultModelGlm53`, L127      | `tinfoil`     | `glm-5-3`       | `tinfoil` / `glm-5-3`         | `/v1/tinfoil/*` |
+| Model               | Default row (`models.ts`)      | `provider`    | Public slug           | Upstream identity                 | Route           |
+| ------------------- | ------------------------------ | ------------- | --------------------- | --------------------------------- | --------------- |
+| Opus 5              | `defaultModelOpus5`            | `thunderbolt` | `opus-5`              | `anthropic` / `claude-opus-5`     | `/v1/chat/*`    |
+| DeepSeek V4.1 Flash | `defaultModelDeepSeekV41Flash` | `tinfoil`     | `deepseek-v4-1-flash` | `tinfoil` / `deepseek-v4-1-flash` | `/v1/tinfoil/*` |
+| GLM 5.3             | `defaultModelGlm53`            | `tinfoil`     | `glm-5-3`             | `tinfoil` / `glm-5-3`             | `/v1/tinfoil/*` |
 
-- **The default model is confidential.** `defaultModelId` (`models.ts:125`) is GLM 5.3 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5's 5000 / 25000 (migrations `0028`, `0029`).
+- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5's 5000 / 25000 (migrations `0028`, `0029`, `0034`).
 - **`provider` is transport, not branding.** The UI shows system-managed Tinfoil rows as Thunderbolt so the vendor does not leak into the product (`models.ts:130-131`); `provider: 'tinfoil'` does not mean the user configured Tinfoil.
 - **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts:17`](../../../backend/src/inference/managed-models.ts)) maps `opus-5` to `internalName: 'claude-opus-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5')` against GLM's public slugs.
 - **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2` and `deepseek-v4-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.

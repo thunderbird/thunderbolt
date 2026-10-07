@@ -5,7 +5,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { defaultModelGlm53Flash } from '../shared/defaults/models'
+import { defaultModelDeepSeekV41Flash } from '../shared/defaults/models'
 import { collectPageErrors, loginViaEmailCode } from './helpers'
 import { expect, isolateProviderRequests, resetOriginStorage, test, type Page } from './test'
 
@@ -21,7 +21,7 @@ const expectIsolatedPrewarm = async (page: Page) => {
     page.waitForEvent('console', (message) => message.text().includes('runSystemModelPrewarm: warm-up skipped')),
     loginViaEmailCode(page),
   ])
-  await expect(page.getByTestId('model-selector-trigger')).toContainText(defaultModelGlm53Flash.name)
+  await expect(page.getByTestId('model-selector-trigger')).toContainText(defaultModelDeepSeekV41Flash.name)
   expect(response.url()).toBe('https://atc.tinfoil.sh/attestation')
   expect(response.status()).toBe(503)
   expect(await response.json()).toEqual({ error: 'Attestation is disabled in this test project' })

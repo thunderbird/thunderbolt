@@ -125,7 +125,7 @@ describe('buildConfidentialModel compatibility', () => {
   it.each([
     ['zhipu GLM', 'glm-5-2', 'zhipu', { type: 'enabled', clear_thinking: false }, 'high'],
     ['GLM 5.3', 'glm-5-3', 'zhipu', { type: 'enabled', clear_thinking: false }, 'max'],
-    ['GLM 5.3 Flash', 'glm-5-3-flash', 'zhipu', { type: 'enabled', clear_thinking: false }, 'low'],
+    ['legacy GLM 5.3 Flash', 'glm-5-3-flash', 'zhipu', { type: 'enabled', clear_thinking: false }, 'low'],
     ['DeepSeek V4 Flash', 'deepseek-v4-flash', 'deepseek', { type: 'enabled' }, 'high'],
   ] as const)(
     'uses catalog-driven Pi thinking metadata for %s',
@@ -144,6 +144,43 @@ describe('buildConfidentialModel compatibility', () => {
 
       expect(payloads).toHaveLength(1)
       expect(payloads[0]).toMatchObject({ model: modelId, thinking, reasoning_effort: reasoning })
+    },
+  )
+
+  // Tinfoil's `reasoning_params` for DeepSeek V4.1 Flash: effort_map low→low,
+  // medium→high, high→xhigh under `chat_template_kwargs`, `{ thinking: false }` off.
+  it.each([
+    ['off', undefined, { thinking: false }],
+    ['minimal', 'minimal', { thinking: true, reasoning_effort: 'low' }],
+    ['low', 'low', { thinking: true, reasoning_effort: 'low' }],
+    ['medium', 'medium', { thinking: true, reasoning_effort: 'high' }],
+    ['high', 'high', { thinking: true, reasoning_effort: 'xhigh' }],
+    ['xhigh', 'xhigh', { thinking: true, reasoning_effort: 'xhigh' }],
+    ['max', 'max', { thinking: true, reasoning_effort: 'xhigh' }],
+  ] as const)(
+    'sends DeepSeek V4.1 Flash reasoning %s as Tinfoil chat_template_kwargs',
+    async (_name, reasoning, kwargs) => {
+      const payloads: Array<{
+        readonly model?: unknown
+        readonly thinking?: unknown
+        readonly reasoning_effort?: unknown
+        readonly chat_template_kwargs?: unknown
+      }> = []
+      const built = build({
+        modelId: 'deepseek-v4-1-flash',
+        vendor: 'deepseek',
+        fetch: async (_input, init) => {
+          payloads.push((await new Response(init?.body).json()) as (typeof payloads)[number])
+          return sseResponse('deepseek-v4-1-flash')
+        },
+      })
+
+      await providerFor(built).streamSimple(built.model, context, { reasoning }).result()
+
+      expect(payloads).toHaveLength(1)
+      expect(payloads[0]).toMatchObject({ model: 'deepseek-v4-1-flash', chat_template_kwargs: kwargs })
+      expect(payloads[0]).not.toHaveProperty('thinking')
+      expect(payloads[0]).not.toHaveProperty('reasoning_effort')
     },
   )
 

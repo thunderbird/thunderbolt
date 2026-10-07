@@ -15,8 +15,8 @@
 #     (they hold the review logic + the API-key reference).
 #
 # Orchestration is deterministic CODE, not model tool-calls: .github/scripts/
-# review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
-# skip-list, post the inline PR review). The model step is READ-ONLY and ONLY
+# review-orchestrator.mjs does ALL GitHub I/O (fetch the diff, dedup and
+# post the inline PR review). The model step is READ-ONLY and ONLY
 # emits structured JSON findings as the action's structured_output (via
 # --json-schema); a separate non-model step materializes that to a file.
 # =============================================================================
@@ -37,13 +37,12 @@ on:
 permissions:
   contents: read # read the diff/files
   pull-requests: write # post the inline PR review (POST /pulls/{n}/reviews)
-  checks: read # poll A's bot check-runs (without this the poller 403s)
 
 concurrency:
   # Only review the latest push. cancel-in-progress during the debounce
   # `sleep` (below) is free. No cross-run lock: a run posts a review only when it
   # has new findings (it skips otherwise) and converges via open-thread hash dedup
-  # (the post phase resolves/skips the threads it already owns), so a cancelled run is safe.
+  # (the post phase skips findings already in open threads), so a cancelled run is safe.
   group: thunder-deep-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
@@ -63,26 +62,24 @@ jobs:
     runs-on: ubuntu-latest
 
     # Cap total runner time so a hung model API call can't hold the
-    # runner indefinitely. Sized for: 60s debounce + up to ~6min of bot
-    # polling + TWO model steps (the recall pass runs at xhigh effort with a
+    # runner indefinitely. Sized for: 60s debounce + diff preparation + TWO
+    # model steps (the recall pass runs at xhigh effort with a
     # 40-turn budget, so it is the long pole).
     timeout-minutes: 30
 
     env:
       # Reconcile EVERYTHING to the PR HEAD sha, never the synthetic merge ref.
-      # Both the poller and the diff must describe the same code.
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PR_ACTION: ${{ github.event.action }}
       PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # The orchestrator posts the review under the default GITHUB_TOKEN, so the
-      # author login is github-actions[bot]. The script matches/resolves its own
+      # author login is github-actions[bot]. The script identifies its own
       # threads by this login (+ a hidden marker). No separate GitHub App.
       THUNDER_BOT_LOGIN: github-actions[bot]
       # File handoff between steps (must match .github/scripts/review-orchestrator.mjs).
       THUNDER_DIFF_FILE: ${{ github.workspace }}/thunder-diff.patch
-      THUNDER_SKIPLIST_FILE: ${{ github.workspace }}/thunder-skiplist.json
       THUNDER_DEEPMODE_FILE: ${{ github.workspace }}/thunder-deepmode.json
       # The security exclusion list, taken from the BASE branch rather than the
       # checked-out head — see the fetch step below for why.
@@ -173,12 +170,12 @@ jobs:
           done
 
       # ─────────────────────────────────────────────────────────────────────
-      # (PRE phase): poll A's bots, build the skip-list, reconstruct the unified
+      # (PRE phase): reconstruct the unified
       # diff from the Files API (writing ${THUNDER_DIFF_FILE}), and compute the
       # deterministic deep-mode flag. ALL GitHub I/O is in this script.
       # This step touches untrusted PR metadata but holds no model credentials.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Orchestrator — poll bots + build skip-list (pre)
+      - name: Orchestrator — prepare diff + mode flags (pre)
         run: node .github/scripts/review-orchestrator.mjs pre
         # NOTE: .github/scripts/review-orchestrator.mjs is checked in at the
         # repo-relative path; recommend CODEOWNERS-protecting it.
@@ -256,7 +253,7 @@ jobs:
           # Read,Grep,Glob (read-only working-tree access). NO Bash,
           # NO write tools — the model is fully READ-ONLY and CANNOT write a file.
           # --max-turns caps the agent loop. Sized at 40 for the full fan-out
-          # (10 lane sub-reviewers + domain subagents + micro-specialists in deep
+          # (11 lane sub-reviewers + domain subagents + micro-specialists in deep
           # mode, plus reference/diff Reads) — a mid-review cap does not fail the
           # step, it silently TRUNCATES recall, so the cap must comfortably exceed
           # the worst-case fan-out, and the job timeout-minutes is the real guard.
@@ -293,13 +290,8 @@ jobs:
             confidence level and the quoted offending line (evidence) so the gate
             can verify and rank it.
             The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
-            A skip-list of issues ALREADY reported by other bots is in:
-              ${{ env.THUNDER_SKIPLIST_FILE }}
-            Do NOT repeat anything on the skip-list. Surface what the other bots
-            missed: real correctness and security bugs they overlooked, AND the
-            categories they do not cover (architecture, conventions, testability,
-            docs-intent, readability). No category is out of scope — the skip-list
-            excludes specific already-reported findings, never whole categories.
+            Review all categories covered by the skill (bugs, conventions,
+            React, tests, security, bundle size, docs-intent, readability).
             Deep-mode / bounded-mode / securityMode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
             honor them; do NOT decide spend yourself. When `securityMode` is true,
             ALSO run the skill's path-conditional Security dimension over the
@@ -338,6 +330,13 @@ jobs:
             internal-only — never restate them inside `title` or `body`.
             Emit NO markdown headers, NO severity trailer, NO PR comment — the
             orchestrator renders and posts. If nothing to add, return {"findings":[]}.
+
+      - name: Model telemetry — recall
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.review_model.outputs.execution_file }}
+          MODEL_OUTCOME: ${{ steps.review_model.outcome }}
+        run: node .github/scripts/review-orchestrator.mjs telemetry
 
       # ─────────────────────────────────────────────────────────────────────
       # Persist STEP 1's STRUCTURED OUTPUT to the CANDIDATES file the precision
@@ -433,6 +432,8 @@ jobs:
           steps.persist_candidates.outputs.count != '' &&
           steps.persist_candidates.outputs.count != '0'
         run: |
+          # The action reuses this path; a gate failure must not report recall metrics.
+          rm -f "${RUNNER_TEMP}/claude-execution-output.json"
           find .claude -type l | while read -r l; do
             [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
           done
@@ -532,6 +533,13 @@ jobs:
             the ONLY permitted edit; do NOT rewrite anything else). It is correct
             and expected to return {"findings":[]} when nothing clears the bar.
 
+      - name: Model telemetry — gate
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.gate.outputs.execution_file }}
+          MODEL_OUTCOME: ${{ steps.gate.outcome }}
+        run: node .github/scripts/review-orchestrator.mjs telemetry
+
       # ─────────────────────────────────────────────────────────────────────
       # Persist the GATE's STRUCTURED OUTPUT to the FINDINGS file the post phase
       # reads — the kept subset, NOT the candidates. Same materialize-from-env
@@ -582,7 +590,7 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # (POST phase): read+validate the model's JSON, compute the
-      # resolved-diff structurally, render markdown deterministically, and post
+      # diff positions structurally, render markdown deterministically, and post
       # ONE PR review (POST /pulls/{n}/reviews, event=COMMENT) with anchored inline
       # comments — no issue comment, no PATCH/upsert, no lock. No model creds here;
       # pure GitHub I/O.

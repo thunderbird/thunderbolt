@@ -23,6 +23,7 @@ export const createTestSettings = (overrides: Partial<Settings> = {}): Settings 
   googleBaseUrl: 'https://oauth2.googleapis.com',
   microsoftClientId: '',
   microsoftClientSecret: '',
+  microsoftBaseUrl: 'https://login.microsoftonline.com',
   authMode: 'consumer' as const,
   authAllowAnonymous: false,
   oidcClientId: '',

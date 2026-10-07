@@ -76,6 +76,39 @@ describe('Config Settings', () => {
     })
   })
 
+  describe('Microsoft base URL', () => {
+    let savedEnv: string | undefined
+
+    beforeEach(() => {
+      savedEnv = process.env.MICROSOFT_BASE_URL
+      clearSettingsCache()
+    })
+
+    afterEach(() => {
+      if (savedEnv === undefined) {
+        delete process.env.MICROSOFT_BASE_URL
+      } else {
+        process.env.MICROSOFT_BASE_URL = savedEnv
+      }
+      clearSettingsCache()
+    })
+
+    it('keeps the Microsoft token host when the override is unset', () => {
+      delete process.env.MICROSOFT_BASE_URL
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+
+    it('honours a loopback MICROSOFT_BASE_URL', () => {
+      process.env.MICROSOFT_BASE_URL = 'http://127.0.0.1:9881/'
+      expect(getSettings().microsoftBaseUrl).toBe('http://127.0.0.1:9881')
+    })
+
+    it('ignores a MICROSOFT_BASE_URL on any other host', () => {
+      process.env.MICROSOFT_BASE_URL = 'https://evil.example'
+      expect(getSettings().microsoftBaseUrl).toBe('https://login.microsoftonline.com')
+    })
+  })
+
   describe('getCorsOriginsList', () => {
     it('should split comma-separated origins', () => {
       const settings = { corsOrigins: 'http://localhost:3000,https://example.com,https://app.example.com' }

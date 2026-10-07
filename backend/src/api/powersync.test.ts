@@ -31,6 +31,7 @@ const powersyncSettings: Settings = {
   googleBaseUrl: 'https://oauth2.googleapis.com',
   microsoftClientId: '',
   microsoftClientSecret: '',
+  microsoftBaseUrl: 'https://login.microsoftonline.com',
   logLevel: 'INFO',
   port: 8000,
   appUrl: 'http://localhost:1420',

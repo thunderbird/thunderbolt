@@ -200,6 +200,7 @@ and exactly the Gmail and Calendar endpoints the app's tools call, with Google's
 always starts it, even with `QA_REAL_PROVIDERS=true`, and points the build (`VITE_GOOGLE_BASE_URL`) and the backend
 (`GOOGLE_BASE_URL`, plus a fake client id and secret) at it. The app honours either override only on a loopback host,
 so a build with a wrong value still talks to the real Google.
+Microsoft has the same loopback-only seam (`VITE_MICROSOFT_BASE_URL`, `MICROSOFT_BASE_URL`) but no fake yet.
 
 Connect it in Settings → Connections → Connect Google, then pick an account. Times are UTC and move with today:
 "Thursday" is the next Thursday. On a Thursday, the calendar tool's 7-day window cuts that day short.

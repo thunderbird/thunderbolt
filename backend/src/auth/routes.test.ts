@@ -311,6 +311,30 @@ describe('Authentication Routes', () => {
       )
       expect(response.status).toBe(200)
       expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFetch.mock.calls[0][0]).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/token')
+    })
+
+    it('posts Microsoft token calls to the configured base URL', async () => {
+      getSettingsSpy.mockReturnValueOnce(
+        createTestSettings({
+          microsoftClientId: 'test-microsoft-client-id',
+          microsoftClientSecret: 'test-microsoft-secret',
+          microsoftBaseUrl: 'http://localhost:9881',
+        }),
+      )
+      mockFetch.mockClear()
+      mockFetch.mockResolvedValueOnce(
+        createMockOAuthResponse(200, { access_token: 'token', expires_in: 3600, token_type: 'Bearer' }),
+      )
+      const response = await app.handle(
+        new Request('http://localhost/auth/microsoft/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: 'refresh' }),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:9881/common/oauth2/v2.0/token')
     })
   })
 })

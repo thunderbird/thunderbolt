@@ -75,14 +75,26 @@ export const repoDocsLoader = ({
 	},
 });
 
-async function walkMarkdown(dir: string): Promise<string[]> {
+/**
+ * Directories under /docs/ that are NOT published to the site, as paths relative
+ * to the docs root, so only the top-level `internals/` matches. `internals/`
+ * holds contributor documentation: it cites source files by line, assumes the
+ * reader is working in the repository, and is written for people changing the
+ * code rather than running the product. It stays in /docs/ so contributors find
+ * it beside everything else, and never reaches thunderbolt.io.
+ */
+const unpublishedDirs = new Set(['internals']);
+
+/** Every published Markdown file under `dir`, sorted. `root` is the docs root `unpublishedDirs` is relative to. */
+export async function walkMarkdown(dir: string, root = dir): Promise<string[]> {
 	const entries = await readdir(dir, { withFileTypes: true });
 	const results = await Promise.all(
 		entries
 			.filter((e) => !e.name.startsWith('.') && !e.name.startsWith('_'))
+			.filter((e) => !(e.isDirectory() && unpublishedDirs.has(relative(root, join(dir, e.name)))))
 			.map((entry) => {
 				const full = join(dir, entry.name);
-				if (entry.isDirectory()) return walkMarkdown(full);
+				if (entry.isDirectory()) return walkMarkdown(full, root);
 				if (entry.isFile() && /\.md$/i.test(entry.name)) return Promise.resolve([full]);
 				return Promise.resolve([]);
 			}),
@@ -162,7 +174,7 @@ export function rewriteLinks(
 			if (repoPath.startsWith('docs/')) {
 				const docRelPath = repoPath.slice('docs/'.length);
 				// Only treat as a docs link if the target file actually exists in docs.
-				// Without this check, links like ../src/file.ts from docs/architecture/
+				// Without this check, links like ../src/file.ts from docs/internals/architecture/
 				// incorrectly resolve to docs/src/file.ts and generate broken docs URLs.
 				const withExt = /\.\w+$/.test(docRelPath) ? docRelPath : `${docRelPath}.md`;
 				if (knownDocPaths.has(withExt) || knownDocPaths.has(docRelPath)) {

@@ -1,0 +1,1003 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Host half of the Mini App bridge: owns the frame's message channel, performs
+ * the handshake, and forwards accepted context into `useMiniAppStore`.
+ *
+ * The validation core (`acceptGuestMessage`) is a pure function so the trust
+ * boundary can be unit-tested without a DOM or a real frame — that check is the
+ * one piece here where a silent regression would be a security bug rather than
+ * a broken demo.
+ */
+
+import {
+  contextGetResultSchema,
+  elementAtResultSchema,
+  identifyResultSchema,
+  isSupportedProtocolVersion,
+  miniAppGuestMethods,
+  miniAppHostMethods,
+  miniAppProtocolMarker,
+  miniAppProtocolVersion,
+  miniAppRpcErrors,
+  parseGuestMessage,
+  parseGuestResult,
+  parseToolsList,
+  toolsCallResultSchema,
+  type MiniAppContext,
+  type MiniAppGuestCapabilities,
+  type MiniAppGuestMessage,
+  type MiniAppHighlightedElement,
+  type MiniAppHostMessage,
+  type MiniAppHostRequest,
+  type MiniAppInitializeResult,
+  type MiniAppPlatform,
+  type MiniAppSelection,
+  type MiniAppToolCallResult,
+} from '@shared/mini-app-protocol'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useActiveLocale } from '@/i18n/use-active-locale'
+import { useResolvedTheme } from '@/lib/theme-provider'
+import { getPlatform, isIosPlatform, isTauri } from '@/lib/platform'
+import { createPendingRequests, elementAtTimeoutMs } from '@/components/embedded'
+import { useHttpClient } from '@/contexts'
+import { downloadFile } from '@/lib/download'
+import { fetchMiniAppToken } from './mini-app-auth'
+import { prepareMiniAppDownload } from './mini-app-download'
+import { useMiniAppStore } from './mini-app-store'
+import type { MiniAppDefinition } from './registry'
+
+/*
+ * The three deadlines below are exported so their tests advance the clock by the
+ * real value rather than a copy of it — a test that hardcodes 8_000 keeps
+ * passing after someone changes the timeout to 20_000 and stops testing it.
+ */
+
+/** How long to wait for the guest's `initialize` before calling the app unreachable. */
+export const handshakeTimeoutMs = 8_000
+
+/** Tool discovery happens once at connect; a slow app shouldn't stall the UI. */
+export const toolsRequestTimeoutMs = 3_000
+
+/**
+ * How long `get_app_context` waits for the app to describe itself.
+ *
+ * Shorter than a tool call, because this one is on the model's critical path
+ * and a slow answer is worse than an honest "unavailable": the model can say
+ * it cannot see the screen and ask, where a fifteen-second stall reads as the
+ * assistant hanging. An app doing real work to answer should keep a cheap
+ * snapshot to hand.
+ */
+export const contextRequestTimeoutMs = 2_000
+
+/** A tool call blocks a model turn, so it gets more room than discovery. */
+export const toolCallTimeoutMs = 15_000
+
+/**
+ * How long a save waits for the user before it expires.
+ *
+ * The app is waiting on the reply, and the SDK gives up after two and a half
+ * minutes. Expiring first means the app always hears the real outcome, rather
+ * than a timeout followed by a file that appears anyway.
+ */
+export const downloadConfirmTimeoutMs = 120_000
+
+/**
+ * How long an app must wait to ask again after a prompt was declined or expired.
+ *
+ * The prompt is modal, so an app that re-asked the moment the user pressed
+ * Cancel would keep them from reaching anything else, including the way out.
+ */
+export const downloadRepromptDelayMs = 5_000
+
+/** A file the app asked to save, shown to the user while they decide. */
+export type PendingMiniAppDownload = { name: string }
+
+/** How a save prompt ended. Only `declined` is the user's word. */
+type DownloadAnswer = 'approved' | 'declined' | 'expired' | 'closed' | 'navigated'
+
+/**
+ * What the app is told when a save did not happen. Kept apart so a prompt
+ * nobody answered is not reported as a refusal, which would put words in the
+ * user's mouth. `declined` is MCP Apps' own wording.
+ */
+const downloadRefusals: Record<Exclude<DownloadAnswer, 'approved'>, string> = {
+  declined: 'Download denied by user',
+  expired: 'Download expired: nobody answered the prompt',
+  closed: 'Download cancelled: the app was closed',
+  navigated: 'Download cancelled: the app navigated away before the user answered',
+}
+
+/**
+ * How long the host waits for `ui/identify` after the frame fires `load`.
+ *
+ * Short, because a guest that can answer answers immediately — its bridge is
+ * already listening, and the reply is a constant. The deadline is really the
+ * budget for *silence*, which is the answer in the common case: a fresh
+ * document whose `connect()` has not run yet says nothing, and until this
+ * expires the host is still showing the previous document's state as live.
+ *
+ * Not so short that an event-loop hiccup reads as a new document. A spurious
+ * reset costs a re-handshake the guest performs anyway; a spurious *keep*
+ * leaves Select and Chat lit over a dead page, so the asymmetry favours the
+ * shorter end.
+ */
+export const identifyTimeoutMs = 500
+
+/**
+ * How long the handshake will wait on the token endpoint.
+ *
+ * Comfortably inside `handshakeTimeoutMs`, because the mint sits on the critical
+ * path: the guest gets no `initialize` reply until it settles. Unbounded, a slow
+ * or wedged token route dragged a perfectly healthy app past the handshake
+ * deadline and into `unreachable`. Missing the window costs the guest the token
+ * that would have ridden along with the reply, not the capability — it asks
+ * again with `ui/request-auth-token`.
+ */
+const tokenMintTimeoutMs = 3_000
+
+export type MiniAppBridgeStatus = 'connecting' | 'ready' | 'unreachable'
+
+/**
+ * The frame's connection lifecycle, in one place.
+ *
+ * These three moved together and were set separately: a fresh handshake clears
+ * the error, bumps the handshake epoch and flips the status, and doing that in
+ * three ordered setters is three chances to add a fourth caller that forgets
+ * one. A reducer makes each transition the atomic thing it always was.
+ *
+ * `selection` stays out — it's host UI state driven by the guest's cursor, not
+ * part of the connection at all.
+ */
+type ConnectionState = {
+  status: MiniAppBridgeStatus
+  /**
+   * Counts handshakes, not connections.
+   *
+   * A frame can re-initialize without unmounting — the app navigated, reloaded,
+   * or was redeployed under us. Everything keyed on the `connecting → ready`
+   * transition silently didn't re-run in that case, so the host kept serving the
+   * *previous* document's tool list and would post `tools/call` to a page that no
+   * longer implements them.
+   */
+  handshakeEpoch: number
+  /**
+   * Counts the guest's `tools-changed` notifications for the current document.
+   *
+   * Drives re-discovery, and doubles as the reason to discover at all: an app
+   * that registers its tools with `document.modelContext.registerTool()` does it
+   * in an effect, which runs after the handshake that would have declared the
+   * `tools` capability. A non-zero epoch is the app telling us it has tools
+   * after the fact, so it opens the same gate the declaration does.
+   *
+   * Reset per document, like everything else keyed on a handshake.
+   */
+  toolsEpoch: number
+  /** Last error the app reported about itself; shown as a strip over the frame. */
+  runtimeError: string | null
+}
+
+type ConnectionAction =
+  /** The guest introduced itself — a new document is live and speaking. */
+  | { type: 'HANDSHAKED' }
+  /** A document committed in the frame without handshaking. */
+  | { type: 'DOCUMENT_CHANGED' }
+  /** No `initialize` arrived before the deadline. */
+  | { type: 'TIMED_OUT' }
+  /** The user asked for the app to be loaded again. */
+  | { type: 'RELOAD_REQUESTED' }
+  /** The guest reported a failure in itself. */
+  | { type: 'RUNTIME_ERROR_REPORTED'; message: string }
+  /** The guest's tool registry moved; the list we hold is out of date. */
+  | { type: 'TOOLS_CHANGED' }
+
+/**
+ * Most `tools-changed` notifications one document gets to send.
+ *
+ * Each one costs a `tools/list` round trip with its own deadline, and the frame
+ * decides how often to send. A real app announces once or twice — per mount, and
+ * again if its tool list is genuinely conditional — so this is far above normal
+ * use and still bounds what a frame stuck in a register/unregister loop can cost
+ * us. Reset per document, so a reload gets a fresh allowance.
+ */
+export const maxToolsChangedPerDocument = 20
+
+const initialConnection: ConnectionState = {
+  status: 'connecting',
+  handshakeEpoch: 0,
+  toolsEpoch: 0,
+  runtimeError: null,
+}
+
+const connectionReducer = (state: ConnectionState, action: ConnectionAction): ConnectionState => {
+  switch (action.type) {
+    case 'HANDSHAKED':
+      // A fresh handshake means a fresh document — the app navigated, reloaded
+      // or was redeployed. Anything it told us about the last one is stale, and
+      // an error strip pinned over a working app is worse than none. Artifacts
+      // clear theirs on document change; this is the same moment.
+      return { status: 'ready', handshakeEpoch: state.handshakeEpoch + 1, toolsEpoch: 0, runtimeError: null }
+    case 'DOCUMENT_CHANGED':
+      // Same reasoning as `HANDSHAKED`: the error belonged to the document that
+      // just went away, and leaving it pinned over the one now loading blames
+      // the new page for the old page's failure.
+      return { ...state, status: 'connecting', toolsEpoch: 0, runtimeError: null }
+    case 'TIMED_OUT':
+      return { ...state, status: 'unreachable' }
+    case 'RELOAD_REQUESTED':
+      return { ...state, status: 'connecting', toolsEpoch: 0, runtimeError: null }
+    case 'RUNTIME_ERROR_REPORTED':
+      // Latest wins rather than accumulating: a page throwing in a render loop
+      // would otherwise turn one broken component into an unbounded list.
+      return { ...state, runtimeError: action.message }
+    case 'TOOLS_CHANGED':
+      // Clamped in the reducer rather than at the call site so the ceiling holds
+      // however the action arrives, and so re-dispatching at the cap is a no-op
+      // on the state — which keeps the discovery effect from re-running.
+      if (state.toolsEpoch >= maxToolsChangedPerDocument) {
+        return state
+      }
+      return { ...state, toolsEpoch: state.toolsEpoch + 1 }
+  }
+}
+
+type AcceptOptions = {
+  /** The frame's `contentWindow`; anything from elsewhere is not our app. */
+  expectedWindow: Window | null
+  /** The origin declared in the registry for this app. */
+  expectedOrigin: string
+}
+
+/**
+ * Decide whether an inbound `message` event is a legitimate message from our
+ * mini app, returning the parsed message or `null`.
+ *
+ * Three independent gates, all required:
+ *  1. **Source window** — the event came from this frame, not another frame,
+ *     the opener, or the top window.
+ *  2. **Origin** — it matches the origin an operator registered. A frame that
+ *     navigates itself somewhere else stops being trusted immediately.
+ *  3. **Shape** — it parses as a known protocol message (`parseGuestMessage`).
+ *
+ * Source and origin are both checked because neither alone is sufficient: origin
+ * alone would accept a *different* frame on the same origin, and source alone
+ * would keep trusting our frame after it navigated away.
+ */
+export const isFromGuest = (
+  event: Pick<MessageEvent, 'source' | 'origin'>,
+  { expectedWindow, expectedOrigin }: AcceptOptions,
+): boolean => {
+  if (!expectedWindow || event.source !== expectedWindow) {
+    return false
+  }
+  return event.origin === expectedOrigin
+}
+
+export const acceptGuestMessage = (
+  event: Pick<MessageEvent, 'source' | 'origin' | 'data'>,
+  options: AcceptOptions,
+): MiniAppGuestMessage | null => (isFromGuest(event, options) ? parseGuestMessage(event.data) : null)
+
+/**
+ * Which surface the frame is running in. Derived from the existing platform
+ * helpers rather than sniffed again, so a Mini App and the rest of the app can
+ * never disagree about where they are.
+ */
+const resolveHostPlatform = (): MiniAppPlatform => {
+  if (isIosPlatform()) {
+    return 'ios'
+  }
+  if (getPlatform() === 'android') {
+    return 'android'
+  }
+  return isTauri() ? 'desktop' : 'web'
+}
+
+export type UseMiniAppBridgeOptions = {
+  app: MiniAppDefinition
+  /** Called when the guest sends `ui/open-chat`. */
+  onChatOpen: (prompt: string | undefined) => void
+}
+
+export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) => {
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const httpClient = useHttpClient()
+  const [{ status, handshakeEpoch, toolsEpoch, runtimeError }, dispatch] = useReducer(
+    connectionReducer,
+    initialConnection,
+  )
+  // Selection is host UI state, not model context — it drives the floating
+  // control and is only promoted into the conversation when the user acts on it.
+  // Keeping it out of `useMiniAppStore` means a stray highlight never reaches the
+  // prompt or the `get_app_context` tool.
+  const [selection, setSelection] = useState<MiniAppSelection | null>(null)
+  const [pendingDownload, setPendingDownload] = useState<PendingMiniAppDownload | null>(null)
+  // Answers the save on screen. Null when none is waiting, which is also what
+  // makes a second request while one is pending refusable.
+  const answerDownloadRef = useRef<((answer: DownloadAnswer) => void) | null>(null)
+  // When the app may next ask, after a prompt that was declined or expired.
+  const downloadCooldownUntilRef = useRef(0)
+  const theme = useResolvedTheme()
+  const locale = useActiveLocale()
+  const setTools = useMiniAppStore((state) => state.setTools)
+  const setContextReader = useMiniAppStore((state) => state.setContextReader)
+  const resetGuest = useMiniAppStore((state) => state.resetGuest)
+
+  // Held in a ref so a new callback identity from the parent doesn't tear down
+  // and re-add the message listener mid-session (which would drop in-flight
+  // messages and, worse, re-run the handshake timeout).
+  const onChatOpenRef = useRef(onChatOpen)
+  onChatOpenRef.current = onChatOpen
+  /*
+   * Read through a ref, not a dependency. The handler needs the *current*
+   * appearance when it answers `initialize`, but listing it as a dependency tore
+   * the listener down and rebuilt it on every change — and the cleanup calls
+   * `pending.abortAll()`, so switching to dark mode cancelled whatever tool call
+   * was in flight. Changes still reach the guest: the effect below pushes them
+   * as a host-context patch, and it now keys on the *resolved* appearance, so a
+   * user on "system" flipping their OS theme is no longer missed.
+   */
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
+  // Same reasoning as `themeRef`, and the same reason it isn't `navigator.language`:
+  // the guest should format for the language the user chose in Thunderbolt, not the
+  // one their browser was installed in. A German user reading a German UI shouldn't
+  // get an app rendering US-formatted currency beside it.
+  const localeRef = useRef(locale)
+  localeRef.current = locale
+
+  // What the guest declared at handshake. A ref, not state: it's read inside the
+  // message handler and by the discovery effect, and re-rendering on it would
+  // only churn the listener.
+  /* Typed from the schema rather than hand-listed: the previous inline shape had
+   * drifted to `{ tools, selection }` and omitted `auth`, which is exactly how a
+   * capability ends up declared but never consulted. */
+  const guestCapabilitiesRef = useRef<MiniAppGuestCapabilities>({})
+  /*
+   * Whether *any* document in this frame has introduced itself yet.
+   *
+   * Only ever asks "is there a handshake to protect at all". Which document it
+   * belongs to is `documentIdRef`'s job, because that question cannot be
+   * answered by watching the order things arrive in — see `handleFrameLoad`.
+   */
+  const hasHandshakedRef = useRef(false)
+  /**
+   * The id the handshaked guest minted for its document, or `null` for a guest
+   * whose SDK predates the field.
+   *
+   * This is what makes a repeat `initialize` recognisable. React's StrictMode
+   * double-invokes the effect that calls `connect()`, so the second handshake is
+   * routine rather than exotic — and it used to read as a new document, which
+   * threw away the capabilities and the tool list and rediscovered both for a
+   * page that had not changed.
+   */
+  const documentIdRef = useRef<string | null>(null)
+  /**
+   * Counts frame loads, so a late `ui/identify` reply knows it has been
+   * overtaken.
+   *
+   * The confirmation is asynchronous and a frame can commit twice inside its
+   * deadline (a redirect chain, a user mashing reload). Without this, the first
+   * load's reply would arrive after the second load had already reset and act
+   * on a document two generations old.
+   */
+  const loadGenerationRef = useRef(0)
+  // Correlation, timeouts and always-settling are shared with artifacts — see
+  // `pending-requests.ts`. Only the envelope and the trust check differ.
+  const [pending] = useState(() => createPendingRequests())
+
+  const post = useCallback(
+    (message: MiniAppHostMessage) => {
+      // Targeted origin, never '*': the frame may have navigated, and a wildcard
+      // would hand our payload to whatever is there now.
+      frameRef.current?.contentWindow?.postMessage(message, app.origin)
+    },
+    [app.origin],
+  )
+
+  /**
+   * Subscribe to the frame's messages for as long as this app is mounted.
+   *
+   * A legitimate `useEffect` per CLAUDE.md: a DOM event listener with cleanup on
+   * an external system (the embedded frame).
+   */
+  useEffect(() => {
+    // Aborts the in-flight token mint when the listener goes away, so a user who
+    // navigates off mid-handshake doesn't leave a request running against a
+    // frame that no longer exists.
+    const lifetime = new AbortController()
+
+    /**
+     * Ask the user whether to save, settling exactly once: on their answer, on
+     * `downloadConfirmTimeoutMs`, or when this listener goes away.
+     */
+    const confirmDownload = (name: string): Promise<DownloadAnswer> =>
+      new Promise((resolve) => {
+        const settle = (answer: DownloadAnswer) => {
+          if (answerDownloadRef.current !== settle) {
+            return
+          }
+          answerDownloadRef.current = null
+          clearTimeout(timer)
+          lifetime.signal.removeEventListener('abort', close)
+          setPendingDownload(null)
+          resolve(answer)
+        }
+        const close = () => settle('closed')
+        const timer = setTimeout(() => settle('expired'), downloadConfirmTimeoutMs)
+        answerDownloadRef.current = settle
+        lifetime.signal.addEventListener('abort', close)
+        setPendingDownload({ name })
+      })
+
+    // Async because two branches mint tokens over the network. `addEventListener`
+    // ignores the returned promise, which is fine — nothing awaits the handler,
+    // and each branch posts its own reply when it resolves.
+    const dispatchGuestMessage = async (event: MessageEvent) => {
+      const trust = { expectedWindow: frameRef.current?.contentWindow ?? null, expectedOrigin: app.origin }
+
+      /*
+       * A reply to something we asked. Checked first: results carry no `method`,
+       * so they'd fail method dispatch.
+       *
+       * A reported failure settles as a tool-shaped error result, which is what
+       * both waiters already expect: `callTool` hands the message straight to
+       * the model, and `queryElementAt` fails its own parse and falls back to no
+       * element. The alternative — dropping the reply — left the request
+       * hanging until its timeout, so an app that said "that threw" looked
+       * exactly like an app that said nothing.
+       *
+       * Returning only when `settle` matched something is the second half of the
+       * fix in `parseGuestResult`: this branch used to swallow anything with a
+       * numeric id, waiting or not, which is how every `ui/request-auth-token`
+       * went missing. Ids the host mints are numbers, so a reply that matches
+       * nothing is not ours to consume.
+       */
+      const reply = isFromGuest(event, trust) ? parseGuestResult(event.data) : null
+      if (
+        reply &&
+        typeof reply.id === 'number' &&
+        pending.settle(reply.id, reply.error ? { content: reply.error.message, isError: true } : reply.result)
+      ) {
+        return
+      }
+
+      const message = acceptGuestMessage(event, trust)
+      if (!message) {
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.initialize) {
+        if (!isSupportedProtocolVersion(message.params.protocolVersion)) {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: {
+              code: miniAppRpcErrors.unsupportedProtocolVersion,
+              message: `unsupported protocol version ${message.params.protocolVersion}; host speaks ${miniAppProtocolVersion}`,
+            },
+          })
+          return
+        }
+        const capabilities = message.params.capabilities
+        guestCapabilitiesRef.current = capabilities
+        /*
+         * The same document introducing itself twice is not a new document. It
+         * still gets a full reply — it is waiting on one, and a second
+         * `connect()` in the same page has no idea the first one happened — but
+         * nothing is torn down and no epoch is bumped, so the tool list and the
+         * capabilities it already published survive.
+         */
+        // `||`, not `??`: an empty string is a guest with no id to give, and
+        // the protocol lets one through rather than dropping the handshake over
+        // it. Treating it as absent puts it on the same fallback path.
+        const documentId = message.params.documentId || null
+        const isRepeatHandshake = documentId !== null && documentId === documentIdRef.current
+        if (!isRepeatHandshake) {
+          resetGuest()
+        }
+        documentIdRef.current = documentId
+        hasHandshakedRef.current = true
+
+        // Only minted when the guest declared the capability — an app that never
+        // asked shouldn't cause a credential to exist. Bounded, because this
+        // blocks the reply: see `tokenMintTimeoutMs`.
+        const auth = capabilities.auth
+          ? await fetchMiniAppToken(
+              httpClient,
+              app.id,
+              AbortSignal.any([lifetime.signal, AbortSignal.timeout(tokenMintTimeoutMs)]),
+            )
+          : null
+
+        const result: MiniAppInitializeResult = {
+          protocolVersion: miniAppProtocolVersion,
+          hostName: 'Thunderbolt',
+          capabilities: {
+            context: true,
+            chat: true,
+            // Whether the host will *answer* `ui/request-auth-token`, which is
+            // the same question the gate on that branch asks. It used to report
+            // whether this one mint happened to land, so a slow token route told
+            // a guest that had declared `auth` the capability didn't exist —
+            // and the documented contract for that is "stop asking".
+            auth: capabilities.auth === true,
+            downloadFile: true,
+          },
+          hostContext: {
+            theme: themeRef.current,
+            locale: localeRef.current,
+            platform: resolveHostPlatform(),
+          },
+          ...(auth ? { auth } : {}),
+        }
+        post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result })
+        if (!isRepeatHandshake) {
+          dispatch({ type: 'HANDSHAKED' })
+        }
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.selectionChanged) {
+        // Gated on the declaration, which is what makes it a capability rather
+        // than a comment: an app that said it doesn't report selections has no
+        // business floating our control over its content.
+        if (guestCapabilitiesRef.current.selection) {
+          setSelection(message.params.selection)
+        }
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.requestAuthToken) {
+        // Same gate as the handshake. Without it an app could decline `auth` at
+        // initialize — so no token was minted, exactly as documented — and then
+        // simply ask afterwards, which made "never issued" untrue.
+        if (!guestCapabilitiesRef.current.auth) {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: { code: miniAppRpcErrors.authUnavailable, message: 'app did not declare the auth capability' },
+          })
+          return
+        }
+        const refreshed = await fetchMiniAppToken(httpClient, app.id, lifetime.signal)
+        post(
+          refreshed
+            ? { jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: refreshed }
+            : {
+                jsonrpc: '2.0',
+                protocol: miniAppProtocolMarker,
+                id: message.id,
+                error: { code: miniAppRpcErrors.authUnavailable, message: 'no identity token available' },
+              },
+        )
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.runtimeError) {
+        dispatch({ type: 'RUNTIME_ERROR_REPORTED', message: message.params.message })
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.toolsChanged) {
+        // No gate on the `tools` capability: this notification *is* the
+        // declaration. An app registering through `document.modelContext` has
+        // nothing to declare at handshake time, because the registry is still
+        // empty when the handshake goes out.
+        dispatch({ type: 'TOOLS_CHANGED' })
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.downloadFile) {
+        const reject = (reason: string) =>
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id: message.id,
+            error: { code: miniAppRpcErrors.downloadRejected, message: reason },
+          })
+        // Both checks come before the request is parsed, so a frame cannot make
+        // the host decode one large file after another while a prompt is open.
+        // One prompt at a time: queueing would stack up prompts to dismiss.
+        if (answerDownloadRef.current) {
+          reject('Another download is waiting for the user')
+          return
+        }
+        if (Date.now() < downloadCooldownUntilRef.current) {
+          reject('Download refused: asked again too soon after a declined or expired prompt')
+          return
+        }
+        const prepared = prepareMiniAppDownload(message.params)
+        if (!prepared.ok) {
+          reject(prepared.message)
+          return
+        }
+        const answer = await confirmDownload(prepared.download.name)
+        if (answer === 'declined' || answer === 'expired') {
+          downloadCooldownUntilRef.current = Date.now() + downloadRepromptDelayMs
+        }
+        if (answer !== 'approved') {
+          reject(downloadRefusals[answer])
+          return
+        }
+        try {
+          await downloadFile(prepared.download)
+          post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: {} })
+        } catch (error) {
+          // The platform's own message: a missing grant and a full disk call for
+          // different fixes, and only the original text tells them apart.
+          reject(error instanceof Error ? error.message : String(error))
+        }
+        return
+      }
+
+      if (message.method === miniAppGuestMethods.chatOpen) {
+        // Acknowledge before acting so a slow panel animation can't look like a
+        // dropped request to the guest.
+        post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id: message.id, result: { opened: true } })
+        onChatOpenRef.current(message.params.prompt)
+        return
+      }
+
+      /*
+       * Explicit rather than a fallthrough. This used to be the `else` of every
+       * branch above, so adding a protocol method meant it silently opened the
+       * chat panel and replied `{ opened: true }` — the new method appearing to
+       * work while doing something else entirely.
+       *
+       * The `never` assertion makes that a compile error the next time a method
+       * is added, and the reply keeps a guest from waiting on a request the host
+       * has decided not to answer.
+       */
+      const unhandled: never = message
+      console.error('[mini-apps] Unhandled guest method', unhandled)
+      post({
+        jsonrpc: '2.0',
+        protocol: miniAppProtocolMarker,
+        id: (unhandled as { id?: string | number }).id ?? 0,
+        error: { code: miniAppRpcErrors.methodNotFound, message: 'unhandled method' },
+      })
+    }
+
+    /*
+     * The rejection boundary the listener needs.
+     *
+     * `addEventListener` ignores the promise an async listener returns, so a
+     * throw inside became an unhandled rejection *and* left the guest's request
+     * unanswered — the only symptom being its own timeout, with nothing logged.
+     * Anything that throws here is our bug, so it is logged loudly and the guest
+     * is told the request failed rather than left waiting.
+     */
+    const handleMessage = (event: MessageEvent) => {
+      void dispatchGuestMessage(event).catch((error: unknown) => {
+        console.error('[mini-apps] Failed to handle a guest message', error)
+        const id = (event.data as { id?: unknown } | null)?.id
+        if (typeof id === 'number' || typeof id === 'string') {
+          post({
+            jsonrpc: '2.0',
+            protocol: miniAppProtocolMarker,
+            id,
+            error: { code: miniAppRpcErrors.invalidRequest, message: 'the host failed to handle this request' },
+          })
+        }
+      })
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => {
+      window.removeEventListener('message', handleMessage)
+      lifetime.abort()
+      // Resolve rather than leak: a caller awaiting a query when the user
+      // navigates away should get an empty answer, not a promise that never settles.
+      pending.abortAll()
+    }
+    // `httpClient` and `app.id` are dependencies, not incidental reads: minting
+    // a token against a stale client is the kind of bug that only shows up once
+    // settings load a beat after first render. Re-subscribing is cheap — but
+    // only for things that genuinely change identity, which is why `theme` is a
+    // ref above rather than listed here.
+  }, [app.id, app.origin, httpClient, pending, post, resetGuest])
+
+  /**
+   * Fail visibly when the guest never handshakes — an app that isn't running
+   * would otherwise render as an indefinitely blank panel, which is the single
+   * most confusing failure mode when demoing.
+   */
+  useEffect(() => {
+    if (status !== 'connecting') {
+      return
+    }
+    const timer = setTimeout(() => dispatch({ type: 'TIMED_OUT' }), handshakeTimeoutMs)
+    return () => clearTimeout(timer)
+  }, [status])
+
+  /** Keep the guest's appearance in step with the host's. */
+  useEffect(() => {
+    if (status !== 'ready') {
+      return
+    }
+    post({
+      jsonrpc: '2.0',
+      protocol: miniAppProtocolMarker,
+      method: miniAppHostMethods.hostContextChanged,
+      // Partial by design — only the keys that moved.
+      params: { theme, locale },
+    })
+  }, [theme, locale, status, post])
+
+  /** Drop the current selection — used after the host acts on it. */
+  const clearSelection = useCallback(() => setSelection(null), [])
+
+  /**
+   * Send a request into the frame and await its reply.
+   *
+   * Always settles: an unanswered request resolves to `null` after `timeoutMs`
+   * rather than hanging. Every caller here would otherwise be blocking either a
+   * UI affordance or a model turn, and a guest that stops replying is a case we
+   * have to assume rather than hope against.
+   */
+  const request = useCallback(
+    (method: MiniAppHostRequest['method'], params: unknown, timeoutMs: number): Promise<unknown> =>
+      pending.issue((id) => post({ jsonrpc: '2.0', protocol: miniAppProtocolMarker, id, method, params }), timeoutMs),
+    [post, pending],
+  )
+
+  /** Invoke a tool inside the frame, normalising failures into a tool-visible error. */
+  const callTool = useCallback(
+    async (name: string, args: unknown): Promise<MiniAppToolCallResult> => {
+      const result = await request(miniAppHostMethods.toolsCall, { name, arguments: args }, toolCallTimeoutMs)
+      const parsed = toolsCallResultSchema.safeParse(result)
+      if (!parsed.success) {
+        // The model reads this, so say what happened rather than throwing — a
+        // thrown tool error reads to the model as "the app is broken", when the
+        // likely truth is "the app took too long".
+        return { content: `The ${name} tool did not return a usable result. It may have timed out.`, isError: true }
+      }
+      return parsed.data
+    },
+    [request],
+  )
+
+  /**
+   * Ask the guest what sits under a point in its own viewport.
+   *
+   * Resolves to `null` on anything unexpected — a guest that never answers,
+   * answers late, or answers with a shape we don't recognise. This runs on every
+   * throttled pointer move, so it has to fail quietly: an outline that
+   * occasionally doesn't appear is recoverable, one that hangs the pointer is
+   * not. Nothing is logged for the same reason — a miss here is routine (the
+   * cursor is over padding), unlike a malformed tool descriptor.
+   */
+  const queryElementAt = useCallback(
+    async (point: { x: number; y: number }): Promise<MiniAppHighlightedElement | null> => {
+      const result = await request(miniAppHostMethods.elementAt, point, elementAtTimeoutMs)
+      const parsed = elementAtResultSchema.safeParse(result)
+      return parsed.success ? parsed.data.element : null
+    },
+    [request],
+  )
+
+  /**
+   * Discover the app's tools once it's connected and has declared the capability.
+   *
+   * Gated on the declaration rather than asked speculatively: an app that never
+   * implements `tools/list` would otherwise cost a request and a timeout on every
+   * connect, and the host would have no way to tell "no tools" from "not answering".
+   *
+   * Re-runs on `toolsEpoch`, which the guest bumps when its registry moves. That
+   * is not a refinement — it is what makes `document.modelContext.registerTool()`
+   * work at all, since the canonical place to call it is an effect that runs
+   * after the handshake. A declaration the app could not yet have made is the
+   * same gate, arriving late.
+   */
+  useEffect(() => {
+    if (status !== 'ready' || !(guestCapabilitiesRef.current.tools || toolsEpoch > 0)) {
+      return
+    }
+    let cancelled = false
+    const discover = async () => {
+      const result = await request(miniAppHostMethods.toolsList, {}, toolsRequestTimeoutMs)
+      if (cancelled) {
+        return
+      }
+      const { tools, dropped, envelope } = parseToolsList(result)
+      if (envelope === 'invalid') {
+        // The app declared the capability and then answered with something that
+        // is not a tool list — or did not answer at all. Reported because an
+        // empty toolset is otherwise indistinguishable from an app that simply
+        // has no tools, which is the one thing this parser exists to tell apart.
+        console.error(`[mini-apps] ${app.id}: tools/list did not return a tool list`)
+      }
+      if (dropped > 0) {
+        // Loud on purpose: an app author's tool going missing is otherwise
+        // indistinguishable from the model choosing not to call it.
+        console.error(`[mini-apps] ${app.id}: dropped ${dropped} malformed tool descriptor(s) from tools/list`)
+      }
+      setTools(tools, callTool)
+    }
+    void discover()
+    return () => {
+      cancelled = true
+    }
+    // `callTool` and `request` are stable for the life of a connection, and a
+    // different `app.id` arrives as a different route and remounts this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, handshakeEpoch, toolsEpoch, request, setTools])
+
+  /**
+   * A new document committed in the frame.
+   *
+   * Fires on the first load and on every navigation, reload and redeploy after
+   * it. Without this, a frame that reloads into a page which never handshakes
+   * stays `ready` forever: Select and Chat remain lit over a dead document, the
+   * handshake timeout never re-arms, and every tool call the model makes burns
+   * its full timeout against a page that will never answer.
+   *
+   * The hard part is deciding whether a handshake already in hand belongs to
+   * the document that just committed. This used to consume a one-bit flag set
+   * by the last `initialize`, on the reasoning that a guest posts it from a
+   * script that runs before `load` reaches us. That is true of a plain script
+   * and false of React, where `connect()` is called from an effect — and both
+   * orderings produce the same observable sequence:
+   *
+   * | Guest        | Sequence                          | Handshake belongs to |
+   * | ------------ | --------------------------------- | -------------------- |
+   * | plain script | `initialize` → `load`             | the new document     |
+   * | React        | `load` → `initialize` → `load`    | the *old* document   |
+   *
+   * The flag reads `true` at the second `load` in both rows, so the React app
+   * kept `ready` over a page that had said nothing — exactly the state this
+   * handler exists to prevent, one document later. No amount of ordering
+   * cleverness separates them, because the difference is *which document sent
+   * the message*, and a cross-origin `load` event carries no identity to
+   * compare against.
+   *
+   * So ask the frame instead (THU-908). `ui/identify` is delivered to whatever
+   * document is live now, which makes the answer unambiguous: it comes back with
+   * the id we are already holding, or it does not come back at all.
+   */
+  const handleFrameLoad = useCallback(() => {
+    const generation = (loadGenerationRef.current += 1)
+
+    // A save still on screen was asked for by the document that just left, so
+    // approving it now would save the previous page's file under the new one.
+    answerDownloadRef.current?.('navigated')
+
+    // Nothing to protect: either this is the first document, or the last one
+    // never introduced itself.
+    if (!hasHandshakedRef.current) {
+      resetGuest()
+      dispatch({ type: 'DOCUMENT_CHANGED' })
+      return
+    }
+
+    /*
+     * A guest whose SDK predates `documentId` cannot be asked, so it keeps the
+     * old best-effort guess. Wrong for a React app that navigates, right for
+     * everything else, and strictly better than resetting a live document on
+     * every load — which is what asking a guest that will never answer would do.
+     */
+    if (documentIdRef.current === null) {
+      hasHandshakedRef.current = false
+      return
+    }
+
+    const askedAbout = documentIdRef.current
+
+    const confirm = async () => {
+      const result = await request(miniAppHostMethods.identify, {}, identifyTimeoutMs)
+      if (generation !== loadGenerationRef.current) {
+        // A later load already made this question obsolete, and answered its own.
+        return
+      }
+      /*
+       * A different document handshaked while we were waiting, so the frame has
+       * already told us what this question was for — and told us *directly*,
+       * which beats any answer to it.
+       *
+       * Checked before the reply, because the reply may be a timeout and a
+       * timeout is indistinguishable from a wrong id at the parse below. The
+       * guest answers `ui/identify` only between `connect()` and `disconnect()`,
+       * so a page whose handshake and whose bridge teardown straddle this
+       * deadline says nothing — and resetting on that silence would clear a
+       * document we had just confirmed by the strongest signal there is, then
+       * wait for an `initialize` it has no reason to send again.
+       */
+      if (documentIdRef.current !== askedAbout) {
+        return
+      }
+      const parsed = identifyResultSchema.safeParse(result)
+      const identified = parsed.success ? parsed.data.documentId || null : null
+      if (identified !== null && identified === documentIdRef.current) {
+        return
+      }
+      hasHandshakedRef.current = false
+      documentIdRef.current = null
+      resetGuest()
+      dispatch({ type: 'DOCUMENT_CHANGED' })
+    }
+    void confirm()
+  }, [request, resetGuest])
+
+  /**
+   * Load the app again after it failed to arrive.
+   *
+   * Reassigning `src` rather than reaching for `contentWindow.location.reload()`,
+   * which is cross-origin and throws. The state reset isn't strictly required —
+   * `handleFrameLoad` would do it when the new document commits — but a button
+   * that visibly does nothing for a second reads as broken.
+   */
+  const reloadFrame = useCallback(() => {
+    hasHandshakedRef.current = false
+    documentIdRef.current = null
+    /*
+     * Claims the generation, so a confirmation still in flight from the load
+     * this replaces cannot reset the document we are about to ask for.
+     *
+     * Not covered by `use-mini-app-bridge.test.tsx`: reassigning `src` swaps
+     * `contentWindow` in happy-dom, so the handshake that would follow fails
+     * the trust check and there is nothing left to observe.
+     */
+    loadGenerationRef.current += 1
+    resetGuest()
+    dispatch({ type: 'RELOAD_REQUESTED' })
+    if (frameRef.current) {
+      frameRef.current.src = app.url
+    }
+  }, [app.url, resetGuest])
+
+  /**
+   * Ask the app what the user is looking at, right now.
+   *
+   * Returns `null` for every way of not knowing — the app never declared the
+   * capability, it is not connected, it answered with something unparseable, or
+   * it did not answer inside the deadline. The caller turns that into "context
+   * unavailable" for the model, which is the point of the whole change: a cache
+   * could be confidently stale, and this can only be absent.
+   */
+  const requestContext = useCallback(async (): Promise<MiniAppContext | null> => {
+    if (status !== 'ready' || !guestCapabilitiesRef.current.context) {
+      return null
+    }
+    const result = await request(miniAppHostMethods.contextGet, {}, contextRequestTimeoutMs)
+    const parsed = contextGetResultSchema.safeParse(result)
+    return parsed.success ? parsed.data.context : null
+  }, [status, request])
+
+  /*
+   * Hand the reader to the store so `get_app_context` can reach it.
+   *
+   * An effect because the store is outside React and the write has to happen
+   * after render, and it re-runs whenever `requestContext` is rebuilt — which is
+   * on every status change, so the installed reader is never one that closed
+   * over a stale `status` and answers for a connection that has gone.
+   */
+  useEffect(() => {
+    setContextReader(requestContext)
+  }, [requestContext, setContextReader])
+
+  /** The user's answer to the save on screen. */
+  const answerDownload = useCallback(
+    (approved: boolean) => answerDownloadRef.current?.(approved ? 'approved' : 'declined'),
+    [],
+  )
+
+  return {
+    frameRef,
+    status,
+    selection,
+    clearSelection,
+    queryElementAt,
+    requestContext,
+    runtimeError,
+    handleFrameLoad,
+    reloadFrame,
+    pendingDownload,
+    answerDownload,
+  }
+}

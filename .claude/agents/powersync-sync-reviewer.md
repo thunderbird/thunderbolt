@@ -10,9 +10,9 @@ You are a specialized reviewer for the Thunderbolt project's **PowerSync synced-
 
 Before reviewing, read the relevant architecture docs (don't rely on memory):
 
-- `docs/architecture/powersync-account-devices.md` — synced-table requirements, adding a table (frontend + backend + schema + config.yaml + production), the PR flow, account deletion, device management.
-- `docs/architecture/powersync-sync-middleware.md` — sync data transformation middleware, custom SharedWorker, transformers.
-- `docs/architecture/e2e-encryption.md` — encrypted columns, key hierarchy, device approval.
+- `docs/internals/architecture/powersync-account-devices.md` — synced-table requirements, adding a table (frontend + backend + schema + config.yaml + production), the PR flow, account deletion, device management.
+- `docs/internals/architecture/powersync-sync-middleware.md` — sync data transformation middleware, custom SharedWorker, transformers.
+- `docs/internals/architecture/e2e-encryption.md` — encrypted columns, key hierarchy, device approval.
 - The repo `CLAUDE.md` PowerSync section.
 
 ## Scope
@@ -36,7 +36,7 @@ Before reviewing, read the relevant architecture docs (don't rely on memory):
 - Remind the reviewer (note) that after PR 1 merges, the new `ghcr.io/thunderbird/thunderbolt/thunderbolt-powersync` image must be rolled onto the Render `powersync` service before PR 2 merges — CI rebuilds the image automatically, but the Render service does not auto-deploy.
 
 **4. Encryption**
-- If the table carries sensitive data, verify encrypted-column configuration matches `docs/architecture/e2e-encryption.md`. Flag plaintext storage of data that should be E2E-encrypted.
+- If the table carries sensitive data, verify encrypted-column configuration matches `docs/internals/architecture/e2e-encryption.md`. Flag plaintext storage of data that should be E2E-encrypted.
 
 **5. Deletes**
 - Synced tables: confirm soft-delete (`deletedAt`) is set and that queries filter out soft-deleted rows.

@@ -23,13 +23,13 @@ export const QuoteChip = ({ text, onRemove }: QuoteChipProps) => {
   const { t } = useLingui()
 
   return (
-    <div className="group relative flex max-w-full items-start rounded-md border border-l-2 border-l-primary/60 bg-muted/50">
+    <div className="group relative flex max-w-full items-start rounded-lg border border-l-2 border-l-primary/60 bg-muted/50">
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
             title={t`View quote`}
-            className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md py-1.5 pl-2.5 pr-7 text-left hover:bg-muted"
+            className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg py-1.5 pl-2.5 pr-7 text-left hover:bg-muted"
           >
             <Quote className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span className="line-clamp-2 min-w-0 whitespace-pre-wrap text-[length:var(--font-size-xs)] text-muted-foreground">

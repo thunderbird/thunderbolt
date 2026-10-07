@@ -9,32 +9,37 @@ import { Dialog } from '@/components/ui/dialog'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { ResponsiveModalContentComposable } from '@/components/ui/responsive-modal'
 import { SidebarInset } from '@/components/ui/sidebar'
-import { ArtifactSidebarContent } from '@/content-view/artifact-sidebar-content'
+import { ActiveContentView } from '@/content-view/active-content-view'
 import { defaultOpenWidth, minimumWidthThreshold } from '@/content-view/constants'
 import { useContentView } from '@/content-view/context'
-import { ObjectSidebarContent } from '@/content-view/object-sidebar-content'
-import { SidebarWebview } from '@/content-view/sidebar-webview'
-import { Sideview } from '@/content-view/sideview'
 import { useIsMobile, useIsNativeMobile } from '@/hooks/use-mobile'
 import { edgeSpacing } from '@/lib/constants'
-import { isTauri } from '@/lib/platform'
+import { isTauri, isTauriDesktop } from '@/lib/platform'
 import { useSettings } from '@/hooks/use-settings'
 import { animate, AnimatePresence, m } from 'framer-motion'
 import { Suspense, useEffect, useRef } from 'react'
 import { usePanelRef } from 'react-resizable-panels'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { PageFallback } from '@/loading'
+import { routeHostsContentView } from './content-view-host'
+import { sharedHeaderHasControls } from './shared-header'
 
+/** The main app shell: sidebar-inset content area, floating header, and the
+ *  resizable content-view panel beside it. */
 export default function Page() {
   const panelRef = usePanelRef()
-  const { state, close, previewHidden } = useContentView()
+  const { pathname } = useLocation()
+  const { state, close } = useContentView()
   const { isMobile } = useIsMobile()
   const isNativeMobile = useIsNativeMobile()
   const { contentViewWidth } = useSettings({
     content_view_width: Number,
   })
+  const showsSharedHeader = sharedHeaderHasControls({ pathname, isMobile, isDesktopApp: isTauriDesktop() })
   const isOpen = state.type !== null
-  const isDesktopPanelOpen = isOpen && !isMobile
+  // A route that hosts the view itself (`/apps/`) leaves this aside collapsed.
+  const drawsDesktopPanel = !isMobile && !routeHostsContentView(pathname)
+  const isDesktopPanelOpen = isOpen && drawsDesktopPanel
   const prevIsDesktopPanelOpen = useRef(isDesktopPanelOpen)
   const lastSavedWidth = useRef<number | null>(null)
 
@@ -90,15 +95,6 @@ export default function Page() {
     }
   }
 
-  const contentView = (
-    <>
-      {state.type === 'preview' && <SidebarWebview config={state.data} onClose={close} hidden={previewHidden} />}
-      {state.type === 'object-view' && <ObjectSidebarContent content={state.data} onClose={close} />}
-      {state.type === 'sideview' && <Sideview />}
-      {state.type === 'artifact' && <ArtifactSidebarContent data={state.data} onClose={close} />}
-    </>
-  )
-
   return (
     <SidebarInset className="h-full flex flex-col">
       <ResizablePanelGroup orientation="horizontal">
@@ -108,7 +104,15 @@ export default function Page() {
             re-derive that literal. */}
         <ResizablePanel minSize={isMobile ? '0%' : '360px'}>
           <div className="relative flex flex-col h-full">
-            <FloatingHeader />
+            {/* Wherever it has something to show — see `sharedHeaderHasControls`.
+                `/apps/` was chromeless for a while, on the reasoning that a
+                customer's app is the content and a bar above it duplicates the
+                app's own header. That cost the whole shared toolbar:
+                back/forward, the sidebar toggle, and — on frameless
+                Windows/Linux — the only drag region the window had. Putting it
+                back unconditionally then drew an empty bar over the app on web,
+                because everything else in the header is gated on `/chats`. */}
+            {showsSharedHeader && <FloatingHeader />}
             {!isTauri() && (
               <>
                 <DownloadAppBannerMobile />
@@ -150,7 +154,7 @@ export default function Page() {
             )}
           </div>
         )}
-        {!isMobile && (
+        {drawsDesktopPanel && (
           <ResizablePanel
             panelRef={panelRef}
             collapsible
@@ -175,7 +179,7 @@ export default function Page() {
                   transition={{ duration: 0.2, delay: 0.15 }}
                   className="h-full"
                 >
-                  {contentView}
+                  <ActiveContentView />
                 </m.div>
               )}
             </AnimatePresence>
@@ -185,7 +189,7 @@ export default function Page() {
       {isMobile && (
         <Dialog open={isOpen} onOpenChange={(nextOpen) => !nextOpen && close()}>
           <ResponsiveModalContentComposable className="gap-0 p-0" flush>
-            {contentView}
+            <ActiveContentView />
           </ResponsiveModalContentComposable>
         </Dialog>
       )}

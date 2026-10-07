@@ -41,7 +41,9 @@ for (const id of widgetIds) {
     const failures: string[] = []
     const prerequisite = /open-meteo\.com|openfreemap\.org|typescriptlang\.org|\/v1\/preview|\/v1\/integrations/
     page.on('requestfailed', (request) => {
-      if (prerequisite.test(request.url())) failures.push(`${request.url()}: ${request.failure()?.errorText}`)
+      if (prerequisite.test(request.url())) {
+        failures.push(`${request.url()}: ${request.failure()?.errorText}`)
+      }
     })
     page.on('response', (response) => {
       if (response.status() >= 400 && prerequisite.test(response.url())) {
@@ -71,7 +73,9 @@ for (const id of widgetIds) {
         throw new Error(`${id}: prerequisite failed: map tiles did not finish loading`)
       }
       const fallback = page.getByText(/The map couldn’t be loaded|Maps can’t be displayed here/)
-      if (await fallback.count()) throw new Error(`${id}: prerequisite failed: ${await fallback.first().textContent()}`)
+      if (await fallback.count()) {
+        throw new Error(`${id}: prerequisite failed: ${await fallback.first().textContent()}`)
+      }
     } else if (id === 'WIDGET_ASK') {
       const message = page.locator('[data-quotable-message-id]').last()
       await expectWidget(page, message.getByText(/Choose one|Your call|Select all that apply/), id, failures)

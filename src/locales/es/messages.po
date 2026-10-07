@@ -21,6 +21,14 @@ msgstr "«{filename}» es demasiado grande (máx. {maxMegabytes} MB)."
 msgid "\"{filename}\" isn't a supported file type."
 msgstr "«{filename}» no es un tipo de archivo compatible."
 
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+item+selected%7D+other+%7B%23+items+selected%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "# item selected"
+#~ msgid_plural "# items selected"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
 #. placeholder {0}: mcpServers.length
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+MCP+server%7D+other+%7B%23+MCP+servers%7D%7D&pluralize_on=0
 #: src/components/settings/agents/agent-detail.tsx
@@ -38,6 +46,19 @@ msgid_plural "# tools"
 msgstr[0] "# herramienta"
 msgstr[1] "# herramientas"
 msgstr[2] "# herramientas"
+
+#. placeholder {0}: items.length
+#. js-lingui:icu=%7B0%2C+plural%2C+one+%7BAsk+about+it%7D+other+%7BAsk+about+them%7D%7D&pluralize_on=0
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Ask about it"
+#~ msgid_plural "Ask about them"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-page.tsx
+msgid "{0} is only available on desktop"
+msgstr ""
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
@@ -70,6 +91,10 @@ msgid_plural "# skills"
 msgstr[0] "# habilidad"
 msgstr[1] "# habilidades"
 msgstr[2] "# habilidades"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "{fileName} will be saved to your Downloads folder."
+msgstr ""
 
 #: src/layout/sidebar/project-drop-list.tsx
 msgid "{label} — already in this project"
@@ -146,6 +171,10 @@ msgstr "⚠ Esta exportación se creó con otra cuenta ({importSourceEmail}). Al
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Un dispositivo quiere iniciar sesión en tu cuenta como la CLI de Thunderbolt. Apruébalo solo si acabas de iniciarlo tú desde tu terminal."
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "A new 24-word recovery phrase will be generated and shown to you once. Your current phrase will stop working immediately. Your synced data is unaffected. To continue, we’ll email you a verification code."
+msgstr ""
 
 #: src/components/pending-device-modal.tsx
 msgid "A new device is requesting access to your encrypted data."
@@ -344,6 +373,10 @@ msgstr "Animales y naturaleza"
 msgid "Anonymous Usage Data"
 msgstr "Datos de uso anónimos"
 
+#: src/settings/devices.tsx
+msgid "Another device changed the account keys. Refreshing fetches the current key, then the revoke runs again."
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Answer"
 msgstr "Respuesta"
@@ -386,6 +419,7 @@ msgstr "Se aplica a todos los chats de este proyecto."
 #: src/components/approve-device-dialog.tsx
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Approve"
 msgstr "Aprobar"
@@ -426,6 +460,10 @@ msgstr "Artefactos"
 #: src/components/external-link-toggle-group.tsx
 msgid "Ask"
 msgstr "Preguntar"
+
+#: src/components/embedded/selection-popover.tsx
+msgid "Ask about this"
+msgstr ""
 
 #: src/components/chat/chat-prompt-input.tsx
 msgid "Ask me anything…"
@@ -542,6 +580,7 @@ msgstr "Calendario"
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/components/sign-in/sign-in-otp-step.tsx
+#: src/components/step-up-code-dialog.tsx
 #: src/components/sync-enable-warning-dialog.tsx
 #: src/components/telemetry-required-modal.tsx
 #: src/components/telemetry-warning-modal.tsx
@@ -551,6 +590,7 @@ msgstr "Calendario"
 #: src/layout/sidebar/rename-chat-dialog.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/connections/mcp-server-form.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 #: src/settings/models/index.tsx
 #: src/settings/preferences.tsx
 #: src/skills/dependents-dialog.tsx
@@ -570,9 +610,25 @@ msgstr "Celsius"
 msgid "Change Language?"
 msgstr "¿Cambiar el idioma?"
 
+#: src/settings/devices.tsx
+msgid "Change recovery phrase"
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change Recovery Phrase"
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Change your recovery phrase?"
+msgstr ""
+
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Changes were saved, but reconnecting failed. Please retry."
 msgstr "Los cambios se guardaron, pero no se pudo volver a conectar. Inténtalo de nuevo."
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Chat"
+msgstr ""
 
 #: src/layout/sidebar/chat-list-item.tsx
 msgid "Chat actions"
@@ -587,6 +643,10 @@ msgstr "Nombre del chat"
 #: src/search/palette/entity-meta.ts
 msgid "Chats"
 msgstr "Chats"
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "Chats from this app"
+msgstr ""
 
 #: src/projects/move-chat-to-project-dialog.tsx
 msgid "Chats in a project inherit its instructions."
@@ -737,6 +797,10 @@ msgstr "Portapapeles no disponible. Selecciona la frase de arriba y cópiala man
 #: src/components/window-controls.tsx
 msgid "Close"
 msgstr "Cerrar"
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Close chat"
+#~ msgstr ""
 
 #: src/components/detail-panel.tsx
 msgid "Close details"
@@ -969,6 +1033,10 @@ msgstr "Copiar URL"
 msgid "Could not bind the pairing code"
 msgstr "No se pudo vincular el código de emparejamiento"
 
+#: src/settings/devices.tsx
+msgid "Could not check whether a removed device still holds your account key. Reload to try again."
+msgstr ""
+
 #: src/components/settings/agents/add-custom-agent-form.tsx
 msgid "Could not connect to the agent."
 msgstr "No se pudo conectar con el agente."
@@ -1037,6 +1105,10 @@ msgstr "No se pudo descargar la actualización: {error}"
 msgid "Couldn't download the update."
 msgstr "No se pudo descargar la actualización."
 
+#: src/components/embedded/surface-status.tsx
+msgid "Couldn't load {name}"
+msgstr ""
+
 #: src/projects/emoji-picker.tsx
 msgid "Couldn’t load the emoji list. Close and reopen this picker to try again."
 msgstr "No se pudo cargar la lista de emojis. Cierra y vuelve a abrir el selector para reintentarlo."
@@ -1044,6 +1116,10 @@ msgstr "No se pudo cargar la lista de emojis. Cierra y vuelve a abrir el selecto
 #: src/components/settings/iroh-pairing-panel.tsx
 msgid "Couldn't load this app's pairing identity: {error}"
 msgstr "No se pudo cargar la identidad de emparejamiento de esta app: {error}"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Couldn't load your apps. Check your connection and reload."
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't pin {name}."
@@ -1068,6 +1144,10 @@ msgstr "No se pudo guardar {fieldName}. Inténtalo de nuevo."
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't save the new order."
 msgstr "No se pudo guardar el nuevo orden."
+
+#: src/components/artifact/artifact-actions.tsx
+msgid "Couldn't save: {saveError}"
+msgstr ""
 
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
@@ -1299,6 +1379,7 @@ msgstr "Llovizna helada densa"
 #: src/components/device-approval.tsx
 #: src/components/pending-device-modal.tsx
 #: src/components/revoke-device-dialog.tsx
+#: src/mini-apps/mini-app-approval-prompt.tsx
 #: src/settings/devices.tsx
 msgid "Deny"
 msgstr "Denegar"
@@ -1585,6 +1666,10 @@ msgstr "Activado"
 msgid "Enables location-based responses"
 msgstr "Permite respuestas basadas en la ubicación"
 
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Encryption is set up on this device, but the 24-word recovery phrase was not confirmed. Without it you cannot recover your data if you lose access to this device. The previous phrase cannot be shown again — generate a new one now."
+msgstr ""
+
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Endpoint"
 msgstr "Endpoint"
@@ -1625,6 +1710,10 @@ msgstr "Introduce tu código"
 msgid "Enter your name"
 msgstr "Introduce tu nombre"
 
+#: src/components/step-up-code-dialog.tsx
+msgid "Enter your verification code"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
 msgstr "Salir del modo de voz"
@@ -1657,6 +1746,10 @@ msgstr "Enlaces externos"
 #: src/widgets/weather-forecast/display.tsx
 msgid "Fahrenheit"
 msgstr "Fahrenheit"
+
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to change the recovery phrase"
+msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "Failed to check approval"
@@ -1718,6 +1811,10 @@ msgstr "No se pudo eliminar el servidor MCP"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "No se pudo reenviar el código de verificación. Revisa tu conexión."
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Failed to send the verification code"
+msgstr ""
+
 #: src/components/sign-in/use-sign-in-form-state.ts
 msgid "Failed to send verification code. Please check your connection."
 msgstr "No se pudo enviar el código de verificación. Revisa tu conexión."
@@ -1733,6 +1830,14 @@ msgstr "No se pudo actualizar la integración"
 #: src/settings/connections/use-mcp-server-form-controller.ts
 msgid "Failed to update MCP server"
 msgstr "No se pudo actualizar el servidor MCP"
+
+#: src/settings/devices.tsx
+msgid "Finish securing"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Finish securing after revoking {deviceName}"
+msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "First device setup"
@@ -1750,11 +1855,29 @@ msgstr "Niebla"
 msgid "Food & drink"
 msgstr "Comida y bebida"
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-badge.tsx
+msgid "From {0}"
+msgstr ""
+
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Generate a new 24-word recovery phrase for your encrypted data. Your current phrase will stop working."
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Generate a new phrase"
+msgstr ""
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Generate new phrase"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Generating keys…"
 msgstr "Generando claves…"
 
 #: src/components/chat/inline-artifact-card.tsx
+#: src/components/step-up-code-dialog.tsx
 msgid "Generating…"
 msgstr "Generando…"
 
@@ -2036,6 +2159,7 @@ msgid "Last seen {lastSeen}"
 msgstr "Visto por última vez {lastSeen}"
 
 #: src/components/download-app-banner-desktop.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
 #: src/components/update-notification.tsx
 msgid "Later"
 msgstr "Más tarde"
@@ -2081,6 +2205,10 @@ msgstr "Escuchando"
 #: src/settings/voice.tsx
 msgid "Load models"
 msgstr "Cargar modelos"
+
+#: src/components/embedded/surface-status.tsx
+msgid "Loading {name}…"
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "Loading code…"
@@ -2170,6 +2298,18 @@ msgstr "Mensajes"
 #: src/i18n/unit-labels.ts
 msgid "Metric"
 msgstr "Métrico"
+
+#: src/settings/preferences.tsx
+#~ msgid "Mini Apps"
+#~ msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Mini Apps are only available on desktop"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Mini Apps need a wider window. Your chats from this app are still in the sidebar."
+#~ msgstr ""
 
 #: src/components/window-controls.tsx
 msgid "Minimize"
@@ -2274,6 +2414,7 @@ msgstr "Falló la solicitud de red (el navegador la bloqueó o el servidor no es
 msgid "New Agent"
 msgstr "Nuevo agente"
 
+#: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
 msgstr "Chat nuevo"
@@ -2333,6 +2474,10 @@ msgstr "Todavía no hay chats"
 #: src/projects/project-detail-panel.tsx
 msgid "No chats yet."
 msgstr "Todavía no hay chats."
+
+#: src/mini-apps/mini-app-chat-history.tsx
+msgid "No chats yet. Anything you ask beside this app shows up here."
+msgstr ""
 
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
@@ -2448,6 +2593,40 @@ msgstr "Ahora no"
 msgid "Not tested"
 msgstr "Sin probar"
 
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+msgid "Nothing completed the handshake at {0}. Check that the app is running, and that it allows this origin in its <0>frame-ancestors</0>."
+msgstr ""
+
+#. placeholder {0}: app.url
+#: src/mini-apps/mini-app-frame.tsx
+#~ msgid "Nothing completed the handshake at {0}. Check the app is running and that it allows this origin in its <0>frame-ancestors</0>."
+#~ msgstr ""
+
+#: src/components/embedded/surface-selection-bar.tsx
+#~ msgid "Nothing to ask about there. Try covering some content."
+#~ msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this account has no recovery phrase on record. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device refused the account key the server offered. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed — this device's encryption keys are out of date."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "Nothing was changed. The device was not revoked."
+msgstr ""
+
 #: src/lib/mcp-auth/callback-validation.ts
 msgid "OAuth issuer mismatch — authorization rejected."
 msgstr "El emisor de OAuth no coincide: autorización rechazada."
@@ -2501,6 +2680,14 @@ msgstr "Abrir {skillName}"
 msgid "Open {title}"
 msgstr "Abrir {title}"
 
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Open app"
+msgstr ""
+
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Open chat"
+#~ msgstr ""
+
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open External Link"
 msgstr "Abrir enlace externo"
@@ -2529,6 +2716,10 @@ msgstr "Abrir en la barra lateral"
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open in Sidebar"
 msgstr "Abrir en la barra lateral"
+
+#: src/mini-apps/mini-app-page.tsx
+msgid "Open it in the Thunderbolt desktop app, or in a desktop browser. Your chats from this app are still in the sidebar."
+msgstr ""
 
 #: src/components/chat/external-link-dialog.tsx
 msgid "Open Link"
@@ -2760,6 +2951,14 @@ msgstr "Falló la recuperación"
 msgid "Recovery phrase"
 msgstr "Frase de recuperación"
 
+#: src/settings/devices.tsx
+msgid "Refresh keys and retry"
+msgstr ""
+
+#: src/settings/devices.tsx
+msgid "Refreshing keys…"
+msgstr ""
+
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Registering this device and detecting your account status."
 msgstr "Registrando este dispositivo y detectando el estado de tu cuenta."
@@ -2835,6 +3034,10 @@ msgstr "Solicitud denegada"
 msgid "Request expired"
 msgstr "Solicitud caducada"
 
+#: src/mini-apps/mini-app-approval-prompt.tsx
+msgid "Requested by {appName}"
+msgstr ""
+
 #: src/components/chat/file-card.tsx
 msgid "Resend as images"
 msgstr "Reenviar como imágenes"
@@ -2842,6 +3045,10 @@ msgstr "Reenviar como imágenes"
 #: src/components/chat/file-card.tsx
 msgid "Resend as text"
 msgstr "Reenviar como texto"
+
+#: src/components/step-up-code-dialog.tsx
+msgid "Resend code"
+msgstr ""
 
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "Resend Email"
@@ -2932,10 +3139,15 @@ msgstr "Ejecuta esto en la máquina que aloja el bridge y luego añádelo: la co
 #: src/components/set-node-id-dialog.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/layout/sidebar/rename-chat-dialog.tsx
+#: src/mini-apps/mini-app-download-prompt.tsx
 #: src/settings/models/edit-model-form.tsx
 #: src/skills/skill-form.tsx
 msgid "Save"
 msgstr "Guardar"
+
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Save a file from {appName}?"
+msgstr ""
 
 #: src/projects/project-form.tsx
 msgid "Save changes"
@@ -2948,6 +3160,12 @@ msgstr "Guardar cambios"
 #: src/settings/connections/index.tsx
 msgid "Save failed"
 msgstr "No se pudo guardar"
+
+#: src/app.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Save your new recovery phrase"
+msgstr ""
 
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Save your recovery phrase"
@@ -3055,6 +3273,10 @@ msgstr "Buscando «{query}»…"
 msgid "Searching…"
 msgstr "Buscando…"
 
+#: src/settings/devices.tsx
+msgid "Securing…"
+msgstr ""
+
 #: src/voice/speakable.ts
 msgid "See the document on screen."
 msgstr "Consulta el documento en la pantalla."
@@ -3062,6 +3284,11 @@ msgstr "Consulta el documento en la pantalla."
 #: src/voice/speakable.ts
 msgid "See the equation on screen."
 msgstr "Consulta la ecuación en la pantalla."
+
+#: src/components/artifact/selectable-artifact.tsx
+#: src/mini-apps/mini-app-page.tsx
+msgid "Select"
+msgstr ""
 
 #: src/widgets/ask/display.tsx
 msgid "Select all that apply"
@@ -3089,6 +3316,10 @@ msgstr "Selecciona un proveedor"
 msgid "Select…"
 msgstr "Seleccionar…"
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Send code"
+msgstr ""
+
 #: src/components/sign-in/sign-in-email-step.tsx
 msgid "Send Magic Link"
 msgstr "Enviar enlace mágico"
@@ -3099,6 +3330,11 @@ msgstr "Enviar mensaje"
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Send to the Thunderbolt team"
+msgstr ""
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Sending code…"
 msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
@@ -3365,6 +3601,15 @@ msgstr "Empezar a usar Thunderbolt"
 msgid "Start voice mode"
 msgstr "Iniciar el modo de voz"
 
+#. placeholder {0}: app.name
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from {0}"
+msgstr ""
+
+#: src/mini-apps/mini-app-chat-banner.tsx
+msgid "Started from an app that is no longer available"
+msgstr ""
+
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Starting…"
 msgstr "Iniciando…"
@@ -3509,6 +3754,10 @@ msgstr "Probando el modelo…"
 msgid "Testing…"
 msgstr "Probando…"
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "That code is invalid or expired. Check your email and try again."
+msgstr ""
+
 #: src/lib/device-grant.ts
 msgid "That code isn't valid or has already been used. Check your terminal and try again."
 msgstr "Ese código no es válido o ya se ha usado. Revisa tu terminal e inténtalo de nuevo."
@@ -3541,9 +3790,29 @@ msgstr ""
 msgid "The CLI will be signed out and must sign in again before it can use your Thunderbolt account."
 msgstr ""
 
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — the recovery keys the server offered could not be verified against this device. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this account has no recovery phrase on record. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data — this device refused the account key the server offered. This can indicate tampering."
+msgstr ""
+
+#: src/services/revoke-failure.ts
+msgid "The device lost access, but your account key was not replaced, so it can still read your data."
+msgstr ""
+
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
-msgstr "Se cerrará la sesión del dispositivo y sus datos locales se borrarán en la próxima sincronización. Este dispositivo tendrá que volver a iniciar sesión para usar la sincronización."
+#~ msgid "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
+#~ msgstr "Se cerrará la sesión del dispositivo y sus datos locales se borrarán en la próxima sincronización. Este dispositivo tendrá que volver a iniciar sesión para usar la sincronización."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+msgstr ""
 
 #: src/widgets/map/widget.tsx
 msgid "The map couldn’t be loaded."
@@ -3627,6 +3896,10 @@ msgstr "Se ha cerrado la sesión de este dispositivo de forma remota. Elige qué
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
 msgstr "Este dispositivo todavía no está aprobado. Apruébalo primero desde un dispositivo de confianza."
 
+#: src/settings/devices.tsx
+msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
 msgstr "Este archivo no parece ser una exportación de Thunderbolt."
@@ -3670,6 +3943,10 @@ msgstr "este proyecto"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "This removes the connection from Thunderbolt only. Nothing on the remote server is changed."
 msgstr "Esto elimina la conexión solo de Thunderbolt. No se cambia nada en el servidor remoto."
+
+#: src/settings/devices.tsx
+msgid "This replaces your 24-word phrase. The one you have now will stop working, and you will need to save the new one."
+msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "This server needs a personal access token or API key. Paste it in the Credential field above, then test again."
@@ -3857,8 +4134,10 @@ msgstr "Viajes y lugares"
 msgid "Trusted devices"
 msgstr "Dispositivos de confianza"
 
+#: src/components/embedded/surface-status.tsx
 #: src/components/sso-redirect.tsx
 #: src/components/sync-setup/sync-setup-modal.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Try again"
 msgstr "Inténtalo de nuevo"
 
@@ -3915,6 +4194,7 @@ msgid "Unreachable {relative}"
 msgstr "Inaccesible {relative}"
 
 #: src/lib/title-generator.ts
+#: src/mini-apps/mini-app-chat-history.tsx
 msgid "Untitled chat"
 msgstr "Chat sin título"
 
@@ -4076,6 +4356,10 @@ msgstr "Modo de voz: {status}"
 msgid "Waiting for approval"
 msgstr "Esperando aprobación"
 
+#: src/mini-apps/mini-app-page.tsx
+#~ msgid "Waiting for your approval in the app"
+#~ msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "Want early access?"
 msgstr "¿Quieres acceso anticipado?"
@@ -4095,6 +4379,10 @@ msgstr "No entrenamos modelos con tus datos."
 #: src/components/sign-in/sign-in-otp-step.tsx
 msgid "We sent a code to <0>{email}</0>"
 msgstr "Hemos enviado un código a <0>{email}</0>"
+
+#: src/components/step-up-code-dialog.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+msgstr ""
 
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
@@ -4198,6 +4486,10 @@ msgstr "¿Quieres cambiar el idioma a {suggestedLanguageLabel}?"
 msgid "Would you like to update your units based on the new location?"
 msgstr "¿Quieres actualizar tus unidades según la nueva ubicación?"
 
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
 #: src/components/sync-setup/recovery-key-display-step.tsx
 msgid "Write down these 24 words in order and store them somewhere safe. You'll need them to recover your data if you lose access to all your devices. This phrase won't be shown again."
 msgstr "Apunta estas 24 palabras en orden y guárdalas en un lugar seguro. Las necesitarás para recuperar tus datos si pierdes el acceso a todos tus dispositivos. Esta frase no se volverá a mostrar."
@@ -4280,6 +4572,10 @@ msgstr "Alcanzaste tu límite de uso de IA para la ventana actual de 7 días. Vu
 msgid "Your account has been deleted and local data has been cleared."
 msgstr "Tu cuenta se ha eliminado y los datos locales se han borrado."
 
+#: src/settings/encryption/use-change-recovery-key.ts
+msgid "Your account keys changed while preparing the new phrase. Please try again."
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Your agent · runs in your terminal"
 msgstr "Tu agente · se ejecuta en tu terminal"
@@ -4300,6 +4596,10 @@ msgstr "Tu asistente puede ayudarte a gestionar tu correo y tu calendario."
 msgid "Your assistant can help you manage your email, calendar, and documents."
 msgstr "Tu asistente puede ayudarte a gestionar tu correo, tu calendario y tus documentos."
 
+#: src/mini-apps/mini-app-download-prompt.tsx
+msgid "Your browser will download {fileName}."
+msgstr ""
+
 #: src/widgets/ask/display.tsx
 msgid "Your call"
 msgstr "Tú decides"
@@ -4317,6 +4617,10 @@ msgstr "Tus chats y ajustes seguirán en este dispositivo para la próxima vez."
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Tus chats y ajustes seguirán en este dispositivo para usarlos sin conexión."
 
+#: src/app.tsx
+msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."
+msgstr ""
+
 #: src/components/context-overflow-modal.tsx
 msgid "Your message would exceed the model's {formattedMaxTokens}-token context window."
 msgstr "Tu mensaje superaría la ventana de contexto del modelo, de {formattedMaxTokens} tokens."
@@ -4329,9 +4633,17 @@ msgstr "Tu nombre"
 #~ msgid "Your new location mostly speaks {suggestedLanguageLabel}. Would you like to use Thunderbolt in {suggestedLanguageLabel}?"
 #~ msgstr "En tu nueva ubicación se habla principalmente {suggestedLanguageLabel}. ¿Quieres usar Thunderbolt en {suggestedLanguageLabel}?"
 
+#: src/settings/encryption/change-recovery-key-section.tsx
+msgid "Your old recovery phrase no longer works. Write down these 24 words in order and store them somewhere safe. This phrase won't be shown again."
+msgstr ""
+
 #: src/components/onboarding/onboarding-privacy-step.tsx
 msgid "Your private AI assistant"
 msgstr "Tu asistente de IA privado"
+
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+msgid "Your recovery phrase was never saved"
+msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "Your request to sync this device was denied by another device. You can try again or close this dialog."

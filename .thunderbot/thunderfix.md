@@ -21,7 +21,7 @@ If no PR is found, stop and tell the user.
 
 ## Fix Loop
 
-Run this loop. Track elapsed time — stop after **15 minutes** total.
+Run this loop. Track elapsed time — stop after **15 minutes** of actual fixing work. Waiting on CI in step 3 does not count against that budget: `thunder-deep-review` is sized against `timeout-minutes: 30` and is normally the last check to finish, so a single watch can outlast the whole fixing budget on its own.
 
 ### 1. Collect All Issues
 
@@ -66,6 +66,10 @@ If no issues were found (no unresolved threads, no actionable issue comments, CI
 ```bash
 gh pr checks "$PR_NUMBER" --watch --fail-fast
 ```
+
+`--watch` waits for **every** check on the PR, including the one named `review` — the single job of `thunder-deep-review`, the advisory, comment-only AI review in `.github/workflows/thunder-deep-review.yml`. It runs on every non-draft same-repo PR (forks and Dependabot are gated off), opens with a 60-second debounce, and is capped at `timeout-minutes: 30`. It posts with `event: 'COMMENT'` only — it never approves, requests changes, or merges — and `main`'s ruleset declares **no** required status checks (only one approving review, linear history, and squash merges), so nothing it reports blocks the merge. Don't reach for `gh pr checks --required` to skip the wait — with no required checks configured, it reports nothing at all.
+
+Treat a `thunder-deep-review` finding as review feedback, not as a CI failure: most findings land as inline review threads that step 1 already collects, so fix them there rather than spending CI fix attempts on them. Findings it cannot anchor to a line in the diff — plus any past its 50-inline-comment cap — roll into the review's summary body instead, which neither `pr-threads` nor `pr-comments` returns (`pr-comments` keeps only `user.type === 'User'`), so read the review itself on the PR as well.
 
 If CI fails (max **3 CI fix attempts** per loop iteration):
 1. Read failing logs:

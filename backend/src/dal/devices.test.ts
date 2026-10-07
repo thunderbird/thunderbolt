@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { user } from '@/db/auth-schema'
-import { devicesTable } from '@/db/schema'
+import { devicesTable, encryptionMetadataTable, wrappedKeysTable } from '@/db/schema'
 import { createTestDb } from '@/test-utils/db'
-import { eq, type SQL } from 'drizzle-orm'
+import { and, eq, type SQL } from 'drizzle-orm'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
@@ -14,6 +14,7 @@ import {
   getDeviceById,
   getTrustedNodeIds,
   isCliDeviceId,
+  listDevicesAwaitingLockout,
   markDeviceTrusted,
   registerDevice,
   revokeDevice,
@@ -712,6 +713,65 @@ describe('devices DAL', () => {
       expect(row!.trusted).toBe(false)
       expect(row!.approvalPending).toBe(false)
       expect(row!.revokedAt).toBeNull()
+    })
+  })
+
+  describe('listDevicesAwaitingLockout', () => {
+    const t0 = new Date('2026-01-01T00:00:00Z') // primary DEK '0' minted (setup)
+    const t1 = new Date('2026-01-02T00:00:00Z') // device revoked — after the mint, so awaiting lockout
+    const t2 = new Date('2026-01-03T00:00:00Z') // a later rotation
+
+    const seedPrimaryDek = async () => {
+      await db.insert(encryptionMetadataTable).values({
+        userId,
+        canaryIv: 'iv',
+        canaryCtext: 'ct',
+        primaryKeyId: '0',
+        createdAt: t0,
+      })
+      await db.insert(wrappedKeysTable).values({ keyId: '0', userId, wrappedKey: 'w0', createdAt: t0, updatedAt: t0 })
+    }
+
+    const seedRevokedDevice = async () => {
+      await db.insert(devicesTable).values({
+        id: 'revoked-dev',
+        userId,
+        name: 'Old Phone',
+        lastSeen: t1,
+        createdAt: t0,
+        revokedAt: t1,
+      })
+    }
+
+    it('keeps a revoked device awaiting lockout after a phrase change that mints no new primary', async () => {
+      // A phrase change re-wraps the whole keyring — '0's updated_at jumps to t2 —
+      // but mints NO new primary DEK: primary_key_id stays '0' and its created_at
+      // stays t0. So the revoked device still holds the live primary DEK and can
+      // read every future write under it. It must stay flagged as not-locked-out.
+      await seedPrimaryDek()
+      await seedRevokedDevice()
+      await db
+        .update(wrappedKeysTable)
+        .set({ updatedAt: t2 })
+        .where(and(eq(wrappedKeysTable.keyId, '0'), eq(wrappedKeysTable.userId, userId)))
+
+      const awaiting = await listDevicesAwaitingLockout(db, userId)
+      expect(awaiting).toContain('revoked-dev')
+    })
+
+    it('clears a revoked device once a new primary DEK is minted after the revoke', async () => {
+      // A proper revoke-and-rotate mints a fresh primary DEK '1' the revoked device
+      // never had and points the account at it — real forward-secrecy lockout.
+      await seedPrimaryDek()
+      await seedRevokedDevice()
+      await db.insert(wrappedKeysTable).values({ keyId: '1', userId, wrappedKey: 'w1', createdAt: t2, updatedAt: t2 })
+      await db
+        .update(encryptionMetadataTable)
+        .set({ primaryKeyId: '1' })
+        .where(eq(encryptionMetadataTable.userId, userId))
+
+      const awaiting = await listDevicesAwaitingLockout(db, userId)
+      expect(awaiting).not.toContain('revoked-dev')
     })
   })
 })

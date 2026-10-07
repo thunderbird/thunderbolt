@@ -13,6 +13,7 @@ import type { PostHog } from 'posthog-js'
 import type { z } from 'zod'
 import type { SharedModel } from '@shared/defaults/models'
 import type { DebugTranscriptMessageMetadataV1 } from './debug-transcript/types'
+import type { EmbeddedSurfaceChoice } from './ai/embedded-surface'
 import type { HttpClient } from './contexts'
 import type { AnyDrizzleDatabase } from './db/database-interface'
 import type {
@@ -192,6 +193,14 @@ export type UIMessageMetadata = {
    * name + generic icon + no server badge).
    */
   mcpTools?: Record<string, { name: string; url: string; toolName: string }>
+  /**
+   * Which embedded surface this turn's `get_app_context` read. A Mini App and an
+   * artifact answer under that one tool name, so this is how a later send can
+   * supersede a stale Mini App screen read without erasing an artifact read.
+   * Set only on turns that called the tool. Older messages lack it and are left
+   * alone, since they may well be artifact reads.
+   */
+  embeddedSurface?: Exclude<EmbeddedSurfaceChoice, null>
 }
 
 /**

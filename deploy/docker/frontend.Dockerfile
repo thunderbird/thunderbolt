@@ -31,8 +31,15 @@ COPY .storybook ./.storybook
 # Build args — baked into the static bundle at build time
 ARG VITE_THUNDERBOLT_CLOUD_URL="/v1"
 ARG VITE_AUTH_MODE="sso"
+# Organizational key escrow. Empty = no escrow (the default). It must be baked
+# in HERE, not set at runtime: the client wraps the account key to it during
+# setup, so the value has to exist in the static bundle before
+# ORG_ESCROW_ENABLED is switched on server-side — see
+# docs/self-hosting/configuration.md#organizational-key-escrow.
+ARG VITE_ORG_ESCROW_PUBLIC_KEY=""
 ENV VITE_THUNDERBOLT_CLOUD_URL=$VITE_THUNDERBOLT_CLOUD_URL
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+ENV VITE_ORG_ESCROW_PUBLIC_KEY=$VITE_ORG_ESCROW_PUBLIC_KEY
 
 RUN bunx vite build && \
     find dist -name '*.map' -delete

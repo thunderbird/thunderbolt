@@ -27,21 +27,6 @@ const modelAliases = {
   'deepseek-v4-1-flash': 'deepseek-v4-flash',
 } as const
 
-// Tinfoil's DeepSeek V4.1 Flash takes reasoning through `chat_template_kwargs`
-// (`{ thinking: true, reasoning_effort }` on, `{ thinking: false }` off) with its
-// own effort map, while Pi's deepseek format sends top-level `thinking` and
-// `reasoning_effort` and maps low/medium to null (clamped up to high).
-const deepseekV41FlashThinking = {
-  thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'high', high: 'xhigh', xhigh: 'xhigh', max: 'xhigh' },
-  compat: {
-    thinkingFormat: 'chat-template',
-    chatTemplateKwargs: {
-      thinking: { $var: 'thinking.enabled' },
-      reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true },
-    },
-  },
-} as const satisfies Pick<Model<'openai-completions'>, 'thinkingLevelMap' | 'compat'>
-
 /** Stable structural codes surfaced by confidential model construction and transport. */
 export type ConfidentialModelErrorCode = 'compatibility-missing' | 'attestation-failed'
 
@@ -125,11 +110,22 @@ export const resolveConfidentialModelCompatibility = (
       thinkingLevelMap: { ...resolved.thinkingLevelMap, low: 'low', medium: 'high', high: 'high', max: 'max' },
     }
   }
+  // Tinfoil's DeepSeek V4.1 Flash takes reasoning through `chat_template_kwargs`
+  // (`{ thinking: true, reasoning_effort }` on, `{ thinking: false }` off) with its
+  // own effort map, while Pi's deepseek format sends top-level `thinking` and
+  // `reasoning_effort` and maps low/medium to null (clamped up to high).
   if (model.modelId === 'deepseek-v4-1-flash') {
     return {
       ...resolved,
-      thinkingLevelMap: deepseekV41FlashThinking.thinkingLevelMap,
-      compat: { ...resolved.compat, ...deepseekV41FlashThinking.compat },
+      thinkingLevelMap: { minimal: 'low', low: 'low', medium: 'high', high: 'xhigh', xhigh: 'xhigh', max: 'xhigh' },
+      compat: {
+        ...resolved.compat,
+        thinkingFormat: 'chat-template',
+        chatTemplateKwargs: {
+          thinking: { $var: 'thinking.enabled' },
+          reasoning_effort: { $var: 'thinking.effort', omitWhenOff: true },
+        },
+      },
     }
   }
   return resolved

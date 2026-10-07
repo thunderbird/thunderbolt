@@ -160,17 +160,12 @@ describe('buildConfidentialModel compatibility', () => {
   ] as const)(
     'sends DeepSeek V4.1 Flash reasoning %s as Tinfoil chat_template_kwargs',
     async (_name, reasoning, kwargs) => {
-      const payloads: Array<{
-        readonly model?: unknown
-        readonly thinking?: unknown
-        readonly reasoning_effort?: unknown
-        readonly chat_template_kwargs?: unknown
-      }> = []
+      const payloads: unknown[] = []
       const built = build({
         modelId: 'deepseek-v4-1-flash',
         vendor: 'deepseek',
         fetch: async (_input, init) => {
-          payloads.push((await new Response(init?.body).json()) as (typeof payloads)[number])
+          payloads.push(await new Response(init?.body).json())
           return sseResponse('deepseek-v4-1-flash')
         },
       })

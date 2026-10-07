@@ -13,11 +13,7 @@ type GithubComment = { id: number; body: string | null; user: { login: string } 
 type RunGh = (args: string[]) => Promise<string>
 const workflowCommentAuthor = 'github-actions[bot]'
 
-const modelNames = new Map([
-  ['opus', 'Opus 5'],
-  ['flash', 'DeepSeek V4.1 Flash'],
-  ['glm', 'GLM 5.3'],
-])
+const modelNames = new Map(Object.entries({ opus: 'Opus 5', flash: 'DeepSeek V4.1 Flash', glm: 'GLM 5.3' }))
 const failureLimit = 20
 const percent = (value: number | null) => (value === null ? '—' : `${(value * 100).toFixed(1)}%`)
 

@@ -22,7 +22,7 @@ Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../
 - **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5's 5000 / 25000 (migrations `0028`, `0029`, `0034`).
 - **`provider` is transport, not branding.** The UI shows system-managed Tinfoil rows as Thunderbolt so the vendor does not leak into the product (`models.ts:130-131`); `provider: 'tinfoil'` does not mean the user configured Tinfoil.
 - **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts:17`](../../../backend/src/inference/managed-models.ts)) maps `opus-5` to `internalName: 'claude-opus-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5')` against GLM's public slugs.
-- **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2` and `deepseek-v4-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
+- **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
 
 ## Admission: price first, then quota
 

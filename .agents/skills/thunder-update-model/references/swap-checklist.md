@@ -188,7 +188,8 @@ both halves of that item apply and the other item is not applicable.
 22. universal. `docs/self-hosting/models.md` (lineup table and env mapping), `docs/faq.md` (the
     "which models" answer), `docs/internals/architecture/managed-inference.md` (lineup table;
     replace stale line-number citations with symbol names), `docs/self-hosting/monitoring.md`
-    (health example slug), `README.md` (managed-models paragraph), `backend/docs/pat-lifecycle.md`.
+    (the `/v1/health/models?model=<slug>` example), `README.md` (managed-models paragraph),
+    `backend/docs/pat-lifecycle.md`.
     `web/` carries no model names. Done when
     `git grep -n -i "<leaving-display-name>" -- docs README.md backend/docs` returns only history.
 
@@ -247,3 +248,7 @@ changed anything client-side, the rollout order from item 18 applies instead (cl
 is priced as the fallback model. After deploy,
 `curl -H "Authorization: Bearer $MONITORING_TOKEN" "https://<api>/v1/health/models?model=<incoming-slug>"`
 probes the price row and a real completion; it bypasses the client's Pi compatibility path.
+Production alerting in Better Stack polls that URL per built-in model; the probe rejects a slug
+outside `defaultModels`, so the report must list the monitor to add (`?model=<incoming-slug>`) and
+the one to retire (`?model=<leaving-slug>`), both changed in the same window as the backend deploy.
+Nothing in the repo holds those monitors; the developer edits them by hand.

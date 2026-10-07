@@ -209,14 +209,21 @@ hazard: any client-side change from checklist item 16 must reach clients before 
 manual follow-up below, and the exact next command: `/thunderpush`. CI runs the deep review on the
 PR, so do not start it here. Stop there; committing and pushing are the developer's call.
 
-The manual follow-up is a production setting nobody automates: once the client release carrying
-the swap is published, set `MIN_APP_VERSION` on the Render backend service to that release's
-version so older builds get `426 Upgrade Required` instead of failing mid-chat (the gate is
-`createAppVersionMiddleware`; the value applies on the next backend deploy). State the trigger
-in the hand-off: a provider cutoff date (older clients break on that day regardless) or a new
-client-side change from checklist item 16 (older clients break as soon as the row arrives).
-Name the release version from checklist item 18 and say it is the developer's call to make,
-after the release, by hand.
+Two manual follow-ups live outside the repo, so the hand-off names them with their values and
+says they are the developer's to do by hand:
+
+1. `MIN_APP_VERSION`: once the client release carrying the swap is published, set it on the
+   Render backend service to that release's version so older builds get `426 Upgrade Required`
+   instead of failing mid-chat (the gate is `createAppVersionMiddleware`; the value applies on
+   the next backend deploy). State the trigger: a provider cutoff date (older clients break on
+   that day regardless) or a client-side change from checklist item 16 (older clients break as
+   soon as the row arrives). Name the release version from checklist item 18.
+2. Better Stack monitors: production alerts poll
+   `https://api.thunderbolt.io/v1/health/models?model=<slug>` per built-in model. The probe
+   only knows models in `defaultModels`, so the leaving model's monitor starts failing at the
+   backend deploy and the incoming model has none. Hand over the exact URL to add
+   (`?model=<incoming-slug>`) and the one to retire (`?model=<leaving-slug>`), to be changed in
+   the same window as the backend deploy.
 
 ## Guardrails
 

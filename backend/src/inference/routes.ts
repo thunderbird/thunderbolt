@@ -195,7 +195,7 @@ const createUsageCallbacks = ({
 })
 
 /** Merge middleware headers into a raw streaming response. */
-const streamingResponseHeaders = (headers: object): Record<string, string> => {
+export const streamingResponseHeaders = (headers: object): Record<string, string> => {
   const responseHeaders: Record<string, string> = {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

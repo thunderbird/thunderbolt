@@ -75,9 +75,9 @@ Order in `backend/src/index.ts:112-205` is load-bearing:
 
 Plugin isolation hides in-plugin errors from the root `onError`, which covers only routes on the main app. Nearly every route module installs its own `.onError(safeErrorHandler)` (`backend/src/middleware/error-handling.ts:107-111`).
 
-### Why Better Auth is a catch-all, not a `mount()`
+### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/*', …)` (`backend/src/auth/elysia-plugin.ts:55`), filtered by its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:156`); later, more specific routes win, so `/v1/config` resolves to the config route and only unclaimed `/v1/...` paths reach it.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts:66`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:181`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 

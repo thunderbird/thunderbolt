@@ -24,8 +24,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: check
+        shell: bash
         run: |
-          release_tags=$(git tag --points-at HEAD --list 'v*')
+          release_tags=$(git tag --points-at HEAD --list 'v*' | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/')
           if [ -z "$release_tags" ]; then
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           else
@@ -52,7 +53,7 @@ jobs:
 
   notify:
     needs: [e2e, changes, release]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || needs.e2e.result == 'success') }}
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || needs.release.result == 'success') }}
     permissions:
       actions: read
       contents: read

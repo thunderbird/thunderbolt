@@ -10,7 +10,7 @@ import { createUniversalProxyRoutes } from './routes'
 
 // Deterministic DNS resolver injected as a `createUniversalProxyRoutes` dep —
 // no `mock.module('node:dns')`, which would leak across files (see
-// docs/development/testing.md). 1.1.1.1 is a public IP (passes SSRF) and
+// docs/internals/development/testing.md). 1.1.1.1 is a public IP (passes SSRF) and
 // stable for `pinnedUrl` assertions below.
 const mockDnsLookup = mock(() => Promise.resolve([{ address: '1.1.1.1', family: 4 }]))
 

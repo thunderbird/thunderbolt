@@ -54,9 +54,13 @@ export const loginViaSaml = async (page: Page) => {
 
 /** Open the chat sidebar when the mobile drawer is closed; desktop already renders it. */
 export const openSidebarOnMobile = async (page: Page) => {
-  if ((page.viewportSize()?.width ?? 768) >= 768) return
+  if ((page.viewportSize()?.width ?? 768) >= 768) {
+    return
+  }
   const openDrawer = page.locator('[data-slot="sidebar"][data-mobile="true"][data-open]')
-  if (await openDrawer.count()) return
+  if (await openDrawer.count()) {
+    return
+  }
   await page.locator('[data-slot="create-item-layout"] header').first().getByRole('button').first().click()
   await expect(openDrawer).toBeVisible()
 }

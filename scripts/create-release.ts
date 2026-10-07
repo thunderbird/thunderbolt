@@ -24,7 +24,7 @@ import { join } from 'path'
 
 type VersionType = 'major' | 'minor' | 'patch' | 'auto'
 
-interface Args {
+type Args = {
   version?: string
   type?: VersionType
   platform?: 'all' | 'ios' | 'android' | 'desktop'
@@ -33,8 +33,8 @@ interface Args {
   help?: boolean
 }
 
-const REPO_ROOT = join(import.meta.dir, '..')
-const VERSION_PACKAGE_PATHS = ['package.json', 'cli/package.json'] as const
+const repoRoot = join(import.meta.dir, '..')
+const versionPackagePaths = ['package.json', 'cli/package.json'] as const
 
 /**
  * Execute a shell command and return the output
@@ -44,7 +44,7 @@ const VERSION_PACKAGE_PATHS = ['package.json', 'cli/package.json'] as const
 const exec = (command: string, silent = false): string => {
   try {
     const result = execSync(command, {
-      cwd: REPO_ROOT,
+      cwd: repoRoot,
       encoding: 'utf8',
       stdio: silent ? 'pipe' : 'inherit',
     })
@@ -56,7 +56,9 @@ const exec = (command: string, silent = false): string => {
 
     return String(result).trim()
   } catch (error) {
-    if (silent) return ''
+    if (silent) {
+      return ''
+    }
     throw error
   }
 }
@@ -130,7 +132,7 @@ Note: By default, changes are committed and tagged locally only.
  * Get current version from package.json
  */
 const getCurrentVersion = (): string => {
-  const pkgPath = join(REPO_ROOT, 'package.json')
+  const pkgPath = join(repoRoot, 'package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   return pkg.version
 }
@@ -199,7 +201,7 @@ const detectVersionType = (): 'major' | 'minor' | 'patch' => {
  * Update a package version
  */
 const updatePackageVersion = (version: string, relativePath: string) => {
-  const path = join(REPO_ROOT, relativePath)
+  const path = join(repoRoot, relativePath)
   const pkg = JSON.parse(readFileSync(path, 'utf8'))
   pkg.version = version
   writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
@@ -210,7 +212,7 @@ const updatePackageVersion = (version: string, relativePath: string) => {
  * Update Cargo.toml version
  */
 const updateCargoToml = (version: string) => {
-  const path = join(REPO_ROOT, 'src-tauri/Cargo.toml')
+  const path = join(repoRoot, 'src-tauri/Cargo.toml')
   let content = readFileSync(path, 'utf8')
   content = content.replace(/^version = ".*"/m, `version = "${version}"`)
   writeFileSync(path, content)
@@ -225,7 +227,7 @@ const updateCargoLock = () => {
   try {
     exec('cd src-tauri && cargo update --workspace', true)
     console.log(`  ✓ src-tauri/Cargo.lock: updated`)
-  } catch (error) {
+  } catch {
     console.log(`  ⚠ src-tauri/Cargo.lock: could not update (cargo might not be installed)`)
   }
 }
@@ -234,7 +236,7 @@ const updateCargoLock = () => {
  * Update tauri.conf.json version
  */
 const updateTauriConf = (version: string) => {
-  const path = join(REPO_ROOT, 'src-tauri/tauri.conf.json')
+  const path = join(repoRoot, 'src-tauri/tauri.conf.json')
   const config = JSON.parse(readFileSync(path, 'utf8'))
   config.version = version
   writeFileSync(path, JSON.stringify(config, null, 2) + '\n')
@@ -252,7 +254,7 @@ const updateProjectYml = (version: string, platform: string) => {
     return
   }
 
-  const path = join(REPO_ROOT, 'src-tauri/gen/apple/project.yml')
+  const path = join(repoRoot, 'src-tauri/gen/apple/project.yml')
 
   if (!existsSync(path)) {
     console.log(`  ⊘ src-tauri/gen/apple/project.yml: not found (skipped)`)
@@ -270,7 +272,7 @@ const updateProjectYml = (version: string, platform: string) => {
  * Update Android tauri.properties versionName
  */
 const updateTauriProperties = (version: string) => {
-  const path = join(REPO_ROOT, 'src-tauri/gen/android/app/tauri.properties')
+  const path = join(repoRoot, 'src-tauri/gen/android/app/tauri.properties')
 
   if (!existsSync(path)) {
     console.log(`  ⊘ src-tauri/gen/android/app/tauri.properties: not found (skipped)`)
@@ -288,7 +290,7 @@ const updateTauriProperties = (version: string) => {
  */
 const updateVersionFiles = (version: string, platform: string) => {
   console.log('\n📝 Updating version files to', version)
-  VERSION_PACKAGE_PATHS.forEach((path) => updatePackageVersion(version, path))
+  versionPackagePaths.forEach((path) => updatePackageVersion(version, path))
   updateCargoToml(version)
   updateCargoLock()
   updateTauriConf(version)
@@ -375,7 +377,7 @@ const commitAndTag = (version: string, platform: string, shouldPush: boolean) =>
   console.log('\n📦 Committing changes...')
 
   const filesToAdd = [
-    ...VERSION_PACKAGE_PATHS,
+    ...versionPackagePaths,
     'src-tauri/Cargo.toml',
     'src-tauri/Cargo.lock',
     'src-tauri/tauri.conf.json',
@@ -470,7 +472,7 @@ const main = () => {
     console.log('\n🧪 DRY RUN - No changes will be made')
     console.log(`\nWould update version from ${currentVersion} to ${newVersion}`)
     console.log('\nFiles that would be updated:')
-    VERSION_PACKAGE_PATHS.forEach((path) => console.log(`  - ${path}`))
+    versionPackagePaths.forEach((path) => console.log(`  - ${path}`))
     console.log('  - src-tauri/Cargo.toml')
     console.log('  - src-tauri/tauri.conf.json')
     console.log('  - src-tauri/gen/android/app/tauri.properties (versionName)')

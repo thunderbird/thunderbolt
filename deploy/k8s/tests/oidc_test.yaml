@@ -1,0 +1,198 @@
+suite: OIDC provider selection
+templates:
+  - templates/backend.yaml
+  - templates/secrets.yaml
+set:
+  backend.betterAuthSecretBase64: dGVzdA==
+tests:
+  - it: defaults to the bundled Keycloak
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_ISSUER, value: 'http://localhost/realms/thunderbolt' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_DISCOVERY_URL
+            value: 'http://keycloak:8080/realms/thunderbolt/.well-known/openid-configuration'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_CLIENT_ID, value: thunderbolt-app }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_ORIGINS, value: 'http://localhost,http://keycloak:8080' }
+
+  - it: uses an external issuer as given and derives its discovery URL
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com/application/o/thunderbolt
+      oidc.clientId: external-client
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_ISSUER, value: 'https://idp.example.com/application/o/thunderbolt' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_DISCOVERY_URL
+            value: 'https://idp.example.com/application/o/thunderbolt/.well-known/openid-configuration'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_CLIENT_ID, value: external-client }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_ORIGINS, value: 'http://localhost,https://idp.example.com' }
+
+  # Providers such as Authentik publish an issuer ending in "/". OIDC Discovery
+  # requires stripping it before appending the well-known path.
+  - it: strips the trailing slash of an external issuer from the discovery URL
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com/application/o/thunderbolt/
+      oidc.clientId: external-client
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_ISSUER, value: 'https://idp.example.com/application/o/thunderbolt/' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_DISCOVERY_URL
+            value: 'https://idp.example.com/application/o/thunderbolt/.well-known/openid-configuration'
+
+  - it: trusts the origin of a discovery URL override and of extra trusted origins
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com
+      oidc.discoveryUrl: https://internal.idp.example.com/.well-known/openid-configuration
+      oidc.extraTrustedOrigins: ['https://cdn.idp.example.com']
+      oidc.clientId: external-client
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OIDC_DISCOVERY_URL
+            value: 'https://internal.idp.example.com/.well-known/openid-configuration'
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TRUSTED_ORIGINS
+            value: 'http://localhost,https://idp.example.com,https://internal.idp.example.com,https://cdn.idp.example.com'
+
+  - it: stores the bundled Keycloak client secret when no external provider is set
+    template: templates/secrets.yaml
+    set:
+      keycloak.oidc.clientSecretBase64: a2V5Y2xvYWs=
+    asserts:
+      - equal: { path: 'data["oidc-client-secret"]', value: a2V5Y2xvYWs= }
+
+  - it: stores the external client secret in preference to the bundled one
+    template: templates/secrets.yaml
+    set:
+      keycloak.enabled: false
+      keycloak.oidc.clientSecretBase64: a2V5Y2xvYWs=
+      oidc.issuer: https://idp.example.com
+      oidc.clientId: external-client
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - equal: { path: 'data["oidc-client-secret"]', value: ZXh0ZXJuYWw= }
+
+  # `helm upgrade --reuse-values` replaces the chart's new defaults with the
+  # previous release's values, so keys added in a later chart version are
+  # absent. Helm deletes a key set to null, which reproduces that here.
+  - it: still renders the bundled Keycloak config when an upgrade predates oidc and keycloak.enabled
+    template: templates/backend.yaml
+    documentSelector: { path: kind, value: Deployment }
+    set:
+      oidc: null
+      keycloak.enabled: null
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_ISSUER, value: 'http://localhost/realms/thunderbolt' }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: OIDC_CLIENT_ID, value: thunderbolt-app }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: TRUSTED_ORIGINS, value: 'http://localhost,http://keycloak:8080' }
+
+  - it: keeps the bundled client secret when an upgrade predates oidc
+    template: templates/secrets.yaml
+    set:
+      oidc: null
+      keycloak.enabled: null
+      keycloak.oidc.clientSecretBase64: a2V5Y2xvYWs=
+    asserts:
+      - equal: { path: 'data["oidc-client-secret"]', value: a2V5Y2xvYWs= }
+
+  - it: rejects keycloak.enabled=false without an issuer
+    template: templates/backend.yaml
+    set:
+      keycloak.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'keycloak.enabled=false requires oidc.issuer'
+
+  - it: rejects oidc.discoveryUrl without an issuer
+    template: templates/backend.yaml
+    set:
+      oidc.discoveryUrl: https://idp.example.com/.well-known/openid-configuration
+    asserts:
+      - failedTemplate:
+          errorPattern: 'oidc.discoveryUrl requires oidc.issuer'
+
+  - it: rejects an issuer without a client id
+    template: templates/backend.yaml
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com
+    asserts:
+      - failedTemplate:
+          errorPattern: 'oidc.issuer requires oidc.clientId'
+
+  - it: rejects an issuer without a client secret
+    template: templates/backend.yaml
+    set:
+      keycloak.enabled: false
+      oidc.issuer: https://idp.example.com
+      oidc.clientId: external-client
+    asserts:
+      - failedTemplate:
+          errorPattern: 'oidc.issuer requires oidc.clientSecretBase64'
+
+  - it: rejects a client id without an issuer
+    template: templates/backend.yaml
+    set:
+      oidc.clientId: external-client
+    asserts:
+      - failedTemplate:
+          errorPattern: 'require oidc.issuer'
+
+  - it: rejects a client secret without an issuer
+    template: templates/backend.yaml
+    set:
+      oidc.clientSecretBase64: ZXh0ZXJuYWw=
+    asserts:
+      - failedTemplate:
+          errorPattern: 'require oidc.issuer'
+
+  - it: rejects the same misconfigurations on an upgrade that predates oidc
+    template: templates/backend.yaml
+    set:
+      oidc: null
+      keycloak.enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: 'keycloak.enabled=false requires oidc.issuer'

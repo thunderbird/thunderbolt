@@ -106,7 +106,9 @@ First boot takes 1–2 minutes. Expected sequence:
 ### 6. Sign in
 
 Open `http://localhost` in a private window. Click sign-in. You'll be redirected
-to Keycloak. Demo credentials: `demo@thunderbolt.io` / `demo`.
+to Keycloak. Demo credentials: `demo@thunderbolt.io` / `demo`. That account comes
+from `keycloak.demoUserEnabled`, which production deploys should turn off — see
+[Values](#values).
 
 After onboarding, drop in an AI provider key in app settings to start chatting.
 
@@ -127,24 +129,64 @@ kind delete cluster --name thunderbolt
 
 See [values.yaml](values.yaml) for all configurable options. Key values:
 
-| Value | Default | Description |
-|-------|---------|-------------|
-| `backend.betterAuthSecretBase64` | `""` (REQUIRED) | Base64-encoded auth signing secret |
-| `appUrl` | `http://localhost` | Base URL for CORS, auth callbacks, redirects |
-| `frontend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend` | Frontend image |
-| `backend.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend` | Backend image |
-| `backend.env.minAppVersion` | `""` | Minimum compatible app semver |
-| `backend.env.cliDeviceRegistrationEnabled` | `"false"` | Server-owned CLI device registration gate |
-| `marketing.image.repository` | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image |
-| `imagePullSecrets` | `[]` | Registry pull secrets (leave empty for the public images) |
-| `nodeSelector` | `{}` | Node selector applied to every pod, to pin workloads to a node pool (e.g. `kubernetes.io/arch: amd64`) |
-| `ingress.enabled` | `true` | Create Ingress resource |
-| `ingress.host` | `""` | Set to your hostname for production |
-| `postgres.storage` | `5Gi` | Postgres PVC size |
-| `postgres.storageClassName` | `""` (uses cluster default) | StorageClass for the Postgres PVC. Set explicitly on clusters with a node-local default or node churn; `"-"` binds a PV you provisioned yourself. New installs only, see below |
-| `backend.aiSecrets.anthropicApiKeyBase64` | `""` | Server-side Anthropic key (avoids browser CORS) |
+| Value                                      | Default                                                 | Description                                                                                                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend.betterAuthSecretBase64`           | `""` (REQUIRED)                                         | Base64-encoded auth signing secret                                                                                                                                                                                                                   |
+| `appUrl`                                   | `http://localhost`                                      | Base URL for CORS, auth callbacks, redirects                                                                                                                                                                                                         |
+| `frontend.image.repository`                | `ghcr.io/thunderbird/thunderbolt/thunderbolt-frontend`  | Frontend image                                                                                                                                                                                                                                       |
+| `backend.image.repository`                 | `ghcr.io/thunderbird/thunderbolt/thunderbolt-backend`   | Backend image                                                                                                                                                                                                                                        |
+| `backend.env.minAppVersion`                | `""`                                                    | Minimum compatible app semver                                                                                                                                                                                                                        |
+| `backend.env.cliDeviceRegistrationEnabled` | `"false"`                                               | Server-owned CLI device registration gate                                                                                                                                                                                                            |
+| `marketing.image.repository`               | `ghcr.io/thunderbird/thunderbolt/thunderbolt-marketing` | Marketing site image                                                                                                                                                                                                                                 |
+| `imagePullSecrets`                         | `[]`                                                    | Registry pull secrets (leave empty for the public images)                                                                                                                                                                                            |
+| `nodeSelector`                             | `{}`                                                    | Node selector applied to every pod, to pin workloads to a node pool (e.g. `kubernetes.io/arch: amd64`)                                                                                                                                               |
+| `ingress.enabled`                          | `true`                                                  | Create Ingress resource                                                                                                                                                                                                                              |
+| `ingress.host`                             | `""`                                                    | Set to your hostname for production                                                                                                                                                                                                                  |
+| `postgres.storage`                         | `5Gi`                                                   | Postgres PVC size                                                                                                                                                                                                                                    |
+| `postgres.storageClassName`                | `""` (uses cluster default)                             | StorageClass for the Postgres PVC. Set explicitly on clusters with a node-local default or node churn; `"-"` binds a PV you provisioned yourself. New installs only, see below                                                                       |
+| `postgres.sslmode`                         | `disable`                                               | TLS mode, wired into both the backend's `DATABASE_URL` and PowerSync's replication/storage config. `disable` matches the in-cluster StatefulSet, which ships without TLS; use `require` (or stricter) against a TLS-terminating Postgres such as RDS |
+| `powersync.jwt.secretBase64`               | built-in dev secret                                     | PowerSync JWT signing secret, **base64url**-encoded                                                                                                                                                                                                  |
+| `keycloak.demoUserEnabled`                 | `true`                                                  | Include the `demo@thunderbolt.io` user in the imported realm                                                                                                                                                                                         |
+| `backend.aiSecrets.anthropicApiKeyBase64`  | `""`                                                    | Server-side Anthropic key (avoids browser CORS)                                                                                                                                                                                                      |
+| `keycloak.enabled`                         | `true`                                                  | Deploy the bundled Keycloak. Set `false` when using an external `oidc.issuer`                                                                                                                                                                        |
+| `oidc.issuer`                              | `""`                                                    | External IdP issuer URL (leave empty to use the bundled Keycloak)                                                                                                                                                                                    |
+| `oidc.discoveryUrl`                        | `""`                                                    | Override the discovery document URL when it differs from `<issuer>/.well-known/openid-configuration`                                                                                                                                                 |
+| `oidc.clientId`                            | `""`                                                    | External IdP client ID                                                                                                                                                                                                                               |
+| `oidc.clientSecretBase64`                  | `""`                                                    | Base64-encoded external IdP client secret                                                                                                                                                                                                            |
+| `podAnnotations`                           | `{}`                                                    | Annotations applied to every pod in the chart                                                                                                                                                                                                        |
+| `<component>.podAnnotations`               | `{}`                                                    | Per-component annotations, merged over `podAnnotations` (per-component keys win)                                                                                                                                                                     |
+| `<component>.resources`                    | `{}`                                                    | Requests/limits for that component's container                                                                                                                                                                                                       |
 
-See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#cli-device-rollout) before enabling registration.
+`<component>` is one of `frontend`, `marketing`, `backend`, `postgres`,
+`powersync`, `keycloak`.
+
+The PowerSync secret must be **base64url** (RFC 7518), not standard base64: the
+same string is used as the HS256 signing secret and as the JWK `k` field
+PowerSync verifies tokens against, and the JWK parser rejects the `+/=`
+characters `openssl rand -base64` can emit. The decoded value must be at least
+32 characters — the backend refuses to start otherwise
+([`backend/src/config/settings.ts:176`](../../backend/src/config/settings.ts)).
+Generate one with `openssl rand 32 | basenc --base64url --wrap=0`, or
+`openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`.
+
+Set `keycloak.demoUserEnabled=false` for production. The flag is rendered into
+the realm JSON held in the `keycloak-realm` ConfigMap
+([`templates/configmaps.yaml`](templates/configmaps.yaml)), which Keycloak reads
+at startup — [`templates/keycloak.yaml`](templates/keycloak.yaml) runs
+`start-dev --import-realm`. Changing it therefore only takes effect once the
+Keycloak pod is replaced, and `helm upgrade` rewrites the ConfigMap without
+touching the Deployment's pod template, so it does not roll Keycloak on its own:
+
+```bash
+kubectl rollout restart deployment/keycloak -n thunderbolt
+```
+
+The chart gives Keycloak no persistent volume — the Postgres StatefulSet owns
+the only PVC — so the dev-mode Keycloak database lives in the pod's filesystem.
+The restart re-imports the realm from scratch, which drops the demo user, but
+also discards anything else configured in Keycloak since the pod started.
+
+See the [CLI device rollout guide](../../docs/self-hosting/configuration.md#command-line-client-rollout) before enabling registration.
 
 ### Changing Postgres storage after install
 
@@ -220,15 +262,53 @@ The sync service's own `powersync_storage` database is deliberately not in the
 dump. It rebuilds itself from the application database, so after this every
 client does one full re-sync.
 
+### Using an external identity provider
+
+Set `keycloak.enabled=false` and the `oidc.*` values instead. Whatever OIDC
+provider you use, register this callback URL with it:
+
+```
+<appUrl>/v1/api/auth/sso/callback/sso
+```
+
+```bash
+helm upgrade thunderbolt . -n thunderbolt \
+  --reuse-values \
+  --set keycloak.enabled=false \
+  --set oidc.issuer=https://idp.example.com/application/o/thunderbolt/ \
+  --set oidc.clientId=<client-id> \
+  --set-string oidc.clientSecretBase64="$(printf %s '<client-secret>' | base64 | tr -d '\n')"
+```
+
+GNU coreutils `base64` (the default on Linux) wraps its output every 76
+characters; an external IdP's client secret is often long enough to wrap,
+and an unquoted `$(...)` then passes the wrapped lines to `helm` as
+separate arguments. `tr -d '\n'` strips the wrapping and the quotes keep
+the result as one argument; `--set-string` keeps a base64 value that
+happens to look numeric from being coerced. For a real deployment, put
+`oidc.clientSecretBase64` in a values file or an external secret manager
+instead of `--set` — it otherwise ends up in shell history and in the
+process list.
+
+## Testing the chart
+
+```bash
+helm lint . --set backend.betterAuthSecretBase64=dGVzdA==
+helm unittest .
+```
+
+The suites live in [`tests/`](tests/) and run in CI whenever the chart changes. Plugin setup, how to write a test, and how to simulate `helm upgrade --reuse-values` are in [Helm chart tests](../../docs/internals/development/testing.md#helm-chart-tests).
+
 ## Templates
 
-| Template | Resources | Purpose |
-|----------|-----------|---------|
-| `secrets.yaml` | Secret | OIDC, PowerSync JWT, Postgres, Better Auth credentials |
-| `configmaps.yaml` | ConfigMaps | PowerSync config, Keycloak realm, Postgres init SQL |
-| `postgres.yaml` | StatefulSet + Service | PostgreSQL with WAL replication + PVC; hosts app DB and PowerSync bucket storage |
-| `backend.yaml` | Deployment + Service | Bun API with health probes |
-| `frontend.yaml` | Deployment + Service | nginx SPA |
-| `keycloak.yaml` | Deployment + Service | OIDC provider with realm import |
-| `powersync.yaml` | Deployment + Service | Real-time sync engine |
-| `ingress.yaml` | Ingress | Path-based routing |
+| Template          | Resources             | Purpose                                                                          |
+| ----------------- | --------------------- | -------------------------------------------------------------------------------- |
+| `secrets.yaml`    | Secret                | OIDC, PowerSync JWT, Postgres, Better Auth credentials                           |
+| `configmaps.yaml` | ConfigMaps            | PowerSync config, Keycloak realm, Postgres init SQL                              |
+| `postgres.yaml`   | StatefulSet + Service | PostgreSQL with WAL replication + PVC; hosts app DB and PowerSync bucket storage |
+| `backend.yaml`    | Deployment + Service  | Bun API with health probes                                                       |
+| `frontend.yaml`   | Deployment + Service  | nginx SPA                                                                        |
+| `marketing.yaml`  | Deployment + Service  | Astro site: marketing, blog and docs                                             |
+| `keycloak.yaml`   | Deployment + Service  | OIDC provider with realm import                                                  |
+| `powersync.yaml`  | Deployment + Service  | Real-time sync engine                                                            |
+| `ingress.yaml`    | Ingress               | Path-based routing                                                               |

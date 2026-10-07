@@ -18,7 +18,7 @@ import '@/test-utils/framer-motion-mock'
 
 // Inject `useChat` via the component's DI seam instead of a global
 // `mock.module('@ai-sdk/react')` — module mocks are process-global and leak into
-// unrelated files under `--randomize` (see docs/development/testing.md).
+// unrelated files under `--randomize` (see docs/internals/development/testing.md).
 const useChatStub = (() => ({ status: 'ready' })) as unknown as typeof useChat_default
 
 const chatListItemWithProviders = (props: ChatListItemProps) => (
@@ -32,7 +32,7 @@ const chatListItemWithProviders = (props: ChatListItemProps) => (
 const renderWithProviders = (props: ChatListItemProps) => render(chatListItemWithProviders(props))
 
 const createProps = (overrides?: Partial<ChatListItemProps>): ChatListItemProps => ({
-  thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0, projectId: null },
+  thread: { id: 'thread-1', title: 'My Chat', isEncrypted: 0, projectId: null, miniAppId: null },
   isActive: false,
   isCollapsed: false,
   isMobile: false,
@@ -120,7 +120,9 @@ describe('ChatListItem', () => {
     const onChatClick = mock()
     renderWithProviders(createProps({ onChatClick }))
     fireEvent.click(screen.getByText('My Chat'))
-    expect(onChatClick).toHaveBeenCalledWith('thread-1')
+    // The row passes its own `miniAppId` up, so the sidebar doesn't have to
+    // find the thread again to learn where the click should land.
+    expect(onChatClick).toHaveBeenCalledWith('thread-1', null)
   })
 
   it('renders icon-only view when collapsed', () => {

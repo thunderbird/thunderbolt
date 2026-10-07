@@ -1,0 +1,224 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * Theme is driven by a `data-theme` attribute the app sets from the host's
+ * `theme/changed` notification, so an embedded app tracks Thunderbolt's
+ * appearance rather than the OS setting.
+ */
+:root {
+  --bg: #ffffff;
+  --surface: #f7f7f8;
+  --border: #e4e4e7;
+  --text: #18181b;
+  --muted: #71717a;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --negative: #dc2626;
+}
+
+[data-theme='dark'] {
+  --bg: #0c0c0e;
+  --surface: #17171a;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --accent: #60a5fa;
+  --accent-soft: #1e3a8a;
+  --negative: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+}
+
+.page {
+  padding: 20px 24px 32px;
+  max-width: 1100px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.dot.live {
+  background: #22c55e;
+}
+
+.assumptions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover {
+  background: var(--surface);
+}
+
+tbody tr.selected {
+  background: var(--accent-soft);
+}
+
+.negative {
+  color: var(--negative);
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notes {
+  margin-top: 24px;
+  max-width: 70ch;
+}
+
+.notes h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.notes p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+::selection {
+  background: var(--accent-soft);
+}

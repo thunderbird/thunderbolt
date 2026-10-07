@@ -2,7 +2,7 @@
 
 Self-hosted PowerSync Service stack for local development using Docker Compose.
 
-**Full documentation** (synced tables, adding tables, account/device flows, backend API): [docs/powersync-account-devices.md](../docs/powersync-account-devices.md).
+**Full documentation** (synced tables, adding tables, account/device flows, backend API): [docs/internals/architecture/powersync-account-devices.md](../docs/internals/architecture/powersync-account-devices.md).
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ docker compose up -d
 
 2. **Run migrations** (from repo root): `cd backend && bun db generate && bun db migrate`
 
-3. **PowerSync env vars** in `backend/.env`: see [docs/powersync-account-devices.md](../docs/powersync-account-devices.md) (section 3). The config in `config/config.yaml` uses HS256 with the same secret/kid so backend-issued tokens are accepted.
+3. **PowerSync env vars** in `backend/.env`: see [docs/internals/architecture/powersync-account-devices.md](../docs/internals/architecture/powersync-account-devices.md) (section 3). The config in `config/config.yaml` uses HS256 with the same secret/kid so backend-issued tokens are accepted.
 
 When you add or change synced tables, update `config/config.yaml` sync rules and backend (see consolidated doc).
 

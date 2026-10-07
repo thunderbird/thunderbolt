@@ -93,11 +93,20 @@ export const PendingDeviceModal = () => {
         </ResponsiveModalContent>
       </ResponsiveModal>
 
+      {/*
+        Both dialogs render their own failure (THU-887). This surface needs it
+        more than the settings page does: the modal behind them cannot be
+        dismissed at all — no close button, escape and outside-click both
+        prevented — so a silent no-op here leaves the user with nothing to do
+        and nothing to read. `useApproveDevice` throws a real error on a device
+        with missing public keys.
+      */}
       <ApproveDeviceDialog
         open={confirmApproveOpen}
         onOpenChange={(open) => !open && setConfirmApproveOpen(false)}
         onConfirm={confirmApprove}
         isPending={approveMutation.isPending}
+        error={approveMutation.error?.message}
       />
 
       <RevokeDeviceDialog
@@ -106,6 +115,7 @@ export const PendingDeviceModal = () => {
         onConfirm={confirmDeny}
         isPending={denyMutation.isPending}
         variant="pending"
+        error={denyMutation.error?.message}
       />
     </>
   )

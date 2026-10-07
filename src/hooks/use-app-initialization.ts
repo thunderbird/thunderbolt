@@ -8,6 +8,12 @@ import type { HttpClient } from '@/contexts'
 import { getSettings, hasCurrentDefaultsVersions } from '@/dal'
 import { getAuthToken } from '@/lib/auth-token'
 import { Database, getCurrentDatabase, setDatabase } from '@/db/database'
+import { startKeyRequestResponder } from '@/db/encryption'
+import { ensureSessionBound, ensureV2Encryption, refreshAK, stageKeyring } from '@/services/encryption'
+import { fetchEncryptionMetadata } from '@/api/encryption'
+import { getKeyPair } from '@/crypto'
+import { dispatchE2eeProvisioningSettled } from '@/hooks/use-e2ee-ready'
+import { dispatchMigrationRecoveryKey } from '@/hooks/use-migration-recovery-key'
 import { getPowerSyncInstance } from '@/db/powersync/sync-state'
 import { createSearchIndex } from '@/search/fts-setup'
 import type { AnyDrizzleDatabase, InitialSyncOutcome } from '@/db/database-interface'
@@ -136,6 +142,40 @@ const initializeTray = async (): Promise<TrayInitResult> => {
 const initializePostHog = async (httpClient?: HttpClient): Promise<PostHog | null> => {
   const result = await initPosthog(httpClient)
   return result.success ? result.data : null
+}
+
+/**
+ * WS6 — run the idempotent v1→v2 migrator/follower check once at init, on the
+ * main thread (the only place with an authenticated client). Fire-and-forget:
+ * it must never block or fail boot. On a successful seamless migration it
+ * surfaces the NEW recovery phrase through the global dialog; every other
+ * outcome (`followed`/`already-v2`/`awaiting-approval`/`not-applicable`) needs
+ * no init-time UI — awaiting-approval is handled by the sync-setup wizard.
+ *
+ * Gated on a pre-existing device key pair so it only runs for returning devices
+ * (the seamless migrate/follow cases); brand-new devices set up through the
+ * sync wizard, which drives `ensureV2Encryption` itself.
+ */
+export const runEncryptionInit = async (client: HttpClient): Promise<void> => {
+  try {
+    const keyPair = await getKeyPair()
+    if (!keyPair) {
+      return
+    }
+    const result = await ensureV2Encryption(client)
+    if (result.outcome === 'migrated') {
+      dispatchMigrationRecoveryKey(result.recoveryKey)
+    }
+  } catch (error) {
+    console.warn('[init] E2EE migration/follow check failed:', error)
+  } finally {
+    // In `finally`, and unconditionally: "settled" means this device's
+    // encryption state is now decided, which is equally true of the no-keypair
+    // return and of a failure. A settings page mounted while this was still
+    // running read `false` and, before `useE2eeReady` became a query, kept it
+    // forever.
+    dispatchE2eeProvisioningSettled()
+  }
 }
 
 const time = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
@@ -394,6 +434,36 @@ const executeInitializationSteps = async (httpClient?: HttpClient): Promise<Hand
       }
     }
   }
+
+  // Step 6b: Start the E2EE key-request responder (D2 + C3 polling) and run
+  // the WS6 migrator/follower check. The SharedWorker holds no auth token, so
+  // key fetching and the migration/follow flow must happen here on the main
+  // thread. Both are fire-and-forget: staging/migration must never block boot,
+  // and a repeat init run replaces the previous responder. The responder
+  // self-gates on setup completeness internally.
+  // Bind this session to this device BEFORE anything calls a trust route
+  // (THU-873). Every keyring/envelope/challenge route resolves its caller from
+  // `session.deviceId`, and a re-authenticated session starts out bound to
+  // nothing — so an unbound session would 403 the keyring fetch below and leave
+  // the codec fail-closed, painting the UI with `__enc:v2:` ciphertext. Awaited
+  // for that ordering, but never fatal: a device with no key pair has nothing to
+  // bind, and a failure here self-heals on the next launch.
+  await time('step6a_bind_session', async () => {
+    try {
+      await ensureSessionBound(client)
+    } catch (error) {
+      console.warn('[init] session binding failed:', error)
+    }
+  })
+
+  startKeyRequestResponder({
+    stageKeyring: () => stageKeyring(client),
+    refreshAK: () => refreshAK(client),
+    fetchMetadata: () => fetchEncryptionMetadata(client),
+  })
+  runEncryptionInit(client).catch((error) => {
+    console.warn('[init] runEncryptionInit failed:', error)
+  })
 
   // Steps 7 + 8: Tray and PostHog initialization (non-critical, independent
   // of each other) — run in parallel; each wrapper swallows its own failure.

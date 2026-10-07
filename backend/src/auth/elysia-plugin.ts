@@ -7,8 +7,16 @@ import { APIError } from 'better-auth'
 import { Elysia, type AnyElysia } from 'elysia'
 import { type Auth, createAuth } from './auth'
 
-/** Resolve a session while translating credential rejection into an unauthenticated result. */
-const resolveAuthSession = async (auth: Auth, headers: Headers) => {
+/**
+ * Resolve a session while translating credential rejection into an unauthenticated result.
+ *
+ * Exported because a route that calls `auth.api.getSession` directly does not
+ * get this: Better Auth *throws* an `APIError` for a rejected credential — a
+ * stray `x-api-key` trips its before-hook — and an unhandled throw reaches the
+ * error handler as a 500 rather than the 401 it is. Any route resolving its own
+ * session should come through here.
+ */
+export const resolveAuthSession = async (auth: Auth, headers: Headers) => {
   try {
     return await auth.api.getSession({ headers })
   } catch (error) {

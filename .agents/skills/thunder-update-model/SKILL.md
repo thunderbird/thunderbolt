@@ -159,8 +159,10 @@ level reaches the wire. Done when the developer answered and saw those facts.
 ### 5. Branch and worktree
 
 Ask, header `Ticket`: "Is there a Linear ticket for this swap?" only when no `THU-nnn` was passed.
-Options: "No ticket" (branch `ital0/chore-swap-<leaving-slug>-for-<incoming-slug>`) and "Linear
-ticket" (the developer types `THU-nnn` via Other). With a ticket the branch is the one Linear
+Options: "No ticket" (branch `<handle>/chore-swap-<leaving-slug>-for-<incoming-slug>`, where
+`<handle>` is the developer's GitHub login from `gh api user --jq .login`, the same prefix the
+other branches in `git branch -r` use) and "Linear ticket" (the developer types `THU-nnn` via
+Other). With a ticket the branch is the one Linear
 generates: the Linear MCP `get_issue` returns it as `gitBranchName`; the `linear` CLI, where
 installed, returns `branchName` from `linear issue view THU-nnn --json --no-pager`. Then:
 

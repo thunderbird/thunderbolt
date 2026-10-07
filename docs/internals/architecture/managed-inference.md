@@ -61,19 +61,19 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 
 ## Direct tier: `/v1/chat/*`
 
-| Route                              | Shape              | Notes                                                                                                             |
-| ---------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/chat/completions` (L270) | OpenAI             | streaming only                                                                                                    |
-| `POST /v1/chat/v1/messages` (L390) | Anthropic Messages | streaming only; Zod-validated, Anthropic-specific fields passed through as `unknown` for the upstream to validate |
+| Route                       | Shape              | Notes                                                                                                             |
+| --------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/chat/completions` | OpenAI             | streaming only                                                                                                    |
+| `POST /v1/chat/v1/messages` | Anthropic Messages | streaming only; Zod-validated, Anthropic-specific fields passed through as `unknown` for the upstream to validate |
 
-[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'` (L250); `/v1` comes from the app mount in `backend/src/index.ts`. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5`.
+[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'`; `/v1` comes from the app mount in `backend/src/index.ts`. Both sit behind `createMeteredRouteGuard` ([`metered-route-guard.ts`](../../../backend/src/inference/metered-route-guard.ts)), as does the hosted agent's `POST /v1/agent/chat`: a session, the CLI device binding, then the `inference` rate limit. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5`.
 
-- Messages adds request-level `cache_control: { type: 'ephemeral' }` (L462-464); Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
-- `sanitizeMessageRoles` (L67-69) downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.
-- `createUsageCallbacks` (L163) writes the ledger row in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block.
+- Messages adds request-level `cache_control: { type: 'ephemeral' }` to the upstream body; Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
+- `sanitizeMessageRoles` downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.
+- `createUsageCallbacks` ([`managed-request.ts`](../../../backend/src/inference/managed-request.ts)) writes the ledger row at the admitted price in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block. The hosted agent drives the same callbacks from the AI SDK's `onFinish` through `recordLanguageModelUsage`.
 - Telemetry is body-free: status, model, provider, error kind, token counts, never content (`posthog-privacy.test.ts` pins this).
 - **Client routing.** Managed rows with `vendor: 'anthropic'` route to Messages (`src/acp/built-in-adapter.ts:449`) via `resolveManagedAnthropicConnection` ([`src/ai/fetch.ts:328`](../../../src/ai/fetch.ts)), shared by the legacy AI-SDK path and the Pi harness so they cannot drift. It deletes the `x-api-key` the Anthropic SDK insists on writing and re-sends the value as `Authorization: Bearer`: the backend authenticates the app session, not an Anthropic key. The `thunderbolt` placeholder for a missing bearer under SSO cookie auth is dropped, not promoted (`fetch.ts:272-284`).
-- **No configuration pre-check here.** Without `ANTHROPIC_API_KEY`, admission passes and the client constructor throws (`client.ts:297`) as a 500; the confidential route answers a clean 503.
+- **No configuration pre-check here.** Without `ANTHROPIC_API_KEY`, admission passes and the client factory throws (`createManagedProviderConnection` in `client.ts`) as a 500; the confidential route answers a clean 503.
 
 ## Confidential tier: `/v1/tinfoil/*`
 
@@ -174,6 +174,8 @@ Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-pro
 | `backend/src/inference/managed-models.ts`       | public slug → upstream identity, for both tiers                       |
 | `backend/src/inference/usage-ledger.ts`         | price lookup, cost math, rolling windows, admission, ledger insert    |
 | `backend/src/inference/usage-responses.ts`      | the stable 503 / 429 bodies                                           |
+| `backend/src/inference/managed-request.ts`      | admission and ledger-write callbacks, shared with the hosted agent    |
+| `backend/src/inference/metered-route-guard.ts`  | session, CLI-binding and rate-limit guard for the direct routes       |
 | `backend/src/inference/usage-receipt.ts`        | receipt issue and verify                                              |
 | `backend/src/inference/usage-receipt-routes.ts` | `POST /v1/inference-usage/receipts`                                   |
 | `backend/src/inference/web-session.ts`          | the PAT gate on confidential routes                                   |

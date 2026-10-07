@@ -58,6 +58,7 @@ describe('createManagedProviderConnection', () => {
       expect.objectContaining({
         event: 'inference_upstream_attempt',
         provider: 'anthropic',
+        source: 'chat',
         host: 'anthropic.test',
         status: 200,
         rate_limit_headers: { 'x-ratelimit-remaining': '9' },

@@ -76,16 +76,16 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
   if (!settings.agentModel) {
     throw new Error('AGENT_MODEL is required when AGENT_ENABLED is true')
   }
-  if (!options.model && !settings.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required when AGENT_ENABLED is true')
-  }
 
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
   const identity: ManagedInferenceIdentity = { provider: 'anthropic', model: settings.agentModel }
   const system = settings.agentSystemPrompt || undefined
+  // Built here, at startup, so an unset ANTHROPIC_API_KEY fails the boot rather than the first request.
   const model =
     options.model ??
-    createAnthropic(createManagedProviderConnection('anthropic', settings, { fetchFn, logger }))(settings.agentModel)
+    createAnthropic(createManagedProviderConnection('anthropic', settings, { fetchFn, logger, source: 'agent' }))(
+      settings.agentModel,
+    )
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
   // One run per user closes that gap. The set is per process, which is sufficient while the agent runs
   // as a single instance; a multi-instance deployment needs a shared lock.
@@ -117,7 +117,15 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         const messages = await convertToModelMessages(chatRequest.messages)
 
         const userId = ctx.user.id
-        const admission = await admitManagedRequest({ database, settings, identity, user: ctx.user, checkAdmission })
+        const admission = await admitManagedRequest({
+          database,
+          settings,
+          identity,
+          user: ctx.user,
+          set: ctx.set,
+          logger,
+          checkAdmission,
+        })
         if (admission instanceof Response) {
           return admission
         }
@@ -143,8 +151,8 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           price: admission.price,
           recordUsage,
           telemetry: {
-            onMissing: () => logger?.error({ event: 'agent_usage_missing', ...logContext }, 'Agent usage missing'),
-            onFailed: (error) =>
+            onUsageMissing: () => logger?.error({ event: 'agent_usage_missing', ...logContext }, 'Agent usage missing'),
+            onUsageError: (error) =>
               logger?.error(
                 { event: 'agent_usage_record_failed', ...logContext, error: getSafeLogMessage(error) },
                 'Agent usage record failed',

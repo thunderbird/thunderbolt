@@ -172,6 +172,46 @@ describe('createHostedAgentRoutes', () => {
     expect(model.doStreamCalls).toHaveLength(0)
   })
 
+  it.each([
+    ['malformed JSON', new TextEncoder().encode('{"id":"chat-1","messages":[')],
+    ['invalid UTF-8', new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d])],
+  ])('returns 400, not 413, for %s and never reaches admission', async (_label, body) => {
+    const app = createMockedApp()
+    const response = await app.handle(
+      new Request('http://localhost/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }),
+    )
+    expect(response.status).toBe(400)
+    expect(checkAdmission).not.toHaveBeenCalled()
+    expect(model.doStreamCalls).toHaveLength(0)
+  })
+
+  it('sends the default model through fetchFn, labelled as agent traffic', async () => {
+    const fetchFn = mock(async (_input: RequestInfo | URL) =>
+      Response.json({ type: 'error', error: { type: 'invalid_request_error', message: 'stub' } }, { status: 400 }),
+    )
+    const app = createApp({
+      model: undefined,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      checkAdmission,
+      recordUsage,
+      logger,
+      settings: { anthropicApiKey: 'test-key', anthropicBaseUrl: 'https://anthropic.test' },
+    })
+    await (await postChat(app)).text()
+    await settleRun()
+
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(String(fetchFn.mock.calls[0][0])).toBe('https://anthropic.test/v1/messages')
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'inference_upstream_attempt', source: 'agent', status: 400 }),
+      'Inference upstream attempt',
+    )
+  })
+
   it('returns 413 for an oversized body', async () => {
     const app = createMockedApp()
     const text = 'x'.repeat(maxRequestBytes + 1)

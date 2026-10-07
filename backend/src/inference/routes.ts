@@ -148,24 +148,24 @@ type UsageTelemetryOptions = {
 
 /** The `/v1/chat` usage log events around the shared ledger write. */
 const createUsageTelemetry = ({ eventId, logger, model, provider, route }: UsageTelemetryOptions): UsageTelemetry => ({
-  onRecording: () => {
+  onUsageRecording: () => {
     logInferenceSafely(
       logger,
       { event: 'inference_usage_completed', provider, model, eventId, transport: 'direct' },
       'Inference usage completed',
     )
   },
-  onRecorded: (outcome) => {
+  onUsageRecorded: (outcome) => {
     logInferenceSafely(
       logger,
       { event: 'inference_usage_inserted', provider, model, eventId, outcome },
       'Inference usage inserted',
     )
   },
-  onMissing: () => {
+  onUsageMissing: () => {
     logger?.info({ event: 'inference_usage_missing', provider, model, route }, 'Inference usage missing')
   },
-  onFailed: () => {
+  onUsageError: () => {
     logger?.info(
       { event: 'inference_usage_callback_failed', provider, model, route },
       'Inference usage callback failed',
@@ -256,6 +256,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         settings,
         identity: { provider, model: internalName },
         user: ctx.user,
+        set: ctx.set,
+        logger,
       })
       if (admission instanceof Response) {
         recordLatency(admission.status, nowFn(), null)
@@ -385,6 +387,8 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         settings,
         identity: { provider, model: internalName },
         user: ctx.user,
+        set: ctx.set,
+        logger,
       })
       if (admission instanceof Response) {
         recordLatency(admission.status, nowFn(), null)

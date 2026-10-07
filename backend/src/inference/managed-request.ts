@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { invokeObserverSafely } from '@/utils/streaming'
 import type { LanguageModelUsage } from 'ai'
+import type { Context } from 'elysia'
+import type { InferenceLogger } from './client'
 import {
   checkManagedInferenceAdmission,
   getInferenceQuotaLimits,
@@ -19,18 +22,24 @@ type AdmitManagedRequestOptions = {
   settings: Parameters<typeof getInferenceQuotaLimits>[0]
   identity: ManagedInferenceIdentity
   user: { id: string; isAnonymous?: boolean | null }
+  /** The route's `ctx.set`. The access log reads its status, which a returned raw Response does not touch. */
+  set: Pick<Context['set'], 'status'>
+  logger?: InferenceLogger
   checkAdmission?: typeof checkManagedInferenceAdmission
 }
 
 /**
  * Gate a managed request on price and the user's rolling quota. A returned Response is the rejection to send:
- * 503 when the model has no price, 429 when a quota window is exhausted.
+ * 503 when the model has no price, which is a deployment fault and logged as an error, and 429 when a quota
+ * window is exhausted.
  */
 export const admitManagedRequest = async ({
   database,
   settings,
   identity,
   user,
+  set,
+  logger,
   checkAdmission = checkManagedInferenceAdmission,
 }: AdmitManagedRequestOptions): Promise<{ price: InferencePrice } | Response> => {
   const admission = await checkAdmission(
@@ -40,20 +49,26 @@ export const admitManagedRequest = async ({
     getInferenceQuotaLimits(settings, user.isAnonymous === true),
   )
   if (admission.outcome === 'price-unavailable') {
+    logger?.error?.({ event: 'inference_price_unavailable', ...identity }, 'Inference price unavailable')
+    set.status = 503
     return createPriceUnavailableResponse()
   }
   if (admission.outcome === 'quota-exceeded') {
+    set.status = 429
     return createQuotaExceededResponse(admission.decision)
   }
   return { price: admission.price }
 }
 
-/** Route telemetry around the ledger write. Hooks get metadata only, never request or response content. */
+/**
+ * Route telemetry around the ledger write, named like the callbacks it backs. Hooks get metadata only, never
+ * request or response content, and run through `invokeObserverSafely`, so a throwing hook cannot skip the write.
+ */
 export type UsageTelemetry = {
-  onRecording?: () => void
-  onRecorded?: (outcome: Awaited<ReturnType<typeof recordInferenceUsage>>) => void
-  onMissing: () => void
-  onFailed: (error: unknown) => void
+  onUsageRecording?: () => void
+  onUsageRecorded?: (outcome: Awaited<ReturnType<typeof recordInferenceUsage>>) => void
+  onUsageMissing: () => void
+  onUsageError: (error: unknown) => void
 }
 
 type UsageCallbacksOptions = {
@@ -79,18 +94,18 @@ export const createUsageCallbacks = ({
   recordUsage = recordInferenceUsage,
 }: UsageCallbacksOptions) => ({
   onUsage: async (counts: InferenceTokenCounts) => {
-    telemetry.onRecording?.()
+    invokeObserverSafely(telemetry.onUsageRecording)
     const outcome = await recordUsage(database, { id: eventId, userId, counts, price })
-    telemetry.onRecorded?.(outcome)
+    invokeObserverSafely(() => telemetry.onUsageRecorded?.(outcome))
   },
-  onUsageMissing: telemetry.onMissing,
-  onUsageError: telemetry.onFailed,
+  onUsageMissing: () => invokeObserverSafely(telemetry.onUsageMissing),
+  onUsageError: (error: unknown) => invokeObserverSafely(() => telemetry.onUsageError(error)),
 })
 
-export type UsageCallbacks = ReturnType<typeof createUsageCallbacks>
+type UsageCallbacks = ReturnType<typeof createUsageCallbacks>
 
 /** Map AI SDK usage, summed across steps, onto the ledger's token counts; null when the provider sent none. */
-export const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null => {
+const toTokenCounts = (usage: LanguageModelUsage): InferenceTokenCounts | null => {
   if (usage.inputTokens === undefined) {
     return null
   }

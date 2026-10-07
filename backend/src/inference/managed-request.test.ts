@@ -5,6 +5,7 @@
 import { createTestSettings } from '@/test-utils/settings'
 import type { LanguageModelUsage } from 'ai'
 import { describe, expect, it, mock } from 'bun:test'
+import type { Context } from 'elysia'
 import {
   admitManagedRequest,
   createUsageCallbacks,
@@ -23,18 +24,26 @@ const identity = { provider: 'anthropic', model: 'claude-test' } as const
 const price: InferencePrice = { ...identity, inputNanoUsdPerToken: 1n, outputNanoUsdPerToken: 2n }
 
 describe('admitManagedRequest', () => {
-  const admit = (checkAdmission: typeof checkManagedInferenceAdmission, isAnonymous = false) =>
-    admitManagedRequest({
+  const admit = (checkAdmission: typeof checkManagedInferenceAdmission, isAnonymous = false) => {
+    const set: Pick<Context['set'], 'status'> = {}
+    const logger = { info: mock(), error: mock() }
+    const result = admitManagedRequest({
       database,
       settings: createTestSettings({ inferenceQuotaAnonymousFiveHourCents: 7 }),
       identity,
       user: { id: 'user-1', isAnonymous },
+      set,
+      logger,
       checkAdmission,
     })
+    return { result, set, logger }
+  }
 
   it('returns the price of an admitted request, checked against the quota of its user kind', async () => {
     const checkAdmission = mock<typeof checkManagedInferenceAdmission>(async () => ({ outcome: 'allowed', price }))
-    expect(await admit(checkAdmission, true)).toEqual({ price })
+    const { result, set } = admit(checkAdmission, true)
+    expect(await result).toEqual({ price })
+    expect(set.status).toBeUndefined()
     expect(checkAdmission.mock.calls[0].slice(1)).toEqual([
       identity,
       'user-1',
@@ -42,24 +51,38 @@ describe('admitManagedRequest', () => {
     ])
   })
 
-  it('maps a missing price to 503', async () => {
-    const response = (await admit(async () => ({ outcome: 'price-unavailable' }))) as Response
+  it('maps a missing price to a logged 503 that the access log also sees', async () => {
+    const { result, set, logger } = admit(async () => ({ outcome: 'price-unavailable' }))
+    const response = (await result) as Response
     expect(response.status).toBe(503)
     expect(await response.json()).toEqual({ error: { code: 'INFERENCE_PRICE_UNAVAILABLE' } })
+    expect(set.status).toBe(503)
+    expect(logger.error).toHaveBeenCalledWith(
+      { event: 'inference_price_unavailable', provider: 'anthropic', model: 'claude-test' },
+      'Inference price unavailable',
+    )
   })
 
   it('maps an exhausted quota to 429 with its window', async () => {
-    const response = (await admit(async (_db, _identity, _userId, limits) => ({
+    const { result, set, logger } = admit(async (_db, _identity, _userId, limits) => ({
       outcome: 'quota-exceeded',
       decision: { allowed: false, exceededWindow: '7d', fiveHourSpentNanoUsd: 0n, sevenDaySpentNanoUsd: 0n, limits },
-    }))) as Response
+    }))
+    const response = (await result) as Response
     expect(response.status).toBe(429)
     expect(await response.json()).toEqual({ error: { code: 'INFERENCE_QUOTA_EXCEEDED', window: '7d' } })
+    expect(set.status).toBe(429)
+    expect(logger.error).not.toHaveBeenCalled()
   })
 })
 
 describe('createUsageCallbacks', () => {
-  const createTelemetry = () => ({ onRecording: mock(), onRecorded: mock(), onMissing: mock(), onFailed: mock() })
+  const createTelemetry = () => ({
+    onUsageRecording: mock(),
+    onUsageRecorded: mock(),
+    onUsageMissing: mock(),
+    onUsageError: mock(),
+  })
   const createCallbacks = (telemetry: UsageTelemetry, recordUsage: typeof recordInferenceUsage) =>
     createUsageCallbacks({ database, eventId: 'event-1', userId: 'user-1', price, telemetry, recordUsage })
 
@@ -81,15 +104,29 @@ describe('createUsageCallbacks', () => {
       price,
       counts: { promptTokens: 10, completionTokens: 4, totalTokens: 14, cacheCreationTokens: 1, cacheReadTokens: 2 },
     })
-    expect(telemetry.onRecording).toHaveBeenCalledTimes(1)
-    expect(telemetry.onRecorded).toHaveBeenCalledWith('inserted')
+    expect(telemetry.onUsageRecording).toHaveBeenCalledTimes(1)
+    expect(telemetry.onUsageRecorded).toHaveBeenCalledWith('inserted')
   })
 
   it('writes the run when the route has no recorded hook', async () => {
     const recordUsage = mock<typeof recordInferenceUsage>(async () => 'inserted')
-    const telemetry = { onMissing: mock(), onFailed: mock() }
+    const telemetry = { onUsageMissing: mock(), onUsageError: mock() }
     await recordLanguageModelUsage(createCallbacks(telemetry, recordUsage), usage(10))
     expect(recordUsage).toHaveBeenCalledTimes(1)
+  })
+
+  it('still writes the run when a telemetry hook throws', async () => {
+    const recordUsage = mock<typeof recordInferenceUsage>(async () => 'inserted')
+    const telemetry = {
+      ...createTelemetry(),
+      onUsageRecording: () => {
+        throw new Error('logger down')
+      },
+    }
+    await recordLanguageModelUsage(createCallbacks(telemetry, recordUsage), usage(10))
+    expect(recordUsage).toHaveBeenCalledTimes(1)
+    expect(telemetry.onUsageRecorded).toHaveBeenCalledWith('inserted')
+    expect(telemetry.onUsageError).not.toHaveBeenCalled()
   })
 
   it('skips the ledger when the provider reports no usage', async () => {
@@ -97,7 +134,7 @@ describe('createUsageCallbacks', () => {
     const recordUsage = mock<typeof recordInferenceUsage>(async () => 'inserted')
     await recordLanguageModelUsage(createCallbacks(telemetry, recordUsage), usage(undefined))
     expect(recordUsage).not.toHaveBeenCalled()
-    expect(telemetry.onMissing).toHaveBeenCalledTimes(1)
+    expect(telemetry.onUsageMissing).toHaveBeenCalledTimes(1)
   })
 
   it('reports a failed ledger write instead of throwing', async () => {
@@ -109,7 +146,7 @@ describe('createUsageCallbacks', () => {
       }),
       usage(10),
     )
-    expect(telemetry.onFailed).toHaveBeenCalledWith(failure)
-    expect(telemetry.onRecorded).not.toHaveBeenCalled()
+    expect(telemetry.onUsageError).toHaveBeenCalledWith(failure)
+    expect(telemetry.onUsageRecorded).not.toHaveBeenCalled()
   })
 })

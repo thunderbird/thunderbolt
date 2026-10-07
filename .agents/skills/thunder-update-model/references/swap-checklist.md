@@ -4,7 +4,8 @@ The implementer's contract for `/thunder-update-model`. Work through every item 
 each one as done or not applicable, with the path you touched. Scope tags: universal (every swap),
 same-id (the row keeps its id), fresh-id (a new id), confidential (`provider: 'tinfoil'`), direct
 (`provider: 'thunderbolt'`), new-provider (stop and report). The confidential and direct tags on
-items 12, 13, 16 and 17 apply to whichever of the two models is on that route. The slug is the
+items 12 and 13 apply to whichever of the two models is on that route; items 16 and 17 follow
+the incoming model's route, and the leaving model's compatibility entries stay as they are. The slug is the
 `model` field, the uuid is the row `id`, the export constant is the `defaultModel*` symbol, and the
 internal name is what the upstream sees (`claude-opus-5`, `accounts/fireworks/models/<name>`).
 
@@ -33,8 +34,9 @@ translated). Never run bare `bun test` at the repo root. Never commit; the devel
    `managed-models.test.ts`. fresh-id: add the incoming model, drop the leaving one. Done when it
    lists exactly the shipped models.
 4. universal. Repoint `defaultModelId` off the leaving model. Done when it names a shipped model.
-5. universal. The `defaultModels` JSDoc lists the legacy slugs the backend accepts; add the leaving
-   model's. Done when it matches `legacyConfidentialModels` and the direct runtimes.
+5. confidential, leaving half. The `defaultModels` JSDoc lists the legacy slugs the backend
+   accepts; add the leaving model's slug when it was confidential (a direct slug is not kept, see
+   item 13). Done when the comment matches `legacyConfidentialModels`.
 6. universal. `defaultModelImageSupport`, keyed by the incoming model's id: `'supported'` iff
    `image` is in its `modalities.input` and the provider catalog agrees; `models.test.ts` fails
    without an entry. fresh-id: drop the leaving model's entry. Done when each default has one entry.
@@ -154,12 +156,14 @@ other item is not applicable.
     changed `thinkingLevelMap` or Pi `compat` override the old client lacks throws nothing and
     yields wrong request bodies (reasoning off or rejected). The backend cannot redirect a
     confidential slug: the body is HPKE-sealed and only the enclave reads the model inside it, so
-    older builds are retired with `MIN_APP_VERSION`. Any client-side change in items 9 and 16
-    (`modelAliases`, `thinkingLevelMap`, a Pi `compat` override, or a profile the old build lacks)
-    makes the row incompatible with older builds, so the order is: release the clients, set
-    `MIN_APP_VERSION` to that release, then deploy the backend. Done when the report lists every
-    client-side change from items 9 and 16, names the order, the first client version that carries
-    those changes, and that version as the `MIN_APP_VERSION` value.
+    older builds are retired with `MIN_APP_VERSION`. A client-side change makes the row
+    incompatible with older builds: compatibility code from item 16 (`modelAliases`,
+    `thinkingLevelMap`, a Pi `compat` override), a profile under a new id, or a changed profile
+    value (`reasoningEffort`, `toolsOverride`). Renaming a profile file or constant changes
+    nothing for old clients, since profiles reconcile by `modelId`. After such a change the order
+    is: release the clients, set `MIN_APP_VERSION` to that release, then deploy the backend. Done
+    when the report lists every client-side change, names the order, the first client version that
+    carries those changes, and that version as the `MIN_APP_VERSION` value.
 
 ## E. Eval, e2e, scripts and docs
 
@@ -234,11 +238,11 @@ other item is not applicable.
 
 ## Deploy note for the report
 
-When items 9 and 16 changed nothing on the client side, deploy the backend first or together with
+Without a client-side change (as defined in item 18), deploy the backend first or together with
 the clients. The price migration runs at backend boot on Render, so the row exists before any
 client asks; a same-id swap reaches old clients OTA because `/config` publishes
-`shared/defaults/models.ts` with its version. When items 9 or 16 changed anything client-side, use
-the rollout order from item 18 instead. A new client against an old backend gets "Model not found"
+`shared/defaults/models.ts` with its version. With a client-side change, use the rollout order
+from item 18 instead. A new client against an old backend gets "Model not found"
 or is priced as the fallback model. After deploy,
 `curl -H "Authorization: Bearer $MONITORING_TOKEN" "https://<api>/v1/health/models?model=<incoming-slug>"`
 probes the price row and a real completion; it bypasses the client's Pi compatibility path.

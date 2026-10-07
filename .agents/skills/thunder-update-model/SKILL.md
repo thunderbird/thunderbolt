@@ -109,10 +109,16 @@ set -o pipefail; P=tinfoil; curl -fsS https://models.dev/api.json | jq -r --arg 
 If the fetch fails or prints nothing, say so and ask, header `Incoming`: "What is the incoming
 model id?" with options "I know the id (type it via Other)" and "Stop here". Print the numbered
 table: #, id, name, release date, status, context, output, input modalities, reasoning, $/M
-in/out. Cross-check it against the provider's own catalog where one is public. Tinfoil: the stage
-1 endpoint without its filter, reading `deprecated`, `type`, `experimental`, `context_window`,
-`multimodal`, `tool_calling`, `pricing` and `reasoning_params`. OpenRouter:
-`https://openrouter.ai/api/v1/models`. Anthropic and OpenAI need a key; say so and skip. Keep
+in/out. Cross-check it against the provider's own catalog where one is public. Tinfoil: print the
+candidate's full record, which carries `deprecated`, `type`, `experimental`, `context_window`,
+`multimodal`, `tool_calling`, `pricing` and `reasoning_params`:
+
+```bash
+curl -fsS https://inference.tinfoil.sh/v1/models | jq '.data[] | select(.id == "<incoming-id>")'
+```
+
+OpenRouter: `https://openrouter.ai/api/v1/models`. Anthropic and OpenAI need a key; say so and
+skip. Keep
 every row in the printed table, marked, but leave out of the options the leaving model, models
 already in the catalog, and rows the provider marks deprecated or non-chat (`type != "chat"` on
 Tinfoil). Ask, header `Incoming`: "Which model is replacing it?" with the four newest survivors as
@@ -200,9 +206,9 @@ Name both follow-ups with their values and tell the developer to change them by 
 1. `MIN_APP_VERSION`: once the client release carrying the swap is published, set it on the
    Render backend service to that release's version, so older builds get `426 Upgrade Required`
    instead of failing mid-chat. The value applies on the next backend deploy. State the trigger: a
-   provider cutoff date (older clients break on that day regardless) or a client-side change from
-   checklist items 9 or 16 (older clients break as soon as the row arrives). Name the release
-   version from checklist item 18.
+   provider cutoff date (older clients break on that day regardless) or a client-side change as
+   defined in checklist item 18 (older clients break as soon as the row arrives). Name the
+   release version from checklist item 18.
 2. Better Stack monitors: production alerts poll
    `https://api.thunderbolt.io/v1/health/models?model=<slug>` per built-in model. The probe
    only knows models in `defaultModels`, so the leaving model's monitor starts failing at the

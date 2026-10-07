@@ -28,9 +28,7 @@ const targetUrl = 'https://upstream.example.com/api/v1/things'
  * format. Same blueprint as the auth specs — `loginViaOidc` to load the app
  * shell, then drive a probe inside `page.evaluate`.
  */
-test('GET via /v1/proxy carries X-Proxy-Target-Url and unwraps passthrough response headers', async ({
-  page,
-}) => {
+test('GET via /v1/proxy carries X-Proxy-Target-Url and unwraps passthrough response headers', async ({ page }) => {
   const errors = collectPageErrors(page)
 
   let proxyHits = 0

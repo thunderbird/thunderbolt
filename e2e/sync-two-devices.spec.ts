@@ -27,7 +27,9 @@ test('a chat created on one device appears on another without reloading', async 
   baseURL,
 }, testInfo) => {
   const errors = collectPageErrors(page)
-  if (!baseURL) throw new Error('Extended sync project needs a baseURL')
+  if (!baseURL) {
+    throw new Error('Extended sync project needs a baseURL')
+  }
   page.on('requestfailed', (request) => {
     if (new URL(request.url()).pathname === '/v1/waitlist/join') {
       console.warn(`Consumer sign-in request failed: ${request.url()}: ${request.failure()?.errorText}`)

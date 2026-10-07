@@ -32,7 +32,7 @@ export const MessageBubbles = ({ message, onResendAttachment }: MessageBubblesPr
           {quotes.map((quote, i) => (
             <blockquote
               key={i}
-              className="whitespace-pre-wrap rounded-md border border-l-2 border-l-primary/60 bg-muted/50 py-1.5 pl-3 pr-3 text-[length:var(--font-size-sm)] text-muted-foreground dark:bg-secondary/40"
+              className="whitespace-pre-wrap rounded-lg border border-l-2 border-l-primary/60 bg-muted/50 py-1.5 pl-3 pr-3 text-[length:var(--font-size-sm)] text-muted-foreground dark:bg-secondary/40"
             >
               {quote.text}
             </blockquote>

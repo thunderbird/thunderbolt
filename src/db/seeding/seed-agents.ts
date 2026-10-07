@@ -7,7 +7,7 @@ import type { AnyDrizzleDatabase } from '../database-interface'
 import { agentsSystemTable } from '../tables'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { nowIso } from '@/lib/utils'
-import type { AgentDiscoveryResponse } from '@shared/acp-types'
+import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
 import { clearAcpSessionIdsForAgent } from '@/dal/chat-threads'
 import { systemRowToAgent } from '@/dal/agents'
 import { disposeAdapter } from '@/acp/adapter-cache'
@@ -57,9 +57,13 @@ export const refreshSystemAgents = async (
 
   const fetchedAt = nowIso()
   // `agents_system` only stores `managed-acp` agents per schema. The discovery
-  // response is typed wider (`remote-acp | managed-acp | managed-http`); `remote-acp`
-  // entries belong in the synced `agents` table via user opt-in and are skipped here.
-  const incoming = payload.data.agents.filter((a) => a.type === 'managed-acp')
+  // response is typed wider (`remote-acp | managed-acp | managed-http`).
+  // `remote-acp` entries belong in the synced `agents` table via user opt-in.
+  // `managed-http` is skipped on purpose until the frontend adapter lands
+  // (GTM-21 PR 2).
+  const incoming = payload.data.agents.filter(
+    (a): a is RemoteAgentDescriptor & { type: 'managed-acp' } => a.type === 'managed-acp',
+  )
   const wireIdentityChangedAgentsById = new Map<string, Agent>()
 
   await db.transaction(async (tx) => {

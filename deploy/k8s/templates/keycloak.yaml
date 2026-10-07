@@ -1,3 +1,4 @@
+{{- if include "thunderbolt.keycloakEnabled" . }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -59,3 +60,4 @@ spec:
         - name: realm
           configMap:
             name: keycloak-realm
+{{- end }}

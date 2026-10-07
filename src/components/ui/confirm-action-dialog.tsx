@@ -24,6 +24,10 @@ type ConfirmActionDialogProps = {
   description: string
   confirmLabel: string
   cancelLabel?: string
+  /** Defaults to `destructive`; pass `default` for an action that destroys nothing, such as saving a file. */
+  confirmVariant?: 'destructive' | 'default'
+  /** Holds the confirm button off without the spinner `isPending` shows. */
+  confirmDisabled?: boolean
   /** Disables the confirm button (with a spinner) while the caller's action
    *  is in flight, so a double-tap can't fire `onConfirm` twice. */
   isPending?: boolean
@@ -44,6 +48,8 @@ export const ConfirmActionDialog = ({
   description,
   confirmLabel,
   cancelLabel,
+  confirmVariant = 'destructive',
+  confirmDisabled = false,
   isPending = false,
   onConfirm,
   onCancel,
@@ -73,7 +79,7 @@ export const ConfirmActionDialog = ({
           <Button ref={cancelButtonRef} variant="outline" onClick={onCancel}>
             {cancelText}
           </Button>
-          <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
+          <Button variant={confirmVariant} isLoading={isPending} disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </MobileActionSheetFooter>
@@ -92,7 +98,7 @@ export const ConfirmActionDialog = ({
           {/* Radix's Cancel closes the dialog itself; onCancel arrives once
               via onOpenChange(false), so no onClick here. */}
           <AlertDialogCancel>{cancelText}</AlertDialogCancel>
-          <Button variant="destructive" isLoading={isPending} onClick={onConfirm}>
+          <Button variant={confirmVariant} isLoading={isPending} disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </AlertDialogFooter>

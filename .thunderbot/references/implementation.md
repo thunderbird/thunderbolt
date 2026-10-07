@@ -80,24 +80,29 @@ After exploration completes, synthesize a spec from the task description and exp
 ## Spec for <IDENTIFIER>: <TITLE>
 
 ### Changes
+
 - [ ] File: <path> -- <what changes and why>
 - [ ] File: <path> -- <new file: purpose>
 
 ### Acceptance Criteria
+
 - [ ] <criterion from the Linear task description>
 - [ ] <inferred criterion from exploration>
 - [ ] <edge case criterion>
 
 ### Test Cases
+
 - [ ] <happy path test>
 - [ ] <edge case test>
 - [ ] <error/boundary test>
 
 ### Dependencies
+
 - Reuse: <utility/component discovered during exploration>
 - Pattern: <existing pattern to follow, with file reference>
 
 ### Risks
+
 - <anything that could go wrong or needs clarification>
 ```
 
@@ -144,7 +149,7 @@ Write tests before implementation when practical:
 While continuing implementation, launch a background test runner:
 
 ```
-Run `bun test` in the project root and `bun test` in backend/.
+Run `bun run test` in the project root and `bun run test:backend` for the backend.
 Report results. If failures, identify the root cause and report the failing test name,
 expected vs actual output, and the source file responsible.
 Do not modify any files.
@@ -162,7 +167,8 @@ Follow CLAUDE.md strictly. Key rules for quick reference:
 - Prefer `type` over `interface`
 - Prefer arrow functions over `function` keyword
 - Prefer `const` over `let` -- use helper functions with early return
-- Use `ky` over `fetch`, `bun` over `npm`
+- Use the app's `HttpClient` (`src/lib/http.ts`) over bare `fetch` -- `createAuthenticatedClient()` for app-backend calls, `http` for external APIs
+- `bun` over `npm`
 - Add JSDoc comments to new utility functions
 - Only comment non-obvious code
 - One React component per file (loosely)
@@ -195,7 +201,7 @@ Launch test runner in background while continuing to write code:
 ```
 model: "sonnet"
 run_in_background: true
-prompt: "Run `bun test` and `cd backend && bun test`. Report pass/fail counts and any failure details."
+prompt: "Run `bun run test` and `bun run test:backend`. Report pass/fail counts and any failure details."
 ```
 
 ### Parallel Independent Changes
@@ -238,12 +244,22 @@ or format issues. For each failure, report the file, line, and error message."
 Always run this sequence before pushing. Each step must pass before the next:
 
 1. **`make check`** -- Type checking, linting, formatting. Fix failures: `make lint-fix`, `make format`.
-2. **`bun test`** -- Run tests in root and `backend/`. Fix any failures.
+2. **`bun run test` + `bun run test:backend`** -- Run the frontend/shared suite and the backend suite. Fix any failures.
 3. **`/thunderimprove`** -- Review changes for quality, security, and maintainability. Apply fixes, then re-run steps 1-2 if changes were made.
 4. **`/thunderpush`** -- Atomic, conventional commit via the push skill.
 5. **`/thunderfix`** -- Monitor CI and address any PR feedback.
 
 Never skip steps. Never manually run `git add`, `git commit`, or `git push`.
+
+### Test commands
+
+`CLAUDE.md`'s Testing section is the source of truth; the short version is that **a bare `bun test` at the repo root is banned**. `bunfig.toml`'s `pathIgnorePatterns = ["backend/**", "e2e/**"]` keeps root discovery off the backend suites — which open real connections (test DB, WebSocket e2e) and hang indefinitely without those services running — but that setting is a silent no-op on Bun below 1.3.11, so the hang is one old toolchain away. A bare root run also applies no per-test timeout and no `--randomize`, and it walks `shared/agent-core/`, which is deliberately excluded from `bun run test` and has its own `bun run test:agent-core` runner.
+
+| Scope              | Command                          |
+| ------------------ | -------------------------------- |
+| Frontend + shared  | `bun run test`                   |
+| Backend            | `bun run test:backend`           |
+| One file or folder | `bun test <path> --timeout 5000` |
 
 ---
 

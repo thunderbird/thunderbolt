@@ -147,6 +147,41 @@ describe('GET /agents', () => {
     }
   })
 
+  describe('defaultAgentId', () => {
+    const fetchDiscovery = async (user: { id: string; isAnonymous: boolean }) => {
+      const app = buildApp(buildAuth(user))
+      return (await app.handle(new Request('http://localhost/agents'))).json()
+    }
+
+    it('names the hosted agent when it is enabled and visible', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect(body.defaultAgentId).toBe('hosted-agent')
+    })
+
+    it('is omitted when the hosted agent is disabled', async () => {
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('is omitted when ENABLED_AGENTS excludes the hosted agent', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      process.env.ENABLED_AGENTS = 'other'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'user-1', isAnonymous: false })
+      expect('defaultAgentId' in body).toBe(false)
+    })
+
+    it('is given to anonymous callers only when anonymous discovery is allowed', async () => {
+      process.env.AGENT_ENABLED = 'true'
+      process.env.ALLOW_ANONYMOUS_AGENT_DISCOVERY = 'true'
+      clearSettingsCache()
+      const body = await fetchDiscovery({ id: 'anon-1', isAnonymous: true })
+      expect(body.defaultAgentId).toBe('hosted-agent')
+    })
+  })
+
   it('returns 200 with the discovery envelope for an authenticated regular user', async () => {
     registerAgentProvider({ id: 'haystack', list: () => [haystackDescriptor] })
 

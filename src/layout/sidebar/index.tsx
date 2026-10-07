@@ -13,6 +13,7 @@ import { useDeleteAllChats } from '@/hooks/use-delete-all-chats'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSettings } from '@/hooks/use-settings'
 import { trackEvent } from '@/lib/posthog'
+import { miniAppPath, useChatDestination } from '@/mini-apps/use-chat-destination'
 import { useSearchPalette } from '@/search/search-palette-context'
 import { useMutation } from '@tanstack/react-query'
 import { useQuery } from '@powersync/tanstack-react-query'
@@ -116,12 +117,20 @@ export default function Sidebar() {
     startNewChat()
   }
 
+  const chatDestination = useChatDestination()
+
   const handleChatClick = useCallback(
-    (threadId: string) => {
+    // `miniAppId` comes from the row rather than being looked up here: the row
+    // already has it, and depending on `chatThreads` churned this callback's
+    // identity on every live-query result — which re-rendered every memoized
+    // row in the list.
+    (threadId: string, miniAppId: string | null) => {
       trackEvent('chat_select', { chat_id: threadId })
-      void navigateAndCloseSidebar(`/chats/${threadId}`)
+      // A chat that came from an app opens inside it, not at `/chats/:id` —
+      // see `useChatDestination` for when that isn't possible.
+      void navigateAndCloseSidebar(chatDestination(threadId, miniAppId))
     },
-    [navigateAndCloseSidebar],
+    [chatDestination, navigateAndCloseSidebar],
   )
 
   const handleNavigate = (path: string) => {
@@ -149,10 +158,14 @@ export default function Sidebar() {
             deleteChatDialogRef={deleteChatDialogRef}
             threadIdRef={threadIdRef}
             showTasks={experimentalFeatureTasks.value}
+            // Web and desktop only, gated on viewport to match `MiniAppPage`
+            // (which explains itself if a deep link lands here anyway).
+            showMiniApps={!isMobile}
             activeSection={activeSection}
             onSectionChange={setActiveSection}
             onCreateNewChat={createNewChat}
             onTasksClick={() => handleNavigate('/tasks')}
+            onMiniAppClick={(appId) => handleNavigate(miniAppPath(appId))}
             onProjectsClick={() => handleNavigate('/projects')}
             onRename={handleRename}
             onChatClick={handleChatClick}

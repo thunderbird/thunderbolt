@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { getSettings, isAgentEnabled, type Settings } from '@/config/settings'
+import { getSettings, isAgentAllowed, type Settings } from '@/config/settings'
 import { createStandaloneLogger } from '@/config/logger'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
 import { getRegisteredProviders, registerAgentProvider } from './discovery'
-import { createHostedAgentProvider } from './hosted-agent-provider'
+import { createHostedAgentProvider, hostedAgentId } from './hosted-agent-provider'
 import type { AgentsErrorResponse } from './types'
 
 /**
@@ -54,7 +54,7 @@ export const createAgentsRoutes = (auth: Auth) => {
       }
 
       const visibleToCaller = (descriptor: RemoteAgentDescriptor) =>
-        isAgentEnabled(settings, descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe)
+        isAgentAllowed(settings, descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe)
 
       const agents = collectAgents(request, settings)
       const filtered = agents.filter(visibleToCaller)
@@ -63,6 +63,7 @@ export const createAgentsRoutes = (auth: Auth) => {
         version: '1',
         agents: filtered,
         allowCustomAgents: settings.allowCustomAgents,
+        defaultAgentId: filtered.some(({ id }) => id === hostedAgentId) ? hostedAgentId : undefined,
       }
     })
 }

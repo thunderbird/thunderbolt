@@ -15,20 +15,22 @@ export const hostedAgentId = 'hosted-agent'
  */
 export const createHostedAgentProvider = (): AgentProvider => ({
   id: hostedAgentId,
-  list: (_request, settings) =>
-    settings.agentEnabled
-      ? [
-          {
-            id: hostedAgentId,
-            name: settings.agentName,
-            type: 'managed-http',
-            transport: 'http',
-            url: '/v1/agent/chat',
-            description: settings.agentDescription || null,
-            icon: settings.agentIcon || null,
-            isSystem: 1,
-            anonymousSafe: true,
-          },
-        ]
-      : [],
+  list: (_request, settings) => {
+    if (!settings.agentEnabled) {
+      return []
+    }
+    return [
+      {
+        id: hostedAgentId,
+        name: settings.agentName,
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        description: settings.agentDescription || null,
+        icon: settings.agentIcon || null,
+        isSystem: 1,
+        anonymousSafe: true,
+      },
+    ]
+  },
 })

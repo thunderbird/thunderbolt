@@ -5,7 +5,6 @@
 import type { ToolConfig } from '@/types'
 import { type DynamicToolUIPart, getToolName, isToolOrDynamicToolUIPart, type ToolUIPart, type UIMessage } from 'ai'
 import { z } from 'zod'
-import { isRecord } from '@shared/lib/is-record'
 import { renderHtmlToolName } from './constants'
 import { verifyArtifactHtml } from './verify-html'
 
@@ -27,30 +26,100 @@ export type RenderHtmlPart = ToolUIPart | DynamicToolUIPart
 export const isRenderHtmlPart = (part: UIMessage['parts'][number]): part is RenderHtmlPart =>
   isToolOrDynamicToolUIPart(part) && getToolName(part) === renderHtmlToolName
 
-/** The (possibly partial, while streaming) typed input of a `render_html` part. */
+/**
+ * The (possibly partial, while streaming) typed input of a `render_html` part.
+ *
+ * Parsed with `.catch({})` rather than cast, for the same reason
+ * {@link renderHtmlOutput} below is. The input genuinely *is* partial while it
+ * streams, so absent fields are expected and fine — but a cast also says
+ * nothing about fields that are present and the wrong type, and callers do
+ * `html.match(…)` and `title?.trim()` on the result. A number `title` or an
+ * object `html` from a provider that wraps arguments would throw during render
+ * and take the whole message down; unwrapping to `{}` degrades to the same
+ * still-streaming state the callers already handle.
+ */
+const renderHtmlInputSchema = z
+  .object({
+    // Caught per field, not just on the object: a bad `title` should not also
+    // cost the `html` that was fine.
+    html: z.string().optional().catch(undefined),
+    title: z.string().optional().catch(undefined),
+  })
+  .catch({})
+
 export const renderHtmlInput = (part: RenderHtmlPart): Partial<RenderHtmlInput> =>
-  (part.input ?? {}) as Partial<RenderHtmlInput>
+  renderHtmlInputSchema.parse(part.input ?? {})
+
+const renderHtmlOutputSchema = z.union([
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), errors: z.array(z.string()) }),
+])
 
 /**
  * The typed output of a `render_html` part once it has finished (`undefined`
  * before then).
  *
- * Two shapes reach here. The built-in agent's tool returns `RenderHtmlOutput`
- * directly. A **remote ACP agent** returns a pi `AgentToolResult`, which the ACP
- * layer forwards verbatim as `rawOutput` — so the verdict arrives one level
- * down, under `details`. Reading only the top level would leave every hosted
- * agent's artifact stuck in the tool group as an ordinary call.
+ * Parsed rather than cast, and tolerant of the MCP-style
+ * `{ content: [{ type: 'text', text }], details }` envelope some providers wrap
+ * a tool result in. This used to be a bare `as RenderHtmlOutput` cast, which
+ * cannot fail: a wrapped result sailed through as an object whose `ok` was
+ * `undefined`, so `ArtifactMessagePart` judged a perfectly good artifact
+ * unverified and rendered nothing. The symptom was a card that flashed while
+ * the input streamed and then vanished, on some models and not others, with
+ * `{"ok":true}` sitting in the tool result the whole time.
+ *
+ * `details` is also where a **remote ACP agent**'s verdict lands: it returns a
+ * pi `AgentToolResult`, which the ACP layer forwards verbatim as `rawOutput`
+ * (`cli/src/acp/harness-to-acp.ts`). Reading only the top level left every
+ * hosted agent's artifact rendering as an ordinary tool call.
  */
 export const renderHtmlOutput = (part: RenderHtmlPart): RenderHtmlOutput | undefined => {
   const output = part.output
-  if (!isRecord(output)) {
+  if (output === undefined || output === null) {
     return undefined
   }
-  if (typeof output.ok === 'boolean') {
-    return output as RenderHtmlOutput
+
+  const direct = renderHtmlOutputSchema.safeParse(output)
+  if (direct.success) {
+    return direct.data
   }
-  const details = output.details
-  return isRecord(details) && typeof details.ok === 'boolean' ? (details as RenderHtmlOutput) : undefined
+
+  const envelope = z
+    .object({
+      details: z.unknown().optional(),
+      content: z.array(z.object({ type: z.literal('text'), text: z.string() })).optional(),
+    })
+    .safeParse(output)
+  if (!envelope.success) {
+    return undefined
+  }
+
+  const fromDetails = renderHtmlOutputSchema.safeParse(envelope.data.details)
+  if (fromDetails.success) {
+    return fromDetails.data
+  }
+
+  // Last resort: the same object re-serialised into the text block.
+  const text = envelope.data.content?.find((entry) => entry.type === 'text')?.text
+  if (text === undefined) {
+    return undefined
+  }
+  // `JSON.parse` throws on anything that isn't JSON, and this runs during
+  // render — an unparseable text block must degrade to "not verified", not take
+  // the message down with it.
+  const parsedText = z
+    .string()
+    .transform((value, ctx) => {
+      try {
+        return JSON.parse(value) as unknown
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'not JSON' })
+        return z.NEVER
+      }
+    })
+    .pipe(renderHtmlOutputSchema)
+    .safeParse(text)
+  return parsedText.success ? parsedText.data : undefined
 }
 
 const renderHtmlParameters = z.object({
@@ -76,16 +145,33 @@ export const renderHtmlTool: ToolConfig = {
   description: [
     'Render a self-contained HTML page (HTML/CSS/JS) as a visual artifact the user can see, instead of describing it in prose.',
     'Use this whenever a visual or interactive result is more useful than text: charts and data visualizations, diagrams, dashboards, formatted layouts, animations, simulations, games, or small web apps.',
+    'Do NOT use it to reproduce something a built-in widget already renders. When one of the available skills offers a `<widget:…>` component covering what was asked, emit that tag instead of rebuilding it in HTML.',
     'The page is automatically verified before it is shown: its inline JS/CSS syntax is checked and it is rendered in a sandbox to confirm it loads without errors. If the result is { ok: false }, read the errors, fix the HTML, and call render_html again. Do not narrate the HTML source to the user.',
   ].join(' '),
   verb: 'Rendering artifact',
   parameters: renderHtmlParameters,
   execute: async ({ html }: RenderHtmlInput): Promise<RenderHtmlOutput> => {
     // The built-in agent runs in the browser, so verification drives a real hidden iframe here.
-    const result = await verifyArtifactHtml(html)
-    if (!result.ok) {
-      return { ok: false, errors: result.errors }
+    try {
+      const result = await verifyArtifactHtml(html)
+      if (!result.ok) {
+        return { ok: false, errors: result.errors }
+      }
+      return { ok: true }
+    } catch (error) {
+      /*
+       * A throw here is ours, not the artifact's — the verifier failing rather
+       * than the page failing. Letting it propagate puts the part into
+       * `output-error`, which `ArtifactMessagePart` renders as nothing at all:
+       * the card flashes while the input streams and then silently leaves, with
+       * no log anywhere and no way to tell it apart from a rejected page.
+       *
+       * Reported as a normal `ok: false` so the model can say something useful,
+       * and logged because a verifier that throws is a bug on our side.
+       */
+      const detail = error instanceof Error ? error.message : String(error)
+      console.error('[artifacts] verification threw:', error)
+      return { ok: false, errors: [`Verification could not run: ${detail}`] }
     }
-    return { ok: true }
   },
 }

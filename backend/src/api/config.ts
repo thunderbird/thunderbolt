@@ -2,15 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isAgentEnabled, type Settings } from '@/config/settings'
+import type { Settings } from '@/config/settings'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { defaultModelId, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
-import { hostedAgentId } from '@/agents/hosted-agent-provider'
 import { Elysia } from 'elysia'
-
-/** The hosted agent is the default only if it is on and survives the `ENABLED_AGENTS` filter discovery applies. */
-const getDefaultAgentId = (settings: Settings) =>
-  settings.agentEnabled && isAgentEnabled(settings, hostedAgentId) ? hostedAgentId : undefined
 
 /**
  * Public app config — the single source of deployment-level UI capability flags
@@ -24,7 +19,16 @@ const getDefaultAgentId = (settings: Settings) =>
  */
 export const createConfigRoutes = (settings: Settings) =>
   new Elysia({ prefix: '/config' }).onError(safeErrorHandler).get('/', () => ({
-    e2eeEnabled: settings.e2eeEnabled,
+    // Compatibility shim, not a live flag. E2EE is unconditionally on, but
+    // pre-cutover bundles gate `encodeForUpload` on `config.e2eeEnabled`, and
+    // `updateConfig` replaces the whole config object — so omitting this key
+    // makes a stale client read it as `undefined`, skip encryption, and upload
+    // PLAINTEXT into an account current clients treat as encrypted. There is no
+    // bulk re-encryption pass, so that data stays plaintext forever.
+    // Safe to delete once MIN_APP_VERSION is at or above the first release that
+    // shipped always-on E2EE, which 426s every client that still reads this.
+    e2eeEnabled: true,
+    orgEscrowEnabled: settings.orgEscrowEnabled,
     debugTranscriptsEnabled: settings.debugTranscriptsEnabled,
     // Inverted so the env reads as an opt-in switch ("disable") while the wire
     // contract reads as a positive capability ("enabled").
@@ -32,8 +36,6 @@ export const createConfigRoutes = (settings: Settings) =>
     allowCustomAgents: settings.allowCustomAgents,
     // Omit when unset so the frontend treats it as "no enforcement" without parsing an empty string as semver.
     minAppVersion: settings.minAppVersion || undefined,
-    // Omit when no hosted agent is visible so the frontend keeps its built-in default.
-    defaultAgentId: getDefaultAgentId(settings),
     defaults: {
       models: {
         version: defaultModelsVersion,

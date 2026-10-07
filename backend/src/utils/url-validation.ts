@@ -7,7 +7,7 @@ import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classific
 
 /** DNS lookup used by URL validation. Shape mirrors `dns.promises.lookup(host, { all: true })`.
  *  Injected as a dep so tests can substitute a deterministic resolver without
- *  `mock.module('node:dns')` (which leaks across files — see docs/development/testing.md). */
+ *  `mock.module('node:dns')` (which leaks across files — see docs/internals/development/testing.md). */
 export type DnsLookup = (hostname: string) => Promise<Array<{ address: string; family: number }>>
 
 const defaultDnsLookup: DnsLookup = (hostname) => dnsPromises.lookup(hostname, { all: true })

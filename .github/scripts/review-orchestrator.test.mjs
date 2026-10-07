@@ -20,6 +20,7 @@ import {
   parseUnifiedDiff,
   buildUnifiedDiff,
   computeDeepMode,
+  matchesSecurityPath,
   normalizeDiffText,
   normalizeFindings,
   classifyFindings,
@@ -510,6 +511,74 @@ describe('computeDeepMode: size gate + bounded-mode flag', () => {
     expect(info.boundedMode).toBe(true); // driven by the truncation flag…
     expect(info.deepMode).toBe(false); // …not coupled to deep mode (a real truncation also trips the file-count gate)
   });
+
+  test('a diff with no crypto paths leaves securityMode off', () => {
+    const info = computeDeepMode([{ filename: 'src/app.tsx', additions: 5, deletions: 0 }], false);
+    expect(info.securityMode).toBe(false);
+    expect(info.sensitiveFiles).toEqual([]);
+  });
+
+  test('a tiny crypto-path diff trips securityMode WITHOUT deep mode', () => {
+    const info = computeDeepMode([{ filename: 'backend/src/lib/canary.ts', additions: 1, deletions: 0 }], false);
+    expect(info.securityMode).toBe(true); // security lane is independent of size…
+    expect(info.deepMode).toBe(false); // …a one-line change is not deep mode
+    expect(info.sensitiveFiles).toEqual(['backend/src/lib/canary.ts']);
+  });
+
+  test('sensitiveFiles lists only the crypto-path subset of a mixed diff', () => {
+    const info = computeDeepMode(
+      [
+        { filename: 'src/app.tsx', additions: 3, deletions: 0 },
+        { filename: 'src/crypto/primitives.ts', additions: 2, deletions: 1 },
+        { filename: 'backend/drizzle/0042_x.sql', additions: 4, deletions: 0 },
+      ],
+      false,
+    );
+    expect(info.securityMode).toBe(true);
+    expect(info.sensitiveFiles).toEqual(['src/crypto/primitives.ts', 'backend/drizzle/0042_x.sql']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SCENARIO 7b — matchesSecurityPath: the crypto/E2EE path predicate that drives
+// the path-conditional security dimension. Glob-prefixes vs exact files.
+// ---------------------------------------------------------------------------
+
+describe('matchesSecurityPath: crypto/E2EE path predicate', () => {
+  test('matches the glob-prefixed crypto trees', () => {
+    expect(matchesSecurityPath('src/crypto/key-storage.ts')).toBe(true);
+    expect(matchesSecurityPath('src/db/encryption/codec.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/drizzle/meta/_journal.json')).toBe(true);
+    expect(matchesSecurityPath('scripts/org-escrow-decrypt.ts')).toBe(true);
+  });
+
+  // Every entry names a file that EXISTS. The list previously carried
+  // `backend/src/lib/org-escrow.ts`, which never has — a dead matcher that made
+  // the list look complete while the security lane skipped the real surface.
+  test('matches the exact sensitive files', () => {
+    expect(matchesSecurityPath('backend/src/api/encryption.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/api/powersync.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/canary.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/device-bind.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/encrypted-payload.ts')).toBe(true);
+    expect(matchesSecurityPath('backend/src/lib/step-up-otp.ts')).toBe(true);
+    expect(matchesSecurityPath('shared/e2ee-types.ts')).toBe(true);
+    expect(matchesSecurityPath('src/services/encryption.ts')).toBe(true);
+    expect(matchesSecurityPath('src/db/powersync/middleware/EncryptionMiddleware.ts')).toBe(true);
+  });
+
+  test('does not match adjacent non-crypto paths or a bare prefix', () => {
+    expect(matchesSecurityPath('src/app.tsx')).toBe(false);
+    expect(matchesSecurityPath('backend/src/lib/http.ts')).toBe(false); // sibling of canary/device-bind
+    expect(matchesSecurityPath('backend/src/api/encryptionX.ts')).toBe(false); // exact-match only
+    expect(matchesSecurityPath('src/cryptography/x.ts')).toBe(false); // not the src/crypto/ tree
+    expect(matchesSecurityPath('scripts/create-release.ts')).toBe(false); // not an org-escrow script
+  });
+
+  test('tolerates a non-string filename (undefined from a malformed file entry)', () => {
+    expect(matchesSecurityPath(undefined)).toBe(false);
+    expect(matchesSecurityPath(null)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -580,6 +649,13 @@ describe('normalizeFindings: confidence + evidence normalization', () => {
     const [f] = normalizeOne({ line: 0 });
     expect(f.line).toBeNull();
   });
+
+  test("the security dimension's `critical` tier survives normalization (case-insensitive)", () => {
+    const [lower] = normalizeOne({ severity: 'critical' });
+    expect(lower.severity).toBe('critical');
+    const [upper] = normalizeOne({ severity: 'CRITICAL' });
+    expect(upper.severity).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -597,6 +673,12 @@ describe('severity-invariant identity: demotion never re-keys the thread', () =>
     const blocking = classifyOne({ severity: 'blocking' });
     const demoted = classifyOne({ severity: 'convention' });
     expect(demoted.hash).toBe(blocking.hash);
+  });
+
+  test('a critical→blocking demotion keeps the same hash (the tier is not hashed)', () => {
+    const critical = classifyOne({ severity: 'critical' });
+    const demoted = classifyOne({ severity: 'blocking' });
+    expect(demoted.hash).toBe(critical.hash);
   });
 
   test('run 2 emitting the DEMOTED variant of an open thread posts nothing', () => {

@@ -9,7 +9,7 @@ import { authHeaders, createTestApp, type TestAppHandle } from '@/test-utils/e2e
 
 /** Build a stub Exa client whose `search` returns the canned results below.
  *  Passed to createTestApp via dep injection — replaces `mock.module('exa-js')`,
- *  which would leak across files (see docs/development/testing.md). */
+ *  which would leak across files (see docs/internals/development/testing.md). */
 const createStubExaClient = (
   results: object[] = [
     {

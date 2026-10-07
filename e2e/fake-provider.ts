@@ -51,7 +51,9 @@ export const createFakeProvider = async (port: number): Promise<Server> => {
     writeEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '', citations: [] } })
     for (const text of fakeProviderReply.match(/\S+\s*/g)!) {
       await setTimeout(150)
-      if (res.destroyed) return
+      if (res.destroyed) {
+        return
+      }
       writeEvent({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })
     }
     writeEvent({ type: 'content_block_stop', index: 0 })

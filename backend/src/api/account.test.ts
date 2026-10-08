@@ -7,6 +7,9 @@ import { session as sessionTable, user } from '@/db/auth-schema'
 import { challengeNoncesTable, encryptionMetadataTable, envelopesTable } from '@/db/encryption-schema'
 import { chatThreadsTable, devicesTable, settingsTable, tasksTable } from '@/db/schema'
 import { linkCliSessionToDevice } from '@/dal/sessions'
+import { verification } from '@/db/auth-schema'
+import type { SecurityNotifications } from '@/lib/security-notifications'
+import { mintStepUpOtp, stepUpIdentifier } from '@/lib/step-up-otp'
 import { createTestDb } from '@/test-utils/db'
 import { registerCliDevice } from '@/test-utils/cli-device'
 import { createTestSettings } from '@/test-utils/settings'
@@ -49,16 +52,35 @@ describe('Account API', () => {
   /** Account signing keypair — its public key is stored in encryption_metadata. */
   let signingKeypair: CryptoKeyPair
   let signingPublicKey: string
+  /** Recording fake, so sends are asserted without `mock.module`. */
+  let sentEmails: Array<{ kind: string; params: Record<string, unknown> }>
+
+  const recordEmail =
+    (kind: string) =>
+    async (params: Record<string, unknown>): Promise<void> => {
+      sentEmails.push({ kind, params })
+    }
+  const mockNotifications: SecurityNotifications = {
+    sendStepUpCode: recordEmail('step-up-code'),
+    sendRecoveryPhraseChanged: recordEmail('recovery-phrase-changed'),
+    sendDeviceApproved: recordEmail('device-approved'),
+    sendRecoveryPhraseUsed: recordEmail('recovery-phrase-used'),
+    sendBridgeConnected: recordEmail('bridge-connected'),
+    sendEncryptionSetUp: recordEmail('encryption-set-up'),
+  }
 
   beforeEach(async () => {
     const rid = ++(globalThis as Record<symbol, number>)[counterKey]
     p = (id: string) => `${rid}-${id}`
+    sentEmails = []
     const testEnv = await createTestDb()
     db = testEnv.db
     cleanup = testEnv.cleanup
     auth = createAuth(db)
     app = new Elysia({ prefix: '/v1' }).use(
-      createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db),
+      createAccountRoutes(auth, createTestSettings({ betterAuthSecret, cliDeviceRegistrationEnabled: true }), db, {
+        notifications: mockNotifications,
+      }),
     ) as unknown as ReturnType<typeof createAccountRoutes>
     signingKeypair = await generateSigningKeypair()
     signingPublicKey = await exportSigningPublicKey(signingKeypair)
@@ -1036,10 +1058,15 @@ describe('Account API', () => {
         userId,
       })
 
+      const code = await mintStepUpOtp(db, 'account-deletion', 'full-delete@example.com')
       const response = await app.handle(
         new Request('http://localhost/v1/account', {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${signToken('bearer-token-full-delete')}` },
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-token-full-delete')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ stepUpOtp: code }),
         }),
       )
 
@@ -1099,10 +1126,15 @@ describe('Account API', () => {
         userId,
       })
 
+      const code = await mintStepUpOtp(db, 'account-deletion', 'cascade-delete@example.com')
       const response = await app.handle(
         new Request('http://localhost/v1/account', {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${signToken('bearer-token-cascade-delete')}` },
+          headers: {
+            Authorization: `Bearer ${signToken('bearer-token-cascade-delete')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ stepUpOtp: code }),
         }),
       )
 
@@ -1122,6 +1154,212 @@ describe('Account API', () => {
 
       const threadsLeft = await db.select().from(chatThreadsTable).where(eq(chatThreadsTable.userId, userId))
       expect(threadsLeft).toHaveLength(0)
+    })
+  })
+
+  describe('account deletion step-up', () => {
+    /** A plain full user with a bearer session, and no device or encryption rows. */
+    const createPlainUser = async (label: string, opts: { isAnonymous?: boolean; deviceId?: string } = {}) => {
+      const userId = p(`u-${label}`)
+      const email = `${userId}@example.com`
+      const token = p(`tok-${label}`)
+      const now = new Date()
+      await db.insert(user).values({
+        id: userId,
+        name: 'Delete Me',
+        email,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+        ...(opts.isAnonymous === undefined ? {} : { isAnonymous: opts.isAnonymous }),
+      })
+      await db.insert(sessionTable).values({
+        id: p(`sess-${label}`),
+        expiresAt: new Date(now.getTime() + 3600 * 1000),
+        token,
+        createdAt: now,
+        updatedAt: now,
+        userId,
+        ...(opts.deviceId ? { deviceId: opts.deviceId } : {}),
+      })
+      return { userId, email, auth: `Bearer ${signToken(token)}` }
+    }
+
+    const requestCode = (authorization: string) =>
+      app.handle(
+        new Request('http://localhost/v1/account/deletion/step-up/request', {
+          method: 'POST',
+          headers: { Authorization: authorization },
+        }),
+      )
+
+    const deleteAccount = (authorization: string, stepUpOtp?: string) =>
+      app.handle(
+        new Request('http://localhost/v1/account', {
+          method: 'DELETE',
+          headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+          ...(stepUpOtp === undefined ? {} : { body: JSON.stringify({ stepUpOtp }) }),
+        }),
+      )
+
+    const rowsFor = (action: 'account-deletion' | 'recovery-phrase-change', email: string) =>
+      db
+        .select()
+        .from(verification)
+        .where(eq(verification.identifier, stepUpIdentifier(action, email)))
+
+    describe('POST /v1/account/deletion/step-up/request', () => {
+      it('returns 401 when not authenticated', async () => {
+        const response = await app.handle(
+          new Request('http://localhost/v1/account/deletion/step-up/request', { method: 'POST' }),
+        )
+        expect(response.status).toBe(401)
+      })
+
+      // The point of dropping the encryption route's trusted-device gate: trust
+      // is only granted once an envelope is stored, so this user would otherwise
+      // never be able to delete their account.
+      it('sends a code to a user with no device and no encryption set up', async () => {
+        const { email, auth: authorization } = await createPlainUser('no-e2ee')
+
+        const response = await requestCode(authorization)
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({ ok: true })
+        expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
+        expect(sentEmails[0]!.params).toMatchObject({ action: 'account-deletion', email })
+        expect(await rowsFor('account-deletion', email)).toHaveLength(1)
+      })
+
+      it('files the code under the deletion action, not the recovery-phrase one', async () => {
+        const { email, auth: authorization } = await createPlainUser('namespaced')
+
+        await requestCode(authorization)
+
+        expect(await rowsFor('recovery-phrase-change', email)).toHaveLength(0)
+      })
+
+      it('returns 429 on an immediate second request', async () => {
+        const { auth: authorization } = await createPlainUser('cooldown')
+
+        expect((await requestCode(authorization)).status).toBe(200)
+        expect((await requestCode(authorization)).status).toBe(429)
+      })
+
+      it('refuses an anonymous account without minting or mailing', async () => {
+        const { email, auth: authorization } = await createPlainUser('anon-request', { isAnonymous: true })
+
+        const response = await requestCode(authorization)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('anonymous_account')
+        expect(sentEmails).toHaveLength(0)
+        expect(await rowsFor('account-deletion', email)).toHaveLength(0)
+      })
+
+      it('names the caller device when the session is bound to one', async () => {
+        const deviceId = p('dev-named')
+        const { userId, auth: authorization } = await createPlainUser('named', { deviceId })
+        await db.insert(devicesTable).values({ id: deviceId, userId, name: 'Work Laptop', deviceType: 'normal' })
+
+        await requestCode(authorization)
+
+        expect(sentEmails[0]!.params).toMatchObject({ deviceName: 'Work Laptop' })
+      })
+
+      it('falls back to Unknown device for an unbound session', async () => {
+        const { auth: authorization } = await createPlainUser('unbound')
+
+        await requestCode(authorization)
+
+        expect(sentEmails[0]!.params).toMatchObject({ deviceName: 'Unknown device' })
+      })
+
+      it('does not leak another account’s device name', async () => {
+        const foreignDeviceId = p('dev-foreign')
+        const other = await createPlainUser('owner')
+        await db
+          .insert(devicesTable)
+          .values({ id: foreignDeviceId, userId: other.userId, name: 'Their Mac', deviceType: 'normal' })
+        const { auth: authorization } = await createPlainUser('borrower', { deviceId: foreignDeviceId })
+
+        await requestCode(authorization)
+
+        expect(sentEmails[0]!.params).toMatchObject({ deviceName: 'Unknown device' })
+      })
+    })
+
+    describe('DELETE /v1/account step-up gate', () => {
+      it('refuses a request with no body at all, without 422ing', async () => {
+        const { userId, auth: authorization } = await createPlainUser('no-body')
+
+        const response = await deleteAccount(authorization)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_required')
+        expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(1)
+      })
+
+      it('refuses a wrong code and charges the attempt budget', async () => {
+        const { userId, email, auth: authorization } = await createPlainUser('wrong')
+        const code = await mintStepUpOtp(db, 'account-deletion', email)
+
+        const response = await deleteAccount(authorization, '00000001')
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect((await rowsFor('account-deletion', email))[0]!.value).toBe(`${code}:1`)
+        expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(1)
+      })
+
+      // Same body as a wrong code: telling the two apart would reveal whether a
+      // code is outstanding to someone holding only the session.
+      it('answers an expired code exactly as it answers a wrong one', async () => {
+        const { email, auth: authorization } = await createPlainUser('expired')
+        const code = await mintStepUpOtp(db, 'account-deletion', email)
+        await db
+          .update(verification)
+          .set({ expiresAt: new Date(Date.now() - 1000) })
+          .where(eq(verification.identifier, stepUpIdentifier('account-deletion', email)))
+
+        const response = await deleteAccount(authorization, code)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+      })
+
+      it('refuses a code minted for the recovery-phrase change, leaving it intact', async () => {
+        const { userId, email, auth: authorization } = await createPlainUser('cross')
+        const code = await mintStepUpOtp(db, 'recovery-phrase-change', email)
+
+        const response = await deleteAccount(authorization, code)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('step_up_invalid')
+        expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(1)
+        expect((await rowsFor('recovery-phrase-change', email))[0]!.value).toBe(`${code}:0`)
+      })
+
+      it('refuses an anonymous account even with a valid code', async () => {
+        const { userId, email, auth: authorization } = await createPlainUser('anon-delete', { isAnonymous: true })
+        const code = await mintStepUpOtp(db, 'account-deletion', email)
+
+        const response = await deleteAccount(authorization, code)
+
+        expect(response.status).toBe(403)
+        expect((await response.json()).code).toBe('anonymous_account')
+        expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(1)
+      })
+
+      it('burns the code once the delete commits', async () => {
+        const { userId, email, auth: authorization } = await createPlainUser('burn')
+        const code = await mintStepUpOtp(db, 'account-deletion', email)
+
+        expect((await deleteAccount(authorization, code)).status).toBe(204)
+
+        expect(await db.select().from(user).where(eq(user.id, userId))).toHaveLength(0)
+        expect(await rowsFor('account-deletion', email)).toHaveLength(0)
+      })
     })
   })
 

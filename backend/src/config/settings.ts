@@ -275,7 +275,7 @@ const settingsSchema = z
       ctx.addIssue({
         code: 'custom',
         message:
-          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (see docs/self-hosting/configuration.md#anonymous-sign-in).',
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set. The app cannot complete the altcha captcha yet, so keep the defaults (see docs/self-hosting/configuration.md#anonymous-sign-in).',
         path: ['captchaProvider'],
       })
     }

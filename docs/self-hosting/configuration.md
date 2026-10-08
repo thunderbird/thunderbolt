@@ -277,7 +277,7 @@ Request headers need no configuration: the API echoes back whatever the browser 
 | `TRUSTED_PROXY`                            | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                         |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`     | Length of that window, in seconds.                                                                                         |
-| `CAPTCHA_PROVIDER`                         | `none`   | Captcha on anonymous sign-in: `none` or `altcha`. See [ALTCHA](#altcha).                                                   |
+| `CAPTCHA_PROVIDER`                         | `none`   | Captcha on anonymous sign-in. Keep `none`: the app cannot complete `altcha` yet. See [ALTCHA](#altcha).                    |
 | `CAPTCHA_SECRET`                           | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                          |
 | `CAPTCHA_DIFFICULTY`                       | `100000` | Upper bound of the ALTCHA search. Higher costs bots more and makes phones wait longer.                                     |
 | `CAPTCHA_TTL_SECS`                         | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                            |
@@ -307,11 +307,13 @@ Whether to raise the limit depends on the captcha, which protects anonymous sign
 - **With a captcha enabled**, the captcha is the bot control. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
 - **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
 
-The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. Set `CAPTCHA_PROVIDER=altcha` to raise them.
+The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. The `altcha` provider will lift this once the app supports it; until then an anonymous deployment keeps the defaults.
 
 ### ALTCHA
 
-[ALTCHA](https://altcha.org) is a self-hosted proof-of-work captcha: the browser spends a moment of CPU time instead of solving a puzzle, and no third party sees the request. With `CAPTCHA_PROVIDER=altcha` the app fetches a challenge from `GET /v1/captcha/challenge`, solves it, and sends the result in the `X-Captcha-Token` header of the anonymous sign-in request. A missing, wrong, expired or reused solution gets `403`.
+> The API supports ALTCHA, but the app does not yet. It never fetches or solves a challenge, so with `CAPTCHA_PROVIDER=altcha` every anonymous sign-in is refused with `403`. Leave `CAPTCHA_PROVIDER` unset (or `none`) until a release of the app adds ALTCHA support.
+
+[ALTCHA](https://altcha.org) is a self-hosted proof-of-work captcha: the browser spends a moment of CPU time instead of solving a puzzle, and no third party sees the request. The API side works like this: a client fetches a challenge from `GET /v1/captcha/challenge`, solves it, and sends the result in the `X-Captcha-Token` header of the anonymous sign-in request. A missing, wrong, expired or reused solution gets `403`.
 
 Each solution works once. Redeemed challenges are recorded in the database, so a token cannot be replayed against another API instance, and expired records are swept hourly. Generate the secret with `openssl rand -hex 32` and give every instance the same value; changing it invalidates challenges already issued.
 

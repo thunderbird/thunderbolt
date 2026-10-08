@@ -8,10 +8,11 @@ import { createAltchaChallenge } from './captcha'
 
 /**
  * `GET /captcha/challenge`: the unauthenticated endpoint that serves an ALTCHA challenge for
- * anonymous sign-in. The app fetches it through its HttpClient, which sends `X-App-Version`,
- * so it stays behind the version gate like the sign-in it precedes. A sibling of the Better
- * Auth mount rather than inside `/api/auth/*`, which Better Auth's router owns. Not mounted
- * unless CAPTCHA_PROVIDER=altcha.
+ * anonymous sign-in. No client calls it yet: the app has no ALTCHA support, so enabling the
+ * provider refuses every anonymous sign-in. It stays behind the version gate like the sign-in
+ * it precedes, so the client must fetch it through the HttpClient, which sends
+ * `X-App-Version`. A sibling of the Better Auth mount rather than inside `/api/auth/*`, which
+ * Better Auth's router owns. Not mounted unless CAPTCHA_PROVIDER=altcha.
  */
 export const createCaptchaRoutes = (
   settings: Pick<Settings, 'captchaProvider' | 'captchaSecret' | 'captchaDifficulty' | 'captchaTtlSecs'>,

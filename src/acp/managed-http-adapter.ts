@@ -53,20 +53,30 @@ const trimHistory = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] =
   return firstUserIndex === -1 ? recent : recent.slice(firstUserIndex)
 }
 
+/** Keep only the parts the endpoint accepts for each message's role, and drop
+ *  messages left with none, which the endpoint would drop itself. */
+const toForwardedMessages = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] =>
+  messages
+    .map((message) => ({
+      ...message,
+      parts: message.parts.filter((part) => forwardedPartTypes[message.role]?.has(part.type)),
+    }))
+    .filter((message) => message.parts.length > 0)
+
 /**
  * Rewrite a `DefaultChatTransport` body into one the hosted endpoint accepts:
- * the history is trimmed to its message cap, attachments and quotes become the
- * text and file parts the built-in pipeline would send, and parts the endpoint
- * rejects for the message's role (data parts, sources, assistant files) are dropped.
+ * attachments and quotes become the text and file parts the built-in pipeline
+ * would send, parts the endpoint rejects for the message's role (data parts,
+ * sources, assistant files) are dropped along with any message they empty, and
+ * the history is trimmed to the endpoint's cap so it starts on a user message.
+ * The trim runs last because filtering can empty a leading user message; the
+ * coarse cap before hydration only bounds how many attachments are read.
  */
 export const toManagedHttpBody = async (body: string, hydrationDeps?: HydrationDeps): Promise<string> => {
   const { messages = [], ...rest } = JSON.parse(body) as { messages?: ThunderboltUIMessage[] }
-  const hydrated = hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(trimHistory(messages), hydrationDeps))
-  const forwarded = hydrated.map((message) => ({
-    ...message,
-    parts: message.parts.filter((part) => forwardedPartTypes[message.role]?.has(part.type)),
-  }))
-  return JSON.stringify({ ...rest, messages: forwarded })
+  const recent = messages.slice(-maxHistoryMessages)
+  const hydrated = hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(recent, hydrationDeps))
+  return JSON.stringify({ ...rest, messages: trimHistory(toForwardedMessages(hydrated)) })
 }
 
 /** Serialize a rejected request the way `aiFetchStreamingResponse` does, so the

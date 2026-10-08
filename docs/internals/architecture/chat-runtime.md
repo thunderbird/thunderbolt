@@ -39,9 +39,11 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    default (`agents_system.is_default`) → first available agent → `builtInAgent`,
    so a deliberate pick wins, a first-time visitor lands on the default, and
    `disableBuiltInAgent` deployments and deleted custom agents degrade quietly.
-   Discovery can finish after a new chat has resolved its agent, as on a first
-   visit, so `applyDiscoveredDefaultAgent` moves chats with no thread row and no
-   messages onto the default when it lands, except a chat already on the
+   Discovery can finish while a new chat is hydrating or after it has resolved
+   its agent, as on a first visit. `applyDiscoveredDefaultAgent` keeps the
+   default in the chat store, which hydration reads after its last await, and
+   moves chats with no thread row and no messages onto it, except a chat whose
+   agent the user picked (`agentChosenByUser`) or that is already on the
    `selected_agent` agent.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and

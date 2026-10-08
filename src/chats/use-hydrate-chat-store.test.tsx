@@ -347,6 +347,29 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.id).toBe('custom-last-used')
     })
 
+    it('opens on the discovered default when discovery lands while hydration is reading', async () => {
+      // Discovery reports its default after `getAllSystemAgents` ran but before the
+      // session exists, so there are no rows to read and no session to move yet.
+      const hostedAgent = {
+        ...builtInAgent,
+        id: 'hosted-agent',
+        type: 'managed-http' as const,
+        transport: 'http' as const,
+        url: '/v1/agent/chat',
+      }
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        const hydrating = result.current.hydrateChatStore()
+        useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+        await hydrating
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
     it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
       await seedDiscoveredDefault()
 
@@ -361,18 +384,26 @@ describe('useHydrateChatStore', () => {
     const agents = [builtInAgent, agentWithId('thread'), agentWithId('discovered'), agentWithId('last-used')]
 
     it("keeps a persisted thread's own agent over the last-used and discovered agents", () => {
-      const ids = { threadAgentId: 'thread', discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'last-used' }
-      expect(resolveSessionAgent(agents, ids).id).toBe('thread')
+      const candidates = {
+        threadAgentId: 'thread',
+        lastUsedAgentId: 'last-used',
+        discoveredDefaultAgent: agentWithId('discovered'),
+      }
+      expect(resolveSessionAgent(agents, candidates).id).toBe('thread')
     })
 
     it('prefers the last-used agent over the discovered default for a new chat', () => {
-      const ids = { discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'last-used' }
-      expect(resolveSessionAgent(agents, ids).id).toBe('last-used')
+      const candidates = { lastUsedAgentId: 'last-used', discoveredDefaultAgent: agentWithId('discovered') }
+      expect(resolveSessionAgent(agents, candidates).id).toBe('last-used')
     })
 
     it('falls back past ids that no longer resolve', () => {
-      const ids = { threadAgentId: 'deleted', discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'gone' }
-      expect(resolveSessionAgent(agents, ids).id).toBe('discovered')
+      const candidates = {
+        threadAgentId: 'deleted',
+        lastUsedAgentId: 'gone',
+        discoveredDefaultAgent: agentWithId('discovered'),
+      }
+      expect(resolveSessionAgent(agents, candidates).id).toBe('discovered')
       expect(resolveSessionAgent(agents, {}).id).toBe(builtInAgent.id)
       expect(resolveSessionAgent([], {})).toBe(builtInAgent)
     })

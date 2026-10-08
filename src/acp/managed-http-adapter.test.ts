@@ -203,6 +203,35 @@ describe('toManagedHttpBody', () => {
     expect(parsed.messages[1].parts).toEqual([{ type: 'text', text: 'here' }])
   })
 
+  it('starts on a user message after filtering empties the leading turn', async () => {
+    // The leading user turn's attachment is missing on this device, so filtering
+    // empties it and the assistant reply after it would lead. A later assistant
+    // turn held only a file, which assistants may not send, so it empties too.
+    const missingFileDeps: HydrationDeps = { ...textOnlyDeps, getAttachment: async () => null }
+    const body = JSON.stringify({
+      id: 't1',
+      messages: [
+        {
+          id: 'u1',
+          role: 'user',
+          parts: [buildAttachmentPart({ localFileId: 'gone', filename: 'a.pdf', mimeType: 'application/pdf' })],
+        },
+        { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'got it' }] },
+        { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'draw it' }] },
+        {
+          id: 'a2',
+          role: 'assistant',
+          parts: [{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,AA==' }],
+        },
+        { id: 'u3', role: 'user', parts: [{ type: 'text', text: 'thanks' }] },
+      ],
+    })
+
+    const parsed = JSON.parse(await toManagedHttpBody(body, missingFileDeps))
+
+    expect(parsed.messages.map((message: { id: string }) => message.id)).toEqual(['u2', 'u3'])
+  })
+
   it('keeps the most recent 200 messages and starts the history on a user message', async () => {
     // 201 alternating messages, u0 … u200. The last 200 start on an assistant
     // message, so it is dropped too, leaving 199 that start and end on a user turn.

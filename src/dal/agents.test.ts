@@ -575,6 +575,32 @@ describe('agents DAL', () => {
       expect(rows.every((row) => row.isDefault === 0)).toBe(true)
     })
 
+    it('lets a newer refresh win when an aborted older one resolves after it', async () => {
+      // An anonymous refresh is still in flight when the visitor signs in.
+      const resolvers: { anonymous?: () => void } = {}
+      const anonymousClient = makeHttpClient(
+        () =>
+          new Promise((_, reject) => {
+            resolvers.anonymous = () => reject(httpErrorOf(403))
+          }),
+      )
+      const anonymous = new AbortController()
+      const anonymousRefresh = refreshSystemAgents(getDb(), anonymousClient, anonymous.signal)
+      await Promise.resolve()
+
+      anonymous.abort()
+      const signedIn = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => hostedAgentResponse),
+      )
+      resolvers.anonymous!()
+
+      expect(signedIn).toMatchObject({ refreshed: true })
+      expect(await anonymousRefresh).toEqual({ refreshed: false, reason: 'superseded' })
+      const rows = await getDb().select().from(agentsSystemTable).all()
+      expect(rows.map((row) => row.id).sort()).toEqual(['haystack-rag', 'hosted-agent'])
+    })
+
     it('clears agents_system on 403 (anonymous user)', async () => {
       const fetchedAt = new Date().toISOString()
       await getDb().insert(agentsSystemTable).values({

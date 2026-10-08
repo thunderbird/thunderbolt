@@ -157,6 +157,7 @@ describe('chat-store', () => {
               pendingPermission: null,
               miniAppApprovalQueue: [],
               selectedAgent: builtInAgent,
+              agentChosenByUser: false,
               retryCount: 0,
               retriesExhausted: false,
               stopping: false,
@@ -515,6 +516,32 @@ describe('chat-store', () => {
       useChatStore.getState().applyDiscoveredDefaultAgent(customAgent, builtInAgent.id)
 
       expect(useChatStore.getState().sessions.get('remembered')?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
+    it('leaves every unstarted chat whose agent the user picked, not only the latest pick', async () => {
+      const model = createMockModel()
+      const newChat = { chatThread: null, mcpClients: [], models: [model], selectedModel: model, triggerData: null }
+      const laterPick: Agent = { ...customAgent, id: 'later-pick' }
+      const discoveredDefault: Agent = { ...customAgent, id: 'discovered-default' }
+      hydrateStore({ ...newChat, id: 'first-pick', chatInstance: createMockChatInstanceWithValidation() })
+      hydrateStore({ ...newChat, id: 'second-pick', chatInstance: createMockChatInstanceWithValidation() })
+      await useChatStore.getState().setSelectedAgent('first-pick', customAgent)
+      await useChatStore.getState().setSelectedAgent('second-pick', laterPick)
+
+      // `selected_agent` now remembers only the later pick.
+      useChatStore.getState().applyDiscoveredDefaultAgent(discoveredDefault, laterPick.id)
+
+      const agentOf = (id: string) => useChatStore.getState().sessions.get(id)?.selectedAgent.id
+      expect(agentOf('first-pick')).toBe(customAgent.id)
+      expect(agentOf('second-pick')).toBe(laterPick.id)
+    })
+
+    it('records the discovered default for chats that hydrate later, and clears it on null', () => {
+      useChatStore.getState().applyDiscoveredDefaultAgent(customAgent, null)
+      expect(useChatStore.getState().discoveredDefaultAgent?.id).toBe(customAgent.id)
+
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, null)
+      expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
     })
 
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {

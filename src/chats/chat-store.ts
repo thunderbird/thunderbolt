@@ -94,6 +94,9 @@ export type ChatSession = {
    *  with a live request (see `getTurnActivity`), so lingering is harmless there. */
   stopping: boolean
   selectedAgent: Agent
+  /** The user picked `selectedAgent` in this chat, so a late-arriving discovered
+   *  default must not replace it. False when it came from the fallback chain. */
+  agentChosenByUser: boolean
   selectedModel: Model
   /**
    * Owning project for this chat, or null for a loose chat. Resolved at
@@ -120,6 +123,10 @@ type ChatStoreState = {
   reconnectClient: ReconnectClient
   models: Model[]
   sessions: Map<string, ChatSession>
+  /** The agent the latest discovery named as default, held in memory so a chat
+   *  that hydrates while discovery lands resolves against it rather than against
+   *  `agents_system` rows read before discovery wrote them. */
+  discoveredDefaultAgent: Agent | null
 }
 
 type ChatStoreActions = {
@@ -127,11 +134,12 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
-  /** Move chats that haven't started onto the discovered default agent. Discovery
-   *  can land after a new chat already resolved its agent, as on a first visit.
-   *  A chat on the user's remembered agent (`selected_agent`) is a deliberate pick
-   *  and is left alone, matching the precedence in `resolveSessionAgent`. */
-  applyDiscoveredDefaultAgent(agent: Agent, rememberedAgentId: string | null): void
+  /** Record the discovered default (null clears it) and move chats that haven't
+   *  started onto it. Discovery can land after a new chat already resolved its
+   *  agent, as on a first visit. A chat whose agent the user picked, or that sits
+   *  on the user's remembered agent (`selected_agent`), is left alone, matching
+   *  the precedence in `resolveSessionAgent`. */
+  applyDiscoveredDefaultAgent(agent: Agent | null, rememberedAgentId: string | null): void
   cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
@@ -169,6 +177,7 @@ const initialState: ChatStoreState = {
   reconnectClient: async () => null,
   models: [],
   sessions: new Map(),
+  discoveredDefaultAgent: null,
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
@@ -221,22 +230,23 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
   },
 
   applyDiscoveredDefaultAgent: (agent, rememberedAgentId) => {
-    const unstarted = [...get().sessions.values()].filter(
-      (session) =>
-        !session.chatThread &&
-        session.chatInstance.messages.length === 0 &&
-        session.selectedAgent.id !== agent.id &&
-        session.selectedAgent.id !== rememberedAgentId,
-    )
-    if (unstarted.length === 0) {
+    if (!agent) {
+      set({ discoveredDefaultAgent: null })
       return
     }
 
     const nextSessions = new Map(get().sessions)
-    for (const session of unstarted) {
-      nextSessions.set(session.id, { ...session, selectedAgent: agent })
+    for (const session of get().sessions.values()) {
+      const isOnFallback =
+        !session.chatThread &&
+        session.chatInstance.messages.length === 0 &&
+        !session.agentChosenByUser &&
+        session.selectedAgent.id !== rememberedAgentId
+      if (isOnFallback && session.selectedAgent.id !== agent.id) {
+        nextSessions.set(session.id, { ...session, selectedAgent: agent })
+      }
     }
-    set({ sessions: nextSessions })
+    set({ discoveredDefaultAgent: agent, sessions: nextSessions })
   },
 
   cancelPendingPermissionsForAgent: (agentId) => {
@@ -388,7 +398,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     const threadPatch = agentChanged ? { agentId: agent.id, acpSessionId: null } : { agentId: agent.id }
     const nextSessions = new Map(sessions)
     const nextChatThread = session.chatThread ? { ...session.chatThread, ...threadPatch } : session.chatThread
-    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent })
+    nextSessions.set(id, { ...session, chatThread: nextChatThread, selectedAgent: agent, agentChosenByUser: true })
 
     set({ sessions: nextSessions })
 

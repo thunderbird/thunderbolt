@@ -19,10 +19,11 @@ import type { Agent } from '@/types/acp'
  *    null when it names none.
  *  - `refreshed: false` → no update applied; `reason` explains why. Existing
  *    rows are preserved unless `reason === 'unauthenticated'`, in which case
- *    the table was cleared (the user can no longer see system agents). */
+ *    the table was cleared (the user can no longer see system agents).
+ *    `superseded` means the caller aborted the refresh, so nothing was written. */
 export type RefreshSystemAgentsResult =
   | { refreshed: true; wireIdentityChangedAgents: Agent[]; defaultAgent: Agent | null }
-  | { refreshed: false; reason: 'unauthenticated' | 'network' }
+  | { refreshed: false; reason: 'unauthenticated' | 'network' | 'superseded' }
 
 /**
  * Reconcile the local-only `agents_system` table against the backend's
@@ -42,12 +43,21 @@ export type RefreshSystemAgentsResult =
  * request carries `Authorization` + `X-Device-ID`. Anonymous sessions call it
  * too: the backend returns their `anonymousSafe` agents when anonymous
  * discovery is on, and a 403 otherwise.
+ *
+ * `signal` cancels the request, and is checked again once the response is in,
+ * before anything is written. A refresh superseded by a newer one (an anonymous
+ * visitor signing in) therefore never overwrites the newer one's rows.
  */
 export const refreshSystemAgents = async (
   db: AnyDrizzleDatabase,
   httpClient: HttpClient,
+  signal?: AbortSignal,
 ): Promise<RefreshSystemAgentsResult> => {
-  const payload = await fetchDiscovery(httpClient)
+  const payload = await fetchDiscovery(httpClient, signal)
+
+  if (signal?.aborted) {
+    return { refreshed: false, reason: 'superseded' }
+  }
 
   if (payload.kind === 'unauthenticated') {
     await db.delete(agentsSystemTable)
@@ -120,9 +130,9 @@ type DiscoveryFetch = { kind: 'ok'; data: AgentDiscoveryResponse } | { kind: 'un
 /** Hits `GET /agents` through the preconfigured client and classifies the outcome into a closed union.
  *  Kept private — callers consume `refreshSystemAgents` which folds this into
  *  the local-table reconciliation. */
-const fetchDiscovery = async (httpClient: HttpClient): Promise<DiscoveryFetch> => {
+const fetchDiscovery = async (httpClient: HttpClient, signal?: AbortSignal): Promise<DiscoveryFetch> => {
   try {
-    const data = await httpClient.get('agents').json<AgentDiscoveryResponse>()
+    const data = await httpClient.get('agents', { signal }).json<AgentDiscoveryResponse>()
     return { kind: 'ok', data }
   } catch (err) {
     if (err instanceof HttpError) {

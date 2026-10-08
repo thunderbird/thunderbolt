@@ -41,18 +41,31 @@ export const useBootstrapSystemAgents = ({ refresh = refreshSystemAgents }: UseB
     if (!userId || !cloudUrl) {
       return
     }
+    // Signing in re-runs this while the anonymous refresh may still be in flight.
+    // Aborting it stops its late response (a 403 that clears the table, or a
+    // smaller anonymous list) from overwriting what the signed-in refresh wrote.
+    const controller = new AbortController()
+    const { signal } = controller
     void (async () => {
-      const result = await refresh(db, httpClient)
+      const result = await refresh(db, httpClient, signal)
+      if (signal.aborted) {
+        return
+      }
       if (!result.refreshed) {
+        if (result.reason === 'unauthenticated') {
+          useChatStore.getState().applyDiscoveredDefaultAgent(null, null)
+        }
         return
       }
       for (const agent of result.wireIdentityChangedAgents) {
         useChatStore.getState().applyAgentWireIdentityChange(agent)
       }
-      if (result.defaultAgent) {
-        const { selectedAgent } = await getSettings(db, { selected_agent: String })
-        useChatStore.getState().applyDiscoveredDefaultAgent(result.defaultAgent, selectedAgent)
+      const { selectedAgent } = await getSettings(db, { selected_agent: String })
+      if (signal.aborted) {
+        return
       }
+      useChatStore.getState().applyDiscoveredDefaultAgent(result.defaultAgent, selectedAgent)
     })()
+    return () => controller.abort()
   }, [userId, isAnonymous, cloudUrl, db, httpClient, refresh])
 }

@@ -79,14 +79,14 @@ type UseHydrateChatStoreParams = {
  */
 export const resolveSessionAgent = (
   allAgents: Agent[],
-  ids: { threadAgentId?: string | null; discoveredDefaultAgentId?: string; lastUsedAgentId?: string | null },
+  candidates: { threadAgentId?: string | null; lastUsedAgentId?: string | null; discoveredDefaultAgent?: Agent },
 ): Agent => {
   const findAgent = (agentId: string | null | undefined) =>
     agentId ? allAgents.find((a) => a.id === agentId) : undefined
   return (
-    findAgent(ids.threadAgentId) ??
-    findAgent(ids.lastUsedAgentId) ??
-    findAgent(ids.discoveredDefaultAgentId) ??
+    findAgent(candidates.threadAgentId) ??
+    findAgent(candidates.lastUsedAgentId) ??
+    candidates.discoveredDefaultAgent ??
     allAgents[0] ??
     builtInAgent
   )
@@ -274,10 +274,15 @@ export const useHydrateChatStore = ({
       })),
       { includeBuiltIn },
     )
+    // Read after the last await so nothing can land between this and `createSession`.
+    // The store copy covers discovery that wrote its rows after `getAllSystemAgents` read them.
+    const discoveredDefaultRowId = systemAgentRows.find((row) => row.isDefault === 1)?.id
+    const discoveredDefaultAgent =
+      useChatStore.getState().discoveredDefaultAgent ?? allAgents.find((agent) => agent.id === discoveredDefaultRowId)
     const selectedAgent = resolveSessionAgent(allAgents, {
       threadAgentId: chatThread?.agentId,
-      discoveredDefaultAgentId: systemAgentRows.find((row) => row.isDefault === 1)?.id,
       lastUsedAgentId: settings.selectedAgent,
+      discoveredDefaultAgent,
     })
 
     // A persisted thread owns its project; a brand-new chat started from a
@@ -312,6 +317,7 @@ export const useHydrateChatStore = ({
       // Persisted via `chatThreads.agentId`; resolved above (first available
       // agent when the persisted id no longer matches).
       selectedAgent,
+      agentChosenByUser: false,
       selectedModel: defaultModel,
       projectId,
       miniAppId,

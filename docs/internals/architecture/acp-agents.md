@@ -34,7 +34,9 @@ serves (`thunderbolt acp serve`) is in [cli/README.md](../../../cli/README.md).
 | Anything else (network, 5xx, parse error) | Leave existing rows alone, so an offline user keeps the list they had |
 
 Anonymous sessions run discovery too: the backend answers with its `anonymousSafe` agents when
-`ALLOW_ANONYMOUS_AGENT_DISCOVERY` is on, and a 403 otherwise.
+`ALLOW_ANONYMOUS_AGENT_DISCOVERY` is on, and a 403 otherwise. Signing in starts a new refresh and
+aborts the anonymous one, which checks its signal before writing, so a late anonymous answer never
+overwrites the signed-in rows.
 
 A changed `url` or `transport` also clears that agent's stored ACP session ids and drops the warm
 connection from the adapter cache: ids minted by the old endpoint mean nothing to the new one.

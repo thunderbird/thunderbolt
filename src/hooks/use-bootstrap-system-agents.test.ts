@@ -4,7 +4,7 @@
 
 import '@/testing-library'
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 import { useChatStore } from '@/chats/chat-store'
 import { updateSettings } from '@/dal/settings'
@@ -13,6 +13,7 @@ import { getDb } from '@/db/database'
 import type { RefreshSystemAgentsResult } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
+import { createMockChatInstanceWithValidation, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { Agent } from '@/types/acp'
 import { useBootstrapSystemAgents } from './use-bootstrap-system-agents'
@@ -49,6 +50,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetTestDatabase()
+  resetStore()
   useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
 })
 
@@ -56,10 +58,22 @@ afterEach(() => {
   useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
 })
 
+/** An unsent new chat on the built-in agent, as hydration leaves it when discovery has not landed. */
+const hydrateUnstartedChat = () =>
+  hydrateStore({
+    id: 'unstarted',
+    chatInstance: createMockChatInstanceWithValidation(),
+    chatThread: null,
+    selectedModel: null,
+    triggerData: null,
+  })
+
+const agentOfUnstartedChat = () => useChatStore.getState().sessions.get('unstarted')?.selectedAgent.id
+
 describe('useBootstrapSystemAgents', () => {
   it('runs discovery for an anonymous session and applies the discovered default', async () => {
+    hydrateUnstartedChat()
     const refresh = mock(async () => refreshed)
-    const applyDefault = spyOn(useChatStore.getState(), 'applyDiscoveredDefaultAgent')
 
     renderHook(() => useBootstrapSystemAgents({ refresh }), {
       wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
@@ -67,14 +81,14 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(applyDefault).toHaveBeenCalledWith(hostedAgent, null)
     expect(refresh).toHaveBeenCalledTimes(1)
-    applyDefault.mockRestore()
+    expect(useChatStore.getState().discoveredDefaultAgent).toEqual(hostedAgent)
+    expect(agentOfUnstartedChat()).toBe(hostedAgent.id)
   })
 
   it("hands the user's remembered agent to the store so a deliberate pick is not overridden", async () => {
-    await updateSettings(getDb(), { selected_agent: 'custom-agent' })
-    const applyDefault = spyOn(useChatStore.getState(), 'applyDiscoveredDefaultAgent')
+    hydrateUnstartedChat()
+    await updateSettings(getDb(), { selected_agent: 'thunderbolt-built-in' })
 
     renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => refreshed) }), {
       wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
@@ -82,8 +96,42 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(applyDefault).toHaveBeenCalledWith(hostedAgent, 'custom-agent')
-    applyDefault.mockRestore()
+    expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
+  })
+
+  it('aborts the anonymous refresh on sign-in so its late answer is ignored', async () => {
+    const signedInSession = { user: { id: 'user-1', email: 'user@example.test', isAnonymous: false } }
+    let currentSession: typeof anonymousSession | typeof signedInSession = anonymousSession
+    const baseClient = createMockAuthClient({ session: anonymousSession })
+    const authClient = {
+      ...baseClient,
+      useSession: () => ({ ...baseClient.useSession(), data: currentSession }),
+    } as typeof baseClient
+    const signals: AbortSignal[] = []
+    const settleAnonymous: { resolve?: (result: RefreshSystemAgentsResult) => void } = {}
+    const refresh = mock((_db: unknown, _client: unknown, signal?: AbortSignal) => {
+      signals.push(signal!)
+      return signals.length === 1
+        ? new Promise<RefreshSystemAgentsResult>((resolve) => {
+            settleAnonymous.resolve = resolve
+          })
+        : Promise.resolve(refreshed)
+    })
+
+    const { rerender } = renderHook(() => useBootstrapSystemAgents({ refresh }), {
+      wrapper: createTestProvider({ authClient }),
+    })
+    currentSession = signedInSession
+    rerender()
+    await act(async () => {})
+    // The anonymous answer lands last. Applied, it would clear the default.
+    await act(async () => {
+      settleAnonymous.resolve!({ refreshed: false, reason: 'unauthenticated' })
+    })
+
+    expect(signals[0]!.aborted).toBe(true)
+    expect(signals[1]!.aborted).toBe(false)
+    expect(useChatStore.getState().discoveredDefaultAgent).toEqual(hostedAgent)
   })
 
   it('skips discovery without a session', () => {

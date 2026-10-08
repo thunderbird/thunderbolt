@@ -200,6 +200,7 @@ export const createApp = async (deps?: AppDeps) => {
           auth,
           database,
           settings,
+          fetchFn: deps?.fetchFn,
           logger: appLogger,
           rateLimit: inferenceRateLimit,
         }),

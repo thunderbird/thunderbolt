@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus5 } from '../shared/defaults/models'
+import { defaultModelOpus55 } from '../shared/defaults/models'
 import { collectPageErrors, loginViaOidc, sendChatPrompt } from './helpers'
 import { expect, test } from './test'
 
@@ -40,7 +40,7 @@ test('the model calls an MCP tool through the proxy and displays its result', as
   await page.getByRole('button', { name: 'New Chat', exact: true }).click()
   await expect(page.locator('textarea')).toBeVisible()
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus5.name, exact: true }).click()
+  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
   const marker = `blue-heron-${crypto.randomUUID().slice(0, 8)}`
   await sendChatPrompt(page, `Use the Test Echo echo tool with message "${marker}". Quote its result exactly.`)
 

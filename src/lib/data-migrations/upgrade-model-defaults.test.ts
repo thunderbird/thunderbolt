@@ -8,7 +8,7 @@ import { modelsTable } from '@/db/tables'
 import {
   defaultModelGlm53,
   defaultModelDeepSeekV41Flash,
-  defaultModelOpus5,
+  defaultModelOpus55,
   hashModel,
   type SharedModel,
 } from '@shared/defaults/models'
@@ -31,14 +31,14 @@ beforeEach(async () => {
 
 /** Seed the shared row id as it looked at some earlier point in its lineage. */
 const seedRow = async (overrides: Partial<SharedModel> & { name: string; model: string }) => {
-  const row: SharedModel = { ...defaultModelOpus5, ...overrides }
+  const row: SharedModel = { ...defaultModelOpus55, ...overrides }
   await getDb()
     .insert(modelsTable)
     .values({ ...row, defaultHash: overrides.defaultHash ?? hashModel(row) })
   return row
 }
 
-const readRow = async () => getDb().select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()
+const readRow = async () => getDb().select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()
 
 describe('upgradeModelDefaults', () => {
   /**
@@ -46,14 +46,14 @@ describe('upgradeModelDefaults', () => {
    * original slug shows "Sonnet 4.5" *and* appears to have no Opus — one fault,
    * two symptoms. The repair previously only knew about the 4.8 → 5 hop.
    */
-  it('moves a row still stranded on the original sonnet slug up to Opus 5', async () => {
+  it('moves a row still stranded on the original sonnet slug up to the current Opus', async () => {
     await seedRow({ name: 'Sonnet 4.5', model: 'sonnet-4.5' })
 
     await upgradeModelDefaults(getDb())
 
     const row = await readRow()
-    expect(row?.model).toBe(defaultModelOpus5.model)
-    expect(row?.name).toBe(defaultModelOpus5.name)
+    expect(row?.model).toBe(defaultModelOpus55.model)
+    expect(row?.name).toBe(defaultModelOpus55.name)
   })
 
   it('still handles the 4.8 hop it was written for', async () => {
@@ -62,8 +62,8 @@ describe('upgradeModelDefaults', () => {
     await upgradeModelDefaults(getDb())
 
     const row = await readRow()
-    expect(row?.model).toBe(defaultModelOpus5.model)
-    expect(row?.name).toBe(defaultModelOpus5.name)
+    expect(row?.model).toBe(defaultModelOpus55.model)
+    expect(row?.name).toBe(defaultModelOpus55.name)
   })
 
   /** The row originally carried the bare slug as its display name. */
@@ -72,7 +72,7 @@ describe('upgradeModelDefaults', () => {
 
     await upgradeModelDefaults(getDb())
 
-    expect((await readRow())?.name).toBe(defaultModelOpus5.name)
+    expect((await readRow())?.name).toBe(defaultModelOpus55.name)
   })
 
   it('keeps a name the user chose while still moving the slug forward', async () => {
@@ -81,13 +81,13 @@ describe('upgradeModelDefaults', () => {
     await upgradeModelDefaults(getDb())
 
     const row = await readRow()
-    expect(row?.model).toBe(defaultModelOpus5.model)
+    expect(row?.model).toBe(defaultModelOpus55.model)
     expect(row?.name).toBe('My favourite model')
   })
 
   /**
    * The reason the legacy slugs are enumerated rather than treated as
-   * "anything that isn't opus-5": this row is user-editable.
+   * "anything that isn't the current slug": this row is user-editable.
    */
   it('leaves a row the user repointed at their own model alone', async () => {
     await seedRow({ name: 'My local llama', model: 'llama-3.3-70b' })
@@ -100,12 +100,12 @@ describe('upgradeModelDefaults', () => {
   })
 
   it('does nothing to a row already on the current slug', async () => {
-    const seeded = await seedRow({ name: defaultModelOpus5.name, model: defaultModelOpus5.model })
+    const seeded = await seedRow({ name: defaultModelOpus55.name, model: defaultModelOpus55.model })
 
     await upgradeModelDefaults(getDb())
 
     const row = await readRow()
-    expect(row?.model).toBe(defaultModelOpus5.model)
+    expect(row?.model).toBe(defaultModelOpus55.model)
     expect(row?.defaultHash).toBe(hashModel(seeded))
   })
 
@@ -134,7 +134,7 @@ describe('upgradeModelDefaults', () => {
     await upgradeModelDefaults(getDb())
 
     const row = await readRow()
-    expect(row?.model).toBe(defaultModelOpus5.model)
+    expect(row?.model).toBe(defaultModelOpus55.model)
     expect(row?.defaultHash).toBe('user-edited-since')
   })
 })
@@ -142,14 +142,14 @@ describe('upgradeModelDefaults', () => {
 describe('normalizeModelDefault', () => {
   /** Stops a stale defaults payload restoring a retired alias under this id. */
   it('rewrites a legacy payload entry to the current identity', () => {
-    const normalized = normalizeModelDefault({ ...defaultModelOpus5, name: 'Sonnet 4.5', model: 'sonnet-4.5' })
+    const normalized = normalizeModelDefault({ ...defaultModelOpus55, name: 'Sonnet 4.5', model: 'sonnet-4.5' })
 
-    expect(normalized.model).toBe(defaultModelOpus5.model)
-    expect(normalized.name).toBe(defaultModelOpus5.name)
+    expect(normalized.model).toBe(defaultModelOpus55.model)
+    expect(normalized.name).toBe(defaultModelOpus55.name)
   })
 
   it('leaves a payload entry for a different model untouched', () => {
-    const other: SharedModel = { ...defaultModelOpus5, id: 'some-other-id', name: 'Other', model: 'sonnet-4.5' }
+    const other: SharedModel = { ...defaultModelOpus55, id: 'some-other-id', name: 'Other', model: 'sonnet-4.5' }
 
     expect(normalizeModelDefault(other)).toEqual(other)
   })
@@ -160,6 +160,7 @@ describe('normalizeModelDefault', () => {
 // resolves Pi compatibility against the wrong vendor and breaks; seeding the old
 // vendor here proves the migration carries it (and the description) to the target.
 for (const [target, model, name, legacyVendor] of [
+  [defaultModelOpus55, 'opus-5', 'Opus 5', 'anthropic'],
   [defaultModelGlm53, 'glm-5-1', 'GLM 5.1', 'zhipu'],
   [defaultModelGlm53, 'glm-5-2', 'GLM 5.2', 'zhipu'],
   [defaultModelDeepSeekV41Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash', 'deepseek'],

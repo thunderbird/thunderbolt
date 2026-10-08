@@ -66,11 +66,11 @@ export const hashModel = (model: SharedModel): string => {
  * This default keeps a stable row identity so persisted model references remain valid.
  * Generic defaults reconciliation upgrades unmodified rows in place.
  */
-export const defaultModelOpus5: SharedModel = {
+export const defaultModelOpus55: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 5',
+  name: 'Opus 5.5',
   provider: 'thunderbolt',
-  model: 'opus-5',
+  model: 'opus-5-5',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
@@ -141,7 +141,7 @@ export const defaultModelGlm53: SharedModel = {
  * The backend accepts `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
-  defaultModelOpus5,
+  defaultModelOpus55,
   defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
 ] as const
@@ -160,7 +160,7 @@ export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' |
  * synced, so changing it needs no version bump.
  */
 export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = {
-  [defaultModelOpus5.id]: 'supported',
+  [defaultModelOpus55.id]: 'supported',
   [defaultModelDeepSeekV41Flash.id]: 'supported',
   [defaultModelGlm53.id]: 'unsupported',
 }
@@ -207,4 +207,4 @@ export const isKnownToReadImages = (model: ImageSupportModel): boolean => static
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 10
+export const defaultModelsVersion = 11

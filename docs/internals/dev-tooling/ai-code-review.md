@@ -12,7 +12,7 @@ Every non-draft pull request from a branch in this repository (Dependabot except
 | Never does    | approve, request changes, or merge; it never gates anything                                                                                 |
 | On error      | logs and exits 0 without posting (`review-orchestrator.mjs:158`); the next push retries                                                     |
 | Cost guards   | 60s debounce `sleep` (`thunder-deep-review.yml:102`), `cancel-in-progress` keyed on the PR number (`:42-47`), `timeout-minutes: 30` (`:69`) |
-| Permissions   | `contents: read`, `pull-requests: write`, `checks: read` (`thunder-deep-review.yml:37-40`)                                                  |
+| Permissions   | `contents: read`, `pull-requests: write` (`thunder-deep-review.yml:37-40`)                                                  |
 | Secret        | `ANTHROPIC_API_KEY` only                                                                                                                    |
 | Run it myself | `/thunder-deep-review` in this working tree                                                                                                 |
 
@@ -36,14 +36,14 @@ The job `if:` hard-gates on three conditions:
 - **Not a draft**; `ready_for_review` is in the trigger list, so un-drafting starts a review.
 
 Rapid pushes cancel each other during the 60-second debounce at zero model cost; `timeout-minutes: 30` guards a hung
-model call. Without `checks: read` the bot poller 403s.
+model call.
 
 ## Two model steps: recall, then a precision gate
 
 | Step                    | Configuration                                           | Job                                                                     |
 | ----------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Recall (`:197`)         | `thunder-deep-review` skill, `--effort xhigh`, 40 turns | Over-generates _candidate_ findings, including unsure ones              |
-| Precision gate (`:403`) | `--effort high`, 12 turns                               | Decides which candidates a senior engineer would leave in a real review |
+| Recall (`:197`)         | `thunder-deep-review` skill, `--effort high`, $45 budget | Over-generates _candidate_ findings, including unsure ones              |
+| Precision gate (`:403`) | `--effort medium`, $3 budget                            | Decides which candidates a senior engineer would leave in a real review |
 
 The split fixes the "always finds something" failure mode of single-pass review bots: high recall alone buries real
 bugs in noise, one precision-tuned pass misses things.
@@ -63,32 +63,20 @@ bugs in noise, one precision-tuned pass misses things.
 ## Orchestration is deterministic code, not model tool-calls
 
 The model does **no** GitHub I/O. All of it lives in `.github/scripts/review-orchestrator.mjs` (zero npm
-dependencies, built-in `fetch`), in two phases around the model steps.
+dependencies, built-in `fetch`). Two phases surround the model steps; a telemetry phase runs after each model step.
 
 | Phase  | Step                                                                                | What it does                                                                                                     |
 | ------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `pre`  | [`thunder-deep-review.yml:154`](../../../.github/workflows/thunder-deep-review.yml) | Polls the external review bots, builds the skip-list, reconstructs the unified diff, computes the deep-mode flag |
-| `post` | [`thunder-deep-review.yml:538`](../../../.github/workflows/thunder-deep-review.yml) | Validates the model JSON, anchors findings to diff lines, dedups, resolves fixed threads, posts one PR review    |
+| `pre`  | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Reconstructs the unified diff and computes deep, bounded and security mode flags |
+| `post` | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Validates the model JSON, anchors findings to diff lines, dedups and posts one PR review |
+| `telemetry` | After recall and gate | Logs cost, turns, per-model tokens/cache usage and Agent/Task call counts; warns if metrics are unavailable |
 
 - **The diff is rebuilt from the Files API, not `git diff`.** `Accept: v3.diff` caps at 20,000 lines / 1 MB and 406s
   on large PRs, so the orchestrator paginates `/pulls/{n}/files` (`buildUnifiedDiff`, `review-orchestrator.mjs:878`).
   That endpoint returns the merge-base..head set `POST /pulls/{n}/reviews` anchors against; a two-dot `base..head`
   diff would use base's _current_ tip and 422 the review by injecting base-only commits as reverse diffs.
-- Everything reconciles to the PR head SHA, never the synthetic merge ref, so the poller and the diff describe the
-  same code.
+- Everything reconciles to the PR head SHA, never the synthetic merge ref.
 - Unit-tested (`.github/scripts/review-orchestrator.test.mjs`) as part of `bun run test`.
-
-## Sequencing behind the external bots
-
-Cursor Bugbot is the one external reviewer registered in `EXPECTED_BOTS`; the `pre` phase waits for it and builds a
-**skip-list** the model must not repeat.
-
-- Bots are matched by numeric GitHub App id (`review-orchestrator.mjs:69`); logins and app slugs drift.
-- Jittered exponential backoff with two timeouts: a bot absent after ~60s counts as disabled and is dropped, and the
-  whole wait gives up at ~5 minutes (`DISCOVERY_TIMEOUT_MS` / `COMPLETION_TIMEOUT_MS`, `:115-116`).
-- The list holds _specific already-reported findings_, never whole categories: architecture, conventions,
-  testability, docs-intent and readability are this reviewer's point.
-- Our own comments are excluded (`isBotComment`, `:432-436`), or the model would suppress its own prior findings.
 
 ## Deep mode and bounded mode
 
@@ -98,6 +86,11 @@ Spend is decided by code, not by the model (`computeDeepMode`, `review-orchestra
 | ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `deepMode`    | ≥ 600 changed lines, or ≥ 40 files, or a `review:deep` label on the PR | The skill adds six narrow micro-specialists on top of its 11 lanes |
 | `boundedMode` | The PR exceeds GitHub's 3000-file listing cap                          | The diff handed to the model is clipped to the first 200 files     |
+| `securityMode` | A changed path matches `SECURITY_PATH_MATCHERS` | The skill adds the threat-model security dimension |
+
+Deep and security mode exclude ordinary Markdown/MDX, the `docs/` tree, lockfiles and locale catalogs
+(`.po` and compiled `locales/**/messages.ts`). Markdown prompts under `.claude/` and `AGENTS.md`/`CLAUDE.md`
+count toward deep mode. Comment-only changes in sensitive code still trigger security mode.
 
 Thresholds are `DEEP_MODE_CHANGED_LINES` and `DEEP_MODE_FILE_COUNT` (`:97-98`); the clip is `BOUNDED_MODE_FILE_LIMIT`
 (`:105`), applied to the input itself so it is enforced rather than advisory. Label a small but risky PR
@@ -114,8 +107,7 @@ Convergence is structural, not stateful, so running on every push adds no repeat
   cannot match every diff (`livenessWindowFor`, `:804`; `classifyFindings`, `:905`).
 - Severity is deliberately _not_ hashed: the gate may demote it, and a re-keyed finding would duplicate the comment.
 - A hash that already has an open thread is not posted again (`selectFindingsToPost`, `:1392`).
-- Threads auto-resolve only when the liveness key leaves the diff (`shouldResolveThread`, `:1163`); model silence is a
-  recall signal, not evidence of a fix.
+- Threads remain open until someone resolves them; the orchestrator does not auto-resolve them.
 - A thread **a human resolved** is never re-posted (`:1491`), even with the code unchanged. Bot-resolved threads are
   exempt, so a genuine regression reappears.
 - A clean PR gets one "no issues" note, suppressed when a prior thread is open, when the latest own review is already
@@ -201,7 +193,7 @@ fix-capable pass and may edit; `thunder-deep-review` never does.
 | Path                                             | Role                                                        |
 | ------------------------------------------------ | ----------------------------------------------------------- |
 | `.github/workflows/thunder-deep-review.yml`      | Triggers, gates, the two model steps, file handoff          |
-| `.github/scripts/review-orchestrator.mjs`        | All GitHub I/O: poll, skip-list, diff, dedup, resolve, post |
+| `.github/scripts/review-orchestrator.mjs`        | GitHub I/O: diff, dedup, post; model telemetry |
 | `.github/scripts/review-orchestrator.test.mjs`   | Unit tests for the pure orchestration logic                 |
 | `.claude/skills/thunder-deep-review/SKILL.md`    | The reviewer itself: lanes, fan-out, both output contracts  |
 | `.claude/skills/thunder-deep-review/references/` | `R-*` house rules, `INV-*` invariants, heuristics, severity |

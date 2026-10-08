@@ -74,6 +74,8 @@ describe('captcha challenge route and anonymous sign-in', () => {
     const app = await createApp({ database: db })
     const response = await app.handle(challengeRequest('198.51.100.20'))
     expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('pragma')).toBe('no-cache')
     const body = (await response.json()) as Challenge
     expect(body).toEqual({
       algorithm: 'SHA-256',

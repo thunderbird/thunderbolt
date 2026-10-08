@@ -10,7 +10,7 @@ test('fake provider streams a complete reply and token usage', async ({ request 
   const port = process.env.FAKE_PROVIDER_PORT ?? '9878'
   const response = await request.post(`http://localhost:${port}/v1/messages`, {
     data: {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       messages: [{ role: 'user', content: 'Hello' }],
       stream: true,
       max_tokens: 64,
@@ -44,7 +44,7 @@ test('fake provider streams a complete reply and token usage', async ({ request 
       .join(''),
   ).toBe(fakeProviderReply)
   expect(events[0]).toMatchObject({
-    message: { id: expect.any(String), model: 'claude-opus-5', usage: { input_tokens: 10, output_tokens: 0 } },
+    message: { id: expect.any(String), model: 'claude-opus-5-5', usage: { input_tokens: 10, output_tokens: 0 } },
   })
   expect(events.at(-2)).toMatchObject({ delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 8 } })
 })

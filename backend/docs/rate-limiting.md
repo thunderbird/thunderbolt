@@ -42,7 +42,7 @@ With `settings.rateLimitEnabled` false, the plugin factories return a bare `new 
 
 ### The user-keyed plugin must go inside `guard({ auth: true }, …)`
 
-It reads `ctx.user`, populated by the auth macro's `resolve`. At app level the macro resolves _after_ `onBeforeHandle`, so the no-user branch returns without consuming a point ([rate-limit.ts:104](../src/middleware/rate-limit.ts)) and the route is silently unlimited. Call sites: [pro/routes.ts:17](../src/pro/routes.ts), [api/search.ts:37](../src/api/search.ts), [inference/routes.ts:262](../src/inference/routes.ts).
+It reads `ctx.user`, populated by the auth macro's `resolve`. At app level the macro resolves _after_ `onBeforeHandle`, so the no-user branch returns without consuming a point ([rate-limit.ts:104](../src/middleware/rate-limit.ts)) and the route is silently unlimited. Call sites: [pro/routes.ts:17](../src/pro/routes.ts), [api/search.ts:37](../src/api/search.ts), and [inference/metered-route-guard.ts](../src/inference/metered-route-guard.ts), which `/v1/chat` and the hosted agent share; it uses a standalone `.guard({ auth: true })` and mounts the limiter after it, which is the same placement.
 
 The skip branch is deliberate (such requests 401 anyway), but mounted is not enforcing. The WebSocket proxy mounts `proRateLimit` at plugin level ([proxy/ws.ts:233](../src/proxy/ws.ts)) yet authorises the bearer subprotocol inside `open()` ([proxy/ws.ts:289](../src/proxy/ws.ts)), so the handshake is not user-limited.
 

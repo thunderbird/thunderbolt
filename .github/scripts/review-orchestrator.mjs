@@ -11,19 +11,20 @@
 //
 // WHY THIS EXISTS:
 //   The workflow must NOT delegate orchestration to the model's tool-calls.
-//   All GitHub I/O — polling A's bots, building the skip-list, computing the
-//   resolved-diff, and posting the INLINE PR REVIEW — happens HERE, in
+//   All GitHub I/O — fetching the diff, deduping, and posting the INLINE
+//   PR REVIEW — happens HERE, in
 //   deterministic code. The model is invoked separately and emits STRUCTURED
 //   JSON FINDINGS ONLY. This script reads that JSON, validates it, maps each
 //   finding to a diff position, and posts it as one PR review with N inline
 //   comments anchored to file:line (Bugbot-style).
 //
-// EXECUTION MODEL (two phases, see thunder-deep-review.yml):
-//   Phase "pre":   poll A's bots  -> write skip-list + diff to files for the model step.
-//   Phase "post":  read model JSON -> dedup vs our own open threads -> resolve
-//                  our own fixed threads -> POST ONE PR REVIEW (event=COMMENT)
+// EXECUTION MODEL (see thunder-deep-review.yml):
+//   Phase "pre":   write diff + mode flags to files for the model step.
+//   Phase "post":  read model JSON -> dedup vs our own open threads ->
+//                  POST ONE PR REVIEW (event=COMMENT)
 //                  with the NEW findings as inline comments.
-//   Run as:  node review-orchestrator.mjs <pre|post>
+//   Phase "telemetry": log numeric model metrics after each model step.
+//   Run as:  node review-orchestrator.mjs <pre|post|telemetry>
 //
 // FAIL-SOFT (advisory): on ANY unrecoverable error we log and
 //   process.exit(0) WITHOUT posting. A missing review is acceptable; a broken
@@ -37,41 +38,19 @@
 //   to that (set in thunder-deep-review.yml). No separate GitHub App is needed.
 //   The model-findings JSON path/contract is fixed via the THUNDER_*_FILE env
 //   vars set in the workflow (see below).
-// RESOLVED: EXPECTED_BOTS Cursor Bugbot app.id (1210556).
 // =============================================================================
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { argv } from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 // -----------------------------------------------------------------------------
 // CONFIG / CONSTANTS
 // -----------------------------------------------------------------------------
 
-/**
- * EXPECTED_BOTS — the external "Job A" SaaS reviewers we sequence behind.
- *
- * Identify bots by NUMERIC `app.id`, NOT by login strings or
- * `app.slug` — logins ("cursor[bot]") and slugs drift, and a single app can
- * spawn multiple check-runs. The numeric id is stable.
- *
- * To find an app id: open a check-run that bot produced and GET its
- * `/repos/{owner}/{repo}/check-runs/{id}`, then read `.app.id`. Or hit
- * `/repos/{owner}/{repo}/commits/{sha}/check-runs` and read each run's `.app.id`.
- *
- * `loginHint` is ONLY used as a secondary, best-effort filter for review
- * COMMENTS (the comment author is a login, not an app id — see buildSkipList).
- *
- * Scope (Job A): Cursor Bugbot only. GitHub Advanced Security and CodeRabbit
- * are out of scope; add either later by registering its app.id below.
- */
-const EXPECTED_BOTS = [
-  // Cursor Bugbot — real numeric GitHub App id (slug "cursor", name "Cursor Bugbot").
-  { name: 'cursor-bugbot', appId: 1210556, loginHint: 'cursor[bot]' },
-];
-
-// Identity of OUR OWN review comments, so we can dedup against / resolve only
+// Identity of OUR OWN review comments, so we can dedup against only
 // our own threads (never touch Bugbot's or a human's). The orchestrator runs
 // under the default GITHUB_TOKEN, so the author login is github-actions[bot]
 // (THUNDER_BOT_LOGIN, see env below). We also stamp every comment body with a
@@ -102,6 +81,8 @@ const CONFIDENCE_ENUM = ['high', 'medium', 'low'];
 // Deterministic deep-mode gate. Diff bigger than this => deep mode.
 const DEEP_MODE_CHANGED_LINES = 600; // tunable for the team's PR sizes.
 const DEEP_MODE_FILE_COUNT = 40; // tunable for the team's PR sizes.
+const RETRY_BASE_MS = 15_000;
+const RETRY_CAP_MS = 60_000;
 
 // Crypto / E2EE paths that trigger the SECURITY dimension. Deterministic, like
 // the deep-mode gate: code decides when the security lane spends, never the
@@ -123,9 +104,16 @@ const SECURITY_PATH_MATCHERS = [
   (p) => p === 'src/services/encryption.ts',
   (p) => p === 'src/db/powersync/middleware/EncryptionMiddleware.ts',
 ];
-const matchesSecurityPath = (filename) =>
-  typeof filename === 'string' && SECURITY_PATH_MATCHERS.some((m) => m(filename));
-// Hard GitHub cliffs: /commits/{sha}/check-runs caps at 1000 check-suites,
+/** Files whose volume should not trigger extra model passes. */
+const excludesExtraPasses = (filename = '') =>
+  (!filename?.startsWith('.claude/') && !/(?:^|\/)(?:AGENTS|CLAUDE)\.md$/.test(filename) && /\.mdx?$/.test(filename)) ||
+  /^docs\//.test(filename) ||
+  /(?:^|\/)(?:[^/]+\.lock|package-lock\.json)$/.test(filename) ||
+  /\.po$/.test(filename) || /(?:^|\/)locales\/(?:.*\/)?messages\.ts$/.test(filename);
+
+const matchesSecurityPath = (filename = '') =>
+  !excludesExtraPasses(filename) && SECURITY_PATH_MATCHERS.some((m) => m(filename ?? ''));
+
 // PR files list caps at 3000 files. Past the file cap we switch to bounded mode.
 const PR_FILES_TRUNCATION_CAP = 3000;
 // In bounded mode (PR exceeds the file cap) we deterministically clip the diff
@@ -138,15 +126,8 @@ const MAX_COMMENT_BODY = 60_000; // GitHub hard limit is 65536; leave headroom.
 // Cap on inline comments per review so we never post a wall of nits.
 const MAX_INLINE_COMMENTS = 50; // overflow rolls into the review summary body.
 
-// Polling timing: jittered exponential backoff, honor Retry-After.
-const POLL_BASE_MS = 15_000; // start at ~15s
-const POLL_CAP_MS = 60_000; // cap at ~60s
-const DISCOVERY_TIMEOUT_MS = 60_000; // ~60s: "never appeared" => treat bot as disabled
-const COMPLETION_TIMEOUT_MS = 5 * 60_000; // ~5min: "exists but not completed yet"
-
 // File handoff between the two phases / the model step.
 // Paths come from the THUNDER_*_FILE env vars set in thunder-deep-review.yml.
-const SKIPLIST_FILE = process.env.THUNDER_SKIPLIST_FILE ?? '/tmp/thunder-skiplist.json';
 const DIFF_FILE = process.env.THUNDER_DIFF_FILE ?? '/tmp/thunder-diff.patch';
 const FINDINGS_FILE = process.env.THUNDER_FINDINGS_FILE ?? '/tmp/thunder-findings.json';
 const DEEPMODE_FILE = process.env.THUNDER_DEEPMODE_FILE ?? '/tmp/thunder-deepmode.json';
@@ -161,7 +142,7 @@ const env = {
   prNumber: process.env.PR_NUMBER ?? '',
   // Reconcile EVERYTHING to the PR head SHA, never the synthetic merge ref.
   headSha: process.env.PR_HEAD_SHA ?? '',
-  // GitHub PR action event name: "reopened" suppresses thread resolution.
+  // GitHub PR action event name: "reopened" suppresses affirmative no-issues notes.
   eventAction: process.env.PR_ACTION ?? '',
   apiBase: process.env.GITHUB_API_URL ?? 'https://api.github.com',
   graphqlBase: process.env.GITHUB_GRAPHQL_URL ?? 'https://api.github.com/graphql',
@@ -248,7 +229,7 @@ const computeRetryAfterMs = (res) => {
   const remaining = res.headers.get('x-ratelimit-remaining');
   if (reset && remaining === '0') {
     const deltaMs = Number(reset) * 1000 - Date.now();
-    if (Number.isFinite(deltaMs) && deltaMs > 0) return Math.min(deltaMs, POLL_CAP_MS);
+    if (Number.isFinite(deltaMs) && deltaMs > 0) return Math.min(deltaMs, RETRY_CAP_MS);
   }
   return 0;
 };
@@ -278,13 +259,13 @@ const paginateAll = async (firstUrl, { cap = Infinity } = {}) => {
     let r = await githubFetch(url);
     while (!r.ok && r.retryable && attempt < 5) {
       attempt += 1;
-      await sleep(Math.max(r.retryAfterMs, jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS))));
+      await sleep(Math.max(r.retryAfterMs, jitter(Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_CAP_MS))));
       r = await githubFetch(url);
     }
     if (!r.ok) {
       throw new Error(`GET ${url} -> ${r.status} ${r.body ?? ''}`);
     }
-    const page = Array.isArray(r.json) ? r.json : (r.json?.check_runs ?? []);
+    const page = r.json ?? [];
     out.push(...page);
     if (out.length >= cap) {
       truncated = true;
@@ -299,8 +280,8 @@ const apiUrl = (path) => `${env.apiBase}/repos/${owner}/${repo}${path}`;
 
 /**
  * graphqlFetch — single choke-point for the GraphQL calls we need (review-thread
- * resolution state + resolveReviewThread). Retries 5xx / rate-limit; returns
- * `{ ok, data, errors }`. Mutations that fail are fail-soft at the caller.
+ * resolution state). Retries 5xx / rate-limit; returns
+ * `{ ok, data, errors }`.
  */
 const graphqlFetch = async (query, variables) => {
   let attempt = 0;
@@ -319,7 +300,7 @@ const graphqlFetch = async (query, variables) => {
     if (res.status >= 500 || res.status === 429 || secondaryLimited) {
       if (attempt < 5) {
         attempt += 1;
-        await sleep(Math.max(computeRetryAfterMs(res), jitter(Math.min(POLL_BASE_MS * 2 ** attempt, POLL_CAP_MS))));
+        await sleep(Math.max(computeRetryAfterMs(res), jitter(Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_CAP_MS))));
         continue;
       }
       return { ok: false, data: null, errors: [{ message: `graphql ${res.status}` }] };
@@ -330,186 +311,6 @@ const graphqlFetch = async (query, variables) => {
     }
     return { ok: !body.errors?.length, data: body.data ?? null, errors: body.errors ?? null };
   }
-};
-
-// =============================================================================
-// POLLER
-// =============================================================================
-//
-// Enumerate the head-SHA check-runs ONCE, find the EXPECTED_BOTS runs by
-// numeric app.id, then poll each existing run BY ID until status===completed
-// (accept ANY conclusion). A short discovery sub-timeout treats "never
-// appeared" as "bot disabled on this PR" (empty contribution) vs the full
-// completion timeout for "run exists but hasn't finished yet".
-//
-// UNCHANGED by the inline-review redesign — only the comment SINK changed.
-// =============================================================================
-
-/** One enumeration of all check-runs for the head SHA (paginated). */
-const listCheckRuns = async () => {
-  // `filter=all` so we don't only see the latest run per app.
-  const url = apiUrl(`/commits/${env.headSha}/check-runs?per_page=100&filter=all`);
-  const { items } = await paginateAll(url);
-  return items;
-};
-
-/**
- * pollForBots — block until all DISCOVERABLE expected bots reach completed,
- * or the relevant timeouts elapse. Returns the set of bot app.ids that
- * actually completed (used only for observability; the skip-list is built
- * from comments + outputs separately).
- */
-const pollForBots = async () => {
-  const start = Date.now();
-  const expectedIds = new Set(EXPECTED_BOTS.map((b) => b.appId).filter((id) => id > 0));
-  if (expectedIds.size === 0) {
-    log('no real EXPECTED_BOTS app.ids configured — skipping poll, skip-list will be best-effort.');
-    return;
-  }
-
-  let backoff = POLL_BASE_MS;
-  // Track, per bot id: have we ever SEEN a run (discovery), and is it completed?
-  const seen = new Set();
-  const completed = new Set();
-
-  for (;;) {
-    let runs;
-    try {
-      runs = await listCheckRuns();
-    } catch (err) {
-      // Transient list failure: back off and retry within the overall window.
-      if (Date.now() - start > COMPLETION_TIMEOUT_MS) {
-        log('poll: completion timeout during list error — proceeding.', err.message);
-        return;
-      }
-      await sleep(jitter(backoff));
-      backoff = Math.min(backoff * 2, POLL_CAP_MS);
-      continue;
-    }
-    // Successful list: reset the backoff so a few transient errors don't leave
-    // us polling at the 60s cap for the rest of the discovery window.
-    backoff = POLL_BASE_MS;
-
-    for (const run of runs) {
-      const appId = run.app?.id;
-      if (!expectedIds.has(appId)) continue;
-      seen.add(appId);
-      if (run.status === 'completed') completed.add(appId); // ANY conclusion is terminal.
-    }
-
-    const elapsed = Date.now() - start;
-
-    // Discovery sub-timeout: any expected bot we've NEVER seen after ~60s is
-    // treated as disabled and dropped from the wait-set.
-    const stillWaiting = [...expectedIds].filter((id) => {
-      if (completed.has(id)) return false; // done
-      if (!seen.has(id) && elapsed > DISCOVERY_TIMEOUT_MS) return false; // never appeared => disabled
-      return true; // either seen-but-not-complete, or not-yet-seen within discovery window
-    });
-
-    if (stillWaiting.length === 0) {
-      log(`poll: all discoverable bots terminal (completed=${[...completed].join(',') || 'none'}).`);
-      return;
-    }
-    if (elapsed > COMPLETION_TIMEOUT_MS) {
-      log(`poll: completion timeout (${Math.round(elapsed / 1000)}s) — proceeding with whatever posted.`);
-      return;
-    }
-
-    await sleep(jitter(backoff));
-    backoff = Math.min(backoff * 2, POLL_CAP_MS);
-  }
-};
-
-// =============================================================================
-// SKIP-LIST
-// =============================================================================
-//
-// Build the "already reported by A" skip-list so the model surfaces only what
-// A missed. Sources, in priority order:
-//   1. PR review (inline) comments authored by the bots — AUTHORITATIVE.
-//   2. The bots' check-run `output.text/summary` — BEST-EFFORT (free text).
-// Dedup key is normalized on file + diff_hunk + side/original_line, NOT raw
-// line numbers (lines drift on force-push).
-//
-// UNCHANGED by the inline-review redesign.
-// =============================================================================
-
-/** Stable dedup key for an inline comment. */
-const dedupKeyFromReviewComment = (c) => {
-  const parts = [
-    c.path ?? '',
-    // diff_hunk anchors the comment to surrounding code, resilient to line drift.
-    (c.diff_hunk ?? '').trim().slice(0, 200),
-    c.side ?? c.original_side ?? '',
-    String(c.original_line ?? c.line ?? ''),
-  ];
-  return normalizeKey(parts.join(' '));
-};
-
-const normalizeKey = (s) => createHash('sha1').update(s).digest('hex').slice(0, 16);
-
-/**
- * Is this review comment from one of our expected Job-A bots (Cursor Bugbot
- * et al.)? The skip-list MUST stay scoped to those external reviewers: pulling
- * in unrelated bots — especially THIS workflow's own `github-actions[bot]`
- * comments — would nudge the model to suppress its own prior findings, which
- * then trips the "missing hash ⇒ resolve thread" convergence on the next run.
- * Match an expected bot by its (drift-prone, best-effort) loginHint, and NEVER
- * count our own comments (selfLogin or the self marker).
- */
-const isBotComment = (c) => {
-  const login = c.user?.login ?? '';
-  if (login === env.selfLogin || (c.body ?? '').includes(SELF_COMMENT_MARKER)) return false;
-  return EXPECTED_BOTS.some((b) => b.loginHint && b.loginHint === login);
-};
-
-const buildSkipList = async () => {
-  const entries = [];
-
-  // 1) Inline review comments (authoritative). Paginate.
-  try {
-    const url = apiUrl(`/pulls/${env.prNumber}/comments?per_page=100`);
-    const { items } = await paginateAll(url);
-    for (const c of items) {
-      if (!isBotComment(c)) continue;
-      entries.push({
-        key: dedupKeyFromReviewComment(c),
-        source: 'inline',
-        path: c.path,
-        hunk: (c.diff_hunk ?? '').trim().slice(0, 200),
-        summary: (c.body ?? '').slice(0, 280),
-      });
-    }
-  } catch (err) {
-    // Best-effort: a skip-list failure must not abort the whole review.
-    log('skip-list: inline-comment fetch failed (continuing best-effort):', err.message);
-  }
-
-  // 2) Check-run outputs (best-effort, free text). We can't anchor these to a
-  //    hunk, so we only record a coarse summary the model can defer to.
-  try {
-    const runs = await listCheckRuns();
-    const expectedIds = new Set(EXPECTED_BOTS.map((b) => b.appId).filter((id) => id > 0));
-    for (const run of runs) {
-      if (!expectedIds.has(run.app?.id)) continue;
-      const text = `${run.output?.title ?? ''}\n${run.output?.summary ?? ''}`.trim();
-      if (!text) continue;
-      entries.push({
-        key: normalizeKey(`checkrun ${run.id}`),
-        source: 'checkrun-summary',
-        path: null,
-        hunk: null,
-        summary: text.slice(0, 600),
-      });
-    }
-  } catch (err) {
-    log('skip-list: check-run output fetch failed (continuing best-effort):', err.message);
-  }
-
-  // De-dup the skip-list itself by key.
-  const byKey = new Map(entries.map((e) => [e.key, e]));
-  return [...byKey.values()];
 };
 
 // =============================================================================
@@ -546,19 +347,21 @@ const fetchPrFiles = async () => {
  * cliff) flips bounded mode so the diff is clipped to a reviewable subset.
  */
 const computeDeepMode = (files, truncated) => {
-  const fileCount = files.length;
-  const changedLines = files.reduce((n, f) => n + (f.additions ?? 0) + (f.deletions ?? 0), 0);
+  const modeFiles = files.filter((file) => !excludesExtraPasses(file.filename));
+  const fileCount = modeFiles.length;
+  const changedLines = modeFiles.reduce((n, f) => n + (f.additions ?? 0) + (f.deletions ?? 0), 0);
   const sizeTriggered = changedLines >= DEEP_MODE_CHANGED_LINES || fileCount >= DEEP_MODE_FILE_COUNT;
   // Path-conditional security dimension: on iff the diff touches a crypto/E2EE
   // path. Independent of deep mode — a one-line change to canary.ts is small (no
   // deep mode) but still crypto-sensitive (security lane on).
-  const sensitiveFiles = files.map((f) => f.filename).filter(matchesSecurityPath);
+  const sensitiveFiles = modeFiles.map((f) => f.filename).filter(matchesSecurityPath);
   return {
     deepMode: env.hasDeepLabel || sizeTriggered,
     boundedMode: truncated, // past the file cap, review a bounded subset only.
     securityMode: sensitiveFiles.length > 0,
     sensitiveFiles,
     fileCount,
+    totalFileCount: files.length,
     changedLines,
     truncated,
     reason: env.hasDeepLabel ? 'review:deep label' : sizeTriggered ? 'size gate' : 'default single fan-out',
@@ -586,16 +389,18 @@ const computeDeepMode = (files, truncated) => {
 // human-facing comment body or summary bullet.
 // =============================================================================
 
+const normalizeKey = (s) => createHash('sha1').update(s).digest('hex').slice(0, 16);
+
 /**
  * Stable per-finding hash, used to match a finding to an EXISTING open thread
  * across pushes (convergence). The discriminator is the finding's LIVENESS KEY
  * (`f.livenessKey`, computed in classifyFindings) — the same diff-evidence string
- * the resolve sweep tests — NOT the model-generated title or a coarse hunk slice:
+ * NOT the model-generated title or a coarse hunk slice:
  *   - inline finding → the OFFENDING LINE'S trimmed code (`code:<text>`). Stable
  *     even when the model rephrases its prose or a neighbouring hunk line changes
  *     (closes the hash-drift → duplicate gap), and per-line specific.
  *   - file-level finding (line-null but file IS in the diff) → `file:<path>`.
- *     Stable across prose drift; the thread lives while the file is in the diff.
+ *     Stable across prose drift.
  *   - summary finding (file not in the diff, never becomes a thread) → a
  *     `text:<title-or-body slice>` fallback. These dedup via the review-body
  *     hash markers, so a prose rephrase can re-key one — low-harm (a body bullet,
@@ -621,7 +426,7 @@ const computeDeepMode = (files, truncated) => {
  * RESIDUAL COLLISION: findings that share a namespaced key collapse to one hash
  * and the second is dropped — two inline findings on byte-identical trimmed code,
  * or two file-level findings on the same file, each with the same rule.
- * Rare and the safe failure mode (under-report, never a false-resolve); the
+ * Rare and the safe failure mode (under-report); the
  * alternative — folding the model's drift-prone title back in — would reopen the
  * duplicate gap this design exists to close, so we accept it.
  */
@@ -694,10 +499,10 @@ const readModelFindings = async () => {
  *                     rightSeq:[{line,text}], leftSeq:[{line,text}] }>.
  * Membership Sets answer "is this (side, line) commentable?". `rightSeq`/`leftSeq`
  * carry each commentable line's TRIMMED code (tag stripped) in HUNK ORDER — the
- * per-line discriminator the finding hash and the diff-evidence resolution sweep
+ * per-line discriminator the finding hash
  * key on, and the ordering a short/common line (`}`, `return;`) walks to extend
  * its liveness key into a distinctive multi-line window (see livenessWindowFor,
- * findingHash, shouldResolveThread). We do NOT need GitHub's legacy `position`
+ * findingHash). We do NOT need GitHub's legacy `position`
  * integer (line+side is the modern anchor).
  */
 const parseUnifiedDiff = (patch) => {
@@ -777,14 +582,7 @@ const parseUnifiedDiff = (patch) => {
   return files;
 };
 
-// Minimum count of DISTINCTIVE characters a liveness key must carry before it can
-// stand alone. Below this a key is a short/common token (`}`, `});`, `return;`,
-// `} else {`, `]`, `),`) whose bare substring matches almost ANY diff — the
-// coarse-match never-resolve bug. Such a key is extended into a multi-line window.
-// 12 ≈ two ordinary identifiers' worth of payload; empirically the floor below
-// which a bare line substring-matches unrelated diffs. Monotone-safe to tune:
-// lower → some short lines stand alone (risking the never-resolve bug); higher →
-// larger windows (more coupling to neighbouring lines). Resolution is unaffected.
+// Short structural tokens need surrounding context for a useful dedup key.
 const MIN_DISTINCTIVE_CHARS = 12;
 
 /**
@@ -792,8 +590,7 @@ const MIN_DISTINCTIVE_CHARS = 12;
  * after stripping structural punctuation, whitespace, and ubiquitous keywords
  * (`return`/`else`/`const`/…). A line that reduces to almost nothing (`}`, `});`,
  * `} else {`) scores low and is too common to anchor a thread on its own; a line
- * with real identifiers scores high. Pure + deterministic so the post-time stamp
- * and any later re-flag derive the SAME window.
+ * with real identifiers scores high. Later re-flags derive the same window.
  */
 const distinctiveness = (text) =>
   (text ?? '')
@@ -801,48 +598,13 @@ const distinctiveness = (text) =>
     .replace(/[\s{}()[\];,.:=>&|?!<+\-*/]/g, '')
     .length;
 
-/**
- * Normalize a diff into the ground-truth text the resolution sweep substring-tests
- * a stamped liveness key against. Per file we emit the file PATH followed by every
- * content line (tag-stripped + trimmed), all joined by `\n`. So BOTH liveness key
- * shapes are a literal, contiguous substring of this text:
- *   - inline → a single line OR a multi-line window (livenessWindowFor) → matches
- *     against the emitted content lines (the raw patch's `+`/`-`/` ` tags and
- *     indentation are stripped so a `\n`-joined window matches by `includes`).
- *   - file  → the file path → matches the emitted path row (present iff the file
- *     is still in the diff; the resolution sweep keys file-level findings on this).
- * Including the path is what keeps file-level findings (and the degenerate-window
- * fallback) resolving on the file leaving the diff rather than false-resolving.
- */
-const normalizeDiffText = (diffIndex) =>
-  [...diffIndex.entries()]
-    .flatMap(([path, entry]) => [path, ...[...entry.rightSeq, ...entry.leftSeq].map((s) => s.text)])
-    .join('\n');
-
-/**
- * The liveness key for an inline finding: the offending line's trimmed code when
- * that line is already DISTINCTIVE, else a multi-line WINDOW (the offending line
- * plus following — or, at a hunk's end, preceding — sibling lines on the same
- * side, joined by `\n`) extended until it clears MIN_DISTINCTIVE_CHARS. The window
- * is a contiguous substring of normalizeDiffText, so the sweep's `includes` test
- * resolves it precisely: a short/common line like `}` no longer matches every diff
- * (closes the never-resolve bug) yet a still-present issue keeps its window in the
- * diff (no false-resolve). Forward-first/back-fill ordering is deterministic, so
- * the post-time stamp and any later re-flag produce the identical key + hash.
- *
- * Returns '' (→ caller falls back to the distinctive file-path key) when there's
- * no distinctive evidence to anchor on: a blank offending line, or a hunk so
- * trivial (e.g. a lone `+}`) that even the FULL window can't clear the bar. Both
- * would otherwise produce a bare/`\n`-only key that re-opens the never-resolve bug
- * — the file-path key resolves cleanly instead (it leaves the diff with the file).
- */
+/** Build a distinctive evidence window for a stable per-finding dedup hash. */
 const livenessWindowFor = (seq, line) => {
   const idx = seq.findIndex((e) => e.line === line);
   if (idx === -1 || !seq[idx].text) return '';
   // Grow a [lo, hi] window outward — forward first (toward the rest of the hunk),
   // then backward at a hunk's end — until it's distinctive enough or the lines are
-  // exhausted. The window is joined in SOURCE order (seq.slice), so it stays a
-  // contiguous substring of normalizeDiffText regardless of which way it grew.
+  // exhausted. Join the window in source order so later re-flags derive the same key.
   let lo = idx;
   let hi = idx;
   const windowText = () => seq.slice(lo, hi + 1).map((e) => e.text).join('\n');
@@ -851,25 +613,18 @@ const livenessWindowFor = (seq, line) => {
     else lo -= 1;
   }
   // The whole available window is still non-distinctive → no trustworthy anchor;
-  // fall back to the file-path key rather than pin the thread on a common token.
+  // fall back to the file-path key rather than hash a common token.
   return distinctiveness(windowText()) < MIN_DISTINCTIVE_CHARS ? '' : windowText();
 };
 
-/**
- * Load + parse the pre-computed diff. Returns the parsed index (for anchor
- * classification) and a NORMALIZED diff text (tag-stripped, one trimmed content
- * line per row) — the ground truth the diff-evidence resolution sweep substring-
- * matches a thread's stamped liveness key (single line OR window) against.
- * Best-effort: missing diff => empty index + empty text.
- */
+/** Load the pre-computed diff index; a missing diff falls back to summary findings. */
 const loadDiffIndex = async () => {
   try {
     const patch = await readFile(DIFF_FILE, 'utf8');
-    const index = parseUnifiedDiff(patch);
-    return { index, text: normalizeDiffText(index) };
+    return parseUnifiedDiff(patch);
   } catch (err) {
     log('diff: could not read/parse DIFF_FILE (all findings fall back to summary):', err.message);
-    return { index: new Map(), text: '' };
+    return new Map();
   }
 };
 
@@ -912,31 +667,7 @@ const fileSectionToDiff = (file) => {
  */
 const buildUnifiedDiff = (files) => `${files.map(fileSectionToDiff).join('\n')}\n`;
 
-/**
- * Classify each finding against the diff index and attach its convergence keys:
- *  - `inline`  : (side, line) is commentable → real anchored inline comment.
- *  - `file`    : file is in the diff but the line isn't → file-level comment.
- *  - `summary` : file not in the diff at all → rolled into the review body.
- *
- * `livenessKey` is the DIFF-EVIDENCE string the resolve sweep substring-tests
- * against the NORMALIZED diff (loadDiffIndex) — so it MUST be a literal substring
- * of that text:
- *  - inline  → a distinctiveness-checked WINDOW around the offending line
- *              (livenessWindowFor): the trimmed line alone when it's distinctive,
- *              else that line plus neighbouring sibling lines until the window is
- *              distinctive enough. This stops a short/common line (`}`, `return;`)
- *              from matching every diff (never-resolve bug) while a still-present
- *              issue keeps its window in the diff (no false-resolve).
- *  - file    → the file path (present iff the file is still in the diff). This
- *              gives file-level findings real diff evidence instead of leaning on
- *              the model re-flagging them, so they resolve when the file leaves
- *              the diff and never false-resolve on a recall miss.
- *  - summary → '' (these never become threads — they live in the review body and
- *              dedup via the body hash markers — so liveness is never swept).
- * `findingHash` namespaces this key per placement so the three key spaces can't
- * collide; summary findings additionally fold in a title/body slice since the
- * file alone isn't in the diff to anchor on.
- */
+/** Map findings to inline/file/summary placement and attach stable dedup hashes. */
 const classifyFindings = (findings, diffIndex) =>
   findings.map((f) => {
     const fileEntry = f.file ? diffIndex.get(f.file) : null;
@@ -967,17 +698,15 @@ const classifyFindings = (findings, diffIndex) =>
   });
 
 // =============================================================================
-// OWN-THREAD STATE (dedup + resolution targets) — via GraphQL
+// OWN-THREAD STATE (dedup + human dismissals) — via GraphQL
 // =============================================================================
 //
 // To converge across pushes we need, for OUR OWN review comments only:
 //   - the stable finding-hash we stamped (read from a hidden HTML comment in
 //     each comment body), and
-//   - the review-thread node id + isResolved flag (REST review comments don't
+//   - the isResolved flag (REST review comments don't
 //     expose thread/resolution; GraphQL `reviewThreads` does).
-// We then: (a) skip posting a finding whose hash already has an OPEN own-thread
-// (dedup), and (b) `resolveReviewThread` our own OPEN threads whose finding is
-// gone from the current set (fixed/changed code).
+// Skip posting findings whose hashes already have open own-threads.
 // =============================================================================
 
 /** Pull the stamped finding-hash out of one of our comment bodies, if present. */
@@ -988,40 +717,6 @@ const hashFromOwnBody = (body) => {
 
 /** Pull EVERY stamped finding-hash out of a body (a review body lists many). */
 const hashesFromBody = (body) => [...(body ?? '').matchAll(/<!-- thunder-finding-hash:([0-9a-f]{8,}) -->/g)].map((m) => m[1]);
-
-/**
- * Render a finding's liveness key (its offending-line code, or the file path for
- * a file-level finding) as a hidden, base64-encoded stamp. base64 keeps arbitrary
- * source — including `-->`, angle brackets, or newlines — HTML-comment-safe so it
- * can never break out of the marker or corrupt the surrounding markdown. Empty
- * key => no stamp (a summary finding has no diff anchor; it never becomes a
- * thread, so it's never swept).
- */
-const livenessStamp = (livenessKey) => {
-  const key = (livenessKey ?? '').trim();
-  if (!key) return '';
-  return `<!-- thunder-liveness:${Buffer.from(key, 'utf8').toString('base64')} -->`;
-};
-
-/**
- * Decode the stamped liveness key from one of our comment bodies, or null if
- * absent (legacy comments predating this stamp). The resolve sweep substring-
- * matches this against the current diff: still present => keep the thread open;
- * gone => resolve it. A stamp that decodes to empty OR to control-character noise
- * (a corrupted/manually-edited marker — note `AAAA` is valid base64 that decodes
- * to NUL bytes) is treated as absent: such a key would never be a substring of a
- * real diff, so without this guard a corrupted stamp would FALSE-RESOLVE its
- * thread. Falling back to null routes it to the safe legacy (never-resolve) path.
- */
-const livenessKeyFromBody = (body) => {
-  const m = (body ?? '').match(/<!-- thunder-liveness:([A-Za-z0-9+/=]+) -->/);
-  if (!m) return null;
-  const decoded = Buffer.from(m[1], 'base64').toString('utf8').trim();
-  // A real liveness key is printable source code; a key with no printable
-  // (non-control) content is corruption, not evidence — treat it as absent.
-  // eslint-disable-next-line no-control-regex -- intentionally matching control bytes
-  return /[^\x00-\x1f\x7f]/.test(decoded) ? decoded : null;
-};
 
 /**
  * Is this login OURS? GraphQL returns a Bot login WITHOUT the "[bot]" suffix
@@ -1103,16 +798,7 @@ const summarizedHashesFromBodies = (bodies) => {
   return out;
 };
 
-/**
- * Fetch OUR OWN review threads on this PR via GraphQL, paginated.
- * Returns [{ threadId, isResolved, resolvedByLogin, hash, livenessKey }] where
- * `hash`/`livenessKey` are stamped on the FIRST (root) comment of a thread we
- * authored. `livenessKey` is the offending line's code (the resolve sweep keeps
- * the thread open while that code is still in the diff); it is null for legacy
- * threads (predating the stamp) and line-null findings. `resolvedByLogin` is the
- * login that resolved the thread (null if open), used to tell a human resolution
- * apart from the bot's own auto-resolution.
- */
+/** Fetch own thread hashes and resolution state; preserve human dismissals. */
 const fetchOwnThreads = async () => {
   const query = `
     query($owner:String!, $repo:String!, $pr:Int!, $cursor:String) {
@@ -1121,9 +807,7 @@ const fetchOwnThreads = async () => {
           reviewThreads(first:100, after:$cursor) {
             pageInfo { hasNextPage endCursor }
             nodes {
-              id
               isResolved
-              isOutdated
               resolvedBy { login }
               comments(first:1) {
                 nodes { body author { login } }
@@ -1154,67 +838,15 @@ const fetchOwnThreads = async () => {
       if (!root) continue;
       if (!isOwnAuthor(root.author?.login ?? '', root.body)) continue;
       out.push({
-        threadId: node.id,
         isResolved: Boolean(node.isResolved),
         resolvedByLogin: node.resolvedBy?.login ?? null,
         hash: hashFromOwnBody(root.body),
-        livenessKey: livenessKeyFromBody(root.body),
       });
     }
     if (!conn?.pageInfo?.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
   }
   return out;
-};
-
-/**
- * Decide whether one of OUR open threads should be auto-resolved this run.
- * Already-resolved or hash-less threads are never touched.
- *
- * NEW-FORMAT threads (a base64 liveness key was stamped on the root comment):
- * resolve IFF that key — a distinctiveness-checked WINDOW around the offending
- * line, or the file path for a file-level finding — is NO LONGER a substring of
- * the NORMALIZED diff. Evidence still in diff => keep open (so a finding the model
- * merely MISSED this run is never false-resolved); evidence gone => resolve (so an
- * all-clean/empty run still converges). The window (not the bare trimmed line) is
- * what makes this precise for a short/common offending line (`}`, `return;`):
- * a bare token is a substring of almost every diff and would pin the thread open
- * forever, whereas its window leaves the diff with the surrounding code.
- *
- * NO-KEY (LEGACY) threads — posted before the stamp existed — are NEVER
- * auto-resolved here. "The model didn't re-flag it this run" is a RECALL signal,
- * not evidence the code was fixed, so resolving on it false-resolves a still-open
- * issue (Bugbot r3454463237). A legacy thread instead persists until it re-keys:
- * if the issue is still real the model re-flags it, the finding is re-posted under
- * the new windowed hash+stamp (its old hash differs, so dedup doesn't suppress
- * it), and from then on it's diff-evidence driven. A genuinely fixed legacy thread
- * is left for the human (it carries no diff anchor we can trust). A missing stamp
- * never throws.
- *
- * MIGRATION: on the FIRST runs after this change every pre-existing thread is
- * keyless; each persists at most one extra cycle until it re-keys (re-flag) or a
- * human resolves it. Subsequent runs are fully diff-evidence driven.
- */
-const shouldResolveThread = (thread, diffText) => {
-  if (thread.isResolved || !thread.hash) return false;
-  if (thread.livenessKey == null) return false; // legacy: never recall-miss resolve
-  return !diffText.includes(thread.livenessKey);
-};
-
-/** Mark one of OUR threads resolved. Fail-soft per call. */
-const resolveThread = async (threadId) => {
-  const mutation = `
-    mutation($threadId:ID!) {
-      resolveReviewThread(input:{threadId:$threadId}) {
-        thread { id isResolved }
-      }
-    }`;
-  const r = await graphqlFetch(mutation, { threadId });
-  if (!r.ok) {
-    log('resolve-thread: failed (continuing):', r.errors?.[0]?.message ?? threadId);
-    return false;
-  }
-  return true;
 };
 
 // =============================================================================
@@ -1238,16 +870,15 @@ const SUMMARY_HEADING = `### Additional notes (couldn't anchor to a diff line)`;
  * The shared review-body header used by BOTH the findings review and the
  * affirmative no-issues note: the title, a `tagline` line that differs per
  * review type, the advisory disclaimer, and the `<sub>` run-metadata footer
- * (head sha · mode · deferred count). Single source so the metadata format can
+ * (head sha · mode). Single source so the metadata format can
  * never drift between the two builders.
  */
-const reviewHeader = ({ tagline, deepInfo, skipCount }) =>
+const reviewHeader = ({ tagline, deepInfo }) =>
   `## 🔭 thunder-deep-review (advisory)\n` +
   `${tagline} ` +
   `Never approves, never requests changes, never gates merge.\n` +
   `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
-  `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''} · ` +
-  `deferred ${skipCount} item(s) already reported by other bots (best-effort dedup)</sub>\n`;
+  `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n`;
 
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
@@ -1257,11 +888,7 @@ const renderCommentBody = (f) => {
   // `confidence` and `evidence` are likewise internal-only (precision-gate
   // grounding) and intentionally not rendered.
   const head = `**${SEVERITY_LABEL[f.severity]} — ${f.title}**`;
-  // Hidden stamps: the finding hash (dedup) + the base64 liveness key (the
-  // offending-line code, or the file path for file-level findings — so the next
-  // run can tell whether this finding's evidence is still in the diff and resolve
-  // the thread once it's gone).
-  const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->${livenessStamp(f.livenessKey)}`;
+  const stamp = `\n\n${SELF_COMMENT_MARKER}<!-- thunder-finding-hash:${f.hash} -->`;
   const body = `${head}\n\n${f.body}${stamp}`;
   // Unreachable while readModelFindings caps title@300 + body@4000 (well under
   // MAX_COMMENT_BODY); kept intentionally in case those caps rise — not dead code.
@@ -1294,7 +921,7 @@ const isAnchorable = (f, diffIndex) => {
  * here against `diffIndex`, not just trusting the `placement` tag — so a stray
  * path/line can never reach GitHub as an inline comment and 422 the review.
  */
-const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
+const buildReviewPayload = ({ toPost, diffIndex, deepInfo }) => {
   const comments = [];
   const overflow = [];
 
@@ -1324,9 +951,8 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
   }
 
   const header = reviewHeader({
-    tagline: 'Complements the other bots — surfaces only what they did not flag.',
+    tagline: 'Reviews the diff for grounded findings.',
     deepInfo,
-    skipCount,
   });
 
   const summaryBlock =
@@ -1345,8 +971,8 @@ const buildReviewPayload = ({ toPost, diffIndex, deepInfo, skipCount }) => {
  * comment, surviving any login mismatch) and the NO_ISSUES_MARKER (so the next
  * run recognizes this as the latest state and won't re-post an identical note).
  */
-const buildNoIssuesPayload = ({ deepInfo, skipCount }) => {
-  const header = reviewHeader({ tagline: 'Reviewed the diff — no issues to report. ✅', deepInfo, skipCount });
+const buildNoIssuesPayload = ({ deepInfo }) => {
+  const header = reviewHeader({ tagline: 'Reviewed the diff — no issues to report. ✅', deepInfo });
   const body = `${header}\n${SELF_COMMENT_MARKER}${NO_ISSUES_MARKER}`;
   return { event: 'COMMENT', commit_id: env.headSha, body, comments: [] };
 };
@@ -1464,10 +1090,9 @@ const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, open
 // PHASES
 // =============================================================================
 
-/** PRE phase: poll A's bots, then write the skip-list + deep-mode flag for the model step. */
+/** PRE phase: write the diff and mode flags for the model step. */
 const runPre = async () => {
-  await pollForBots();
-  const [skipList, prFiles] = await Promise.all([buildSkipList(), fetchPrFiles()]);
+  const prFiles = await fetchPrFiles();
   const deepInfo = computeDeepMode(prFiles.items, prFiles.truncated);
   // Build the unified diff IN-SCRIPT from the List-pull-request-files API. The
   // `.diff` media type caps at 20k lines / 1 MB and returns 406 on large PRs (the
@@ -1479,34 +1104,28 @@ const runPre = async () => {
   const diffFiles = deepInfo.boundedMode ? prFiles.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : prFiles.items;
   await Promise.all([
     writeFile(DIFF_FILE, buildUnifiedDiff(diffFiles)),
-    writeFile(SKIPLIST_FILE, JSON.stringify({ headSha: env.headSha, skipList }, null, 2)),
     writeFile(DEEPMODE_FILE, JSON.stringify(deepInfo, null, 2)),
   ]);
-  log(`pre: wrote ${diffFiles.length}-file diff, ${skipList.length} skip-list entries; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
+  log(`pre: wrote ${diffFiles.length}-file diff; deepMode=${deepInfo.deepMode} (${deepInfo.reason}); securityMode=${deepInfo.securityMode} (${deepInfo.sensitiveFiles.length} crypto path(s)).`);
 };
 
 /**
  * POST phase: read validated model findings, map them to diff positions, dedup
- * against our own OPEN review threads, resolve our own FIXED threads, then post
+ * against our own OPEN review threads, then post
  * ONE PR review (event=COMMENT) carrying only the NEW findings as inline
  * comments.
  */
 const runPost = async () => {
   const rawFindings = await readModelFindings(); // throws => fail-soft
-  let skipCount = 0;
   let deepInfo = { deepMode: false, boundedMode: false };
   try {
-    skipCount = JSON.parse(await readFile(SKIPLIST_FILE, 'utf8')).skipList?.length ?? 0;
     deepInfo = JSON.parse(await readFile(DEEPMODE_FILE, 'utf8'));
   } catch {
     /* best-effort metadata only */
   }
 
   // 1) Map findings to diff positions (inline / file / summary) + stable hash.
-  //    `diffText` (the NORMALIZED diff) is the ground truth for thread resolution:
-  //    a finding's flagged code is "still live" iff its liveness key (line window
-  //    or file path) is still a substring of this text.
-  const { index: diffIndex, text: diffText } = await loadDiffIndex();
+  const diffIndex = await loadDiffIndex();
   const findings = classifyFindings(rawFindings, diffIndex);
 
   // 2) Fetch our own prior state: open inline THREADS (hash + resolution) and
@@ -1517,12 +1136,7 @@ const runPost = async () => {
   const [ownThreads, ownReviewBodies] = await Promise.all([fetchOwnThreads(), fetchOwnReviewBodies()]);
   const summarizedHashes = summarizedHashesFromBodies(ownReviewBodies);
   const openHashes = new Set(ownThreads.filter((t) => !t.isResolved && t.hash).map((t) => t.hash));
-  // Threads a HUMAN resolved (decided the finding is intentional). We must NOT
-  // re-post these even though the underlying code is unchanged, or the bot would
-  // fight the human's resolve on every push. We scope to human resolutions only:
-  // a thread WE auto-resolved (step 4) is resolved precisely because its code was
-  // fixed, so if that code regresses the finding genuinely reappears and SHOULD
-  // re-post — hence bot-self-resolved hashes are deliberately left out.
+  // Preserve human dismissals rather than re-posting the same finding.
   const humanResolvedHashes = new Set(
     ownThreads.filter((t) => t.isResolved && t.hash && t.resolvedByLogin && !isSelfLogin(t.resolvedByLogin)).map((t) => t.hash),
   );
@@ -1533,40 +1147,12 @@ const runPost = async () => {
   //    "Additional notes" body.
   const toPost = selectFindingsToPost(findings, { openHashes, humanResolvedHashes, summarizedHashes });
 
-  // 4) Convergence (DIFF-EVIDENCE resolution): resolve our OWN open threads whose
-  //    flagged code is no longer in the diff. The DIFF — not the model's findings
-  //    list — is ground truth, so this is uniform whether the model returned many
-  //    findings or zero: an all-clean PR yields {"findings":[]}, every fixed
-  //    line leaves the diff, and the threads resolve (no empty-run special case).
-  //    A still-present issue the model merely MISSED keeps its code in the diff,
-  //    so its thread stays open (never a false-resolve on a recall miss).
-  //    Suppressed only on `reopened` (prior threads may be from another base).
-  const resolvedThreadIds = new Set();
-  if (env.eventAction === 'reopened') {
-    log('post: reopened event — skipping thread resolution.');
-  } else {
-    const stale = ownThreads.filter((t) => shouldResolveThread(t, diffText));
-    for (const t of stale) {
-      // eslint-disable-next-line no-await-in-loop -- small N, ordered for clear logs
-      await resolveThread(t.threadId);
-      resolvedThreadIds.add(t.threadId);
-    }
-    if (stale.length) log(`post: resolved ${stale.length} own thread(s) whose flagged code is gone.`);
-  }
+  const openThreadsRemain = ownThreads.some((t) => !t.isResolved);
 
-  // Do any of OUR threads remain open after this run's resolution? A still-open
-  // thread is a prior finding whose flagged code is still in the diff — a real
-  // open issue. We must NOT post a "no issues found" note while one stands, or
-  // the affirmative note would contradict an open thread on the same PR.
-  const openThreadsRemain = ownThreads.some(
-    (t) => !t.isResolved && !resolvedThreadIds.has(t.threadId),
-  );
-
-  // 5) Terminal action (computed by decideTerminalAction so logic ⇄ tests can't drift):
+  // 4) Terminal action (computed by decideTerminalAction so logic ⇄ tests can't drift):
   //    - 'no-issues'     : gate cleared the diff AND no prior thread stays open →
   //                        post a Korbit-style "no issues found" note so silence
-  //                        reads as a completed review. Threads for now-fixed code
-  //                        were already resolved in step 4. Suppressed when the
+  //                        reads as a completed review. Suppressed when the
   //                        latest own review is ALREADY that note (a clean PR
   //                        converges to a single affirmative review), when a prior
   //                        thread is still open (the PR isn't actually clean), or
@@ -1579,13 +1165,13 @@ const runPost = async () => {
     eventAction: env.eventAction,
     ownReviewBodies,
     openThreadsRemain,
-    // A real PR always has ≥1 changed file; fileCount 0 (or a missing deep-mode
+    // A real PR always has ≥1 changed file; totalFileCount 0 (or a missing deep-mode
     // file) means the Files API fetch failed and the diff is empty — don't post
     // an affirmative "no issues" review off a diff we never actually got.
-    diffAvailable: (deepInfo.fileCount ?? 0) > 0,
+    diffAvailable: (deepInfo.totalFileCount ?? 0) > 0,
   });
   if (decision.action === 'no-issues') {
-    await postNoIssuesReview(buildNoIssuesPayload({ deepInfo, skipCount }));
+    await postNoIssuesReview(buildNoIssuesPayload({ deepInfo }));
     return;
   }
   if (decision.action === 'skip') {
@@ -1593,17 +1179,72 @@ const runPost = async () => {
     return;
   }
 
-  const payload = buildReviewPayload({ toPost, diffIndex, deepInfo, skipCount });
+  const payload = buildReviewPayload({ toPost, diffIndex, deepInfo });
   await postReview(payload);
+};
+
+/** Extract only numeric aggregates from the action's SDK event array. */
+const summarizeExecution = (events) => {
+  const result = events.findLast((event) => event.type === 'result');
+  const number = (value) => Number.isFinite(value) && value >= 0 ? value : null;
+  const models = Object.fromEntries(Object.entries(result?.modelUsage ?? {}).map(([model, usage]) => [
+    /^claude-[a-z0-9.\[\]-]{1,80}$/.test(model) ? model : 'unknown',
+    {
+      costUsd: number(usage.costUSD),
+      input: number(usage.inputTokens),
+      output: number(usage.outputTokens),
+      cacheRead: number(usage.cacheReadInputTokens),
+      cacheCreation: number(usage.cacheCreationInputTokens),
+    },
+  ]));
+  const calls = new Map();
+  const seen = new Set();
+  for (const event of events) {
+    if (event.type !== 'assistant' || !Array.isArray(event.message?.content)) continue;
+    for (const block of event.message.content) {
+      if (block.type !== 'tool_use' || !['Agent', 'Task'].includes(block.name) || seen.has(block.id)) continue;
+      seen.add(block.id);
+      const type = block.input?.subagent_type ?? '';
+      const label = /^[A-Za-z0-9_:-]{1,80}$/.test(type) ? type : 'unknown';
+      calls.set(label, (calls.get(label) ?? 0) + 1);
+    }
+  }
+  return {
+    costUsd: number(result?.total_cost_usd),
+    turns: number(result?.num_turns),
+    models,
+    agentCalls: Object.fromEntries(calls),
+  };
 };
 
 // =============================================================================
 // MAIN
 // =============================================================================
 
+/** Log bounded execution aggregates without exposing model content or failing CI. */
+const runTelemetry = async () => {
+  if (process.env.MODEL_OUTCOME === 'skipped') {
+    console.warn('::warning::Model step skipped; no execution metrics');
+    return;
+  }
+  try {
+    const file = process.env.EXECUTION_FILE || join(process.env.RUNNER_TEMP, 'claude-execution-output.json');
+    const events = JSON.parse(await readFile(file, 'utf8'));
+    const summary = summarizeExecution(events);
+    console.log(JSON.stringify(summary));
+    if (summary.costUsd === null) console.warn('::warning::No result metrics in Claude execution file');
+    if (Object.keys(summary.models).length === 0) console.warn('::warning::No modelUsage in Claude execution file');
+  } catch (err) {
+    console.warn(err.code === 'ENOENT'
+      ? '::warning::Claude execution file absent; no execution metrics'
+      : '::warning::Could not aggregate Claude execution metrics');
+  }
+};
+
 const main = async () => {
   const phase = argv[2];
-  if (!['pre', 'post'].includes(phase)) failSoft(`usage: review-orchestrator.mjs <pre|post> (got "${phase}")`);
+  if (phase === 'telemetry') return runTelemetry();
+  if (!['pre', 'post'].includes(phase)) failSoft(`usage: review-orchestrator.mjs <pre|post|telemetry> (got "${phase}")`);
   if (!env.token) failSoft('missing GITHUB_TOKEN/GH_TOKEN');
   if (!owner || !repo) failSoft(`missing/invalid GITHUB_REPOSITORY: "${env.repoFull}"`);
   if (!env.prNumber) failSoft('missing PR_NUMBER');
@@ -1621,20 +1262,19 @@ const main = async () => {
 // not when imported by a test harness that exercises the pure helpers below.
 if (argv[1] && fileURLToPath(import.meta.url) === argv[1]) main();
 
-// Pure helpers + constants exported for unit testing (no network/fs). The
+// Helpers + constants exported for testing. The
 // convergence + precision-gate terminal logic lives here — keep it covered.
 export {
+  paginateAll,
+  graphqlFetch,
+  summarizeExecution,
   parseUnifiedDiff,
   buildUnifiedDiff,
   computeDeepMode,
   matchesSecurityPath,
-  normalizeDiffText,
   normalizeFindings,
   findingHash,
   classifyFindings,
-  livenessStamp,
-  livenessKeyFromBody,
-  shouldResolveThread,
   selectFindingsToPost,
   decideTerminalAction,
   latestOwnReviewIsNoIssues,

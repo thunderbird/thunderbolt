@@ -38,21 +38,25 @@ const chatBody = (text: string) =>
   })
 
 /** An authenticated client whose network is a stub that records the outgoing request. */
-const recordingClient = (response: Response) => {
+const recordingClient = (response: Response, backendUrl = 'http://localhost:8000/v1') => {
   const fetch = mock(async (_request: Request) => response)
-  const client = createAuthenticatedClient('http://localhost:8000/v1', () => 'session-token', {
+  const client = createAuthenticatedClient(backendUrl, () => 'session-token', {
     fetch: fetch as unknown as typeof globalThis.fetch,
   })
   return { client, fetch }
 }
 
 const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+const originalPageUrl = window.location.href
 
+// The app always runs on a real origin; happy-dom's default `about:blank` has none.
 beforeEach(() => {
+  window.location.href = 'https://app.example.com/chats/new'
   useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
 })
 
 afterEach(() => {
+  window.location.href = originalPageUrl
   useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
 })
 
@@ -80,21 +84,28 @@ describe('createManagedHttpAdapter', () => {
   })
 
   it('resolves the agent path against a relative backend url', async () => {
-    const previousUrl = window.location.href
-    window.location.href = 'https://app.example.com/chats/new'
     useLocalSettingsStore.setState({ cloudUrl: '/v1' })
     const post = mock(async () => new Response('ok'))
 
-    try {
-      await createManagedHttpAdapter(hostedAgent).fetch(
-        { method: 'POST', body: chatBody('hi') },
-        contextWith({ post } as unknown as HttpClient),
-      )
-    } finally {
-      window.location.href = previousUrl
-    }
+    await createManagedHttpAdapter(hostedAgent).fetch(
+      { method: 'POST', body: chatBody('hi') },
+      contextWith({ post } as unknown as HttpClient),
+    )
 
     expect((post.mock.calls[0] as unknown as [string])[0]).toBe('https://app.example.com/v1/agent/chat')
+  })
+
+  it('keeps a reverse-proxy prefix on the backend url, so the request still gets the app headers', async () => {
+    const prefixedBackend = 'https://host.example/api/v1'
+    useLocalSettingsStore.setState({ cloudUrl: prefixedBackend })
+    const { client, fetch } = recordingClient(new Response('ok'), prefixedBackend)
+
+    await createManagedHttpAdapter(hostedAgent).fetch({ method: 'POST', body: chatBody('hi') }, contextWith(client))
+
+    const request = fetch.mock.calls[0]![0]
+    expect(request.url).toBe('https://host.example/api/v1/agent/chat')
+    // Set only on requests `createAuthenticatedClient` recognises as going to the backend.
+    expect(request.headers.get('X-App-Language')).toBeTruthy()
   })
 
   it('serializes a rejected request so the chat error UI reads its status and quota window', async () => {

@@ -34,7 +34,8 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
 1. **Hydration** (`src/chats/use-hydrate-chat-store.ts`). A soft-deleted thread
    redirects to `/not-found`. Existing session: refresh models and MCP getters,
    prewarm the built-in agent, return. Otherwise one `Promise.all` for messages,
-   models, agents and trigger data, then `createSession`. Agent fallback chain:
+   models, agents and trigger data, then `createSession`. Agent fallback chain
+   (`resolveSessionAgent`, `src/chats/resolve-session-agent.ts`):
    thread `agentId` → `selected_agent` setting → the agent discovery names as
    default (`agents_system.is_default`) → first available agent → `builtInAgent`,
    so a deliberate pick wins, a first-time visitor lands on the default, and
@@ -44,7 +45,10 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    default in the chat store, which hydration reads after its last await, and
    moves chats with no thread row and no messages onto it, except a chat whose
    agent the user picked (`agentChosenByUser`) or that is already on the
-   `selected_agent` agent.
+   `selected_agent` agent. When discovery stops naming a default (a 401/403, or
+   none named), `clearDiscoveredDefaultAgent` forgets it and sends unstarted,
+   unpicked chats still on it, or on an agent no longer listed, back through
+   `resolveSessionAgent`.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality

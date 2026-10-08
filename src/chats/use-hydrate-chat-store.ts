@@ -23,7 +23,6 @@ import {
 import { systemRowToAgent } from '@/dal/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
-import { builtInAgent } from '@/defaults/agents'
 import { markChatReady } from '@/lib/init-timing'
 import { useMCP } from '@/lib/mcp-provider'
 import { trackEvent } from '@/lib/posthog'
@@ -35,6 +34,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useChatStore } from './chat-store'
 import { createChatInstance } from './chat-instance'
+import { resolveSessionAgent } from './resolve-session-agent'
 import { prewarmSystemModel } from '@/ai/prewarm-system-model'
 
 type UseHydrateChatStoreParams = {
@@ -65,31 +65,6 @@ type UseHydrateChatStoreParams = {
    * recorded.
    */
   onCreated?: (chatThreadId: string) => void
-}
-
-/**
- * Pick the agent a chat session opens on. A persisted thread keeps its own
- * agent. When that no longer resolves (a new chat, a deleted custom, an
- * unsynced system agent, or a built-in the deployment disabled), prefer the
- * user's last-used agent (the global `selected_agent` setting), so a deliberate
- * pick survives, then the agent the backend's discovery names as default, so a
- * first-time visitor lands on it, then the first available agent, silently, so enterprise users who never had the built-in just continue with
- * their own agent. `builtInAgent` is the last-resort safety net for the
- * degenerate zero-agent deployment.
- */
-export const resolveSessionAgent = (
-  allAgents: Agent[],
-  candidates: { threadAgentId?: string | null; lastUsedAgentId?: string | null; discoveredDefaultAgent?: Agent },
-): Agent => {
-  const findAgent = (agentId: string | null | undefined) =>
-    agentId ? allAgents.find((a) => a.id === agentId) : undefined
-  return (
-    findAgent(candidates.threadAgentId) ??
-    findAgent(candidates.lastUsedAgentId) ??
-    candidates.discoveredDefaultAgent ??
-    allAgents[0] ??
-    builtInAgent
-  )
 }
 
 /**

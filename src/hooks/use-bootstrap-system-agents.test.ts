@@ -134,6 +134,36 @@ describe('useBootstrapSystemAgents', () => {
     expect(useChatStore.getState().discoveredDefaultAgent).toEqual(hostedAgent)
   })
 
+  it('moves unstarted chats off the old default when discovery answers 403', async () => {
+    hydrateUnstartedChat()
+    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+    const unauthenticated: RefreshSystemAgentsResult = { refreshed: false, reason: 'unauthenticated' }
+
+    renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => unauthenticated) }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+
+    await act(async () => {})
+
+    expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+    expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
+  })
+
+  it('moves unstarted chats off the old default when discovery names no default', async () => {
+    hydrateUnstartedChat()
+    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+    const noDefault: RefreshSystemAgentsResult = { refreshed: true, defaultAgent: null, wireIdentityChangedAgents: [] }
+
+    renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => noDefault) }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+
+    await act(async () => {})
+
+    expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+    expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
+  })
+
   it('skips discovery without a session', () => {
     const refresh = mock(async () => refreshed)
 

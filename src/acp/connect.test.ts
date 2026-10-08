@@ -11,7 +11,7 @@
 import '@/testing-library'
 
 import { act } from '@testing-library/react'
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type {
   Agent as AcpSdkAgent,
@@ -104,7 +104,15 @@ describe('connectToAgent — built-in dispatch', () => {
 
 describe('connectToAgent: managed-http dispatch', () => {
   const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
-  afterEach(() => useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl }))
+  const originalPageUrl = window.location.href
+  // The app always runs on a real origin; happy-dom's default `about:blank` has none.
+  beforeEach(() => {
+    window.location.href = 'https://app.example.com/chats/new'
+  })
+  afterEach(() => {
+    window.location.href = originalPageUrl
+    useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl })
+  })
 
   it('returns a handshake-free adapter that posts the turn through the context client', async () => {
     useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })

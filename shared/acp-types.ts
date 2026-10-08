@@ -29,7 +29,8 @@ type AgentDescriptorBase = {
  *  server-managed (`managed-acp`) and server-hosted (`managed-http`) agents.
  *  The built-in agent is never on the wire — it is a hardcoded frontend
  *  constant in `src/defaults/agents.ts`. `managed-http` agents carry a
- *  same-origin path (e.g. `/v1/agent/chat`) as `url` rather than `ws(s)://`. */
+ *  server-relative path (e.g. `/v1/agent/chat`) as `url` rather than `ws(s)://`;
+ *  the client joins it under the backend root, so a reverse-proxy prefix survives. */
 export type RemoteAgentDescriptor =
   | (AgentDescriptorBase & { type: 'remote-acp' | 'managed-acp'; transport: 'websocket' })
   | (AgentDescriptorBase & { type: 'managed-http'; transport: 'http' })

@@ -536,12 +536,49 @@ describe('chat-store', () => {
       expect(agentOf('second-pick')).toBe(laterPick.id)
     })
 
-    it('records the discovered default for chats that hydrate later, and clears it on null', () => {
+    it('records the discovered default for chats that hydrate later, and forgets it when cleared', () => {
       useChatStore.getState().applyDiscoveredDefaultAgent(customAgent, null)
       expect(useChatStore.getState().discoveredDefaultAgent?.id).toBe(customAgent.id)
 
-      useChatStore.getState().applyDiscoveredDefaultAgent(null, null)
+      useChatStore.getState().clearDiscoveredDefaultAgent([builtInAgent], null)
       expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+    })
+
+    it('moves unstarted chats off a cleared default through the fallback chain, but not picked ones', async () => {
+      const model = createMockModel()
+      const newChat = { chatThread: null, mcpClients: [], models: [model], selectedModel: model, triggerData: null }
+      const hostedDefault: Agent = { ...customAgent, id: 'hosted-agent' }
+      const rememberedAgent: Agent = { ...customAgent, id: 'remembered-agent' }
+      hydrateStore({ ...newChat, id: 'moved', chatInstance: createMockChatInstanceWithValidation() })
+      hydrateStore({ ...newChat, id: 'picked', chatInstance: createMockChatInstanceWithValidation() })
+      useChatStore.getState().applyDiscoveredDefaultAgent(hostedDefault, null)
+      await useChatStore.getState().setSelectedAgent('picked', hostedDefault)
+
+      // Discovery now answers 403: the hosted agent's row is gone.
+      useChatStore.getState().clearDiscoveredDefaultAgent([builtInAgent, rememberedAgent], rememberedAgent.id)
+
+      const agentOf = (id: string) => useChatStore.getState().sessions.get(id)?.selectedAgent.id
+      expect(agentOf('moved')).toBe(rememberedAgent.id)
+      expect(agentOf('picked')).toBe(hostedDefault.id)
+    })
+
+    it('moves a chat off a cleared default it only knew from the deleted row', () => {
+      const model = createMockModel()
+      const hostedDefault: Agent = { ...customAgent, id: 'hosted-agent' }
+      hydrateStore({
+        chatInstance: createMockChatInstanceWithValidation(),
+        chatThread: null,
+        id: 'from-row',
+        models: [model],
+        selectedModel: model,
+        triggerData: null,
+      })
+      // Hydration resolved the default from `is_default`; this boot's discovery never set the store copy.
+      useChatStore.getState().updateSession('from-row', { selectedAgent: hostedDefault })
+
+      useChatStore.getState().clearDiscoveredDefaultAgent([builtInAgent], null)
+
+      expect(useChatStore.getState().sessions.get('from-row')?.selectedAgent.id).toBe(builtInAgent.id)
     })
 
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {

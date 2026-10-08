@@ -99,6 +99,17 @@ export const composeAllAgents = (
   options: { includeBuiltIn?: boolean } = {},
 ): Agent[] => [...(options.includeBuiltIn === false ? [] : [builtInAgent]), ...systemAgents, ...customAgents]
 
+/** Load the combined agent list once, in the same order as {@link useAllAgents},
+ *  for code that cannot use the live hook, such as the discovery bootstrap effect
+ *  re-resolving unstarted chats when the discovered default goes away. */
+export const loadAllAgents = async (
+  db: AnyDrizzleDatabase,
+  options: { includeBuiltIn?: boolean } = {},
+): Promise<Agent[]> => {
+  const [systemRows, customRows] = await Promise.all([getAllSystemAgents(db), getAllAgents(db)])
+  return composeAllAgents(systemRows.map(systemRowToAgent), customRows.map(customRowToAgent), options)
+}
+
 /** Combined list hook: built-in first (unless disabled by deployment), then
  *  system (alpha), then customs (alpha). Matches the Settings/Agents visual order. */
 export const useAllAgents = (): Agent[] => {

@@ -5,13 +5,37 @@
 import { useChatStore } from '@/chats/chat-store'
 import { useAuth, useDatabase, useHttpClient } from '@/contexts'
 import { getSettings } from '@/dal'
+import { loadAllAgents } from '@/dal/agents'
+import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
+import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
+import type { Agent } from '@/types/acp'
 import { useEffect } from 'react'
 
 type UseBootstrapSystemAgentsOptions = {
   /** Test seam for the discovery refresh. */
   refresh?: typeof refreshSystemAgents
+}
+
+/**
+ * Hand the chat store this refresh's default agent. With none (a 401/403 cleared
+ * the table, or the response names no default), unstarted chats still on the old
+ * default go back through the fallback chain instead.
+ */
+const syncDiscoveredDefault = async (db: AnyDrizzleDatabase, defaultAgent: Agent | null, signal: AbortSignal) => {
+  const { selectedAgent } = await getSettings(db, { selected_agent: String })
+  if (defaultAgent) {
+    if (!signal.aborted) {
+      useChatStore.getState().applyDiscoveredDefaultAgent(defaultAgent, selectedAgent)
+    }
+    return
+  }
+  const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
+  const agents = await loadAllAgents(db, { includeBuiltIn })
+  if (!signal.aborted) {
+    useChatStore.getState().clearDiscoveredDefaultAgent(agents, selectedAgent)
+  }
 }
 
 /**
@@ -51,20 +75,14 @@ export const useBootstrapSystemAgents = ({ refresh = refreshSystemAgents }: UseB
       if (signal.aborted) {
         return
       }
-      if (!result.refreshed) {
-        if (result.reason === 'unauthenticated') {
-          useChatStore.getState().applyDiscoveredDefaultAgent(null, null)
+      if (result.refreshed) {
+        for (const agent of result.wireIdentityChangedAgents) {
+          useChatStore.getState().applyAgentWireIdentityChange(agent)
         }
-        return
+        await syncDiscoveredDefault(db, result.defaultAgent, signal)
+      } else if (result.reason === 'unauthenticated') {
+        await syncDiscoveredDefault(db, null, signal)
       }
-      for (const agent of result.wireIdentityChangedAgents) {
-        useChatStore.getState().applyAgentWireIdentityChange(agent)
-      }
-      const { selectedAgent } = await getSettings(db, { selected_agent: String })
-      if (signal.aborted) {
-        return
-      }
-      useChatStore.getState().applyDiscoveredDefaultAgent(result.defaultAgent, selectedAgent)
     })()
     return () => controller.abort()
   }, [userId, isAnonymous, cloudUrl, db, httpClient, refresh])

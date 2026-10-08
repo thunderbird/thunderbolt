@@ -19,6 +19,7 @@ import { classifyErrorKind } from '@/lib/error-utils'
 import { hydrateAttachmentsAsFileParts, type HydrationDeps } from '@/lib/attachments'
 import { HttpError } from '@/lib/http'
 import { hydrateQuotesAsText } from '@/lib/quotes'
+import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
@@ -39,10 +40,16 @@ type ManagedHttpAdapterOptions = {
   hydrationDeps?: HydrationDeps
 }
 
-/** Resolve the agent's backend-relative path (e.g. `/v1/agent/chat`) against the configured backend origin. */
+/**
+ * Resolve the agent's server-relative path (e.g. `/v1/agent/chat`) against the
+ * backend's root: the configured API base minus its `/v1`, as `auth-context.tsx`
+ * derives it. Joining under the root rather than `new URL(path, base)` keeps a
+ * reverse-proxy prefix (`https://host/api/v1` → `https://host/api/v1/agent/chat`),
+ * so the request also still counts as a backend request for the app headers.
+ */
 const resolveAgentUrl = (path: string): string => {
-  const backendUrl = new URL(useLocalSettingsStore.getState().cloudUrl, window.location.href)
-  return new URL(path, backendUrl).href
+  const backendRoot = resolveAbsoluteBackendUrl(useLocalSettingsStore.getState().cloudUrl).replace(/\/v1$/, '')
+  return `${backendRoot}${path}`
 }
 
 /** Keep the most recent messages within the endpoint's cap, starting on a user

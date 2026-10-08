@@ -11,7 +11,15 @@ import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AgentAdapter } from '@/types/acp'
 import type { AgentDiscoveryResponse } from '@shared/acp-types'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { composeAllAgents, createAgent, deleteAgent, getAgentSecrets, setAgentSecrets, updateAgent } from './agents'
+import {
+  composeAllAgents,
+  createAgent,
+  deleteAgent,
+  getAgentSecrets,
+  loadAllAgents,
+  setAgentSecrets,
+  updateAgent,
+} from './agents'
 import { getChatThread } from './chat-threads'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from './test-utils'
 import type { Agent } from '@/types/acp'
@@ -264,6 +272,43 @@ describe('agents DAL', () => {
       await deleteAgent(getDb(), 'a-disp')
 
       expect(cached.disconnectCount()).toBe(1)
+    })
+  })
+
+  describe('loadAllAgents', () => {
+    const seedSystemAndCustomRows = async () => {
+      await getDb().insert(agentsSystemTable).values({
+        id: 'hosted-agent',
+        name: 'Assistant',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+      })
+      await createAgent(getDb(), {
+        id: 'custom-agent',
+        name: 'Custom',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://custom.example/ws',
+        userId: 'u1',
+      })
+    }
+
+    it('loads the built-in agent, then system rows, then custom rows', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.map((agent) => agent.id)).toEqual([builtInAgent.id, 'hosted-agent', 'custom-agent'])
+    })
+
+    it('leaves the built-in agent out when the deployment disables it', async () => {
+      await seedSystemAndCustomRows()
+
+      const agents = await loadAllAgents(getDb(), { includeBuiltIn: false })
+
+      expect(agents.map((agent) => agent.id)).toEqual(['hosted-agent', 'custom-agent'])
     })
   })
 

@@ -7,6 +7,7 @@ import { sendEmail, shouldSkipEmail } from '@/lib/resend'
 import { getEmailI18n } from '@/emails/i18n'
 import { SecurityAlertEmail } from '@/emails/security-alert'
 import { SecurityCodeEmail } from '@/emails/security-code'
+import type { StepUpAction } from '@/lib/step-up-otp'
 import type { AppLocale } from '@shared/i18n/locales'
 
 /**
@@ -20,7 +21,13 @@ import type { AppLocale } from '@shared/i18n/locales'
  * committed security operation.
  */
 export type SecurityNotifications = {
-  sendStepUpCode: (params: { email: string; code: string; deviceName: string; locale: AppLocale }) => Promise<void>
+  sendStepUpCode: (params: {
+    action: StepUpAction
+    email: string
+    code: string
+    deviceName: string
+    locale: AppLocale
+  }) => Promise<void>
   sendRecoveryPhraseChanged: (params: { email: string; deviceName: string; locale: AppLocale }) => Promise<void>
   sendDeviceApproved: (params: {
     email: string
@@ -64,9 +71,37 @@ const revokeGuidance = (i18n: I18n): string =>
     id: 'If this wasn’t you, revoke that device from Settings → Devices and change your recovery phrase immediately.',
   })
 
+type StepUpCopy = { subject: string; body: string; guidance: string }
+
+/**
+ * Prose per step-up action. Exhaustive, so a new action will not compile until
+ * its copy exists. The ids must stay literal here: the extractor cannot follow
+ * a variable id, and only `src/emails` and this file are in the email catalog.
+ */
+export const stepUpCopy: Record<StepUpAction, (i18n: I18n, deviceName: string) => StepUpCopy> = {
+  'recovery-phrase-change': (i18n, deviceName) => ({
+    subject: i18n._({ id: 'Confirm your recovery phrase change' }),
+    body: i18n._({
+      id: 'A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue.',
+      values: { deviceName },
+    }),
+    guidance: i18n._({ id: 'If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices.' }),
+  }),
+  'account-deletion': (i18n, deviceName) => ({
+    subject: i18n._({ id: 'Confirm your account deletion' }),
+    body: i18n._({
+      id: 'Deletion of your account was requested from device “{deviceName}”. Enter this code in the app to continue. Everything on our servers will be erased and cannot be recovered.',
+      values: { deviceName },
+    }),
+    guidance: i18n._({
+      id: 'If this wasn’t you, don’t enter the code — sign out of that device and change your sign-in method immediately.',
+    }),
+  }),
+}
+
 export const securityNotifications: SecurityNotifications = {
-  async sendStepUpCode({ email, code, deviceName, locale }) {
-    console.info('📧 Sending step-up code email')
+  async sendStepUpCode({ action, email, code, deviceName, locale }) {
+    console.info(`📧 Sending ${action} step-up code email`)
     if (shouldSkipEmail()) {
       // Same dev affordance as sign-in (`sendSignInEmail`): no email goes out,
       // so the terminal is the inbox.
@@ -74,10 +109,11 @@ export const securityNotifications: SecurityNotifications = {
       return
     }
     const i18n = getEmailI18n(locale)
+    const { subject, body, guidance } = stepUpCopy[action](i18n, deviceName)
     const data = await sendEmail({
       to: email,
-      subject: i18n._({ id: 'Confirm your recovery phrase change' }),
-      react: <SecurityCodeEmail i18n={i18n} code={code} deviceName={deviceName} />,
+      subject,
+      react: <SecurityCodeEmail i18n={i18n} code={code} preview={subject} body={body} guidance={guidance} />,
     })
     console.info(`✅ Step-up code email sent. ID: ${data?.id}`)
   },

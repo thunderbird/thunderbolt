@@ -10,28 +10,22 @@ import { getEmailI18n } from './i18n'
 type SecurityCodeEmailProps = {
   i18n: I18n
   code: string
-  deviceName: string
+  preview: string
+  body: string
+  guidance: string
 }
 
 /**
- * Step-up verification code (THU-875): sent when a device asks to change the
- * account's recovery phrase. The code is the proof-of-inbox the rotate route
- * requires before it accepts a recovery re-anchor. Prose is rendered against the
- * recipient's locale via the passed-in `i18n`.
+ * Step-up verification code: the proof-of-inbox a gated route requires before
+ * it will perform a sensitive action. Prose is passed in already resolved
+ * against the recipient's locale — see `stepUpCopy` in `security-notifications`.
  */
-export const SecurityCodeEmail = ({ i18n, code, deviceName }: SecurityCodeEmailProps) => (
-  <EmailLayout i18n={i18n} preview={i18n._({ id: 'Confirm your recovery phrase change' })}>
+export const SecurityCodeEmail = ({ i18n, code, preview, body, guidance }: SecurityCodeEmailProps) => (
+  <EmailLayout i18n={i18n} preview={preview}>
     <Section className="bg-white border border-solid border-tb-border rounded-2xl text-center px-8 py-8">
-      <Text className="text-sm text-tb-text m-0 mb-6">
-        {i18n._({
-          id: 'A recovery phrase change was requested from device “{deviceName}”. Enter this code in the app to continue.',
-          values: { deviceName },
-        })}
-      </Text>
+      <Text className="text-sm text-tb-text m-0 mb-6">{body}</Text>
       <Text className="text-2xl font-semibold text-tb-text m-0 mb-6">{code}</Text>
-      <Text className="text-sm text-tb-text m-0">
-        {i18n._({ id: 'If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices.' })}
-      </Text>
+      <Text className="text-sm text-tb-text m-0">{guidance}</Text>
     </Section>
   </EmailLayout>
 )
@@ -39,7 +33,9 @@ export const SecurityCodeEmail = ({ i18n, code, deviceName }: SecurityCodeEmailP
 SecurityCodeEmail.PreviewProps = {
   i18n: getEmailI18n('en'),
   code: '88299917',
-  deviceName: 'MacBook Pro',
+  preview: 'Confirm your recovery phrase change',
+  body: 'A recovery phrase change was requested from device “MacBook Pro”. Enter this code in the app to continue.',
+  guidance: 'If this wasn’t you, don’t enter the code — revoke that device from Settings → Devices.',
 } satisfies SecurityCodeEmailProps
 
 export default SecurityCodeEmail

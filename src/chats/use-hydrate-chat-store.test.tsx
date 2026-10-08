@@ -7,10 +7,12 @@ import { getCurrentSession, resetStore } from '@/test-utils/chat-store-mocks'
 import { createQueryTestWrapper } from '@/test-utils/react-query'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
-import { useHydrateChatStore } from './use-hydrate-chat-store'
+import { resolveSessionAgent, useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable } from '@/db/tables'
+import { agentsSystemTable, modelsTable } from '@/db/tables'
+import { builtInAgent } from '@/defaults/agents'
+import type { Agent } from '@/types/acp'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
@@ -306,6 +308,73 @@ describe('useHydrateChatStore', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    const seedDiscoveredDefault = () =>
+      getDb().insert(agentsSystemTable).values({
+        id: 'hosted-agent',
+        name: 'Assistant',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+        isDefault: 1,
+      })
+
+    const hydrateNewChat = async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+    }
+
+    it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
+      await createAgent(getDb(), {
+        id: 'custom-last-used',
+        name: 'Last Used Agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      await updateSettings(getDb(), { selected_agent: 'custom-last-used' })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
+    })
+  })
+
+  describe('resolveSessionAgent', () => {
+    const agentWithId = (id: string): Agent => ({ ...builtInAgent, id, type: 'managed-acp' })
+    const agents = [builtInAgent, agentWithId('thread'), agentWithId('discovered'), agentWithId('last-used')]
+
+    it("keeps a persisted thread's own agent over the last-used and discovered agents", () => {
+      const ids = { threadAgentId: 'thread', discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'last-used' }
+      expect(resolveSessionAgent(agents, ids).id).toBe('thread')
+    })
+
+    it('prefers the last-used agent over the discovered default for a new chat', () => {
+      const ids = { discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'last-used' }
+      expect(resolveSessionAgent(agents, ids).id).toBe('last-used')
+    })
+
+    it('falls back past ids that no longer resolve', () => {
+      const ids = { threadAgentId: 'deleted', discoveredDefaultAgentId: 'discovered', lastUsedAgentId: 'gone' }
+      expect(resolveSessionAgent(agents, ids).id).toBe('discovered')
+      expect(resolveSessionAgent(agents, {}).id).toBe(builtInAgent.id)
+      expect(resolveSessionAgent([], {})).toBe(builtInAgent)
     })
   })
 

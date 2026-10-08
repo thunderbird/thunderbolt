@@ -15,7 +15,7 @@ export const iconForAgent = (agent: Agent): ComponentType<{ className?: string }
   if (agent.type === 'built-in') {
     return AppLogo
   }
-  if (agent.type === 'managed-acp') {
+  if (agent.type === 'managed-acp' || agent.type === 'managed-http') {
     return Server
   }
   return Globe

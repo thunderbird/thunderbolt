@@ -5,8 +5,8 @@
 /**
  * Decide whether an `Agent` can be used on the current platform.
  *
- * Today every supported agent type — `built-in`, `remote-acp`, `managed-acp` —
- * runs in any environment we ship to (web, Tauri desktop, Tauri mobile).
+ * Today every supported agent type (`built-in`, `remote-acp`, `managed-acp`,
+ * `managed-http`) runs in any environment we ship to (web, Tauri desktop, Tauri mobile).
  * The seam exists so that when a future agent type ships requiring a native
  * shell (e.g. an `in-process` stdio runner) we can flip it off in the web
  * build without re-touching every UI surface that needs to disable composer

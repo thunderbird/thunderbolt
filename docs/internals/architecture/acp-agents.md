@@ -5,15 +5,16 @@ pipeline. The wire is the [Agent Client Protocol](https://agentclientprotocol.co
 over a bidirectional byte stream. Client library: [`src/acp/`](../../../src/acp); the agent the CLI
 serves (`thunderbolt acp serve`) is in [cli/README.md](../../../cli/README.md).
 
-## Three kinds of agent, three places rows live
+## Four kinds of agent, three places rows live
 
-`AgentType` ([shared/acp-types.ts](../../../shared/acp-types.ts)) has three members.
+`AgentType` ([shared/acp-types.ts](../../../shared/acp-types.ts)) has four members.
 
-| Type          | What it is                                                     | Where the row lives                                                                                        |
-| ------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `built-in`    | The in-process Thunderbolt assistant. No ACP wire is involved. | Nowhere: a hardcoded constant, `builtInAgent` in [src/defaults/agents.ts](../../../src/defaults/agents.ts) |
-| `remote-acp`  | An agent the user added in Settings → Agents                   | Synced `agents` table; credentials in the local-only `agents_secrets`                                      |
-| `managed-acp` | An agent the backend itself serves (today: Haystack/Deepset)   | Local-only `agents_system`, re-hydrated from `GET /v1/agents` on every bootstrap                           |
+| Type           | What it is                                                      | Where the row lives                                                                                        |
+| -------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `built-in`     | The in-process Thunderbolt assistant. No ACP wire is involved.  | Nowhere: a hardcoded constant, `builtInAgent` in [src/defaults/agents.ts](../../../src/defaults/agents.ts) |
+| `remote-acp`   | An agent the user added in Settings → Agents                    | Synced `agents` table; credentials in the local-only `agents_secrets`                                      |
+| `managed-acp`  | An agent the backend itself serves (today: Haystack/Deepset)    | Local-only `agents_system`, re-hydrated from `GET /v1/agents` on every bootstrap                           |
+| `managed-http` | The backend's hosted agent (`POST /v1/agent/chat`), no ACP wire | Local-only `agents_system`, same as `managed-acp`                                                          |
 
 - Both local-only tables sit under `localOnlyTables` in
   [src/db/powersync/schema.ts](../../../src/db/powersync/schema.ts) and never leave the device:
@@ -28,9 +29,12 @@ serves (`thunderbolt acp serve`) is in [cli/README.md](../../../cli/README.md).
 
 | `GET /v1/agents` returns                  | Effect                                                                |
 | ----------------------------------------- | --------------------------------------------------------------------- |
-| 200                                       | Upsert and prune                                                      |
+| 200                                       | Upsert and prune; flag the row named by `defaultAgentId` `is_default` |
 | 401 / 403                                 | Clear the table; the caller cannot see system agents                  |
 | Anything else (network, 5xx, parse error) | Leave existing rows alone, so an offline user keeps the list they had |
+
+Anonymous sessions run discovery too: the backend answers with its `anonymousSafe` agents when
+`ALLOW_ANONYMOUS_AGENT_DISCOVERY` is on, and a 403 otherwise.
 
 A changed `url` or `transport` also clears that agent's stored ACP session ids and drops the warm
 connection from the adapter cache: ids minted by the old endpoint mean nothing to the new one.
@@ -39,8 +43,11 @@ connection from the adapter cache: ids minted by the old endpoint mean nothing t
 
 `connectToAgent` ([src/acp/connect.ts](../../../src/acp/connect.ts)) returns an `AgentAdapter` whose
 `fetch(init, ctx)` yields a streaming `Response` in AI-SDK shape. `built-in` short-circuits to
-`createBuiltInAdapter`, everything else to `connectAcpAdapter`
-([src/acp/acp-adapter.ts](../../../src/acp/acp-adapter.ts)).
+`createBuiltInAdapter`, `managed-http` to `createManagedHttpAdapter`
+([src/acp/managed-http-adapter.ts](../../../src/acp/managed-http-adapter.ts)), which posts the chat
+body through the authenticated app client and returns the endpoint's UI message stream unchanged,
+and everything else to `connectAcpAdapter` ([src/acp/acp-adapter.ts](../../../src/acp/acp-adapter.ts)).
+The rest of this section is about the ACP adapter.
 
 > One adapter owns one transport, one `ClientSideConnection`, and one `initialize`, and multiplexes
 > many per-thread ACP sessions over it.

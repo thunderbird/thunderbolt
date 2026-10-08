@@ -35,9 +35,14 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    redirects to `/not-found`. Existing session: refresh models and MCP getters,
    prewarm the built-in agent, return. Otherwise one `Promise.all` for messages,
    models, agents and trigger data, then `createSession`. Agent fallback chain:
-   thread `agentId` → `selected_agent` setting → first available agent →
-   `builtInAgent`, so `disableBuiltInAgent` deployments and deleted custom
-   agents degrade quietly.
+   thread `agentId` → `selected_agent` setting → the agent discovery names as
+   default (`agents_system.is_default`) → first available agent → `builtInAgent`,
+   so a deliberate pick wins, a first-time visitor lands on the default, and
+   `disableBuiltInAgent` deployments and deleted custom agents degrade quietly.
+   Discovery can finish after a new chat has resolved its agent, as on a first
+   visit, so `applyDiscoveredDefaultAgent` moves chats with no thread row and no
+   messages onto the default when it lands, except a chat already on the
+   `selected_agent` agent.
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality

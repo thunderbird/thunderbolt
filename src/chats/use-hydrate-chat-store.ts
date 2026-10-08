@@ -20,6 +20,7 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
+import { systemRowToAgent } from '@/dal/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { builtInAgent } from '@/defaults/agents'
@@ -64,6 +65,31 @@ type UseHydrateChatStoreParams = {
    * recorded.
    */
   onCreated?: (chatThreadId: string) => void
+}
+
+/**
+ * Pick the agent a chat session opens on. A persisted thread keeps its own
+ * agent. When that no longer resolves (a new chat, a deleted custom, an
+ * unsynced system agent, or a built-in the deployment disabled), prefer the
+ * user's last-used agent (the global `selected_agent` setting), so a deliberate
+ * pick survives, then the agent the backend's discovery names as default, so a
+ * first-time visitor lands on it, then the first available agent, silently, so enterprise users who never had the built-in just continue with
+ * their own agent. `builtInAgent` is the last-resort safety net for the
+ * degenerate zero-agent deployment.
+ */
+export const resolveSessionAgent = (
+  allAgents: Agent[],
+  ids: { threadAgentId?: string | null; discoveredDefaultAgentId?: string; lastUsedAgentId?: string | null },
+): Agent => {
+  const findAgent = (agentId: string | null | undefined) =>
+    agentId ? allAgents.find((a) => a.id === agentId) : undefined
+  return (
+    findAgent(ids.threadAgentId) ??
+    findAgent(ids.lastUsedAgentId) ??
+    findAgent(ids.discoveredDefaultAgentId) ??
+    allAgents[0] ??
+    builtInAgent
+  )
 }
 
 /**
@@ -232,19 +258,7 @@ export const useHydrateChatStore = ({
     // and the dropdown agree on whether the built-in exists.
     const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
     const allAgents = composeAllAgents(
-      systemAgentRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        type: row.type,
-        transport: row.transport,
-        url: row.url,
-        description: row.description,
-        icon: row.icon,
-        isSystem: 1 as const,
-        enabled: 1 as const,
-        deletedAt: null,
-        userId: null,
-      })),
+      systemAgentRows.map(systemRowToAgent),
       customAgentRows.map((row) => ({
         id: row.id,
         name: row.name,
@@ -260,17 +274,11 @@ export const useHydrateChatStore = ({
       })),
       { includeBuiltIn },
     )
-    // Resolve the thread's persisted agent. When it no longer resolves (deleted
-    // custom, unsynced system, or built-in disabled by the deployment) fall back
-    // to the user's last-used agent (the global `selected_agent` setting), so a
-    // new chat defaults to it rather than always the first/built-in agent. Both
-    // fall back to the first available agent — silently, so enterprise users who
-    // never had the built-in just continue with their own agent. `builtInAgent`
-    // is the last-resort safety net for the degenerate zero-agent deployment.
-    const findAgent = (agentId: string | null | undefined) =>
-      agentId ? allAgents.find((a) => a.id === agentId) : undefined
-    const selectedAgent =
-      findAgent(chatThread?.agentId) ?? findAgent(settings.selectedAgent) ?? allAgents[0] ?? builtInAgent
+    const selectedAgent = resolveSessionAgent(allAgents, {
+      threadAgentId: chatThread?.agentId,
+      discoveredDefaultAgentId: systemAgentRows.find((row) => row.isDefault === 1)?.id,
+      lastUsedAgentId: settings.selectedAgent,
+    })
 
     // A persisted thread owns its project; a brand-new chat started from a
     // project carries it in the URL (`/chats/new?projectId=…`), which is the only

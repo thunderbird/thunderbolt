@@ -127,6 +127,11 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
+  /** Move chats that haven't started onto the discovered default agent. Discovery
+   *  can land after a new chat already resolved its agent, as on a first visit.
+   *  A chat on the user's remembered agent (`selected_agent`) is a deliberate pick
+   *  and is left alone, matching the precedence in `resolveSessionAgent`. */
+  applyDiscoveredDefaultAgent(agent: Agent, rememberedAgentId: string | null): void
   cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
@@ -213,6 +218,25 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     if (changed) {
       set({ sessions: nextSessions })
     }
+  },
+
+  applyDiscoveredDefaultAgent: (agent, rememberedAgentId) => {
+    const unstarted = [...get().sessions.values()].filter(
+      (session) =>
+        !session.chatThread &&
+        session.chatInstance.messages.length === 0 &&
+        session.selectedAgent.id !== agent.id &&
+        session.selectedAgent.id !== rememberedAgentId,
+    )
+    if (unstarted.length === 0) {
+      return
+    }
+
+    const nextSessions = new Map(get().sessions)
+    for (const session of unstarted) {
+      nextSessions.set(session.id, { ...session, selectedAgent: agent })
+    }
+    set({ sessions: nextSessions })
   },
 
   cancelPendingPermissionsForAgent: (agentId) => {

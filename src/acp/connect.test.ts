@@ -11,7 +11,7 @@
 import '@/testing-library'
 
 import { act } from '@testing-library/react'
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { getClock } from '@/testing-library'
 import type {
   Agent as AcpSdkAgent,
@@ -25,6 +25,7 @@ import type {
 import type { Agent, AgentAdapterContext } from '@/types/acp'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
+import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { connectToAgent } from './connect'
 
 const builtInAgent: Agent = {
@@ -98,6 +99,37 @@ describe('connectToAgent — built-in dispatch', () => {
       { aiFetch: (async () => new Response('ok')) as never },
     )
     expect(() => adapter.disconnect()).not.toThrow()
+  })
+})
+
+describe('connectToAgent: managed-http dispatch', () => {
+  const originalCloudUrl = useLocalSettingsStore.getState().cloudUrl
+  afterEach(() => useLocalSettingsStore.setState({ cloudUrl: originalCloudUrl }))
+
+  it('returns a handshake-free adapter that posts the turn through the context client', async () => {
+    useLocalSettingsStore.setState({ cloudUrl: 'http://localhost:8000/v1' })
+    const hostedAgent: Agent = {
+      ...builtInAgent,
+      id: 'hosted-agent',
+      type: 'managed-http',
+      transport: 'http',
+      url: '/v1/agent/chat',
+    }
+    const openTransport = mock(async () => {
+      throw new Error('managed-http must not open an ACP transport')
+    })
+    const post = mock(async () => new Response('streamed'))
+
+    const adapter = await connectToAgent(hostedAgent, { httpClient, getProxyFetch }, { openTransport })
+    const response = await adapter.fetch(
+      promptInit('hi'),
+      baseAdapterContext({ httpClient: { post } as unknown as HttpClient }),
+    )
+
+    expect(adapter.capabilities).toBeNull()
+    expect(await response.text()).toBe('streamed')
+    expect((post.mock.calls[0] as unknown as [string])[0]).toBe('http://localhost:8000/v1/agent/chat')
+    expect(openTransport).not.toHaveBeenCalled()
   })
 })
 

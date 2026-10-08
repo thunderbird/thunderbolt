@@ -491,6 +491,32 @@ describe('chat-store', () => {
       expect(getCurrentSession()?.chatThread?.acpSessionId).toBeNull()
     })
 
+    it('moves only unstarted chats on a fallback agent onto the discovered default agent', async () => {
+      const model = createMockModel()
+      const startedMessage = { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'hi' }] } as ThunderboltUIMessage
+      const newChat = { chatThread: null, mcpClients: [], models: [model], selectedModel: model, triggerData: null }
+      hydrateStore({ ...newChat, id: 'unstarted', chatInstance: createMockChatInstanceWithValidation() })
+      hydrateStore({ ...newChat, id: 'sending', chatInstance: createMockChatInstanceWithValidation([startedMessage]) })
+      await seedThreadSession('persisted', builtInAgent, 'persisted-session')
+
+      useChatStore.getState().applyDiscoveredDefaultAgent(customAgent, null)
+
+      const agentOf = (id: string) => useChatStore.getState().sessions.get(id)?.selectedAgent.id
+      expect(agentOf('unstarted')).toBe(customAgent.id)
+      expect(agentOf('sending')).toBe(builtInAgent.id)
+      expect(agentOf('persisted')).toBe(builtInAgent.id)
+    })
+
+    it("leaves an unstarted chat on the user's remembered agent when the discovered default lands", () => {
+      const model = createMockModel()
+      const newChat = { chatThread: null, mcpClients: [], models: [model], selectedModel: model, triggerData: null }
+      hydrateStore({ ...newChat, id: 'remembered', chatInstance: createMockChatInstanceWithValidation() })
+
+      useChatStore.getState().applyDiscoveredDefaultAgent(customAgent, builtInAgent.id)
+
+      expect(useChatStore.getState().sessions.get('remembered')?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
     it('updates in-memory state and skips the DB write when no chat thread exists yet', async () => {
       // For brand-new chats (no `chat_threads` row yet) the selection is held
       // in memory until the first message is sent. Persistence happens inside

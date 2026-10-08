@@ -15,11 +15,13 @@ import type { Agent } from '@/types/acp'
 
 /** Result envelope for `refreshSystemAgents`.
  *  - `refreshed: true`  → backend returned 200, local table was upserted.
+ *    `defaultAgent` is the agent the response names as `defaultAgentId`, or
+ *    null when it names none.
  *  - `refreshed: false` → no update applied; `reason` explains why. Existing
  *    rows are preserved unless `reason === 'unauthenticated'`, in which case
  *    the table was cleared (the user can no longer see system agents). */
 export type RefreshSystemAgentsResult =
-  | { refreshed: true; wireIdentityChangedAgents: Agent[] }
+  | { refreshed: true; wireIdentityChangedAgents: Agent[]; defaultAgent: Agent | null }
   | { refreshed: false; reason: 'unauthenticated' | 'network' }
 
 /**
@@ -29,16 +31,17 @@ export type RefreshSystemAgentsResult =
  * Behavior:
  * - 200 → upsert every returned agent into `agents_system` (stamping `fetchedAt`),
  *   delete any local row whose id is no longer in the response. Returns `{ refreshed: true }`.
- * - 401 / 403 → caller is unauthenticated or anonymous; system agents are not
- *   visible. Clear the local table and return `{ refreshed: false, reason: 'unauthenticated' }`.
+ * - 401 / 403 → caller is unauthenticated, or anonymous on a deployment without
+ *   anonymous discovery; system agents are not visible. Clear the local table
+ *   and return `{ refreshed: false, reason: 'unauthenticated' }`.
  * - any other failure (network, 5xx, parse error) → leave existing rows
  *   untouched and return `{ refreshed: false, reason: 'network' }`. The user
  *   keeps the previously-seeded list and can retry later.
  *
  * `httpClient` must be authenticated (`createAuthenticatedClient`) so the
- * request carries `Authorization` + `X-Device-ID`. The bootstrap caller MUST
- * NOT invoke this on anonymous sessions (a 403 will still be handled
- * gracefully, but skipping the call avoids needless backend load).
+ * request carries `Authorization` + `X-Device-ID`. Anonymous sessions call it
+ * too: the backend returns their `anonymousSafe` agents when anonymous
+ * discovery is on, and a 403 otherwise.
  */
 export const refreshSystemAgents = async (
   db: AnyDrizzleDatabase,
@@ -56,19 +59,30 @@ export const refreshSystemAgents = async (
   }
 
   const fetchedAt = nowIso()
-  // `agents_system` only stores `managed-acp` agents per schema. The discovery
-  // response is typed wider (`remote-acp | managed-acp | managed-http`).
-  // `remote-acp` entries belong in the synced `agents` table via user opt-in.
-  // `managed-http` is skipped on purpose until the frontend adapter lands
-  // (GTM-21 PR 2).
+  // `agents_system` stores the server-run agents: `managed-acp` and
+  // `managed-http`. `remote-acp` entries belong in the synced `agents` table
+  // via user opt-in.
   const incoming = payload.data.agents.filter(
-    (a): a is RemoteAgentDescriptor & { type: 'managed-acp' } => a.type === 'managed-acp',
+    (a): a is RemoteAgentDescriptor & { type: 'managed-acp' | 'managed-http' } => a.type !== 'remote-acp',
   )
+  const { defaultAgentId } = payload.data
+  const incomingRows = incoming.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    type: agent.type,
+    transport: agent.transport,
+    url: agent.url,
+    description: agent.description,
+    icon: agent.icon,
+    fetchedAt,
+    isDefault: agent.id === defaultAgentId ? 1 : 0,
+  }))
+  const defaultRow = incomingRows.find((row) => row.isDefault === 1)
   const wireIdentityChangedAgentsById = new Map<string, Agent>()
 
   await db.transaction(async (tx) => {
     const existing = await tx.select({ id: agentsSystemTable.id }).from(agentsSystemTable).all()
-    const incomingIds = new Set(incoming.map((a) => a.id))
+    const incomingIds = new Set(incomingRows.map((a) => a.id))
 
     for (const { id } of existing) {
       if (!incomingIds.has(id)) {
@@ -76,24 +90,14 @@ export const refreshSystemAgents = async (
       }
     }
 
-    for (const agent of incoming) {
-      const row = await tx.select().from(agentsSystemTable).where(eq(agentsSystemTable.id, agent.id)).get()
-      const values = {
-        id: agent.id,
-        name: agent.name,
-        type: 'managed-acp' as const,
-        transport: agent.transport,
-        url: agent.url,
-        description: agent.description,
-        icon: agent.icon,
-        fetchedAt,
-      }
+    for (const values of incomingRows) {
+      const row = await tx.select().from(agentsSystemTable).where(eq(agentsSystemTable.id, values.id)).get()
       if (row) {
-        const wireIdentityChanged = row.url !== agent.url || row.transport !== agent.transport
-        await tx.update(agentsSystemTable).set(values).where(eq(agentsSystemTable.id, agent.id))
+        const wireIdentityChanged = row.url !== values.url || row.transport !== values.transport
+        await tx.update(agentsSystemTable).set(values).where(eq(agentsSystemTable.id, values.id))
         if (wireIdentityChanged) {
-          await clearAcpSessionIdsForAgent(tx, agent.id)
-          wireIdentityChangedAgentsById.set(agent.id, systemRowToAgent(values))
+          await clearAcpSessionIdsForAgent(tx, values.id)
+          wireIdentityChangedAgentsById.set(values.id, systemRowToAgent(values))
         }
       } else {
         await tx.insert(agentsSystemTable).values(values)
@@ -104,7 +108,11 @@ export const refreshSystemAgents = async (
   const wireIdentityChangedAgents = [...wireIdentityChangedAgentsById.values()]
   await Promise.all(wireIdentityChangedAgents.map((agent) => disposeAdapter(agent.id)))
 
-  return { refreshed: true, wireIdentityChangedAgents }
+  return {
+    refreshed: true,
+    wireIdentityChangedAgents,
+    defaultAgent: defaultRow ? systemRowToAgent(defaultRow) : null,
+  }
 }
 
 type DiscoveryFetch = { kind: 'ok'; data: AgentDiscoveryResponse } | { kind: 'unauthenticated' } | { kind: 'error' }

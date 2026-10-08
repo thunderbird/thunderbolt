@@ -277,6 +277,19 @@ jobs:
         with: *browser-cache
       - *install-browsers
 
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB makes the CLI refuse to start without bubblewrap. With it, the processes the
+      # agent starts run in a sandbox, so they cannot read the key from the CLI's /proc/<pid>/environ either. Same
+      # install as claude-code-action's for allowed_non_write_users. It needs root, so it runs before the lock step.
+      - &install-sandbox
+        name: Install the subprocess sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor; older kernels lack the sysctl.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - &download-dist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -687,16 +700,7 @@ jobs:
             echo "start=$(date +%s)"
           } >> "$GITHUB_OUTPUT"
 
-      # With bubblewrap the scrubbed CLI runs the agent's commands in a sandbox, so they cannot read the key from
-      # the CLI's /proc/<pid>/environ either. Same install as claude-code-action's for allowed_non_write_users.
-      - name: Install the subprocess sandbox
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends bubblewrap socat
-          # Ubuntu 24.04+ restricts unprivileged user namespaces via AppArmor; older kernels lack the sysctl.
-          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
+      - *install-sandbox
 
       # The tool rules keep the agent on task; they are not the boundary. This job holds no write token and
       # publishing is a separate, deterministic job.

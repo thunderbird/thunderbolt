@@ -28,7 +28,7 @@ The browser tools can write files anywhere in the explore job's checkout, so no 
 explorer: the stack is stopped inline, a checksum of every tracked file must still match, and the session output
 must hold no key the job has, or nothing is uploaded. Metrics and coverage are computed later, in the report job.
 The explore and fix agent steps set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, so no command they start inherits the
-Anthropic key; the fix job also runs those commands in a bubblewrap sandbox.
+Anthropic key, and both jobs install bubblewrap, which the scrubbed CLI needs to run those commands in a sandbox.
 
 Never add `--allow-unrestricted-file-access` to `mcp.json` or set `PLAYWRIGHT_MCP_ALLOW_UNRESTRICTED_FILE_ACCESS`.
 The MCP blocks `file:` URLs by default, and that block keeps local files out of the explorer's reach.
@@ -363,9 +363,10 @@ Never run on GitHub (only locally, or read in the action's code):
 - the explore job's transcript cut and secret check (the same `transcript.jq` and an exact-value
   `grep` ran locally on real sessions' output);
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` passed through the action (probed with the CLI only);
-- the bubblewrap sandbox in the fix job, including whether the agent's own spec run can still reach the local
-  stack from inside it (the separate spec replay step runs outside the sandbox), and the fix output's secret scan
-  (run locally as a script);
+- the bubblewrap sandbox in the explore and fix jobs, including whether the Playwright MCP's Chromium still starts
+  inside it and reaches the stack, whether the fix agent's own spec run can still reach the local stack from inside
+  it (the separate spec replay step runs outside the sandbox), and the fix output's secret scan (run locally as a
+  script);
 - c7 (two devices, Postgres and PowerSync) and its sync replay leg on Postgres + PowerSync, which have not run
   locally either (Docker was down during the local run);
 - the real-AI isolation on a hosted runner: `useradd`, the backend under `sudo -u qa-backend` reaching bun and the

@@ -6,12 +6,12 @@ A public agent deployment is Thunderbolt for visitors who never sign in: each on
 
 ## What it runs
 
-| Resource | Name in the Blueprint    | Notes                                                                                                |
-| -------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Web app  | `public-agent-web`       | Static site built from `main`. Sends the headers the app needs and refuses to be framed (see below). |
-| API      | `public-agent-api`       | Node service from `backend/`, autoscaling from one to four instances, health check on `/v1/health`.  |
-| Database | `public-agent-db`        | Its own PostgreSQL, reachable only from inside Render.                                               |
-| Settings | `public-agent` env group | Read by the API.                                                                                     |
+| Resource | Name in the Blueprint    | Notes                                                                                                      |
+| -------- | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Web app  | `public-agent-web`       | Static site built from `main`. Sends the headers the app needs and refuses to be framed (see below).       |
+| API      | `public-agent-api`       | Node service from `backend/`, one instance running one process (see Limits), health check on `/v1/health`. |
+| Database | `public-agent-db`        | Its own PostgreSQL, reachable only from inside Render.                                                     |
+| Settings | `public-agent` env group | Read by the API.                                                                                           |
 
 There is no sync service. Anonymous sessions never sync, and the API runs without one when `POWERSYNC_URL` is unset, so visitors' chats stay in their browsers.
 
@@ -104,3 +104,4 @@ Deleting the database removes everything the deployment kept on the server: the 
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
 - Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
 - The hosted agent calls Anthropic only and has no tools yet.
+- The API runs as one instance with one process (`WEB_CONCURRENCY=1`). The hosted agent allows a visitor one run at a time but tracks that per process, so scaling out would let parallel runs exceed the spending cap. Scale out once the agent has a shared run lock.

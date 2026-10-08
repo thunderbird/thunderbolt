@@ -80,11 +80,11 @@ services:
     # The open liveness route. /v1/health/* is gated on MONITORING_TOKEN, which a
     # Render health check can't send.
     healthCheckPath: /v1/health
-    scaling:
-      minInstances: 1
-      maxInstances: 4
-      targetCPUPercent: 80
-      targetMemoryPercent: 80
+    # One instance running one process. The hosted agent allows a visitor one
+    # paid run at a time but tracks that per process, so a second instance or
+    # worker lets parallel runs slip past the spending cap. Scale out once the
+    # agent has a shared run lock.
+    numInstances: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -92,6 +92,8 @@ services:
           property: connectionString
       - key: BETTER_AUTH_SECRET
         generateValue: true
+      - key: WEB_CONCURRENCY
+        value: "1" # one worker; see numInstances
       - fromGroup: public-agent
     autoDeployTrigger: commit
 

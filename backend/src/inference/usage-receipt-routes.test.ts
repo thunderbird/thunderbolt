@@ -385,6 +385,24 @@ describe('inference usage receipt routes', () => {
     await expectEmptyResponse(await postRaw(app, '{'), 400)
   })
 
+  it('rejects a body stream that fails mid-read with an empty 400', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.enqueue(new TextEncoder().encode('{"receipt":'))
+        controller.error(new Error('connection reset'))
+      },
+    })
+    const response = await app.handle(
+      new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }),
+    )
+
+    await expectEmptyResponse(response, 400)
+  })
+
   it('accepts a total count that differs from prompt plus completion', async () => {
     const eventId = crypto.randomUUID()
     const response = await postJson(app, {

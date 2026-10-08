@@ -15,7 +15,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { v7 as uuidv7 } from 'uuid'
-import { defaultModelGlm53Flash, defaultModelOpus5, defaultModels, hashModel } from '@shared/defaults/models'
+import { defaultModelDeepSeekV41Flash, defaultModelOpus5, defaultModels, hashModel } from '@shared/defaults/models'
 import { isModelModified } from '@/defaults/utils'
 import type { Model } from '@/types'
 import {
@@ -190,7 +190,7 @@ describe('Models DAL', () => {
         .insert(modelsTable)
         .values([...defaultModels])
 
-      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelGlm53Flash.id)
+      expect((await getSelectedModelQuery(getDb()).get())?.id).toBe(defaultModelDeepSeekV41Flash.id)
     })
 
     it('keeps an explicit selection ahead of the default Flash model', async () => {

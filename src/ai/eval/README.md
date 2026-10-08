@@ -173,7 +173,7 @@ Unknown IDs within those filters fail; when `EVAL_SMOKE=1` is also set, only the
 Use these names in `EVAL_MODELS`:
 
 - `opus` — Opus 5
-- `flash` — GLM 5.3 Flash
+- `flash` — DeepSeek V4.1 Flash
 - `glm` — GLM 5.3
 
 The slug map is intentionally explicit. Its unit test fails when `defaultModels` gains an entry without a stable eval slug.

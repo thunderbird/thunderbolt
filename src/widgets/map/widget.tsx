@@ -94,16 +94,18 @@ const mapControlLabels = (i18n: I18n): Record<string, string> => ({
 })
 
 /**
- * Cheap synchronous probe: can this browser create a WebGL context at all?
- * MapLibre requires one, and when WebGL is off (Firefox with hardware accel /
- * `resistFingerprinting` disabled, a blocklisted GPU, headless, etc.) it throws
- * a verbose `webglcontextcreationerror`. We detect up front and show a clean
- * message instead of dumping MapLibre's raw error JSON at the user.
+ * Cheap synchronous probe: can this browser create a WebGL2 context at all?
+ * MapLibre 6 dropped WebGL1, so WebGL2 is the whole requirement — accepting a
+ * v1 context here would pass the probe and then fail inside MapLibre, trading
+ * the precise message below for the generic "couldn't be loaded" one. When
+ * WebGL is off (Firefox with hardware accel / `resistFingerprinting` disabled,
+ * a blocklisted GPU, headless, etc.) MapLibre throws a verbose
+ * `webglcontextcreationerror`; we detect up front and show a clean message
+ * instead of dumping MapLibre's raw error JSON at the user.
  */
 const isWebglAvailable = (): boolean => {
   try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'))
+    return Boolean(document.createElement('canvas').getContext('webgl2'))
   } catch {
     return false
   }
@@ -165,11 +167,22 @@ export const MapWidget = ({ data, title }: MapWidgetProps) => {
     resizeObserver.observe(container)
 
     const init = async () => {
-      const { Map: MapLib, Popup, NavigationControl } = await import('maplibre-gl')
-      await import('maplibre-gl/dist/maplibre-gl.css')
+      // MapLibre 6 derives its worker URL from `import.meta.url`, which points
+      // at our bundled chunk rather than the dist layout the worker lives in —
+      // so under any bundler the default resolution 404s and no tile ever
+      // renders. Vite's `?worker&url` emits a self-contained worker chunk and
+      // hands back its URL; plain `?url` would copy the file without the
+      // sibling `maplibre-gl-shared.mjs` it imports. Loaded here rather than at
+      // module scope so nothing map-related reaches the entry bundle.
+      const [{ Map: MapLib, Popup, NavigationControl, setWorkerUrl }, { default: workerUrl }] = await Promise.all([
+        import('maplibre-gl'),
+        import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+        import('maplibre-gl/dist/maplibre-gl.css'),
+      ])
       if (cancelled) {
         return
       }
+      setWorkerUrl(workerUrl)
       map = new MapLib({ container, style: basemap, locale: controlLabels })
       map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
 

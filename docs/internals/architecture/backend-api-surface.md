@@ -75,9 +75,9 @@ Order in `backend/src/index.ts:112-205` is load-bearing:
 
 Plugin isolation hides in-plugin errors from the root `onError`, which covers only routes on the main app. Nearly every route module installs its own `.onError(safeErrorHandler)` (`backend/src/middleware/error-handling.ts:107-111`).
 
-### Why Better Auth is a catch-all, not a `mount()`
+### Why Better Auth uses `.all()`, not a `mount()`
 
-`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/*', …)` (`backend/src/auth/elysia-plugin.ts:55`), filtered by its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:156`); later, more specific routes win, so `/v1/config` resolves to the config route and only unclaimed `/v1/...` paths reach it.
+`mount()` short-circuits before `onBeforeHandle`, silently bypassing the IP rate limit wrapped around it. So Better Auth is `plugin.all('/api/auth/*', …)` (`backend/src/auth/elysia-plugin.ts:66`), matching its own `basePath: '/v1/api/auth'` (`backend/src/auth/auth.ts:181`) under the app's `/v1` prefix. Unclaimed `/v1/...` paths no longer reach it: Better Auth routes on whatever follows the first `/api/auth`, so a catch-all let lookalike paths such as `/v1/x/v1/api/auth/sign-in/anonymous` in while skipping the path-keyed limits.
 
 ## Auth modes
 
@@ -116,7 +116,7 @@ Metered routes add two guards:
 
 Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:33-40`, threaded into route groups from `backend/src/index.ts:90-198`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances.
 
-- **User-keyed limiters go inside the `guard({ auth: true }, …)` callback.** They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
+- **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or, on `/v1/chat` and the hosted agent, inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`). They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
 - **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request.
 

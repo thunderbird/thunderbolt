@@ -486,6 +486,7 @@ describe('createTinfoilRoutes', () => {
 
     it.each([
       ['glm-5-3', '1500', '5250'],
+      ['deepseek-v4-1-flash', '300', '700'],
       ['glm-5-3-flash', '300', '700'],
       ['glm-5-2', '1500', '5250'],
       ['deepseek-v4-flash', '300', '700'],
@@ -652,7 +653,7 @@ describe('createTinfoilRoutes', () => {
       await response.arrayBuffer()
     })
 
-    it.each([undefined, 'glm-5-3', 'glm-5-3-flash', 'glm-5-2', 'deepseek-v4-flash'])(
+    it.each([undefined, 'glm-5-3', 'deepseek-v4-1-flash', 'glm-5-3-flash', 'glm-5-2', 'deepseek-v4-flash'])(
       'rejects before fetch when the price for header %s is missing',
       async (model) => {
         await database

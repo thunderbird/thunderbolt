@@ -14,7 +14,7 @@ import { defaultAutomations, hashPrompt } from '../defaults/automations'
 import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
   defaultModelGlm53,
-  defaultModelGlm53Flash,
+  defaultModelDeepSeekV41Flash,
   defaultModelOpus5,
   defaultModels,
   defaultModelsVersion,
@@ -818,7 +818,8 @@ describe('reconcileDefaultsForTable', () => {
 
 for (const [target, model, name] of [
   [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
-  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  [defaultModelDeepSeekV41Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  [defaultModelDeepSeekV41Flash, 'glm-5-3-flash', 'GLM 5.3 Flash'],
 ] as const) {
   test(`reconciliation upgrades an edited ${model} row outside the hash gate`, async () => {
     const db = getDb()

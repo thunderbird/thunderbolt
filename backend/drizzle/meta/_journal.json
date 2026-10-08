@@ -232,6 +232,20 @@
       "when": 1791300854097,
       "tag": "0032_chat_threads_mini_app_id",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791320445791,
+      "tag": "0033_seed-fireworks-prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791414043381,
+      "tag": "0034_seed-tinfoil-deepseek-v4-1-flash-price",
+      "breakpoints": true
     }
   ]
 }

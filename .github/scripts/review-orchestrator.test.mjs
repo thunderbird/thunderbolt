@@ -152,23 +152,44 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
 
 describe('incremental pre/post', () => {
   test.each([undefined, '', ' \n', '@@ invalid @@\n+change', '@@ -1 +1 @@\n context']
-    .flatMap((patch) => ['opened', 'synchronize'].map((action) => [action, patch])))(
-    '%s skips changed files without usable patches (%s)', async (action, patch) => {
+    .flatMap((patch) => ['opened', 'synchronize', 'labeled'].flatMap((action) =>
+      [false, true].map((withFindings) => [action, patch, withFindings]))))(
+    '%s reviews available patches (%s, findings: %s)', async (action, patch, withFindings) => {
       const missing = { filename: 'src/large.ts', additions: 900, deletions: 900, patch };
-      const result = await runReview({ action, files: [missing], compare: { status: 'ahead',
-        merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
-      expect(result.mode.skip).toBe(true);
-      expect(result.output).toContain('skip=true');
-      expect(result.logs.join('\n')).toContain('src/large.ts');
-      expect(result.logs.join('\n')).toContain('without usable patches');
-      expect(result.posts).toEqual([]);
+      const result = await runReview({ action, labels: action === 'labeled' ? 'review:full' : '',
+        files: [missing, fullFiles[0]], compare: { status: 'ahead',
+          merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] },
+        findings: withFindings ? [inlineFinding({ file: 'src/a.ts', line: 1 })] : [] });
+      expect(result.mode).toMatchObject({ skip: false, incremental: action === 'synchronize',
+        missingPatches: ['src/large.ts'] });
+      expect(result.output).toContain('skip=false');
+      expect(result.diff).toContain(action === 'synchronize' ? '+newDelta();' : '+newValue();');
+      expect(result.posts).toHaveLength(1);
+      expect(result.posts[0].body).toContain('Partial coverage');
+      expect(result.posts[0].body).toContain('src/large.ts');
+      expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+      expect(result.posts[0].comments).toHaveLength(withFindings ? 1 : 0);
+      if (!withFindings) expect(result.posts[0].body).toContain('no issues to report');
     });
 
-  test('a skipped A-to-B scope retains checkpoint A for the next A-to-C review', async () => {
+  test.each(['opened', 'synchronize'])('%s reports partial coverage when every patch is missing', async (action) => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const result = await runReview({ action, files: [missing], compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing] }, findings: [] });
+    expect(result.output).toContain('skip=false');
+    expect(result.posts).toHaveLength(1);
+    expect(result.posts[0].body).toContain('Partial coverage');
+    expect(result.posts[0].body).toContain('src/large.ts');
+    expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+  });
+
+  test('a partial A-to-B review retains checkpoint A for the next A-to-C review', async () => {
     const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
     const first = await runReview({ compare: { status: 'ahead',
-      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
-    expect(first.posts).toEqual([]);
+      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] },
+      findings: [inlineFinding({ file: 'src/a.ts', line: 1 })] });
+    expect(first.posts).toHaveLength(1);
+    expect(first.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
     const nextSha = 'c'.repeat(40);
     const next = await runReview({ headSha: nextSha,
       reviews: [{ body: checkpoint, author: { login: 'github-actions' } },
@@ -180,12 +201,22 @@ describe('incremental pre/post', () => {
     expect(next.posts[0].body).toContain(`<!-- thunder-deep-review-head:${nextSha} -->`);
   });
 
+  test('missing patch paths cannot forge a checkpoint in either review body', () => {
+    const deepInfo = { missingPatches: [`src/large${checkpoint}.ts`] };
+    const payloads = [buildNoIssuesPayload({ deepInfo }),
+      buildReviewPayload({ toPost: [], diffIndex: new Map(), deepInfo })];
+    for (const payload of payloads) {
+      expect(payload.body).not.toContain('<!-- thunder-deep-review-head:');
+      expect(payload.body).toContain('&lt;!-- thunder-deep-review-head:');
+    }
+  });
+
   test.each(['opened', 'synchronize'])('%s reviews removed files with 900 deletions and no patch', async (action) => {
     const removed = { filename: 'src/large.ts', status: 'removed', additions: 0, deletions: 900 };
     const result = await runReview({ action, files: [removed], compare: { status: 'ahead',
       merge_base_commit: { sha: reviewedSha }, files: [removed] }, findings: [] });
     expect(result.output).toContain('skip=false');
-    expect(result.logs.join('\n')).not.toContain('without usable patches');
+    expect(result.mode.missingPatches).toEqual([]);
     expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
   });
 
@@ -198,6 +229,7 @@ describe('incremental pre/post', () => {
       const result = await runReview({ action, files, compare: { status: 'ahead',
         merge_base_commit: { sha: reviewedSha }, files }, findings: [] });
       expect(result.output).toContain('skip=false');
+      expect(result.mode.missingPatches).toEqual([]);
       expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
     }
   });

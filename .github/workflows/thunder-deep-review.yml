@@ -153,8 +153,8 @@ jobs:
       # The full PR patch is kept for comment anchors. On synchronize, if the bot's last
       # posted review recorded a head SHA that is an ancestor of this head, the model
       # reviews only the Compare API delta since it. Other events, including adding
-      # review:full, review the full PR. If nothing reviewable remains, or a changed
-      # file other than a removal has no usable patch, the model steps are skipped.
+      # review:full, review the full PR. If nothing reviewable remains, the model steps are skipped.
+      # Files without usable patches are listed in a partial review, and the head marker is omitted.
       # ─────────────────────────────────────────────────────────────────────
       # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
       # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are

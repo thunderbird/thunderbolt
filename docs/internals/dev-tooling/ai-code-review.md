@@ -81,12 +81,14 @@ dependencies, built-in `fetch`). Two phases surround the model steps; a telemetr
 - Everything reconciles to the PR head SHA, never the synthetic merge ref.
 - Unit-tested (`.github/scripts/review-orchestrator.test.mjs`) as part of `bun run test`.
 
-Each posted review, except bounded ones, records its head SHA in a hidden marker. On `synchronize`, if that SHA is
+Each posted review with complete coverage records its head SHA in a hidden marker. On `synchronize`, if that SHA is
 an ancestor of the new head and the comparison has no merge commits and fewer than 300 files, the model reviews
 only the changes since it. It also receives the bot's earlier findings and replies. Other events, and comparisons
 that fail these checks, review the full PR. Adding `review:full` forces one full pass; later pushes go back to deltas
 even if the label stays. A run that posts no review keeps the previous checkpoint.
-The run skips when a changed, non-generated file other than a removal has no usable patch.
+When a changed, non-generated file other than a removal has no usable patch, the model reviews the available patches.
+Both findings and no-issues reviews list those files as partial coverage and omit the head marker, as bounded reviews do,
+so the next delta still includes the uncovered changes.
 
 ## Deep mode and bounded mode
 

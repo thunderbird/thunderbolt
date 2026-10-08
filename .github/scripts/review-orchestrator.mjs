@@ -948,8 +948,11 @@ const reviewHeader = ({ tagline, deepInfo }) =>
   `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
   `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n` +
   // The checkpoint marker lives only in posted reviews. A run that posts nothing keeps the previous
-  // checkpoint, so the next delta covers both pushes. Bounded reviews omit it because they did not cover the whole head.
-  (deepInfo.boundedMode ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`);
+  // checkpoint, so the next delta covers both pushes. Partial reviews omit it because they did not cover the whole head.
+  (deepInfo.boundedMode || deepInfo.missingPatches?.length ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`) +
+  (deepInfo.missingPatches?.length
+    ? `Partial coverage: files without usable patches: ${JSON.stringify(deepInfo.missingPatches).replaceAll('<!--', '&lt;!--')}\n`
+    : '');
 
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
 const renderCommentBody = (f) => {
@@ -1165,13 +1168,11 @@ const runPre = async () => {
   const diffFiles = scope.truncated ? scope.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : scope.items;
   const reviewedFiles = diffFiles.filter((file) => !isGeneratedFile(file.filename));
   const missingPatches = reviewedFiles.filter((file) => file.status !== 'removed' && (file.additions > 0 || file.deletions > 0) &&
-    !/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@[^\r\n]*\r?\n(?: .*\r?\n)*[+-]/m.test(file.patch ?? ''));
-  if (missingPatches.length) log('pre: changed files without usable patches — skipping review without advancing checkpoint:',
-    JSON.stringify(missingPatches.map((file) => file.filename)));
+    !/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@[^\r\n]*\r?\n(?: .*\r?\n)*[+-]/m.test(file.patch ?? '')).map((file) => file.filename);
   const omittedFiles = diffFiles.filter((file) => isGeneratedFile(file.filename)).map((file) => file.filename);
   const omittedNotice = omittedFiles.length ? `Generated files omitted from this patch: ${JSON.stringify(omittedFiles)}\n` : '';
   const deepInfo = { ...computeDeepMode(diffFiles, scope.truncated),
-    incremental: scope.incremental, skip: reviewedFiles.length === 0 || missingPatches.length > 0 };
+    incremental: scope.incremental, missingPatches, skip: reviewedFiles.length === 0 };
   await Promise.all([
     writeFile(DIFF_FILE, `${omittedNotice}${buildUnifiedDiff(reviewedFiles)}`),
     writeFile(PR_DIFF_FILE, buildUnifiedDiff(prFiles.items)),

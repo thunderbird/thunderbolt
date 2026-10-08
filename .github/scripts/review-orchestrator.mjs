@@ -334,22 +334,23 @@ const graphqlFetch = async (query, variables) => {
 
 /**
  * Fetch the PR's changed files ONCE (paginated, capped at the 3000-file cliff) —
- * the single source that feeds BOTH the deep-mode size gate and the reconstructed
- * unified diff. Best-effort like the rest of the advisory bot: a hard failure
- * after retries yields an empty set, degrading the run to an empty-diff / non-deep
- * no-op instead of a red check (the next push retries).
+ * used for comment anchors and the full-PR review scope. Failure yields an empty
+ * set; a valid incremental delta can still be reviewed without inline anchors.
  */
 const fetchPrFiles = async () => {
   try {
     const url = apiUrl(`/pulls/${env.prNumber}/files?per_page=100`);
     return await paginateAll(url, { cap: PR_FILES_TRUNCATION_CAP });
   } catch (err) {
-    log('pre: PR files fetch failed — degrading to empty diff / non-deep:', err.message);
+    log('pre: PR files fetch failed — no PR anchors or full-PR scope; incremental delta may remain:', err.message);
     return { items: [], truncated: false };
   }
 };
 
-/** Use a completed ancestor's delta only when the compare response covers every file. */
+/**
+ * Use a completed ancestor's delta only when the compare response covers every file.
+ * Keep removals/reverts absent from the current PR; findings without anchors go to the summary.
+ */
 const selectReviewScope = async (prFiles, ownReviewBodies) => {
   const full = { ...prFiles, incremental: false };
   if (env.eventAction !== 'synchronize' || prFiles.truncated) return full;
@@ -1146,12 +1147,8 @@ const selectFindingsToPost = (findings, { openHashes, humanResolvedHashes, summa
 const decideTerminalAction = ({ findingCount, eventAction, ownReviewBodies, openThreadsRemain, diffAvailable = true,
   latestReviewNoIssues = latestOwnReviewIsNoIssues(ownReviewBodies) }) => {
   if (findingCount === 0) {
-    // Never affirm "no issues" when we never actually had a diff to review. A
-    // real PR always has ≥1 changed file, so an empty file set means the Files
-    // API fetch failed (persistent 403/429/5xx) and runPre wrote an empty diff —
-    // posting a clean review there would launder a broken run into fake green,
-    // exactly the failure mode the loud-fail persist guards exist to prevent.
-    // Skip silently; the next push retries with a real diff.
+    // Affirm "no issues" only with an available review scope (full PR or validated delta).
+    // Missing PR anchors alone do not make that scope unavailable.
     if (!diffAvailable) return { action: 'skip', reason: 'diff-unavailable' };
     if (eventAction === 'reopened') return { action: 'skip', reason: 'reopened-no-findings' };
     if (openThreadsRemain) return { action: 'skip', reason: 'open-threads-remain' };
@@ -1239,9 +1236,8 @@ const runPost = async () => {
     ownReviewBodies,
     latestReviewNoIssues,
     openThreadsRemain,
-    // A real PR always has ≥1 changed file; totalFileCount 0 (or a missing deep-mode
-    // file) means the Files API fetch failed and the diff is empty — don't post
-    // an affirmative "no issues" review off a diff we never actually got.
+    // Count the selected review scope, not the PR anchor files; an empty scope
+    // (or missing deep-mode file) cannot support an affirmative "no issues" review.
     diffAvailable: (deepInfo.totalFileCount ?? 0) > 0,
   });
   if (decision.action === 'no-issues') {

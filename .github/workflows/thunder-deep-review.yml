@@ -151,7 +151,7 @@ jobs:
       # reconstructs the diff from the List-pull-request-files API — GitHub's
       # recommended large-PR path — which paginates and has no per-diff line cap.
       # Keep the full PR diff for comment anchors. On synchronize, an ancestor
-      # checkpoint enables a Compare API delta restricted to current PR files.
+      # checkpoint enables the complete validated Compare API delta.
       # Other events (including applying review:full) use the full diff; empty scope skips models.
       # ─────────────────────────────────────────────────────────────────────
       # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into

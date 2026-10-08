@@ -36,7 +36,7 @@ Three actions differ by harness; every "ask" in the stages means the first row.
 | --- | --- | --- |
 | Ask the developer | AskUserQuestion. | Print the options as a numbered list in chat, after the stage's table if it has one, then wait for the developer's reply before continuing. Keep the question text as written. |
 | Enter the worktree | `EnterWorktree({ path })`, loaded with ToolSearch (`select:EnterWorktree`). | Prefix every later shell command with `cd <absolute worktree path> &&` and use absolute paths. |
-| Delegate the implementation | Agent tool with the highest tier alias its schema lists (`fable`, else `opus`), effort high; raise to the maximum only for a stuck problem. No `isolation: "worktree"`. | Codex: a subagent thread if available, else implement in the same session. A harness without subagents: implement it yourself through the checklist. Effort high; raise to the maximum only for a stuck problem. |
+| Delegate the implementation | Agent tool. Pick the model and the effort for this swap from what the stages revealed: how much the catalog, the backend and the compatibility layer change, and how much of it the tests cover. Any model the harness offers is eligible, from the cheapest to the strongest, and effort moves on the same judgement. State the choice and the reason in one line before delegating. No `isolation: "worktree"`. | The same judgement, with the models that harness offers: a subagent where one exists, otherwise implement it yourself through the checklist. |
 
 When only one candidate remains, ask a yes/no confirmation of it instead of a list.
 
@@ -153,7 +153,7 @@ implementer will use:
 - reasoning: the profile inherits the leaving model's `reasoningEffort` unless the catalog says
   `reasoning: false`; checklist item 16 verifies it reaches the wire;
 - Pi catalog: when the incoming model is absent from Pi's catalog, the implementer aliases it
-  (checklist items 16 and 17); pi-ai is not upgraded in this swap.
+  (checklist items 16 and 17) and leaves pi-ai at its current version.
 
 Done when the developer answered and saw those facts.
 
@@ -190,9 +190,8 @@ the brief below is your own contract. The brief carries:
   shell command prefixed with `cd <path> &&`";
 - "Read `.agents/skills/thunder-update-model/references/swap-checklist.md` and work through every
   item";
-- "`AGENTS.md` (Testing, After Each Task), `backend/docs/testing.md` and
-  `docs/internals/development/testing.md` bind every test you write or edit; the report names the
-  three and gives one line per test file saying which behaviour that test proves".
+- "the report names the three testing guides from the checklist intro and gives one line per test
+  case added or changed, saying which behaviour that case proves".
 
 Completion criterion for the implementer, verbatim in the brief: every checklist item accounted
 for, the final suites in checklist item 24 pass, and the item 23 grep report has no hit left in
@@ -201,10 +200,10 @@ Done when the report arrives with those three things.
 
 ### 7. Review and hand off
 
-Present, in this order: the checklist table from the implementer's report, the tail of each
-verification command, the grep report, the deploy note from the checklist, the two manual
-follow-ups below, and the exact next command: `/thunderpush`. CI runs the deep review on the PR,
-so do not start it here. Stop there.
+Present, in this order: the checklist table from the implementer's report, the model, the effort and
+the reason chosen in stage 6, the tail of each verification command, the grep report, the deploy
+note from the checklist, the two manual follow-ups below, and the exact next command:
+`/thunderpush`. CI runs the deep review on the PR, so do not start it here. Stop there.
 
 Name both follow-ups with their values and tell the developer to change them by hand:
 
@@ -225,5 +224,5 @@ Name both follow-ups with their values and tell the developer to change them by 
 
 - Never commit or push from this skill; `/thunderpush` owns that.
 - Never run bare `bun test` at the repo root; use the scoped commands in the checklist.
-- Pin pi-ai where it is: a model Pi's catalog lacks is aliased in `shared/agent-core` (items 16
-  and 17), and a dependency bump is a separate PR that the swap never includes.
+- Pin pi-ai where it is: items 16 and 17 alias a model Pi's catalog lacks, and a dependency bump
+  ships as its own PR.

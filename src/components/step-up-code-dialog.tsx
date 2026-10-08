@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
-import { Trans, useLingui } from '@lingui/react/macro'
+import { Trans } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import { InputOTP, InputOTPSlots } from '@/components/ui/input-otp'
 import { stepUpOtpLength } from '@/lib/constants'
@@ -22,6 +22,11 @@ type StepUpCodeDialogProps = {
   otp: string
   isBusy: boolean
   error: string | null
+  /** What the code is about to authorize — each flow says it in its own words. */
+  description: string
+  submitLabel: string
+  submitLoadingLabel: string
+  submitVariant?: 'default' | 'destructive'
   onOtpChange: (otp: string) => void
   onResend: () => void
   onSubmit: () => void
@@ -29,21 +34,24 @@ type StepUpCodeDialogProps = {
 }
 
 /**
- * Emailed step-up code entry (THU-875) — the server refuses a recovery-phrase
- * change without it. Shared by the settings "Change recovery phrase" flow and
- * the unsaved-phrase prompt, which both end in the same gated rotation.
+ * Emailed step-up code entry — the server refuses a gated action without it.
+ * The copy is required rather than defaulted: every flow states the action it
+ * is about to take, and a default would quietly let one borrow another's words.
  */
 export const StepUpCodeDialog = ({
   open,
   otp,
   isBusy,
   error,
+  description,
+  submitLabel,
+  submitLoadingLabel,
+  submitVariant,
   onOtpChange,
   onResend,
   onSubmit,
   onCancel,
 }: StepUpCodeDialogProps) => {
-  const { t } = useLingui()
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && !isBusy && onCancel()}>
       {/* sm:max-w-md matches the sign-in modal, so the OTP slots render at the
@@ -53,9 +61,7 @@ export const StepUpCodeDialog = ({
           <AlertDialogTitle>
             <Trans>Enter your verification code</Trans>
           </AlertDialogTitle>
-          <AlertDialogDescription>
-            <Trans>We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.</Trans>
-          </AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <InputOTP
           maxLength={stepUpOtpLength}
@@ -71,7 +77,7 @@ export const StepUpCodeDialog = ({
           data-form-type="other"
           containerClassName="w-full"
         >
-          <InputOTPSlots />
+          <InputOTPSlots length={stepUpOtpLength} />
         </InputOTP>
         {error && (
           <p className="text-sm text-destructive text-center" role="alert">
@@ -81,12 +87,13 @@ export const StepUpCodeDialog = ({
         <AlertDialogFooter className="flex-col sm:flex-col">
           <Button
             className="w-full"
+            variant={submitVariant}
             onClick={onSubmit}
             isLoading={isBusy}
-            loadingLabel={t`Generating…`}
+            loadingLabel={submitLoadingLabel}
             disabled={otp.length !== stepUpOtpLength}
           >
-            <Trans>Generate new phrase</Trans>
+            {submitLabel}
           </Button>
           <Button className="w-full" variant="ghost" onClick={onResend} disabled={isBusy}>
             <Trans>Resend code</Trans>

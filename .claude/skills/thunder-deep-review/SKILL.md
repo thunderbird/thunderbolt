@@ -1,6 +1,6 @@
 ---
 name: thunder-deep-review
-description: Reviews a pull request, diff, or branch against Thunderbolt's house rules (no any, type-over-interface, arrow fns, const/early-return, no error-swallowing or defensive code, useReducer at 3+ useState, useEffect discipline, route code-splitting, soft-deletes, integration-agnostic logic) and the 80 architecture invariants. Goes beyond bug-finding to catch architecture/abstraction-layer mistakes, undocumented intent, convention drift, bloat/supply-chain, and readability. Use when reviewing a PR/diff/branch, when the user says review, code-review, deep-review, or "review before merge". Read-only: reports findings, never edits or posts to the PR.
+description: Reviews a pull request, diff, or branch against Thunderbolt's house rules (no any, type-over-interface, arrow fns, const/early-return, no error-swallowing or defensive code, useReducer at 3+ useState, useEffect discipline, route code-splitting, soft-deletes, integration-agnostic logic) and the 80 architecture invariants. Goes beyond bug-finding to catch architecture/abstraction-layer mistakes, undocumented intent, convention drift, bloat/supply-chain, and readability. Use when reviewing a PR/diff/branch, when the user says review, code-review, deep-review, or "review before merge". Read-only on the code: reports findings, never edits code or posts to the PR.
 ---
 
 # Thunder Deep Review
@@ -22,7 +22,7 @@ In both modes: identifying the issue is the job; a suggested fix is **optional**
 
 ## Operating rules (low freedom — always)
 
-1. **Read-only.** Keep reviewed files unchanged. In local mode, the caller may write only a temporary patch and a findings report; Write/Edit is limited to these artifacts. Never post to the PR or deploy.
+1. **Read-only.** Never edit reviewed files. In local mode you may write two artifacts: a temporary patch file and the findings report.
 2. **Diff-scoped.** Only flag lines that *changed* in this diff. Never flag pre-existing code you didn't see change (note it as context at most).
 3. **Codebase-aware.** Before asserting any *cross-file* claim (architecture, data, security), Read the surrounding/imported files (`src/dal/*`, `src/db/tables.ts`, `src/db/schema.ts`, `shared/powersync-tables.ts`, `powersync-service/config/config.yaml`, `src/app.tsx`, `CLAUDE.md`). The signature catches are invisible from the diff alone.
 4. **Verification bar.** Every behavioral claim must quote the exact `file:line` that proves it. If a claim rests on naming or an unconfirmed assumption, downgrade it to a question or drop it. Never infer behavior from a symbol name.

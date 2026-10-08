@@ -6,8 +6,11 @@ import { describe, expect, it } from 'bun:test'
 import type { ReactElement } from 'react'
 import { render } from 'react-email'
 import type { AppLocale } from '@shared/i18n/locales'
+import { stepUpCopy } from '@/lib/security-notifications'
+import type { StepUpAction } from '@/lib/step-up-otp'
 import { getEmailI18n } from './i18n'
 import { MagicLinkEmail, magicLinkSubject } from './magic-link'
+import { SecurityCodeEmail } from './security-code'
 import { WaitlistJoinedEmail, waitlistJoinedSubject } from './waitlist-joined'
 import { WaitlistNotReadyEmail, waitlistNotReadySubject } from './waitlist-not-ready'
 import { WaitlistReminderEmail, waitlistReminderSubject } from './waitlist-reminder'
@@ -50,6 +53,36 @@ describe('email rendering', () => {
   it('localizes the shared layout footer', async () => {
     expect(await renderCopy(magicLink('en'))).toContain('You can reply to this email')
     expect(await renderCopy(magicLink('en-XA'))).not.toContain('You can reply to this email')
+  })
+
+  describe('step-up code', () => {
+    const stepUpEmail = (action: StepUpAction, locale: AppLocale) => {
+      const i18n = getEmailI18n(locale)
+      const { subject, body, guidance } = stepUpCopy[action](i18n, 'MacBook Pro')
+      return renderCopy(
+        <SecurityCodeEmail i18n={i18n} code="88299917" preview={subject} body={body} guidance={guidance} />,
+      )
+    }
+
+    it('renders each action’s own English copy', async () => {
+      const deletion = await stepUpEmail('account-deletion', 'en')
+      expect(deletion).toContain('Deletion of your account was requested from device')
+      expect(deletion).toContain('88299917')
+      expect(deletion).not.toContain('recovery phrase change was requested')
+
+      expect(await stepUpEmail('recovery-phrase-change', 'en')).toContain(
+        'A recovery phrase change was requested from device',
+      )
+    })
+
+    it('resolves each action’s copy through the catalog', async () => {
+      expect(await stepUpEmail('account-deletion', 'en-XA')).not.toContain(
+        'Deletion of your account was requested from device',
+      )
+      expect(await stepUpEmail('recovery-phrase-change', 'en-XA')).not.toContain(
+        'A recovery phrase change was requested from device',
+      )
+    })
   })
 
   it.each([

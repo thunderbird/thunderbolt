@@ -2169,9 +2169,11 @@ describe('Encryption API (v2)', () => {
       )
       expect(res.status).toBe(200)
       expect(sentEmails.map((e) => e.kind)).toEqual(['step-up-code'])
-      const { code, email } = sentEmails[0]!.params as { code: string; email: string }
+      const { action, code, email } = sentEmails[0]!.params as { action: string; code: string; email: string }
       expect(email).toBe(`${p('u')}@test.com`)
       expect(code).toMatch(/^\d{8}$/)
+      // The email must name the action it authorizes, or it carries the wrong copy.
+      expect(action).toBe('recovery-phrase-change')
 
       // And the minted code actually opens the rotate gate: verified end-to-end
       // by the rotate suite; here just confirm the row exists via a check call.

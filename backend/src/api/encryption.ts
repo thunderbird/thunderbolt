@@ -447,6 +447,7 @@ export const createEncryptionRoutes = (
           }
           await notifications.sendStepUpCode({
             email: sessionUser!.email,
+            action: stepUpAction,
             code: stepUp.code,
             deviceName: caller.device.name ?? 'Unknown device',
             locale: resolveEmailLocale(request.headers.get('X-App-Language')),

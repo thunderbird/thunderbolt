@@ -693,6 +693,28 @@ describe('createTinfoilRoutes', () => {
       },
     )
 
+    it('logs a missing price as inference_price_unavailable', async () => {
+      await database
+        .delete(inferencePrices)
+        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-3')))
+      const usageLogger = { info: mock(), error: mock() }
+      const app = buildApp({ usageLogger })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: { [inferenceModelHeader]: 'glm-5-3' },
+          body: 'opaque-bytes',
+        }),
+      )
+
+      expect(response.status).toBe(503)
+      expect(usageLogger.error).toHaveBeenCalledWith(
+        { event: 'inference_price_unavailable', provider: 'tinfoil', model: 'glm-5-3' },
+        'Inference price unavailable',
+      )
+    })
+
     it.each([
       ['anonymous', true, '5h', 10, 0],
       ['anonymous', true, '7d', 60, 6],

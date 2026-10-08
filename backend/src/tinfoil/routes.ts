@@ -245,7 +245,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)
     }
     if (isManagedChat && identity) {
-      const admission = await admitManagedRequest({ database, settings, identity, user, set })
+      const admission = await admitManagedRequest({ database, settings, identity, user, set, logger: usageLogger })
       if (admission instanceof Response) {
         recordLatency({ status: admission.status, completedAt: nowFn() })
         return admission

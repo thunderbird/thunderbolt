@@ -35,6 +35,7 @@
     "@posthog/ai": "^7.16.0",
     "@types/bun": "^1.2.22",
     "ai": "^6.0.300",
+    "altcha-lib": "^2.6.0",
     "better-auth": "^1.6.9",
     "bun-types": "^1.2.22",
     "dotenv": "^17.2.3",

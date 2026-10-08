@@ -53,6 +53,9 @@ export {
   deletePersistedSignInOtp,
 } from './otp-challenge'
 
+// Captcha replay protection
+export { redeemCaptchaChallenge, deleteExpiredCaptchaChallenges } from './captcha'
+
 // Encryption
 export {
   getEnvelopeByDeviceId,

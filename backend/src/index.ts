@@ -5,6 +5,7 @@
 import { createMainRoutes } from '@/api/routes'
 import { createHealthRoutes } from '@/api/health'
 import { createBetterAuthPlugin } from '@/auth/elysia-plugin'
+import { createCaptchaRoutes } from '@/auth/captcha-routes'
 import { createGoogleAuthRoutes } from '@/auth/google'
 import { createMicrosoftAuthRoutes } from '@/auth/microsoft'
 import { createOidcConfigRoutes } from '@/auth/oidc'
@@ -21,6 +22,7 @@ import { createHttpLoggingMiddleware } from '@/middleware/http-logging'
 import {
   createAuthIpRateLimit,
   createAuthPluginIpRateLimit,
+  createCaptchaChallengeIpRateLimit,
   createIpTierRateLimit,
   createUserTierRateLimit,
   createRateLimitConsumer,
@@ -126,6 +128,18 @@ export const createApp = async (deps?: AppDeps) => {
       .use(createErrorHandlingMiddleware())
       // Auth routes (mounted at /api/auth/*)
       .use(betterAuthPlugin)
+      .use(
+        createCaptchaRoutes(
+          settings,
+          createCaptchaChallengeIpRateLimit(database, {
+            ...ipRateLimitSettings,
+            captchaChallenge: {
+              max: settings.anonymousSignInRateLimitMax,
+              durationSecs: settings.anonymousSignInRateLimitWindowSecs,
+            },
+          }),
+        ),
+      )
       // Mount route groups
       .use(createMainRoutes(auth, fetchFn))
       .use(createHealthRoutes({ settings, database, fetchFn, logger: appLogger }))
@@ -268,6 +282,18 @@ const startServer = async () => {
     void sweepChallengeNonces()
     const nonceSweepTimer = setInterval(() => void sweepChallengeNonces(), 60 * 60 * 1000)
 
+    // Solved captcha challenges are only needed until they expire (CAPTCHA_TTL_SECS).
+    const { deleteExpiredCaptchaChallenges } = await import('@/dal')
+    const sweepCaptchaChallenges = async () => {
+      try {
+        await deleteExpiredCaptchaChallenges(nonceDb)
+      } catch (err) {
+        log.error({ err }, 'Failed to sweep expired captcha challenges')
+      }
+    }
+    void sweepCaptchaChallenges()
+    const captchaSweepTimer = setInterval(() => void sweepCaptchaChallenges(), 60 * 60 * 1000)
+
     const hostname = process.env.HOST
       ? process.env.HOST
       : process.env.NODE_ENV === 'production'
@@ -309,6 +335,7 @@ const startServer = async () => {
     process.on('SIGINT', async () => {
       tinfoilKeepWarm.stop()
       clearInterval(nonceSweepTimer)
+      clearInterval(captchaSweepTimer)
       log.info('Received SIGINT, shutting down gracefully...')
       process.exit(0)
     })
@@ -316,6 +343,7 @@ const startServer = async () => {
     process.on('SIGTERM', async () => {
       tinfoilKeepWarm.stop()
       clearInterval(nonceSweepTimer)
+      clearInterval(captchaSweepTimer)
       log.info('Received SIGTERM, shutting down gracefully...')
       process.exit(0)
     })

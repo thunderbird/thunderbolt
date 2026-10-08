@@ -23,6 +23,7 @@
         "@posthog/ai": "^7.16.0",
         "@types/bun": "^1.2.22",
         "ai": "^6.0.300",
+        "altcha-lib": "^2.6.0",
         "better-auth": "^1.6.9",
         "bun-types": "^1.2.22",
         "dotenv": "^17.2.3",
@@ -551,6 +552,8 @@
     "ajv": ["ajv@6.14.0", "", { "dependencies": { "fast-deep-equal": "^3.1.1", "fast-json-stable-stringify": "^2.0.0", "json-schema-traverse": "^0.4.1", "uri-js": "^4.2.2" } }, "sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw=="],
 
     "ajv-formats": ["ajv-formats@3.0.1", "", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="],
+
+    "altcha-lib": ["altcha-lib@2.6.0", "", { "peerDependencies": { "@fastify/cookie": "^11.0.0", "@fastify/cors": "^11.0.0", "@fastify/formbody": "^8.0.0 || ^9.0.0", "@nestjs/common": "^10.0.0 || ^11.0.0 || ^12.0.0", "@nestjs/core": "^10.0.0 || ^11.0.0 || ^12.0.0", "@nestjs/platform-express": "^10.0.0 || ^11.0.0 || ^12.0.0", "@nestjs/platform-fastify": "^10.0.0 || ^11.0.0 || ^12.0.0", "@sveltejs/kit": "^2.0.0", "cookie-parser": "^1.0.0", "cors": "^2.0.0", "express": "^4.0.0 || ^5.0.0", "fastify": "^5.0.0", "h3": "^2.0.0", "hono": "^4.0.0" }, "optionalPeers": ["@fastify/cookie", "@fastify/cors", "@fastify/formbody", "@nestjs/common", "@nestjs/core", "@nestjs/platform-express", "@nestjs/platform-fastify", "@sveltejs/kit", "cookie-parser", "cors", "express", "fastify", "h3", "hono"], "bin": { "altcha-lib": "bin/cli.mjs" } }, "sha512-mBp/KxMZmQkckWX5iM0gHqCm0qTLGhF9r8hhFjNrBpzP0qHZBadR9oafxVx9cTLHl4h2+f56N4hRIrZzvonYLQ=="],
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 

@@ -9,10 +9,11 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `receipt`                 | 100 / minute | user                  | `/v1/inference-usage/receipts`                                                           |
 | `auth`                    | 10 / minute  | client IP             | `/v1/api/auth/*` (except anonymous sign-in), `/v1/waitlist/*`                            |
 | `anonymous-sign-in`       | 10 / minute  | client IP             | `POST /v1/api/auth/sign-in/anonymous`                                                    |
+| `captcha-challenge`       | 10 / minute  | client IP             | `GET /v1/captcha/challenge`                                                              |
 | `debug-transcript`        | 10 / hour    | user                  | `POST /v1/debug-transcripts`                                                             |
 | `debug-transcript-intake` | 600 / hour   | intake client, and IP | `POST /v1/debug-transcripts/intake`                                                      |
 
-Limits are hardcoded in `tierConfigs` ([rate-limit.ts:33](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The one exception is `anonymous-sign-in`, whose budget comes from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` and cannot be raised without a captcha while anonymous auth is on.
+Limits are hardcoded in `tierConfigs` ([rate-limit.ts:33](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The exceptions are `anonymous-sign-in` and `captcha-challenge`, whose budgets both come from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` (every anonymous sign-in fetches one challenge first) and cannot be raised without a captcha while anonymous auth is on.
 
 Being Postgres-backed rather than in-process, all replicas share one budget. It runs independent of any edge or CDN because several `/v1` routes spend real money or send real email (managed inference, Exa-backed search, link previews, OTP send, waitlist join) and self-hosted deployments have no edge.
 
@@ -74,7 +75,7 @@ Counters live in `rate_limits` ([db/rate-limit-schema.ts](../src/db/rate-limit-s
 
 ## Better Auth has a second, weaker limiter
 
-Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:172](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. A code comment tracks replacing it with a proof-of-work challenge as THU-113.
+Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:172](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. On anonymous sign-in, the ALTCHA proof-of-work captcha (`CAPTCHA_PROVIDER=altcha`) is the control that holds across replicas, its replay records shared in Postgres.
 
 ## Adding a limit to a new route
 

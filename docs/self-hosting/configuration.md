@@ -271,13 +271,16 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 ## Rate limiting
 
-| Variable                                   | Default | What it does                                                                                                               |
-| ------------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED`                       | `true`  | Set `false` to switch limits off. Local evaluation only.                                                                   |
-| `TRUSTED_PROXY`                            | empty   | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`    | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                         |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`    | Length of that window, in seconds.                                                                                         |
-| `CAPTCHA_PROVIDER`                         | `none`  | Captcha on anonymous sign-in. Only `none` is accepted today.                                                               |
+| Variable                                   | Default  | What it does                                                                                                               |
+| ------------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`                       | `true`   | Set `false` to switch limits off. Local evaluation only.                                                                   |
+| `TRUSTED_PROXY`                            | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                         |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`     | Length of that window, in seconds.                                                                                         |
+| `CAPTCHA_PROVIDER`                         | `none`   | Captcha on anonymous sign-in: `none` or `altcha`. See [ALTCHA](#altcha).                                                   |
+| `CAPTCHA_SECRET`                           | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                          |
+| `CAPTCHA_DIFFICULTY`                       | `100000` | Upper bound of the ALTCHA search. Higher costs bots more and makes phones wait longer.                                     |
+| `CAPTCHA_TTL_SECS`                         | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                            |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 
@@ -304,7 +307,17 @@ Whether to raise the limit depends on the captcha, which protects anonymous sign
 - **With a captcha enabled**, the captcha is the bot control. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
 - **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
 
-The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. No captcha provider is supported yet, so for now an anonymous deployment keeps the defaults.
+The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. Set `CAPTCHA_PROVIDER=altcha` to raise them.
+
+### ALTCHA
+
+[ALTCHA](https://altcha.org) is a self-hosted proof-of-work captcha: the browser spends a moment of CPU time instead of solving a puzzle, and no third party sees the request. With `CAPTCHA_PROVIDER=altcha` the app fetches a challenge from `GET /v1/captcha/challenge`, solves it, and sends the result in the `X-Captcha-Token` header of the anonymous sign-in request. A missing, wrong, expired or reused solution gets `403`.
+
+Each solution works once. Redeemed challenges are recorded in the database, so a token cannot be replayed against another API instance, and expired records are swept hourly. Generate the secret with `openssl rand -hex 32` and give every instance the same value; changing it invalidates challenges already issued.
+
+`CAPTCHA_DIFFICULTY` is the trade-off between bot cost and user wait. A client tries half that many SHA-256 hashes on average, and the cost scales linearly for an attacker and for a low-end phone alike. Time a sign-in on the slowest phone you expect visitors to carry before raising it, and lower it if sign-in feels slow there.
+
+The challenge route has its own per-IP bucket, sized by the same `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` and `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`, because every anonymous sign-in needs one challenge.
 
 ## Minimum client version
 

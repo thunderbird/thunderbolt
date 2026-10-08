@@ -56,15 +56,6 @@ const requestSchema = z.object({
   messages: z.array(messageSchema).max(maxHistoryMessages),
 })
 
-/** Malformed JSON parses to `undefined`, which the request schema then rejects as a 400. */
-const parseJson = (rawBody: string): unknown => {
-  try {
-    return JSON.parse(rawBody)
-  } catch {
-    return undefined
-  }
-}
-
 export type AgentChatRequest = { id: string; messages: UIMessage[] }
 
 /**
@@ -72,10 +63,10 @@ export type AgentChatRequest = { id: string; messages: UIMessage[] }
  * the parts above are dropped. Too many messages, unknown part types, and assistant files are rejected, as is
  * a history that does not start and end with a user message: Anthropic treats a trailing assistant message
  * as prefill, which would let a caller write the start of the answer. The byte cap is enforced earlier,
- * while the body is read (see `readBodyWithinLimit`).
+ * while the body is read (see `readBoundedJson`).
  */
-export const parseAgentChatRequest = (rawBody: string): AgentChatRequest | null => {
-  const parsed = requestSchema.safeParse(parseJson(rawBody))
+export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null => {
+  const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
     return null
   }

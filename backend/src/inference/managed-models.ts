@@ -15,9 +15,9 @@ export type ManagedDirectRuntime = {
 
 /** Private upstream routing for public direct managed-model slugs. */
 export const managedDirectRuntimes = {
-  'opus-5': {
+  'opus-5-5': {
     provider: 'anthropic',
-    internalName: 'claude-opus-5',
+    internalName: 'claude-opus-5-5',
     omitTemperature: true,
     supportsStreamUsage: true,
   },

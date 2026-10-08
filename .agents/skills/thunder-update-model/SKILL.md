@@ -100,7 +100,7 @@ fixed.
 
 Fetch models.dev once. Provider keys: `anthropic`, `tinfoil`, `openai` and `openrouter` map to
 themselves; `fireworks` maps to `fireworks-ai`; for the direct route use the upstream vendor
-(Anthropic for `opus-5`).
+(Anthropic for `opus-5-5`).
 
 ```bash
 set -o pipefail; P=tinfoil; curl -fsS https://models.dev/api.json | jq -r --arg p "$P" '.[$p].models | to_entries | map(select((.value.modalities.input | index("text")) and .value.tool_call == true)) | sort_by(.value.release_date) | reverse | .[] | "\(.value.release_date)\t\(.key)\t\(.value.name)\tstatus=\(.value.status // "-")\tctx=\(.value.limit.context)\tout=\(.value.limit.output)\tin=\(.value.modalities.input|join(","))\treasoning=\(.value.reasoning)\t$\(.value.cost.input)/\(.value.cost.output)"'

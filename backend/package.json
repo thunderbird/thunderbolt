@@ -14,7 +14,8 @@
     "format": "prettier --write src",
     "db": "drizzle-kit",
     "db:dev": "pglite-server --db=./.pglite/data",
-    "email": "email dev --dir src/emails --port 3000"
+    "email": "email dev --dir src/emails --port 3000",
+    "usage-report": "OTEL_EXPORTER_OTLP_ENDPOINT= bun src/scripts/usage-report.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",

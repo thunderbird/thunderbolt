@@ -468,7 +468,7 @@ describe('createTinfoilRoutes', () => {
   })
 
   describe('confidential managed usage policy', () => {
-    it.each(['unknown', 'opus-5', 'constructor', '__proto__', ''])(
+    it.each(['unknown', 'opus-5-5', 'constructor', '__proto__', ''])(
       'rejects invalid model header %s before forwarding',
       async (model) => {
         const response = await buildApp().handle(

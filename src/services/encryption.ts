@@ -57,6 +57,7 @@ import { clearRecoveryPhrasePending, markRecoveryPhrasePending } from '@/lib/rec
 import { getDeviceDisplayName } from '@/lib/platform'
 import { getCachedSession } from '@/lib/session-cache'
 import { pinnedOrgEscrowPublicKey } from '@/lib/org-escrow'
+import { StepUpVerificationError, stepUpRefusalCode } from '@/lib/step-up'
 import {
   bindSession,
   fetchBindChallenge,
@@ -115,20 +116,11 @@ const loadRecoveryKey = () => import('@/crypto/recovery-key')
  * been refreshed (`refreshAK`); the caller should simply retry the rotation.
  */
 /**
- * Thrown when POST /encryption/rotate refuses a recovery re-anchor without a
- * valid step-up code (THU-875). NOT staleness — local state is fine and nothing
- * is refreshed; the caller re-prompts for the emailed code.
- * `step_up_required`: no code accompanied the request. `step_up_invalid`: the
- * code was wrong, expired, or burned its attempt budget.
+ * Re-exported from `@/lib/step-up`, where every gated action shares it. On a
+ * rotate this means the recovery re-anchor was refused: NOT staleness — local
+ * state is fine and nothing is refreshed; the caller re-prompts for the code.
  */
-export class StepUpVerificationError extends Error {
-  code: 'step_up_required' | 'step_up_invalid'
-  constructor(code: 'step_up_required' | 'step_up_invalid', options?: ErrorOptions) {
-    super(`Recovery re-anchor refused: ${code}`, options)
-    this.name = 'StepUpVerificationError'
-    this.code = code
-  }
-}
+export { StepUpVerificationError } from '@/lib/step-up'
 
 export class RotationStaleError extends Error {
   constructor(options?: ErrorOptions) {
@@ -1654,15 +1646,13 @@ const runAKRotation = async (
     })
     committedKeyVersion = keyVersion
   } catch (err) {
-    if (err instanceof HttpError && err.response.status === 403) {
-      // Step-up refusal (THU-875) is NOT staleness: local state is fine and a
-      // refresh would be noise — surface it so the caller prompts for the code.
-      const body = (await err.response.json().catch(() => null)) as { code?: string } | null
-      if (body?.code === 'step_up_required' || body?.code === 'step_up_invalid') {
-        // Refused at the gate: nothing committed, so no phrase is owed.
-        clearRecoveryPhrasePending()
-        throw new StepUpVerificationError(body.code, { cause: err })
-      }
+    // A step-up refusal is NOT staleness: local state is fine and a refresh
+    // would be noise — surface it so the caller prompts for the code.
+    const refusal = await stepUpRefusalCode(err)
+    if (refusal) {
+      // Refused at the gate: nothing committed, so no phrase is owed.
+      clearRecoveryPhrasePending()
+      throw new StepUpVerificationError(refusal, { cause: err })
     }
     if (err instanceof HttpError && rotationStaleStatuses.has(err.response.status)) {
       // Stale local state (concurrent rotation / device change) — re-fetch our

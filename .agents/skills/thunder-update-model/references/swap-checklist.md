@@ -163,7 +163,8 @@ other item is not applicable.
    `reasoning_effort`. A mismatch needs a Pi `compat` override. Add a case to
    `confidential-model.test.ts`, modelled on `uses catalog-driven Pi thinking metadata`, asserting
    the request body for the incoming model's slug with reasoning off, on, and at each effort level,
-   and that the provider-native fields Pi would otherwise send are absent (`not.toHaveProperty`).
+   and, when a `compat` override changed the body shape, that the fields Pi would otherwise send
+   are absent (`not.toHaveProperty`, as the `deepseek-v4-1-flash` case does).
    Report `experimental` from the provider catalog. Done when `bun run test:agent-core` and
    `bun run test:agent-core:browser` pass.
 17. direct. Anthropic vendor, the direct-route twin of item 16 (other vendors use

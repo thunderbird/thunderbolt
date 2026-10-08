@@ -47,7 +47,7 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import { consumeStepUpOtp, requestStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
+import { consumeStepUpOtp, requestStepUpOtp, verifyStepUpOtp, type StepUpAction } from '@/lib/step-up-otp'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
@@ -63,6 +63,9 @@ import {
 } from '@shared/e2ee-types'
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Hardcoded at module scope so a client can never pick what its step-up code buys. */
+const stepUpAction = 'recovery-phrase-change' satisfies StepUpAction
 
 /**
  * Upper bound on keyring rows carried in one request. The keyring grows by one
@@ -437,7 +440,7 @@ export const createEncryptionRoutes = (
           // The cooldown is enforced inside the mint's transaction, against the
           // outstanding row's own `createdAt` — shared across replicas and
           // atomic. See `requestStepUpOtp`.
-          const stepUp = await requestStepUpOtp(database, sessionUser!.email)
+          const stepUp = await requestStepUpOtp(database, stepUpAction, sessionUser!.email)
           if (stepUp.status === 'cooling-down') {
             set.status = 429
             return { error: 'A code was just sent — wait a moment before requesting another' }
@@ -1150,7 +1153,7 @@ export const createEncryptionRoutes = (
           // spending their remaining attempts on it. All four rejections
           // collapse to one response: distinguishing them would tell an
           // attacker holding only the session whether a code is outstanding.
-          const verdict = await verifyStepUpOtp(database, sessionUser!.email, body.stepUpOtp)
+          const verdict = await verifyStepUpOtp(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
           if (verdict !== 'valid') {
             set.status = 403
             return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
@@ -1250,7 +1253,7 @@ export const createEncryptionRoutes = (
             // midway stays retryable with the same code. A failed delete leaves
             // the code valid until its own expiry for the inbox holder only —
             // log, never fail a committed rotation over it.
-            await consumeStepUpOtp(database, sessionUser!.email).catch((err) =>
+            await consumeStepUpOtp(database, stepUpAction, sessionUser!.email).catch((err) =>
               console.error('[step-up] failed to consume verification code:', err),
             )
             notifyBestEffort(

@@ -67,7 +67,7 @@ export const getCurrentOtp = async (email: string): Promise<string | null> => {
 /**
  * Step-up code for a recovery-phrase change (THU-875). Dev/e2e sends no email,
  * so specs read the code where the inbox would — the verification table. The
- * row is the app's own, not better-auth's: the `e2ee-step-up-` prefix is
+ * row is the app's own, not better-auth's: the `-step-up-otp-` infix is
  * unreachable from better-auth's closed OTP-type enum, which is what keeps the
  * unauthenticated `/email-otp/check-verification-otp` away from it. `value` is
  * stored as `otp:attempts` (see `backend/src/lib/step-up-otp.ts`).
@@ -77,7 +77,7 @@ export const waitForStepUpOtp = async (email: string): Promise<string> =>
     const rows = await sql<{ value: string }[]>`
       SELECT value
       FROM verification
-      WHERE identifier = ${`e2ee-step-up-otp-${email.toLowerCase()}`}
+      WHERE identifier = ${`recovery-phrase-change-step-up-otp-${email.toLowerCase()}`}
       ORDER BY updated_at DESC
       LIMIT 1
     `

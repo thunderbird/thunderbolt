@@ -78,7 +78,8 @@ describe('Encryption API (v2)', () => {
   }
 
   /** Mint a step-up code server-side, exactly as `POST /encryption/step-up/request` does. */
-  const mintStepUpCode = (userId: string): Promise<string> => mintStepUpOtp(db, `${userId}@test.com`)
+  const mintStepUpCode = (userId: string): Promise<string> =>
+    mintStepUpOtp(db, 'recovery-phrase-change', `${userId}@test.com`)
 
   /** Notifications are fired post-response via a floating promise — let it settle. */
   const flushNotifications = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -2174,7 +2175,7 @@ describe('Encryption API (v2)', () => {
 
       // And the minted code actually opens the rotate gate: verified end-to-end
       // by the rotate suite; here just confirm the row exists via a check call.
-      expect(await verifyStepUpOtp(db, `${p('u')}@test.com`, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', `${p('u')}@test.com`, code)).toBe('valid')
     })
 
     /**
@@ -2205,7 +2206,7 @@ describe('Encryption API (v2)', () => {
       const rows = await db
         .select()
         .from(verification)
-        .where(eq(verification.identifier, stepUpIdentifier(email)))
+        .where(eq(verification.identifier, stepUpIdentifier('recovery-phrase-change', email)))
       expect(rows).toHaveLength(1)
       expect(rows[0]!.value).toBe(`${code}:0`)
 
@@ -2221,7 +2222,7 @@ describe('Encryption API (v2)', () => {
           .checkVerificationOTP({ body: { email, type: 'email-verification', otp: '00000000' } })
           .catch(() => {})
       }
-      expect(await verifyStepUpOtp(db, email, code)).toBe('valid')
+      expect(await verifyStepUpOtp(db, 'recovery-phrase-change', email, code)).toBe('valid')
     })
 
     it('cools down repeat requests (429) and refuses untrusted devices (403)', async () => {

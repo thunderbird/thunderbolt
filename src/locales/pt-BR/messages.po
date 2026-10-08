@@ -1868,7 +1868,8 @@ msgstr ""
 msgid "Generate a new phrase"
 msgstr ""
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate new phrase"
 msgstr ""
 
@@ -1877,7 +1878,8 @@ msgid "Generating keys…"
 msgstr "Gerando chaves…"
 
 #: src/components/chat/inline-artifact-card.tsx
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generating…"
 msgstr "Gerando…"
 
@@ -4380,7 +4382,8 @@ msgstr "Não treinamos modelos com seus dados."
 msgid "We sent a code to <0>{email}</0>"
 msgstr "Enviamos um código para <0>{email}</0>"
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
 msgstr ""
 

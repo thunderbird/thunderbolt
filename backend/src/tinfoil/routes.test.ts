@@ -220,6 +220,23 @@ describe('createTinfoilRoutes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
+    it('applies the rate limit to an authenticated session before admission or upstream forwarding', async () => {
+      const rejectingRateLimit = new Elysia()
+        .onBeforeHandle(({ set }) => {
+          set.status = 429
+          return { error: 'Too many requests' }
+        })
+        .as('scoped')
+      const app = buildApp({ rateLimit: rejectingRateLimit })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+
+      expect(response.status).toBe(429)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('forwards an authenticated x-api-key when confidential API keys are enabled', async () => {
       process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
       clearSettingsCache()

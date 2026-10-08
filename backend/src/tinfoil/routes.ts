@@ -3,20 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { createAuthMacro } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
 import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
-import { createPriceUnavailableResponse, createQuotaExceededResponse } from '@/inference/usage-responses'
-import { rejectPersonalAccessToken } from '@/inference/web-session'
-import {
-  checkManagedInferenceAdmission,
-  getInferenceQuotaLimits,
-  type InferenceDatabase,
-} from '@/inference/usage-ledger'
+import { admitManagedRequest } from '@/inference/managed-request'
+import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
+import type { InferenceDatabase } from '@/inference/usage-ledger'
 import { resolveConfidentialManagedModel } from '@/inference/managed-models'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
-import { rejectUnregisteredCliDevice } from '@/inference/cli-device'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { captureInferenceError } from '@/posthog/client'
 import { capStream } from '@/proxy/streaming'
@@ -25,7 +19,7 @@ import { elapsedMs } from '@/utils/timing'
 import { tinfoilUpstreamIdleTimeoutMessage, tinfoilUpstreamTimeoutMessage } from '@shared/tinfoil-proxy'
 import { defaultModelGlm53 } from '@shared/defaults/models'
 import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
-import { Elysia, type AnyElysia } from 'elysia'
+import { Elysia, type AnyElysia, type Context } from 'elysia'
 import { tinfoilUpstreamOriginStore, type TinfoilUpstreamOriginStore } from './upstream-origin'
 
 const allowedMethods = new Set(['GET', 'POST', 'OPTIONS'])
@@ -167,9 +161,8 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     request: Request,
     wildcard: string,
     server: Bun.Server<unknown> | null,
-    setHeaders: Record<string, string | string[] | number>,
-    distinctId: string,
-    isAnonymous: boolean,
+    set: Context['set'],
+    user: { id: string; isAnonymous?: boolean | null },
   ): Promise<Response> => {
     const handlerStartedAt = nowFn()
     const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
@@ -203,9 +196,9 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         handlerToOutcomeMs: elapsedMs(handlerStartedAt, completedAt),
       }
 
-      setHeaders[tinfoilProxyTimingHeader] =
+      set.headers[tinfoilProxyTimingHeader] =
         `pre=${preHandlerMs};fetch=${handlerToUpstreamFetchMs ?? 'na'};headers=${upstreamFetchToHeadersMs ?? 'na'}`
-      setHeaders[serverTimingHeader] = formatServerTiming(
+      set.headers[serverTimingHeader] = formatServerTiming(
         preHandlerMs,
         handlerToUpstreamFetchMs,
         upstreamFetchToHeadersMs,
@@ -252,19 +245,10 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       return textResponse(400, `Invalid ${inferenceModelHeader}: expected a confidential managed model`)
     }
     if (isManagedChat && identity) {
-      const admission = await checkManagedInferenceAdmission(
-        database,
-        identity,
-        distinctId,
-        getInferenceQuotaLimits(settings, isAnonymous),
-      )
-      if (admission.outcome === 'price-unavailable') {
-        recordLatency({ status: 503, completedAt: nowFn() })
-        return createPriceUnavailableResponse()
-      }
-      if (admission.outcome === 'quota-exceeded') {
-        recordLatency({ status: 429, completedAt: nowFn() })
-        return createQuotaExceededResponse(admission.decision)
+      const admission = await admitManagedRequest({ database, settings, identity, user, set })
+      if (admission instanceof Response) {
+        recordLatency({ status: admission.status, completedAt: nowFn() })
+        return admission
       }
       const { price } = admission
       const eventId = crypto.randomUUID()
@@ -272,7 +256,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         eventId,
         token: issueInferenceUsageReceipt({
           eventId,
-          userId: distinctId,
+          userId: user.id,
           price,
           secret: settings.betterAuthSecret,
           nowSeconds: Math.floor(Date.now() / 1_000),
@@ -354,7 +338,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
                 status: 504,
                 errorKind: 'connection',
                 subpath,
-                distinctId,
+                distinctId: user.id,
                 phase: 'stream',
               })
             },
@@ -386,7 +370,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           status: upstream.status,
           errorKind: errorKindFromStatus(upstream.status),
           subpath,
-          distinctId,
+          distinctId: user.id,
         })
       }
 
@@ -408,7 +392,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
           status,
           errorKind: 'connection',
           subpath,
-          distinctId,
+          distinctId: user.id,
         })
       }
 
@@ -424,9 +408,7 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   // `{ parse: 'none' }` keeps the request stream untouched so the HPKE-encrypted
   // payload reaches the upstream unchanged, even for recognised content types.
   // The wildcard-derived subpath survives changes to the outer mount prefix
-  // (e.g. `/v1` in src/index.ts). Branching at `.all()` keeps each chain's
-  // Elysia type concrete (a ternary `g` vs `g.use(...)` would union the types
-  // and make `.all()` uncallable / fall back to `any`).
+  // (e.g. `/v1` in src/index.ts).
   return new Elysia({ prefix: '/tinfoil' })
     .onError(safeErrorHandler)
     .decorate('tinfoilRequestStartedAt', 0)
@@ -437,42 +419,19 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
       }
       ctx.tinfoilRequestStartedAt = nowFn()
     })
-    .use(createAuthMacro(auth))
-    .guard({ auth: true }, (g) => {
-      const webSessionApp = g
-        .onBeforeHandle((ctx) => rejectPersonalAccessToken(ctx, settings.confidentialApiKeysEnabled))
-        .onBeforeHandle((ctx) => rejectUnregisteredCliDevice(database, settings.cliDeviceRegistrationEnabled, ctx))
-      if (rateLimit) {
-        return webSessionApp
-          .use(rateLimit)
-          .all(
-            '/*',
-            (ctx) =>
-              proxyToEnclave(
-                ctx.tinfoilRequestStartedAt,
-                ctx.request,
-                ctx.params['*'] ?? '',
-                ctx.server,
-                ctx.set.headers,
-                ctx.user.id,
-                ctx.user.isAnonymous === true,
-              ),
-            { parse: 'none' },
-          )
-      }
-      return webSessionApp.all(
-        '/*',
-        (ctx) =>
-          proxyToEnclave(
-            ctx.tinfoilRequestStartedAt,
-            ctx.request,
-            ctx.params['*'] ?? '',
-            ctx.server,
-            ctx.set.headers,
-            ctx.user.id,
-            ctx.user.isAnonymous === true,
-          ),
-        { parse: 'none' },
-      )
-    })
+    .use(
+      createMeteredRouteGuard({
+        auth,
+        database,
+        cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        confidentialApiKeysEnabled: settings.confidentialApiKeysEnabled,
+        rateLimit,
+      }),
+    )
+    .all(
+      '/*',
+      (ctx) =>
+        proxyToEnclave(ctx.tinfoilRequestStartedAt, ctx.request, ctx.params['*'] ?? '', ctx.server, ctx.set, ctx.user),
+      { parse: 'none' },
+    )
 }

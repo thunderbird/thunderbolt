@@ -183,6 +183,29 @@ describe('inference usage receipt routes', () => {
     expect(rateLimitCalls).not.toHaveBeenCalled()
   })
 
+  it('applies the rate limit to an authenticated session before storing usage', async () => {
+    const rejectingRateLimit = new Elysia()
+      .onBeforeHandle(({ set }) => {
+        set.status = 429
+        return { error: 'Too many requests' }
+      })
+      .as('scoped')
+    const rateLimitedApp = new Elysia().use(
+      createInferenceUsageReceiptRoutes({
+        auth: mockAuth,
+        database,
+        secret,
+        nowSeconds: () => nowSeconds,
+        rateLimit: rejectingRateLimit,
+      }),
+    )
+
+    const response = await postJson(rateLimitedApp, { receipt: issueReceipt(), ...defaultCounts })
+
+    expect(response.status).toBe(429)
+    expect(await database.select().from(inferenceUsage)).toEqual([])
+  })
+
   it('accepts a personal access token when confidential API keys are enabled', async () => {
     process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
     clearSettingsCache()

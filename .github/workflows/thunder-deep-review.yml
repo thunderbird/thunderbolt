@@ -154,7 +154,7 @@ jobs:
       # posted review recorded a head SHA that is an ancestor of this head, the model
       # reviews only the Compare API delta since it. Other events, including adding
       # review:full, review the full PR. If nothing reviewable remains, the model steps are skipped.
-      # Files without usable patches are listed in a partial review, and the head marker is omitted.
+      # Files without usable patches are listed in a partial review, and the head marker is still recorded.
       # ─────────────────────────────────────────────────────────────────────
       # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
       # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are

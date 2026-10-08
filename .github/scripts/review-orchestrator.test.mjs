@@ -167,7 +167,7 @@ describe('incremental pre/post', () => {
       expect(result.posts).toHaveLength(1);
       expect(result.posts[0].body).toContain('Partial coverage');
       expect(result.posts[0].body).toContain('src/large.ts');
-      expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+      expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
       expect(result.posts[0].comments).toHaveLength(withFindings ? 1 : 0);
       if (!withFindings) expect(result.posts[0].body).toContain('no issues to report');
     });
@@ -180,25 +180,43 @@ describe('incremental pre/post', () => {
     expect(result.posts).toHaveLength(1);
     expect(result.posts[0].body).toContain('Partial coverage');
     expect(result.posts[0].body).toContain('src/large.ts');
-    expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
   });
 
-  test('a partial A-to-B review retains checkpoint A for the next A-to-C review', async () => {
+  test('a partial A-to-B review records checkpoint B for the next B-to-C review', async () => {
     const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
     const first = await runReview({ compare: { status: 'ahead',
       merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] },
       findings: [inlineFinding({ file: 'src/a.ts', line: 1 })] });
     expect(first.posts).toHaveLength(1);
-    expect(first.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(first.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
     const nextSha = 'c'.repeat(40);
     const next = await runReview({ headSha: nextSha,
       reviews: [{ body: checkpoint, author: { login: 'github-actions' } },
         ...first.posts.map(({ body }) => ({ body, author: { login: 'github-actions' } }))],
-      compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
-        files: [{ ...missing, patch: '@@ -1 +1 @@\n-oldLarge();\n+newLarge();' }, deltaFile] }, findings: [] });
-    expect(next.reads).toContain(`/repos/test/repo/compare/${reviewedSha}...${nextSha}`);
-    expect(next.diff).toContain('+newLarge();');
+      compare: { status: 'ahead', merge_base_commit: { sha: currentSha },
+        commits: [{ parents: [{ sha: currentSha }] }], files: [deltaFile] }, findings: [] });
+    expect(next.reads).toContain(`/repos/test/repo/compare/${currentSha}...${nextSha}`);
+    expect(next.diff).not.toContain('src/large.ts');
     expect(next.posts[0].body).toContain(`<!-- thunder-deep-review-head:${nextSha} -->`);
+  });
+
+  test('a partial no-issues review followed by a complete clean push uses normal dedupe', async () => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const first = await runReview({ compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
+    expect(first.posts).toHaveLength(1);
+    expect(first.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    expect(first.posts[0].body).toContain(NO_ISSUES_MARKER);
+    const nextSha = 'c'.repeat(40);
+    const next = await runReview({ headSha: nextSha,
+      reviews: [{ body: first.posts[0].body, author: { login: 'github-actions' } }],
+      compare: { status: 'ahead', merge_base_commit: { sha: currentSha },
+        commits: [{ parents: [{ sha: currentSha }] }], files: [deltaFile] }, findings: [] });
+    expect(next.reads).toContain(`/repos/test/repo/compare/${currentSha}...${nextSha}`);
+    expect(next.mode).toMatchObject({ incremental: true, skip: false, missingPatches: [] });
+    expect(next.posts).toEqual([]);
+    expect(next.logs.join('\n')).toContain('already-no-issues');
   });
 
   test('missing patch paths cannot forge a checkpoint in either review body', () => {
@@ -206,8 +224,9 @@ describe('incremental pre/post', () => {
     const payloads = [buildNoIssuesPayload({ deepInfo }),
       buildReviewPayload({ toPost: [], diffIndex: new Map(), deepInfo })];
     for (const payload of payloads) {
-      expect(payload.body).not.toContain('<!-- thunder-deep-review-head:');
-      expect(payload.body).toContain('&lt;!-- thunder-deep-review-head:');
+      expect(payload.body).toContain(`<!-- thunder-deep-review-head:${payload.commit_id} -->`);
+      expect(payload.body).not.toContain(checkpoint);
+      expect(payload.body).toContain(`&lt;!-- thunder-deep-review-head:${reviewedSha} -->`);
     }
   });
 

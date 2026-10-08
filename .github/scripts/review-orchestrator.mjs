@@ -948,8 +948,8 @@ const reviewHeader = ({ tagline, deepInfo }) =>
   `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
   `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n` +
   // The checkpoint marker lives only in posted reviews. A run that posts nothing keeps the previous
-  // checkpoint, so the next delta covers both pushes. Partial reviews omit it because they did not cover the whole head.
-  (deepInfo.boundedMode || deepInfo.missingPatches?.length ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`) +
+  // checkpoint, so the next delta covers both pushes. Only bounded reviews omit it.
+  (deepInfo.boundedMode ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`) +
   (deepInfo.missingPatches?.length
     ? `Partial coverage: files without usable patches: ${JSON.stringify(deepInfo.missingPatches).replaceAll('<!--', '&lt;!--')}\n`
     : '');

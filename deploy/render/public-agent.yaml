@@ -128,6 +128,8 @@ envVarGroups:
         sync: false # `cloudflare` when the hostnames are proxied by Cloudflare
       - key: ANTHROPIC_API_KEY
         sync: false # a key scoped to this deployment, never production's
+      - key: TINFOIL_API_KEY
+        sync: false # the built-in agent's default model runs on Tinfoil
       - key: FIREWORKS_API_KEY
         sync: false
       - key: POSTHOG_API_KEY
@@ -160,8 +162,9 @@ envVarGroups:
         sync: false
       - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS
         sync: false
-      # Anonymous sign-ins per client IP. Without a captcha provider these
-      # can only be lowered from the defaults (10 per 60 s), not raised.
+      # Anonymous sign-ins per client IP, 10 per 60 s by default. Without a
+      # captcha provider the API refuses to start with a looser limit (MAX
+      # above 10 or WINDOW_SECS below 60).
       - key: ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
         sync: false
       - key: ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS

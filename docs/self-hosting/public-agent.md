@@ -2,7 +2,7 @@
 
 A public agent deployment is Thunderbolt for visitors who never sign in: each one gets an anonymous session and chats with a single agent you configure, for example at an event. It is built from the Render Blueprint in [`deploy/render/public-agent.yaml`](../../deploy/render/public-agent.yaml). Nothing about a particular deployment lives in the repository; every per-deployment value is entered in Render.
 
-> **Not usable end to end yet.** The app does not talk to the hosted agent until its frontend adapter ships, and the agent has no tools. Until then, keep the built-in agent on (`DISABLE_BUILT_IN_AGENT=false`) so visitors can chat.
+> **Not usable end to end yet.** The app does not talk to the hosted agent until its frontend adapter ships, and the agent has no tools. Until then, keep the built-in agent on (`DISABLE_BUILT_IN_AGENT=false`) and give it a Tinfoil key (`TINFOIL_API_KEY`), so visitors can chat.
 
 ## What it runs
 
@@ -19,6 +19,7 @@ There is no sync service. Anonymous sessions never sync, and the API runs withou
 
 - Access to the Render workspace and the Thunderbolt project.
 - An Anthropic API key used by this deployment only, ideally in its own Anthropic workspace with a spend limit, so a leak or a burst cannot touch production.
+- A Tinfoil API key used by this deployment only. The built-in agent's default model runs on Tinfoil.
 - Two hostnames, one for the app and one for the API, for example `agent.example.com` and `agent-api.example.com`. If Cloudflare proxies them, keep each one level below the zone so the universal certificate covers it.
 - Optionally, a PostHog project of its own for product analytics. Never reuse production's.
 
@@ -35,24 +36,25 @@ There is no sync service. Anonymous sessions never sync, and the API runs withou
 
 Render prompts once for every value below and never overwrites them afterwards. Change them later on the env group or the service.
 
-| Setting                                                                        | What to enter                                                                                      |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `VITE_THUNDERBOLT_CLOUD_URL`                                                   | `https://<api host>/v1`. It is built into the app, so changing it means a rebuild.                 |
-| `APP_URL`, `CORS_ORIGINS`                                                      | `https://<app host>`                                                                               |
-| `BETTER_AUTH_URL`                                                              | `https://<api host>`                                                                               |
-| `TRUSTED_PROXY`                                                                | `cloudflare` when Cloudflare proxies the hostnames, otherwise blank.                               |
-| `ANTHROPIC_API_KEY`                                                            | The deployment's own key.                                                                          |
-| `FIREWORKS_API_KEY`                                                            | Blank. Nothing routes to Fireworks yet.                                                            |
-| `POSTHOG_API_KEY`, `POSTHOG_HOST`                                              | The deployment's own project, or blank for no analytics.                                           |
-| `AGENT_ENABLED`                                                                | `true` to mount the hosted agent.                                                                  |
-| `DISABLE_BUILT_IN_AGENT`                                                       | `false` for now; `true` once the app supports the hosted agent.                                    |
-| `ENABLED_AGENTS`                                                               | Blank for now; `hosted-agent` once the built-in agent is off.                                      |
-| `AGENT_MODEL`                                                                  | An Anthropic model with a row in the price table. `claude-opus-5` ships priced.                    |
-| `AGENT_SYSTEM_PROMPT`                                                          | The agent's knowledge (next section).                                                              |
-| `AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_ICON`                                | How the agent is presented.                                                                        |
-| `AGENT_MAX_STEPS`, `AGENT_MCP_SERVERS`                                         | Blank. Neither has an effect until the agent has tools.                                            |
-| `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`     | Each visitor's spending cap, in cents. Enter numbers: a blank value stops the API at startup.      |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults (10 per 60 seconds). Without a captcha provider they can only be lowered. |
+| Setting                                                                        | What to enter                                                                                                                                    |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_THUNDERBOLT_CLOUD_URL`                                                   | `https://<api host>/v1`. It is built into the app, so changing it means a rebuild.                                                               |
+| `APP_URL`, `CORS_ORIGINS`                                                      | `https://<app host>`                                                                                                                             |
+| `BETTER_AUTH_URL`                                                              | `https://<api host>`                                                                                                                             |
+| `TRUSTED_PROXY`                                                                | `cloudflare` when Cloudflare proxies the hostnames, otherwise blank.                                                                             |
+| `ANTHROPIC_API_KEY`                                                            | The deployment's own key.                                                                                                                        |
+| `TINFOIL_API_KEY`                                                              | The deployment's own key. While the built-in agent is on, chats on its default model fail without it.                                            |
+| `FIREWORKS_API_KEY`                                                            | Blank. Nothing routes to Fireworks yet.                                                                                                          |
+| `POSTHOG_API_KEY`, `POSTHOG_HOST`                                              | The deployment's own project, or blank for no analytics.                                                                                         |
+| `AGENT_ENABLED`                                                                | `true` to mount the hosted agent.                                                                                                                |
+| `DISABLE_BUILT_IN_AGENT`                                                       | `false` for now; `true` once the app supports the hosted agent.                                                                                  |
+| `ENABLED_AGENTS`                                                               | Blank for now; `hosted-agent` once the built-in agent is off.                                                                                    |
+| `AGENT_MODEL`                                                                  | An Anthropic model with a row in the price table. `claude-opus-5` ships priced.                                                                  |
+| `AGENT_SYSTEM_PROMPT`                                                          | The agent's knowledge (next section).                                                                                                            |
+| `AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_ICON`                                | How the agent is presented.                                                                                                                      |
+| `AGENT_MAX_STEPS`, `AGENT_MCP_SERVERS`                                         | Blank. Neither has an effect until the agent has tools.                                                                                          |
+| `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`     | Each visitor's spending cap, in cents. Enter numbers: a blank value stops the API at startup.                                                    |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults, 10 per 60 seconds. Without a captcha provider the API refuses to start with more than 10 or a window under 60 seconds. |
 
 The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
 
@@ -100,5 +102,5 @@ Deleting the database removes everything the deployment kept on the server: the 
 ## Limits
 
 - One live deployment of the Blueprint per Render workspace, because its resource names are fixed.
-- Without a captcha provider, anonymous sign-in stays at 10 per IP address per minute by default and can only be lowered. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
+- Without a captcha provider, anonymous sign-in allows at most 10 per IP address per minute. Venue Wi-Fi, where many visitors share a few addresses, reaches that quickly.
 - The hosted agent calls Anthropic only and has no tools yet.

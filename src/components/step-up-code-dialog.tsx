@@ -27,6 +27,12 @@ type StepUpCodeDialogProps = {
   submitLabel: string
   submitLoadingLabel: string
   submitVariant?: 'default' | 'destructive'
+  /**
+   * Fire `onSubmit` as soon as the last digit lands. Off by default so a
+   * destructive action always waits for a deliberate click; the
+   * recovery-phrase flow opts in.
+   */
+  submitOnComplete?: boolean
   onOtpChange: (otp: string) => void
   onResend: () => void
   onSubmit: () => void
@@ -47,6 +53,7 @@ export const StepUpCodeDialog = ({
   submitLabel,
   submitLoadingLabel,
   submitVariant,
+  submitOnComplete = false,
   onOtpChange,
   onResend,
   onSubmit,
@@ -68,7 +75,7 @@ export const StepUpCodeDialog = ({
           pattern={REGEXP_ONLY_DIGITS}
           value={otp}
           onChange={onOtpChange}
-          onComplete={onSubmit}
+          onComplete={submitOnComplete ? onSubmit : undefined}
           disabled={isBusy}
           autoFocus
           autoComplete="one-time-code"

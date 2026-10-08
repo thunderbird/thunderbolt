@@ -30,7 +30,7 @@ Set these on the API service and restart.
 
 | Variable              | Default                           | Enables                                                  |
 | --------------------- | --------------------------------- | -------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`   | none                              | Opus 5, routed to Anthropic through your server          |
+| `ANTHROPIC_API_KEY`   | none                              | Opus 5.5, routed to Anthropic through your server        |
 | `TINFOIL_API_KEY`     | none                              | DeepSeek V4.1 Flash and GLM 5.3, the confidential models |
 | `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | The enclave endpoint. Keep the `/v1` suffix              |
 
@@ -40,7 +40,7 @@ Those keys cover three models. The catalog is fixed by the release you are runni
 | ------------------- | ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | DeepSeek V4.1 Flash | Confidential | 1,048,576 tokens | The default model on a new account. Fastest and cheapest of the three. Accepts image attachments                                               |
 | GLM 5.3             | Confidential | 131,072 tokens   | Stronger and slower. Text only, image attachments are dropped before sending                                                                   |
-| Opus 5              | Standard     | 1,000,000 tokens | Anthropic's top reasoning model, and the only one of the three where your server sees the full request and response. Accepts image attachments |
+| Opus 5.5            | Standard     | 1,000,000 tokens | Anthropic's top reasoning model, and the only one of the three where your server sees the full request and response. Accepts image attachments |
 
 Adding a fourth deployment-provided model is a change to the software, not a configuration change. You can still expose any other model to users through their own keys or a custom endpoint.
 

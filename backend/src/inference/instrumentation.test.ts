@@ -71,7 +71,7 @@ describe('inference attempt instrumentation', () => {
   })
 
   it('logs an Anthropic 429 retry and surfaces attempts=2 after success', async () => {
-    const model = 'opus-5'
+    const model = 'opus-5-5'
     const provider = 'anthropic'
     const host = 'api.anthropic.com'
     const apiKey = 'test-anthropic-key'
@@ -171,7 +171,7 @@ describe('inference attempt instrumentation', () => {
     expect(rows[0]).toMatchObject({
       userId: 'test-user',
       provider,
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       promptTokens: 2,
       completionTokens: 3,
       totalTokens: 5,

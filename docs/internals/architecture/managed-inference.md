@@ -15,13 +15,13 @@ Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../
 
 | Model               | Default row (`models.ts`)      | `provider`    | Public slug           | Upstream identity                 | Route           |
 | ------------------- | ------------------------------ | ------------- | --------------------- | --------------------------------- | --------------- |
-| Opus 5              | `defaultModelOpus5`            | `thunderbolt` | `opus-5`              | `anthropic` / `claude-opus-5`     | `/v1/chat/*`    |
+| Opus 5.5            | `defaultModelOpus55`           | `thunderbolt` | `opus-5-5`            | `anthropic` / `claude-opus-5-5`   | `/v1/chat/*`    |
 | DeepSeek V4.1 Flash | `defaultModelDeepSeekV41Flash` | `tinfoil`     | `deepseek-v4-1-flash` | `tinfoil` / `deepseek-v4-1-flash` | `/v1/tinfoil/*` |
 | GLM 5.3             | `defaultModelGlm53`            | `tinfoil`     | `glm-5-3`             | `tinfoil` / `glm-5-3`             | `/v1/tinfoil/*` |
 
-- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5's 5000 / 25000 (migrations `0028`, `0029`, `0034`).
+- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5.5's 5000 / 25000 (migrations `0028`, `0029`, `0034`, `0035`).
 - **`provider` is transport, not branding.** The UI shows system-managed Tinfoil rows as Thunderbolt so the vendor does not leak into the product (`models.ts:130-131`); `provider: 'tinfoil'` does not mean the user configured Tinfoil.
-- **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts:17`](../../../backend/src/inference/managed-models.ts)) maps `opus-5` to `internalName: 'claude-opus-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5')` against GLM's public slugs.
+- **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts`](../../../backend/src/inference/managed-models.ts)) maps `opus-5-5` to `internalName: 'claude-opus-5-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5-5')` against GLM's public slugs. Direct slugs have no legacy map: a client still sending `opus-5` gets `Model not found`.
 - **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
 
 ## Admission: price first, then quota
@@ -66,7 +66,7 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 | `POST /v1/chat/completions` (L270) | OpenAI             | streaming only                                                                                                    |
 | `POST /v1/chat/v1/messages` (L390) | Anthropic Messages | streaming only; Zod-validated, Anthropic-specific fields passed through as `unknown` for the upstream to validate |
 
-[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'` (L250); `/v1` comes from the app mount in `backend/src/index.ts`. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5`.
+[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'` (L250); `/v1` comes from the app mount in `backend/src/index.ts`. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5-5`.
 
 - Messages adds request-level `cache_control: { type: 'ephemeral' }` (L462-464); Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
 - `sanitizeMessageRoles` (L67-69) downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.

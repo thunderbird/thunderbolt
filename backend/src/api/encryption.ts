@@ -1234,7 +1234,7 @@ export const createEncryptionRoutes = (
           })
 
           if (recoveryChanged) {
-            burnStepUpCode(database, stepUpAction, sessionUser!.email)
+            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({

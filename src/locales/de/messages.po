@@ -1141,6 +1141,14 @@ msgstr "Die neue Reihenfolge konnte nicht gespeichert werden."
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Couldn’t send a new code, and the previous one no longer works. Request another."
+#~ msgstr ""
+
+#: src/settings/account/use-delete-account.ts
+msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "{name} konnte nicht losgelöst werden."

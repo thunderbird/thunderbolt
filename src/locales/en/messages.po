@@ -1141,6 +1141,14 @@ msgstr "Couldn't save the new order."
 msgid "Couldn't save: {saveError}"
 msgstr "Couldn't save: {saveError}"
 
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Couldn’t send a new code, and the previous one no longer works. Request another."
+#~ msgstr "Couldn’t send a new code, and the previous one no longer works. Request another."
+
+#: src/settings/account/use-delete-account.ts
+msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
+msgstr "Couldn’t send a new code. Your previous code may no longer work — request another."
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "Couldn't unpin {name}."

@@ -82,10 +82,14 @@ export const requireStepUpCode = async (
  * leaves the code valid until its own expiry, for the inbox holder only, which
  * must not fail an operation that already committed.
  *
+ * AWAIT it before responding. Fire-and-forget leaves a window in which the row
+ * still verifies, so a second request issued the moment the response lands can
+ * spend the same code twice.
+ *
  * `verification` has no `user_id` FK, so nothing else collects the row.
  */
-export const burnStepUpCode = (database: typeof DbType, action: StepUpAction, email: string): void => {
-  void consumeStepUpOtp(database, action, email).catch((err) =>
+export const burnStepUpCode = async (database: typeof DbType, action: StepUpAction, email: string): Promise<void> => {
+  await consumeStepUpOtp(database, action, email).catch((err) =>
     console.error('[step-up] failed to consume verification code:', err),
   )
 }

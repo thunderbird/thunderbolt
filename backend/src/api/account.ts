@@ -416,7 +416,7 @@ export const createAccountRoutes = (
 
         // tables have cascade delete on user_id and they will be deleted automatically
         await deleteUser(database, user.id)
-        burnStepUpCode(database, stepUpAction, user.email)
+        await burnStepUpCode(database, stepUpAction, user.email)
 
         set.status = 204
       },

@@ -41,6 +41,7 @@ import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
 import { AppVersionSection } from './app-version-section'
 import { ChangeRecoveryKeySection } from './encryption/change-recovery-key-section'
 import { PasskeySection } from './encryption/passkey-section'
+import { DeleteAccountSection } from './account/delete-account-section'
 import { SyncSetupModal } from '@/components/sync-setup/sync-setup-modal'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -68,7 +69,6 @@ type PendingImport = { payload: unknown } & ExportSummary
 
 type PreferencesState = {
   isResetting: boolean
-  isDeletingAccount: boolean
   isExporting: boolean
   isImporting: boolean
   exportError: string | null
@@ -76,7 +76,6 @@ type PreferencesState = {
   importSuccess: string | null
   pendingImport: PendingImport | null
   resetDialogOpen: boolean
-  deleteAccountDialogOpen: boolean
   localizationDialogOpen: boolean
   pendingCountryUnits: RegionUnitDefaults | null
   languageDialogOpen: boolean
@@ -85,7 +84,6 @@ type PreferencesState = {
 
 type PreferencesAction =
   | { type: 'SET_IS_RESETTING'; payload: boolean }
-  | { type: 'SET_IS_DELETING_ACCOUNT'; payload: boolean }
   | { type: 'SET_IS_EXPORTING'; payload: boolean }
   | { type: 'SET_IS_IMPORTING'; payload: boolean }
   | { type: 'SET_EXPORT_ERROR'; payload: string | null }
@@ -93,7 +91,6 @@ type PreferencesAction =
   | { type: 'SET_IMPORT_SUCCESS'; payload: string | null }
   | { type: 'SET_PENDING_IMPORT'; payload: PendingImport | null }
   | { type: 'SET_RESET_DIALOG_OPEN'; payload: boolean }
-  | { type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN'; payload: boolean }
   | { type: 'CLEAR_IMPORT_FEEDBACK' }
   | { type: 'RESET_STATE' }
   | {
@@ -105,7 +102,6 @@ type PreferencesAction =
 
 export const initialPreferencesState: PreferencesState = {
   isResetting: false,
-  isDeletingAccount: false,
   isExporting: false,
   isImporting: false,
   exportError: null,
@@ -113,7 +109,6 @@ export const initialPreferencesState: PreferencesState = {
   importSuccess: null,
   pendingImport: null,
   resetDialogOpen: false,
-  deleteAccountDialogOpen: false,
   localizationDialogOpen: false,
   pendingCountryUnits: null,
   languageDialogOpen: false,
@@ -124,8 +119,6 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
   switch (action.type) {
     case 'SET_IS_RESETTING':
       return { ...state, isResetting: action.payload }
-    case 'SET_IS_DELETING_ACCOUNT':
-      return { ...state, isDeletingAccount: action.payload }
     case 'SET_IS_EXPORTING':
       return { ...state, isExporting: action.payload }
     case 'SET_IS_IMPORTING':
@@ -140,8 +133,6 @@ export const preferencesReducer = (state: PreferencesState, action: PreferencesA
       return { ...state, pendingImport: action.payload }
     case 'SET_RESET_DIALOG_OPEN':
       return { ...state, resetDialogOpen: action.payload }
-    case 'SET_DELETE_ACCOUNT_DIALOG_OPEN':
-      return { ...state, deleteAccountDialogOpen: action.payload }
     case 'CLEAR_IMPORT_FEEDBACK':
       return { ...state, importError: null, importSuccess: null }
     case 'RESET_STATE':
@@ -184,7 +175,6 @@ export default function PreferencesSettingsPage() {
   const [state, dispatch] = useReducer(preferencesReducer, initialPreferencesState)
   const {
     isResetting,
-    isDeletingAccount,
     isExporting,
     isImporting,
     exportError,
@@ -192,7 +182,6 @@ export default function PreferencesSettingsPage() {
     importSuccess,
     pendingImport,
     resetDialogOpen,
-    deleteAccountDialogOpen,
     localizationDialogOpen,
     pendingCountryUnits,
     languageDialogOpen,
@@ -423,7 +412,6 @@ export default function PreferencesSettingsPage() {
     dispatch({ type: 'CLOSE_LANGUAGE_DIALOG' })
   }
 
-  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
   const importFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleImportClick = () => {
@@ -534,22 +522,6 @@ export default function PreferencesSettingsPage() {
     } catch (error) {
       console.error('Failed to reset database:', error)
       dispatch({ type: 'SET_IS_RESETTING', payload: false })
-    }
-  }
-
-  const handleDeleteAccount = async () => {
-    setDeleteAccountError(null)
-    dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: true })
-
-    try {
-      await httpClient.delete('account')
-      await clearLocalData()
-      window.location.reload()
-    } catch (error) {
-      console.error('Failed to delete account:', error)
-      setDeleteAccountError(error instanceof Error ? error.message : t`Failed to delete account.`)
-    } finally {
-      dispatch({ type: 'SET_IS_DELETING_ACCOUNT', payload: false })
     }
   }
 
@@ -1207,46 +1179,7 @@ export default function PreferencesSettingsPage() {
             </>
           )}
 
-          {isFullUser && (
-            <>
-              <div className="h-px bg-border -mx-6" />
-
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">
-                  <Trans>Delete Your Account</Trans>
-                </label>
-                <p className="text-sm text-muted-foreground">
-                  <Trans>Permanently delete your account and all data on our servers and this device.</Trans>
-                </p>
-                {deleteAccountError && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {deleteAccountError}
-                  </p>
-                )}
-                {/* Secondary on the page; the red danger styling lives on the
-                    confirm button inside the dialog. */}
-                <Button
-                  variant="secondary"
-                  disabled={isDeletingAccount}
-                  onClick={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: true })}
-                >
-                  {isDeletingAccount ? t`Deleting…` : t`Delete My Account`}
-                </Button>
-                <ConfirmActionDialog
-                  open={deleteAccountDialogOpen}
-                  title={t`Delete your account?`}
-                  description={t`This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone.`}
-                  confirmLabel={t`Delete account`}
-                  isPending={isDeletingAccount}
-                  onConfirm={() => {
-                    dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })
-                    void handleDeleteAccount()
-                  }}
-                  onCancel={() => dispatch({ type: 'SET_DELETE_ACCOUNT_DIALOG_OPEN', payload: false })}
-                />
-              </div>
-            </>
-          )}
+          {isFullUser && <DeleteAccountSection />}
         </div>
       </SectionCard>
 

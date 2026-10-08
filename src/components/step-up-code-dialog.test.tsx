@@ -51,13 +51,4 @@ describe('StepUpCodeDialog', () => {
     renderDialog({ error: 'That code is invalid or expired.' })
     expect(screen.getByRole('alert')).toHaveTextContent('That code is invalid or expired.')
   })
-
-  // Note this cannot catch the dialog passing the wrong constant while
-  // `otpLength` and `stepUpOtpLength` are both 8 — `input-otp.test.tsx` covers
-  // that the `length` prop is what drives the count.
-  it('renders one slot per digit of the step-up length', () => {
-    renderDialog()
-    // The dialog portals out of the render container, so query the document.
-    expect(document.querySelectorAll('[data-slot="input-otp-slot"]')).toHaveLength(stepUpOtpLength)
-  })
 })

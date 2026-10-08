@@ -15,7 +15,7 @@
     "db": "drizzle-kit",
     "db:dev": "pglite-server --db=./.pglite/data",
     "email": "email dev --dir src/emails --port 3000",
-    "usage-report": "bun src/scripts/usage-report.ts"
+    "usage-report": "OTEL_EXPORTER_OTLP_ENDPOINT= bun src/scripts/usage-report.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",

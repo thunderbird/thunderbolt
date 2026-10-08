@@ -4,11 +4,14 @@
 
 import { user } from '@/db/auth-schema'
 import { inferenceUsage } from '@/db/inference-usage-schema'
-import { createTestDb } from '@/test-utils/db'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { getSharedIsolatedTestDb, type IsolatedTestDb } from '@/test-utils/db'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { inArray } from 'drizzle-orm'
 import { formatUsageReport, formatUsd, getUsageReport, type UsageReportWindow } from './usage-report'
 
-type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
+type TestDatabase = IsolatedTestDb['db']
+
+const userIds = ['anon-1', 'anon-2', 'registered-1']
 
 const festival: UsageReportWindow = {
   from: new Date('2026-10-26T00:00:00Z'),
@@ -46,20 +49,27 @@ const insertTurn = async (
 }
 
 describe('usage report', () => {
+  let isolatedDb: IsolatedTestDb
   let database: TestDatabase
-  let cleanup: () => Promise<void>
+
+  // The report opens its own read-only transaction, which can't nest inside
+  // createTestDb's BEGIN/ROLLBACK, so this suite uses the shared isolated
+  // connection. The report reads the whole ledger, so each test starts it empty.
+  beforeAll(async () => {
+    isolatedDb = await getSharedIsolatedTestDb()
+    database = isolatedDb.db
+  })
 
   beforeEach(async () => {
-    const testDb = await createTestDb()
-    database = testDb.db
-    cleanup = testDb.cleanup
+    await database.delete(inferenceUsage)
     await insertUser(database, 'anon-1', true)
     await insertUser(database, 'anon-2', true)
     await insertUser(database, 'registered-1', false)
   })
 
   afterEach(async () => {
-    await cleanup()
+    // Cascades to the turns each test recorded.
+    await database.delete(user).where(inArray(user.id, userIds))
   })
 
   it('splits users and turns between anonymous and registered', async () => {
@@ -122,7 +132,31 @@ describe('usage report', () => {
 
     const report = await getUsageReport(database, festival)
 
-    expect(report.peakHour).toEqual({ hour: '2026-10-27 14:00', users: 3, turns: 3 })
+    expect(report.peakHour).toEqual({ hour: '2026-10-27 14:00 +00:00', users: 3, turns: 3 })
+  })
+
+  it('keeps the hour a fall-back repeats as two hours', async () => {
+    // London falls back at 01:00 UTC on 25 October, so local 01:00 happens twice.
+    await insertTurn(database, 'anon-1', '2026-10-25T00:10:00Z')
+    await insertTurn(database, 'anon-2', '2026-10-25T00:20:00Z')
+    await insertTurn(database, 'registered-1', '2026-10-25T01:10:00Z')
+
+    const report = await getUsageReport(database, {
+      from: new Date('2026-10-25T00:00:00Z'),
+      to: new Date('2026-10-26T00:00:00Z'),
+      timeZone: 'Europe/London',
+    })
+
+    expect(report.peakHour).toEqual({ hour: '2026-10-25 01:00 +01:00', users: 2, turns: 2 })
+  })
+
+  it('leaves the connection time zone as it found it', async () => {
+    const readTimeZone = async () => (await isolatedDb.client.query('show timezone')).rows
+    const before = await readTimeZone()
+
+    await getUsageReport(database, { ...festival, timeZone: 'Europe/Berlin' })
+
+    expect(await readTimeZone()).toEqual(before)
   })
 
   it('totals each model separately', async () => {
@@ -155,7 +189,7 @@ describe('usage report', () => {
 
     expect(markdown).toContain('| Anonymous | 1 | 1 | 100 | 50 | $0.00 |')
     expect(markdown).toContain('| All | 2 | 2 | 200 | 100 | $0.00 |')
-    expect(markdown).toContain('Busiest hour: 2026-10-27 10:00, with 2 users and 2 turns.')
+    expect(markdown).toContain('Busiest hour: 2026-10-27 10:00 +00:00, with 2 users and 2 turns.')
     expect(markdown).toContain('| 2026-10-27 | 2 | 2 | $0.00 |')
     expect(markdown).toContain('| fireworks | accounts/fireworks/models/glm-5p3 | 2 | 2 | $0.00 |')
   })

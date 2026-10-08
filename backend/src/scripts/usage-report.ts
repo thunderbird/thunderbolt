@@ -11,6 +11,9 @@
  * `--tz` (default UTC) only decides which day and hour a turn lands in.
  * `--json` prints the report as JSON instead of Markdown.
  *
+ * The package script blanks `OTEL_EXPORTER_OTLP_ENDPOINT`, because with tracing
+ * on, the bunfig.toml preload prints its banner to stdout, ahead of the report.
+ *
  * It reads `DATABASE_URL` like the server does. On Render the database only
  * accepts private connections, so run it on the backend service (`render ssh`).
  */
@@ -19,6 +22,7 @@ import { closeDb, db } from '@/db/client'
 import { formatUsageReport, getUsageReport } from '@/inference/usage-report'
 import { parseArgs } from 'node:util'
 
+/** Read a `--from` or `--to` value as an instant, failing on anything `Date` can't parse. */
 const parseInstant = (name: string, value: string | undefined): Date => {
   const instant = new Date(value ?? '')
   if (Number.isNaN(instant.getTime())) {
@@ -27,6 +31,7 @@ const parseInstant = (name: string, value: string | undefined): Date => {
   return instant
 }
 
+/** Pretty-printed JSON with bigints as strings, since `JSON.stringify` throws on them. */
 const toJson = (report: unknown) =>
   JSON.stringify(report, (_key, value) => (typeof value === 'bigint' ? value.toString() : value), 2)
 
@@ -53,7 +58,7 @@ if (import.meta.main) {
   } finally {
     await closeDb()
   }
-  // When OTEL is configured, the bunfig.toml preload's batch exporter keeps
-  // the event loop alive, so a one-shot script ends the process itself.
+  // closeDb() only releases PGlite, and the postgres-js pool holds the event
+  // loop open, so a one-shot script ends the process itself.
   process.exit(0)
 }

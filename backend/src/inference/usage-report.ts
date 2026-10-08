@@ -3,9 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { user } from '@/db/auth-schema'
+import type { db } from '@/db/client'
 import { inferenceUsage } from '@/db/inference-usage-schema'
-import { and, eq, gte, lt, sql } from 'drizzle-orm'
-import type { InferenceDatabase } from './usage-ledger'
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm'
+
+/** A database the report can open its read-only transaction on. */
+export type UsageReportDatabase = Pick<typeof db, 'transaction'>
 
 export type UsageReportWindow = Readonly<{
   /** Inclusive. */
@@ -31,6 +34,7 @@ export type UsageReport = Readonly<{
   registered: UsageTotals
   models: ReadonlyArray<Readonly<{ provider: string; model: string }> & UsageTotals>
   days: ReadonlyArray<Readonly<{ day: string; users: number; turns: number; costNanoUsd: bigint }>>
+  /** `hour` is the local start with its UTC offset, e.g. `2026-10-25 01:00 +01:00`. */
   peakHour: Readonly<{ hour: string; users: number; turns: number }> | null
 }>
 
@@ -48,6 +52,7 @@ const totalsColumns = {
   costNanoUsd: costSum,
 }
 
+/** Sum two groups' totals. Distinct users add up because no user is in both groups. */
 const addTotals = (a: UsageTotals, b: UsageTotals): UsageTotals => ({
   users: a.users + b.users,
   turns: a.turns + b.turns,
@@ -66,42 +71,54 @@ const addTotals = (a: UsageTotals, b: UsageTotals): UsageTotals => ({
  * Ledger rows are deleted with their user (`ON DELETE CASCADE`), so a purge of
  * idle users takes their history with it. Run the report before any purge.
  *
- * Buckets group by position (`group by 1`) because the time zone is a bound
- * parameter, and Postgres won't match the same expression across two placeholders.
+ * Every read shares one read-only snapshot, so a turn recorded mid-report can't
+ * land in one breakdown and miss another. The transaction also sets the session
+ * time zone, which is what draws the day and hour buckets.
  */
-export const getUsageReport = async (database: InferenceDatabase, window: UsageReportWindow): Promise<UsageReport> => {
+export const getUsageReport = async (
+  database: UsageReportDatabase,
+  window: UsageReportWindow,
+): Promise<UsageReport> => {
   const inWindow = and(gte(inferenceUsage.createdAt, window.from), lt(inferenceUsage.createdAt, window.to))
-  const localTime = sql`${inferenceUsage.createdAt} at time zone ${window.timeZone}`
-  const day = sql<string>`to_char(${localTime}, 'YYYY-MM-DD')`
-  const hour = sql<string>`to_char(date_trunc('hour', ${localTime}), 'YYYY-MM-DD HH24:00')`
+  const day = sql<string>`to_char(${inferenceUsage.createdAt}, 'YYYY-MM-DD')`
+  // Grouped on the instant and labelled with its offset, so the hour a
+  // fall-back repeats stays two hours instead of merging into one.
+  const hourStart = sql`date_trunc('hour', ${inferenceUsage.createdAt})`
+  const hour = sql<string>`to_char(${hourStart}, 'YYYY-MM-DD HH24:00 TZH:TZM')`
 
-  const [byAnonymity, models, days, [peakHour]] = await Promise.all([
-    database
-      .select({ isAnonymous: user.isAnonymous, ...totalsColumns })
-      .from(inferenceUsage)
-      .innerJoin(user, eq(user.id, inferenceUsage.userId))
-      .where(inWindow)
-      .groupBy(user.isAnonymous),
-    database
-      .select({ provider: inferenceUsage.provider, model: inferenceUsage.model, ...totalsColumns })
-      .from(inferenceUsage)
-      .where(inWindow)
-      .groupBy(inferenceUsage.provider, inferenceUsage.model)
-      .orderBy(inferenceUsage.provider, inferenceUsage.model),
-    database
-      .select({ day, users: distinctUsers, turns: turnCount, costNanoUsd: costSum })
-      .from(inferenceUsage)
-      .where(inWindow)
-      .groupBy(sql`1`)
-      .orderBy(sql`1`),
-    database
-      .select({ hour, users: distinctUsers, turns: turnCount })
-      .from(inferenceUsage)
-      .where(inWindow)
-      .groupBy(sql`1`)
-      .orderBy(sql`count(distinct ${inferenceUsage.userId}) desc`, sql`1`)
-      .limit(1),
-  ])
+  const [byAnonymity, models, days, [peakHour]] = await database.transaction(
+    async (tx) => {
+      await tx.execute(sql`select set_config('TimeZone', ${window.timeZone}, true)`)
+      return Promise.all([
+        tx
+          .select({ isAnonymous: user.isAnonymous, ...totalsColumns })
+          .from(inferenceUsage)
+          .innerJoin(user, eq(user.id, inferenceUsage.userId))
+          .where(inWindow)
+          .groupBy(user.isAnonymous),
+        tx
+          .select({ provider: inferenceUsage.provider, model: inferenceUsage.model, ...totalsColumns })
+          .from(inferenceUsage)
+          .where(inWindow)
+          .groupBy(inferenceUsage.provider, inferenceUsage.model)
+          .orderBy(inferenceUsage.provider, inferenceUsage.model),
+        tx
+          .select({ day, users: distinctUsers, turns: turnCount, costNanoUsd: costSum })
+          .from(inferenceUsage)
+          .where(inWindow)
+          .groupBy(day)
+          .orderBy(day),
+        tx
+          .select({ hour, users: distinctUsers, turns: turnCount })
+          .from(inferenceUsage)
+          .where(inWindow)
+          .groupBy(hourStart)
+          .orderBy(desc(distinctUsers), hourStart)
+          .limit(1),
+      ])
+    },
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  )
 
   const totalsFor = (isAnonymous: boolean): UsageTotals => {
     const row = byAnonymity.find((candidate) => candidate.isAnonymous === isAnonymous)
@@ -130,6 +147,7 @@ const integer = new Intl.NumberFormat('en-US')
 /** Nano-USD as dollars and cents, e.g. `$1.23`. */
 export const formatUsd = (nanoUsd: bigint): string => `$${(Number(nanoUsd / 10_000_000n) / 100).toFixed(2)}`
 
+/** One row of the Markdown totals table, under `label`. */
 const formatTotalsRow = (label: string, totals: UsageTotals) =>
   `| ${label} | ${integer.format(totals.users)} | ${integer.format(totals.turns)} | ${integer.format(totals.promptTokens)} | ${integer.format(totals.completionTokens)} | ${formatUsd(totals.costNanoUsd)} |`
 

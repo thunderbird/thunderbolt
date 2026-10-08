@@ -115,6 +115,7 @@ export const UnsavedRecoveryPhrasePrompt = () => {
         description={t`We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.`}
         submitLabel={t`Generate new phrase`}
         submitLoadingLabel={t`Generating…`}
+        submitOnComplete
         onOtpChange={setOtp}
         onResend={requestStepUpCode}
         onSubmit={confirmRotation}

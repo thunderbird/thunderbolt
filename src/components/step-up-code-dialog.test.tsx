@@ -4,6 +4,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
+
 import { StepUpCodeDialog } from '@/components/step-up-code-dialog'
 import { stepUpOtpLength } from '@/lib/constants'
 
@@ -51,4 +52,10 @@ describe('StepUpCodeDialog', () => {
     renderDialog({ error: 'That code is invalid or expired.' })
     expect(screen.getByRole('alert')).toHaveTextContent('That code is invalid or expired.')
   })
+
+  // NOT covered here: that the delete flow does not auto-submit on the last
+  // digit (`submitOnComplete`). It needs the real `InputOTP`, and
+  // `sign-in-modal.test.tsx` replaces that module process-wide via
+  // `mock.module` (it runs fake timers, which the library's internal timers
+  // fight), so such a test passes or fails on file ordering.
 })

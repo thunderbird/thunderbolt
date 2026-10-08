@@ -250,12 +250,12 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           id: 'chatcmpl-usage',
           object: 'chat.completion.chunk',
           created: 0,
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           choices: Object.freeze([]),
           usage: Object.freeze({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 }),
         })
         const openAiStream =
-          'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+          'data: {"id":"chatcmpl-content","object":"chat.completion.chunk","created":0,"model":"claude-opus-5-5","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
           `data: ${JSON.stringify(usageChunk)}\n\n` +
           'data: [DONE]\n\n'
         const nativeStream = [
@@ -265,7 +265,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
               id: 'msg_1',
               type: 'message',
               role: 'assistant',
-              model: 'claude-opus-5',
+              model: 'claude-opus-5-5',
               content: [],
               usage: { input_tokens: 2, output_tokens: 1 },
             },
@@ -344,7 +344,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                model: 'opus-5',
+                model: 'opus-5-5',
                 max_tokens: 1024,
                 messages: [{ role: 'user', content: secretPrompt }],
                 stream: true,
@@ -367,7 +367,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
                   $ai_is_error: true,
                   $ai_http_status: 400,
                   model_provider: 'anthropic',
-                  model: 'claude-opus-5',
+                  model: 'claude-opus-5-5',
                 }),
               }),
             ])
@@ -379,7 +379,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           }
           expect(response.status).toBe(200)
           expect(upstreamRequestBody).toMatchObject({
-            model: 'claude-opus-5',
+            model: 'claude-opus-5-5',
           })
           if (protocol === 'openai') {
             expect(upstreamRequestBody?.stream_options).toEqual({ include_usage: true })
@@ -391,7 +391,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
             id: 'chatcmpl-usage',
             object: 'chat.completion.chunk',
             created: 0,
-            model: 'claude-opus-5',
+            model: 'claude-opus-5-5',
             choices: [],
             usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
           })
@@ -401,7 +401,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
           expect(rows[0]).toMatchObject({
             userId: 'test-user',
             provider: 'anthropic',
-            model: 'claude-opus-5',
+            model: 'claude-opus-5-5',
             promptTokens: 2,
             completionTokens: 3,
             totalTokens: 5,
@@ -419,7 +419,7 @@ describe('Inference Routes - PostHog Privacy Integration', () => {
             distinct_id: 'test-user',
             properties: {
               model_provider: 'anthropic',
-              model: 'claude-opus-5',
+              model: 'claude-opus-5-5',
             },
           })
           expect(generation?.properties).toMatchObject({ $ai_input_tokens: 2, $ai_output_tokens: 3 })

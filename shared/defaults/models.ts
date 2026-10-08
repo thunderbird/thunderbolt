@@ -66,11 +66,11 @@ export const hashModel = (model: SharedModel): string => {
  * This default keeps a stable row identity so persisted model references remain valid.
  * Generic defaults reconciliation upgrades unmodified rows in place.
  */
-export const defaultModelOpus5: SharedModel = {
+export const defaultModelOpus55: SharedModel = {
   id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-  name: 'Opus 5',
+  name: 'Opus 5.5',
   provider: 'thunderbolt',
-  model: 'opus-5',
+  model: 'opus-5-5',
   isSystem: 1,
   enabled: 1,
   isConfidential: 0,
@@ -86,27 +86,27 @@ export const defaultModelOpus5: SharedModel = {
   userId: null,
 }
 
-export const defaultModelGlm53Flash: SharedModel = {
+export const defaultModelDeepSeekV41Flash: SharedModel = {
   id: '01a06dd7-67ee-75be-b957-2b746271c49d',
-  name: 'GLM 5.3 Flash',
+  name: 'DeepSeek V4.1 Flash',
   provider: 'tinfoil',
-  model: 'glm-5-3-flash',
+  model: 'deepseek-v4-1-flash',
   isSystem: 1,
   enabled: 1,
   isConfidential: 1,
-  contextWindow: 131072,
+  contextWindow: 1_048_576,
   toolUsage: 1,
   startWithReasoning: 0,
   supportsParallelToolCalls: 0,
   deletedAt: null,
   url: null,
   defaultHash: null,
-  vendor: 'zhipu',
+  vendor: 'deepseek',
   description: 'Fast, low-cost confidential chat with image support',
   userId: null,
 }
 
-export const defaultModelId = defaultModelGlm53Flash.id
+export const defaultModelId = defaultModelDeepSeekV41Flash.id
 
 export const defaultModelGlm53: SharedModel = {
   id: '019e7580-2b0e-719c-a43f-d2b56e7f31b4',
@@ -138,11 +138,11 @@ export const defaultModelGlm53: SharedModel = {
  * `cleanupRemovedDefaults` soft-deletes unedited copies of models absent
  * from this list. User-edited copies survive but may reference unavailable
  * upstream models and return errors when used.
- * The backend accepts `glm-5-2` and `deepseek-v4-flash` for older clients.
+ * The backend accepts `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` for older clients.
  */
 export const defaultModels: ReadonlyArray<SharedModel> = [
-  defaultModelOpus5,
-  defaultModelGlm53Flash,
+  defaultModelOpus55,
+  defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
 ] as const
 
@@ -160,8 +160,8 @@ export type ImageSupportModel = Pick<SharedModel, 'provider' | 'model' | 'url' |
  * synced, so changing it needs no version bump.
  */
 export const defaultModelImageSupport: Readonly<Record<string, ImageSupport>> = {
-  [defaultModelOpus5.id]: 'supported',
-  [defaultModelGlm53Flash.id]: 'supported',
+  [defaultModelOpus55.id]: 'supported',
+  [defaultModelDeepSeekV41Flash.id]: 'supported',
   [defaultModelGlm53.id]: 'unsupported',
 }
 
@@ -207,4 +207,4 @@ export const isKnownToReadImages = (model: ImageSupportModel): boolean => static
  * The paired snapshot test in `models.test.ts` fails on any change to this
  * file's defaults without a matching version bump.
  */
-export const defaultModelsVersion = 9
+export const defaultModelsVersion = 11

@@ -61,6 +61,7 @@ mise.toml
 !.claude/security/**
 !.claude/skills/thunder-red-team/
 !.claude/skills/thunder-red-team/**
+!.claude/skills/thunder-update-model
 .zed/**
 .zedscratches/**
 .mcp.json

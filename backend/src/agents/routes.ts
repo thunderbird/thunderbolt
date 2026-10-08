@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { getEnabledAgentsList, getSettings, type Settings } from '@/config/settings'
+import { getSettings, isAgentAllowed, type Settings } from '@/config/settings'
 import { createStandaloneLogger } from '@/config/logger'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
 import type { User } from '@shared/types/auth'
 import { Elysia } from 'elysia'
+import { hostedAgentId } from '@/hosted-agent/provider'
 import { getRegisteredProviders } from './discovery'
 import type { AgentsErrorResponse } from './types'
 
@@ -16,8 +17,9 @@ import type { AgentsErrorResponse } from './types'
  * Mounts `GET /agents`, the ACP discovery endpoint.
  *
  * - Unauthenticated → 401 `{ error: 'Unauthorized' }`
- * - Anonymous user → 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` (anonymous sessions
- *   never see system agents; the FE falls back to the built-in only)
+ * - Anonymous user → 403 `ANONYMOUS_DISCOVERY_FORBIDDEN` (the FE falls back to
+ *   the built-in only), unless `ALLOW_ANONYMOUS_AGENT_DISCOVERY` is set, in which
+ *   case they receive only descriptors flagged `anonymousSafe`
  * - Authenticated regular user → `AgentDiscoveryResponse`
  *
  * The agent list is built from {@link getRegisteredProviders}; the Haystack
@@ -42,22 +44,26 @@ export const createAgentsRoutes = (auth: Auth) =>
         set.status = 401
         return { error: 'Unauthorized' }
       }
-      if (user.isAnonymous) {
+
+      const settings = getSettings()
+      if (user.isAnonymous && !settings.allowAnonymousAgentDiscovery) {
         set.status = 403
         return { error: 'Forbidden', code: 'ANONYMOUS_DISCOVERY_FORBIDDEN' }
       }
 
-      const settings = getSettings()
-      const enabledIds = getEnabledAgentsList(settings)
-      const allowedById = (id: string) => enabledIds.length === 0 || enabledIds.includes(id)
+      const visibleToCaller = (descriptor: RemoteAgentDescriptor) =>
+        isAgentAllowed(settings, descriptor.id) && (!user.isAnonymous || descriptor.anonymousSafe)
 
       const agents = collectAgents(request, settings)
-      const filtered = agents.filter((descriptor) => allowedById(descriptor.id))
+      const filtered = agents.filter(visibleToCaller)
 
       return {
         version: '1',
         agents: filtered,
         allowCustomAgents: settings.allowCustomAgents,
+        defaultAgentId: filtered.some(({ id, type }) => id === hostedAgentId && type === 'managed-http')
+          ? hostedAgentId
+          : undefined,
       }
     })
 

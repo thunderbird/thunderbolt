@@ -15,9 +15,9 @@ export type ManagedDirectRuntime = {
 
 /** Private upstream routing for public direct managed-model slugs. */
 export const managedDirectRuntimes = {
-  'opus-5': {
+  'opus-5-5': {
     provider: 'anthropic',
-    internalName: 'claude-opus-5',
+    internalName: 'claude-opus-5-5',
     omitTemperature: true,
     supportsStreamUsage: true,
   },
@@ -29,7 +29,7 @@ export const resolveManagedDirectRuntime = (model: string): ManagedDirectRuntime
     ? managedDirectRuntimes[model as keyof typeof managedDirectRuntimes]
     : undefined
 
-const legacyConfidentialModels = ['glm-5-2', 'deepseek-v4-flash']
+const legacyConfidentialModels = ['glm-5-2', 'deepseek-v4-flash', 'glm-5-3-flash']
 const confidentialManagedModels = new Map<string, ManagedInferenceIdentity>(
   [
     ...defaultModels

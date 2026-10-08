@@ -7,7 +7,7 @@ import type { db } from '@/db/client'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { and, eq, gte, sql } from 'drizzle-orm'
 
-export type ManagedInferenceIdentity = Readonly<{ provider: 'anthropic' | 'tinfoil'; model: string }>
+export type ManagedInferenceIdentity = Readonly<{ provider: 'anthropic' | 'fireworks' | 'tinfoil'; model: string }>
 export type InferenceTokenCounts = Readonly<{
   promptTokens: number
   completionTokens: number

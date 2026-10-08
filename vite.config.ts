@@ -120,6 +120,24 @@ export default defineConfig({
         server.middlewares.use(setResponseHeaders)
       },
     },
+    {
+      // `server.host` sets both the bind and the printed URL. Keep the bind on
+      // 127.0.0.1 (see server.host below) but advertise localhost:1420 — the
+      // canonical dev origin, and the only one Tauri's devUrl, the Playwright
+      // baseURLs and the backend's CORS/APP_URL defaults know about.
+      name: 'advertise-canonical-dev-origin',
+      configureServer: (server) => {
+        if (host) return
+
+        const printUrls = server.printUrls.bind(server)
+        server.printUrls = () => {
+          if (server.resolvedUrls) {
+            server.resolvedUrls.local = server.resolvedUrls.local.map((url) => url.replace('127.0.0.1', 'localhost'))
+          }
+          printUrls()
+        }
+      },
+    },
   ],
   resolve: {
     // react-dismissable-layer must be a single module instance: it tracks

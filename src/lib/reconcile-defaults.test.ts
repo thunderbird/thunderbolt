@@ -11,11 +11,11 @@ import type { AnyColumn } from 'drizzle-orm'
 import type { AnySQLiteTable } from 'drizzle-orm/sqlite-core'
 import { modelProfilesTable, modelsTable, promptsTable, settingsTable, skillsTable, tasksTable } from '../db/tables'
 import { defaultAutomations, hashPrompt } from '../defaults/automations'
-import { defaultModelProfileOpus5, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
+import { defaultModelProfileOpus55, defaultModelProfiles, hashModelProfile } from '../defaults/model-profiles'
 import {
   defaultModelGlm53,
-  defaultModelGlm53Flash,
-  defaultModelOpus5,
+  defaultModelDeepSeekV41Flash,
+  defaultModelOpus55,
   defaultModels,
   defaultModelsVersion,
   hashModel,
@@ -817,8 +817,10 @@ describe('reconcileDefaultsForTable', () => {
 })
 
 for (const [target, model, name] of [
+  [defaultModelOpus55, 'opus-5', 'Opus 5'],
   [defaultModelGlm53, 'glm-5-2', 'GLM 5.2'],
-  [defaultModelGlm53Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  [defaultModelDeepSeekV41Flash, 'deepseek-v4-flash', 'DeepSeek V4 Flash'],
+  [defaultModelDeepSeekV41Flash, 'glm-5-3-flash', 'GLM 5.3 Flash'],
 ] as const) {
   test(`reconciliation upgrades an edited ${model} row outside the hash gate`, async () => {
     const db = getDb()
@@ -836,9 +838,9 @@ for (const [target, model, name] of [
   })
 }
 
-describe('Opus 5 data migration', () => {
+describe('Opus data migration', () => {
   const legacyDefault = (): SharedModel => ({
-    ...defaultModelOpus5,
+    ...defaultModelOpus55,
     name: 'Opus 4.8',
     model: 'opus-4.8',
     contextWindow: 200_000,
@@ -858,9 +860,9 @@ describe('Opus 5 data migration', () => {
 
     await reconcileDefaults(db, { initialSyncCompleted: false })
 
-    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
-      ...defaultModelOpus5,
-      defaultHash: hashModel(defaultModelOpus5),
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
     })
   })
 
@@ -883,9 +885,9 @@ describe('Opus 5 data migration', () => {
 
     await reconcileDefaults(db, { initialSyncCompleted: false })
 
-    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
       ...customizedLegacy,
-      model: defaultModelOpus5.model,
+      model: defaultModelOpus55.model,
     })
   })
 
@@ -901,13 +903,13 @@ describe('Opus 5 data migration', () => {
       value: String(defaultModelsVersion),
     })
     const otaVersion = defaultModelsVersion + 1
-    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus5.id ? legacyModel : model))
+    const otaModels = defaultModels.map((model) => (model.id === defaultModelOpus55.id ? legacyModel : model))
 
     await reconcileDefaults(db, { models: { version: otaVersion, data: otaModels } })
 
-    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
-      ...defaultModelOpus5,
-      defaultHash: hashModel(defaultModelOpus5),
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
       await db.select().from(settingsTable).where(eq(settingsTable.key, versionMarkerKeys.models)).get(),
@@ -929,15 +931,15 @@ describe('Opus 5 data migration', () => {
 
     await reconcileDefaults(db)
 
-    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus5.id)).get()).toEqual({
-      ...defaultModelOpus5,
-      defaultHash: hashModel(defaultModelOpus5),
+    expect(await db.select().from(modelsTable).where(eq(modelsTable.id, defaultModelOpus55.id)).get()).toEqual({
+      ...defaultModelOpus55,
+      defaultHash: hashModel(defaultModelOpus55),
     })
     expect(
-      await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelOpus5.id)).get(),
+      await db.select().from(modelProfilesTable).where(eq(modelProfilesTable.modelId, defaultModelOpus55.id)).get(),
     ).toEqual({
-      ...defaultModelProfileOpus5,
-      defaultHash: hashModelProfile(defaultModelProfileOpus5),
+      ...defaultModelProfileOpus55,
+      defaultHash: hashModelProfile(defaultModelProfileOpus55),
     })
   })
 })

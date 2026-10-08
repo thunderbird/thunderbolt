@@ -40,7 +40,7 @@ describe('deep health', () => {
     await cleanup()
   })
 
-  for (const route of ['database', 'powersync', 'email', 'models', 'models?model=opus-5', 'models?model=unknown']) {
+  for (const route of ['database', 'powersync', 'email', 'models', 'models?model=opus-5-5', 'models?model=unknown']) {
     it.each([
       ['', headers, 403, 'Monitoring token not configured'],
       [settings.monitoringToken, {}, 401, 'Unauthorized'],

@@ -151,7 +151,9 @@ implementer will use:
 - image support: `'supported'` iff `image` is in `modalities.input` and the provider agrees
   (`multimodal`);
 - reasoning: the profile inherits the leaving model's `reasoningEffort` unless the catalog says
-  `reasoning: false`; checklist item 16 verifies it reaches the wire.
+  `reasoning: false`; checklist item 16 verifies it reaches the wire;
+- Pi catalog: when the incoming model is absent from Pi's catalog, the implementer aliases it
+  (checklist items 16 and 17); pi-ai is not upgraded in this swap.
 
 Done when the developer answered and saw those facts.
 
@@ -182,8 +184,8 @@ the brief below is your own contract. The brief carries:
 - leaving model: slug, uuid, export constant, display name, profile file, shipped `contextWindow`;
 - incoming model: id, name, release date, status, context, output, modalities, reasoning,
   reasoning parameters, tools, price, experimental flag;
-- provider route, the id decision, the context-window decision, the quota rule and the
-  image-support value from stage 4;
+- provider route, the id decision, the context-window decision, the quota rule, the
+  image-support value and the Pi catalog rule from stage 4;
 - the worktree's absolute path and, when you used the `cd` prefix, "all paths absolute, every
   shell command prefixed with `cd <path> &&`";
 - "Read `.agents/skills/thunder-update-model/references/swap-checklist.md` and work through every
@@ -223,3 +225,5 @@ Name both follow-ups with their values and tell the developer to change them by 
 
 - Never commit or push from this skill; `/thunderpush` owns that.
 - Never run bare `bun test` at the repo root; use the scoped commands in the checklist.
+- Pin pi-ai where it is: a model Pi's catalog lacks is aliased in `shared/agent-core` (items 16
+  and 17), and a dependency bump is a separate PR that the swap never includes.

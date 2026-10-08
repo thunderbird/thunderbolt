@@ -30,7 +30,7 @@ try {
   const composer = await browser.$('textarea')
   await composer.waitForDisplayed({ timeout: 60_000 })
   await (await browser.$('[data-testid="model-selector-trigger"]')).click()
-  await (await browser.$('//button[normalize-space()="Opus 5"]')).click()
+  await (await browser.$('//button[normalize-space()="Opus 5.5"]')).click()
   await composer.setValue('Please greet me briefly.')
   await (await browser.$('button[aria-label="Send message"]')).click()
   await browser.waitUntil(async () => (await (await browser.$('body')).getText()).includes(fakeProviderReply), {

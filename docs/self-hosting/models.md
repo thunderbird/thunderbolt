@@ -28,19 +28,19 @@ No setting hides the deployment-provided models, though each user can disable or
 
 Set these on the API service and restart.
 
-| Variable              | Default                           | Enables                                            |
-| --------------------- | --------------------------------- | -------------------------------------------------- |
-| `ANTHROPIC_API_KEY`   | none                              | Opus 5, routed to Anthropic through your server    |
-| `TINFOIL_API_KEY`     | none                              | GLM 5.3 Flash and GLM 5.3, the confidential models |
-| `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | The enclave endpoint. Keep the `/v1` suffix        |
+| Variable              | Default                           | Enables                                                  |
+| --------------------- | --------------------------------- | -------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | none                              | Opus 5, routed to Anthropic through your server          |
+| `TINFOIL_API_KEY`     | none                              | DeepSeek V4.1 Flash and GLM 5.3, the confidential models |
+| `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | The enclave endpoint. Keep the `/v1` suffix              |
 
 Those keys cover three models. The catalog is fixed by the release you are running.
 
-| Model         | Tier         | Context window   | Notes                                                                                                                                          |
-| ------------- | ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GLM 5.3 Flash | Confidential | 131,072 tokens   | The default model on a new account. Fastest and cheapest of the three. Accepts image attachments                                               |
-| GLM 5.3       | Confidential | 131,072 tokens   | Stronger and slower. Text only, image attachments are dropped before sending                                                                   |
-| Opus 5        | Standard     | 1,000,000 tokens | Anthropic's top reasoning model, and the only one of the three where your server sees the full request and response. Accepts image attachments |
+| Model               | Tier         | Context window   | Notes                                                                                                                                          |
+| ------------------- | ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| DeepSeek V4.1 Flash | Confidential | 1,048,576 tokens | The default model on a new account. Fastest and cheapest of the three. Accepts image attachments                                               |
+| GLM 5.3             | Confidential | 131,072 tokens   | Stronger and slower. Text only, image attachments are dropped before sending                                                                   |
+| Opus 5              | Standard     | 1,000,000 tokens | Anthropic's top reasoning model, and the only one of the three where your server sees the full request and response. Accepts image attachments |
 
 Adding a fourth deployment-provided model is a change to the software, not a configuration change. You can still expose any other model to users through their own keys or a custom endpoint.
 
@@ -62,6 +62,36 @@ Windows roll continuously, with no monthly reset and no top-up. A user over the 
 Confidential usage is counted from a receipt the client posts back after it decrypts the response, because your server never sees those token counts. A client that closes mid-answer leaves that spend uncounted, so confidential totals can run low. Your server signs the account, the model and the price, so a client can only under-report its own usage.
 
 Bring-your-own-key and custom-endpoint traffic is never counted.
+
+### Model prices
+
+Quota accounting looks up a price for every deployment-provided request in the `inference_prices` table, keyed by `(provider, model)`. A model with no row is refused with `price-unavailable` before any upstream call, so a price row is necessary for a model to be usable, but not sufficient: the model must also be registered and routed. The managed chat routes recognize the Anthropic and confidential models only; the first consumer of the Fireworks rows is the hosted agent, which selects a Fireworks model through `AGENT_MODEL` in a follow-up release. Prices are integers in nano-USD per token (USD per million tokens x 1000), so $1.40 per million input tokens is `1400`.
+
+Rows are seeded by data-only Drizzle migrations (`backend/drizzle/0028_*`, `0029_*`, `0033_*`, `0034_*`); there is no admin route. To add a model:
+
+1. Run `bun db generate --custom --name=seed-<provider>-<model>-price` from `backend/`. This creates an empty migration and its `_journal.json` entry, and also writes `meta/00NN_snapshot.json`, which must be committed with the migration.
+2. Add an `INSERT INTO "inference_prices"` row, with the source and verification date in a comment. The `model` value must match the id the request sends; for Fireworks that is the full `accounts/fireworks/models/<name>`. End the statement with `ON CONFLICT` so it keeps an operator's hand-set price: the live upsert below can create the same row out of band, and a plain INSERT would then fail at startup.
+
+   ```sql
+   INSERT INTO "inference_prices" ("provider", "model", "input_nano_usd_per_token", "output_nano_usd_per_token")
+   VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+   ON CONFLICT ("provider", "model") DO NOTHING;
+   ```
+
+3. Deploy; migrations run on startup.
+
+To change a price on a running deployment without a migration, run the equivalent SQL:
+
+```sql
+INSERT INTO inference_prices (provider, model, input_nano_usd_per_token, output_nano_usd_per_token)
+VALUES ('fireworks', 'accounts/fireworks/models/glm-5p3', 1400, 4400)
+ON CONFLICT (provider, model) DO UPDATE
+SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
+    output_nano_usd_per_token = EXCLUDED.output_nano_usd_per_token,
+    updated_at = now();
+```
+
+Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which slightly overstates spend.
 
 ## Confidential inference
 

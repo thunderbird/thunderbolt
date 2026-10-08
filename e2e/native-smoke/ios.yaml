@@ -25,7 +25,7 @@ appId: net.thunderbird.thunderbolt.dev
     timeout: 120000
 - inputText: 12345678
 - extendedWaitUntil:
-    visible: GLM 5.3 Flash
+    visible: DeepSeek V4.1 Flash
     timeout: 120000
 - retry:
     maxRetries: 2

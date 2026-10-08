@@ -32,7 +32,7 @@ A credential is `rawSessionToken.base64Signature`, the same value Better Auth pu
 
 ### Mounting and rate limits
 
-Routes opt in with the `auth: true` macro from [`elysia-plugin.ts`](../src/auth/elysia-plugin.ts), which mounts Better Auth with `.all('/*')`. Not Elysia's `.mount()`: it short-circuits before `onBeforeHandle` and would silently bypass the IP rate limiter `index.ts` passes in.
+Routes opt in with the `auth: true` macro from [`elysia-plugin.ts`](../src/auth/elysia-plugin.ts), which mounts Better Auth with `.all('/api/auth/*')`. Not Elysia's `.mount()`: it short-circuits before `onBeforeHandle` and would silently bypass the IP rate limiter `index.ts` passes in.
 
 | Limiter                                      | Scope                                                                                | Budget                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |

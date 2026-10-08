@@ -19,6 +19,7 @@ import {
   maxPostgresInteger,
   recordInferenceUsage,
   type InferenceDatabase,
+  type ManagedInferenceIdentity,
   type InferencePrice,
   type InferenceTokenCounts,
   type RecordInferenceUsageInput,
@@ -31,6 +32,8 @@ const oneCentNanoUsd = 10_000_000n
 const deepseekIdentity = { provider: 'tinfoil', model: 'deepseek-v4-flash' } as const
 const opusIdentity = { provider: 'anthropic', model: 'claude-opus-5' } as const
 const glmIdentity = { provider: 'tinfoil', model: 'glm-5-2' } as const
+const fireworksGlmIdentity = { provider: 'fireworks', model: 'accounts/fireworks/models/glm-5p3' } as const
+const fireworksMinimaxIdentity = { provider: 'fireworks', model: 'accounts/fireworks/models/minimax-m3' } as const
 
 const insertUser = async (database: TestDatabase, id: string, isAnonymous = false) => {
   await database.insert(user).values({
@@ -42,10 +45,7 @@ const insertUser = async (database: TestDatabase, id: string, isAnonymous = fals
   })
 }
 
-const loadRequiredPrice = async (
-  database: TestDatabase,
-  identity: typeof deepseekIdentity | typeof opusIdentity | typeof glmIdentity,
-) => {
+const loadRequiredPrice = async (database: TestDatabase, identity: ManagedInferenceIdentity) => {
   const price = await loadInferencePrice(database, identity)
   expect(price).not.toBeNull()
   return price!
@@ -307,6 +307,50 @@ describe('inference usage ledger', () => {
           outputNanoUsdPerToken: 0n,
         }),
       ).toThrow(InferenceCostOverflowError)
+    })
+  })
+
+  describe('fireworks', () => {
+    const limits = { fiveHourCents: 100, sevenDayCents: 1_000 }
+
+    it('admits seeded fireworks models with their list prices', async () => {
+      await insertUser(database, 'fireworks-admission-user')
+
+      expect(
+        await checkManagedInferenceAdmission(database, fireworksGlmIdentity, 'fireworks-admission-user', limits),
+      ).toEqual({
+        outcome: 'allowed',
+        price: { ...fireworksGlmIdentity, inputNanoUsdPerToken: 1_400n, outputNanoUsdPerToken: 4_400n },
+      })
+      expect(
+        await checkManagedInferenceAdmission(database, fireworksMinimaxIdentity, 'fireworks-admission-user', limits),
+      ).toEqual({
+        outcome: 'allowed',
+        price: { ...fireworksMinimaxIdentity, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 1_200n },
+      })
+    })
+
+    it('records provider and cost without applying anthropic cache multipliers', async () => {
+      const userId = 'fireworks-record-user'
+      await insertUser(database, userId)
+      const price = await loadRequiredPrice(database, fireworksGlmIdentity)
+
+      await recordInferenceUsage(
+        database,
+        usageInput('fireworks-usage', userId, price, {
+          promptTokens: 1_000,
+          completionTokens: 500,
+          totalTokens: 1_500,
+          cacheReadTokens: 800,
+        }),
+      )
+
+      const [row] = await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, 'fireworks-usage'))
+      expect(row).toMatchObject({
+        provider: 'fireworks',
+        model: fireworksGlmIdentity.model,
+        costNanoUsd: 1_000n * 1_400n + 500n * 4_400n,
+      })
     })
   })
 

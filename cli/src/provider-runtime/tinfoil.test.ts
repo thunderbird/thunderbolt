@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { createModels } from '@earendil-works/pi-ai'
 import { AttestationError } from '@tinfoilsh/verifier'
 import { SecureClient } from 'tinfoil'
-import { defaultModelGlm53, defaultModelGlm53Flash, type SharedModel } from '../../../shared/defaults/models.ts'
+import { defaultModelGlm53, defaultModelDeepSeekV41Flash, type SharedModel } from '../../../shared/defaults/models.ts'
 import { inferenceUsageReceiptHeader, inferenceModelHeader } from '../../../shared/inference-usage.ts'
 import { createHarnessRuntime } from '../agent/harness.ts'
 import type { ThinkingLevel } from '../agent/types.ts'
@@ -390,7 +390,7 @@ describe('createTinfoilBinding', () => {
     }
   })
 
-  test.each([confidentialModel, defaultModelGlm53Flash])('sends $model identity and submits terminal usage', async (model) => {
+  test.each([confidentialModel, defaultModelDeepSeekV41Flash])('sends $model identity and submits terminal usage', async (model) => {
     const secureRequests: Request[] = []
     const receiptRequests: Request[] = []
     const receipt = 'iu1.canonicalPayload.canonicalSignature'

@@ -10,7 +10,8 @@ import { verification } from '@/db/auth-schema'
 import { desc, eq, sql } from 'drizzle-orm'
 
 /**
- * Step-up verification codes for a recovery-phrase change (THU-875).
+ * Step-up verification codes: an emailed code authorizing one sensitive action
+ * the session alone should not be enough for.
  *
  * The code rides Better Auth's `verification` table but is NOT a Better Auth
  * OTP. It used to be one, stored under the `email-verification` type, and that
@@ -21,19 +22,35 @@ import { desc, eq, sql } from 'drizzle-orm'
  * The fix is the identifier namespace. Better Auth builds every one of its own
  * identifiers as `toOTPIdentifier(type, email)` = `${type}-otp-${email}`, and
  * `type` is a closed enum — `email-verification | sign-in | forget-password |
- * change-email` — so no Better Auth route can name a row prefixed
- * `e2ee-step-up-`. Its only untargeted touch on the table is the expired-row
+ * change-email` — so no Better Auth route can name a row suffixed
+ * `-step-up-otp-`. Its only untargeted touch on the table is the expired-row
  * sweep inside `findVerificationValue`, which deletes strictly on
  * `expiresAt < now` and therefore only collects rows this module would reject
- * anyway.
+ * anyway. It holds for any action that does not make `${action}-step-up` a
+ * member of that enum, which `stepUpIdentifier`'s test asserts.
+ *
+ * Every entry point is keyed by ACTION as well as email, so cooldown, attempt
+ * budget, verification and consumption are isolated per action: a code emailed
+ * for one action can never be spent on another. Routes hardcode their own
+ * action, so a client cannot pick what its code buys.
  *
  * Owning the row means owning the whole policy below: generation, the stored
  * `<code>:<attempts>` format (Better Auth's convention, kept so the e2e helper
  * can still read it), the attempt budget, the timing-safe compare, and expiry.
+ * Length, expiry, budget and cooldown are shared by every action.
  */
 
-/** Mirrors the shape of better-auth's identifiers without colliding with any type it can construct. */
-export const stepUpIdentifier = (email: string): string => `e2ee-step-up-otp-${email.toLowerCase()}`
+/** What a code authorizes. Chosen by the route, never by the client. */
+export const stepUpActions = ['recovery-phrase-change', 'account-deletion'] as const
+
+export type StepUpAction = (typeof stepUpActions)[number]
+
+/**
+ * Mirrors the shape of better-auth's identifiers without colliding with any type it can construct.
+ * `e2e/e2ee/db.ts` reads rows by this exact string, so the test pins both spellings.
+ */
+export const stepUpIdentifier = (action: StepUpAction, email: string): string =>
+  `${action}-step-up-otp-${email.toLowerCase()}`
 
 /** Digits per code. 10^8 keyspace, matching the sign-in OTP and the frontend's input width. */
 export const stepUpOtpLength = 8
@@ -108,13 +125,13 @@ const writeFreshOtp = async (tx: QueryableDatabase, identifier: string): Promise
   return code
 }
 
-export const mintStepUpOtp = async (database: typeof DbType, email: string): Promise<string> =>
-  database.transaction((tx) => writeFreshOtp(tx, stepUpIdentifier(email)))
+export const mintStepUpOtp = async (database: typeof DbType, action: StepUpAction, email: string): Promise<string> =>
+  database.transaction((tx) => writeFreshOtp(tx, stepUpIdentifier(action, email)))
 
 /**
- * Minimum spacing between two emailed codes for one account. Caps both the
- * volume of mail a still-trusted attacker can aim at the owner and the rate at
- * which codes can be rotated out from under them.
+ * Minimum spacing between two emailed codes for one account and action. Caps
+ * both the volume of mail a still-trusted attacker can aim at the owner and the
+ * rate at which codes can be rotated out from under them.
  */
 export const stepUpRequestCooldownMs = 30_000
 
@@ -141,8 +158,12 @@ export type StepUpRequest = { status: 'sent'; code: string } | { status: 'coolin
  * than retrying immediately. That is the correct direction — the previous code
  * left a live code behind with no cooldown recorded at all.
  */
-export const requestStepUpOtp = async (database: typeof DbType, email: string): Promise<StepUpRequest> => {
-  const identifier = stepUpIdentifier(email)
+export const requestStepUpOtp = async (
+  database: typeof DbType,
+  action: StepUpAction,
+  email: string,
+): Promise<StepUpRequest> => {
+  const identifier = stepUpIdentifier(action, email)
   return database.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${identifier})::bigint)`)
     const [outstanding] = await tx
@@ -180,12 +201,17 @@ export type StepUpOtpVerdict = 'valid' | 'invalid' | 'expired' | 'too-many-attem
  * which is precisely the attacker this gate exists to stop, so issuing the
  * guesses in parallel costs it nothing.
  */
-export const verifyStepUpOtp = async (database: typeof DbType, email: string, otp: string): Promise<StepUpOtpVerdict> =>
+export const verifyStepUpOtp = async (
+  database: typeof DbType,
+  action: StepUpAction,
+  email: string,
+  otp: string,
+): Promise<StepUpOtpVerdict> =>
   database.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(verification)
-      .where(eq(verification.identifier, stepUpIdentifier(email)))
+      .where(eq(verification.identifier, stepUpIdentifier(action, email)))
       .orderBy(desc(verification.createdAt))
       .limit(1)
       .for('update')
@@ -213,9 +239,9 @@ export const verifyStepUpOtp = async (database: typeof DbType, email: string, ot
 
 /**
  * Single-use enforcement: `verifyStepUpOtp` deliberately does NOT consume a
- * valid code, so the rotate route deletes the row after its transaction
- * commits. Delete-on-commit (not on-check) keeps a rotation that fails midway
+ * valid code, so the gated route deletes the row after its transaction
+ * commits. Delete-on-commit (not on-check) keeps an action that fails midway
  * retryable with the same code.
  */
-export const consumeStepUpOtp = (database: typeof DbType, email: string) =>
-  database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(email)))
+export const consumeStepUpOtp = (database: typeof DbType, action: StepUpAction, email: string) =>
+  database.delete(verification).where(eq(verification.identifier, stepUpIdentifier(action, email)))

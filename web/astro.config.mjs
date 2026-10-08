@@ -116,6 +116,7 @@ export default defineConfig({
 						{ label: 'Docker Compose', slug: 'docs/self-hosting/docker-compose' },
 						{ label: 'Kubernetes', slug: 'docs/self-hosting/kubernetes' },
 						{ label: 'AWS with Pulumi', slug: 'docs/self-hosting/pulumi' },
+						{ label: 'Public agent on Render', slug: 'docs/self-hosting/public-agent' },
 						{ label: 'Upgrading', slug: 'docs/self-hosting/upgrading' },
 						{ label: 'Backup and restore', slug: 'docs/self-hosting/backup-and-restore' },
 						{ label: 'Monitoring', slug: 'docs/self-hosting/monitoring' },

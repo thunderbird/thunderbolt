@@ -349,7 +349,7 @@ const fetchPrFiles = async () => {
 
 /**
  * Use a completed ancestor's delta only when the compare response covers every file.
- * Keep removals/reverts absent from the current PR; findings without anchors go to the summary.
+ * Keep delta files even when absent from the current PR file list; findings without anchors go to the summary.
  */
 const selectReviewScope = async (prFiles, ownReviewBodies) => {
   const full = { ...prFiles, incremental: false };

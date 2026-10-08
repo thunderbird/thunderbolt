@@ -13,7 +13,7 @@ type GithubComment = { id: number; body: string | null; user: { login: string } 
 type RunGh = (args: string[]) => Promise<string>
 const workflowCommentAuthor = 'github-actions[bot]'
 
-const modelNames: Record<string, string> = { opus: 'Opus 5', flash: 'GLM 5.3 Flash', glm: 'GLM 5.3' }
+const modelNames = new Map(Object.entries({ opus: 'Opus 5.5', flash: 'DeepSeek V4.1 Flash', glm: 'GLM 5.3' }))
 const failureLimit = 20
 const percent = (value: number | null) => (value === null ? '—' : `${(value * 100).toFixed(1)}%`)
 
@@ -82,7 +82,7 @@ export const renderEvalComment = (
     ...metrics.manifest.cells.map(({ key, model, engine }) => {
       const group = metrics.groups[key]
       if (!group) return `| ${compact(key)} | Required cell absent | — | — | — |`
-      return `| ${compact(modelNames[model] ?? model)} (${compact(engine)}) | ${acceptance.cells[key].exitCode === 0 ? 'pass' : `exit ${acceptance.cells[key].exitCode}`} | ${group.reliability.errors}/${group.reliability.planned} (${percent(group.reliability.rate)}; ≤10%) | ${group.corePassed ? 'pass' : 'fail'} | ${group.scoredTurnNotReached} |`
+      return `| ${compact(modelNames.get(model) ?? model)} (${compact(engine)}) | ${acceptance.cells[key].exitCode === 0 ? 'pass' : `exit ${acceptance.cells[key].exitCode}`} | ${group.reliability.errors}/${group.reliability.planned} (${percent(group.reliability.rate)}; ≤10%) | ${group.corePassed ? 'pass' : 'fail'} | ${group.scoredTurnNotReached} |`
     }),
     '',
     '<details>',

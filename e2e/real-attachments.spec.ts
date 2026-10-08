@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { defaultModelOpus5 } from '../shared/defaults/models'
+import { defaultModelOpus55 } from '../shared/defaults/models'
 import { loginViaOidc, sendChatPrompt } from './helpers'
 import { expect, test } from './test'
 
@@ -11,7 +11,7 @@ test.slow()
 test('a file and image remain in the thread and receive a reply', async ({ page }) => {
   await loginViaOidc(page)
   await page.getByTestId('model-selector-trigger').click()
-  await page.getByRole('button', { name: defaultModelOpus5.name, exact: true }).click()
+  await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
   await page.locator('input[type="file"]').setInputFiles([
     { name: 'nightly-note.txt', mimeType: 'text/plain', buffer: Buffer.from('The note says blue heron.') },
     {

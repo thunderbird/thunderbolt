@@ -60,7 +60,10 @@ export const createBetterAuthPlugin = (database: typeof DbType, ipRateLimit?: An
   }
   // Use .all() instead of .mount() — Elysia's mount() short-circuits the
   // request pipeline before onBeforeHandle, silently bypassing rate limiting.
-  plugin.all('/*', ({ request }) => auth.handler(request), { parse: 'none' })
+  // Mounted at Better Auth's basePath (under the app's /v1 prefix), not '/*': Better Auth
+  // routes on whatever follows the first /api/auth, so a catch-all would let a lookalike
+  // path like /v1/x/v1/api/auth/sign-in/anonymous reach it and skip the path-keyed limits.
+  plugin.all('/api/auth/*', ({ request }) => auth.handler(request), { parse: 'none' })
 
   return { plugin, auth }
 }

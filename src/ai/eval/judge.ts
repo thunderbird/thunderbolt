@@ -6,7 +6,7 @@ import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { defaultModelOpus5 } from '@shared/defaults/models'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import { englishLanguageName } from '@shared/i18n/locales'
 import { streamText, type LanguageModel } from 'ai'
 import { z } from 'zod'
@@ -46,7 +46,7 @@ const defaultScheduleTimeout: ScheduleTimeout = (callback, delayMs) => {
 }
 
 export const judgeModels = {
-  opus: { ...defaultModelOpus5, apiKey: null },
+  opus: { ...defaultModelOpus55, apiKey: null },
 } satisfies Record<JudgeModelName, Model>
 
 const judgeModelAssignments: Readonly<Partial<Record<string, JudgeModelName>>> = {

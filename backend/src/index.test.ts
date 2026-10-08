@@ -3,13 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Auth } from '@/auth/elysia-plugin'
-import { getSettings } from '@/config/settings'
+import { clearSettingsCache, getSettings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
-import { inferenceUsage } from '@/db/inference-usage-schema'
+import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
 import { createTestDb } from '@/test-utils/db'
 import { inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { eq } from 'drizzle-orm'
 import { createApp } from './index'
 
@@ -98,5 +98,79 @@ describe('createApp inference receipt wiring', () => {
     expect(authenticated.headers.get(inferenceUsageReceiptHeader)).toBeNull()
     expect(exposedHeaders).toContain(inferenceUsageReceiptHeader.toLowerCase())
     expect(await database.select().from(inferenceUsage).where(eq(inferenceUsage.id, eventId))).toHaveLength(1)
+  })
+})
+
+describe('createApp hosted-agent wiring', () => {
+  const agentEnv = {
+    AGENT_ENABLED: 'true',
+    AGENT_MODEL: 'claude-test',
+    ANTHROPIC_API_KEY: 'test-key',
+    ANTHROPIC_BASE_URL: 'https://anthropic.test',
+  }
+  let database: TestDatabase
+  let cleanup: () => Promise<void>
+  let savedEnv: Record<string, string | undefined>
+
+  beforeEach(async () => {
+    const testDb = await createTestDb()
+    database = testDb.db
+    cleanup = testDb.cleanup
+    savedEnv = Object.fromEntries(Object.keys(agentEnv).map((name) => [name, process.env[name]]))
+    Object.assign(process.env, agentEnv)
+    clearSettingsCache()
+  })
+
+  afterEach(async () => {
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) {
+        delete process.env[name]
+      } else {
+        process.env[name] = value
+      }
+    }
+    clearSettingsCache()
+    await cleanup()
+  })
+
+  it("routes the hosted agent's upstream calls through deps.fetchFn", async () => {
+    const userId = 'create-app-agent-user'
+    await database.insert(user).values({
+      id: userId,
+      name: 'Create App Agent User',
+      email: 'create-app-agent@example.com',
+      emailVerified: true,
+      isAnonymous: false,
+    })
+    await database.insert(inferencePrices).values({
+      provider: 'anthropic',
+      model: 'claude-test',
+      inputNanoUsdPerToken: 1n,
+      outputNanoUsdPerToken: 1n,
+    })
+    const fetchFn = mock(async (_input: RequestInfo | URL) =>
+      Response.json({ type: 'error', error: { type: 'invalid_request_error', message: 'stub' } }, { status: 400 }),
+    )
+    const app = await createApp({
+      database,
+      auth: createHeaderAuth(userId),
+      fetchFn: fetchFn as unknown as typeof fetch,
+    })
+
+    const response = await app.handle(
+      new Request('http://localhost/v1/agent/chat', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer valid', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'chat-1',
+          messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }],
+        }),
+      }),
+    )
+    expect(response.status).toBe(200)
+    await response.text()
+    await Bun.sleep(10)
+
+    expect(fetchFn.mock.calls.map(([input]) => String(input))).toContain('https://anthropic.test/v1/messages')
   })
 })

@@ -156,6 +156,10 @@ msgstr "{wordCount}/24 words"
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 
+#: src/settings/account/use-delete-account.ts
+msgid "A code was just sent. Wait a moment and try again."
+msgstr "A code was just sent. Wait a moment and try again."
+
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
@@ -1270,7 +1274,7 @@ msgstr "Delete {skillName}?"
 msgid "Delete {targetName}?"
 msgstr "Delete {targetName}?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete account"
 msgstr "Delete account"
 
@@ -1303,7 +1307,7 @@ msgstr "Delete data from device"
 msgid "Delete Model"
 msgstr "Delete Model"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete My Account"
 msgstr "Delete My Account"
 
@@ -1340,19 +1344,19 @@ msgstr "Delete this model from your configured models?"
 msgid "Delete this project?"
 msgstr "Delete this project?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete Your Account"
 msgstr "Delete Your Account"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete your account?"
 msgstr "Delete your account?"
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
-#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "Deleting…"
 
@@ -1755,9 +1759,13 @@ msgstr "Failed to connect to {agentName}"
 msgid "Failed to connect to model"
 msgstr "Failed to connect to model"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/use-delete-account.ts
 msgid "Failed to delete account."
 msgstr "Failed to delete account."
+
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Failed to delete your account"
+#~ msgstr "Failed to delete your account"
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Failed to disconnect integration"
@@ -1799,6 +1807,7 @@ msgstr "Failed to remove MCP server"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Failed to resend verification code. Please check your connection."
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
 msgstr "Failed to send the verification code"
@@ -2788,7 +2797,7 @@ msgstr "Peer-to-peer via iroh — the connection is verified when a chat starts.
 msgid "Pending approvals"
 msgstr "Pending approvals"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
 msgstr "Permanently delete your account and all data on our servers and this device."
 
@@ -3306,6 +3315,7 @@ msgstr "Select provider"
 msgid "Select…"
 msgstr "Select…"
 
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr "Send code"
@@ -3744,6 +3754,7 @@ msgstr "Testing model…"
 msgid "Testing…"
 msgstr "Testing…"
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "That code is invalid or expired. Check your email and try again."
 msgstr "That code is invalid or expired. Check your email and try again."
@@ -3986,7 +3997,7 @@ msgstr "This will permanently delete the skill. Other skills that reference it m
 msgid "This will permanently delete this chat."
 msgstr "This will permanently delete this chat."
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 
@@ -4374,6 +4385,10 @@ msgstr "We sent a code to <0>{email}</0>"
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
 msgstr "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+
+#: src/settings/account/delete-account-section.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
+msgstr "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
 
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."

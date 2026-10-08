@@ -37,7 +37,7 @@ Changing a default without bumping its version constant therefore changes nothin
 
 ### Backend (Postgres, PowerSync)
 
-Multiple users hold rows with the same default ID (two accounts both have the bundled Opus 5 model row, under one UUIDv7), so the backend schema uses composite primary keys for those tables. `powersyncConflictTarget` (`backend/src/db/powersync-schema.ts`) defines each table's conflict target, including both columns for composite-PK tables so `INSERT ... ON CONFLICT` upserts per user.
+Multiple users hold rows with the same default ID (two accounts both have the bundled Opus 5.5 model row, under one UUIDv7), so the backend schema uses composite primary keys for those tables. `powersyncConflictTarget` (`backend/src/db/powersync-schema.ts`) defines each table's conflict target, including both columns for composite-PK tables so `INSERT ... ON CONFLICT` upserts per user.
 
 ### PowerSync Upload
 

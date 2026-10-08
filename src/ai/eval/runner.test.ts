@@ -12,7 +12,7 @@ import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { AgentAdapter } from '@/types/acp'
 import type { Model, ThunderboltUIMessage } from '@/types'
-import { defaultModelOpus5 } from '@shared/defaults/models'
+import { defaultModelOpus55 } from '@shared/defaults/models'
 import { buildJudgePrompt, type JudgeVerdict } from './judge'
 import { acceptEval, aggregateEvalMetrics } from './stats'
 import { fixtureAttempt, fixtureManifest, fixtureScenario } from './test-fixtures'
@@ -27,7 +27,7 @@ import {
   runScenario,
 } from './runner'
 
-const model: Model = { ...defaultModelOpus5, apiKey: null }
+const model: Model = { ...defaultModelOpus55, apiKey: null }
 const proxyFetch: FetchFn = Object.assign(async () => new Response(), {
   preconnect: async () => false,
 })

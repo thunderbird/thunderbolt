@@ -13,16 +13,16 @@ Both tiers share one admission check, one price table, and one usage ledger: [`b
 
 Three models ship as reconciled defaults in [`shared/defaults/models.ts`](../../../shared/defaults/models.ts):
 
-| Model         | Default row (`models.ts`)      | `provider`    | Public slug     | Upstream identity             | Route           |
-| ------------- | ------------------------------ | ------------- | --------------- | ----------------------------- | --------------- |
-| Opus 5        | `defaultModelOpus5`, L85       | `thunderbolt` | `opus-5`        | `anthropic` / `claude-opus-5` | `/v1/chat/*`    |
-| GLM 5.3 Flash | `defaultModelGlm53Flash`, L105 | `tinfoil`     | `glm-5-3-flash` | `tinfoil` / `glm-5-3-flash`   | `/v1/tinfoil/*` |
-| GLM 5.3       | `defaultModelGlm53`, L127      | `tinfoil`     | `glm-5-3`       | `tinfoil` / `glm-5-3`         | `/v1/tinfoil/*` |
+| Model               | Default row (`models.ts`)      | `provider`    | Public slug           | Upstream identity                 | Route           |
+| ------------------- | ------------------------------ | ------------- | --------------------- | --------------------------------- | --------------- |
+| Opus 5.5            | `defaultModelOpus55`           | `thunderbolt` | `opus-5-5`            | `anthropic` / `claude-opus-5-5`   | `/v1/chat/*`    |
+| DeepSeek V4.1 Flash | `defaultModelDeepSeekV41Flash` | `tinfoil`     | `deepseek-v4-1-flash` | `tinfoil` / `deepseek-v4-1-flash` | `/v1/tinfoil/*` |
+| GLM 5.3             | `defaultModelGlm53`            | `tinfoil`     | `glm-5-3`             | `tinfoil` / `glm-5-3`             | `/v1/tinfoil/*` |
 
-- **The default model is confidential.** `defaultModelId` (`models.ts:125`) is GLM 5.3 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5's 5000 / 25000 (migrations `0028`, `0029`).
+- **The default model is confidential.** `defaultModelId` is DeepSeek V4.1 Flash, also the cheapest: 300 / 700 nano-USD against GLM 5.3's 1500 / 5250 and Opus 5.5's 5000 / 25000 (migrations `0028`, `0029`, `0034`, `0035`).
 - **`provider` is transport, not branding.** The UI shows system-managed Tinfoil rows as Thunderbolt so the vendor does not leak into the product (`models.ts:130-131`); `provider: 'tinfoil'` does not mean the user configured Tinfoil.
-- **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts:17`](../../../backend/src/inference/managed-models.ts)) maps `opus-5` to `internalName: 'claude-opus-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5')` against GLM's public slugs.
-- **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2` and `deepseek-v4-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
+- **Slug and upstream identity differ on the direct tier.** `managedDirectRuntimes` ([`managed-models.ts`](../../../backend/src/inference/managed-models.ts)) maps `opus-5-5` to `internalName: 'claude-opus-5-5'`, using `Object.hasOwn` so a slug like `constructor` cannot resolve through the prototype. Pricing, usage and telemetry key on the resolved identity, hence the Opus price row `('anthropic', 'claude-opus-5-5')` against GLM's public slugs. Direct slugs have no legacy map: a client still sending `opus-5` gets `Model not found`.
+- **The confidential catalog is derived.** `resolveConfidentialManagedModel` (`managed-models.ts:32-44`) filters `defaultModels` for `provider === 'tinfoil' && isConfidential === 1`, plus legacy ids `glm-5-2`, `deepseek-v4-flash` and `glm-5-3-flash` that older clients still send. A new confidential model needs no backend edit but 503s until it has a price row.
 
 ## Admission: price first, then quota
 
@@ -61,19 +61,19 @@ Defaults, overridden by the `INFERENCE_QUOTA_*` knobs:
 
 ## Direct tier: `/v1/chat/*`
 
-| Route                              | Shape              | Notes                                                                                                             |
-| ---------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/chat/completions` (L270) | OpenAI             | streaming only                                                                                                    |
-| `POST /v1/chat/v1/messages` (L390) | Anthropic Messages | streaming only; Zod-validated, Anthropic-specific fields passed through as `unknown` for the upstream to validate |
+| Route                       | Shape              | Notes                                                                                                             |
+| --------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/chat/completions` | OpenAI             | streaming only                                                                                                    |
+| `POST /v1/chat/v1/messages` | Anthropic Messages | streaming only; Zod-validated, Anthropic-specific fields passed through as `unknown` for the upstream to validate |
 
-[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'` (L250); `/v1` comes from the app mount in `backend/src/index.ts`. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5`.
+[`backend/src/inference/routes.ts`](../../../backend/src/inference/routes.ts) mounts both under `prefix: '/chat'`; `/v1` comes from the app mount in `backend/src/index.ts`. Both sit behind `createMeteredRouteGuard` ([`metered-route-guard.ts`](../../../backend/src/inference/metered-route-guard.ts)), as does the hosted agent's `POST /v1/agent/chat`: a session, the CLI device binding, then the `inference` rate limit. Only slugs in `managedDirectRuntimes` are accepted, today `opus-5-5`.
 
-- Messages adds request-level `cache_control: { type: 'ephemeral' }` (L462-464); Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
-- `sanitizeMessageRoles` (L67-69) downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.
-- `createUsageCallbacks` (L163) writes the ledger row in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block.
+- Messages adds request-level `cache_control: { type: 'ephemeral' }` to the upstream body; Anthropic moves that breakpoint to the last cacheable block each turn, coexisting with the Pi harness's per-block breakpoints.
+- `sanitizeMessageRoles` downgrades `developer` and `system` to `user` on the completions route for every message but the first, blocking a smuggled second system prompt. Messages needs no equivalent: its system prompt is a separate field.
+- `createUsageCallbacks` ([`managed-request.ts`](../../../backend/src/inference/managed-request.ts)) writes the ledger row at the admitted price in the SSE `onUsage`; `onUsageMissing` / `onUsageError` log upstreams with no usage block. The hosted agent drives the same callbacks from the AI SDK's `onFinish` through `recordLanguageModelUsage`.
 - Telemetry is body-free: status, model, provider, error kind, token counts, never content (`posthog-privacy.test.ts` pins this).
 - **Client routing.** Managed rows with `vendor: 'anthropic'` route to Messages (`src/acp/built-in-adapter.ts:449`) via `resolveManagedAnthropicConnection` ([`src/ai/fetch.ts:328`](../../../src/ai/fetch.ts)), shared by the legacy AI-SDK path and the Pi harness so they cannot drift. It deletes the `x-api-key` the Anthropic SDK insists on writing and re-sends the value as `Authorization: Bearer`: the backend authenticates the app session, not an Anthropic key. The `thunderbolt` placeholder for a missing bearer under SSO cookie auth is dropped, not promoted (`fetch.ts:272-284`).
-- **No configuration pre-check here.** Without `ANTHROPIC_API_KEY`, admission passes and the client constructor throws (`client.ts:297`) as a 500; the confidential route answers a clean 503.
+- **No configuration pre-check here.** Without `ANTHROPIC_API_KEY`, admission passes and the client factory throws (`createManagedProviderConnection` in `client.ts`) as a 500; the confidential route answers a clean 503.
 
 ## Confidential tier: `/v1/tinfoil/*`
 
@@ -174,6 +174,8 @@ Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-pro
 | `backend/src/inference/managed-models.ts`       | public slug → upstream identity, for both tiers                       |
 | `backend/src/inference/usage-ledger.ts`         | price lookup, cost math, rolling windows, admission, ledger insert    |
 | `backend/src/inference/usage-responses.ts`      | the stable 503 / 429 bodies                                           |
+| `backend/src/inference/managed-request.ts`      | admission and ledger-write callbacks, shared with the hosted agent    |
+| `backend/src/inference/metered-route-guard.ts`  | session, CLI-binding and rate-limit guard for the direct routes       |
 | `backend/src/inference/usage-receipt.ts`        | receipt issue and verify                                              |
 | `backend/src/inference/usage-receipt-routes.ts` | `POST /v1/inference-usage/receipts`                                   |
 | `backend/src/inference/web-session.ts`          | the PAT gate on confidential routes                                   |

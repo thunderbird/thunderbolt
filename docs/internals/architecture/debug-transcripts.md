@@ -144,7 +144,7 @@ session, null when anonymous
   instead of being silently emptied.
 - `debugTranscriptMaxRequestBytes` = ceiling + 4 KB of metadata. Both routes use
   `parse: 'none'` and stream through `readBoundedJson`, counting bytes
-  ([`body.ts`](../../../backend/src/debug-transcripts/body.ts)), so a chunked upload
+  ([`request-body.ts`](../../../backend/src/utils/request-body.ts)), so a chunked upload
   with no `content-length` cannot outgrow the cap.
 - Target, ceiling and request cap live in
   [`shared/debug-transcript-contract.ts`](../../../shared/debug-transcript-contract.ts)
@@ -249,6 +249,7 @@ and sends the header like any `HttpClient` call. See "App version gate" in
 | Shared codes and size limits      | `shared/debug-transcript-contract.ts`                                               |
 | Relay route                       | `backend/src/api/debug-transcripts.ts`                                              |
 | Intake route                      | `backend/src/api/debug-transcripts-intake.ts`                                       |
-| Envelope schema, bounded reader   | `backend/src/debug-transcripts/body.ts`                                             |
+| Envelope schema                   | `backend/src/debug-transcripts/body.ts`                                             |
+| Bounded JSON reader               | `backend/src/utils/request-body.ts`                                                 |
 | Client-key hashing                | `backend/src/debug-transcripts/client-key.ts`                                       |
 | Storage                           | `backend/src/db/debug-transcript-schema.ts`, `backend/src/dal/debug-transcripts.ts` |

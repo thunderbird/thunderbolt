@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { ModelProfile } from '@/types'
-import { defaultModelGlm53Flash } from '@shared/defaults/models'
+import { defaultModelDeepSeekV41Flash } from '@shared/defaults/models'
 
-export const defaultModelProfileGlm53Flash: ModelProfile = {
-  modelId: defaultModelGlm53Flash.id,
+export const defaultModelProfileDeepSeekV41Flash: ModelProfile = {
+  modelId: defaultModelDeepSeekV41Flash.id,
   temperature: 0.2,
   maxSteps: 20,
   maxAttempts: 2,

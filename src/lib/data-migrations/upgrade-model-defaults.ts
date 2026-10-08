@@ -6,8 +6,8 @@ import type { AnyDrizzleDatabase } from '@/db/database-interface'
 import { modelsTable } from '@/db/tables'
 import {
   defaultModelGlm53,
-  defaultModelGlm53Flash,
-  defaultModelOpus5,
+  defaultModelDeepSeekV41Flash,
+  defaultModelOpus55,
   hashModel,
   type SharedModel,
 } from '@shared/defaults/models'
@@ -17,9 +17,9 @@ import { eq } from 'drizzle-orm'
 // reconciliation. Enumerate shipped slugs/names to preserve custom identities.
 const modelLineages = [
   {
-    target: defaultModelOpus5,
-    legacySlugs: ['sonnet-4.5', 'opus-4.8'],
-    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8'],
+    target: defaultModelOpus55,
+    legacySlugs: ['sonnet-4.5', 'opus-4.8', 'opus-5'],
+    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8', 'Opus 5'],
   },
   {
     target: defaultModelGlm53,
@@ -27,9 +27,9 @@ const modelLineages = [
     legacyNames: ['GLM 5.1', 'GLM 5.2'],
   },
   {
-    target: defaultModelGlm53Flash,
-    legacySlugs: ['deepseek-v4-flash'],
-    legacyNames: ['DeepSeek V4 Flash'],
+    target: defaultModelDeepSeekV41Flash,
+    legacySlugs: ['deepseek-v4-flash', 'glm-5-3-flash'],
+    legacyNames: ['DeepSeek V4 Flash', 'GLM 5.3 Flash'],
   },
 ]
 
@@ -46,7 +46,7 @@ export const normalizeModelDefault = (model: SharedModel): SharedModel => {
     name: lineage.legacyNames.includes(model.name) ? lineage.target.name : model.name,
     contextWindow: lineage.target.contextWindow,
     // vendor/description are server-owned metadata (outside the edit hash). A
-    // lineage that changes vendor (deepseek → zhipu for Flash) must carry it, or
+    // lineage that changes vendor (zhipu → deepseek for Flash) must carry it, or
     // the reused row resolves Pi compatibility against the stale vendor and every
     // send throws compatibility-missing. Reconcile already does this for intact
     // rows; edited rows only pass through here.

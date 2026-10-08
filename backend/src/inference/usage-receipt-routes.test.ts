@@ -411,7 +411,7 @@ describe('inference usage receipt routes', () => {
         eventId: crypto.randomUUID(),
         userId: 'test-user',
         provider: 'tinfoil',
-        model: 'opus-5',
+        model: 'opus-5-5',
         inputNanoUsdPerToken: '1500',
         outputNanoUsdPerToken: '5250',
         issuedAt: nowSeconds,

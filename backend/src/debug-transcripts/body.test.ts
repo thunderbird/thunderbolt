@@ -3,39 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { debugTranscriptIntakeBodySchema, debugTranscriptSubmissionSchema, readBoundedJson } from './body'
-
-const chunked = (text: string, chunkSize = 1024): Request => {
-  const bytes = new TextEncoder().encode(text)
-  let offset = 0
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      if (offset >= bytes.length) {
-        controller.close()
-        return
-      }
-      controller.enqueue(bytes.slice(offset, offset + chunkSize))
-      offset += chunkSize
-    },
-  })
-  // No content-length: the server must count bytes as they arrive.
-  return new Request('http://localhost/x', { method: 'POST', body, duplex: 'half' } as RequestInit)
-}
-
-describe('readBoundedJson', () => {
-  it('parses a small chunked body', async () => {
-    expect(await readBoundedJson(chunked('{"a":1}'), 100)).toEqual({ ok: true, value: { a: 1 } })
-  })
-
-  it('stops reading once the running total passes the cap', async () => {
-    const big = `{"a":"${'x'.repeat(5000)}"}`
-    expect(await readBoundedJson(chunked(big), 2048)).toEqual({ ok: false, reason: 'too_large' })
-  })
-
-  it('reports invalid JSON', async () => {
-    expect(await readBoundedJson(chunked('{nope'), 100)).toEqual({ ok: false, reason: 'invalid' })
-  })
-})
+import { debugTranscriptIntakeBodySchema, debugTranscriptSubmissionSchema } from './body'
 
 describe('body schemas', () => {
   const valid = { threadId: 'thread-1', schemaVersion: 1, payload: { turns: [] } }

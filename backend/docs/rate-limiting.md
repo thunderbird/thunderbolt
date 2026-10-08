@@ -7,15 +7,16 @@ Hardcoded per-tier budgets, enforced by a Postgres-backed limiter in [backend/sr
 | `inference`               | 60 / minute  | user                  | `/v1/chat/*` (managed inference)                                                         |
 | `pro`                     | 100 / minute | user                  | `/v1/pro/*`, `/v1/proxy/*`, `/v1/proxy/ws`, `/v1/tinfoil/*`, `/v1/search`, `/v1/preview` |
 | `receipt`                 | 100 / minute | user                  | `/v1/inference-usage/receipts`                                                           |
-| `auth`                    | 10 / minute  | client IP             | `/v1/api/auth/*`, `/v1/waitlist/*`                                                       |
+| `auth`                    | 10 / minute  | client IP             | `/v1/api/auth/*` (except anonymous sign-in), `/v1/waitlist/*`                            |
+| `anonymous-sign-in`       | 10 / minute  | client IP             | `POST /v1/api/auth/sign-in/anonymous`                                                    |
 | `debug-transcript`        | 10 / hour    | user                  | `POST /v1/debug-transcripts`                                                             |
 | `debug-transcript-intake` | 600 / hour   | intake client, and IP | `POST /v1/debug-transcripts/intake`                                                      |
 
-Limits are hardcoded in `tierConfigs` ([rate-limit.ts:33](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it.
+Limits are hardcoded in `tierConfigs` ([rate-limit.ts:33](../src/middleware/rate-limit.ts)), not configurable, so every deployment enforces a known floor and no env var can quietly raise it. The one exception is `anonymous-sign-in`, whose budget comes from `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS` and cannot be raised without a captcha while anonymous auth is on.
 
 Being Postgres-backed rather than in-process, all replicas share one budget. It runs independent of any edge or CDN because several `/v1` routes spend real money or send real email (managed inference, Exa-backed search, link previews, OTP send, waitlist join) and self-hosted deployments have no edge.
 
-Operator configuration (`RATE_LIMIT_ENABLED`, `TRUSTED_PROXY`) is in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust).
+Operator configuration (`RATE_LIMIT_ENABLED`, `TRUSTED_PROXY`) is in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting).
 
 ## How tiers map to buckets
 
@@ -40,11 +41,11 @@ With `settings.rateLimitEnabled` false, the plugin factories return a bare `new 
 
 ### The user-keyed plugin must go inside `guard({ auth: true }, …)`
 
-It reads `ctx.user`, populated by the auth macro's `resolve`. At app level the macro resolves _after_ `onBeforeHandle`, so the no-user branch returns without consuming a point ([rate-limit.ts:104](../src/middleware/rate-limit.ts)) and the route is silently unlimited. Call sites: [pro/routes.ts:17](../src/pro/routes.ts), [api/search.ts:37](../src/api/search.ts), [inference/routes.ts:262](../src/inference/routes.ts).
+It reads `ctx.user`, populated by the auth macro's `resolve`. At app level the macro resolves _after_ `onBeforeHandle`, so the no-user branch returns without consuming a point ([rate-limit.ts:104](../src/middleware/rate-limit.ts)) and the route is silently unlimited. Call sites: [pro/routes.ts:17](../src/pro/routes.ts), [api/search.ts:37](../src/api/search.ts), and [inference/metered-route-guard.ts](../src/inference/metered-route-guard.ts), which `/v1/chat` and the hosted agent share; it uses a standalone `.guard({ auth: true })` and mounts the limiter after it, which is the same placement.
 
 The skip branch is deliberate (such requests 401 anyway), but mounted is not enforcing. The WebSocket proxy mounts `proRateLimit` at plugin level ([proxy/ws.ts:233](../src/proxy/ws.ts)) yet authorises the bearer subprotocol inside `open()` ([proxy/ws.ts:289](../src/proxy/ws.ts)), so the handshake is not user-limited.
 
-### Better Auth is mounted with `.all('/*')`, not `.mount()`
+### Better Auth is mounted with `.all('/api/auth/*')`, not `.mount()`
 
 `mount()` short-circuits the pipeline before `onBeforeHandle`, bypassing the IP limiter. The comment at [auth/elysia-plugin.ts:53](../src/auth/elysia-plugin.ts) records this so nobody "tidies" it back.
 
@@ -73,7 +74,7 @@ Counters live in `rate_limits` ([db/rate-limit-schema.ts](../src/db/rate-limit-s
 
 ## Better Auth has a second, weaker limiter
 
-Better Auth rate-limits on top of the `auth`-tier IP plugin: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:172](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. A code comment tracks replacing it with a proof-of-work challenge as THU-113.
+Better Auth rate-limits on top of the `auth`-tier IP plugin, except anonymous sign-in, which it skips so the `anonymous-sign-in` tier is the only limit there: 60-second window, 10 requests, `/get-session` relaxed to 30 per second ([auth/auth.ts:172](../src/auth/auth.ts)). It shares only the `RATE_LIMIT_ENABLED` switch and is **in-memory**, so each instance counts separately and the DB-backed `auth` tier is what holds across replicas. A code comment tracks replacing it with a proof-of-work challenge as THU-113.
 
 ## Adding a limit to a new route
 
@@ -85,7 +86,7 @@ Pick an existing tier before inventing one; a new tier is a new bucket namespace
 | Unauthenticated, can send email or create an account | `auth`, via `createAuthIpRateLimit`                             |
 | Caller is neither a session user nor usefully an IP  | `createRateLimitConsumer` with a key you compute in the handler |
 
-A genuinely new tier goes in the `RateLimitTier` union and `tierConfigs` (`satisfies Record<RateLimitTier, RateLimitTierConfig>` makes a missing config a type error), plus the table above and the operator table in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting-and-proxy-trust).
+A genuinely new tier goes in the `RateLimitTier` union and `tierConfigs` (`satisfies Record<RateLimitTier, RateLimitTierConfig>` makes a missing config a type error), plus the table above and the operator table in [docs/self-hosting/configuration.md](../../docs/self-hosting/configuration.md#rate-limiting).
 
 ## Testing
 

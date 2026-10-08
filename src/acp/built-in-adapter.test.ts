@@ -12,6 +12,7 @@
 
 import '@/testing-library'
 
+import { defaultModels } from '@shared/defaults/models'
 import { inferenceModelHeader } from '@shared/inference-usage'
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { clearImageSupportCache, setCachedImageSupport } from '@/ai/image-support'
@@ -291,6 +292,24 @@ describe('resolvePiModel — managed Anthropic', () => {
       apiKey: 'thunderbolt',
     })
     expect(isKnownAnthropicModel).toHaveBeenCalledWith('claude-opus-5')
+  })
+
+  // pi-ai 0.82.1 has no claude-opus-5-5. Without the alias the shipped Opus row
+  // would resolve to null and silently drop every chat to the legacy pipeline.
+  it('takes the Pi path for the shipped Opus row with Opus 5 catalog metadata and its own wire slug', async () => {
+    const shippedOpus = defaultModels.find(({ vendor }) => vendor === 'anthropic')!
+    const model = { ...shippedOpus, apiKey: null } as Model
+    const context = { selectedModel: model, getProxyFetch: () => noopFetch } as AgentAdapterContext
+
+    const resolved = await resolvePiModel(realAgentCore, context, null)
+
+    expect(resolved?.descriptor).toMatchObject({
+      kind: 'anthropic',
+      modelId: shippedOpus.model,
+      catalogModelId: 'claude-opus-5',
+      contextWindow: shippedOpus.contextWindow,
+    })
+    expect(resolved?.thinkingLevel).toBe('medium')
   })
 })
 

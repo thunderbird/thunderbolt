@@ -6,10 +6,10 @@ import { describe, expect, test } from 'bun:test'
 import { hashValues } from '../lib/hash'
 import {
   defaultModelGlm53,
-  defaultModelGlm53Flash,
+  defaultModelDeepSeekV41Flash,
   defaultModelId,
   defaultModelImageSupport,
-  defaultModelOpus5,
+  defaultModelOpus55,
   defaultModels,
   defaultModelsVersion,
   hashModel,
@@ -41,25 +41,25 @@ const computeMetadataHash = () =>
   defaultModels.map((model, index) => `${index}:${hashValues([model.vendor, model.description])}`).join('|')
 
 const expected = {
-  version: 9,
-  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-lo3iv3|1:01a06dd7-67ee-75be-b957-2b746271c49d:-n92e4|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
-  metadataHash: '0:vzhyk4|1:d17qpa|2:-cajkcl',
+  version: 11,
+  hash: '0:019af08a-c27b-7074-8aac-95315d1ef3fd:-8jt8am|1:01a06dd7-67ee-75be-b957-2b746271c49d:-bs87m1|2:019e7580-2b0e-719c-a43f-d2b56e7f31b4:-mx717t',
+  metadataHash: '0:vzhyk4|1:1sqs5u|2:-cajkcl',
 }
 
 describe('defaultModels version snapshot', () => {
   test('selects confidential Flash by default', () => {
-    expect(defaultModelId).toBe(defaultModelGlm53Flash.id)
+    expect(defaultModelId).toBe(defaultModelDeepSeekV41Flash.id)
   })
 
   test('preserves the confidential Flash row identity', () => {
-    expect(defaultModelGlm53Flash).toMatchObject({
+    expect(defaultModelDeepSeekV41Flash).toMatchObject({
       id: '01a06dd7-67ee-75be-b957-2b746271c49d',
       provider: 'tinfoil',
-      model: 'glm-5-3-flash',
+      model: 'deepseek-v4-1-flash',
       isSystem: 1,
       isConfidential: 1,
-      vendor: 'zhipu',
-      contextWindow: 131072,
+      vendor: 'deepseek',
+      contextWindow: 1_048_576,
       toolUsage: 1,
       supportsParallelToolCalls: 0,
       startWithReasoning: 0,
@@ -67,12 +67,13 @@ describe('defaultModels version snapshot', () => {
     expect(defaultModels.some(({ id }) => id === '019f227e-d640-727d-ba12-d51bd7d0a3d6')).toBe(false)
   })
 
-  test('ships Opus 5 as the sole model using its canonical id', () => {
-    expect(defaultModelOpus5).toMatchObject({
+  test('ships Opus 5.5 as the sole model using its canonical id', () => {
+    expect(defaultModelOpus55).toMatchObject({
       id: '019af08a-c27b-7074-8aac-95315d1ef3fd',
-      name: 'Opus 5',
+      name: 'Opus 5.5',
       provider: 'thunderbolt',
-      model: 'opus-5',
+      model: 'opus-5-5',
+      vendor: 'anthropic',
       contextWindow: 1_000_000,
       isSystem: 1,
       enabled: 1,
@@ -80,7 +81,7 @@ describe('defaultModels version snapshot', () => {
       supportsParallelToolCalls: 1,
       isConfidential: 0,
     })
-    expect(defaultModels.filter(({ id }) => id === defaultModelOpus5.id)).toEqual([defaultModelOpus5])
+    expect(defaultModels.filter(({ id }) => id === defaultModelOpus55.id)).toEqual([defaultModelOpus55])
   })
 
   test('version and content are in sync — read the file header if this fails', () => {
@@ -120,8 +121,8 @@ describe('staticImageSupport', () => {
   })
 
   test('answers for the shipped defaults from their declarations', () => {
-    expect(staticImageSupport(defaultModelOpus5)).toBe('supported')
-    expect(staticImageSupport(defaultModelGlm53Flash)).toBe('supported')
+    expect(staticImageSupport(defaultModelOpus55)).toBe('supported')
+    expect(staticImageSupport(defaultModelDeepSeekV41Flash)).toBe('supported')
     expect(staticImageSupport(defaultModelGlm53)).toBe('unsupported')
   })
 
@@ -139,7 +140,7 @@ describe('staticImageSupport', () => {
   })
 
   test('isKnownToReadImages sends images only on a known "supported"', () => {
-    expect(isKnownToReadImages(defaultModelGlm53Flash)).toBe(true)
+    expect(isKnownToReadImages(defaultModelDeepSeekV41Flash)).toBe(true)
     expect(isKnownToReadImages(defaultModelGlm53)).toBe(false)
     expect(isKnownToReadImages(model({}))).toBe(false)
   })

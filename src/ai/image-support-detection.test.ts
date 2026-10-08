@@ -19,7 +19,7 @@ const makeModel = (overrides: Partial<Model> = {}): Model =>
     id: 'model-1',
     name: 'Model',
     provider: 'tinfoil',
-    model: 'deepseek-v4-1-flash',
+    model: 'deepseek-v4-flash',
     url: null,
     apiKey: 'tk-test',
     vendor: null,
@@ -63,7 +63,7 @@ describe('detectImageSupport', () => {
   it('uses the catalog’s answer for providers that publish modalities, and caches it', async () => {
     const options = makeOptions({
       fetchCatalog: async () => [
-        { id: 'deepseek-v4-1-flash', supports_images: true },
+        { id: 'deepseek-v4-flash', supports_images: true },
         { id: 'gpt-oss-120b', supports_images: false },
       ],
     })
@@ -85,7 +85,7 @@ describe('detectImageSupport', () => {
   })
 
   it('probes when the catalog doesn’t list the model or says nothing about images', async () => {
-    const options = makeOptions({ fetchCatalog: async () => [{ id: 'deepseek-v4-1-flash' }] })
+    const options = makeOptions({ fetchCatalog: async () => [{ id: 'deepseek-v4-flash' }] })
     expect(await detectImageSupport(makeModel(), getProxyFetch, options)).toBe('supported')
     expect(options.probe).toHaveBeenCalledTimes(1)
   })

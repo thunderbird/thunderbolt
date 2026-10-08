@@ -100,7 +100,7 @@ Tinfoil is a confidential inference provider. Confidential means the model runs 
 
 ### Which models does a fresh install ship with?
 
-Three system-managed models: GLM 5.3 Flash (the default on a new install), GLM 5.3, and Opus 5. The first two run in confidential enclaves; Opus 5 is routed to Anthropic.
+Three system-managed models: DeepSeek V4.1 Flash (the default on a new install), GLM 5.3, and Opus 5.5. The first two run in confidential enclaves; Opus 5.5 is routed to Anthropic.
 
 A backend you host serves these only if you give it the matching keys.
 

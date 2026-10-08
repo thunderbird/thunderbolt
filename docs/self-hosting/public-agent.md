@@ -29,7 +29,7 @@ There is no sync service. Anonymous sessions never sync, and the API runs withou
 2. Enter the values Render asks for (next section) and apply. Render creates the four resources.
 3. Create an environment for the deployment under the Thunderbolt project and move the four resources into it. Render keeps a resource's environment across later syncs.
 4. Add the app hostname as a custom domain on `public-agent-web` and the API hostname on `public-agent-api`, point a CNAME at each, and wait for the certificates.
-5. Turn off each service's `onrender.com` subdomain. The Blueprint cannot, because it names no domain. On the API this matters: with `TRUSTED_PROXY` set, an open `onrender.com` URL lets a client skip the proxy and claim any IP address.
+5. Turn off each service's `onrender.com` subdomain, so the custom hostnames are the only way in. The Blueprint cannot, because it names no domain.
 6. Check that `https://<api host>/v1/health` returns `{"status":"ok"}`, then open the app.
 
 ## Values Render asks for
@@ -41,7 +41,6 @@ Render prompts once for every value below and never overwrites them afterwards. 
 | `VITE_THUNDERBOLT_CLOUD_URL`                                                   | `https://<api host>/v1`. It is built into the app, so changing it means a rebuild.                                                               |
 | `APP_URL`, `CORS_ORIGINS`                                                      | `https://<app host>`                                                                                                                             |
 | `BETTER_AUTH_URL`                                                              | `https://<api host>`                                                                                                                             |
-| `TRUSTED_PROXY`                                                                | `cloudflare` when Cloudflare proxies the hostnames, otherwise blank.                                                                             |
 | `ANTHROPIC_API_KEY`                                                            | The deployment's own key.                                                                                                                        |
 | `TINFOIL_API_KEY`                                                              | The deployment's own key. While the built-in agent is on, chats on its default model fail without it.                                            |
 | `FIREWORKS_API_KEY`                                                            | Blank. Nothing routes to Fireworks yet.                                                                                                          |
@@ -56,7 +55,7 @@ Render prompts once for every value below and never overwrites them afterwards. 
 | `INFERENCE_QUOTA_ANONYMOUS_5H_CENTS`, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS`     | Each visitor's spending cap, in cents. Enter numbers: a blank value stops the API at startup.                                                    |
 | `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`, `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | Blank keeps the defaults, 10 per 60 seconds. Without a captcha provider the API refuses to start with more than 10 or a window under 60 seconds. |
 
-The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
+The rest is fixed by the Blueprint. The env group turns on anonymous sessions (`AUTH_ALLOW_ANONYMOUS=true`), lets them discover the agent (`ALLOW_ANONYMOUS_AGENT_DISCOVERY=true`) and stops users adding their own agents (`ALLOW_CUSTOM_AGENTS=false`). It also sets `TRUSTED_PROXY=cloudflare`: all traffic to a Render web service passes through Cloudflare, which writes the caller's address to `CF-Connecting-IP`, so the rate limits key on each visitor's own address. Without it the API sees Render's proxy as every visitor, and they all share one sign-in budget. The app is built with `VITE_AUTH_ENABLE_ANONYMOUS`, `VITE_BYPASS_WAITLIST` and `VITE_SKIP_ONBOARDING`, so a visitor lands straight in a chat. `BETTER_AUTH_SECRET` is generated. Every setting is described in [Configuration](./configuration.md).
 
 ## The agent's knowledge
 

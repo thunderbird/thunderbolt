@@ -8,9 +8,7 @@
 # overwrites them afterwards. Custom domains are added in the dashboard for the
 # same reason. Once they are attached, disable each service's onrender.com
 # subdomain in the dashboard (Render refuses to do it from a Blueprint with no
-# domain in the file). For the backend this matters: with TRUSTED_PROXY set, an
-# open onrender.com URL lets a client skip the proxy and forge the client-IP
-# header the rate limits key on.
+# domain in the file), so the custom hostnames are the only way in.
 #
 # Render matches services by name across the whole workspace, so these names
 # must never collide with production's (`thunderbolt`, `thunderbolt-cloud`,
@@ -119,6 +117,12 @@ envVarGroups:
         value: "false"
       - key: ALLOW_ANONYMOUS_AGENT_DISCOVERY
         value: "true"
+      # All traffic to a Render web service passes through Cloudflare, which
+      # overwrites CF-Connecting-IP with the caller's address. Without this the
+      # API sees Render's proxy as every visitor, so they all share one
+      # anonymous sign-in budget.
+      - key: TRUSTED_PROXY
+        value: cloudflare
       # Per deployment, asked for once at creation.
       - key: APP_URL
         sync: false # the site's public URL
@@ -126,8 +130,6 @@ envVarGroups:
         sync: false # the backend's public URL
       - key: CORS_ORIGINS
         sync: false # the site's public URL
-      - key: TRUSTED_PROXY
-        sync: false # `cloudflare` when the hostnames are proxied by Cloudflare
       - key: ANTHROPIC_API_KEY
         sync: false # a key scoped to this deployment, never production's
       - key: TINFOIL_API_KEY

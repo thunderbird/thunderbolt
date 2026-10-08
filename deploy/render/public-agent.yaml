@@ -17,141 +17,152 @@
 # `thunderbolt-postgres`). It also means one live deployment of this file at a
 # time.
 #
+# The file names no project or environment, so nothing event-specific lives
+# in it. After creating the Blueprint, make the event's environment under the
+# Thunderbolt project in the dashboard and move these four resources into it.
+# Render keeps a top-level resource's environment across later syncs.
+#
 # Validate: render blueprints validate deploy/render/public-agent.yaml
 version: "1"
-projects:
-  - name: Thunderbolt
-    environments:
-      - name: Public Agent
-        services:
-          - type: web
-            name: public-agent-web
-            runtime: static
-            repo: https://github.com/thunderbird/thunderbolt
-            branch: main
-            buildCommand: bun install; NODE_OPTIONS="--max-old-space-size=4096" bun run build
-            staticPublishPath: dist
-            envVars:
-              # Build time: Vite inlines these into the bundle.
-              - key: VITE_THUNDERBOLT_CLOUD_URL
-                sync: false # the backend's public URL, ending in /v1
-              - key: VITE_AUTH_ENABLE_ANONYMOUS
-                value: "true"
-              - key: VITE_BYPASS_WAITLIST
-                value: "true"
-              - key: VITE_SKIP_ONBOARDING
-                value: "true"
-            routes:
-              - type: rewrite
-                source: /*
-                destination: /index.html
-            headers:
-              # COOP + COEP make the page cross-origin isolated, which the local
-              # database needs for SharedArrayBuffer. Without them the app won't start.
-              - path: /*
-                name: Cross-Origin-Embedder-Policy
-                value: require-corp
-              - path: /*
-                name: Cross-Origin-Opener-Policy
-                value: same-origin
-              # Nothing embeds a public agent, so refuse framing outright.
-              - path: /*
-                name: X-Frame-Options
-                value: DENY
-              - path: /*
-                name: Content-Security-Policy
-                value: frame-ancestors 'none'
-              - path: /index.html
-                name: Cache-Control
-                value: max-age=0, must-revalidate, public
-            autoDeployTrigger: commit
+services:
+  - type: web
+    name: public-agent-web
+    runtime: static
+    repo: https://github.com/thunderbird/thunderbolt
+    branch: main
+    buildCommand: bun install; NODE_OPTIONS="--max-old-space-size=4096" bun run build
+    staticPublishPath: dist
+    envVars:
+      # Build time: Vite inlines these into the bundle.
+      - key: VITE_THUNDERBOLT_CLOUD_URL
+        sync: false # the backend's public URL, ending in /v1
+      - key: VITE_AUTH_ENABLE_ANONYMOUS
+        value: "true"
+      - key: VITE_BYPASS_WAITLIST
+        value: "true"
+      - key: VITE_SKIP_ONBOARDING
+        value: "true"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # COOP + COEP make the page cross-origin isolated, which the local
+      # database needs for SharedArrayBuffer. Without them the app won't start.
+      - path: /*
+        name: Cross-Origin-Embedder-Policy
+        value: require-corp
+      - path: /*
+        name: Cross-Origin-Opener-Policy
+        value: same-origin
+      # Nothing embeds a public agent, so refuse framing outright.
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Content-Security-Policy
+        value: frame-ancestors 'none'
+      - path: /index.html
+        name: Cache-Control
+        value: max-age=0, must-revalidate, public
+    autoDeployTrigger: commit
 
-          - type: web
-            name: public-agent-api
-            runtime: node
-            repo: https://github.com/thunderbird/thunderbolt
-            branch: main
-            rootDir: backend
-            region: ohio
-            plan: standard
-            buildCommand: bun install; bun run build
-            startCommand: bun run start
-            healthCheckPath: /v1/health/database
-            scaling:
-              minInstances: 1
-              maxInstances: 4
-              targetCPUPercent: 80
-              targetMemoryPercent: 80
-            envVars:
-              - key: DATABASE_URL
-                fromDatabase:
-                  name: public-agent-db
-                  property: connectionString
-              - key: BETTER_AUTH_SECRET
-                generateValue: true
-              - fromGroup: public-agent
-            autoDeployTrigger: commit
+  - type: web
+    name: public-agent-api
+    runtime: node
+    repo: https://github.com/thunderbird/thunderbolt
+    branch: main
+    rootDir: backend
+    region: ohio
+    plan: standard
+    buildCommand: bun install; bun run build
+    startCommand: bun run start
+    # The open liveness route. /v1/health/* is gated on MONITORING_TOKEN, which a
+    # Render health check can't send.
+    healthCheckPath: /v1/health
+    scaling:
+      minInstances: 1
+      maxInstances: 4
+      targetCPUPercent: 80
+      targetMemoryPercent: 80
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: public-agent-db
+          property: connectionString
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - fromGroup: public-agent
+    autoDeployTrigger: commit
 
-        databases:
-          - name: public-agent-db
-            databaseName: thunderbolt
-            user: thunderbolt
-            plan: basic-1gb
-            region: ohio
-            postgresMajorVersion: "18"
-            diskSizeGB: 15
-            ipAllowList: [] # private network only; the backend connects internally
+databases:
+  - name: public-agent-db
+    databaseName: thunderbolt
+    user: thunderbolt
+    plan: basic-1gb
+    region: ohio
+    postgresMajorVersion: "18"
+    diskSizeGB: 15
+    ipAllowList: [] # private network only; the backend connects internally
 
-        envVarGroups:
-          - name: public-agent
-            envVars:
-              # What makes this a public, anonymous, single-agent deployment.
-              - key: NODE_ENV
-                value: production
-              - key: AUTH_ALLOW_ANONYMOUS
-                value: "true"
-              - key: ALLOW_CUSTOM_AGENTS
-                value: "false"
-              - key: ALLOW_ANONYMOUS_AGENT_DISCOVERY
-                value: "true"
-              # Per deployment, asked for once at creation.
-              - key: APP_URL
-                sync: false # the site's public URL
-              - key: BETTER_AUTH_URL
-                sync: false # the backend's public URL
-              - key: CORS_ORIGINS
-                sync: false # the site's public URL
-              - key: TRUSTED_PROXY
-                sync: false # `cloudflare` when the hostnames are proxied by Cloudflare
-              - key: ANTHROPIC_API_KEY
-                sync: false # a key scoped to this deployment, never production's
-              - key: FIREWORKS_API_KEY
-                sync: false
-              - key: POSTHOG_API_KEY
-                sync: false # this deployment's own PostHog project, never production's
-              - key: POSTHOG_HOST
-                sync: false
-              # The hosted agent. sync: false because these change over a
-              # deployment's life (switched on once the agent ships, tuned mid-event).
-              - key: AGENT_ENABLED
-                sync: false
-              - key: DISABLE_BUILT_IN_AGENT
-                sync: false
-              - key: ENABLED_AGENTS
-                sync: false
-              - key: AGENT_MODEL
-                sync: false
-              - key: AGENT_SYSTEM_PROMPT
-                sync: false
-              - key: AGENT_MCP_SERVERS
-                sync: false
-              - key: AGENT_NAME
-                sync: false
-              - key: AGENT_DESCRIPTION
-                sync: false
-              - key: AGENT_ICON
-                sync: false
-              - key: INFERENCE_QUOTA_ANONYMOUS_5H_CENTS
-                sync: false
-              - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS
-                sync: false
+envVarGroups:
+  - name: public-agent
+    envVars:
+      # What makes this a public, anonymous, single-agent deployment.
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_ALLOW_ANONYMOUS
+        value: "true"
+      - key: ALLOW_CUSTOM_AGENTS
+        value: "false"
+      - key: ALLOW_ANONYMOUS_AGENT_DISCOVERY
+        value: "true"
+      # Per deployment, asked for once at creation.
+      - key: APP_URL
+        sync: false # the site's public URL
+      - key: BETTER_AUTH_URL
+        sync: false # the backend's public URL
+      - key: CORS_ORIGINS
+        sync: false # the site's public URL
+      - key: TRUSTED_PROXY
+        sync: false # `cloudflare` when the hostnames are proxied by Cloudflare
+      - key: ANTHROPIC_API_KEY
+        sync: false # a key scoped to this deployment, never production's
+      - key: FIREWORKS_API_KEY
+        sync: false
+      - key: POSTHOG_API_KEY
+        sync: false # this deployment's own PostHog project, never production's
+      - key: POSTHOG_HOST
+        sync: false
+      # The hosted agent. sync: false because these change over a
+      # deployment's life (switched on once the agent ships, tuned mid-event).
+      - key: AGENT_ENABLED
+        sync: false
+      - key: DISABLE_BUILT_IN_AGENT
+        sync: false
+      - key: ENABLED_AGENTS
+        sync: false # `hosted-agent` to offer only the hosted agent
+      - key: AGENT_MODEL
+        sync: false
+      - key: AGENT_MAX_STEPS
+        sync: false
+      - key: AGENT_SYSTEM_PROMPT
+        sync: false
+      - key: AGENT_MCP_SERVERS
+        sync: false
+      - key: AGENT_NAME
+        sync: false
+      - key: AGENT_DESCRIPTION
+        sync: false
+      - key: AGENT_ICON
+        sync: false
+      - key: INFERENCE_QUOTA_ANONYMOUS_5H_CENTS
+        sync: false
+      - key: INFERENCE_QUOTA_ANONYMOUS_7D_CENTS
+        sync: false
+      # Anonymous sign-ins per client IP. Without a captcha provider these
+      # can only be lowered from the defaults (10 per 60 s), not raised.
+      - key: ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX
+        sync: false
+      - key: ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS
+        sync: false

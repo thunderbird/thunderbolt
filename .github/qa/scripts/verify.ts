@@ -87,6 +87,8 @@ export const replayEnv = (outDir: string) => ({
   HOME: Bun.env.HOME,
   CI: Bun.env.CI,
   PLAYWRIGHT_BROWSERS_PATH: Bun.env.PLAYWRIGHT_BROWSERS_PATH,
+  // A failed replay would otherwise write the page's aria snapshot (it can hold typed field values) into error-context.md.
+  PLAYWRIGHT_NO_COPY_PROMPT: '1',
   QA_OUT: outDir,
 })
 

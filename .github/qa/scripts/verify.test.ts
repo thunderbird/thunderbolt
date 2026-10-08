@@ -326,6 +326,7 @@ describe('replay', () => {
       'HOME',
       'PATH',
       'PLAYWRIGHT_BROWSERS_PATH',
+      'PLAYWRIGHT_NO_COPY_PROMPT',
       'QA_OUT',
     ])
   })

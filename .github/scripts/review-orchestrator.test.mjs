@@ -15,7 +15,7 @@
 // =============================================================================
 
 import { describe, test, expect, spyOn } from 'bun:test';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -66,11 +66,12 @@ const deltaFile = { filename: 'src/a.ts', additions: 1, deletions: 1,
 const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ body: checkpoint,
   author: { login: 'github-actions' } }], threads = [], compare = { status: 'ahead',
   merge_base_commit: { sha: reviewedSha }, files: [deltaFile] }, compareStatus = 200,
-  files = fullFiles, findings, replyPage } = {}) => {
+  files = fullFiles, findings, replyPage, headSha = currentSha, graphqlTransportFailure = false } = {}) => {
   getClock().uninstall(); // The fixture server needs real network callbacks.
   const dir = mkdtempSync(join(tmpdir(), 'thunder-incremental-'));
   const posts = [];
   const reads = [];
+  const logs = [];
   const connection = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
@@ -82,6 +83,7 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
     for await (const chunk of request) chunks.push(chunk);
     const body = Buffer.concat(chunks).toString();
     if (url.pathname === '/graphql') {
+      if (graphqlTransportFailure) return request.socket.destroy();
       const { query } = JSON.parse(body);
       reads.push(query);
       if (query.includes('node(id:') && replyPage === null) return json({ errors: [{ message: 'Reply page unavailable' }] });
@@ -113,7 +115,7 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
   const run = async (phase) => {
     const child = Bun.spawn(['node', fileURLToPath(new URL('./review-orchestrator.mjs', import.meta.url)), phase], {
       env: { ...process.env, ...paths, GITHUB_TOKEN: 'test', GITHUB_REPOSITORY: 'test/repo',
-        PR_NUMBER: '1', PR_HEAD_SHA: currentSha, PR_ACTION: action, PR_LABELS: labels,
+        PR_NUMBER: '1', PR_HEAD_SHA: headSha, PR_ACTION: action, PR_LABELS: labels,
         GITHUB_API_URL: origin, GITHUB_GRAPHQL_URL: `${origin}/graphql` },
       stdout: 'pipe', stderr: 'pipe',
     });
@@ -121,10 +123,15 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
       Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr), child.exited,
     ]);
     expect({ code, stderr }).toEqual({ code: 0, stderr: '' });
-    expect(stdout).not.toContain('FAIL-SOFT');
+    logs.push(stdout);
+    if (!graphqlTransportFailure) expect(stdout).not.toContain('FAIL-SOFT');
   };
   try {
     await run('pre');
+    if (graphqlTransportFailure) return {
+      output: existsSync(paths.GITHUB_OUTPUT) ? readFileSync(paths.GITHUB_OUTPUT, 'utf8') : '',
+      posts, logs,
+    };
     if (findings !== undefined && !JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')).skip) {
       writeFileSync(paths.THUNDER_FINDINGS_FILE, JSON.stringify({ findings }));
       await run('post');
@@ -134,7 +141,7 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
       mode: JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')),
       previous: JSON.parse(readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE, 'utf8')),
       previousBytes: readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE).byteLength,
-      output: readFileSync(paths.GITHUB_OUTPUT, 'utf8'), posts, reads,
+      output: readFileSync(paths.GITHUB_OUTPUT, 'utf8'), posts, reads, logs,
     };
   } finally {
     server.closeAllConnections();
@@ -144,6 +151,82 @@ const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ bod
 };
 
 describe('incremental pre/post', () => {
+  test.each([undefined, '', ' \n', '@@ invalid @@\n+change', '@@ -1 +1 @@\n context']
+    .flatMap((patch) => ['opened', 'synchronize'].map((action) => [action, patch])))(
+    '%s skips changed files without usable patches (%s)', async (action, patch) => {
+      const missing = { filename: 'src/large.ts', additions: 900, deletions: 900, patch };
+      const result = await runReview({ action, files: [missing], compare: { status: 'ahead',
+        merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
+      expect(result.mode.skip).toBe(true);
+      expect(result.output).toContain('skip=true');
+      expect(result.logs.join('\n')).toContain('src/large.ts');
+      expect(result.logs.join('\n')).toContain('without usable patches');
+      expect(result.posts).toEqual([]);
+    });
+
+  test('a skipped A-to-B scope retains checkpoint A for the next A-to-C review', async () => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const first = await runReview({ compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
+    expect(first.posts).toEqual([]);
+    const nextSha = 'c'.repeat(40);
+    const next = await runReview({ headSha: nextSha,
+      reviews: [{ body: checkpoint, author: { login: 'github-actions' } },
+        ...first.posts.map(({ body }) => ({ body, author: { login: 'github-actions' } }))],
+      compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+        files: [{ ...missing, patch: '@@ -1 +1 @@\n-oldLarge();\n+newLarge();' }, deltaFile] }, findings: [] });
+    expect(next.reads).toContain(`/repos/test/repo/compare/${reviewedSha}...${nextSha}`);
+    expect(next.diff).toContain('+newLarge();');
+    expect(next.posts[0].body).toContain(`<!-- thunder-deep-review-head:${nextSha} -->`);
+  });
+
+  test.each(['opened', 'synchronize'])('%s reviews removed files with 900 deletions and no patch', async (action) => {
+    const removed = { filename: 'src/large.ts', status: 'removed', additions: 0, deletions: 900 };
+    const result = await runReview({ action, files: [removed], compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [removed] }, findings: [] });
+    expect(result.output).toContain('skip=false');
+    expect(result.logs.join('\n')).not.toContain('without usable patches');
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+  });
+
+  test('missing patches for generated files, unchanged renames, empty files and binaries do not block', async () => {
+    const files = [deltaFile, { filename: 'bun.lock', additions: 900, deletions: 900 },
+      { filename: 'renamed.ts', previous_filename: 'old.ts', status: 'renamed', additions: 0, deletions: 0 },
+      { filename: 'empty.ts', status: 'added', additions: 0, deletions: 0 },
+      { filename: 'image.png', status: 'modified', additions: 0, deletions: 0 }];
+    for (const action of ['opened', 'synchronize']) {
+      const result = await runReview({ action, files, compare: { status: 'ahead',
+        merge_base_commit: { sha: reviewedSha }, files }, findings: [] });
+      expect(result.output).toContain('skip=false');
+      expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    }
+  });
+
+  test('fail-soft pre leaves downstream always steps disabled without skip output', async () => {
+    const result = await runReview({ graphqlTransportFailure: true });
+    expect(result.logs.join('\n')).toContain('FAIL-SOFT');
+    expect(result.output).toBe('');
+    expect(result.posts).toEqual([]);
+    const workflow = readFileSync(new URL('../workflows/thunder-deep-review.yml', import.meta.url), 'utf8');
+    const conditions = [...workflow.matchAll(/if: (always\(\) && steps\.pre\.outputs\.skip .*)/g)];
+    expect(conditions).toHaveLength(5);
+    for (const [, condition] of conditions) {
+      const enabled = new Function('skip', `return ${condition.replace('always()', 'true').replace('steps.pre.outputs.skip', 'skip')}`);
+      expect(enabled('')).toBe(false);
+      expect(enabled('true')).toBe(false);
+      expect(enabled('false')).toBe(true);
+    }
+  });
+
+  test('authorized recall without structured output still fails candidate persistence', () => {
+    const workflow = readFileSync(new URL('../workflows/thunder-deep-review.yml', import.meta.url), 'utf8');
+    const script = workflow.match(/- name: Persist candidate findings to file[\s\S]*?node <<'NODE'\n([\s\S]*?)\n          NODE/)[1];
+    const result = spawnSync('node', ['-e', script], { env: { ...process.env,
+      THUNDER_CANDIDATES_FILE: join(tmpdir(), 'unused-thunder-candidates.json'), STRUCTURED_OUTPUT: '' }, encoding: 'utf8' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('recall step produced no structured_output');
+  });
+
   test('pre omits generated patches, lists their paths and keeps reviewable files', async () => {
     const omitted = ['bun.lock', 'cli/bun.lock', 'src-tauri/Cargo.lock', 'web/package-lock.json',
       'backend/src/emails/locales/en/messages.ts', 'backend/drizzle/meta/0001_snapshot.json',
@@ -173,7 +256,7 @@ describe('incremental pre/post', () => {
 
   test('reviews delta hunks including files outside the PR, with delta mode gates and full-PR anchors', async () => {
     const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
-      files: [deltaFile, { filename: 'outside-pr.ts', additions: 900 }] },
+      files: [deltaFile, { filename: 'outside-pr.ts', additions: 900, patch: '@@ -0,0 +1 @@\n+outside();' }] },
       findings: [inlineFinding({ file: 'src/a.ts', line: 8 })] });
     expect(result.diff).toContain('+newDelta();');
     expect(result.diff).not.toContain('newValue');
@@ -324,6 +407,16 @@ describe('incremental pre/post', () => {
     expect(result.previous.ownReviewBodies[0].length).toBeLessThanOrEqual(2000);
     expect(result.previous.summarizedHashes).toEqual([classified.hash]);
     expect(result.posts).toEqual([]);
+  });
+
+  test('summary dedup hashes survive when they alone exceed the history cap', async () => {
+    const hashes = Array.from({ length: 10_000 }, (_, i) => i.toString(16).padStart(8, '0'));
+    const result = await runReview({ reviews: [{
+      body: `${checkpoint}\n${hashes.map((hash) => `<!-- thunder-finding-hash:${hash} -->`).join('\n')}`,
+      author: { login: 'github-actions' },
+    }] });
+    expect(result.previous.ownReviewBodies).toEqual([]);
+    expect(result.previous.summarizedHashes).toEqual(hashes);
   });
 
   test('discarded history threads retain open and human-resolved dedup hashes', async () => {

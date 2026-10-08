@@ -512,7 +512,7 @@ const readModelFindings = async () => {
 // The "create a review" REST API anchors inline comments with { path, line,
 // side } (the line in the file at the head SHA). A comment can only attach to a
 // line that is PART OF THE DIFF. We parse the unified diff (already produced
-// deterministically into DIFF_FILE) to learn, per file, which (side, line)
+// deterministically into PR_DIFF_FILE (the full PR patch)) to learn, per file, which (side, line)
 // positions are commentable, and to capture a small code anchor per hunk so a
 // finding can be matched across pushes even as line numbers drift.
 // A finding whose line is NOT in the diff falls back to a file-level comment
@@ -684,13 +684,8 @@ const fileSectionToDiff = (file) => {
 };
 
 /**
- * Reconstruct the PR's FULL unified diff from the List-pull-request-files API —
- * the path GitHub itself recommends when the `.diff` media type 406s past its
- * 20k-line / 1 MB cap (which silently broke this whole job on large PRs). The
- * files endpoint paginates and has no per-diff line cap, so it covers PRs the
- * `.diff` endpoint refuses; the only ceiling is the 3000-file cliff, already
- * handled by bounded mode. Concatenated `diff --git` sections — the exact shape
- * parseUnifiedDiff consumes.
+ * Build a unified diff from GitHub file entries (the PR files list or a compare response).
+ * Concatenated `diff --git` sections match the shape parseUnifiedDiff consumes.
  */
 const buildUnifiedDiff = (files) => `${files.map(fileSectionToDiff).join('\n')}\n`;
 
@@ -895,7 +890,7 @@ const fetchOwnThreads = async () => {
   return out;
 };
 
-/** Bound recall history while retaining dedup state outside the sanitized text. */
+/** Trim recall context toward 100 KB while retaining all dedup hashes, even if they alone exceed the cap. */
 const buildPreviousFindings = (ownThreads, ownReviewBodies) => {
   const clean = (body) => body.replace(/<!--[\s\S]*?-->/g, '').slice(0, 2000);
   const history = {
@@ -910,13 +905,13 @@ const buildPreviousFindings = (ownThreads, ownReviewBodies) => {
     summarizedHashes: [...summarizedHashesFromBodies(ownReviewBodies)],
     latestReviewNoIssues: latestOwnReviewIsNoIssues(ownReviewBodies),
   };
-  // ponytail: bounded history drops oldest context; raise the cap if repeats become material.
+  // History is trimmed toward 100 KB: resolved threads go first, then the oldest review bodies and threads.
+  // Raise the cap if repeated findings become common.
   while (Buffer.byteLength(JSON.stringify(history)) > 100_000) {
     const resolved = history.ownThreads.findIndex((thread) => thread.isResolved);
     if (resolved !== -1) history.ownThreads.splice(resolved, 1);
     else if (history.ownReviewBodies.length > 0) history.ownReviewBodies.shift();
     else if (history.ownThreads.length > 0) history.ownThreads.shift();
-    else if (history.summarizedHashes.length > 0) history.summarizedHashes.shift();
     else break;
   }
   return JSON.stringify(history);
@@ -952,9 +947,8 @@ const reviewHeader = ({ tagline, deepInfo }) =>
   `Never approves, never requests changes, never gates merge.\n` +
   `<sub>head: \`${env.headSha.slice(0, 12)}\` · mode: ${deepInfo.deepMode ? 'deep' : 'single'}` +
   `${deepInfo.boundedMode ? ' (bounded: diff exceeded file cap)' : ''}</sub>\n` +
-  // ponytail: converged runs keep the checkpoint; PUT needs raw review bodies beyond
-  // the capped, sanitized history (>15 lines). Revisit if cumulative deltas stay costly.
-  // Bounded reviews cannot certify coverage of the entire head.
+  // The checkpoint marker lives only in posted reviews. A run that posts nothing keeps the previous
+  // checkpoint, so the next delta covers both pushes. Bounded reviews omit it because they did not cover the whole head.
   (deepInfo.boundedMode ? '' : `<!-- thunder-deep-review-head:${env.headSha} -->\n`);
 
 /** Render one finding into an inline-comment markdown body (with hidden hash). */
@@ -1170,10 +1164,14 @@ const runPre = async () => {
   const scope = await selectReviewScope(prFiles, ownReviewBodies);
   const diffFiles = scope.truncated ? scope.items.slice(0, BOUNDED_MODE_FILE_LIMIT) : scope.items;
   const reviewedFiles = diffFiles.filter((file) => !isGeneratedFile(file.filename));
+  const missingPatches = reviewedFiles.filter((file) => file.status !== 'removed' && (file.additions > 0 || file.deletions > 0) &&
+    !/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@[^\r\n]*\r?\n(?: .*\r?\n)*[+-]/m.test(file.patch ?? ''));
+  if (missingPatches.length) log('pre: changed files without usable patches — skipping review without advancing checkpoint:',
+    JSON.stringify(missingPatches.map((file) => file.filename)));
   const omittedFiles = diffFiles.filter((file) => isGeneratedFile(file.filename)).map((file) => file.filename);
   const omittedNotice = omittedFiles.length ? `Generated files omitted from this patch: ${JSON.stringify(omittedFiles)}\n` : '';
   const deepInfo = { ...computeDeepMode(diffFiles, scope.truncated),
-    incremental: scope.incremental, skip: reviewedFiles.length === 0 };
+    incremental: scope.incremental, skip: reviewedFiles.length === 0 || missingPatches.length > 0 };
   await Promise.all([
     writeFile(DIFF_FILE, `${omittedNotice}${buildUnifiedDiff(reviewedFiles)}`),
     writeFile(PR_DIFF_FILE, buildUnifiedDiff(prFiles.items)),

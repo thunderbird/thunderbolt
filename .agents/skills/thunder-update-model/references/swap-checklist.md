@@ -169,13 +169,14 @@ other item is not applicable.
    `bun run test:agent-core:browser` pass.
 17. direct. Anthropic vendor, the direct-route twin of item 16 (other vendors use
     `openai-compat-model.ts`, which has no catalog): run item 16's jq with `<pi-vendor>` =
-    anthropic. If `claude-<incoming-slug>` is listed, add no alias and remove any alias an earlier
-    swap left for it. If it is absent, `src/acp/built-in-adapter.ts` derives `catalogModelId` by
-    string (`` `claude-${model.model}` ``) and returns null when `isKnownAnthropicModel` rejects it,
-    so the chat silently drops to the legacy pipeline. Alias the slug to the closest listed id (item
-    16's definition) and follow item 16's rules for the pi-ai version comment and the leaving
-    model's alias: add the alias table next to the `claude-` derivation in `built-in-adapter.ts` and
-    keep the real slug as the wire `modelId`. `buildAnthropicModel`
+    anthropic. The direct route in `src/acp/built-in-adapter.ts` resolves `catalogModelId` as
+    `managedAnthropicCatalogAliases.get(slug)` first and `` `claude-${slug}` `` otherwise, and
+    returns null when `isKnownAnthropicModel` rejects the result, so the chat silently drops to the
+    legacy pipeline. If `claude-<incoming-slug>` is listed, add no alias and remove any entry an
+    earlier swap left for it in `managedAnthropicCatalogAliases`. If it is absent, add an entry to
+    `managedAnthropicCatalogAliases` pointing at the closest listed id (item 16's definition), keep
+    the leaving model's entry when it has one, refresh the comment above the map with the pi-ai
+    version as item 16 does, and keep the real slug as the wire `modelId`. `buildAnthropicModel`
     (`shared/agent-core/anthropic-model.ts`) needs no change: it reads `thinkingLevelMap`, `compat`
     and pricing from the `catalogModelId` entry, and `id`, `baseURL` and `contextWindow` from the
     descriptor. Compare the target's `thinkingLevelMap` with the profile's `reasoningEffort` as in

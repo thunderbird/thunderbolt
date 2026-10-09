@@ -117,6 +117,17 @@ it('skips gesture fixes', async () => {
   expect(log[0]).toContain('touch gestures')
 })
 
+it('skips fixes that change dependencies, even with app code in the same commit', async () => {
+  await commit('fix: upgrade the theme library', {
+    'package.json': '{}\n',
+    'src/settings/theme.ts': 'export const theme = 2\n',
+  })
+  const log: string[] = []
+  const { canaries } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
+  expect(canaries).toEqual([])
+  expect(log[0]).toContain('changes dependencies')
+})
+
 describe('isSensitive', () => {
   it('matches sensitive directories, not look-alike file names', () => {
     expect(isSensitive('src/components/chat/revoked-device-modal.tsx')).toBe(false)

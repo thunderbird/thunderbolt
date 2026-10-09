@@ -25,6 +25,9 @@ export const isSensitive = (path: string) =>
 const isAppCode = (path: string) =>
   path.startsWith('src/') && !/\.test\.|(^|\/)test-utils\/|\/locales\/|\.md$/.test(path)
 
+/** Dependency manifests and lockfiles: a fix that touches one is a dependency change, not a bug the UI shows. */
+const isDependencyFile = (path: string) => /(^|\/)(package\.json|bun\.lock|Cargo\.(toml|lock))$/.test(path)
+
 /**
  * The charter that explores a path, first match wins. c1 (it needs its own onboarding build) and c7 (sync, always
  * sensitive) get no canaries.
@@ -105,8 +108,13 @@ export const selectCanaries = async ({
       continue
     }
     const changed = await run(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', sha])
-    const paths = changed.split('\n').filter(isAppCode)
     const skip = (reason: string) => log(`skip ${sha.slice(0, 9)} ${title}: ${reason}`)
+    const files = changed.split('\n')
+    if (files.some(isDependencyFile)) {
+      skip('it changes dependencies, which a src-only reversal would leave behind')
+      continue
+    }
+    const paths = files.filter(isAppCode)
     const verdict = charterOrReason(paths, canaries)
     if ('reason' in verdict) {
       skip(verdict.reason)

@@ -23,32 +23,42 @@ describe('useChangeRecoveryKey reducer', () => {
   })
 
   it('advances to code entry once the code is sent, with a clean input', () => {
-    const requesting = { ...initialState, status: 'confirming' as const, isBusy: true, otp: 'stale' }
+    const requesting = { ...initialState, status: 'confirming' as const, busy: 'request' as const, otp: 'stale' }
     const next = reducer(requesting, { type: 'CODE_SENT' })
     expect(next.status).toBe('stepUp')
     expect(next.otp).toBe('')
-    expect(next.isBusy).toBe(false)
+    expect(next.busy).toBe('none')
   })
 
   it('shows the new phrase on success', () => {
     const next = reducer(initialState, { type: 'ROTATION_SUCCESS', payload: newPhrase })
     expect(next.status).toBe('display')
     expect(next.newRecoveryKey).toBe(newPhrase)
-    expect(next.isBusy).toBe(false)
+    expect(next.busy).toBe('none')
   })
 
   it('stays on the current dialog on failure so it doubles as retry', () => {
-    const rotating = { ...initialState, status: 'stepUp' as const, isBusy: true, otp: '12345678' }
+    const rotating = { ...initialState, status: 'stepUp' as const, busy: 'rotate' as const, otp: '12345678' }
     const next = reducer(rotating, { type: 'ROTATION_FAILED', payload: 'boom' })
     expect(next.status).toBe('stepUp')
     expect(next.error).toBe('boom')
-    expect(next.isBusy).toBe(false)
+    expect(next.busy).toBe('none')
     // A non-step-up failure did not consume the code — keep it for the retry.
     expect(next.otp).toBe('12345678')
   })
 
+  // The step-up dialog's submit spinner reads `isSubmitting`; a resend is also
+  // "busy" but must not claim the rotation has started.
+  it('separates a code request from the rotation itself', () => {
+    const requesting = reducer({ ...initialState, status: 'stepUp' as const }, { type: 'START_REQUEST' })
+    expect(requesting.busy).toBe('request')
+
+    const rotating = reducer({ ...initialState, status: 'stepUp' as const }, { type: 'START_ROTATION' })
+    expect(rotating.busy).toBe('rotate')
+  })
+
   it('clears the code when it was rejected', () => {
-    const rotating = { ...initialState, status: 'stepUp' as const, isBusy: true, otp: '12345678' }
+    const rotating = { ...initialState, status: 'stepUp' as const, busy: 'rotate' as const, otp: '12345678' }
     const next = reducer(rotating, { type: 'CODE_REJECTED', payload: 'bad code' })
     expect(next.status).toBe('stepUp')
     expect(next.otp).toBe('')

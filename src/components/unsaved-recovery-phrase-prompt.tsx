@@ -38,8 +38,19 @@ export const UnsavedRecoveryPhrasePrompt = () => {
   const { t } = useLingui()
   const pending = useRecoveryPhrasePending()
   const [dismissed, setDismissed] = useState(false)
-  const { status, newRecoveryKey, isBusy, otp, error, setOtp, requestStepUpCode, confirmRotation, cancel, done } =
-    useChangeRecoveryKey()
+  const {
+    status,
+    newRecoveryKey,
+    isBusy,
+    isSubmitting,
+    otp,
+    error,
+    setOtp,
+    requestStepUpCode,
+    confirmRotation,
+    cancel,
+    done,
+  } = useChangeRecoveryKey()
 
   /**
    * Snapshot at mount, so this only ever speaks for a phrase left unacknowledged
@@ -115,6 +126,7 @@ export const UnsavedRecoveryPhrasePrompt = () => {
         description={t`We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.`}
         submitLabel={t`Generate new phrase`}
         submitLoadingLabel={t`Generating…`}
+        isSubmitting={isSubmitting}
         submitOnComplete
         onOtpChange={setOtp}
         onResend={requestStepUpCode}

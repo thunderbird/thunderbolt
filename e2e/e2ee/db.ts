@@ -72,12 +72,15 @@ export const getCurrentOtp = async (email: string): Promise<string | null> => {
  * unauthenticated `/email-otp/check-verification-otp` away from it. `value` is
  * stored as `otp:attempts` (see `backend/src/lib/step-up-otp.ts`).
  */
-export const waitForStepUpOtp = async (email: string): Promise<string> =>
+export const waitForStepUpOtp = async (
+  email: string,
+  action: 'recovery-phrase-change' | 'account-deletion' = 'recovery-phrase-change',
+): Promise<string> =>
   poll(async () => {
     const rows = await sql<{ value: string }[]>`
       SELECT value
       FROM verification
-      WHERE identifier = ${`recovery-phrase-change-step-up-otp-${email.toLowerCase()}`}
+      WHERE identifier = ${`${action}-step-up-otp-${email.toLowerCase()}`}
       ORDER BY updated_at DESC
       LIMIT 1
     `

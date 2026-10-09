@@ -224,7 +224,11 @@ export const verifyStepUpOtp = async (
     }
     const { code, attempts } = splitStoredOtp(row.value)
     if (attempts >= stepUpAllowedAttempts) {
-      await tx.delete(verification).where(eq(verification.id, row.id))
+      // The row STAYS. It is already unusable — this check runs before the
+      // compare — and `requestStepUpOtp` reads its `createdAt` to space out
+      // emails. Deleting it here let a session holder burn the budget to erase
+      // the cooldown and immediately demand another code, flooding the owner's
+      // inbox. It clears on its own at expiry, long after the cooldown.
       return 'too-many-attempts'
     }
     if (!constantTimeEquals(code, otp)) {

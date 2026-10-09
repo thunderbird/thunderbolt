@@ -34,6 +34,7 @@ export const ChangeRecoveryKeySection = () => {
   const {
     status,
     isBusy,
+    isSubmitting,
     otp,
     newRecoveryKey,
     error,
@@ -107,6 +108,7 @@ export const ChangeRecoveryKeySection = () => {
         description={t`We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase.`}
         submitLabel={t`Generate new phrase`}
         submitLoadingLabel={t`Generating…`}
+        isSubmitting={isSubmitting}
         submitOnComplete
         onOtpChange={setOtp}
         onResend={requestStepUpCode}

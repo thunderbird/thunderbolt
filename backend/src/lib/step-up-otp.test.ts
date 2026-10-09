@@ -193,16 +193,33 @@ describe('step-up OTP (THU-875)', () => {
       expect(await verifyStepUpOtp(db, action, email, '12345678')).toBe('invalid')
     })
 
-    it('charges a wrong guess against the budget and kills the row on the fourth', async () => {
+    it('charges a wrong guess against the budget and refuses the fourth', async () => {
       const code = await mintStepUpOtp(db, action, email)
       expect(await verifyStepUpOtp(db, action, email, '00000001')).toBe('invalid')
       expect((await readRow())!.value).toBe(`${code}:1`)
       expect(await verifyStepUpOtp(db, action, email, '00000002')).toBe('invalid')
       expect(await verifyStepUpOtp(db, action, email, '00000003')).toBe('invalid')
 
-      // Budget spent: even the CORRECT code is refused, and the row is gone.
+      // Budget spent: even the CORRECT code is refused.
       expect(await verifyStepUpOtp(db, action, email, code)).toBe('too-many-attempts')
-      expect(await readRow()).toBeUndefined()
+    })
+
+    // Exhausting the budget used to delete the row, and the cooldown is read
+    // off that row — so a session holder could spend three guesses to erase
+    // the spacing and immediately demand another email, without limit.
+    it('keeps the exhausted row, so the cooldown still blocks a new code', async () => {
+      const burnEmail = `step-up-${rid}-burn@example.com`
+      expect((await requestStepUpOtp(db, action, burnEmail)).status).toBe('sent')
+      for (const guess of ['00000001', '00000002', '00000003', '00000004']) {
+        await verifyStepUpOtp(db, action, burnEmail, guess)
+      }
+
+      const [row] = await db
+        .select()
+        .from(verification)
+        .where(eq(verification.identifier, stepUpIdentifier(action, burnEmail)))
+      expect(row).toBeDefined()
+      expect((await requestStepUpOtp(db, action, burnEmail)).status).toBe('cooling-down')
     })
 
     it('charges every guess in a concurrent burst, not just one', async () => {

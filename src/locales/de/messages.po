@@ -160,6 +160,10 @@ msgstr "{wordCount}/24 Wörter"
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr "⚠ Dieser Export wurde von einem anderen Konto erstellt ({importSourceEmail}). Beim Import werden diese Daten mit Ihrem Konto vermischt. Bestätigen Sie nur, wenn Sie das beabsichtigen."
 
+#: src/settings/account/use-delete-account.ts
+msgid "A code was just sent. Wait a moment and try again."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Ein Gerät möchte sich als Thunderbolt CLI in Ihrem Konto anmelden. Genehmigen Sie dies nur, wenn Sie es gerade selbst in Ihrem Terminal gestartet haben."
@@ -1188,6 +1192,10 @@ msgstr "Die neue Reihenfolge konnte nicht gespeichert werden."
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
+#: src/settings/account/use-delete-account.ts
+msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
+msgstr ""
+
 #: src/components/sync-setup/passkey-enroll-step.tsx
 msgid "Couldn't set up the passkey. Please try again."
 msgstr "Der Passkey konnte nicht eingerichtet werden. Bitte versuchen Sie es erneut."
@@ -1343,7 +1351,7 @@ msgstr "{skillName} löschen?"
 msgid "Delete {targetName}?"
 msgstr "{targetName} löschen?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete account"
 msgstr "Konto löschen"
 
@@ -1376,7 +1384,7 @@ msgstr "Daten vom Gerät löschen"
 msgid "Delete Model"
 msgstr "Modell löschen"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete My Account"
 msgstr "Mein Konto löschen"
 
@@ -1413,19 +1421,19 @@ msgstr "Dieses Modell aus Ihren konfigurierten Modellen löschen?"
 msgid "Delete this project?"
 msgstr "Dieses Projekt löschen?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete Your Account"
 msgstr "Konto löschen"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete your account?"
 msgstr "Ihr Konto löschen?"
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
-#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "Wird gelöscht…"
 
@@ -1832,7 +1840,7 @@ msgstr "Verbindung zu {agentName} fehlgeschlagen"
 msgid "Failed to connect to model"
 msgstr "Verbindung zum Modell fehlgeschlagen"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/use-delete-account.ts
 msgid "Failed to delete account."
 msgstr "Das Konto konnte nicht gelöscht werden."
 
@@ -1876,6 +1884,7 @@ msgstr "Der MCP-Server konnte nicht entfernt werden"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Der Bestätigungscode konnte nicht erneut gesendet werden. Bitte prüfen Sie Ihre Verbindung."
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
 msgstr ""
@@ -2908,7 +2917,7 @@ msgstr "Peer-to-Peer über iroh – die Verbindung wird beim Start eines Chats v
 msgid "Pending approvals"
 msgstr "Ausstehende Genehmigungen"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
 msgstr "Löscht Ihr Konto und alle Daten auf unseren Servern und auf diesem Gerät endgültig."
 
@@ -3436,6 +3445,7 @@ msgid "Select…"
 msgstr "Auswählen…"
 
 #: src/components/sync-setup/confirm-identity-step.tsx
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
@@ -3905,6 +3915,7 @@ msgstr "Modell wird getestet…"
 msgid "Testing…"
 msgstr "Wird getestet…"
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "That code is invalid or expired. Check your email and try again."
 msgstr ""
@@ -4185,7 +4196,7 @@ msgstr "Damit wird der Skill endgültig gelöscht. Andere Skills, die darauf ver
 msgid "This will permanently delete this chat."
 msgstr "Damit wird dieser Chat endgültig gelöscht."
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "Damit werden Ihr Konto und alle Ihre Daten auf unseren Servern und auf diesem Gerät endgültig gelöscht, einschließlich Einstellungen, Chatverlauf und zwischengespeicherter Informationen. Diese Aktion kann nicht rückgängig gemacht werden."
 
@@ -4613,6 +4624,10 @@ msgstr "Wir haben einen Code an <0>{email}</0> gesendet"
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
 msgstr ""
 
+#: src/settings/account/delete-account-section.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
+msgstr ""
+
 #: src/waitlist/waitlist-page.tsx
 msgid "We've sent an email to <0>{email}</0> with your next steps."
 msgstr "Wir haben eine E-Mail mit den nächsten Schritten an <0>{email}</0> gesendet."
@@ -4807,6 +4822,10 @@ msgstr "Ihr Konto wurde gelöscht und die lokalen Daten wurden entfernt."
 
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Your account keys changed while preparing the new phrase. Please try again."
+msgstr ""
+
+#: src/settings/account/use-delete-account.ts
+msgid "Your account was deleted, but this device’s data couldn’t be cleared. Reload the app."
 msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx

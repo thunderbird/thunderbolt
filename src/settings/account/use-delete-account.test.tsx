@@ -29,25 +29,51 @@ describe('useDeleteAccount reducer', () => {
 
   // Cancelling mid-request must not pop the code dialog when the response lands.
   it('ignores CODE_SENT once the user has cancelled', () => {
-    const cancelled = { ...initialState, status: 'idle' as const, isBusy: true }
+    const cancelled = { ...initialState, status: 'idle' as const, busy: 'request' as const }
     expect(reducer(cancelled, { type: 'CODE_SENT' })).toBe(cancelled)
   })
 
   it('advances to code entry while still confirming', () => {
-    const confirming = { ...initialState, status: 'confirming' as const, isBusy: true }
-    expect(reducer(confirming, { type: 'CODE_SENT' })).toMatchObject({ status: 'stepUp', isBusy: false })
+    const confirming = { ...initialState, status: 'confirming' as const, busy: 'request' as const }
+    expect(reducer(confirming, { type: 'CODE_SENT' })).toMatchObject({ status: 'stepUp', busy: 'none' })
   })
 
-  it('returns to idle when the code request fails', () => {
-    const confirming = { ...initialState, status: 'confirming' as const, isBusy: true }
-    expect(reducer(confirming, { type: 'REQUEST_FAILED', payload: 'nope' })).toEqual({
+  // Resend starts from `stepUp`, not `confirming`. Ignoring it there left
+  // `isBusy` stuck on, disabling the input and Cancel for good.
+  it('clears the busy flag and the stale code on a resend', () => {
+    const resending = { ...initialState, status: 'stepUp' as const, busy: 'request' as const, otp: '12345678' }
+    expect(reducer(resending, { type: 'CODE_SENT' })).toMatchObject({ status: 'stepUp', busy: 'none', otp: '' })
+  })
+
+  it('returns to idle when the first code request fails', () => {
+    const confirming = { ...initialState, status: 'confirming' as const, busy: 'request' as const }
+    expect(reducer(confirming, { type: 'REQUEST_FAILED', payload: { message: 'nope', throttled: false } })).toEqual({
       ...initialState,
       error: 'nope',
     })
   })
 
+  // A failed RESEND must not close the dialog: the step-up dialog has its own
+  // alert slot, and on a cooldown refusal the previous code is still valid.
+  it('keeps the code when a resend is refused by the cooldown', () => {
+    const resending = { ...initialState, status: 'stepUp' as const, busy: 'request' as const, otp: '12345678' }
+    expect(
+      reducer(resending, { type: 'REQUEST_FAILED', payload: { message: 'too soon', throttled: true } }),
+    ).toMatchObject({ status: 'stepUp', busy: 'none', otp: '12345678', error: 'too soon' })
+  })
+
+  // Any other resend failure happens AFTER the server minted a replacement and
+  // destroyed the old code, so what is in the box is already dead — submitting
+  // it would just burn one of the three attempts.
+  it('clears the dead code when a resend fails for any other reason', () => {
+    const resending = { ...initialState, status: 'stepUp' as const, busy: 'request' as const, otp: '12345678' }
+    expect(
+      reducer(resending, { type: 'REQUEST_FAILED', payload: { message: 'send failed', throttled: false } }),
+    ).toMatchObject({ status: 'stepUp', busy: 'none', otp: '', error: 'send failed' })
+  })
+
   it('clears the code when it is rejected, but stays on code entry', () => {
-    const entering = { ...initialState, status: 'stepUp' as const, otp: '12345678', isBusy: true }
+    const entering = { ...initialState, status: 'stepUp' as const, otp: '12345678', busy: 'delete' as const }
     expect(reducer(entering, { type: 'CODE_REJECTED', payload: 'bad' })).toMatchObject({
       status: 'stepUp',
       otp: '',
@@ -57,7 +83,7 @@ describe('useDeleteAccount reducer', () => {
 
   // The code is burned only on a committed delete, so it is still good.
   it('keeps the code when the delete itself fails', () => {
-    const entering = { ...initialState, status: 'stepUp' as const, otp: '12345678', isBusy: true }
+    const entering = { ...initialState, status: 'stepUp' as const, otp: '12345678', busy: 'delete' as const }
     expect(reducer(entering, { type: 'DELETE_FAILED', payload: 'boom' })).toMatchObject({
       status: 'stepUp',
       otp: '12345678',
@@ -99,6 +125,131 @@ describe('useDeleteAccount', () => {
 
     expect(receivedOtps).toEqual(['12345678'])
     expect(deletedCount).toBe(1)
+  })
+
+  it('stays usable after a resend', async () => {
+    const { result } = renderHook(() => useDeleteAccount(deleteOk, requestCodeOk), { wrapper })
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('11112222'))
+
+    // Resend: the old code is dead, so the input clears — but the dialog must
+    // come back out of its busy state.
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+
+    expect(result.current.status).toBe('stepUp')
+    expect(result.current.isBusy).toBe(false)
+    expect(result.current.otp).toBe('')
+  })
+
+  it('drops the dead code when a resend fails outright', async () => {
+    let attempt = 0
+    const failSecondSend = () => {
+      attempt += 1
+      return attempt === 1 ? Promise.resolve() : Promise.reject(new HttpError(new Response('{}', { status: 500 })))
+    }
+    const { result } = renderHook(() => useDeleteAccount(deleteOk, failSecondSend), { wrapper })
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('11112222'))
+
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+
+    // Dialog stays open, but the box is empty: the server destroyed that code
+    // when it minted the replacement it then failed to send.
+    expect(result.current.status).toBe('stepUp')
+    expect(result.current.isBusy).toBe(false)
+    expect(result.current.otp).toBe('')
+    expect(result.current.error).toContain('may no longer work')
+  })
+
+  // The account is already gone at this point; leaving `isBusy` set would
+  // disable Cancel, Escape and the backdrop, wedging the dialog for good.
+  it('releases the dialog if clearing local data throws', async () => {
+    const { result } = renderHook(
+      () => useDeleteAccount(deleteOk, requestCodeOk, () => Promise.reject(new Error('indexeddb gone'))),
+      { wrapper },
+    )
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('12345678'))
+    await act(async () => {
+      await result.current.confirmDeletion()
+    })
+
+    expect(result.current.isBusy).toBe(false)
+    // "Failed to delete account." would be a lie — the server already 204'd.
+    expect(result.current.error).toContain('account was deleted')
+    // Code cleared, so the submit button disables itself rather than inviting
+    // a retry that can only 401 against a dead session.
+    expect(result.current.otp).toBe('')
+  })
+
+  // The submit spinner carries a destructive label, so it must not light up
+  // while only an email is going out.
+  it('does not report submitting while a resend is in flight', async () => {
+    let release: (() => void) | undefined
+    let call = 0
+    const slowSecondSend = () => {
+      call += 1
+      return call === 1 ? Promise.resolve() : new Promise<void>((resolve) => (release = resolve))
+    }
+    const { result } = renderHook(() => useDeleteAccount(deleteOk, slowSecondSend), { wrapper })
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.requestStepUpCode()
+    })
+    expect(result.current.isBusy).toBe(true)
+    expect(result.current.isSubmitting).toBe(false)
+
+    await act(async () => {
+      release?.()
+      await pending
+    })
+  })
+
+  it('reports submitting while the delete itself is in flight', async () => {
+    let release: (() => void) | undefined
+    const slowDelete = () => new Promise<void>((resolve) => (release = resolve))
+    const { result } = renderHook(() => useDeleteAccount(slowDelete, requestCodeOk, () => Promise.resolve()), {
+      wrapper,
+    })
+
+    act(() => result.current.openConfirm())
+    await act(async () => {
+      await result.current.requestStepUpCode()
+    })
+    act(() => result.current.setOtp('12345678'))
+
+    let pending: Promise<void> | undefined
+    act(() => {
+      pending = result.current.confirmDeletion()
+    })
+    expect(result.current.isSubmitting).toBe(true)
+
+    await act(async () => {
+      release?.()
+      await pending
+    })
   })
 
   it('translates a 429 rather than surfacing the raw HTTP message', async () => {

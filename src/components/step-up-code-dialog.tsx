@@ -28,6 +28,12 @@ type StepUpCodeDialogProps = {
   submitLoadingLabel: string
   submitVariant?: 'default' | 'destructive'
   /**
+   * Whether the SUBMIT action is in flight, as opposed to `isBusy`, which also
+   * covers a resend. Defaults to `isBusy`; pass it when the submit label is
+   * destructive, so resending a code does not claim the action has started.
+   */
+  isSubmitting?: boolean
+  /**
    * Fire `onSubmit` as soon as the last digit lands. Off by default so a
    * destructive action always waits for a deliberate click; the
    * recovery-phrase flow opts in.
@@ -53,6 +59,7 @@ export const StepUpCodeDialog = ({
   submitLabel,
   submitLoadingLabel,
   submitVariant,
+  isSubmitting,
   submitOnComplete = false,
   onOtpChange,
   onResend,
@@ -96,7 +103,7 @@ export const StepUpCodeDialog = ({
             className="w-full"
             variant={submitVariant}
             onClick={onSubmit}
-            isLoading={isBusy}
+            isLoading={isSubmitting ?? isBusy}
             loadingLabel={submitLoadingLabel}
             disabled={otp.length !== stepUpOtpLength}
           >

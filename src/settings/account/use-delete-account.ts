@@ -15,16 +15,21 @@ import { StepUpVerificationError } from '@/lib/step-up'
 // `t` would freeze these to the boot locale.
 const codeRequestFailed = msg`Failed to send the verification code`
 const codeRequestThrottled = msg`A code was just sent. Wait a moment and try again.`
+const codeResendFailed = msg`Couldn’t send a new code. Your previous code may no longer work — request another.`
 const codeRejected = msg`That code is invalid or expired. Check your email and try again.`
 // Reuses the pre-extraction wording on purpose — it is translated in every
 // locale, and rewording it would orphan those translations.
 const deleteFailed = msg`Failed to delete account.`
+const localCleanupFailed = msg`Your account was deleted, but this device’s data couldn’t be cleared. Reload the app.`
 
 type DeleteAccountState = {
   /** idle → confirming (are-you-sure) → stepUp (emailed code entry); success ends in a reload. */
   status: 'idle' | 'confirming' | 'stepUp'
-  /** Covers the code request and the deletion — whichever is in flight. */
-  isBusy: boolean
+  /**
+   * Which request is in flight. Not a boolean: the submit button's spinner
+   * must not claim a destructive action started when only a resend is running.
+   */
+  busy: 'none' | 'request' | 'delete'
   otp: string
   error: string | null
 }
@@ -34,13 +39,14 @@ type DeleteAccountAction =
   | { type: 'CANCEL' }
   | { type: 'START_REQUEST' }
   | { type: 'CODE_SENT' }
-  | { type: 'REQUEST_FAILED'; payload: string }
+  | { type: 'REQUEST_FAILED'; payload: { message: string; throttled: boolean } }
   | { type: 'OTP_CHANGED'; payload: string }
   | { type: 'START_DELETE' }
   | { type: 'DELETE_FAILED'; payload: string }
   | { type: 'CODE_REJECTED'; payload: string }
+  | { type: 'LOCAL_CLEANUP_FAILED'; payload: string }
 
-export const initialState: DeleteAccountState = { status: 'idle', isBusy: false, otp: '', error: null }
+export const initialState: DeleteAccountState = { status: 'idle', busy: 'none', otp: '', error: null }
 
 export const reducer = (state: DeleteAccountState, action: DeleteAccountAction): DeleteAccountState => {
   switch (action.type) {
@@ -49,22 +55,42 @@ export const reducer = (state: DeleteAccountState, action: DeleteAccountAction):
     case 'CANCEL':
       return initialState
     case 'START_REQUEST':
+      return { ...state, busy: 'request', error: null }
     case 'START_DELETE':
-      return { ...state, isBusy: true, error: null }
+      return { ...state, busy: 'delete', error: null }
     case 'CODE_SENT':
-      // Ignored unless we are still on the confirm step: cancelling mid-request
-      // must not pop the code dialog open when the response lands.
-      return state.status === 'confirming' ? { ...state, status: 'stepUp', isBusy: false, otp: '', error: null } : state
+      // Both the first send and a resend land here; only a cancellation (back
+      // to `idle`) is ignored, so a late response cannot reopen the dialog.
+      // The input clears either way: a resend mints a new code, killing the old.
+      return state.status === 'confirming' || state.status === 'stepUp'
+        ? { ...state, status: 'stepUp', busy: 'none', otp: '', error: null }
+        : state
     case 'REQUEST_FAILED':
-      // Back to idle, unlike the recovery-phrase flow which stays on its
-      // confirm step. `ConfirmActionDialog` has no error slot, so the section's
-      // alert shows the failure and its button is the retry.
-      return { ...initialState, error: action.payload }
+      // A failed FIRST send goes back to idle — `ConfirmActionDialog` has no
+      // error slot, so the section's alert reports it and its button retries.
+      if (state.status !== 'stepUp') {
+        return { ...initialState, error: action.payload.message }
+      }
+      // A failed RESEND keeps the dialog open. Only the cooldown refusal is
+      // known to leave the typed code usable — it is rejected before anything
+      // is minted. Any other failure may or may not have minted a replacement
+      // (the request might never have reached the server), and the client
+      // cannot tell, so clear the box rather than risk burning an attempt.
+      return {
+        ...state,
+        busy: 'none',
+        otp: action.payload.throttled ? state.otp : '',
+        error: action.payload.message,
+      }
     case 'DELETE_FAILED':
       // Stay on code entry and keep the code — it is only burned on success.
-      return { ...state, isBusy: false, error: action.payload }
+      return { ...state, busy: 'none', error: action.payload }
+    case 'LOCAL_CLEANUP_FAILED':
+      // The account IS gone. Clear the code so the submit button disables
+      // itself, rather than inviting a retry that can only 401.
+      return { ...state, busy: 'none', otp: '', error: action.payload }
     case 'CODE_REJECTED':
-      return { ...state, isBusy: false, otp: '', error: action.payload }
+      return { ...state, busy: 'none', otp: '', error: action.payload }
     case 'OTP_CHANGED':
       return { ...state, otp: action.payload }
   }
@@ -77,8 +103,12 @@ const reloadAfterDeletion = async () => {
 }
 
 /** Translate at the display boundary — an `HttpError` message is English. */
-const requestErrorMessage = (err: unknown): string =>
-  err instanceof HttpError && err.response.status === 429 ? i18n._(codeRequestThrottled) : i18n._(codeRequestFailed)
+const requestFailure = (err: unknown, isResend: boolean): { message: string; throttled: boolean } => {
+  if (err instanceof HttpError && err.response.status === 429) {
+    return { message: i18n._(codeRequestThrottled), throttled: true }
+  }
+  return { message: i18n._(isResend ? codeResendFailed : codeRequestFailed), throttled: false }
+}
 
 /**
  * Account deletion, gated by an emailed step-up code.
@@ -105,7 +135,11 @@ export const useDeleteAccount = (
       await requestCode(httpClient)
       dispatch({ type: 'CODE_SENT' })
     } catch (err) {
-      dispatch({ type: 'REQUEST_FAILED', payload: requestErrorMessage(err) })
+      const failure = requestFailure(err, state.status === 'stepUp')
+      if (!failure.throttled) {
+        console.error('Failed to send the account deletion code:', err)
+      }
+      dispatch({ type: 'REQUEST_FAILED', payload: failure })
     }
   }
 
@@ -115,14 +149,37 @@ export const useDeleteAccount = (
       await performDelete(httpClient, { stepUpOtp: state.otp })
     } catch (err) {
       const rejected = err instanceof StepUpVerificationError
+      if (!rejected) {
+        console.error('Failed to delete account:', err)
+      }
       dispatch({
         type: rejected ? 'CODE_REJECTED' : 'DELETE_FAILED',
         payload: i18n._(rejected ? codeRejected : deleteFailed),
       })
       return
     }
-    await onDeleted()
+    try {
+      await onDeleted()
+    } catch (err) {
+      // The account is already gone server-side, so there is nothing to undo.
+      // Release the dialog anyway: leaving `isBusy` set disables Cancel,
+      // Escape and the backdrop, with no way out but a reload.
+      // Say what actually happened: the account is deleted, only this device
+      // is dirty. Reporting "failed to delete" here would tell the user their
+      // account still exists.
+      console.error('Failed to clear local data after deleting the account:', err)
+      dispatch({ type: 'LOCAL_CLEANUP_FAILED', payload: i18n._(localCleanupFailed) })
+    }
   }
 
-  return { ...state, openConfirm, cancel, setOtp, requestStepUpCode, confirmDeletion }
+  return {
+    ...state,
+    isBusy: state.busy !== 'none',
+    isSubmitting: state.busy === 'delete',
+    openConfirm,
+    cancel,
+    setOtp,
+    requestStepUpCode,
+    confirmDeletion,
+  }
 }

@@ -15,7 +15,7 @@ import { useDeleteAccount } from './use-delete-account'
  */
 export const DeleteAccountSection = () => {
   const { t } = useLingui()
-  const { status, isBusy, otp, error, openConfirm, cancel, setOtp, requestStepUpCode, confirmDeletion } =
+  const { status, isBusy, isSubmitting, otp, error, openConfirm, cancel, setOtp, requestStepUpCode, confirmDeletion } =
     useDeleteAccount()
 
   return (
@@ -36,8 +36,10 @@ export const DeleteAccountSection = () => {
         )}
         {/* Secondary on the page; the red danger styling lives on the
             confirm button inside the dialog. */}
+        {/* Label tracks the delete, not `isBusy` — which is also set while a
+            code is merely being emailed. */}
         <Button variant="secondary" disabled={isBusy} onClick={openConfirm}>
-          {isBusy ? t`Deleting…` : t`Delete My Account`}
+          {isSubmitting ? t`Deleting…` : t`Delete My Account`}
         </Button>
 
         <ConfirmActionDialog
@@ -66,6 +68,7 @@ export const DeleteAccountSection = () => {
           submitLabel={t`Delete account`}
           submitLoadingLabel={t`Deleting…`}
           submitVariant="destructive"
+          isSubmitting={isSubmitting}
           onOtpChange={setOtp}
           onResend={requestStepUpCode}
           onSubmit={confirmDeletion}

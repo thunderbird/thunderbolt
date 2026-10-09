@@ -7,11 +7,6 @@ on:
         description: 'Version to build (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
       notify_testers:
         description: 'Notify external testers'
         required: false
@@ -81,12 +76,8 @@ jobs:
 
       - name: Display version information
         env:
-          INPUT_NIGHTLY: ${{ inputs.nightly }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "$INPUT_NIGHTLY" == "true" ]; then
-            echo "🌙 Nightly build"
-          fi
           if [ -n "$INPUT_VERSION" ]; then
             echo "🏷️ Using specified version: $INPUT_VERSION"
           else
@@ -115,11 +106,7 @@ jobs:
           APPLE_VERSION="${VERSION%%-*}"
 
           # CFBundleVersion must be unique per TestFlight upload and must
-          # monotonically increase within a marketing-version train. Using git
-          # commit count gives a single, consistent scheme for both nightly and
-          # stable builds — avoiding collisions where a nightly date integer
-          # (e.g., 20260206) would permanently block a stable build (e.g., 0.5.0)
-          # for the same CFBundleShortVersionString.
+          # monotonically increase within a marketing-version train.
           APPLE_BUILD_VERSION="$(git rev-list --count HEAD)"
 
           echo "🔧 Applying version $VERSION locally (Apple marketing: $APPLE_VERSION, build: $APPLE_BUILD_VERSION)"

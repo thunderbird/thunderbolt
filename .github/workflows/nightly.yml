@@ -1,8 +1,7 @@
 name: Nightly E2E
 
 on:
-  schedule:
-    - cron: '0 4 * * *'
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -362,7 +361,10 @@ jobs:
 
   notify:
     needs: [linux, macos, native-ios, native-linux]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped')) }}
+    if: >-
+      always() && !cancelled() && github.workflow == 'Nightly E2E' &&
+      github.ref == 'refs/heads/main' &&
+      (contains(needs.*.result, 'failure') || !contains(needs.*.result, 'skipped'))
     permissions:
       actions: read
       contents: read

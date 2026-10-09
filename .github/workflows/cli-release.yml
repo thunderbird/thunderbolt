@@ -33,22 +33,12 @@ on:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
   workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (e.g., 1.2.3 without v prefix)'
         required: true
         type: string
-      nightly:
-        description: 'Is this a nightly build?'
-        required: false
-        default: false
-        type: boolean
 
 concurrency:
   group: cli-release-${{ inputs.version }}
@@ -58,34 +48,8 @@ permissions:
   contents: write
 
 jobs:
-  ensure-release:
-    name: Ensure Draft Release
-    runs-on: ubuntu-24.04
-    steps:
-      # For a regular release the draft already exists (version-bump created it).
-      # For a nightly it is created by the desktop workflow's draft job, which
-      # runs in parallel — create it here if we win the race, confirm it if we
-      # lose. Either way the build matrix can upload afterwards.
-      - name: Ensure the shared draft release exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          VERSION: ${{ inputs.version }}
-          NIGHTLY: ${{ inputs.nightly }}
-        run: |
-          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
-            exit 0
-          fi
-          FLAGS="--draft"
-          [ "$NIGHTLY" = "true" ] && FLAGS="$FLAGS --prerelease"
-          gh release create "v${VERSION}" --repo "$REPO" $FLAGS \
-            --title "Release v${VERSION}" \
-            --notes "Release assets are uploaded by CI." \
-            || gh release view "v${VERSION}" --repo "$REPO"
-
   build:
     name: Build ${{ matrix.target }}
-    needs: ensure-release
     strategy:
       fail-fast: false
       matrix:

@@ -43,10 +43,6 @@ on:
         required: false
         type: string
         default: 'auto'
-      nightly:
-        required: false
-        type: boolean
-        default: false
     outputs:
       new_version:
         description: 'The new version that was created'
@@ -89,14 +85,11 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install git-cliff
-        if: ${{ !inputs.nightly }}
         uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: git-cliff
 
-      # Regular releases: use existing create-release script
       - name: Run create-release script
-        if: ${{ !inputs.nightly }}
         env:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_VERSION_TYPE: ${{ inputs.version_type }}
@@ -117,36 +110,6 @@ jobs:
 
           echo "Running: bun run scripts/create-release.ts ${ARGS[*]}"
           bun run scripts/create-release.ts "${ARGS[@]}"
-
-      # Nightly: generate version and tag without committing to main
-      - name: Prepare nightly version
-        if: ${{ inputs.nightly }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BASE_VERSION=$(node -p "require('./package.json').version")
-          NIGHTLY_VERSION="${BASE_VERSION}-nightly.$(date -u +%Y%m%d)"
-          NIGHTLY_TAG="v${NIGHTLY_VERSION}"
-
-          # Update version files locally
-          node -e "const fs=require('fs');for(const path of ['package.json','cli/package.json']){const p=JSON.parse(fs.readFileSync(path));p.version='$NIGHTLY_VERSION';fs.writeFileSync(path,JSON.stringify(p,null,2)+'\n')}"
-          sed -i "s/^version = \".*\"/version = \"$NIGHTLY_VERSION\"/" src-tauri/Cargo.toml
-          node -e "const fs=require('fs'),c=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json'));c.version='$BASE_VERSION';fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(c,null,2)+'\n')"
-
-          # If a nightly tag for today already exists (re-run / manual trigger),
-          # remove the old tag and its GitHub release so we can replace them.
-          if git ls-remote --tags origin | grep -q "refs/tags/${NIGHTLY_TAG}$"; then
-            echo "⚠️  Tag $NIGHTLY_TAG already exists — replacing it"
-            gh release delete "$NIGHTLY_TAG" --yes --cleanup-tag 2>/dev/null || true
-            git tag -d "$NIGHTLY_TAG" 2>/dev/null || true
-            git push origin ":refs/tags/${NIGHTLY_TAG}" 2>/dev/null || true
-          fi
-
-          # Create commit and tag (not pushed to main branch, only the tag)
-          git add package.json cli/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-          git commit -m "chore: nightly build $NIGHTLY_VERSION"
-          git tag -a "$NIGHTLY_TAG" -m "Nightly build $NIGHTLY_VERSION"
-          git push origin "$NIGHTLY_TAG"
 
       - name: Extract outputs
         id: version
@@ -179,7 +142,6 @@ jobs:
           echo "🏷️  Tag: $TAG_NAME"
 
       - name: Generate changelog
-        if: ${{ !inputs.nightly }}
         id: changelog
         run: |
           # The create-release script already wrote CHANGELOG.md and tagged the
@@ -195,7 +157,6 @@ jobs:
           echo "changelog_b64=$CHANGELOG_B64" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: ${{ !inputs.nightly }}
         env:
           CHANGELOG_B64: ${{ steps.changelog.outputs.changelog_b64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -213,6 +174,8 @@ jobs:
             gh release create "$TAG_NAME" \
               --title "Release $TAG_NAME" \
               --notes "## Release $TAG_NAME
+
+          **Warning:** This is an automated build and may be unstable. Use at your own risk.
 
           - Version: $VERSION
           - Version type: $VERSION_TYPE
@@ -233,6 +196,8 @@ jobs:
               --notes "## Release Candidate $TAG_NAME
 
           This is a release candidate for $PLATFORM platform.
+
+          **Warning:** This is an automated build and may be unstable. Use at your own risk.
 
           - Version: $VERSION
           - Platform: $PLATFORM

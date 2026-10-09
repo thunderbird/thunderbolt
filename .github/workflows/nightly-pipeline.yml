@@ -1,0 +1,65 @@
+name: Nightly Pipeline
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-pipeline
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        shell: bash
+        run: |
+          release_tags=$(git tag --points-at HEAD --list 'v*' | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/')
+          if [ -z "$release_tags" ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/nightly.yml
+    secrets: inherit
+
+  release:
+    needs: [e2e, changes]
+    if: needs.changes.outputs.changed == 'true'
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      platform: all
+    secrets: inherit
+
+  notify:
+    needs: [e2e, changes, release]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && (contains(needs.*.result, 'failure') || needs.release.result == 'success') }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/notify-on-failure.yml
+    with:
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+    secrets:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}

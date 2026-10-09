@@ -16,6 +16,8 @@ The AWS path offers two targets from the same project: ECS Fargate, which gives 
 
 We recommend starting with Docker Compose, even if you intend to run Kubernetes later. Every path runs the same API against the same environment variables, though each exposes a different subset of them, so nothing you learn is wasted.
 
+For a public deployment where visitors chat anonymously with one hosted agent, at an event for example, see [Public agent on Render](./public-agent.md).
+
 ## What a deployment contains
 
 The app is the chat interface, served to a browser as a static site. The API behind it handles sign-in, authorizes each device for sync, fetches link previews, runs web search, and makes the outbound calls to AI providers.

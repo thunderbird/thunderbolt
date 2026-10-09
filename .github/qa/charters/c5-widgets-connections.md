@@ -2,7 +2,7 @@
 
 Goal: the rich parts of a reply (widgets, previews, files) and MCP connections work with a real model.
 
-Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5"; replies vary. Keep
+Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5.5"; replies vary. Keep
 prompts short and send at most 12 chat messages in total. Read every reply and check the AI did the task: a reply
 saying a tool, a search, the file or the MCP server failed is a finding (`ai-reported-failure`).
 

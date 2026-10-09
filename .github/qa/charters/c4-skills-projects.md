@@ -2,7 +2,7 @@
 
 Goal: skills and projects work end to end for a new user, including edge cases, and really change the AI's replies.
 
-Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5"; replies vary. Keep
+Start state: fresh user, desktop viewport. In this charter the AI is **real**: select "Opus 5.5"; replies vary. Keep
 prompts short and send at most 10 chat messages in total.
 
 Fill every required field each time you create or edit: a skill needs a name, a description and instructions (the

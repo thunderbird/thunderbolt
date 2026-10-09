@@ -63,11 +63,11 @@
     { "id": "attach-remove", "outcome": "An attachment removed before sending is not sent" },
     {
       "id": "model-error",
-      "outcome": "With \"GLM 5.3 Flash\", which is not configured here, the app shows an error for the message, and after switching back to \"Opus 5\" the next message gets a reply"
+      "outcome": "With \"DeepSeek V4.1 Flash\", which is not configured here, the app shows an error for the message, and after switching back to \"Opus 5.5\" the next message gets a reply"
     }
   ],
   "c3-models-providers": [
-    { "id": "picker-lists", "outcome": "The model picker lists \"Opus 5\", \"GLM 5.3 Flash\" and \"GLM 5.3\"" },
+    { "id": "picker-lists", "outcome": "The model picker lists \"Opus 5.5\", \"DeepSeek V4.1 Flash\" and \"GLM 5.3\"" },
     { "id": "models-reply", "outcome": "Each of those models answers a short prompt with a relevant reply" },
     {
       "id": "switch-mid-thread",
@@ -75,12 +75,12 @@
     },
     { "id": "model-persists", "outcome": "The model selected in a thread is still the selected one", "reload": true },
     {
-      "id": "multi-turn-opus-5",
-      "outcome": "In three turns with \"Opus 5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+      "id": "multi-turn-opus-5-5",
+      "outcome": "In three turns with \"Opus 5.5\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
     },
     {
-      "id": "multi-turn-glm-5-3-flash",
-      "outcome": "In three turns with \"GLM 5.3 Flash\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
+      "id": "multi-turn-deepseek-v4-1-flash",
+      "outcome": "In three turns with \"DeepSeek V4.1 Flash\" each reply follows the earlier turns, and after a stopped reply the next message gets a full one"
     },
     {
       "id": "multi-turn-glm-5-3",
@@ -227,7 +227,6 @@
       "id": "export-import",
       "outcome": "Data exported, then deleted from this device, then imported again brings back the chats and the skill"
     },
-    { "id": "devices-page", "outcome": "Settings → Devices lists this device" },
     { "id": "settings-pages", "outcome": "Every other settings page opens without an error" }
   ],
   "c7-two-devices": [

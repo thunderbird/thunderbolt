@@ -105,6 +105,7 @@ jobs:
               - 'scripts/notify-on-failure.ts'
               - 'e2e/helpers.ts'
               - 'shared/tsconfig.base.json'
+              - 'shared/defaults/models.ts'
               - 'bunfig.toml'
               - '.github/workflows/qa-weekly.yml'
               - 'package.json'

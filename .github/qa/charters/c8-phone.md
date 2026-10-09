@@ -2,7 +2,7 @@
 
 Goal: the main flows work and fit on a 390 × 844 phone screen.
 
-Start state: fresh user, phone viewport (390 × 844), fake AI (select "Opus 5"). Every finding in this charter has
+Start state: fresh user, phone viewport (390 × 844), fake AI (select "Opus 5.5"). Every finding in this charter has
 `"viewport": "phone"`.
 
 On every screen you open, detail and edit screens included, run the overflow check from the oracle list and look

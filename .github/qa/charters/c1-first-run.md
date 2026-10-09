@@ -8,7 +8,7 @@ Start state: this build shows onboarding. The app runs at **http://localhost:142
    Edge cases: back and forward between steps, a reload in the middle, skipping optional steps, an empty and a
    300-character name. Functions: `sign-in`, `onboarding-complete`, `onboarding-back`, `onboarding-name`,
    `welcome-dialog`.
-2. First chat: select "Opus 5", send a message, wait for the reply, reload and check the chat is still there.
+2. First chat: select "Opus 5.5", send a message, wait for the reply, reload and check the chat is still there.
    Function: `first-chat`.
 3. Log out keeping the data, sign back in with the same address, check the chat is still there.
    Function: `sign-out-keep`.

@@ -9,3 +9,6 @@
   so Create stays disabled until a slug is typed. Intended.
 - Google integration: it cannot list calendars, so the app's AI sees only the primary calendar (for example, a
   shared work calendar is missed) unless the user gives a calendar id. Intended.
+- Sync: only the c7 leg has a sync backend (Postgres + PowerSync). On every other leg `/v1/powersync/*` returns 404
+  and nothing syncs, so findings that depend on synced data (an empty Settings → Devices list, another device's
+  state) are environment artifacts, not bugs.

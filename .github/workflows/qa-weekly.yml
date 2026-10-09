@@ -103,11 +103,22 @@ jobs:
           npx --yes --package @playwright/mcp@0.0.83 playwright install chromium
 
       # Up to two recent fixes from main whose reversal applies to this tree: the canary build carries their bugs
-      # again. The log says why every other fix was skipped.
-      - name: Pick the canaries
+      # again. The log says why every other fix was skipped. The canary build comes first and may fail without
+      # failing the run: the canaries are then dropped, so the legs are planned without them.
+      - name: Pick the canaries and build them
         id: canaries
         run: |
           bun .github/qa/scripts/canaries.ts --out "$RUNNER_TEMP/qa-canaries.json" --patch "$RUNNER_TEMP/qa-canary.patch"
+          if [ -s "$RUNNER_TEMP/qa-canary.patch" ]; then
+            git apply --reverse "$RUNNER_TEMP/qa-canary.patch"
+            if ! .github/qa/scripts/stack.sh build qa-dist-canary; then
+              echo "::warning::The canary build failed, so this run has no canary leg"
+              echo '[]' > "$RUNNER_TEMP/qa-canaries.json"
+            fi
+            # Not optional: the normal builds and the guard must never see the reverted tree.
+            git apply "$RUNNER_TEMP/qa-canary.patch"
+            git diff --quiet
+          fi
           echo "count=$(jq length "$RUNNER_TEMP/qa-canaries.json")" >> "$GITHUB_OUTPUT"
 
       - name: Plan the legs
@@ -181,15 +192,10 @@ jobs:
             echo "autofix=$AUTOFIX"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build the frontend (onboarding off, onboarding on, canary fixes reverted)
+      - name: Build the frontend (onboarding off, onboarding on)
         run: |
           .github/qa/scripts/stack.sh build qa-dist
           .github/qa/scripts/stack.sh build qa-dist-onboarding onboarding
-          if [ -s "$RUNNER_TEMP/qa-canary.patch" ]; then
-            git apply --reverse "$RUNNER_TEMP/qa-canary.patch"
-            .github/qa/scripts/stack.sh build qa-dist-canary
-            git apply "$RUNNER_TEMP/qa-canary.patch"
-          fi
 
       - name: Guard - smoke-test a fresh stack
         run: |

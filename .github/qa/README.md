@@ -87,10 +87,13 @@ at most two that:
 - change app code under `src/` (tests, test helpers, docs and translations are left alone);
 - touch no sensitive path: the same list that keeps the fix agent away (`isSensitive` in `fix.ts`);
 - map to a charter in the script's one table (c2 to c6 and c8), one canary per charter, both on the same kind of AI;
+- change no runtime code outside `src/` (`shared/`, `backend/`, `public/`, `index.html`, the Vite config): the reversal
+  covers `src/` only, and the canary backend runs from the unpatched checkout;
 - can be reverted on the current tree with `git apply -R --check`.
 
-The canary build reverts those fixes. Each one gets an explore session with its charter on that build, so at most
-2 sessions a week. A canary counts as found only when a finding fails on the canary build, passes on the normal
+The canary build reverts those fixes. It runs before the legs are planned: if it fails, the run warns, the tree is
+restored and the canary leg is skipped as if nothing qualified, so a bad canary never costs the weekly run. Each one
+gets an explore session with its charter on that build, so at most 2 sessions a week. A canary counts as found only when a finding fails on the canary build, passes on the normal
 build and names a word from the fix's title. The report lists each fix (title, sha, charter, found or missed).
 Canary findings are never filed.
 

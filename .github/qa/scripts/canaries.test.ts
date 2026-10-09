@@ -148,3 +148,18 @@ describe('titleKeywords', () => {
     ])
   })
 })
+
+it('skips fixes that also change runtime code outside src/, but not their tests', async () => {
+  await commit('fix: shared default', {
+    'shared/defaults/models.ts': 'export const models = 1\n',
+    'src/settings/theme.ts': 'export const theme = 2\n',
+  })
+  await commit('fix: theme with a shared test', {
+    'shared/defaults/models.test.ts': 'test\n',
+    'src/settings/theme.ts': 'export const theme = 3\n',
+  })
+  const log: string[] = []
+  const { canaries } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
+  expect(canaries.map((c) => c.title)).toEqual(['fix: theme with a shared test'])
+  expect(log[1]).toContain('outside src/')
+})

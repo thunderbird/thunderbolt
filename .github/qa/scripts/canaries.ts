@@ -21,9 +21,18 @@ const gestureTitle = /swipe|gesture|drag|pinch|long-?press/i
  */
 export const isSensitive = (path: string) =>
   /(^|\/)(db|devices?|crypto|encryption|auth|sso|sessions?|sign-?in|powersync|sync|drizzle|migrations?)\//.test(path)
+
+const isTestOrDoc = (path: string) => /\.test\.|(^|\/)test-utils\/|\/locales\/|\.md$/.test(path)
 /** App code a reversal may touch: `src/` without tests, test helpers, docs and translations. */
-const isAppCode = (path: string) =>
-  path.startsWith('src/') && !/\.test\.|(^|\/)test-utils\/|\/locales\/|\.md$/.test(path)
+const isAppCode = (path: string) => path.startsWith('src/') && !isTestOrDoc(path)
+
+/**
+ * Runtime code outside `src/` that a src-only reversal would leave behind: the frontend build bundles `shared/`,
+ * `public/`, `index.html` and the Vite config, and the canary backend runs `backend/` from the unpatched checkout.
+ * `cli/`, `e2e/`, `.github/` and the other workspaces reach neither.
+ */
+const isOtherRuntime = (path: string) =>
+  /^((shared|backend|public)\/|index\.html$|vite\.config\.ts$)/.test(path) && !isTestOrDoc(path)
 
 /** Dependency manifests and lockfiles: a fix that touches one is a dependency change, not a bug the UI shows. */
 const isDependencyFile = (path: string) => /(^|\/)(package\.json|bun\.lock|Cargo\.(toml|lock))$/.test(path)
@@ -112,6 +121,10 @@ export const selectCanaries = async ({
     const files = changed.split('\n')
     if (files.some(isDependencyFile)) {
       skip('it changes dependencies, which a src-only reversal would leave behind')
+      continue
+    }
+    if (files.some(isOtherRuntime)) {
+      skip('it also changes runtime code outside src/, which a src-only reversal would leave behind')
       continue
     }
     const paths = files.filter(isAppCode)

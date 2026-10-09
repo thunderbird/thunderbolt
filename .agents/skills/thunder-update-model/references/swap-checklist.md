@@ -215,6 +215,14 @@ other item is not applicable.
     `e2e/consumer-fake-provider.spec.ts` (the direct internal name `claude-opus-5`). Specs that
     import the export constant follow the rename through `bun run type-check` (`tsconfig.e2e.json`).
     Done when type-check passes and no e2e file names the leaving model's display or internal name.
+    The weekly QA agent (`.github/qa/`, run by `qa-weekly.yml`) pins the catalog in prose:
+    `functions.json` quotes display names in `outcome` texts and embeds slugs in function ids
+    (`multi-turn-glm-5-3-flash`), the charters under `charters/` and `prompt.md` name the models
+    the explorer may pick, and the picker-lists function states the whole lineup. The scripts read
+    ids from the JSON, so renaming an id is a JSON-only change; the `--model` flags in the workflow
+    and `judgeModel` in `scripts/verify.ts` are the agent's own models and stay. Done when
+    `git grep -n -i -e "<leaving-display-name>" -e "<leaving-slug>" -- .github/qa` returns nothing
+    and `bun run test:qa` passes.
 21. universal. `cli/`: nothing to edit (the CLI bundles `defaultModels` through
     `cli/src/provider-runtime/catalog.ts`), yet `shared/defaults/models.ts` is in the `cli` CI path
     filter and `cli/src/provider-runtime/tinfoil.test.ts` binds to the real default. Done when

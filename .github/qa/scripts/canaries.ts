@@ -22,6 +22,7 @@ const gestureTitle = /swipe|gesture|drag|pinch|long-?press/i
 export const isSensitive = (path: string) =>
   /(^|\/)(db|devices?|crypto|encryption|auth|sso|sessions?|sign-?in|powersync|sync|drizzle|migrations?)\//.test(path)
 
+/** Tests, test helpers, translations and docs that a reversal leaves alone. */
 const isTestOrDoc = (path: string) => /\.test\.|(^|\/)test-utils\/|\/locales\/|\.md$/.test(path)
 /** App code a reversal may touch: `src/` without tests, test helpers, docs and translations. */
 const isAppCode = (path: string) => path.startsWith('src/') && !isTestOrDoc(path)

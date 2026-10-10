@@ -18,15 +18,16 @@ export type MeteredRouteGuardOptions = {
    * refused unless this is true. Left unset, PATs pass, as on the direct managed routes.
    */
   confidentialApiKeysEnabled?: boolean
-  /** The inference-tier user rate limit; omitted in tests that do not exercise it. */
+  /** The route's user-keyed rate limit (`inference`, `pro` or `receipt`); omitted in tests that do not exercise it. */
   rateLimit?: AnyElysia
 }
 
 /**
- * Guards the direct managed-inference routes (`/v1/chat` and the hosted agent) registered after it on the
- * parent: a session (the auth macro), optionally the confidential PAT check, a CLI device-grant session bound
+ * Guards the metered routes registered after it on the parent: `/v1/chat` and the hosted agent, plus the
+ * confidential `/v1/tinfoil/*` proxy and the usage-receipt route, which pass `confidentialApiKeysEnabled`. In
+ * order: a session (the auth macro), the confidential PAT check when enabled, a CLI device-grant session bound
  * to its device, then the user rate limit. The order matters: every later step reads the `user` the macro
- * resolves. Tinfoil and the receipt route still wire these by hand.
+ * resolves.
  */
 export const createMeteredRouteGuard = ({
   auth,

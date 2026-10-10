@@ -220,6 +220,23 @@ describe('createTinfoilRoutes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
+    it('applies the rate limit to an authenticated session before admission or upstream forwarding', async () => {
+      const rejectingRateLimit = new Elysia()
+        .onBeforeHandle(({ set }) => {
+          set.status = 429
+          return { error: 'Too many requests' }
+        })
+        .as('scoped')
+      const app = buildApp({ rateLimit: rejectingRateLimit })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
+      )
+
+      expect(response.status).toBe(429)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('forwards an authenticated x-api-key when confidential API keys are enabled', async () => {
       process.env.CONFIDENTIAL_API_KEYS_ENABLED = 'true'
       clearSettingsCache()
@@ -675,6 +692,28 @@ describe('createTinfoilRoutes', () => {
         expect(mockFetch).not.toHaveBeenCalled()
       },
     )
+
+    it('logs a missing price as inference_price_unavailable', async () => {
+      await database
+        .delete(inferencePrices)
+        .where(and(eq(inferencePrices.provider, 'tinfoil'), eq(inferencePrices.model, 'glm-5-3')))
+      const usageLogger = { info: mock(), error: mock() }
+      const app = buildApp({ usageLogger })
+
+      const response = await app.handle(
+        new Request('http://localhost/tinfoil/v1/chat/completions', {
+          method: 'POST',
+          headers: { [inferenceModelHeader]: 'glm-5-3' },
+          body: 'opaque-bytes',
+        }),
+      )
+
+      expect(response.status).toBe(503)
+      expect(usageLogger.error).toHaveBeenCalledWith(
+        { event: 'inference_price_unavailable', provider: 'tinfoil', model: 'glm-5-3' },
+        'Inference price unavailable',
+      )
+    })
 
     it.each([
       ['anonymous', true, '5h', 10, 0],

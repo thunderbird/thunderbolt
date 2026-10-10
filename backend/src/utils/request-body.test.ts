@@ -65,4 +65,15 @@ describe('readBoundedJson', () => {
     const badUtf8 = new Uint8Array([0x22, 0xff, 0x22])
     expect(await readBoundedJson(createChunkedRequest([badUtf8]).request, 30)).toEqual(invalid)
   })
+
+  it('reports a body stream that fails mid-read as invalid', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.enqueue(new TextEncoder().encode('{"a":'))
+        controller.error(new Error('connection reset'))
+      },
+    })
+    const request = new Request('http://localhost/', { method: 'POST', body })
+    expect(await readBoundedJson(request, 30)).toEqual({ ok: false, reason: 'invalid' })
+  })
 })

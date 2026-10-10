@@ -47,10 +47,11 @@ export type AgentCapabilities = {
 export type Agent = {
   id: string
   name: string
-  type: 'built-in' | 'remote-acp' | 'managed-acp'
+  type: 'built-in' | 'remote-acp' | 'managed-acp' | 'managed-http'
   /** `iroh` is a remote-acp agent dialed peer-to-peer over an n0 relay; its
-   *  `url` carries the bridge's NodeId/ticket instead of a `ws(s)://` URL. */
-  transport: 'in-process' | 'websocket' | 'iroh'
+   *  `url` carries the bridge's NodeId/ticket instead of a `ws(s)://` URL.
+   *  `http` is a managed-http agent whose `url` is a backend-relative path. */
+  transport: 'in-process' | 'websocket' | 'iroh' | 'http'
   url: string | null
   description: string | null
   icon: string | null

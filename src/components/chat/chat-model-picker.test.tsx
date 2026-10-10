@@ -44,6 +44,17 @@ const managedAcpAgent: Agent = {
   type: 'managed-acp',
 }
 
+const managedHttpAgent: Agent = {
+  ...remoteAcpAgent,
+  id: 'hosted-agent',
+  name: 'Assistant',
+  type: 'managed-http',
+  transport: 'http',
+  url: '/v1/agent/chat',
+  isSystem: 1,
+  userId: null,
+}
+
 const gpt4 = createMockModel({ id: 'model-1', name: 'GPT-4', provider: 'thunderbolt', isSystem: 1 })
 const gpt5 = createMockModel({ id: 'model-2', name: 'GPT-5', provider: 'thunderbolt', isSystem: 1 })
 
@@ -132,6 +143,14 @@ describe('ChatModelPicker', () => {
 
   it('renders nothing when the selected agent is managed-acp', () => {
     setupWithAgent(managedAcpAgent)
+
+    const { container } = render(<ChatModelPicker />, { wrapper: TestWrapper })
+
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('renders nothing when the selected agent is managed-http, which picks its own model', () => {
+    setupWithAgent(managedHttpAgent)
 
     const { container } = render(<ChatModelPicker />, { wrapper: TestWrapper })
 

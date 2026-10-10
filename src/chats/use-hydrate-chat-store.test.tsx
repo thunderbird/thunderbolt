@@ -10,7 +10,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useHydrateChatStore } from './use-hydrate-chat-store'
 import { useChatStore } from './chat-store'
 import { getDb } from '@/db/database'
-import { modelsTable } from '@/db/tables'
+import { agentsSystemTable, modelsTable } from '@/db/tables'
+import { builtInAgent } from '@/defaults/agents'
 import { v7 as uuidv7 } from 'uuid'
 import { createChatThread, getChatThread as getThread } from '@/dal/chat-threads'
 import { createAgent } from '@/dal/agents'
@@ -306,6 +307,74 @@ describe('useHydrateChatStore', () => {
 
       const session = getCurrentSession()
       expect(session?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    const seedDiscoveredDefault = () =>
+      getDb().insert(agentsSystemTable).values({
+        id: 'hosted-agent',
+        name: 'Assistant',
+        type: 'managed-http',
+        transport: 'http',
+        url: '/v1/agent/chat',
+        fetchedAt: new Date().toISOString(),
+        isDefault: 1,
+      })
+
+    const hydrateNewChat = async () => {
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+      await act(async () => {
+        await result.current.hydrateChatStore()
+      })
+    }
+
+    it('keeps the last-used agent for a new chat ahead of the agent discovery names as default', async () => {
+      await createAgent(getDb(), {
+        id: 'custom-last-used',
+        name: 'Last Used Agent',
+        type: 'remote-acp',
+        transport: 'websocket',
+        url: 'wss://example.test/ws',
+        userId: 'u1',
+      })
+      await updateSettings(getDb(), { selected_agent: 'custom-last-used' })
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('custom-last-used')
+    })
+
+    it('opens on the discovered default when discovery lands while hydration is reading', async () => {
+      // Discovery reports its default after `getAllSystemAgents` ran but before the
+      // session exists, so there are no rows to read and no session to move yet.
+      const hostedAgent = {
+        ...builtInAgent,
+        id: 'hosted-agent',
+        type: 'managed-http' as const,
+        transport: 'http' as const,
+        url: '/v1/agent/chat',
+      }
+      const { result } = renderHook(() => useHydrateChatStore({ id: uuidv7(), isNew: true }), {
+        wrapper: TestWrapper,
+      })
+
+      await act(async () => {
+        const hydrating = result.current.hydrateChatStore()
+        useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+        await hydrating
+      })
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
+      await seedDiscoveredDefault()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent).toMatchObject({ id: 'hosted-agent', type: 'managed-http' })
     })
   })
 

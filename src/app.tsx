@@ -24,15 +24,7 @@ import SettingsLayout from '@/settings/layout'
 import WaitlistLayout from '@/waitlist/layout'
 import WaitlistPage from '@/waitlist/waitlist-page'
 import { HapticsProvider } from '@/hooks/use-haptics'
-import {
-  AuthProvider,
-  DatabaseProvider,
-  HttpClientProvider,
-  SignInModalProvider,
-  useAuth,
-  useDatabase,
-  useHttpClient,
-} from '@/contexts'
+import { AuthProvider, DatabaseProvider, HttpClientProvider, SignInModalProvider } from '@/contexts'
 import { usePageTracking } from '@/hooks/use-analytics'
 import { useAppLanguage } from '@/hooks/use-app-language'
 import { useUnitDefaults } from '@/hooks/use-unit-defaults'
@@ -41,6 +33,7 @@ import { useKeyboardInset } from '@/hooks/use-keyboard-inset'
 import { useViewportLock } from '@/hooks/use-viewport-lock'
 import { useDeviceSessionBinding } from '@/hooks/use-device-session-binding'
 import { useMcpSync } from '@/hooks/use-mcp-sync'
+import { useBootstrapSystemAgents } from '@/hooks/use-bootstrap-system-agents'
 import { PostHogProvider } from '@/lib/posthog'
 import { ThemeProvider } from '@/lib/theme-provider'
 import { AppErrorScreen } from './components/app-error-screen'
@@ -72,9 +65,6 @@ import { useSettings } from './hooks/use-settings'
 import { isSsoMode, isWaitlistBypassed } from './lib/auth-mode'
 import { isTauri } from './lib/platform'
 import { getPowerSyncInstance } from './db/powersync/sync-state'
-import { refreshSystemAgents } from '@/db/seeding/seed-agents'
-import { useLocalSettingsStore } from '@/stores/local-settings-store'
-import { useChatStore } from '@/chats/chat-store'
 import { type ComponentProps, Suspense, lazy, useEffect, useState } from 'react'
 import { markAppMounted } from '@/lib/init-timing'
 import { takeDeviceApprovalReturn } from '@/lib/device-approval-return'
@@ -146,41 +136,6 @@ const preloadAllRouteChunks = () => {
 }
 
 const queryClient = new QueryClient()
-
-/**
- * Hydrate the local-only `agents_system` table from the backend's `/agents`
- * discovery endpoint when the user has a real (non-anonymous) session.
- *
- * Legitimate `useEffect` per CLAUDE.md guidance: synchronizing app state with
- * an external system (the backend) on auth/cloud-URL transitions. There is no
- * render-time computation that could replace this — the fetch must run as a
- * side effect when the gating conditions flip, and PowerSync's reactive query
- * picks up the resulting rows automatically.
- */
-const useBootstrapSystemAgents = () => {
-  const db = useDatabase()
-  const httpClient = useHttpClient()
-  const authClient = useAuth()
-  const { data: session } = authClient.useSession()
-  const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
-
-  const isRealUser = !!session?.user && session.user.isAnonymous !== true
-
-  useEffect(() => {
-    if (!isRealUser || !cloudUrl) {
-      return
-    }
-    void (async () => {
-      const result = await refreshSystemAgents(db, httpClient)
-      if (!result.refreshed) {
-        return
-      }
-      for (const agent of result.wireIdentityChangedAgents) {
-        useChatStore.getState().applyAgentWireIdentityChange(agent)
-      }
-    })()
-  }, [isRealUser, cloudUrl, db, httpClient])
-}
 
 const AppContent = ({ initData }: { initData: InitData }) => {
   useDeviceSessionBinding()

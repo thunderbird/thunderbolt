@@ -96,6 +96,7 @@ const hydrateSessionWith = (
     retriesExhausted: false,
     stopping: false,
     selectedAgent: agent,
+    agentChosenByUser: false,
     selectedModel: mockModel,
     projectId,
     miniAppId: null,

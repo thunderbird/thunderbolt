@@ -342,12 +342,15 @@ export const agentsTable = sqliteTable(
 export const agentsSystemTable = sqliteTable('agents_system', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type', { enum: ['managed-acp'] }).notNull(),
-  transport: text('transport', { enum: ['websocket', 'iroh'] }).notNull(),
+  type: text('type', { enum: ['managed-acp', 'managed-http'] }).notNull(),
+  transport: text('transport', { enum: ['websocket', 'iroh', 'http'] }).notNull(),
   url: text('url').notNull(),
   description: text('description'),
   icon: text('icon'),
   fetchedAt: text('fetched_at').notNull(),
+  /** 1 on the agent the discovery response names as `defaultAgentId`. Null on
+   *  rows written before the column existed, which reads as "not the default". */
+  isDefault: integer('is_default'),
 })
 
 /** Local-only table for ACP agent credentials (synced or system). Never leaves the device. */

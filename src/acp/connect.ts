@@ -8,6 +8,8 @@
  * produces a streaming `Response` shaped for the AI SDK.
  *
  *   - `built-in` → wraps `aiFetchStreamingResponse` (no ACP wire).
+ *   - `managed-http` → posts the chat body to a server-hosted agent that
+ *     already streams the AI SDK UI message protocol (no ACP wire).
  *   - `remote-acp` / `managed-acp` → opens transport + ACP `initialize`.
  *
  * The chat layer caches ONE adapter per agent (see `src/acp/adapter-cache.ts`)
@@ -28,6 +30,7 @@ import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { connectAcpAdapter, type AcpAdapterDeps } from './acp-adapter'
 import type { AcpCommand } from './translators/acp-to-ai-sdk'
 import { createBuiltInAdapter, type BuiltInAdapterOptions } from './built-in-adapter'
+import { createManagedHttpAdapter } from './managed-http-adapter'
 
 /** Connection-scoped context handed to {@link connectToAgent}. Deliberately
  *  carries only what's needed to OPEN a connection — per-thread fields travel
@@ -54,6 +57,9 @@ export const connectToAgent = async (
 ): Promise<AgentAdapter> => {
   if (agent.type === 'built-in') {
     return createBuiltInAdapter(agent, deps)
+  }
+  if (agent.type === 'managed-http') {
+    return createManagedHttpAdapter(agent)
   }
   return connectAcpAdapter(
     agent,

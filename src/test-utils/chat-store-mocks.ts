@@ -194,6 +194,7 @@ export const hydrateStore = (state: {
       retriesExhausted: false,
       stopping: false,
       selectedAgent: builtInAgent,
+      agentChosenByUser: false,
       selectedModel: state.selectedModel ?? defaultTestModel,
       // Mirrors production: a chat's project and originating app both come from
       // its persisted thread.
@@ -225,6 +226,7 @@ export const resetStore = () => {
     getMcpClients: () => [],
     models: [],
     sessions: new Map(),
+    discoveredDefaultAgent: null,
   })
 }
 

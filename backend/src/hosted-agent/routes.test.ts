@@ -75,6 +75,21 @@ const createOverloadedError = () =>
 /** Let a run's `consumeStream` promise settle, which releases the user's in-flight slot. */
 const settleRun = () => Bun.sleep(10)
 
+const fireworksModel = 'accounts/fireworks/models/glm-5p3'
+const fireworksSettings = { agentModel: fireworksModel, fireworksApiKey: 'fireworks-test-key' }
+
+/** A Fireworks chat-completions stream: one reply chunk, then the usage chunk `include_usage` asks for. */
+const createFireworksStream = (usage: { prompt_tokens: number; completion_tokens: number }) => {
+  const chunk = { id: 'c1', object: 'chat.completion.chunk', created: 1, model: fireworksModel }
+  const events = [
+    { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello from GLM' }, finish_reason: null }] },
+    { ...chunk, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+    { ...chunk, choices: [], usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } },
+  ]
+  const body = [...events.map((event) => JSON.stringify(event)), '[DONE]'].map((data) => `data: ${data}\n\n`).join('')
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+}
+
 const chatBody = (messages: unknown[] = [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]) =>
   JSON.stringify({ id: 'chat-1', messages, trigger: 'submit-message' })
 
@@ -140,6 +155,12 @@ describe('createHostedAgentRoutes', () => {
 
   it('refuses to start enabled without ANTHROPIC_API_KEY when no model is injected', () => {
     expect(() => createApp({ model: undefined, settings: { anthropicApiKey: '' } })).toThrow('ANTHROPIC_API_KEY')
+  })
+
+  it('refuses to start enabled with a Fireworks model and no FIREWORKS_API_KEY', () => {
+    expect(() => createApp({ model: undefined, settings: { ...fireworksSettings, fireworksApiKey: '' } })).toThrow(
+      'Fireworks API key not configured: set FIREWORKS_API_KEY',
+    )
   })
 
   it('rejects a CLI session that has not finished device registration', async () => {
@@ -208,6 +229,35 @@ describe('createHostedAgentRoutes', () => {
     expect(String(fetchFn.mock.calls[0][0])).toBe('https://anthropic.test/v1/messages')
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'inference_upstream_attempt', source: 'agent', status: 400 }),
+      'Inference upstream attempt',
+    )
+  })
+
+  it('sends a Fireworks model to the Fireworks API through fetchFn and admits it as Fireworks', async () => {
+    const fetchFn = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ error: { message: 'stub' } }, { status: 400 }),
+    )
+    const app = createApp({
+      model: undefined,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      checkAdmission,
+      recordUsage,
+      logger,
+      settings: { ...fireworksSettings, anthropicApiKey: '' },
+    })
+    await (await postChat(app)).text()
+    await settleRun()
+
+    expect(checkAdmission.mock.calls[0][1]).toEqual({ provider: 'fireworks', model: fireworksModel })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    const [input, init] = fetchFn.mock.calls[0]
+    expect(String(input)).toBe('https://api.fireworks.ai/inference/v1/chat/completions')
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fireworks-test-key')
+    expect(JSON.parse(String(init?.body))).toEqual(
+      expect.objectContaining({ model: fireworksModel, stream_options: { include_usage: true } }),
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'inference_upstream_attempt', provider: 'fireworks', source: 'agent' }),
       'Inference upstream attempt',
     )
   })
@@ -468,6 +518,34 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
         totalTokens: 170,
         // 100 uncached x 1000 + 20 cache writes x 1250 + 40 cache reads x 100 + 10 output x 5000
         costNanoUsd: 179_000n,
+      }),
+    )
+  })
+
+  it('bills a Fireworks run at the seeded Fireworks price', async () => {
+    const fetchFn = mock(async () => createFireworksStream({ prompt_tokens: 100, completion_tokens: 10 }))
+    const app = createApp({
+      database,
+      model: undefined,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      settings: fireworksSettings,
+    })
+
+    const response = await postChat(app)
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('"delta":"Hello from GLM"')
+    await settleRun()
+
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        provider: 'fireworks',
+        model: fireworksModel,
+        promptTokens: 100,
+        completionTokens: 10,
+        // Migration 0033's GLM row: 100 input x 1400 + 10 output x 4400
+        costNanoUsd: 184_000n,
       }),
     )
   })

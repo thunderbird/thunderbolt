@@ -121,7 +121,7 @@ Set a key for each provider you want to fund. The shipped models are listed eith
 | --------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`   | none                              | Anthropic (Claude)                                                                                                     |
 | `ANTHROPIC_BASE_URL`  | `https://api.anthropic.com`       | Anthropic API root, without `/v1`. Leave it alone unless you are pointing the API at a stand-in during testing.        |
-| `FIREWORKS_API_KEY`   | none                              | Accepted but currently unused. No shipped model routes to Fireworks.                                                   |
+| `FIREWORKS_API_KEY`   | none                              | Fireworks. Only the hosted agent uses it, when `AGENT_MODEL` names a Fireworks model.                                  |
 | `TINFOIL_API_KEY`     | none                              | Tinfoil, a confidential tier that runs models inside verified secure hardware, so the provider cannot read the request |
 | `TINFOIL_ENCLAVE_URL` | `https://inference.tinfoil.sh/v1` | Tinfoil endpoint. Keep the `/v1` suffix.                                                                               |
 | `EXA_API_KEY`         | none                              | Exa, used for web search                                                                                               |
@@ -196,7 +196,7 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 
 ### Hosted agent
 
-`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls Anthropic with `ANTHROPIC_API_KEY`. `AGENT_MODEL` must be an Anthropic model with a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The agent has no tools yet.
+`AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls one model upstream. The id in `AGENT_MODEL` picks the provider: a Fireworks id, `accounts/fireworks/models/<name>`, runs on Fireworks with `FIREWORKS_API_KEY`, and any other id runs on Anthropic with `ANTHROPIC_API_KEY`. The API refuses to start when that key is unset. The model also needs a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. Prices ship for the Fireworks models `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`, and for the Anthropic models `claude-opus-5` and `claude-opus-5-5`; any other model needs its own row (see [Models](./models.md#model-prices)). The agent has no tools yet.
 
 The agent is also offered through agent discovery, and the discovery response names it as the default agent unless `ENABLED_AGENTS` excludes it. Excluding `hosted-agent` there hides it from discovery but does not unmount the route, the same as the Haystack route. The app starts honouring the default in an upcoming release.
 
@@ -205,7 +205,7 @@ A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that),
 | Variable                          | Default     | What it does                                                                |
 | --------------------------------- | ----------- | --------------------------------------------------------------------------- |
 | `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.             |
-| `AGENT_MODEL`                     | empty       | Anthropic model the agent uses. Required once the agent is on.              |
+| `AGENT_MODEL`                     | empty       | Model the agent uses; its id picks the provider. Required once on.          |
 | `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run. No effect until MCP tools land.               |
 | `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                |
 | `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call. No effect yet.                |

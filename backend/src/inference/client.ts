@@ -222,7 +222,7 @@ export const createInferenceFetch = ({
 export const getAnthropicV1BaseUrl = (root: string): string => `${root.replace(/\/$/, '')}/v1/`
 
 /** A managed provider called directly with the deployment's own key; tinfoil goes through its enclave instead. */
-type ManagedDirectProvider = Exclude<InferenceProvider, 'tinfoil'>
+export type ManagedDirectProvider = Exclude<InferenceProvider, 'tinfoil'>
 type ManagedProviderSettings = Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'fireworksApiKey'>
 
 const managedProviderEndpoints = {
@@ -245,9 +245,9 @@ const managedProviderEndpoints = {
 
 /**
  * Key, `/v1` API root and instrumented fetch for one managed provider. The OpenAI SDK constructor and the AI
- * SDK provider factories (`createAnthropic`) both take this shape as-is, so every SDK client of a managed
- * provider shares the per-call telemetry of {@link createInferenceFetch} and the `fetchFn` seam. Throws when
- * the provider's key is unset, so a caller that builds its client at startup fails at startup.
+ * SDK provider factories (`createAnthropic`, `createOpenAICompatible`) all take this shape as-is, so every SDK
+ * client of a managed provider shares the per-call telemetry of {@link createInferenceFetch} and the `fetchFn`
+ * seam. Throws when the provider's key is unset, so a caller that builds its client at startup fails at startup.
  */
 export const createManagedProviderConnection = (
   provider: ManagedDirectProvider,

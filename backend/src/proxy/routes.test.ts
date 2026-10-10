@@ -730,6 +730,19 @@ describe('createUniversalProxyRoutes', () => {
     expect(init.decompress).toBe(false)
   })
 
+  it('names the original hostname of each hop as TLS SNI, since the pinned URL carries an IP', async () => {
+    mockFetch
+      .mockImplementationOnce(() =>
+        Promise.resolve(new Response(null, { status: 302, headers: { location: 'https://other.example/next' } })),
+      )
+      .mockImplementationOnce(() => Promise.resolve(makeOkResponse()))
+    await drain(await app.handle(proxyRequest('https://example.com/resource', { method: 'GET' })))
+    const serverNames = (mockFetch.mock.calls as Array<[string, BunFetchRequestInit]>).map(
+      ([, init]) => init.tls?.serverName,
+    )
+    expect(serverNames).toEqual(['example.com', 'other.example'])
+  })
+
   it('forwards upstream `content-encoding` response header to the caller (no longer dropped)', async () => {
     mockFetch.mockImplementationOnce(() =>
       Promise.resolve(

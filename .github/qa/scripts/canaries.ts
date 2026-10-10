@@ -9,8 +9,8 @@ import { parseArgs } from 'node:util'
 import { realAiCharters } from './findings'
 import { type Run, runCommand } from './fix'
 
-/** A recent bug fix whose reversal the canary build carries. `keywords` come from its title. */
-export type Canary = { sha: string; title: string; charter: string; keywords: string[] }
+/** A recent bug fix whose reversal the canary build carries. */
+export type Canary = { sha: string; title: string; charter: string }
 
 const fixTitle = /^fix(\([^)]*\))?!?:\s*/
 /** The explorer's browser (Playwright MCP) cannot swipe, drag or pinch, so fixes for those can never be found. */
@@ -61,25 +61,9 @@ const charterFor = (paths: string[]) => {
   return best.count > 0 ? best.charter : undefined
 }
 
-const stopWords = new Set(['from', 'with', 'when', 'that', 'this', 'into', 'instead', 'than', 'then', 'their'])
-/** Words of four letters or more from a commit title, without its type, scope and PR number. */
-export const titleKeywords = (title: string) => [
-  ...new Set(
-    (
-      title
-        .replace(fixTitle, '')
-        .replace(/\s*\(#\d+\)$/, '')
-        .toLowerCase()
-        .match(/[a-z][a-z-]{3,}/g) ?? []
-    ).filter((w) => !stopWords.has(w)),
-  ),
-]
-
 /** The charter a fix commit with these app paths would join the `picked` canaries under, or why it cannot. */
 const charterOrReason = (paths: string[], picked: Canary[]): { charter: string } | { reason: string } => {
   if (paths.length === 0) return { reason: 'no app code under src/' }
-  const sensitive = paths.find(isSensitive)
-  if (sensitive) return { reason: `sensitive path ${sensitive}` }
   const charter = charterFor(paths)
   if (!charter) return { reason: 'no charter explores these paths' }
   if (picked.some((c) => c.charter === charter)) return { reason: `${charter} already has a canary` }
@@ -91,44 +75,72 @@ const charterOrReason = (paths: string[], picked: Canary[]): { charter: string }
   return { charter }
 }
 
-type SelectOptions = { run?: Run; ref?: string; since?: string; max?: number; log?: (line: string) => void }
+type SelectOptions = {
+  run?: Run
+  ref?: string
+  since?: string
+  max?: number
+  /** Commits chosen by hand: used as they are, with a bad one an error instead of a skip. */
+  only?: string[]
+  log?: (line: string) => void
+}
 
 /**
  * Pick up to `max` recent `fix:` commits on `ref` to revert for the canary build, newest first, and return them with
  * their combined patch, to apply in reverse. A commit qualifies when its app code (`isAppCode`) gets a charter from
  * `charterOrReason` and its reversal applies to the working tree on top of the earlier picks'. Every skip is logged
- * with its reason.
+ * with its reason. With `only`, exactly those commits are tried and the heuristics (title, dependencies, other
+ * runtime code, sensitive paths, age) are bypassed, since a person chose them; any commit that cannot be a canary
+ * throws.
  */
 export const selectCanaries = async ({
   run = runCommand,
   ref = 'origin/main',
   since = '8 weeks ago',
   max = 2,
+  only,
   log = console.log,
 }: SelectOptions = {}) => {
-  const commits = (await run(['git', 'log', ref, `--since=${since}`, '--format=%H%x09%s'])).split('\n').filter(Boolean)
+  if (only && only.length > max) throw new Error(`at most ${max} canaries, got ${only.length}`)
+  const notSha = only?.find((sha) => !/^[0-9a-f]{7,40}$/i.test(sha))
+  if (notSha !== undefined) throw new Error(`not a commit SHA: ${notSha}`)
+  const commits = only
+    ? await Promise.all(only.map((sha) => run(['git', 'log', '-1', '--format=%H%x09%s', sha])))
+    : (await run(['git', 'log', ref, `--since=${since}`, '--format=%H%x09%s'])).split('\n').filter(Boolean)
   const canaries: Canary[] = []
   const patches: string[] = []
   for (const line of commits) {
     if (canaries.length === max) break
-    const [sha, title] = line.split('\t')
-    if (!fixTitle.test(title)) continue
-    if (gestureTitle.test(title)) {
-      log(`skip ${sha.slice(0, 9)} ${title}: the explorer cannot do touch gestures`)
-      continue
+    const [sha, title] = line.trim().split('\t')
+    const skip = (reason: string) => {
+      const message = `skip ${sha.slice(0, 9)} ${title}: ${reason}`
+      if (only) throw new Error(message)
+      log(message)
     }
-    const changed = await run(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', sha])
-    const skip = (reason: string) => log(`skip ${sha.slice(0, 9)} ${title}: ${reason}`)
-    const files = changed.split('\n')
-    if (files.some(isDependencyFile)) {
-      skip('it changes dependencies, which a src-only reversal would leave behind')
-      continue
+    if (!only) {
+      if (!fixTitle.test(title)) continue
+      if (gestureTitle.test(title)) {
+        skip('the explorer cannot do touch gestures')
+        continue
+      }
     }
-    if (files.some(isOtherRuntime)) {
-      skip('it also changes runtime code outside src/, which a src-only reversal would leave behind')
-      continue
-    }
+    const files = (await run(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', sha])).split('\n')
     const paths = files.filter(isAppCode)
+    if (!only) {
+      if (files.some(isDependencyFile)) {
+        skip('it changes dependencies, which a src-only reversal would leave behind')
+        continue
+      }
+      if (files.some(isOtherRuntime)) {
+        skip('it also changes runtime code outside src/, which a src-only reversal would leave behind')
+        continue
+      }
+      const sensitive = paths.find(isSensitive)
+      if (sensitive) {
+        skip(`sensitive path ${sensitive}`)
+        continue
+      }
+    }
     const verdict = charterOrReason(paths, canaries)
     if ('reason' in verdict) {
       skip(verdict.reason)
@@ -144,7 +156,7 @@ export const selectCanaries = async ({
       continue
     }
     const { charter } = verdict
-    canaries.push({ sha, title, charter, keywords: titleKeywords(title) })
+    canaries.push({ sha, title, charter })
     patches.push(patch)
     log(`pick ${sha.slice(0, 9)} ${title}: ${charter}`)
   }
@@ -152,9 +164,12 @@ export const selectCanaries = async ({
 }
 
 if (import.meta.main) {
-  const { values } = parseArgs({ options: { out: { type: 'string' }, patch: { type: 'string' } } })
-  if (!values.out || !values.patch) throw new Error('usage: canaries.ts --out <manifest.json> --patch <file>')
-  const { canaries, patch } = await selectCanaries()
+  const { values } = parseArgs({
+    options: { out: { type: 'string' }, patch: { type: 'string' }, only: { type: 'string' } },
+  })
+  if (!values.out || !values.patch)
+    throw new Error('usage: canaries.ts --out <manifest.json> --patch <file> [--only <sha,...>]')
+  const { canaries, patch } = await selectCanaries({ only: values.only?.split(',').map((sha) => sha.trim()) })
   await writeFile(values.out, JSON.stringify(canaries, null, 2))
   await writeFile(values.patch, patch)
   console.log(`${canaries.length} canar${canaries.length === 1 ? 'y' : 'ies'} selected`)

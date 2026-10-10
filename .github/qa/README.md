@@ -93,9 +93,15 @@ at most two that:
 
 The canary build reverts those fixes. It runs before the legs are planned: if it fails, the run warns, the tree is
 restored and the canary leg is skipped as if nothing qualified, so a bad canary never costs the weekly run. Each one
-gets an explore session with its charter on that build, so at most 2 sessions a week. A canary counts as found only when a finding fails on the canary build, passes on the normal
-build and names a word from the fix's title. The report lists each fix (title, sha, charter, found or missed).
-Canary findings are never filed.
+gets an explore session with its charter on that build, so at most 2 sessions a week. A canary counts as found only when a judge-confirmed finding from its charter fails on the
+canary build and passes on the normal build. The report lists each fix (title, sha, charter, found or missed), and
+"Real bugs seen in the canary leg" lists confirmed findings that still fail on the normal build: real bugs, not
+counted. Canary findings are never filed.
+
+To calibrate by hand, run the workflow with the `canaries` input set to up to two commit SHAs. Those commits are used
+as they are, without the checks above except that each must have a charter, its reversal must apply, and both must use
+the same kind of AI. A commit that cannot be a canary fails the build job instead of being skipped; a canary build
+that fails still only drops the canary leg.
 
 Why real fixes: they are bugs users really hit, nobody tuned the prompts for them, and they rotate by themselves as
 new fixes land. When nothing qualifies, the leg is skipped and the report says so; the build log has one line per
@@ -174,7 +180,7 @@ A filer dry run logs only one line per finding, because the Actions log is publi
 
 ```sh
 git fetch origin main
-bun .github/qa/scripts/canaries.ts --out /tmp/qa-canaries.json --patch /tmp/qa-canary.patch
+bun .github/qa/scripts/canaries.ts --out /tmp/qa-canaries.json --patch /tmp/qa-canary.patch # or --only <sha>[,<sha>]
 rm -rf /tmp/qa-canary && mkdir /tmp/qa-canary && git archive HEAD | tar -x -C /tmp/qa-canary
 ln -s "$PWD/node_modules" /tmp/qa-canary/node_modules
 (cd /tmp/qa-canary && git apply --reverse /tmp/qa-canary.patch)

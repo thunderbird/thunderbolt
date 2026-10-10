@@ -26,6 +26,10 @@ on:
         description: Case id from .github/qa/journeys.json for the free session (empty = this week's)
         type: string
         default: ''
+      canaries:
+        description: Comma-separated commit SHAs to revert as the canaries, at most 2 (empty = pick automatically)
+        type: string
+        default: ''
       autofix:
         description: Let the fix agent attempt confirmed bugs (also needs vars.QA_AUTOFIX_ENABLED)
         type: boolean
@@ -96,6 +100,7 @@ jobs:
 
       - &install-browsers
         name: Install browsers
+        timeout-minutes: 10
         # The repo's Playwright replays specs; the Playwright MCP (pinned in .github/qa/mcp.json) drives its own
         # Chromium.
         run: |
@@ -107,8 +112,10 @@ jobs:
       # failing the run: the canaries are then dropped, so the legs are planned without them.
       - name: Pick the canaries and build them
         id: canaries
+        env:
+          CANARIES: ${{ inputs.canaries }}
         run: |
-          bun .github/qa/scripts/canaries.ts --out "$RUNNER_TEMP/qa-canaries.json" --patch "$RUNNER_TEMP/qa-canary.patch"
+          bun .github/qa/scripts/canaries.ts --out "$RUNNER_TEMP/qa-canaries.json" --patch "$RUNNER_TEMP/qa-canary.patch" ${CANARIES:+--only "$CANARIES"}
           if [ -s "$RUNNER_TEMP/qa-canary.patch" ]; then
             git apply --reverse "$RUNNER_TEMP/qa-canary.patch"
             if ! .github/qa/scripts/stack.sh build qa-dist-canary; then

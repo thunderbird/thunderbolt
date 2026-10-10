@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { isSensitive, selectCanaries, titleKeywords } from './canaries'
+import { isSensitive, selectCanaries } from './canaries'
 import { type Run, runCommand } from './fix'
 
 let dir: string
@@ -64,9 +64,7 @@ describe('selectCanaries', () => {
 
     const { canaries } = await selectCanaries({ run, ref: 'main', log: (line) => log.push(line) })
 
-    expect(canaries).toMatchObject([
-      { title: 'fix(settings): settings again', charter: 'c6-settings-data', keywords: ['settings', 'again'] },
-    ])
+    expect(canaries).toMatchObject([{ title: 'fix(settings): settings again', charter: 'c6-settings-data' }])
     expect(log.map((line) => line.replace(/^(\w+) \w+ /, '$1 '))).toEqual([
       'pick fix(settings): settings again: c6-settings-data',
       'skip fix: skills list sorts: c4-skills-projects needs the other kind of AI than c6-settings-data',
@@ -137,15 +135,31 @@ describe('isSensitive', () => {
   })
 })
 
-describe('titleKeywords', () => {
-  it('drops the type, scope, PR number, short and filler words', () => {
-    expect(titleKeywords("fix(THU-1): honor calendar_id and surface Google's reason with the API (#1329)")).toEqual([
-      'honor',
-      'calendar',
-      'surface',
-      'google',
-      'reason',
-    ])
+describe('selectCanaries with only', () => {
+  const head = async () => (await run(['git', 'rev-parse', 'HEAD'])).trim()
+
+  it('uses exactly the given commits and bypasses the heuristics', async () => {
+    await commit('feat: sensitive chat sync, not a fix', { 'src/sync/chat.ts': 'export const chat = 1\n' })
+    const sha = await head()
+    const { canaries, patch } = await selectCanaries({ run, only: [sha], log: () => {} })
+    expect(canaries).toEqual([{ sha, title: 'feat: sensitive chat sync, not a fix', charter: 'c2-chat-power-user' }])
+    expect(patch).toContain('src/sync/chat.ts')
+  })
+
+  it('throws when the reversal does not apply, the commit is unknown or the picks do not fit', async () => {
+    await commit('fix: theme', { 'src/settings/theme.ts': 'export const theme = 2\n' })
+    const theme = await head()
+    await commit('fix: theme again', { 'src/settings/theme.ts': 'export const theme = 3\n' })
+    const again = await head()
+    await commit('fix: skills', { 'src/skills/list.ts': 'export const list = 2\n' })
+    const skills = await head()
+    await expect(selectCanaries({ run, only: [theme] })).rejects.toThrow('its reversal does not apply')
+    await expect(selectCanaries({ run, only: ['0'.repeat(40)] })).rejects.toThrow()
+    await expect(selectCanaries({ run, only: ['HEAD~1'] })).rejects.toThrow('not a commit SHA')
+    await expect(selectCanaries({ run, only: [again, theme, skills] })).rejects.toThrow('at most 2')
+    await expect(selectCanaries({ run, only: [again, skills], log: () => {} })).rejects.toThrow(
+      'needs the other kind of AI',
+    )
   })
 })
 

@@ -30,11 +30,10 @@ beforeEach(async () => {
 })
 afterEach(() => rm(dir, { recursive: true, force: true }))
 
-const canary = (name: string, charter: string, keywords: string[] = []): Canary => ({
+const canary = (name: string, charter: string): Canary => ({
   sha: name.repeat(40),
   title: `fix: ${name}`,
   charter,
-  keywords,
 })
 
 const modelUsage = {
@@ -233,7 +232,6 @@ describe('renderReport', () => {
           { ...canary('b', 'c2-chat-power-user'), found: false },
         ],
         real: ['c8-phone/7'],
-        unattributed: [],
       },
     })
     expect(report).toContain(
@@ -648,14 +646,10 @@ describe('runSummary', () => {
 })
 
 describe('canaries', () => {
-  const canaries = [
-    canary('a', 'c6-settings-data', ['preferred name']),
-    canary('b', 'c4-skills-projects', ['delet']),
-    canary('c', 'c8-phone', ['subtitle']),
-  ]
-  const finding = (id: string, title: string, area = 'other', type = 'console-error') => ({
+  const canaries = [canary('a', 'c6-settings-data'), canary('b', 'c4-skills-projects'), canary('c', 'c8-phone')]
+  const finding = (id: string, charterDir = 'c8-phone', area = 'other', type = 'console-error') => ({
     ...verifiedFinding(area, type, id),
-    finding: { ...raw(area, type), title },
+    charterDir,
   })
   const droppedOnNormal = (ids: string[], runs = 3): Verified => ({
     ...emptyVerified,
@@ -666,53 +660,34 @@ describe('canaries', () => {
     })),
   })
 
-  it('counts a finding that drops on the normal build and names a keyword, whatever its area and oracle', () => {
-    const result = matchCanaries(
-      canaries,
-      [finding('1', 'Deleting a skill logs an error'), finding('2', 'Row subtitle spills out', 'skills')],
-      droppedOnNormal(['1', '2']),
-    )
-    expect(result.results.map((r) => r.found)).toEqual([false, true, true])
-    expect(result.found).toBe(2)
+  it('counts a finding in the canary charter that drops on the normal build, whatever its area and oracle', () => {
+    const result = matchCanaries(canaries, [finding('1', 'c8-phone', 'skills', 'text-visible')], droppedOnNormal(['1']))
+    expect(result.results.map((r) => r.found)).toEqual([false, false, true])
+    expect(result.found).toBe(1)
   })
 
   it('does not count a bug that also fails on the normal build, and lists it as real', () => {
-    const result = matchCanaries(canaries, [finding('3', 'Long subtitle overflows the bubble')], emptyVerified)
+    const result = matchCanaries(canaries, [finding('3')], emptyVerified)
     expect(result.found).toBe(0)
     expect(result.real).toEqual(['c8-phone/3'])
   })
 
   it('does not trust a baseline from an unhealthy stack', () => {
     const baseline = { ...droppedOnNormal(['1']), stack_unhealthy: 'control failed' }
-    expect(matchCanaries(canaries, [finding('1', 'Delete fails')], baseline)).toMatchObject({
-      found: 0,
-      real: ['c8-phone/1'],
-    })
+    expect(matchCanaries(canaries, [finding('1')], baseline)).toMatchObject({ found: 0, real: ['c8-phone/1'] })
   })
 
   it('does not count a spec that never ran on the normal build', () => {
-    const result = matchCanaries(canaries, [finding('1', 'Deleting a skill logs an error')], droppedOnNormal(['1'], 0))
+    const result = matchCanaries(canaries, [finding('1')], droppedOnNormal(['1'], 0))
     expect(result).toMatchObject({ found: 0, real: ['c8-phone/1'] })
   })
 
-  it('lets one finding find one canary at most', () => {
-    const both = finding('6', 'Deleting a skill leaves its subtitle behind')
-    const result = matchCanaries(canaries, [both], droppedOnNormal(['6']))
-    expect(result.results.map((r) => r.found)).toEqual([false, true, false])
+  it('does not count a canary-caused finding from another charter', () => {
+    const result = matchCanaries(canaries.slice(0, 2), [finding('5')], droppedOnNormal(['5']))
+    expect(result).toMatchObject({ found: 0, real: [] })
   })
 
-  it('matches keywords case-insensitively in steps and actual too', () => {
-    const f = finding('4', 'Something odd')
-    f.finding.steps = ['Type a Preferred Name']
-    expect(matchCanaries(canaries, [f], droppedOnNormal(['4'])).results[0].found).toBe(true)
-  })
-
-  it('reports a canary-caused finding with no keyword as unattributed and does not count it', () => {
-    const result = matchCanaries(canaries, [finding('5', 'Sidebar glitch')], droppedOnNormal(['5']))
-    expect(result).toMatchObject({ found: 0, unattributed: ['c8-phone/5'], real: [] })
-  })
-
-  it('matches the confirmed and flaky canary-leg findings against the baseline and writes canary.json', async () => {
+  it('matches the confirmed canary-leg findings against the baseline and writes canary.json', async () => {
     const baselineDir = join(dir, 'baseline')
     await mkdir(baselineDir)
     await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(droppedOnNormal(['1'])))
@@ -720,8 +695,8 @@ describe('canaries', () => {
       join(dir, 'verified.json'),
       JSON.stringify({
         ...emptyVerified,
-        confirmed: [finding('1', 'Delete skill throws')],
-        flaky: [finding('2', 'Unrelated real bug')],
+        confirmed: [finding('1'), finding('2')],
+        flaky: [finding('3')],
       }),
     )
     const canariesPath = join(dir, 'canaries.json')

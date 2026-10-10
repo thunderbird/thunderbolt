@@ -92,24 +92,17 @@ type CanaryResult = {
   found: number
   total: number
   results: (Canary & { found: boolean })[]
-  /** Broke on the normal build too: real bugs, never counted. */
+  /** Confirmed findings not proven canary-caused (still failing on the normal build): real bugs, never counted. */
   real: string[]
-  /** Caused by a canary but matching no canary's keywords. */
-  unattributed: string[]
 }
 
 const findingId = (f: Pick<FindingFile, 'charterDir' | 'id'>) => `${f.charterDir}/${f.id}`
-const findingText = ({ finding }: FindingFile) =>
-  [finding.title, ...finding.steps, finding.actual].join(' ').toLowerCase()
-
-const mentions = (canary: Canary, f: FindingFile) =>
-  canary.keywords.some((k) => findingText(f).includes(k.toLowerCase()))
 
 /**
- * A canary is found when a canary-leg finding (confirmed or flaky) replays on the normal build without failing, so
- * the reverted fixes caused it, and mentions one of the canary's keywords; one finding finds one canary at most.
- * Area and oracle type are not compared: the explorer files the same bug under different ones. A finding the
- * baseline never ran, or ran on an unhealthy stack, is not proven canary-caused and counts as real.
+ * A canary is found when a judge-confirmed canary-leg finding from the canary's charter replays on the normal build
+ * without failing, so the reverted fixes caused it. Area, oracle type and wording are not compared: the explorer
+ * files the same bug under different ones. A finding the baseline never ran, or ran on an unhealthy stack, is not
+ * proven canary-caused and counts as real.
  */
 export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], baseline: Verified): CanaryResult => {
   const caused = (f: VerifiedFinding) =>
@@ -122,20 +115,12 @@ export const matchCanaries = (canaries: Canary[], findings: VerifiedFinding[], b
         file.replay.runs > 0 &&
         file.replay.failed === 0,
     )
-  const canaryCaused = findings.filter(caused)
-  // ponytail: greedy in canary order, so overlapping keywords can undercount; use a bipartite match if they do.
-  const used = new Set<VerifiedFinding>()
-  const results = canaries.map((c) => {
-    const match = canaryCaused.find((f) => !used.has(f) && mentions(c, f))
-    if (match) used.add(match)
-    return { ...c, found: match !== undefined }
-  })
+  const results = canaries.map((c) => ({ ...c, found: findings.some((f) => f.charterDir === c.charter && caused(f)) }))
   return {
     found: results.filter((r) => r.found).length,
     total: results.length,
     results,
     real: findings.filter((f) => !caused(f)).map(findingId),
-    unattributed: canaryCaused.filter((f) => !canaries.some((c) => mentions(c, f))).map(findingId),
   }
 }
 
@@ -553,7 +538,6 @@ export const renderReport = (input: ReportInput) => {
       ...canary.results.map(
         (r) => `- ${r.found ? 'found' : '**MISSED**'} ${safe(r.title, 150)} (${r.sha.slice(0, 9)}, ${r.charter})`,
       ),
-      `Unattributed canary-caused findings: ${canary.unattributed.join(', ') || 'none'}`,
       `Real bugs seen in the canary leg (not counted): ${canary.real.join(', ') || 'none'}`,
     )
   }
@@ -634,7 +618,7 @@ export const runSummary = async (
 }
 
 /**
- * Canary leg: match its confirmed and flaky findings against the canaries `canaries.ts` picked and the baseline (the
+ * Canary leg: match its confirmed findings against the canaries `canaries.ts` picked and the baseline (the
  * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
  * the canary leg: the file job downloads only the weekly leg's `verified.json`. A dispatch's `charters` list runs only
  * some canary legs; the canaries of the others never ran, so they are left out rather than counted as missed.
@@ -645,7 +629,7 @@ export const runCanary = async (outDir: string, baselineDir: string, canariesPat
   const picked: Canary[] = await Bun.file(canariesPath).json()
   const ran = chartersInput.split(/[ ,]+/).filter(Boolean)
   const canaries = ran.length === 0 ? picked : picked.filter((c) => ran.includes(c.charter))
-  const result = matchCanaries(canaries, [...verified.confirmed, ...verified.flaky], baseline)
+  const result = matchCanaries(canaries, verified.confirmed, baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
   return result
 }

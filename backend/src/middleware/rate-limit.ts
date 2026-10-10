@@ -20,10 +20,11 @@ type RateLimitTier =
   | 'pro'
   | 'auth'
   | 'anonymous-sign-in'
+  | 'captcha-challenge'
   | 'debug-transcript'
   | 'debug-transcript-intake'
-/** Tiers with a hardcoded limit; 'anonymous-sign-in' is configured by the operator. */
-type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in'>
+/** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
+type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'captcha-challenge'>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
@@ -199,6 +200,22 @@ export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: A
     (request) => (isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter),
     settings.trustedProxy,
   )
+}
+
+/**
+ * IP rate limit for the captcha challenge route. Every anonymous sign-in needs one challenge,
+ * so it is sized like the anonymous sign-in limit, in its own bucket so many people behind one
+ * venue NAT never drain the 'auth' tier that OTP and waitlist routes share.
+ */
+export const createCaptchaChallengeIpRateLimit = (
+  database: typeof DbType,
+  settings: IpRateLimitSettings & { captchaChallenge: RateLimitTierConfig },
+) => {
+  if (!settings.enabled) {
+    return new Elysia()
+  }
+  const limiter = createLimiter(database, 'captcha-challenge', settings.captchaChallenge)
+  return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
 }
 
 type RateLimitSet = Parameters<typeof consumeOrReject>[2]

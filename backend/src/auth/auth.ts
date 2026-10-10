@@ -153,7 +153,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
   const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
   const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
-  const captchaVerifier = createCaptchaVerifier(settings)
+  const captchaVerifier = createCaptchaVerifier(settings, database)
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -193,8 +193,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
     // horizontally-scaled deployments. Provides single-instance defence only. The captcha
-    // on anonymous sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once a
-    // provider ships (THU-113).
+    // on anonymous sign-in (CAPTCHA_PROVIDER) is the distributed bot control.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,

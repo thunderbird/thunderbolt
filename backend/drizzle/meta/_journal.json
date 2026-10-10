@@ -253,6 +253,13 @@
       "when": 1791466400765,
       "tag": "0035_seed-anthropic-claude-opus-5-5-price",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791482944983,
+      "tag": "0036_solved_captcha_challenges",
+      "breakpoints": true
     }
   ]
 }

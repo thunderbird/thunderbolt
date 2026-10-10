@@ -200,7 +200,13 @@ const settingsSchema = z
       .positive()
       .default(defaultAnonymousSignInRateLimitWindowSecs),
     // Providers are added together with their verifier (backend/src/auth/captcha.ts).
-    captchaProvider: z.enum(['none']).default('none'),
+    captchaProvider: z.enum(['none', 'altcha']).default('none'),
+    // HMAC key signing ALTCHA challenges; required (32+ characters) when the provider is altcha.
+    captchaSecret: z.string().default(''),
+    // ALTCHA maxnumber: a client tries maxnumber/2 SHA-256 hashes on average, so this trades
+    // bot cost against how long a low-end phone spins before sign-in.
+    captchaDifficulty: z.coerce.number().int().positive().default(100_000),
+    captchaTtlSecs: z.coerce.number().int().positive().default(600),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -258,8 +264,13 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
-    // With 'none' the only accepted provider, this refuses every raised limit while anonymous
-    // auth is on. The captchaProvider check starts mattering once a real provider ships.
+    if (data.captchaProvider === 'altcha' && data.captchaSecret.length < 32) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'CAPTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha',
+        path: ['captchaSecret'],
+      })
+    }
     const anonymousSignInLimitRaised =
       data.anonymousSignInRateLimitMax > defaultAnonymousSignInRateLimitMax ||
       data.anonymousSignInRateLimitWindowSecs < defaultAnonymousSignInRateLimitWindowSecs
@@ -267,7 +278,7 @@ const settingsSchema = z
       ctx.addIssue({
         code: 'custom',
         message:
-          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set (no provider is supported yet; see docs/self-hosting/configuration.md#anonymous-sign-in).',
+          'Raising the anonymous sign-in rate limit (ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX above 10 or ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS below 60) with AUTH_ALLOW_ANONYMOUS=true requires CAPTCHA_PROVIDER to be set. The app cannot complete the altcha captcha yet, so keep the defaults (see docs/self-hosting/configuration.md#anonymous-sign-in).',
         path: ['captchaProvider'],
       })
     }
@@ -502,6 +513,9 @@ const parseSettings = (): Settings => {
     anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
     anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
+    captchaSecret: process.env.CAPTCHA_SECRET || '',
+    captchaDifficulty: process.env.CAPTCHA_DIFFICULTY || undefined,
+    captchaTtlSecs: process.env.CAPTCHA_TTL_SECS || undefined,
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,

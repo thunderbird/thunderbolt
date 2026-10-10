@@ -12,3 +12,7 @@
 - Sync: only the c7 leg has a sync backend (Postgres + PowerSync). On every other leg `/v1/powersync/*` returns 404
   and nothing syncs, so findings that depend on synced data (an empty Settings → Devices list, another device's
   state) are environment artifacts, not bugs.
+- Artifacts: the console shows "Blocked script execution" for an HTML artifact. The inline card runs the
+  artifact's scripts only after the app has settled and the card is on screen (never while it streams), so until
+  then the sandboxed frame blocks them. Intended. An artifact that never renders or never works once it is on
+  screen is still a bug.

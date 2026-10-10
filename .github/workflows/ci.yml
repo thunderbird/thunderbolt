@@ -96,6 +96,8 @@ jobs:
               # gated by the same `i18n:check`. Without these the check never runs
               # on a backend-email-only PR and a stale catalog merges silently.
               - 'backend/src/emails/**'
+              # Also scanned by the email catalog: it authors step-up prose outside a template.
+              - 'backend/src/lib/security-notifications.tsx'
               - 'backend/lingui.config.ts'
             helm:
               - 'deploy/k8s/**'

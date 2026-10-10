@@ -144,6 +144,10 @@ msgstr "{wordCount}/24 語"
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr "⚠ このエクスポートは別のアカウント（{importSourceEmail}）で作成されました。ここにインポートすると、そのデータがお使いのアカウントに混在します。意図している場合のみ確認してください。"
 
+#: src/settings/account/use-delete-account.ts
+msgid "A code was just sent. Wait a moment and try again."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "デバイスが Thunderbolt CLI としてアカウントにサインインしようとしています。ご自身がターミナルで開始した場合のみ承認してください。"
@@ -1125,6 +1129,14 @@ msgstr "新しい並び順を保存できませんでした。"
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Couldn’t send a new code, and the previous one no longer works. Request another."
+#~ msgstr ""
+
+#: src/settings/account/use-delete-account.ts
+msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "{name} のピン留めを解除できませんでした。"
@@ -1258,7 +1270,7 @@ msgstr "{skillName} を削除しますか？"
 msgid "Delete {targetName}?"
 msgstr "{targetName} を削除しますか？"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete account"
 msgstr "アカウントを削除"
 
@@ -1291,7 +1303,7 @@ msgstr "デバイスからデータを削除"
 msgid "Delete Model"
 msgstr "モデルを削除"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete My Account"
 msgstr "アカウントを削除"
 
@@ -1328,19 +1340,19 @@ msgstr "設定済みのモデルからこのモデルを削除しますか？"
 msgid "Delete this project?"
 msgstr "このプロジェクトを削除しますか？"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete Your Account"
 msgstr "アカウントの削除"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete your account?"
 msgstr "アカウントを削除しますか？"
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
-#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "削除しています…"
 
@@ -1743,9 +1755,13 @@ msgstr "{agentName} への接続に失敗しました"
 msgid "Failed to connect to model"
 msgstr "モデルに接続できませんでした"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/use-delete-account.ts
 msgid "Failed to delete account."
 msgstr "アカウントを削除できませんでした。"
+
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Failed to delete your account"
+#~ msgstr ""
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Failed to disconnect integration"
@@ -1787,6 +1803,7 @@ msgstr "MCP サーバーを削除できませんでした"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "確認コードを再送信できませんでした。接続を確認してください。"
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
 msgstr ""
@@ -1844,7 +1861,8 @@ msgstr ""
 msgid "Generate a new phrase"
 msgstr ""
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate new phrase"
 msgstr ""
 
@@ -1853,7 +1871,8 @@ msgid "Generating keys…"
 msgstr "鍵を生成しています…"
 
 #: src/components/chat/inline-artifact-card.tsx
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generating…"
 msgstr "生成中…"
 
@@ -2774,7 +2793,7 @@ msgstr "iroh によるピアツーピア接続 — 接続はチャット開始�
 msgid "Pending approvals"
 msgstr "保留中の承認"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
 msgstr "アカウントと、当社のサーバーおよびこのデバイス上のすべてのデータを完全に削除します。"
 
@@ -3292,6 +3311,7 @@ msgstr "プロバイダーを選択"
 msgid "Select…"
 msgstr "選択…"
 
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
@@ -3730,6 +3750,7 @@ msgstr "モデルをテストしています…"
 msgid "Testing…"
 msgstr "テストしています…"
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "That code is invalid or expired. Check your email and try again."
 msgstr ""
@@ -3972,7 +3993,7 @@ msgstr "スキルを完全に削除します。このスキルを参照してい
 msgid "This will permanently delete this chat."
 msgstr "このチャットが完全に削除されます。"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "設定、チャット履歴、キャッシュされた情報を含む、アカウントと当社のサーバーおよびこのデバイス上のすべてのデータが完全に削除されます。この操作は取り消せません。"
 
@@ -4356,8 +4377,13 @@ msgstr "お客様のデータでモデルを学習させることはありませ
 msgid "We sent a code to <0>{email}</0>"
 msgstr "<0>{email}</0> にコードを送信しました"
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+msgstr ""
+
+#: src/settings/account/delete-account-section.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
 msgstr ""
 
 #: src/waitlist/waitlist-page.tsx

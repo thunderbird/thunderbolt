@@ -69,13 +69,17 @@ const InputOTPSeparator = ({ ...props }: ComponentProps<'div'>) => {
 }
 
 /**
- * The app's standard code-entry slot row (sign-in and waitlist): one square,
- * shrinkable slot per digit of `otpLength`, centered in its container.
- * Render inside an `InputOTP`.
+ * The app's standard code-entry slot row: one square, shrinkable slot per
+ * digit, centered in its container. Render inside an `InputOTP`.
+ *
+ * `length` must match the parent's `maxLength`, or the row renders a different
+ * number of boxes than the field accepts. It defaults to the sign-in
+ * `otpLength`; the step-up dialog passes its own, which tracks a separate
+ * constant (see `stepUpOtpLength`).
  */
-const InputOTPSlots = () => (
+const InputOTPSlots = ({ length = otpLength }: { length?: number }) => (
   <InputOTPGroup className="mx-auto w-fit max-w-full gap-1">
-    {Array.from({ length: otpLength }, (_, i) => (
+    {Array.from({ length }, (_, i) => (
       // w-10.5 (42px) keeps all slots plus gaps within a 320px viewport while
       // staying close to the 44px touch target (`shrink` absorbs the rest).
       // `first:rounded-l-lg last:rounded-r-lg` is required, not redundant: the

@@ -168,6 +168,10 @@ msgstr "{wordCount}/24 mots"
 msgid "⚠ This export was made by a different account ({importSourceEmail}). Importing it here will mix that data into your account. Confirm only if you intend to."
 msgstr "⚠ Cet export a été réalisé par un autre compte ({importSourceEmail}). L'importer ici mélangera ces données avec celles de votre compte. Ne confirmez que si c'est votre intention."
 
+#: src/settings/account/use-delete-account.ts
+msgid "A code was just sent. Wait a moment and try again."
+msgstr ""
+
 #: src/components/device-approval.tsx
 msgid "A device wants to sign in to your account as the Thunderbolt CLI. Only approve if you just started this from your own terminal."
 msgstr "Un appareil souhaite se connecter à votre compte en tant que CLI Thunderbolt. N'approuvez que si vous venez de le lancer vous-même depuis votre terminal."
@@ -1149,6 +1153,14 @@ msgstr "Impossible d'enregistrer le nouvel ordre."
 msgid "Couldn't save: {saveError}"
 msgstr ""
 
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Couldn’t send a new code, and the previous one no longer works. Request another."
+#~ msgstr ""
+
+#: src/settings/account/use-delete-account.ts
+msgid "Couldn’t send a new code. Your previous code may no longer work — request another."
+msgstr ""
+
 #: src/components/chat/chat-skills-bar.tsx
 msgid "Couldn't unpin {name}."
 msgstr "Impossible de désépingler {name}."
@@ -1282,7 +1294,7 @@ msgstr "Supprimer {skillName} ?"
 msgid "Delete {targetName}?"
 msgstr "Supprimer {targetName} ?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete account"
 msgstr "Supprimer le compte"
 
@@ -1315,7 +1327,7 @@ msgstr "Supprimer les données de l'appareil"
 msgid "Delete Model"
 msgstr "Supprimer le modèle"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete My Account"
 msgstr "Supprimer mon compte"
 
@@ -1352,19 +1364,19 @@ msgstr "Supprimer ce modèle de vos modèles configurés ?"
 msgid "Delete this project?"
 msgstr "Supprimer ce projet ?"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete Your Account"
 msgstr "Supprimer votre compte"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Delete your account?"
 msgstr "Supprimer votre compte ?"
 
 #: src/components/logout-modal.tsx
 #: src/components/revoked-device-modal.tsx
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
-#: src/settings/preferences.tsx
 msgid "Deleting…"
 msgstr "Suppression…"
 
@@ -1767,9 +1779,13 @@ msgstr "Échec de la connexion à {agentName}"
 msgid "Failed to connect to model"
 msgstr "Échec de la connexion au modèle"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/use-delete-account.ts
 msgid "Failed to delete account."
 msgstr "Impossible de supprimer le compte."
+
+#: src/settings/account/use-delete-account.ts
+#~ msgid "Failed to delete your account"
+#~ msgstr ""
 
 #: src/settings/connections/use-integrations-controller.tsx
 msgid "Failed to disconnect integration"
@@ -1811,6 +1827,7 @@ msgstr "Impossible de supprimer le serveur MCP"
 msgid "Failed to resend verification code. Please check your connection."
 msgstr "Impossible de renvoyer le code de vérification. Veuillez vérifier votre connexion."
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "Failed to send the verification code"
 msgstr ""
@@ -1868,7 +1885,8 @@ msgstr ""
 msgid "Generate a new phrase"
 msgstr ""
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generate new phrase"
 msgstr ""
 
@@ -1877,7 +1895,8 @@ msgid "Generating keys…"
 msgstr "Génération des clés…"
 
 #: src/components/chat/inline-artifact-card.tsx
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Generating…"
 msgstr "Génération…"
 
@@ -2798,7 +2817,7 @@ msgstr "Pair à pair via iroh — la connexion est vérifiée au démarrage d'un
 msgid "Pending approvals"
 msgstr "Approbations en attente"
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "Permanently delete your account and all data on our servers and this device."
 msgstr "Supprime définitivement votre compte et toutes vos données sur nos serveurs et sur cet appareil."
 
@@ -3316,6 +3335,7 @@ msgstr "Sélectionner un fournisseur"
 msgid "Select…"
 msgstr "Sélectionner…"
 
+#: src/settings/account/delete-account-section.tsx
 #: src/settings/encryption/change-recovery-key-section.tsx
 msgid "Send code"
 msgstr ""
@@ -3754,6 +3774,7 @@ msgstr "Test du modèle…"
 msgid "Testing…"
 msgstr "Test…"
 
+#: src/settings/account/use-delete-account.ts
 #: src/settings/encryption/use-change-recovery-key.ts
 msgid "That code is invalid or expired. Check your email and try again."
 msgstr ""
@@ -3996,7 +4017,7 @@ msgstr "Cela supprimera définitivement la compétence. Les autres compétences 
 msgid "This will permanently delete this chat."
 msgstr "Cela supprimera définitivement cette conversation."
 
-#: src/settings/preferences.tsx
+#: src/settings/account/delete-account-section.tsx
 msgid "This will permanently delete your account and all of your data on our servers and on this device, including settings, chat history, and cached information. This action cannot be undone."
 msgstr "Cela supprimera définitivement votre compte et toutes vos données sur nos serveurs et sur cet appareil, y compris les paramètres, l'historique des conversations et les informations en cache. Cette action est irréversible."
 
@@ -4380,8 +4401,13 @@ msgstr "Nous n'entraînons pas de modèles sur vos données."
 msgid "We sent a code to <0>{email}</0>"
 msgstr "Nous avons envoyé un code à <0>{email}</0>"
 
-#: src/components/step-up-code-dialog.tsx
+#: src/components/unsaved-recovery-phrase-prompt.tsx
+#: src/settings/encryption/change-recovery-key-section.tsx
 msgid "We sent an 8-digit code to your account email. Enter it to generate your new recovery phrase."
+msgstr ""
+
+#: src/settings/account/delete-account-section.tsx
+msgid "We sent an 8-digit code to your account email. Enter it to permanently delete your account."
 msgstr ""
 
 #: src/waitlist/waitlist-page.tsx

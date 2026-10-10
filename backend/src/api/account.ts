@@ -24,11 +24,33 @@ import {
 import { user as userTable } from '@/db/auth-schema'
 import type { db as DbType, QueryableDatabase } from '@/db/client'
 import { cliRegistrationPendingDeviceId, linkCliSessionToDevice } from '@/dal/sessions'
+import { resolveEmailLocale } from '@/emails/i18n'
 import { verifyChallengeSignature } from '@/lib/canary'
+import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
+import type { StepUpAction } from '@/lib/step-up-otp'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import { challengeOperations } from '@shared/e2ee-types'
 import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+import { burnStepUpCode, requireStepUpCode, sendStepUpCode } from './step-up'
+
+/** Hardcoded at module scope so a client can never pick what its step-up code buys. */
+const stepUpAction = 'account-deletion' satisfies StepUpAction
+
+/**
+ * Anonymous accounts carry a synthetic address (`temp@<id>.com`), so no code can
+ * reach their owner. Deletion is refused rather than left ungated; the UI only
+ * offers it to real accounts, and an anonymous row is removed when its user
+ * links a real account.
+ */
+const isAnonymousUser = (user: { isAnonymous?: boolean | null }): boolean => user.isAnonymous === true
+
+const anonymousRefusal = {
+  status: 403,
+  body: { error: 'Anonymous accounts cannot be deleted', code: 'anonymous_account' },
+} as const
+
+const unknownDeviceName = 'Unknown device'
 
 /** Elysia schema for the shared ChallengeProof request DTO. */
 const proofSchema = t.Object({
@@ -43,6 +65,7 @@ class PersistedSessionInvalidError extends Error {}
 
 type AccountRouteDependencies = {
   linkCliSessionToDevice?: typeof linkCliSessionToDevice
+  notifications?: SecurityNotifications
 }
 
 /** Extract and verify the raw Better Auth token from a signed Authorization bearer. */
@@ -80,8 +103,28 @@ export const createAccountRoutes = (
   auth: Auth,
   settings: Settings,
   database: typeof DbType,
-  { linkCliSessionToDevice: bindSessionToDevice = linkCliSessionToDevice }: AccountRouteDependencies = {},
+  {
+    linkCliSessionToDevice: bindSessionToDevice = linkCliSessionToDevice,
+    notifications = securityNotifications,
+  }: AccountRouteDependencies = {},
 ) => {
+  /**
+   * Display-only name for the step-up email, read from the session's bound
+   * device. Never from an `X-Device-Name` header: that is an unauthenticated
+   * claim, and it would let a session-only attacker choose prose in the
+   * owner's inbox.
+   */
+  const callerDeviceName = async (deviceId: string | null | undefined, userId: string): Promise<string> => {
+    if (!deviceId) {
+      return unknownDeviceName
+    }
+    const device = await getDeviceById(database, deviceId)
+    if (!device || device.userId !== userId || device.revokedAt != null) {
+      return unknownDeviceName
+    }
+    return device.name ?? unknownDeviceName
+  }
+
   const { betterAuthSecret, cliDeviceRegistrationEnabled } = settings
 
   return new Elysia({ prefix: '/account' })
@@ -335,14 +378,53 @@ export const createAccountRoutes = (
         }),
       },
     )
+    .post(
+      '/deletion/step-up/request',
+      async ({ request, set, user, session }) => {
+        if (isAnonymousUser(user)) {
+          set.status = anonymousRefusal.status
+          return anonymousRefusal.body
+        }
+        // Session-gated only. Trust is NOT required: `trusted` is granted when an
+        // encryption envelope is stored, so an account that never set up E2EE has
+        // no trusted device and would be unable to delete itself.
+        const cooldown = await sendStepUpCode(database, notifications, stepUpAction, {
+          email: user.email,
+          deviceName: await callerDeviceName(session.deviceId, user.id),
+          locale: resolveEmailLocale(request.headers.get('X-App-Language')),
+        })
+        if (cooldown) {
+          set.status = cooldown.status
+          return cooldown.body
+        }
+        return { ok: true as const }
+      },
+      { auth: true },
+    )
     .delete(
       '/',
-      async ({ set, user }) => {
+      async ({ body, set, user }) => {
+        if (isAnonymousUser(user)) {
+          set.status = anonymousRefusal.status
+          return anonymousRefusal.body
+        }
+        const refusal = await requireStepUpCode(database, stepUpAction, user.email, body?.stepUpOtp)
+        if (refusal) {
+          set.status = refusal.status
+          return refusal.body
+        }
+
         // tables have cascade delete on user_id and they will be deleted automatically
         await deleteUser(database, user.id)
+        await burnStepUpCode(database, stepUpAction, user.email)
 
         set.status = 204
       },
-      { auth: true },
+      {
+        auth: true,
+        // Optional so a bodyless DELETE still reaches the handler and gets the
+        // 403 it deserves; a required object would 422 before it runs.
+        body: t.Optional(t.Object({ stepUpOtp: t.Optional(t.String({ minLength: 1, maxLength: 64 })) })),
+      },
     )
 }

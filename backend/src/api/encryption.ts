@@ -47,7 +47,8 @@ import { BadRequestError, ForbiddenError } from '@/errors/http-errors'
 import { verifyChallengeSignature, verifyPossessionProof } from '@/lib/canary'
 import { sealBindNonce } from '@/lib/device-bind'
 import { securityNotifications, type SecurityNotifications } from '@/lib/security-notifications'
-import { consumeStepUpOtp, requestStepUpOtp, verifyStepUpOtp } from '@/lib/step-up-otp'
+import type { StepUpAction } from '@/lib/step-up-otp'
+import { burnStepUpCode, requireStepUpCode, sendStepUpCode, stepUpRequiredMessage } from './step-up'
 import { resolveEmailLocale } from '@/emails/i18n'
 import { safeErrorHandler } from '@/middleware/error-handling'
 import {
@@ -63,6 +64,9 @@ import {
 } from '@shared/e2ee-types'
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
+
+/** Hardcoded at module scope so a client can never pick what its step-up code buys. */
+const stepUpAction = 'recovery-phrase-change' satisfies StepUpAction
 
 /**
  * Upper bound on keyring rows carried in one request. The keyring grows by one
@@ -434,20 +438,15 @@ export const createEncryptionRoutes = (
           return { error: 'Only trusted devices can request a step-up code' }
         }
         try {
-          // The cooldown is enforced inside the mint's transaction, against the
-          // outstanding row's own `createdAt` — shared across replicas and
-          // atomic. See `requestStepUpOtp`.
-          const stepUp = await requestStepUpOtp(database, sessionUser!.email)
-          if (stepUp.status === 'cooling-down') {
-            set.status = 429
-            return { error: 'A code was just sent — wait a moment before requesting another' }
-          }
-          await notifications.sendStepUpCode({
+          const cooldown = await sendStepUpCode(database, notifications, stepUpAction, {
             email: sessionUser!.email,
-            code: stepUp.code,
             deviceName: caller.device.name ?? 'Unknown device',
             locale: resolveEmailLocale(request.headers.get('X-App-Language')),
           })
+          if (cooldown) {
+            set.status = cooldown.status
+            return cooldown.body
+          }
           return { ok: true as const }
         } catch (err) {
           return mapEncryptionError(err, set)
@@ -1138,22 +1137,11 @@ export const createEncryptionRoutes = (
           (storedMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
             storedMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
         if (recoveryChanged) {
-          if (!body.stepUpOtp) {
-            set.status = 403
-            return { error: 'Step-up verification required to change the recovery phrase', code: 'step_up_required' }
-          }
           // Session email, never client input — see the step-up note above.
-          //
-          // The verdict covers every way a code can be refused; a storage
-          // failure throws instead, so an outage stays a 500 rather than
-          // telling a user their code was wrong and walking them into
-          // spending their remaining attempts on it. All four rejections
-          // collapse to one response: distinguishing them would tell an
-          // attacker holding only the session whether a code is outstanding.
-          const verdict = await verifyStepUpOtp(database, sessionUser!.email, body.stepUpOtp)
-          if (verdict !== 'valid') {
-            set.status = 403
-            return { error: 'Invalid or expired verification code', code: 'step_up_invalid' }
+          const refusal = await requireStepUpCode(database, stepUpAction, sessionUser!.email, body.stepUpOtp)
+          if (refusal) {
+            set.status = refusal.status
+            return refusal.body
           }
         }
 
@@ -1222,7 +1210,7 @@ export const createEncryptionRoutes = (
               (txMetadata.recoveryEcdhPublicKey !== body.recoveryEcdhPublicKey ||
                 txMetadata.recoveryMlkemPublicKey !== body.recoveryMlkemPublicKey)
             if (txRecoveryChanged && !recoveryChanged) {
-              throw new ForbiddenError('Step-up verification required to change the recovery phrase')
+              throw new ForbiddenError(stepUpRequiredMessage[stepUpAction])
             }
 
             // The org envelope wraps the NEW AK — replaced atomically with the rotation.
@@ -1246,13 +1234,7 @@ export const createEncryptionRoutes = (
           })
 
           if (recoveryChanged) {
-            // Consume the code only after the commit, so a rotation that failed
-            // midway stays retryable with the same code. A failed delete leaves
-            // the code valid until its own expiry for the inbox holder only —
-            // log, never fail a committed rotation over it.
-            await consumeStepUpOtp(database, sessionUser!.email).catch((err) =>
-              console.error('[step-up] failed to consume verification code:', err),
-            )
+            await burnStepUpCode(database, stepUpAction, sessionUser!.email)
             notifyBestEffort(
               'recovery-phrase-changed',
               notifications.sendRecoveryPhraseChanged({

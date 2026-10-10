@@ -3,6 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+// Bun resolves a bare `buffer` to its own builtin; the subpath loads the npm polyfill browsers get.
+import { Buffer as BufferPolyfill } from 'buffer/index.js'
 import { decodeWsBearer, encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from './ws-bearer'
 
 describe('ws-bearer carrier subprotocol', () => {
@@ -33,5 +35,20 @@ describe('ws-bearer codec', () => {
 
   it('decodeWsBearer returns null for empty input', () => {
     expect(decodeWsBearer('')).toBeNull()
+  })
+
+  // The in-browser agent installs the npm `buffer` polyfill as `globalThis.Buffer`.
+  // It has no `base64url` encoding, so a codec that trusts `typeof Buffer` throws there.
+  it('works when the npm buffer polyfill is the global Buffer', () => {
+    expect(BufferPolyfill.isEncoding('base64url')).toBe(false)
+    const scope: { Buffer?: unknown } = globalThis
+    const runtimeBuffer = scope.Buffer
+    scope.Buffer = BufferPolyfill
+    try {
+      const bearer = 'aBcD1234ef.gh+IJ/klMNop=='
+      expect(decodeWsBearer(encodeWsBearer(bearer))).toBe(bearer)
+    } finally {
+      scope.Buffer = runtimeBuffer
+    }
   })
 })

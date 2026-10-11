@@ -4,6 +4,7 @@
 
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
+import { createRejectingRateLimit } from '@/test-utils/rate-limit'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { Elysia } from 'elysia'
 import { createUniversalProxyRoutes } from './routes'
@@ -617,18 +618,12 @@ describe('createUniversalProxyRoutes', () => {
   // ---------------------------------------------------------------------------
 
   it('returns 429 when rate limit is exceeded', async () => {
-    const rateLimitPlugin = new Elysia()
-      .onBeforeHandle(({ set }) => {
-        set.status = 429
-        set.headers['Retry-After'] = '60'
-        return { error: 'Too many requests' }
-      })
-      .as('scoped')
+    const { rateLimit } = createRejectingRateLimit()
     const rateLimitedApp = new Elysia().use(
       createUniversalProxyRoutes({
         auth: fakeAuth,
         fetchFn: mockFetch as unknown as typeof fetch,
-        rateLimit: rateLimitPlugin,
+        rateLimit,
         dnsLookup: mockDnsLookup,
       }),
     )

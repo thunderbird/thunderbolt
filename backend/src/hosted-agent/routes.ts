@@ -4,16 +4,10 @@
 
 import type { Auth } from '@/auth/elysia-plugin'
 import type { Settings } from '@/config/settings'
-import { createManagedProviderConnection } from '@/inference/client'
 import { admitManagedRequest, createUsageCallbacks, recordLanguageModelUsage } from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import { streamingResponseHeaders } from '@/inference/routes'
-import type {
-  checkManagedInferenceAdmission,
-  InferenceDatabase,
-  ManagedInferenceIdentity,
-  recordInferenceUsage,
-} from '@/inference/usage-ledger'
+import type { checkManagedInferenceAdmission, InferenceDatabase, recordInferenceUsage } from '@/inference/usage-ledger'
 import {
   createErrorResponse,
   getSafeErrorMessage,
@@ -22,16 +16,16 @@ import {
 } from '@/middleware/error-handling'
 import { registerAgentProvider } from '@/agents'
 import { readBoundedJson } from '@/utils/request-body'
-import { createAnthropic } from '@ai-sdk/anthropic'
 import { APICallError, convertToModelMessages, RetryError, streamText, type LanguageModel } from 'ai'
 import { Elysia, type AnyElysia } from 'elysia'
 import type { Logger } from 'pino'
 import { parseAgentChatRequest } from './history'
+import { createAgentModel, getAgentIdentity, getAgentRequestHeaders } from './model'
 import { createHostedAgentProvider } from './provider'
 
 /** Longest reply per run. Generous for chat, and it bounds the worst-case cost of a single run. */
 export const agentMaxOutputTokens = 8192
-/** Largest request body. Comfortably fits a long conversation with a few inline images. */
+/** Largest request body. Comfortably fits a long text conversation. */
 export const maxRequestBytes = 2_000_000
 /** Longest a run may take upstream. It bounds how long a hung provider can hold a user's in-flight slot. */
 export const agentUpstreamTimeoutMs = 120_000
@@ -44,7 +38,7 @@ export type CreateHostedAgentRoutesOptions = {
   fetchFn?: typeof fetch
   logger?: Pick<Logger, 'error' | 'info'>
   rateLimit?: AnyElysia
-  /** Defaults to `AGENT_MODEL` on the managed Anthropic key. */
+  /** Defaults to `AGENT_MODEL` on the managed key of its provider (see `getAgentIdentity`). */
   model?: LanguageModel
   checkAdmission?: typeof checkManagedInferenceAdmission
   recordUsage?: typeof recordInferenceUsage
@@ -81,14 +75,10 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
   }
 
   const upstreamTimeoutMs = options.upstreamTimeoutMs ?? agentUpstreamTimeoutMs
-  const identity: ManagedInferenceIdentity = { provider: 'anthropic', model: settings.agentModel }
+  const identity = getAgentIdentity(settings.agentModel)
   const system = settings.agentSystemPrompt || undefined
-  // Built here, at startup, so an unset ANTHROPIC_API_KEY fails the boot rather than the first request.
-  const model =
-    options.model ??
-    createAnthropic(createManagedProviderConnection('anthropic', settings, { fetchFn, logger, source: 'agent' }))(
-      settings.agentModel,
-    )
+  // Built at startup so an unset provider key fails the boot (see `createManagedProviderConnection`).
+  const model = options.model ?? createAgentModel(identity, settings, { fetchFn, logger })
   // Admission only sees settled ledger rows, so concurrent runs would each be admitted at the same spend.
   // One run per user closes that gap. The set is per process, which is sufficient while the agent runs
   // as a single instance; a multi-instance deployment needs a shared lock.
@@ -101,6 +91,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         auth,
         database,
         cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        allowPersonalAccessTokens: true,
         rateLimit,
       }),
     )
@@ -175,6 +166,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           model,
           system,
           messages,
+          headers: getAgentRequestHeaders(identity, userId),
           maxOutputTokens: agentMaxOutputTokens,
           timeout: { totalMs: upstreamTimeoutMs },
           onFinish: ({ totalUsage }) => recordLanguageModelUsage(usageCallbacks, totalUsage),
@@ -198,7 +190,11 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         // Taken only now, right before the run that releases it, so nothing in between can leave the slot held.
         usersWithRunInFlight.add(userId)
         void runToCompletion()
-        return result.toUIMessageStreamResponse({ headers: streamingResponseHeaders(ctx.set.headers) })
+        // Reasoning stays server-side: it can paraphrase the system prompt, and anonymous visitors read the stream.
+        return result.toUIMessageStreamResponse({
+          headers: streamingResponseHeaders(ctx.set.headers),
+          sendReasoning: false,
+        })
       },
       // The handler reads the raw stream itself under a byte cap.
       { parse: 'none' },

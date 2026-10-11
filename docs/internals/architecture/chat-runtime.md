@@ -36,23 +36,23 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    prewarm the built-in agent, return. Otherwise one `Promise.all` for messages,
    models, agents and trigger data, then `createSession`. Agent fallback chain
    (`resolveSessionAgent`, `src/chats/resolve-session-agent.ts`):
-   thread `agentId` → `selected_agent` setting → the agent discovery names as
-   default (`agents_system.is_default`) → first available agent → `builtInAgent`,
-   so a deliberate pick wins, a first-time visitor lands on the default, and
-   `disableBuiltInAgent` deployments and deleted custom agents degrade quietly.
-   Discovery can finish while a new chat is hydrating or after it has resolved
-   its agent, as on a first visit. `applyDiscoveredDefaultAgent` keeps the
-   default in the chat store, which hydration reads after its last await, and
-   moves chats with no thread row and no messages onto it, except a chat whose
-   agent the user picked (`agentChosenByUser`) or that is already on the
-   `selected_agent` agent. When discovery stops naming a default (a 401/403, or
-   none named), `clearDiscoveredDefaultAgent` forgets it and sends unstarted,
-   unpicked chats still on it, or on an agent no longer listed, back through
-   `resolveSessionAgent`.
+   thread `agentId` → `selected_agent` setting → the built-in when
+   `selected_model` is set (a model pick is a built-in pick) → the agent
+   discovery names as default (`agents_system.is_default`, brand-new chats
+   only) → first available agent → `builtInAgent`, so a deliberate choice wins,
+   a first-time visitor lands on the default, and `disableBuiltInAgent`
+   deployments and deleted custom agents degrade quietly. Discovery can finish
+   while a new chat is hydrating or after it has resolved its agent, as on a
+   first visit. `applyDiscoveredDefaultAgent` keeps the default (or its
+   absence, after a 401/403) in the chat store, which hydration reads after its
+   last await, and re-runs `resolveSessionAgent` against the refreshed agent
+   list for chats with no thread row, no messages, and no agent or model the
+   user picked in them (`agentChosenByUser`).
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality
-   mismatches `chatThread.isEncrypted`, stamp `modelId` and debug-transcript
+   mismatches `chatThread.isEncrypted` (skipped for the hosted agent, which
+   ignores the model and whose threads are created with `isEncrypted` 0), stamp `modelId` and debug-transcript
    metadata on the message, emit `chat_send_prompt`.
 3. **Transport.** One `DefaultChatTransport({ fetch: customFetch })`, where
    `customFetch` is `createAgentRoutingFetch`. Every send, every agent type.
@@ -68,7 +68,8 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    `customFetch` puts `/slug` skill instructions and the project prompt section
    on the context. The built-in pipeline injects both itself in
    `src/ai/fetch.ts`, and ACP has no system channel. The project lookup is gated
-   on `session.projectId`.
+   on `session.projectId`. The hosted agent (`managed-http`) does not send
+   either yet, so skills and project instructions have no effect on it.
 7. **Spend a request.** `turnBudget.tryConsumeRequest()` gates the call; denial
    throws the sentinel from `createTurnBudgetExhaustedError`, named
    `TurnBudgetExhaustedError` so both consuming layers classify it alike.

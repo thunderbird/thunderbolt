@@ -3755,6 +3755,14 @@ msgid "The agent connection was lost during the previous turn. Retrying may repe
 msgstr ""
 
 #: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Try again in a minute."
+msgstr ""
+
+#: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+msgstr ""
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr ""
 
@@ -4603,6 +4611,10 @@ msgstr ""
 
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
+msgstr ""
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Your deployment's server"
 msgstr ""
 
 #: src/app.tsx

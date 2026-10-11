@@ -20,7 +20,8 @@ import {
   saveMessagesWithContextUpdate,
   saveStreamingAssistantMessage,
 } from '@/dal'
-import { systemRowToAgent } from '@/dal/agents'
+import { customRowToAgent, systemRowToAgent } from '@/dal/agents'
+import { isHostedAgent } from '@/defaults/agents'
 import { getOrCreateChatThread, updateChatThread } from '@/dal/chat-threads'
 import { selectBuiltInAgentEnabled, useConfigStore } from '@/api/config-store'
 import { markChatReady } from '@/lib/init-timing'
@@ -142,6 +143,9 @@ export const useHydrateChatStore = ({
       // on this first save, so both must ride the session to reach it.
       projectId: session.projectId,
       miniAppId: session.miniAppId,
+      // The hosted agent sends the chat to the backend unencrypted, so its threads
+      // are never private chats, whatever the (unused) selected model is.
+      isEncrypted: isHostedAgent(session.selectedAgent) ? 0 : undefined,
     })
 
     // Save messages and update context size using DAL
@@ -232,31 +236,22 @@ export const useHydrateChatStore = ({
     // Respect the deployment's `disableBuiltInAgent` flag so the resolved agent
     // and the dropdown agree on whether the built-in exists.
     const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
-    const allAgents = composeAllAgents(
-      systemAgentRows.map(systemRowToAgent),
-      customAgentRows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        type: row.type,
-        transport: row.transport,
-        url: row.url,
-        description: row.description,
-        icon: row.icon,
-        isSystem: 0 as const,
-        enabled: row.enabled === 1 ? (1 as const) : (0 as const),
-        deletedAt: row.deletedAt,
-        userId: row.userId,
-      })),
-      { includeBuiltIn },
-    )
-    // Read after the last await so nothing can land between this and `createSession`.
-    // The store copy covers discovery that wrote its rows after `getAllSystemAgents` read them.
+    const allAgents = composeAllAgents(systemAgentRows.map(systemRowToAgent), customAgentRows.map(customRowToAgent), {
+      includeBuiltIn,
+    })
+    // Only a brand-new chat takes the discovered default; a persisted thread with
+    // no agent of its own stays on the fallback chain. Read after the last await
+    // so nothing can land between this and `createSession`. The store copy covers
+    // discovery that wrote its rows after `getAllSystemAgents` read them.
     const discoveredDefaultRowId = systemAgentRows.find((row) => row.isDefault === 1)?.id
-    const discoveredDefaultAgent =
-      useChatStore.getState().discoveredDefaultAgent ?? allAgents.find((agent) => agent.id === discoveredDefaultRowId)
+    const discoveredDefaultAgent = chatThread
+      ? undefined
+      : (useChatStore.getState().discoveredDefaultAgent ??
+        allAgents.find((agent) => agent.id === discoveredDefaultRowId))
     const selectedAgent = resolveSessionAgent(allAgents, {
       threadAgentId: chatThread?.agentId,
       lastUsedAgentId: settings.selectedAgent,
+      hasModelPick: !!settings.selectedModel,
       discoveredDefaultAgent,
     })
 

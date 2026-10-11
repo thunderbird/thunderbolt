@@ -15,7 +15,7 @@ import { setDebugTranscriptCaptureEnabled } from '@/debug-transcript/recorder'
 import { builtInAgent } from '@/defaults/agents'
 import type { HttpClient } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
-import { createMockChatInstance, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
+import { createMockChatInstance, createMockChatThread, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { getClock } from '@/testing-library'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter, AgentAdapterContext } from '@/types/acp'
@@ -805,6 +805,30 @@ describe('createChatInstance — retry policy', () => {
     }
   })
 
+  it('retries a hosted-agent turn refused for a run in progress, after a longer delay', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0.5)
+    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
+    const { finishWithError, regenerate } = createRetryHarness()
+    const runInProgress = JSON.stringify({
+      error: JSON.stringify({ error: { code: 'AGENT_RUN_IN_PROGRESS' } }),
+      status: 429,
+      kind: 'rate-limit',
+    })
+
+    try {
+      await finishWithError(new Error(runInProgress))
+      await getClock().tickAsync(9_999)
+      expect(regenerate).not.toHaveBeenCalled()
+
+      await getClock().tickAsync(1)
+      expect(regenerate).toHaveBeenCalledTimes(1)
+      expect(useChatStore.getState().sessions.get(sessionId)!.retryCount).toBe(1)
+    } finally {
+      random.mockRestore()
+      errorLog.mockRestore()
+    }
+  })
+
   it('manual regenerate resets the turn budget', async () => {
     const { getTurnBudget, instance, regenerate, wakeAdapterReconnect } = createRetryHarness()
     const exhaustedBudget = exhaustTurnBudget(getTurnBudget())
@@ -816,6 +840,27 @@ describe('createChatInstance — retry policy', () => {
     expect(getTurnBudget().consumer.tryConsumeRequest()).toBe(true)
     expect(regenerate).toHaveBeenCalledTimes(1)
     expect(wakeAdapterReconnect).toHaveBeenCalledWith(builtInAgent.id)
+  })
+
+  it.each([
+    ['the built-in agent', builtInAgent, true],
+    ['the hosted agent, which ignores the selected model', { ...builtInAgent, type: 'managed-http' } as Agent, false],
+  ])("enforces a private chat's model lock for %s: %p", async (_label, agent, enforced) => {
+    const { instance, sendMessage } = createRetryHarness()
+    useChatStore.getState().updateSession(sessionId, {
+      selectedAgent: agent,
+      chatThread: createMockChatThread({ id: sessionId, isEncrypted: 1 }),
+    })
+
+    const sending = instance.sendMessage({ text: 'hi' })
+
+    if (enforced) {
+      await expect(sending).rejects.toThrow('This model is not available for encrypted conversations.')
+      expect(sendMessage).not.toHaveBeenCalled()
+    } else {
+      await sending
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    }
   })
 
   it('throws the friendly guard (not a TypeError) when a turn starts with no selected model', async () => {

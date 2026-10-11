@@ -79,10 +79,10 @@ export const getChatThread = async (db: AnyDrizzleDatabase, id: string): Promise
 export const createChatThread = async (
   db: AnyDrizzleDatabase,
   data: Pick<ChatThread, 'contextSize' | 'id' | 'title' | 'triggeredBy' | 'wasTriggeredByAutomation'> &
-    ChatThreadOrigin & { agentId?: string | null },
+    ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 },
   model: Model,
 ): Promise<void> => {
-  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: model.isConfidential })
+  await db.insert(chatThreadsTable).values({ ...data, isEncrypted: data.isEncrypted ?? model.isConfidential })
 }
 
 /**
@@ -123,6 +123,11 @@ export const clearAcpSessionIdsForAgent = async (db: AnyDrizzleDatabase, agentId
  * on creation. Existing threads are returned untouched — caller is responsible
  * for any subsequent updates via `updateChatThread`.
  *
+ * `isEncrypted` (the "private chat" flag, which locks the thread to models of
+ * the same confidentiality) defaults to the model's `isConfidential`. Pass 0
+ * for a chat whose content leaves the device unencrypted regardless of model,
+ * as the hosted agent's does.
+ *
  * Origin fields are grouped rather than trailing positionally: they are all
  * optional and all nullable, so `(db, id, model, null, projectId)` gave no
  * clue at the call site which null was which.
@@ -131,7 +136,12 @@ export const getOrCreateChatThread = async (
   db: AnyDrizzleDatabase,
   id: string,
   modelId: string,
-  { agentId = null, projectId = null, miniAppId = null }: ChatThreadOrigin & { agentId?: string | null } = {},
+  {
+    agentId = null,
+    projectId = null,
+    miniAppId = null,
+    isEncrypted,
+  }: ChatThreadOrigin & { agentId?: string | null; isEncrypted?: 0 | 1 } = {},
 ): Promise<ChatThread> => {
   const thread = await getChatThread(db, id)
 
@@ -155,6 +165,7 @@ export const getOrCreateChatThread = async (
       agentId,
       projectId,
       miniAppId,
+      isEncrypted,
     },
     model,
   )

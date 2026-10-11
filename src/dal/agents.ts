@@ -13,6 +13,7 @@ import { agentsSecretsTable, agentsSystemTable, agentsTable } from '../db/tables
 import { builtInAgent } from '../defaults/agents'
 import { nowIso } from '../lib/utils'
 import type { Agent } from '@/types/acp'
+import { customAgentTypes, type CustomAgentType } from '@shared/acp-types'
 import { clearAcpSessionIdsForAgent } from './chat-threads'
 
 /** Shape persisted in the local-only `agents_secrets` table. */
@@ -27,11 +28,16 @@ export type AgentSecrets = {
 type AgentCustomRow = typeof agentsTable.$inferSelect
 type AgentSystemRow = typeof agentsSystemTable.$inferSelect
 
-/** Lift a synced custom row into the unified `Agent` shape used by UI/chat. */
-const customRowToAgent = (row: AgentCustomRow): Agent => ({
+/**
+ * Lift a synced custom row into the unified `Agent` shape used by UI/chat.
+ * `type` syncs in plaintext, so a server could rewrite it to a kind that routes
+ * the chat somewhere else (a `managed-http` agent posts its history to the
+ * backend). Anything outside `customAgentTypes` is clamped to `remote-acp`.
+ */
+export const customRowToAgent = (row: AgentCustomRow): Agent => ({
   id: row.id,
   name: row.name,
-  type: row.type,
+  type: (customAgentTypes as readonly string[]).includes(row.type) ? row.type : 'remote-acp',
   transport: row.transport,
   url: row.url,
   description: row.description,
@@ -125,7 +131,7 @@ export type CustomAgentTransport = 'websocket' | 'iroh'
 export type CreateAgentInput = {
   id: string
   name: string
-  type: 'remote-acp' | 'managed-acp'
+  type: CustomAgentType
   transport: CustomAgentTransport
   url: string
   description?: string | null

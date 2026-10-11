@@ -198,21 +198,21 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 
 `AGENT_ENABLED=true` mounts `POST /v1/agent/chat`, a stateless agent that runs inside the API: the client sends the whole conversation each turn and the server keeps nothing between requests. It needs a session (anonymous sessions are allowed), shares the `inference` rate limit and the [spending limits](#spending-limits), runs one reply at a time per user, and calls Anthropic with `ANTHROPIC_API_KEY`. `AGENT_MODEL` must be an Anthropic model with a row in the inference price table, otherwise requests fail with `503 INFERENCE_PRICE_UNAVAILABLE`. The agent has no tools yet.
 
-The agent is also offered through agent discovery, and the discovery response names it as the default agent unless `ENABLED_AGENTS` excludes it. Excluding `hosted-agent` there hides it from discovery but does not unmount the route, the same as the Haystack route. New chats open on it, and a user can still switch to another agent from the chat header.
+The agent is also offered through agent discovery, and the discovery response names it as the default agent unless `ENABLED_AGENTS` excludes it. Excluding `hosted-agent` there hides it from discovery but does not unmount the route, the same as the Haystack route. A brand-new chat opens on it unless the user has already chosen: an agent picked before (the remembered choice syncs across their devices), or a model, which counts as choosing the built-in agent. Existing chats keep their agent, and a user can switch from the chat header at any time.
 
 A request may carry at most 2 MB and 200 messages (`413` and `400` beyond that), and a reply stops at 8,192 output tokens or after 2 minutes upstream.
 
-| Variable                          | Default     | What it does                                                                |
-| --------------------------------- | ----------- | --------------------------------------------------------------------------- |
-| `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.             |
-| `AGENT_MODEL`                     | empty       | Anthropic model the agent uses. Required once the agent is on.              |
-| `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run. No effect until MCP tools land.               |
-| `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                |
-| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call. No effect yet.                |
-| `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                 |
-| `AGENT_DESCRIPTION`               | empty       | Description shown when clients discover the agent.                          |
-| `AGENT_ICON`                      | empty       | Icon shown when clients discover the agent.                                 |
-| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false`     | Lets anonymous sessions discover agents; they see only anonymous-safe ones. |
+| Variable                          | Default     | What it does                                                                                                               |
+| --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `AGENT_ENABLED`                   | `false`     | Mounts the hosted agent. When `false` the route does not exist.                                                            |
+| `AGENT_MODEL`                     | empty       | Anthropic model the agent uses. Required once the agent is on.                                                             |
+| `AGENT_MAX_STEPS`                 | `8`         | Most tool-call steps per run. No effect until MCP tools land.                                                              |
+| `AGENT_SYSTEM_PROMPT`             | empty       | System prompt for the agent.                                                                                               |
+| `AGENT_MCP_SERVERS`               | empty       | JSON array of MCP servers the agent may call. No effect yet.                                                               |
+| `AGENT_NAME`                      | `Assistant` | Name shown when clients discover the agent.                                                                                |
+| `AGENT_DESCRIPTION`               | empty       | Description shown when clients discover the agent.                                                                         |
+| `AGENT_ICON`                      | empty       | Icon shown for the agent: `bot`, `brain`, `globe`, `message-circle`, `server` or `sparkles`. Anything else shows `server`. |
+| `ALLOW_ANONYMOUS_AGENT_DISCOVERY` | `false`     | Lets anonymous sessions discover agents; they see only anonymous-safe ones.                                                |
 
 ### Deepset (Haystack) pipelines
 

@@ -3755,6 +3755,14 @@ msgid "The agent connection was lost during the previous turn. Retrying may repe
 msgstr "The agent connection was lost during the previous turn. Retrying may repeat actions the agent already performed."
 
 #: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Try again in a minute."
+msgstr "The agent is still finishing your previous message. Try again in a minute."
+
+#: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+msgstr "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "The AI provider is having trouble right now. Try again in a moment."
 
@@ -4604,6 +4612,10 @@ msgstr "Your chats and settings will remain on this device for next time."
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Your chats and settings will remain on this device for offline use."
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Your deployment's server"
+msgstr "Your deployment's server"
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

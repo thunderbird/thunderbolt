@@ -5,6 +5,7 @@
 import type { WidgetCacheData } from '@/widgets'
 import type { UIMessage } from 'ai'
 import type { UIMessageMetadata } from '@/types'
+import { customAgentTypes, systemAgentTypes } from '@shared/acp-types'
 import { sql } from 'drizzle-orm'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -318,7 +319,7 @@ export const agentsTable = sqliteTable(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
-    type: text('type', { enum: ['remote-acp', 'managed-acp'] }).notNull(),
+    type: text('type', { enum: customAgentTypes }).notNull(),
     // `iroh` dials a peer bridge by NodeId/ticket (carried in `url`); `websocket`
     // is a `ws(s)://` endpoint. Enum is TypeScript-only on a TEXT column — no SQL
     // CHECK — so adding a value needs no migration, and the `SELECT *` sync rule
@@ -342,7 +343,7 @@ export const agentsTable = sqliteTable(
 export const agentsSystemTable = sqliteTable('agents_system', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type', { enum: ['managed-acp', 'managed-http'] }).notNull(),
+  type: text('type', { enum: systemAgentTypes }).notNull(),
   transport: text('transport', { enum: ['websocket', 'iroh', 'http'] }).notNull(),
   url: text('url').notNull(),
   description: text('description'),

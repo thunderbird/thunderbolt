@@ -4,7 +4,7 @@
 
 import '@/testing-library'
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 import { useChatStore } from '@/chats/chat-store'
 import { updateSettings } from '@/dal/settings'
@@ -16,6 +16,7 @@ import { createMockAuthClient } from '@/test-utils/auth-client'
 import { createMockChatInstanceWithValidation, hydrateStore, resetStore } from '@/test-utils/chat-store-mocks'
 import { createTestProvider } from '@/test-utils/test-provider'
 import type { Agent } from '@/types/acp'
+import { builtInAgent } from '@/defaults/agents'
 import { useBootstrapSystemAgents } from './use-bootstrap-system-agents'
 
 const hostedAgent: Agent = {
@@ -86,7 +87,7 @@ describe('useBootstrapSystemAgents', () => {
     expect(agentOfUnstartedChat()).toBe(hostedAgent.id)
   })
 
-  it("hands the user's remembered agent to the store so a deliberate pick is not overridden", async () => {
+  it("hands the user's last-used agent to the store so a deliberate pick is not overridden", async () => {
     hydrateUnstartedChat()
     await updateSettings(getDb(), { selected_agent: 'thunderbolt-built-in' })
 
@@ -136,7 +137,7 @@ describe('useBootstrapSystemAgents', () => {
 
   it('moves unstarted chats off the old default when discovery answers 403', async () => {
     hydrateUnstartedChat()
-    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, [builtInAgent, hostedAgent], {})
     const unauthenticated: RefreshSystemAgentsResult = { refreshed: false, reason: 'unauthenticated' }
 
     renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => unauthenticated) }), {
@@ -151,7 +152,7 @@ describe('useBootstrapSystemAgents', () => {
 
   it('moves unstarted chats off the old default when discovery names no default', async () => {
     hydrateUnstartedChat()
-    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, null)
+    useChatStore.getState().applyDiscoveredDefaultAgent(hostedAgent, [builtInAgent, hostedAgent], {})
     const noDefault: RefreshSystemAgentsResult = { refreshed: true, defaultAgent: null, wireIdentityChangedAgents: [] }
 
     renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => noDefault) }), {
@@ -162,6 +163,57 @@ describe('useBootstrapSystemAgents', () => {
 
     expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
     expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
+  })
+
+  it("hands the user's model pick to the store, which counts as choosing the built-in agent", async () => {
+    hydrateUnstartedChat()
+    await updateSettings(getDb(), { selected_model: 'picked-model' })
+
+    renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => refreshed) }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+
+    await act(async () => {})
+
+    expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
+  })
+
+  it('applies wire-identity changes from a refresh that committed after a newer one started', async () => {
+    hydrateUnstartedChat()
+    useChatStore.getState().updateSession('unstarted', { selectedAgent: hostedAgent })
+    const changedAgent: Agent = { ...hostedAgent, url: '/v1/agent/chat-v2' }
+    const settle: { resolve?: (result: RefreshSystemAgentsResult) => void } = {}
+    const refresh = mock(
+      () =>
+        new Promise<RefreshSystemAgentsResult>((resolve) => {
+          settle.resolve = resolve
+        }),
+    )
+
+    const { unmount } = renderHook(() => useBootstrapSystemAgents({ refresh }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+    await act(async () => {})
+    // Aborts this run; its refresh has already written the changed row.
+    unmount()
+    await act(async () => {
+      settle.resolve!({ refreshed: true, wireIdentityChangedAgents: [changedAgent], defaultAgent: null })
+    })
+
+    expect(useChatStore.getState().sessions.get('unstarted')?.selectedAgent.url).toBe('/v1/agent/chat-v2')
+  })
+
+  it('logs a discovery run that fails instead of dropping the rejection', async () => {
+    const logError = spyOn(console, 'error').mockImplementation(() => {})
+    const failure = new Error('database locked')
+
+    renderHook(() => useBootstrapSystemAgents({ refresh: mock(async () => Promise.reject(failure)) }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+    await act(async () => {})
+
+    expect(logError).toHaveBeenCalledWith('Failed to apply agent discovery', failure)
+    logError.mockRestore()
   })
 
   it('skips discovery without a session', () => {

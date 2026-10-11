@@ -9,8 +9,9 @@ import { HttpError, type HttpClient, type ResponsePromise } from '@/lib/http'
 import { refreshSystemAgents } from '@/db/seeding/seed-agents'
 import { clearAdapterCache, getOrConnectAdapter } from '@/acp/adapter-cache'
 import type { AgentAdapter } from '@/types/acp'
-import type { AgentDiscoveryResponse } from '@shared/acp-types'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import type { AgentDiscoveryResponse, CustomAgentType } from '@shared/acp-types'
+import { eq } from 'drizzle-orm'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import {
   composeAllAgents,
   createAgent,
@@ -310,6 +311,17 @@ describe('agents DAL', () => {
 
       expect(agents.map((agent) => agent.id)).toEqual(['hosted-agent', 'custom-agent'])
     })
+
+    it('clamps a custom row whose plaintext type was rewritten to managed-http', async () => {
+      await seedSystemAndCustomRows()
+      // What a server could write into the synced, unencrypted `type` column.
+      const rewrittenType = 'managed-http' as CustomAgentType
+      await getDb().update(agentsTable).set({ type: rewrittenType }).where(eq(agentsTable.id, 'custom-agent'))
+
+      const agents = await loadAllAgents(getDb())
+
+      expect(agents.find((agent) => agent.id === 'custom-agent')?.type).toBe('remote-acp')
+    })
   })
 
   describe('composeAllAgents', () => {
@@ -541,6 +553,24 @@ describe('agents DAL', () => {
       expect(ids).toEqual(['haystack-rag'])
     })
 
+    it('skips a kind this build does not know, so a newer backend cannot add one', async () => {
+      const futureDescriptor = { ...baseResponse.agents[0]!, id: 'future', type: 'future-kind' }
+      const response = {
+        ...baseResponse,
+        agents: [...baseResponse.agents, futureDescriptor],
+        defaultAgentId: 'future',
+      } as unknown as AgentDiscoveryResponse
+
+      const result = await refreshSystemAgents(
+        getDb(),
+        makeHttpClient(async () => response),
+      )
+
+      expect(result).toMatchObject({ refreshed: true, defaultAgent: null })
+      const ids = (await getDb().select().from(agentsSystemTable).all()).map((row) => row.id)
+      expect(ids).toEqual(['haystack-rag'])
+    })
+
     it('skips remote-acp entries in the response (system table is managed-acp only)', async () => {
       const response: AgentDiscoveryResponse = {
         version: '1',
@@ -641,7 +671,7 @@ describe('agents DAL', () => {
       resolvers.anonymous!()
 
       expect(signedIn).toMatchObject({ refreshed: true })
-      expect(await anonymousRefresh).toEqual({ refreshed: false, reason: 'superseded' })
+      expect(await anonymousRefresh).toEqual({ refreshed: false, reason: 'aborted' })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows.map((row) => row.id).sort()).toEqual(['haystack-rag', 'hosted-agent'])
     })
@@ -691,6 +721,27 @@ describe('agents DAL', () => {
       expect(result).toEqual({ refreshed: false, reason: 'unauthenticated' })
       const rows = await getDb().select().from(agentsSystemTable).all()
       expect(rows).toEqual([])
+    })
+
+    it('logs a discovery failure other than 401/403, and stays quiet about an aborted one', async () => {
+      const warn = spyOn(console, 'warn').mockImplementation(() => {})
+      const failure = new TypeError('Network down')
+      const failing = makeHttpClient(async () => {
+        throw failure
+      })
+
+      try {
+        await refreshSystemAgents(getDb(), failing)
+        expect(warn).toHaveBeenCalledWith('Agent discovery failed; keeping the cached agents', failure)
+
+        warn.mockClear()
+        const aborted = new AbortController()
+        aborted.abort()
+        await refreshSystemAgents(getDb(), failing, aborted.signal)
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('preserves existing rows on network error', async () => {

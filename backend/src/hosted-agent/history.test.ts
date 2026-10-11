@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
-import { maxHistoryMessages, parseAgentChatRequest } from './history'
+import { maxHostedAgentHistoryMessages as maxHistoryMessages } from '@shared/hosted-agent-history'
+import { parseAgentChatRequest } from './history'
 
 const userMessage = (text: string, id = 'm1') => ({ id, role: 'user', parts: [{ type: 'text', text }] })
-const body = (messages: unknown[]) => JSON.stringify({ id: 'chat-1', messages, trigger: 'submit-message' })
+const body = (messages: unknown[]) => ({ id: 'chat-1', messages, trigger: 'submit-message' })
 
 describe('parseAgentChatRequest', () => {
   it('accepts a DefaultChatTransport body', () => {
@@ -132,9 +133,9 @@ describe('parseAgentChatRequest', () => {
     expect(parseAgentChatRequest(body([{ id: 'm1', role: 'user', parts }]))).toBeNull()
   })
 
-  it('accepts inline file parts', () => {
+  it('rejects inline file parts from the user too, since the hosted agent takes no files', () => {
     const parts = [{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,AAAA' }]
-    expect(parseAgentChatRequest(body([{ id: 'm1', role: 'user', parts }]))).not.toBeNull()
+    expect(parseAgentChatRequest(body([{ id: 'm1', role: 'user', parts }]))).toBeNull()
   })
 
   it('accepts a history exactly at the message cap', () => {
@@ -147,7 +148,7 @@ describe('parseAgentChatRequest', () => {
     expect(parseAgentChatRequest(body(messages))).toBeNull()
   })
 
-  it('rejects malformed JSON, unknown roles, and an empty history', () => {
+  it('rejects a non-object body, unknown roles, and an empty history', () => {
     expect(parseAgentChatRequest('{not json')).toBeNull()
     const parts = [{ type: 'text', text: 'Hi' }]
     expect(parseAgentChatRequest(body([{ id: 'm1', role: 'tool', parts }]))).toBeNull()

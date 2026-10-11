@@ -3,102 +3,114 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Managed-http adapter: a server-hosted agent (the MozFest hosted agent at
- * `POST /v1/agent/chat`) that already speaks the AI SDK UI message stream, so
- * there is nothing to translate on the way back. The chat body is posted
- * through the authenticated app client, which adds the session token,
- * `X-App-Version` and `X-App-Language`, and the streamed `Response` is handed
- * to the AI SDK unchanged.
+ * Managed-http adapter: the backend's hosted agent at `POST /v1/agent/chat`,
+ * which already speaks the AI SDK UI message stream, so there is nothing to
+ * translate on the way back. The chat body is posted through the authenticated
+ * app client, which adds the session token, `X-App-Version` and
+ * `X-App-Language`, and the streamed `Response` is handed to the AI SDK
+ * unchanged.
  *
  * Stateless like the endpoint it calls: no handshake, no session to warm, no
  * transport to close. The agent picks its own model, so `selectedModel` and
  * the other built-in-only context fields are ignored.
+ *
+ * Not sent yet: `skillInstructions` and `projectSection`, which the chat layer
+ * builds for every non-built-in agent. The endpoint drops client system
+ * messages, so `/slug` skills and project instructions do nothing on this
+ * agent until they are folded into the request.
  */
 
-import { classifyErrorKind } from '@/lib/error-utils'
-import { hydrateAttachmentsAsFileParts, type HydrationDeps } from '@/lib/attachments'
-import { HttpError } from '@/lib/http'
+import { isAttachmentPart, undeliverableAttachmentsNote } from '@/lib/attachments'
+import { classifyErrorKind, createChatErrorResponse } from '@/lib/error-utils'
+import { HttpError, isBackendRequest } from '@/lib/http'
 import { hydrateQuotesAsText } from '@/lib/quotes'
 import { resolveAbsoluteBackendUrl } from '@/lib/url-utils'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { ThunderboltUIMessage } from '@/types'
 import type { Agent, AgentAdapter } from '@/types/acp'
+import {
+  isBlankTextPart,
+  isHostedAgentPartType,
+  maxHostedAgentHistoryMessages,
+  startOnUserMessage,
+  startsAndEndsOnUserMessage,
+} from '@shared/hosted-agent-history'
 
-/** Part types the hosted endpoint forwards to the model, per role. It drops tool,
- *  reasoning and step markers itself but rejects any other part with a 400, and
- *  accepts files from the user only. */
-const forwardedPartTypes: Record<string, ReadonlySet<string>> = {
-  user: new Set(['text', 'file']),
-  assistant: new Set(['text']),
-}
-
-/** Most messages the endpoint accepts per request (`maxHistoryMessages` in `backend/src/hosted-agent/history.ts`). */
-const maxHistoryMessages = 200
-
-type ManagedHttpAdapterOptions = {
-  /** Test seam for attachment reads. */
-  hydrationDeps?: HydrationDeps
-}
+/** One forwarded message: only the fields the endpoint reads. `metadata` is an
+ *  encrypted column (MCP tool names, sources, usage, debug transcripts), so it
+ *  must never leave the device. */
+type HostedAgentMessage = Pick<ThunderboltUIMessage, 'id' | 'role' | 'parts'>
 
 /**
  * Resolve the agent's server-relative path (e.g. `/v1/agent/chat`) against the
  * backend's root: the configured API base minus its `/v1`, as `auth-context.tsx`
  * derives it. Joining under the root rather than `new URL(path, base)` keeps a
- * reverse-proxy prefix (`https://host/api/v1` → `https://host/api/v1/agent/chat`),
- * so the request also still counts as a backend request for the app headers.
+ * reverse-proxy prefix (`https://host/api/v1` → `https://host/api/v1/agent/chat`).
+ *
+ * The join is a string concatenation, so a path not starting with a single `/`
+ * (`.evil.com/x`, `@evil.com/x`) would change the host, and the authenticated
+ * client sends the bearer to any origin. Such a path is refused, and the result
+ * must pass the same `isBackendRequest` check the client uses for its headers.
  */
 const resolveAgentUrl = (path: string): string => {
-  const backendRoot = resolveAbsoluteBackendUrl(useLocalSettingsStore.getState().cloudUrl).replace(/\/v1$/, '')
-  return `${backendRoot}${path}`
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    throw new Error(`Managed HTTP agent url must be a server-relative path, got ${path}`)
+  }
+  const backendUrl = resolveAbsoluteBackendUrl(useLocalSettingsStore.getState().cloudUrl)
+  const url = `${backendUrl.replace(/\/v1$/, '')}${path}`
+  if (!isBackendRequest(url, new URL(backendUrl))) {
+    throw new Error(`Managed HTTP agent url ${path} does not resolve to the backend`)
+  }
+  return url
 }
 
-/** Keep the most recent messages within the endpoint's cap, starting on a user
- *  message because the endpoint rejects a history that starts with anything else. */
-const trimHistory = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] => {
-  const recent = messages.slice(-maxHistoryMessages)
-  const firstUserIndex = recent.findIndex((message) => message.role === 'user')
-  return firstUserIndex === -1 ? recent : recent.slice(firstUserIndex)
-}
+type ChatPart = ThunderboltUIMessage['parts'][number]
 
-/** Keep only the parts the endpoint accepts for each message's role, and drop
- *  messages left with none, which the endpoint would drop itself. */
-const toForwardedMessages = (messages: ThunderboltUIMessage[]): ThunderboltUIMessage[] =>
-  messages
-    .map((message) => ({
-      ...message,
-      parts: message.parts.filter((part) => forwardedPartTypes[message.role]?.has(part.type)),
-    }))
-    .filter((message) => message.parts.length > 0)
+/** The file a part carries, for a part the hosted agent isn't sent: an
+ *  attachment reference, or an inline file. Undefined for any other part. */
+const attachedFileName = (part: ChatPart): string | undefined => {
+  if (isAttachmentPart(part)) {
+    return part.data.filename
+  }
+  return part.type === 'file' ? (part.filename ?? part.mediaType) : undefined
+}
 
 /**
- * Rewrite a `DefaultChatTransport` body into one the hosted endpoint accepts:
- * attachments and quotes become the text and file parts the built-in pipeline
- * would send, parts the endpoint rejects for the message's role (data parts,
- * sources, assistant files) are dropped along with any message they empty, and
- * the history is trimmed to the endpoint's cap so it starts on a user message.
- * The trim runs last because filtering can empty a leading user message; the
- * coarse cap before hydration only bounds how many attachments are read.
+ * Keep only the parts the endpoint replays for the message's role, which leaves
+ * out every file: the hosted agent takes no attachments for now, so the composer offers none,
+ * and any already in the history (the chat switched agents) are dropped. A user
+ * turn that had some gets one note listing them, so the agent can say why it
+ * can't see them.
  */
-export const toManagedHttpBody = async (body: string, hydrationDeps?: HydrationDeps): Promise<string> => {
-  const { messages = [], ...rest } = JSON.parse(body) as { messages?: ThunderboltUIMessage[] }
-  const recent = messages.slice(-maxHistoryMessages)
-  const hydrated = hydrateQuotesAsText(await hydrateAttachmentsAsFileParts(recent, hydrationDeps))
-  return JSON.stringify({ ...rest, messages: trimHistory(toForwardedMessages(hydrated)) })
+const toHostedAgentMessage = ({ id, role, parts }: ThunderboltUIMessage): HostedAgentMessage => {
+  const forwarded = parts.filter((part) => isHostedAgentPartType(role, part.type) && !isBlankTextPart(part))
+  const undeliverable = role === 'user' ? parts.flatMap((part) => attachedFileName(part) ?? []) : []
+  const note =
+    undeliverable.length > 0 ? [{ type: 'text' as const, text: undeliverableAttachmentsNote(undeliverable) }] : []
+  return { id, role, parts: [...forwarded, ...note] }
 }
 
-/** Serialize a rejected request the way `aiFetchStreamingResponse` does, so the
- *  chat error UI reads its status, quota window and kind. */
-const toErrorResponse = async (error: HttpError): Promise<Response> => {
-  const { status } = error.response
-  const body = await error.response.text()
-  return new Response(JSON.stringify({ error: body, status, kind: classifyErrorKind(error) }), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
+/**
+ * Rewrite a `DefaultChatTransport` body into the one the hosted endpoint
+ * accepts, following the rules in `@shared/hosted-agent-history`: quotes become
+ * text, attachments become a note, parts the endpoint rejects for the message's
+ * role are dropped along with any message they empty, and the history is capped
+ * and starts on a user message.
+ */
+export const toManagedHttpBody = (body: string): { id: string; messages: HostedAgentMessage[] } => {
+  const { id, messages = [] } = JSON.parse(body) as { id: string; messages?: ThunderboltUIMessage[] }
+  const forwarded = hydrateQuotesAsText(messages.slice(-maxHostedAgentHistoryMessages))
+    .map(toHostedAgentMessage)
+    .filter((message) => message.parts.length > 0)
+  const history = startOnUserMessage(forwarded)
+  if (!startsAndEndsOnUserMessage(history)) {
+    throw new Error('Hosted agent history must start and end with a user message')
+  }
+  return { id, messages: history }
 }
 
 /** Build the adapter for a `managed-http` agent. */
-export const createManagedHttpAdapter = (agent: Agent, options: ManagedHttpAdapterOptions = {}): AgentAdapter => {
+export const createManagedHttpAdapter = (agent: Agent): AgentAdapter => {
   if (!agent.url) {
     throw new Error(`Managed HTTP agent ${agent.id} has no url`)
   }
@@ -108,16 +120,15 @@ export const createManagedHttpAdapter = (agent: Agent, options: ManagedHttpAdapt
     agent,
     capabilities: null,
     fetch: async (init, { httpClient }) => {
-      const body = await toManagedHttpBody(init.body as string, options.hydrationDeps)
+      if (typeof init.body !== 'string') {
+        throw new Error('Managed HTTP adapter expects string body on init')
+      }
+      const json = toManagedHttpBody(init.body)
       try {
-        return await httpClient.post(resolveAgentUrl(url), {
-          body,
-          headers: { 'Content-Type': 'application/json' },
-          signal: init.signal ?? undefined,
-        })
+        return await httpClient.post(resolveAgentUrl(url), { json, signal: init.signal ?? undefined })
       } catch (error) {
         if (error instanceof HttpError) {
-          return toErrorResponse(error)
+          return createChatErrorResponse(await error.response.text(), error.response.status, classifyErrorKind(error))
         }
         throw error
       }

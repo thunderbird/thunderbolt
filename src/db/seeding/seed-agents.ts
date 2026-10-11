@@ -7,7 +7,12 @@ import type { AnyDrizzleDatabase } from '../database-interface'
 import { agentsSystemTable } from '../tables'
 import { HttpError, type HttpClient } from '@/lib/http'
 import { nowIso } from '@/lib/utils'
-import type { AgentDiscoveryResponse, RemoteAgentDescriptor } from '@shared/acp-types'
+import {
+  systemAgentTypes,
+  type AgentDiscoveryResponse,
+  type RemoteAgentDescriptor,
+  type SystemAgentType,
+} from '@shared/acp-types'
 import { clearAcpSessionIdsForAgent } from '@/dal/chat-threads'
 import { systemRowToAgent } from '@/dal/agents'
 import { disposeAdapter } from '@/acp/adapter-cache'
@@ -20,10 +25,10 @@ import type { Agent } from '@/types/acp'
  *  - `refreshed: false` → no update applied; `reason` explains why. Existing
  *    rows are preserved unless `reason === 'unauthenticated'`, in which case
  *    the table was cleared (the user can no longer see system agents).
- *    `superseded` means the caller aborted the refresh, so nothing was written. */
+ *    `aborted` means the caller aborted the refresh, so nothing was written. */
 export type RefreshSystemAgentsResult =
   | { refreshed: true; wireIdentityChangedAgents: Agent[]; defaultAgent: Agent | null }
-  | { refreshed: false; reason: 'unauthenticated' | 'network' | 'superseded' }
+  | { refreshed: false; reason: 'unauthenticated' | 'network' | 'aborted' }
 
 /**
  * Reconcile the local-only `agents_system` table against the backend's
@@ -56,7 +61,7 @@ export const refreshSystemAgents = async (
   const payload = await fetchDiscovery(httpClient, signal)
 
   if (signal?.aborted) {
-    return { refreshed: false, reason: 'superseded' }
+    return { refreshed: false, reason: 'aborted' }
   }
 
   if (payload.kind === 'unauthenticated') {
@@ -69,12 +74,10 @@ export const refreshSystemAgents = async (
   }
 
   const fetchedAt = nowIso()
-  // `agents_system` stores the server-run agents: `managed-acp` and
-  // `managed-http`. `remote-acp` entries belong in the synced `agents` table
-  // via user opt-in.
-  const incoming = payload.data.agents.filter(
-    (a): a is RemoteAgentDescriptor & { type: 'managed-acp' | 'managed-http' } => a.type !== 'remote-acp',
-  )
+  // `agents_system` stores only the server-run kinds this build knows
+  // (`systemAgentTypes`). `remote-acp` entries belong in the synced `agents`
+  // table via user opt-in, and a kind a newer backend adds is skipped.
+  const incoming = payload.data.agents.filter(isSystemAgentDescriptor)
   const { defaultAgentId } = payload.data
   const incomingRows = incoming.map((agent) => ({
     id: agent.id,
@@ -125,6 +128,12 @@ export const refreshSystemAgents = async (
   }
 }
 
+/** Whether a descriptor is one of the kinds `agents_system` stores. */
+const isSystemAgentDescriptor = (
+  descriptor: RemoteAgentDescriptor,
+): descriptor is RemoteAgentDescriptor & { type: SystemAgentType } =>
+  (systemAgentTypes as readonly string[]).includes(descriptor.type)
+
 type DiscoveryFetch = { kind: 'ok'; data: AgentDiscoveryResponse } | { kind: 'unauthenticated' } | { kind: 'error' }
 
 /** Hits `GET /agents` through the preconfigured client and classifies the outcome into a closed union.
@@ -140,6 +149,10 @@ const fetchDiscovery = async (httpClient: HttpClient, signal?: AbortSignal): Pro
       if (status === 401 || status === 403) {
         return { kind: 'unauthenticated' }
       }
+    }
+    // An aborted request is expected (a newer refresh replaced it); anything else is worth seeing.
+    if (!signal?.aborted) {
+      console.warn('Agent discovery failed; keeping the cached agents', err)
     }
     return { kind: 'error' }
   }

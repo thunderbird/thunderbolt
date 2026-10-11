@@ -19,23 +19,23 @@ type UseBootstrapSystemAgentsOptions = {
 }
 
 /**
- * Hand the chat store this refresh's default agent. With none (a 401/403 cleared
- * the table, or the response names no default), unstarted chats still on the old
- * default go back through the fallback chain instead.
+ * Hand the chat store this refresh's default agent (null when a 401/403 cleared
+ * the table, or the response names none), with the refreshed agent list and the
+ * user's synced choices, so unstarted chats re-resolve against both.
  */
 const syncDiscoveredDefault = async (db: AnyDrizzleDatabase, defaultAgent: Agent | null, signal: AbortSignal) => {
-  const { selectedAgent } = await getSettings(db, { selected_agent: String })
-  if (defaultAgent) {
-    if (!signal.aborted) {
-      useChatStore.getState().applyDiscoveredDefaultAgent(defaultAgent, selectedAgent)
-    }
+  const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
+  const [settings, agents] = await Promise.all([
+    getSettings(db, { selected_agent: String, selected_model: String }),
+    loadAllAgents(db, { includeBuiltIn }),
+  ])
+  if (signal.aborted) {
     return
   }
-  const includeBuiltIn = selectBuiltInAgentEnabled(useConfigStore.getState().config)
-  const agents = await loadAllAgents(db, { includeBuiltIn })
-  if (!signal.aborted) {
-    useChatStore.getState().clearDiscoveredDefaultAgent(agents, selectedAgent)
-  }
+  useChatStore.getState().applyDiscoveredDefaultAgent(defaultAgent, agents, {
+    lastUsedAgentId: settings.selectedAgent,
+    hasModelPick: !!settings.selectedModel,
+  })
 }
 
 /**
@@ -57,9 +57,9 @@ export const useBootstrapSystemAgents = ({ refresh = refreshSystemAgents }: UseB
   const { data: session } = authClient.useSession()
   const cloudUrl = useLocalSettingsStore((s) => s.cloudUrl)
 
-  // Re-run when the visitor signs in, since a real account sees more agents than an anonymous one.
+  // Signing in switches the session to a different user id, which re-runs this:
+  // a real account sees more agents than an anonymous one.
   const userId = session?.user?.id
-  const isAnonymous = session?.user?.isAnonymous === true
 
   useEffect(() => {
     if (!userId || !cloudUrl) {
@@ -70,20 +70,26 @@ export const useBootstrapSystemAgents = ({ refresh = refreshSystemAgents }: UseB
     // smaller anonymous list) from overwriting what the signed-in refresh wrote.
     const controller = new AbortController()
     const { signal } = controller
-    void (async () => {
+    const run = async () => {
       const result = await refresh(db, httpClient, signal)
-      if (signal.aborted) {
-        return
-      }
+      // A refresh that wrote its rows committed before any abort could stop it,
+      // so its wire-identity changes apply even if a newer run has started: that
+      // run compares against the rows this one wrote and would never see them.
       if (result.refreshed) {
         for (const agent of result.wireIdentityChangedAgents) {
           useChatStore.getState().applyAgentWireIdentityChange(agent)
         }
+      }
+      if (signal.aborted) {
+        return
+      }
+      if (result.refreshed) {
         await syncDiscoveredDefault(db, result.defaultAgent, signal)
       } else if (result.reason === 'unauthenticated') {
         await syncDiscoveredDefault(db, null, signal)
       }
-    })()
+    }
+    run().catch((error) => console.error('Failed to apply agent discovery', error))
     return () => controller.abort()
-  }, [userId, isAnonymous, cloudUrl, db, httpClient, refresh])
+  }, [userId, cloudUrl, db, httpClient, refresh])
 }

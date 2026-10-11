@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
+import { agentAcceptsAttachments, isAgentAvailable as isAgentAvailable_default } from '@/acp/agent-availability'
 import { preloadAgentConnection } from '@/acp/adapter-cache'
 import { useCurrentChatSession } from '@/chats/chat-store'
 import { usePendingQuotes, usePendingQuotesStore } from '@/chats/pending-quotes-store'
@@ -319,6 +319,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const imageSupportBlocksSend = imageSupport.notice !== undefined
     const [isDragging, setIsDragging] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const acceptsAttachments = agentAcceptsAttachments(selectedAgent)
     // Latest-input ref so deferred callers (e.g. the `runSkill` microtask
     // below) read the current value at execution time rather than the value
     // captured when the callback was created. Without this, a draft restore
@@ -602,13 +603,14 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           .filter((item) => item.kind === 'file')
           .map((item) => item.getAsFile())
           .filter((file): file is File => file != null)
-        if (files.length === 0) {
+        // An agent that takes no attachments lets the paste fall through untouched.
+        if (!acceptsAttachments || files.length === 0) {
           return
         }
         e.preventDefault()
         void addFiles(files.map(withClipboardFilename))
       },
-      [addFiles],
+      [acceptsAttachments, addFiles],
     )
 
     const removeAttachment = useCallback((localFileId: string) => {
@@ -694,7 +696,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
     const footerStartElements = (
       <div className="flex items-center gap-2">
         <ChatAddMenu
-          onUploadFile={() => fileInputRef.current?.click()}
+          onUploadFile={acceptsAttachments ? () => fileInputRef.current?.click() : undefined}
           onOpenConnections={() => navigate('/settings/connections')}
         />
         {isConnecting ? (
@@ -791,15 +793,20 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       <>
         <div
           className="relative flex w-full flex-col rounded-3xl"
+          // Default is still prevented for an agent that takes no attachments,
+          // so a dropped file is ignored rather than opened by the browser in
+          // place of the app.
           onDragOver={(e) => {
             e.preventDefault()
-            setIsDragging(true)
+            setIsDragging(acceptsAttachments)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            void addFiles(Array.from(e.dataTransfer.files))
+            if (acceptsAttachments) {
+              void addFiles(Array.from(e.dataTransfer.files))
+            }
           }}
         >
           {isDragging && (

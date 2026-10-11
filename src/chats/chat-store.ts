@@ -16,7 +16,7 @@ import type { PermissionOption, RequestPermissionRequest, RequestPermissionRespo
 import type { MiniAppApprovalOutcome } from '@/mini-apps/approval-outcome'
 import type { MiniAppTool } from '@shared/mini-app-protocol'
 import { useShallow } from 'zustand/react/shallow'
-import { resolveSessionAgent } from './resolve-session-agent'
+import { resolveSessionAgent, type AgentPreference } from './resolve-session-agent'
 
 /** Outstanding ACP permission request awaiting user response. The promise
  *  resolver lives here so the dialog UI can complete it via a store action;
@@ -95,8 +95,9 @@ export type ChatSession = {
    *  with a live request (see `getTurnActivity`), so lingering is harmless there. */
   stopping: boolean
   selectedAgent: Agent
-  /** The user picked `selectedAgent` in this chat, so a late-arriving discovered
-   *  default must not replace it. False when it came from the fallback chain. */
+  /** The user picked `selectedAgent`, or a model (which only the built-in uses),
+   *  in this chat, so a late-arriving discovered default must not replace it.
+   *  False when the agent came from the fallback chain. */
   agentChosenByUser: boolean
   selectedModel: Model
   /**
@@ -135,17 +136,13 @@ type ChatStoreActions = {
   allowAlwaysForTool(agentId: string, toolKey: string): void
   createSession(session: ChatSession): void
   applyAgentWireIdentityChange(agent: Agent): void
-  /** Record the discovered default and move chats that haven't started onto it.
-   *  Discovery can land after a new chat already resolved its agent, as on a first
-   *  visit. A chat whose agent the user picked, or that sits on the user's
-   *  remembered agent (`selected_agent`), is left alone, matching the precedence
-   *  in `resolveSessionAgent`. */
-  applyDiscoveredDefaultAgent(agent: Agent, rememberedAgentId: string | null): void
-  /** Forget the discovered default, as when discovery answers 401/403 or names
-   *  none, and re-resolve unstarted chats that still sit on it, or on an agent no
-   *  longer in `agents`, through `resolveSessionAgent`. Chats whose agent the
-   *  user picked are left alone. */
-  clearDiscoveredDefaultAgent(agents: Agent[], rememberedAgentId: string | null): void
+  /** Record what discovery reported as the default agent (null when it names
+   *  none, or answered 401/403) and re-run `resolveSessionAgent` for every chat
+   *  that is brand-new, unstarted and still on the agent the fallback chain gave
+   *  it, against the refreshed `agents`. Discovery can land after such a chat
+   *  resolved its agent, as on a first visit, or seed an agent the user's synced
+   *  pick names. Chats whose agent or model the user picked are left alone. */
+  applyDiscoveredDefaultAgent(defaultAgent: Agent | null, agents: Agent[], preference: AgentPreference): void
   cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
@@ -235,37 +232,22 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
   },
 
-  applyDiscoveredDefaultAgent: (agent, rememberedAgentId) => {
+  applyDiscoveredDefaultAgent: (defaultAgent, agents, preference) => {
     const nextSessions = new Map(get().sessions)
     for (const session of get().sessions.values()) {
-      const isOnFallback =
-        !session.chatThread &&
-        session.chatInstance.messages.length === 0 &&
-        !session.agentChosenByUser &&
-        session.selectedAgent.id !== rememberedAgentId
-      if (isOnFallback && session.selectedAgent.id !== agent.id) {
-        nextSessions.set(session.id, { ...session, selectedAgent: agent })
+      const isUnstartedNewChat = !session.chatThread && session.chatInstance.messages.length === 0
+      if (!isUnstartedNewChat || session.agentChosenByUser) {
+        continue
+      }
+      const selectedAgent = resolveSessionAgent(agents, {
+        ...preference,
+        discoveredDefaultAgent: defaultAgent ?? undefined,
+      })
+      if (selectedAgent.id !== session.selectedAgent.id) {
+        nextSessions.set(session.id, { ...session, selectedAgent })
       }
     }
-    set({ discoveredDefaultAgent: agent, sessions: nextSessions })
-  },
-
-  clearDiscoveredDefaultAgent: (agents, rememberedAgentId) => {
-    const clearedDefaultId = get().discoveredDefaultAgent?.id
-    const fallback = resolveSessionAgent(agents, { lastUsedAgentId: rememberedAgentId })
-    const nextSessions = new Map(get().sessions)
-    for (const session of get().sessions.values()) {
-      const isUnstartedFallback =
-        !session.chatThread && session.chatInstance.messages.length === 0 && !session.agentChosenByUser
-      // The default may only be known from the `is_default` row this refresh just
-      // deleted, so a chat on an agent that is gone counts as sitting on it too.
-      const isOnClearedAgent =
-        session.selectedAgent.id === clearedDefaultId || !agents.some((agent) => agent.id === session.selectedAgent.id)
-      if (isUnstartedFallback && isOnClearedAgent && session.selectedAgent.id !== fallback.id) {
-        nextSessions.set(session.id, { ...session, selectedAgent: fallback })
-      }
-    }
-    set({ discoveredDefaultAgent: null, sessions: nextSessions })
+    set({ discoveredDefaultAgent: defaultAgent, sessions: nextSessions })
   },
 
   cancelPendingPermissionsForAgent: (agentId) => {
@@ -451,7 +433,8 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
     }
 
     const nextSessions = new Map(sessions)
-    nextSessions.set(id, { ...session, selectedModel: model })
+    // The picker only shows for the built-in agent, so picking a model is choosing it too.
+    nextSessions.set(id, { ...session, selectedModel: model, agentChosenByUser: true })
 
     set({ sessions: nextSessions })
 

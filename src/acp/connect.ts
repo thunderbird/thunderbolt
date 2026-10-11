@@ -49,28 +49,43 @@ export type ConnectToAgentDeps = BuiltInAdapterOptions & AcpAdapterDeps
 /** Read enabled skills from same DAL source used by built-in agent. */
 const getEnabledSkills = async () => selectEnabledSkillDefinitions(await getAllSkills(getDb()))
 
-/** Build an `AgentAdapter` for the given agent. */
+/**
+ * Build an `AgentAdapter` for the given agent. Exhaustive over `AgentType`, so a
+ * kind this build doesn't know throws instead of falling through to ACP.
+ * `managed-http` posts the chat's history to the backend, so it is only taken
+ * for a system agent; the synced `agents` table's plaintext `type` must never
+ * be able to select it.
+ */
 export const connectToAgent = async (
   agent: Agent,
   ctx: ConnectToAgentContext,
   deps: ConnectToAgentDeps = {},
 ): Promise<AgentAdapter> => {
-  if (agent.type === 'built-in') {
-    return createBuiltInAdapter(agent, deps)
+  switch (agent.type) {
+    case 'built-in':
+      return createBuiltInAdapter(agent, deps)
+    case 'managed-http':
+      if (agent.isSystem !== 1) {
+        throw new Error(`Refusing managed-http for non-system agent ${agent.id}`)
+      }
+      return createManagedHttpAdapter(agent)
+    case 'remote-acp':
+    case 'managed-acp':
+      return connectAcpAdapter(
+        agent,
+        { httpClient: ctx.httpClient, onAvailableCommands: ctx.onAvailableCommands },
+        {
+          openTransport: deps.openTransport,
+          ClientSideConnection: deps.ClientSideConnection,
+          webSocketFactory: deps.webSocketFactory,
+          textDeltaThrottleMs: deps.textDeltaThrottleMs,
+          handshakeTimeoutMs: deps.handshakeTimeoutMs,
+          getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
+        },
+      )
+    default: {
+      const unknownType: never = agent.type
+      throw new Error(`Unknown agent type ${String(unknownType)} for agent ${agent.id}`)
+    }
   }
-  if (agent.type === 'managed-http') {
-    return createManagedHttpAdapter(agent)
-  }
-  return connectAcpAdapter(
-    agent,
-    { httpClient: ctx.httpClient, onAvailableCommands: ctx.onAvailableCommands },
-    {
-      openTransport: deps.openTransport,
-      ClientSideConnection: deps.ClientSideConnection,
-      webSocketFactory: deps.webSocketFactory,
-      textDeltaThrottleMs: deps.textDeltaThrottleMs,
-      handshakeTimeoutMs: deps.handshakeTimeoutMs,
-      getEnabledSkills: deps.getEnabledSkills ?? getEnabledSkills,
-    },
-  )
 }

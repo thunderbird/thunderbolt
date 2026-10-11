@@ -16,6 +16,7 @@
  */
 
 import { isTauri as defaultIsTauri } from '@/lib/platform'
+import { isHostedAgent } from '@/defaults/agents'
 import type { Agent } from '@/types/acp'
 
 export type IsAgentAvailableDeps = {
@@ -34,3 +35,11 @@ export const isAgentAvailable = (agent: Agent, deps: IsAgentAvailableDeps = {}):
   }
   return true
 }
+
+/**
+ * Whether the composer offers attachments for this agent. The hosted agent
+ * (`managed-http`) takes none for now, so its composer hides the attach action
+ * and ignores dropped and pasted files; any already in the chat's history are
+ * replaced with a note by `src/acp/managed-http-adapter.ts`.
+ */
+export const agentAcceptsAttachments = (agent: Agent): boolean => !isHostedAgent(agent)

@@ -21,6 +21,12 @@ export type AttachmentPart = {
   data: AttachmentData
 }
 
+/** Model-facing note standing in for attachments an agent couldn't be sent
+ *  (missing on this device, or with no form that agent accepts), one line per
+ *  file. English like every other model-facing text. */
+export const undeliverableAttachmentsNote = (filenames: string[]): string =>
+  filenames.map((name) => `[Attachment "${name}" could not be delivered to this agent]`).join('\n')
+
 /** Build the reference-only attachment part to include in an outgoing message. */
 export const buildAttachmentPart = (data: AttachmentData): AttachmentPart => ({
   type: attachmentPartType,

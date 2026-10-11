@@ -267,7 +267,9 @@ const SystemBody = ({ agent }: { agent: Agent }) => {
         </DetailSectionTitle>
         <div className="flex flex-col gap-1">
           <FieldLabel>{t`Endpoint`}</FieldLabel>
-          <p className="truncate text-base text-foreground">{acpEndpointLabel(agent)}</p>
+          <p className="truncate text-base text-foreground">
+            {agent.type === 'managed-http' ? t`Your deployment's server` : acpEndpointLabel(agent)}
+          </p>
         </div>
         <p className="text-sm text-muted-foreground">
           <Trans>Managed by your deployment — always available, no setup needed.</Trans>

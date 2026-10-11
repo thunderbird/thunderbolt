@@ -3743,6 +3743,14 @@ msgid "The agent connection was lost during the previous turn. Retrying may repe
 msgstr "前のターンでエージェントとの接続が失われました。再試行すると、エージェントが実行済みの操作が繰り返される可能性があります。"
 
 #: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Try again in a minute."
+msgstr "エージェントはまだ前のメッセージに応答中です。1分ほど待ってからもう一度お試しください。"
+
+#: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+msgstr "エージェントはまだ前のメッセージに応答中です。再試行しています（{retryCount}/{maxRetries}）…"
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "AI プロバイダーで現在問題が発生しています。少し待ってからもう一度お試しください。"
 
@@ -4592,6 +4600,10 @@ msgstr "チャットと設定は次回のためにこのデバイスに残りま
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "チャットと設定はオフラインで使えるようにこのデバイスに残ります。"
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Your deployment's server"
+msgstr "デプロイのサーバー"
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

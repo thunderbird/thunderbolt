@@ -3755,6 +3755,14 @@ msgid "The agent connection was lost during the previous turn. Retrying may repe
 msgstr "Die Verbindung zum Agenten wurde während des vorherigen Schritts unterbrochen. Ein neuer Versuch kann Aktionen wiederholen, die der Agent bereits ausgeführt hat."
 
 #: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Try again in a minute."
+msgstr "Der Agent beendet noch Ihre vorherige Nachricht. Versuchen Sie es in einer Minute erneut."
+
+#: src/components/chat/error-message.tsx
+msgid "The agent is still finishing your previous message. Trying again ({retryCount}/{maxRetries})…"
+msgstr "Der Agent beendet noch Ihre vorherige Nachricht. Neuer Versuch ({retryCount}/{maxRetries})…"
+
+#: src/components/chat/error-message.tsx
 msgid "The AI provider is having trouble right now. Try again in a moment."
 msgstr "Beim KI-Anbieter gibt es gerade Probleme. Versuchen Sie es in einem Moment erneut."
 
@@ -4604,6 +4612,10 @@ msgstr "Ihre Chats und Einstellungen bleiben für das nächste Mal auf diesem Ge
 #: src/components/revoked-device-modal.tsx
 msgid "Your chats and settings will remain on this device for offline use."
 msgstr "Ihre Chats und Einstellungen bleiben für die Offline-Nutzung auf diesem Gerät."
+
+#: src/components/settings/agents/agent-detail.tsx
+msgid "Your deployment's server"
+msgstr "Server Ihrer Bereitstellung"
 
 #: src/app.tsx
 msgid "Your encryption was upgraded and a new 24-word recovery phrase was generated. Write it down in order and store it somewhere safe. This phrase won't be shown again."

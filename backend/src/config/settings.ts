@@ -5,6 +5,7 @@
 import { httpUrlMessage, isHttpUrl, type PublicMiniApp } from '@shared/mini-app-registry'
 import { z } from 'zod'
 import { inferenceUsageReceiptHeader } from '@shared/inference-usage'
+import { loopbackOrigin } from '@shared/url'
 
 const betterAuthTimeString = z.string().regex(/^\d+[smhd]$/, {
   message: 'must be a Better Auth time string (digits followed by s, m, h, or d)',
@@ -35,8 +36,10 @@ const settingsSchema = z
     // OAuth Settings
     googleClientId: z.string().trim().default(''),
     googleClientSecret: z.string().trim().default(''),
+    googleBaseUrl: z.string().default('https://oauth2.googleapis.com'),
     microsoftClientId: z.string().trim().default(''),
     microsoftClientSecret: z.string().trim().default(''),
+    microsoftBaseUrl: z.string().default('https://login.microsoftonline.com'),
 
     // OIDC Settings (enterprise self-hosted)
     authMode: z.enum(['consumer', 'oidc', 'saml']).default('consumer'),
@@ -409,8 +412,12 @@ const parseSettings = (): Settings => {
     monitoringToken: process.env.MONITORING_TOKEN || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    // Only a loopback override (a QA stack's fake provider) is honoured, so the client secret never leaves for
+    // another host.
+    googleBaseUrl: loopbackOrigin(process.env.GOOGLE_BASE_URL) ?? 'https://oauth2.googleapis.com',
     microsoftClientId: process.env.MICROSOFT_CLIENT_ID || '',
     microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+    microsoftBaseUrl: loopbackOrigin(process.env.MICROSOFT_BASE_URL) ?? 'https://login.microsoftonline.com',
     authMode: (process.env.AUTH_MODE || 'consumer').toLowerCase(),
     authAllowAnonymous: process.env.AUTH_ALLOW_ANONYMOUS === 'true',
     oidcClientId: process.env.OIDC_CLIENT_ID || '',

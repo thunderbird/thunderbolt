@@ -14,14 +14,23 @@
 //   2. gate-keeps-subset → ONLY the kept subset is posted as inline comments.
 // =============================================================================
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, spyOn } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import { getClock } from '../../src/testing-library';
 
 import {
+  paginateAll,
+  graphqlFetch,
+  summarizeExecution,
   parseUnifiedDiff,
   buildUnifiedDiff,
   computeDeepMode,
   matchesSecurityPath,
-  normalizeDiffText,
   normalizeFindings,
   classifyFindings,
   selectFindingsToPost,
@@ -30,26 +39,9 @@ import {
   summarizedHashesFromBodies,
   buildReviewPayload,
   buildNoIssuesPayload,
-  shouldResolveThread,
-  livenessKeyFromBody,
-  livenessStamp,
   NO_ISSUES_MARKER,
   SUMMARY_HEADING,
 } from './review-orchestrator.mjs';
-
-// The diff-evidence sweep substring-tests a thread's liveness key against the
-// NORMALIZED diff loadDiffIndex builds — reuse the production normalizer (not a
-// mirror) so the tests can't silently desync from what the sweep actually sees.
-const normalizedDiff = (patch) => normalizeDiffText(parseUnifiedDiff(patch));
-
-// Build the own-thread record the sweep sees, the way fetchOwnThreads would after
-// round-tripping a finding's stamp through a comment body (stamp → decode).
-const threadFromFinding = (f) => ({
-  isResolved: false,
-  resolvedByLogin: null,
-  hash: f.hash,
-  livenessKey: livenessKeyFromBody(`x ${livenessStamp(f.livenessKey)}`),
-});
 
 const inlineFinding = (over) => ({
   severity: 'blocking',
@@ -58,6 +50,544 @@ const inlineFinding = (over) => ({
   body: 'b',
   rule: 'R',
   ...over,
+});
+
+const reviewedSha = 'a'.repeat(40);
+const currentSha = 'b'.repeat(40);
+const checkpoint = `<!-- thunder-deep-review-head:${reviewedSha} -->`;
+const fullFiles = [
+  { filename: 'src/a.ts', additions: 1, deletions: 1, patch: '@@ -1 +1 @@\n-oldValue();\n+newValue();' },
+  { filename: 'src/crypto/key.ts', additions: 700, deletions: 0, patch: '@@ -0,0 +1 @@\n+encrypt();' },
+];
+const deltaFile = { filename: 'src/a.ts', additions: 1, deletions: 1,
+  patch: '@@ -8 +8 @@\n-oldDelta();\n+newDelta();' };
+
+/** Run the real pre/post entrypoints against a local GitHub fixture server. */
+const runReview = async ({ action = 'synchronize', labels = '', reviews = [{ body: checkpoint,
+  author: { login: 'github-actions' } }], threads = [], compare = { status: 'ahead',
+  merge_base_commit: { sha: reviewedSha }, files: [deltaFile] }, compareStatus = 200,
+  files = fullFiles, findings, replyPage, headSha = currentSha, graphqlTransportFailure = false } = {}) => {
+  getClock().uninstall(); // The fixture server needs real network callbacks.
+  const dir = mkdtempSync(join(tmpdir(), 'thunder-incremental-'));
+  const posts = [];
+  const reads = [];
+  const logs = [];
+  const connection = (nodes) => ({ nodes, pageInfo: { hasNextPage: false } });
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    const json = (value, status = 200) => {
+      response.writeHead(status, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(value));
+    };
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = Buffer.concat(chunks).toString();
+    if (url.pathname === '/graphql') {
+      if (graphqlTransportFailure) return request.socket.destroy();
+      const { query } = JSON.parse(body);
+      reads.push(query);
+      if (query.includes('node(id:') && replyPage === null) return json({ errors: [{ message: 'Reply page unavailable' }] });
+      if (query.includes('node(id:')) return json({ data: { node: {
+        comments: connection(replyPage),
+      } } });
+      const key = query.includes('reviewThreads(') ? 'reviewThreads' : 'reviews';
+      return json({ data: { repository: { pullRequest: { [key]: connection(
+        key === 'reviews' ? reviews : threads,
+      ) } } } });
+    }
+    if (request.method === 'POST') {
+      posts.push(JSON.parse(body));
+      return json({ id: 1 });
+    }
+    reads.push(url.pathname);
+    if (url.pathname.includes('/compare/')) return json({ commits: [{ parents: [{ sha: reviewedSha }] }],
+      total_commits: 1, ...compare }, compareStatus);
+    if (url.pathname.endsWith('/files')) return json(files);
+    return json('Unexpected request', 404);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const paths = {
+    THUNDER_DIFF_FILE: join(dir, 'diff.patch'), THUNDER_PR_DIFF_FILE: join(dir, 'pr.patch'),
+    THUNDER_DEEPMODE_FILE: join(dir, 'mode.json'), THUNDER_PREVIOUS_FINDINGS_FILE: join(dir, 'previous.json'),
+    THUNDER_FINDINGS_FILE: join(dir, 'findings.json'), GITHUB_OUTPUT: join(dir, 'output'),
+  };
+  const run = async (phase) => {
+    const child = Bun.spawn(['node', fileURLToPath(new URL('./review-orchestrator.mjs', import.meta.url)), phase], {
+      env: { ...process.env, ...paths, GITHUB_TOKEN: 'test', GITHUB_REPOSITORY: 'test/repo',
+        PR_NUMBER: '1', PR_HEAD_SHA: headSha, PR_ACTION: action, PR_LABELS: labels,
+        GITHUB_API_URL: origin, GITHUB_GRAPHQL_URL: `${origin}/graphql` },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr), child.exited,
+    ]);
+    expect({ code, stderr }).toEqual({ code: 0, stderr: '' });
+    logs.push(stdout);
+    if (!graphqlTransportFailure) expect(stdout).not.toContain('FAIL-SOFT');
+  };
+  try {
+    await run('pre');
+    if (graphqlTransportFailure) return {
+      output: existsSync(paths.GITHUB_OUTPUT) ? readFileSync(paths.GITHUB_OUTPUT, 'utf8') : '',
+      posts, logs,
+    };
+    if (findings !== undefined && !JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')).skip) {
+      writeFileSync(paths.THUNDER_FINDINGS_FILE, JSON.stringify({ findings }));
+      await run('post');
+    }
+    return {
+      diff: readFileSync(paths.THUNDER_DIFF_FILE, 'utf8'),
+      mode: JSON.parse(readFileSync(paths.THUNDER_DEEPMODE_FILE, 'utf8')),
+      previous: JSON.parse(readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE, 'utf8')),
+      previousBytes: readFileSync(paths.THUNDER_PREVIOUS_FINDINGS_FILE).byteLength,
+      output: readFileSync(paths.GITHUB_OUTPUT, 'utf8'), posts, reads, logs,
+    };
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe('incremental pre/post', () => {
+  test.each([undefined, '', ' \n', '@@ invalid @@\n+change', '@@ -1 +1 @@\n context']
+    .flatMap((patch) => ['opened', 'synchronize', 'labeled'].flatMap((action) =>
+      [false, true].map((withFindings) => [action, patch, withFindings]))))(
+    '%s reviews available patches (%s, findings: %s)', async (action, patch, withFindings) => {
+      const missing = { filename: 'src/large.ts', additions: 900, deletions: 900, patch };
+      const result = await runReview({ action, labels: action === 'labeled' ? 'review:full' : '',
+        files: [missing, fullFiles[0]], compare: { status: 'ahead',
+          merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] },
+        findings: withFindings ? [inlineFinding({ file: 'src/a.ts', line: 1 })] : [] });
+      expect(result.mode).toMatchObject({ skip: false, incremental: action === 'synchronize',
+        missingPatches: ['src/large.ts'] });
+      expect(result.output).toContain('skip=false');
+      expect(result.diff).toContain(action === 'synchronize' ? '+newDelta();' : '+newValue();');
+      expect(result.posts).toHaveLength(1);
+      expect(result.posts[0].body).toContain('Partial coverage');
+      expect(result.posts[0].body).toContain('src/large.ts');
+      expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+      expect(result.posts[0].comments).toHaveLength(withFindings ? 1 : 0);
+      if (!withFindings) expect(result.posts[0].body).toContain('no issues to report');
+    });
+
+  test.each(['opened', 'synchronize'])('%s reports partial coverage when every patch is missing', async (action) => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const result = await runReview({ action, files: [missing], compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing] }, findings: [] });
+    expect(result.output).toContain('skip=false');
+    expect(result.posts).toHaveLength(1);
+    expect(result.posts[0].body).toContain('Partial coverage');
+    expect(result.posts[0].body).toContain('src/large.ts');
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+  });
+
+  test('a partial A-to-B review records checkpoint B for the next B-to-C review', async () => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const first = await runReview({ compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] },
+      findings: [inlineFinding({ file: 'src/a.ts', line: 1 })] });
+    expect(first.posts).toHaveLength(1);
+    expect(first.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    const nextSha = 'c'.repeat(40);
+    const next = await runReview({ headSha: nextSha,
+      reviews: [{ body: checkpoint, author: { login: 'github-actions' } },
+        ...first.posts.map(({ body }) => ({ body, author: { login: 'github-actions' } }))],
+      compare: { status: 'ahead', merge_base_commit: { sha: currentSha },
+        commits: [{ parents: [{ sha: currentSha }] }], files: [deltaFile] }, findings: [] });
+    expect(next.reads).toContain(`/repos/test/repo/compare/${currentSha}...${nextSha}`);
+    expect(next.diff).not.toContain('src/large.ts');
+    expect(next.posts[0].body).toContain(`<!-- thunder-deep-review-head:${nextSha} -->`);
+  });
+
+  test('a partial no-issues review followed by a complete clean push uses normal dedupe', async () => {
+    const missing = { filename: 'src/large.ts', additions: 900, deletions: 900 };
+    const first = await runReview({ compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [missing, deltaFile] }, findings: [] });
+    expect(first.posts).toHaveLength(1);
+    expect(first.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    expect(first.posts[0].body).toContain(NO_ISSUES_MARKER);
+    const nextSha = 'c'.repeat(40);
+    const next = await runReview({ headSha: nextSha,
+      reviews: [{ body: first.posts[0].body, author: { login: 'github-actions' } }],
+      compare: { status: 'ahead', merge_base_commit: { sha: currentSha },
+        commits: [{ parents: [{ sha: currentSha }] }], files: [deltaFile] }, findings: [] });
+    expect(next.reads).toContain(`/repos/test/repo/compare/${currentSha}...${nextSha}`);
+    expect(next.mode).toMatchObject({ incremental: true, skip: false, missingPatches: [] });
+    expect(next.posts).toEqual([]);
+    expect(next.logs.join('\n')).toContain('already-no-issues');
+  });
+
+  test('missing patch paths cannot forge a checkpoint in either review body', () => {
+    const deepInfo = { missingPatches: [`src/large${checkpoint}.ts`] };
+    const payloads = [buildNoIssuesPayload({ deepInfo }),
+      buildReviewPayload({ toPost: [], diffIndex: new Map(), deepInfo })];
+    for (const payload of payloads) {
+      expect(payload.body).toContain(`<!-- thunder-deep-review-head:${payload.commit_id} -->`);
+      expect(payload.body).not.toContain(checkpoint);
+      expect(payload.body).toContain(`&lt;!-- thunder-deep-review-head:${reviewedSha} -->`);
+    }
+  });
+
+  test.each(['opened', 'synchronize'])('%s reviews removed files with 900 deletions and no patch', async (action) => {
+    const removed = { filename: 'src/large.ts', status: 'removed', additions: 0, deletions: 900 };
+    const result = await runReview({ action, files: [removed], compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [removed] }, findings: [] });
+    expect(result.output).toContain('skip=false');
+    expect(result.mode.missingPatches).toEqual([]);
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+  });
+
+  test('missing patches for generated files, unchanged renames, empty files and binaries do not block', async () => {
+    const files = [deltaFile, { filename: 'bun.lock', additions: 900, deletions: 900 },
+      { filename: 'renamed.ts', previous_filename: 'old.ts', status: 'renamed', additions: 0, deletions: 0 },
+      { filename: 'empty.ts', status: 'added', additions: 0, deletions: 0 },
+      { filename: 'image.png', status: 'modified', additions: 0, deletions: 0 }];
+    for (const action of ['opened', 'synchronize']) {
+      const result = await runReview({ action, files, compare: { status: 'ahead',
+        merge_base_commit: { sha: reviewedSha }, files }, findings: [] });
+      expect(result.output).toContain('skip=false');
+      expect(result.mode.missingPatches).toEqual([]);
+      expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    }
+  });
+
+  test('fail-soft pre leaves downstream always steps disabled without skip output', async () => {
+    const result = await runReview({ graphqlTransportFailure: true });
+    expect(result.logs.join('\n')).toContain('FAIL-SOFT');
+    expect(result.output).toBe('');
+    expect(result.posts).toEqual([]);
+    const workflow = readFileSync(new URL('../workflows/thunder-deep-review.yml', import.meta.url), 'utf8');
+    const conditions = [...workflow.matchAll(/if: (always\(\) && steps\.pre\.outputs\.skip .*)/g)];
+    expect(conditions).toHaveLength(5);
+    for (const [, condition] of conditions) {
+      const enabled = new Function('skip', `return ${condition.replace('always()', 'true').replace('steps.pre.outputs.skip', 'skip')}`);
+      expect(enabled('')).toBe(false);
+      expect(enabled('true')).toBe(false);
+      expect(enabled('false')).toBe(true);
+    }
+  });
+
+  test('authorized recall without structured output still fails candidate persistence', () => {
+    const workflow = readFileSync(new URL('../workflows/thunder-deep-review.yml', import.meta.url), 'utf8');
+    const script = workflow.match(/- name: Persist candidate findings to file[\s\S]*?node <<'NODE'\n([\s\S]*?)\n          NODE/)[1];
+    const result = spawnSync('node', ['-e', script], { env: { ...process.env,
+      THUNDER_CANDIDATES_FILE: join(tmpdir(), 'unused-thunder-candidates.json'), STRUCTURED_OUTPUT: '' }, encoding: 'utf8' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('recall step produced no structured_output');
+  });
+
+  test('pre omits generated patches, lists their paths and keeps reviewable files', async () => {
+    const omitted = ['bun.lock', 'cli/bun.lock', 'src-tauri/Cargo.lock', 'web/package-lock.json',
+      'backend/src/emails/locales/en/messages.ts', 'backend/drizzle/meta/0001_snapshot.json',
+      'src/acp/iroh/pkg/thunderbolt_acp_client.js', 'src/acp/iroh/pkg/thunderbolt_acp_client_bg.wasm'];
+    const retained = ['docs/guide.md', 'src/locales/en/messages.po', 'backend/drizzle/meta/_journal.json',
+      'backend/drizzle/0001_migration.sql', 'src/feature.ts', 'src-tauri/gen/android/app/build.gradle.kts'];
+    const files = [...omitted, ...retained].map((filename, index) => ({ filename, status: 'added',
+      additions: 1, deletions: 0, patch: `@@ -0,0 +1 @@\n+content-${index}` }));
+    for (const action of ['opened', 'synchronize']) {
+      const result = await runReview({ action, files, compare: { status: 'ahead',
+        merge_base_commit: { sha: reviewedSha }, files } });
+      const [notice, ...patch] = result.diff.split('\n');
+      for (const [index, filename] of omitted.entries()) {
+        expect(notice).toContain(JSON.stringify(filename));
+        expect(patch.join('\n')).not.toContain(filename);
+        expect(result.diff).not.toContain(`+content-${index}\n`);
+      }
+      for (const [index, filename] of retained.entries()) {
+        expect(result.diff).toContain(`diff --git a/${filename} b/${filename}`);
+        expect(result.diff).toContain(`+content-${index + omitted.length}\n`);
+      }
+      expect(result.mode.skip).toBe(false);
+    }
+    const generatedOnly = await runReview({ action: 'opened', files: files.slice(0, omitted.length) });
+    expect(generatedOnly.output).toContain('skip=true');
+  });
+
+  test('reviews delta hunks including files outside the PR, with delta mode gates and full-PR anchors', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: [deltaFile, { filename: 'outside-pr.ts', additions: 900, patch: '@@ -0,0 +1 @@\n+outside();' }] },
+      findings: [inlineFinding({ file: 'src/a.ts', line: 8 })] });
+    expect(result.diff).toContain('+newDelta();');
+    expect(result.diff).not.toContain('newValue');
+    expect(result.diff).not.toContain('crypto');
+    expect(result.diff).toContain('outside-pr');
+    expect(result.mode).toMatchObject({ incremental: true, deepMode: true, securityMode: false, changedLines: 902 });
+    expect(result.output).toContain('skip=false');
+    expect(result.posts[0].comments[0]).toMatchObject({ path: 'src/a.ts', subject_type: 'file' });
+    expect(result.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    expect(result.reads.filter((entry) => entry.includes('/compare/'))).toEqual([
+      `/repos/test/repo/compare/${reviewedSha}...${currentSha}`,
+    ]);
+    expect(result.reads.filter((entry) => entry.includes('reviews(first:'))).toHaveLength(1);
+    expect(result.reads.filter((entry) => entry.includes('reviewThreads(first:'))).toHaveLength(1);
+  });
+
+  test('removing a previously added helper outside the current PR diff does not skip review', async () => {
+    const files = [{ filename: 'caller.ts', status: 'added', additions: 1, deletions: 0,
+      patch: '@@ -0,0 +1 @@\n+import "./helper";' }];
+    const removed = { filename: 'helper.ts', status: 'removed', additions: 0, deletions: 1,
+      patch: '@@ -1 +0,0 @@\n-export const helper = 1;' };
+    const result = await runReview({ files, compare: { status: 'ahead',
+      merge_base_commit: { sha: reviewedSha }, files: [removed] },
+      findings: [inlineFinding({ file: 'helper.ts', line: 1, side: 'LEFT' })] });
+    expect(result.mode.skip).toBe(false);
+    expect(result.diff).toContain('-export const helper = 1;');
+    expect(result.posts).toHaveLength(1);
+    expect(result.posts[0].comments).toEqual([]);
+    expect(result.posts[0].body).toContain('helper.ts');
+  });
+
+  test.each(['', ` <!-- thunder-finding-hash:${'a'.repeat(16)} -->`])(
+    'an open thread discarded from prompt history prevents a clean review (hash marker: %s)', async (marker) => {
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      isResolved: false, resolvedBy: null,
+      comments: { nodes: [{ body: `Original finding${marker}`,
+        author: { login: 'github-actions' } }, ...Array.from({ length: 60 }, () => ({
+        body: 'x'.repeat(2000), author: { login: 'human' },
+      }))], pageInfo: { hasNextPage: false } },
+    }], findings: [] });
+    expect(result.previous.ownThreads).toEqual([]);
+    expect(result.previous.openHashes).toEqual(marker ? ['a'.repeat(16)] : []);
+    expect(result.posts).toEqual([]);
+  });
+
+  test.each(['diverged', 'behind'])('force-push (%s) falls back to full review', async (status) => {
+    const result = await runReview({ compare: { status, merge_base_commit: { sha: 'c'.repeat(40) }, files: [deltaFile] } });
+    expect(result.diff).toContain('encrypt();');
+    expect(result.mode).toMatchObject({ incremental: false, deepMode: true, securityMode: true });
+  });
+
+  test.each([
+    { commits: [{ parents: [{ sha: reviewedSha }, { sha: 'c'.repeat(40) }] }], total_commits: 1 },
+    { commits: [{ parents: [{ sha: reviewedSha }] }], total_commits: 2 },
+  ])('merge or truncated commits fall back to full review', async (commits) => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: [deltaFile], ...commits } });
+    expect(result.mode).toMatchObject({ incremental: false, deepMode: true, securityMode: true });
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test.each(['opened', 'reopened', 'ready_for_review', 'labeled'])('%s reviews the full PR', async (action) => {
+    const result = await runReview({ action });
+    expect(result.diff).toContain('encrypt();');
+    expect(result.reads.some((entry) => entry.includes('/compare/'))).toBe(false);
+  });
+
+  test('review:full left on the PR does not override later synchronize events', async () => {
+    const result = await runReview({ labels: 'other,review:full' });
+    expect(result.mode.incremental).toBe(true);
+    expect(result.diff).toContain('newDelta();');
+  });
+
+  test.each([[], [{ body: 'legacy review', author: { login: 'github-actions' } }],
+    [{ body: `${checkpoint}<!-- thunder-deep-review-finding -->`, author: { login: 'human' } }]])(
+    'missing or unauthenticated checkpoint falls back to full', async (...reviews) => {
+      const result = await runReview({ reviews });
+      expect(result.mode.incremental).toBe(false);
+      expect(result.diff).toContain('encrypt();');
+    });
+
+  test('empty delta skips model work and does not advance checkpoint', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha }, files: [] }, findings: [] });
+    expect(result.mode).toMatchObject({ incremental: true, skip: true });
+    expect(result.output).toContain('skip=true');
+    expect(result.posts).toEqual([]);
+  });
+
+  test.each([404, 500])('compare HTTP %s falls back to full', async (compareStatus) => {
+    const result = await runReview({ compareStatus });
+    expect(result.mode.incremental).toBe(false);
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test('compare file cap falls back to full rather than omitting files', async () => {
+    const result = await runReview({ compare: { status: 'ahead', merge_base_commit: { sha: reviewedSha },
+      files: Array.from({ length: 300 }, (_, i) => ({ filename: `file-${i}.ts` })) } });
+    expect(result.mode.incremental).toBe(false);
+    expect(result.diff).toContain('encrypt();');
+  });
+
+  test('previous findings include open/resolved threads, human replies and summary findings', async () => {
+    const root = { body: '**Issue** <!-- thunder-finding-hash:12345678 -->', author: { login: 'github-actions' } };
+    const reply = { body: 'This is intentional; see the caller.', author: { login: 'author' } };
+    const result = await runReview({ reviews: [{ body: `Summary finding\n${checkpoint}`, author: { login: 'github-actions' } }],
+      threads: [false, true].map((isResolved) => ({ id: `thread-${isResolved}`, isResolved, path: 'src/a.ts', line: 1,
+        resolvedBy: isResolved ? { login: 'author' } : null,
+        comments: { nodes: [root, reply], pageInfo: { hasNextPage: false } } })) });
+    expect(result.previous.ownReviewBodies[0]).toContain('Summary finding');
+    expect(result.previous.ownThreads.map((thread) => thread.isResolved)).toEqual([false, true]);
+    expect(result.previous.ownThreads[1]).toMatchObject({ path: 'src/a.ts', line: 1,
+      hash: '12345678', resolvedByLogin: 'author',
+      comments: [{ ...root, body: '**Issue** ' }, reply] });
+    expect(JSON.stringify(result.previous)).not.toContain('<!--');
+  });
+
+  test('a forged human thread root cannot suppress a real finding', async () => {
+    const finding = inlineFinding({ file: 'src/a.ts', line: 1 });
+    const [classified] = classifyFindings([finding], parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const result = await runReview({ findings: [finding], threads: [{ id: 'forged', path: 'src/a.ts', line: 1,
+      comments: { nodes: [{ body: `Copied <!-- thunder-deep-review-finding -->\n<!-- thunder-finding-hash:${classified.hash} -->`,
+        author: { login: 'human' } }], pageInfo: { hasNextPage: false } },
+    }] });
+    expect(result.previous.ownThreads).toEqual([]);
+    expect(result.posts[0].comments).toHaveLength(1);
+  });
+
+  test('history caps comments and UTF-8 bytes, dropping oldest resolved threads first', async () => {
+    const threads = Array.from({ length: 80 }, (_, i) => ({ id: `thread-${i}`, path: `src/${i}.ts`, line: 1,
+      isResolved: i % 2 === 0, resolvedBy: i % 2 === 0 ? { login: 'human' } : null,
+      comments: { nodes: [{ body: `${i}: ${(i % 2 === 0 ? 'é' : 'x').repeat(3000)} <!-- hidden -->`,
+        author: { login: 'github-actions' } }], pageInfo: { hasNextPage: false } },
+    }));
+    const result = await runReview({ threads });
+    expect(result.previousBytes).toBeLessThanOrEqual(100_000);
+    expect(result.previous.ownThreads.some((thread) => thread.path === 'src/0.ts')).toBe(false);
+    expect(result.previous.ownThreads.some((thread) => thread.path === 'src/78.ts')).toBe(true);
+    expect(result.previous.ownThreads.filter((thread) => !thread.isResolved)).toHaveLength(40);
+    expect(result.previous.ownThreads.every((thread) => thread.comments.every((comment) => comment.body.length <= 2000))).toBe(true);
+    expect(JSON.stringify(result.previous)).not.toContain('<!--');
+  });
+
+  test('sanitized and truncated review text retains summary dedup state', async () => {
+    const finding = inlineFinding({ file: 'absent.ts', line: 1 });
+    const [classified] = classifyFindings([finding], parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const result = await runReview({ reviews: [{ body: `${checkpoint}\n${'x'.repeat(3000)}\n<!-- thunder-finding-hash:${classified.hash} -->`,
+      author: { login: 'github-actions' } }], findings: [finding] });
+    expect(result.previous.ownReviewBodies[0].length).toBeLessThanOrEqual(2000);
+    expect(result.previous.summarizedHashes).toEqual([classified.hash]);
+    expect(result.posts).toEqual([]);
+  });
+
+  test('summary dedup hashes survive when they alone exceed the history cap', async () => {
+    const hashes = Array.from({ length: 10_000 }, (_, i) => i.toString(16).padStart(8, '0'));
+    const result = await runReview({ reviews: [{
+      body: `${checkpoint}\n${hashes.map((hash) => `<!-- thunder-finding-hash:${hash} -->`).join('\n')}`,
+      author: { login: 'github-actions' },
+    }] });
+    expect(result.previous.ownReviewBodies).toEqual([]);
+    expect(result.previous.summarizedHashes).toEqual(hashes);
+  });
+
+  test('discarded history threads retain open and human-resolved dedup hashes', async () => {
+    const findings = [1, 2].map((line) => inlineFinding({ file: 'src/a.ts', line }));
+    const classified = classifyFindings(findings, parseUnifiedDiff(buildUnifiedDiff(fullFiles)));
+    const threads = Array.from({ length: 80 }, (_, i) => ({ id: `thread-${i}`, path: `src/${i}.ts`, line: 1,
+      isResolved: i === 0, resolvedBy: i === 0 ? { login: 'human' } : null,
+      comments: { nodes: [{ body: `${'é'.repeat(3000)}${i < 2 ? ` <!-- thunder-finding-hash:${classified[i].hash} -->` : ''}`,
+        author: { login: 'github-actions' } }], pageInfo: { hasNextPage: false } },
+    }));
+    const result = await runReview({ threads, findings });
+    expect(result.previousBytes).toBeLessThanOrEqual(100_000);
+    expect(result.previous.ownThreads.some((thread) => ['src/0.ts', 'src/1.ts'].includes(thread.path))).toBe(false);
+    expect(result.previous.humanResolvedHashes).toEqual([classified[0].hash]);
+    expect(result.previous.openHashes).toEqual([classified[1].hash]);
+    expect(result.posts).toEqual([]);
+  });
+
+  test('human replies beyond the first comment page reach recall', async () => {
+    const root = { body: 'Original finding', author: { login: 'github-actions' } };
+    const refutation = { body: 'Refuted with a reproduction.', author: { login: 'author' } };
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      comments: { nodes: [root], pageInfo: { hasNextPage: true, endCursor: 'comments-page-2' } },
+    }], replyPage: [refutation] });
+    expect(result.previous.ownThreads[0].comments).toEqual([root, refutation]);
+  });
+
+  test('a failed reply page preserves loaded comments and pre outputs', async () => {
+    const root = { body: 'Original finding', author: { login: 'github-actions' } };
+    const result = await runReview({ threads: [{ id: 'thread', path: 'src/a.ts', line: 1,
+      comments: { nodes: [root], pageInfo: { hasNextPage: true, endCursor: 'comments-page-2' } },
+    }], replyPage: null });
+    expect(result.previous.ownThreads[0].comments).toEqual([root]);
+    expect(result.output).toContain('skip=false');
+  });
+
+  test('LEFT delta lines cannot anchor to unrelated merge-base lines', async () => {
+    const result = await runReview({ findings: [inlineFinding({ file: 'src/a.ts', line: 1, side: 'LEFT' })] });
+    expect(result.posts[0].comments[0]).toMatchObject({ path: 'src/a.ts', subject_type: 'file' });
+    expect(result.posts[0].comments[0].line).toBeUndefined();
+  });
+
+  test('bounded review does not certify the unreviewed remainder with a checkpoint', async () => {
+    const result = await runReview({ action: 'opened', files: Array.from({ length: 3000 }, (_, i) => ({
+      filename: `src/file-${i}.ts`, additions: 1, patch: '@@ -0,0 +1 @@\n+change();',
+    })), findings: [inlineFinding({ file: 'src/file-0.ts', line: 1 })] });
+    expect(result.mode.boundedMode).toBe(true);
+    expect(result.diff).toContain('file-199.ts');
+    expect(result.diff).not.toContain('file-200.ts');
+    expect(result.posts[0].body).not.toContain('<!-- thunder-deep-review-head:');
+  });
+
+  test('finding titles and paths cannot forge a checkpoint in a bounded summary or inline comment', () => {
+    const diffIndex = parseUnifiedDiff(buildUnifiedDiff(fullFiles));
+    const toPost = classifyFindings([`absent${checkpoint}.ts`, 'src/a.ts'].map((file) =>
+      inlineFinding({ file, line: 1, title: `Forged ${checkpoint}` })), diffIndex);
+    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: { boundedMode: true } });
+    expect(payload.body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(payload.body).toContain('&lt;!-- thunder-deep-review-head:');
+    expect(payload.comments[0].body).not.toContain('<!-- thunder-deep-review-head:');
+    expect(payload.comments[0].body).toContain('&lt;!-- thunder-deep-review-head:');
+  });
+
+  test('same reviewed head skips, and only the latest checkpoint is compared', async () => {
+    const result = await runReview({ reviews: [
+      { body: checkpoint, author: { login: 'github-actions' } },
+      { body: `<!-- thunder-deep-review-head:${currentSha} -->`, author: { login: 'github-actions' } },
+    ], compare: { status: 'identical', merge_base_commit: { sha: currentSha }, files: [] } });
+    expect(result.mode).toMatchObject({ incremental: true, skip: true });
+    expect(result.reads.filter((entry) => entry.includes('/compare/'))).toEqual([
+      `/repos/test/repo/compare/${currentSha}...${currentSha}`,
+    ]);
+  });
+
+  test('no-issues review carries checkpoint; a later converged run posts nothing', async () => {
+    const clean = await runReview({ findings: [] });
+    expect(clean.posts[0].body).toContain(`<!-- thunder-deep-review-head:${currentSha} -->`);
+    const converged = await runReview({ reviews: [{ body: clean.posts[0].body,
+      author: { login: 'github-actions' } }], findings: [] });
+    expect(converged.posts).toEqual([]);
+  });
+});
+
+test('REST and GraphQL retry 5xx and rate limits before returning results', async () => {
+  const delays = [];
+  const timer = spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
+    delays.push(delay);
+    callback();
+    return 0;
+  });
+  const responses = () => [
+    new Response(null, { status: 502 }),
+    new Response(null, { status: 429 }),
+    new Response(null, { status: 403, headers: { 'retry-after': 'invalid', 'x-ratelimit-remaining': '0',
+      'x-ratelimit-reset': String(Math.ceil(Date.now() / 1000) + 3600) } }),
+  ];
+  const queue = [...responses(), Response.json([{ filename: 'src/app.tsx' }]),
+    ...responses(), Response.json({ data: { repository: { id: 'repo' } } })];
+  const request = spyOn(globalThis, 'fetch').mockImplementation(async () => queue.shift());
+  try {
+    expect(await paginateAll('https://example.test/files')).toEqual({
+      items: [{ filename: 'src/app.tsx' }], truncated: false,
+    });
+    expect(await graphqlFetch('query { repository { id } }', {})).toEqual({
+      ok: true, data: { repository: { id: 'repo' } }, errors: null,
+    });
+    expect(request).toHaveBeenCalledTimes(8);
+    expect(delays).toHaveLength(6);
+    for (const offset of [0, 3]) {
+      expect(delays[offset]).toBeGreaterThanOrEqual(24_000);
+      expect(delays[offset]).toBeLessThanOrEqual(36_000);
+      expect(delays[offset + 1]).toBeGreaterThanOrEqual(48_000);
+      expect(delays[offset + 1]).toBeLessThanOrEqual(72_000);
+      expect(delays[offset + 2]).toBeGreaterThanOrEqual(60_000);
+      expect(delays[offset + 2]).toBeLessThanOrEqual(72_000);
+    }
+  } finally {
+    request.mockRestore();
+    timer.mockRestore();
+  }
 });
 
 // A tiny two-file diff: one added line in each file, used across scenarios.
@@ -104,7 +634,7 @@ describe('gate-empty: clean diff converges to an affirmative no-issues state', (
   });
 
   test('no-issues payload has ZERO inline comments + the marker', () => {
-    const payload = buildNoIssuesPayload({ deepInfo: { deepMode: false, boundedMode: false }, skipCount: 0 });
+    const payload = buildNoIssuesPayload({ deepInfo: { deepMode: false, boundedMode: false } });
     expect(payload.event).toBe('COMMENT');
     expect(payload.comments.length).toBe(0); // affirmative note posts no inline comments
     expect(payload.body).toContain(NO_ISSUES_MARKER);
@@ -112,7 +642,7 @@ describe('gate-empty: clean diff converges to an affirmative no-issues state', (
   });
 
   test('does NOT re-post when the latest own review is already no-issues', () => {
-    const priorNoIssues = buildNoIssuesPayload({ deepInfo: {}, skipCount: 0 }).body;
+    const priorNoIssues = buildNoIssuesPayload({ deepInfo: {} }).body;
     expect(latestOwnReviewIsNoIssues([priorNoIssues])).toBe(true);
     const decision = decideTerminalAction({
       findingCount: 0,
@@ -124,7 +654,7 @@ describe('gate-empty: clean diff converges to an affirmative no-issues state', (
   });
 
   test('DOES re-post no-issues if a real finding review came AFTER the last note', () => {
-    const priorNoIssues = buildNoIssuesPayload({ deepInfo: {}, skipCount: 0 }).body;
+    const priorNoIssues = buildNoIssuesPayload({ deepInfo: {} }).body;
     // chronological: an old no-issues note, then a later findings review → newest
     // is NOT the no-issues note, so a fresh affirmative note is warranted.
     const laterFindingsReview = '## 🔭 thunder-deep-review (advisory)\nsome finding <!-- thunder-finding-hash:abc123 -->';
@@ -182,7 +712,7 @@ describe('gate-keeps-subset: only the kept subset posts inline', () => {
     // reaches the orchestrator. The kept subset must be exactly what posts.
     const kept = classifyFindings([blockerCandidate], diffIndex);
     const toPost = selectFindingsToPost(kept, noPrior);
-    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: {}, skipCount: 0 });
+    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: {} });
     expect(payload.comments.length).toBe(1);
     expect(payload.comments[0].path).toBe('src/a.ts');
     expect(payload.comments[0].line).toBe(2);
@@ -196,7 +726,7 @@ describe('gate-keeps-subset: only the kept subset posts inline', () => {
     const openHashes = new Set(kept.map((f) => f.hash));
     const toPost = selectFindingsToPost(kept, { ...noPrior, openHashes });
     expect(toPost.length).toBe(0); // already open as our thread → not re-posted
-    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: {}, skipCount: 0 });
+    const payload = buildReviewPayload({ toPost, diffIndex, deepInfo: {} });
     expect(payload.comments.length).toBe(0);
   });
 });
@@ -211,19 +741,7 @@ test('summarizedHashesFromBodies collects every stamped hash across bodies', () 
 });
 
 // ---------------------------------------------------------------------------
-// SCENARIO 3 — shouldResolveThread: the 4 convergence invariants.
-//
-// A "short/common" offending line (`}`, `return;`) has a trimmed key that is a
-// substring of almost ANY diff, so the OLD bare-line rule pinned its thread open
-// forever (never-resolve). The fix anchors on a distinctive WINDOW (offending line
-// + neighbouring context), tested against the normalized diff. We prove:
-//   I1  code GONE from the diff → resolves, even on an empty/all-clean run, even
-//       for a short/common offending line.
-//   I2  code STILL in the diff but the model missed it → STAYS OPEN (short/common
-//       lines AND legacy threads): never a false-resolve on a recall miss.
-//   I3  the dedup hash stays stable across pushes (no title/prose drift).
-//   I4  a short/common line neither pins the thread open forever (I1) nor routes
-//       to the bare recall-miss rule (I2).
+// Finding identity remains stable across prose and neighboring-line changes.
 // ---------------------------------------------------------------------------
 
 // A hunk whose offending line is the bare `}` — the canonical short/common token.
@@ -241,8 +759,8 @@ const SHORT_LINE_DIFF = [
 const shortLineFinding = (diff) =>
   classifyFindings([inlineFinding({ file: 'src/x.ts', line: 4 })], parseUnifiedDiff(diff))[0];
 
-describe('shouldResolveThread: short/common offending line', () => {
-  test('I4: a `}` line gets a DISTINCTIVE multi-line window, not the bare token', () => {
+describe('finding identity: short/common offending line', () => {
+  test('a `}` line gets a DISTINCTIVE multi-line window, not the bare token', () => {
     const f = shortLineFinding(SHORT_LINE_DIFF);
     expect(f.placement).toBe('inline');
     expect(f.livenessKey).toContain('scaleByFactor(rawInput)'); // pulled in real context
@@ -256,37 +774,9 @@ describe('shouldResolveThread: short/common offending line', () => {
     expect(f.livenessKey).toBe('src/b.ts'); // file-path fallback — never '' or a '\n'-only key
   });
 
-  test('I2: stays OPEN while its windowed code is still in the diff (recall miss)', () => {
-    const f = shortLineFinding(SHORT_LINE_DIFF);
-    const thread = threadFromFinding(f);
-    // The model returned other findings this run but MISSED this one — its code is
-    // unchanged, so the window is still present and the thread must NOT resolve.
-    expect(shouldResolveThread(thread, normalizedDiff(SHORT_LINE_DIFF))).toBe(false);
-  });
-
-  test('I2: a bare `}` is present in nearly every diff — the OLD rule would pin it; the window does not', () => {
-    const f = shortLineFinding(SHORT_LINE_DIFF);
-    // An UNRELATED later diff that no longer touches this code but still has a `}`.
-    const unrelated = normalizedDiff(
-      ['diff --git a/src/z.ts b/src/z.ts', '+++ b/src/z.ts', '@@ -1,1 +1,2 @@', ' const z = 1;', '+if (z) { doThing(); }'].join('\n'),
-    );
-    expect(unrelated).toContain('}'); // bare token present → old rule never resolves
-    expect(shouldResolveThread(threadFromFinding(f), unrelated)).toBe(true); // window gone → resolves
-  });
-
-  test('I1: code GONE → resolves on an all-clean / empty run', () => {
-    const f = shortLineFinding(SHORT_LINE_DIFF);
-    const thread = threadFromFinding(f);
-    expect(shouldResolveThread(thread, '')).toBe(true); // empty diff
-    // And when the file is still touched but the offending window is fixed away:
-    const fixed = normalizedDiff(
-      ['diff --git a/src/x.ts b/src/x.ts', '+++ b/src/x.ts', '@@ -1,1 +1,2 @@', ' const head = 1;', '+const total = scaleSafely(rawInput);'].join('\n'),
-    );
-    expect(shouldResolveThread(thread, fixed)).toBe(true);
-  });
 });
 
-describe('shouldResolveThread: distinctive offending line', () => {
+describe('finding identity: distinctive offending line', () => {
   const DISTINCT_DIFF = [
     'diff --git a/src/a.ts b/src/a.ts',
     '+++ b/src/a.ts',
@@ -296,7 +786,7 @@ describe('shouldResolveThread: distinctive offending line', () => {
   ].join('\n');
   const f = classifyFindings([inlineFinding({ file: 'src/a.ts', line: 2 })], parseUnifiedDiff(DISTINCT_DIFF))[0];
 
-  test('I3: distinctive line is a SINGLE-line key, stable across a neighbour change', () => {
+  test('distinctive line is a SINGLE-line key, stable across a neighbour change', () => {
     const withNeighbour = [
       'diff --git a/src/a.ts b/src/a.ts',
       '+++ b/src/a.ts',
@@ -310,7 +800,7 @@ describe('shouldResolveThread: distinctive offending line', () => {
     expect(f.hash).toBe(f2.hash); // neighbour churn must NOT drift the dedup hash
   });
 
-  test('I3: prose/title drift must NOT drift the hash', () => {
+  test('prose/title drift must NOT drift the hash', () => {
     const reworded = classifyFindings(
       [inlineFinding({ file: 'src/a.ts', line: 2, title: 'COMPLETELY DIFFERENT TITLE', body: 'reworded prose' })],
       parseUnifiedDiff(DISTINCT_DIFF),
@@ -318,28 +808,16 @@ describe('shouldResolveThread: distinctive offending line', () => {
     expect(reworded.hash).toBe(f.hash); // only file+rule+severity+livenessKey feed the hash
   });
 
-  test('keeps open while present, resolves when its code leaves the diff', () => {
-    const thread = threadFromFinding(f);
-    expect(shouldResolveThread(thread, normalizedDiff(DISTINCT_DIFF))).toBe(false);
-    expect(shouldResolveThread(thread, '')).toBe(true);
-  });
 });
 
-describe('shouldResolveThread: legacy (no stamped key) threads', () => {
-  test('I2: NEVER false-resolves on a recall miss even when the run has OTHER findings (Bugbot r3454463237)', () => {
-    // Legacy thread predates the liveness stamp → livenessKey is null. This run
-    // produced other findings whose hashes differ from the legacy thread's. The
-    // OLD fallback resolved it (findingCount > 0 && !currentHashes.has(hash)),
-    // false-resolving a still-unfixed issue. It must now STAY OPEN.
-    const legacy = { isResolved: false, resolvedByLogin: null, hash: 'deadbeefcafe', livenessKey: null };
-    expect(shouldResolveThread(legacy, normalizedDiff(SHORT_LINE_DIFF))).toBe(false);
-    expect(shouldResolveThread(legacy, '')).toBe(false); // not even on an empty run
-  });
-
-  test('already-resolved or hash-less threads are never touched', () => {
-    expect(shouldResolveThread({ isResolved: true, hash: 'x', livenessKey: 'k' }, '')).toBe(false);
-    expect(shouldResolveThread({ isResolved: false, hash: null, livenessKey: 'k' }, '')).toBe(false);
-  });
+test('file-level and degenerate evidence windows retain file-path dedup keys', () => {
+  const fileLevel = classifyFindings([inlineFinding({ file: 'src/x.ts', line: 999 })], parseUnifiedDiff(SHORT_LINE_DIFF))[0];
+  expect(fileLevel.placement).toBe('file');
+  expect(fileLevel.livenessKey).toBe('src/x.ts');
+  const loneBrace = 'diff --git a/src/x.ts b/src/x.ts\n--- /dev/null\n+++ b/src/x.ts\n@@ -0,0 +1,1 @@\n+}';
+  const degenerate = classifyFindings([inlineFinding({ file: 'src/x.ts', line: 1 })], parseUnifiedDiff(loneBrace))[0];
+  expect(degenerate.placement).toBe('inline');
+  expect(degenerate.livenessKey).toBe('src/x.ts');
 });
 
 describe('migration: re-key path never throws and re-posts once', () => {
@@ -358,68 +836,6 @@ describe('migration: re-key path never throws and re-posts once', () => {
     expect(legacyOpenHashes.has(f.hash)).toBe(false); // proves the hashes differ
   });
 
-  test('a corrupted/empty liveness stamp decodes to null and never throws (treated as legacy)', () => {
-    expect(livenessKeyFromBody('body <!-- thunder-liveness: -->')).toBeNull();
-    expect(livenessKeyFromBody('body with no stamp at all')).toBeNull();
-    // `AAAA` is VALID base64 that decodes to NUL bytes — must be treated as absent,
-    // not a key. Otherwise `!diff.includes('\0\0\0')` is always true → false-resolve.
-    expect(livenessKeyFromBody('x <!-- thunder-liveness:AAAA -->')).toBeNull();
-    // Round-trip a real key to confirm decode is the inverse of stamp.
-    const f = shortLineFinding(SHORT_LINE_DIFF);
-    expect(livenessKeyFromBody(`x ${livenessStamp(f.livenessKey)}`)).toBe(f.livenessKey);
-  });
-
-  test('a corrupted (NUL-byte) liveness key never false-resolves its thread', () => {
-    const corrupt = livenessKeyFromBody('x <!-- thunder-liveness:AAAA -->'); // → null
-    // null livenessKey = legacy path = never recall-miss resolve (not a key match).
-    expect(shouldResolveThread({ isResolved: false, hash: 'h', livenessKey: corrupt }, 'const stillHere = 1;')).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// SCENARIO 4 — file-level findings + degenerate-hunk fallbacks resolve on the
-// FILE leaving the diff, and never false-resolve while the file is present. The
-// normalized diff emits each file's PATH as a row so the `file:<path>` key stays
-// a valid substring; without that a file-level thread false-resolves every run.
-// ---------------------------------------------------------------------------
-
-describe('file-level + degenerate-window findings key on the file path', () => {
-  const FILE_DIFF = [
-    'diff --git a/src/foo.ts b/src/foo.ts',
-    '+++ b/src/foo.ts',
-    '@@ -1,1 +1,2 @@',
-    ' const a = 1;',
-    '+const realThing = compute();',
-  ].join('\n');
-
-  test('file-level finding (line not in diff) keys on the path and STAYS OPEN while the file is in the diff', () => {
-    const f = classifyFindings([inlineFinding({ file: 'src/foo.ts', line: 999 })], parseUnifiedDiff(FILE_DIFF))[0];
-    expect(f.placement).toBe('file');
-    expect(f.livenessKey).toBe('src/foo.ts');
-    // The file is still in the diff → path row is present → must NOT resolve.
-    expect(shouldResolveThread(threadFromFinding(f), normalizedDiff(FILE_DIFF))).toBe(false);
-  });
-
-  test('file-level finding RESOLVES when its file leaves the diff (and on an empty run)', () => {
-    const f = classifyFindings([inlineFinding({ file: 'src/foo.ts', line: 999 })], parseUnifiedDiff(FILE_DIFF))[0];
-    const thread = threadFromFinding(f);
-    const otherFile = normalizedDiff(['diff --git a/src/bar.ts b/src/bar.ts', '+++ b/src/bar.ts', '@@ -1,1 +1,2 @@', ' const b = 1;', '+y();'].join('\n'));
-    expect(shouldResolveThread(thread, otherFile)).toBe(true);
-    expect(shouldResolveThread(thread, '')).toBe(true);
-  });
-
-  test('a degenerate hunk (a lone `+}`, no distinctive window) falls back to the file path, not the bare `}`', () => {
-    // A one-line added file: the only line is `}`. The window cannot grow to
-    // distinctiveness, so it must fall back to the file path (which resolves when
-    // the file leaves the diff) rather than pin the thread on `}` forever (BUG #1).
-    const lone = ['diff --git a/src/one.ts b/src/one.ts', '--- /dev/null', '+++ b/src/one.ts', '@@ -0,0 +1,1 @@', '+}'].join('\n');
-    const f = classifyFindings([inlineFinding({ file: 'src/one.ts', line: 1 })], parseUnifiedDiff(lone))[0];
-    expect(f.livenessKey).toBe('src/one.ts'); // never the bare `}`
-    // Against an UNRELATED diff that still has a `}`, the OLD bare key would pin it
-    // open; the file-path key resolves because the file is gone.
-    const unrelated = normalizedDiff(['diff --git a/src/z.ts b/src/z.ts', '+++ b/src/z.ts', '@@ -1,1 +1,2 @@', ' const z = 1;', '+if (z) { go(); }'].join('\n'));
-    expect(shouldResolveThread(threadFromFinding(f), unrelated)).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -492,6 +908,40 @@ describe('buildUnifiedDiff: reconstruct a git diff from /pulls/{n}/files entries
 describe('computeDeepMode: size gate + bounded-mode flag', () => {
   const file = (additions) => ({ additions, deletions: 0 });
 
+  test.each([
+    ['markdown', 'backend/drizzle/README.md'],
+    ['MDX', 'src/crypto/guide.mdx'],
+    ['docs tree', 'docs/example.ts'],
+    ['bun lockfile', 'src/crypto/bun.lock'],
+    ['other lockfiles', 'backend/drizzle/Cargo.lock'],
+    ['npm lockfile', 'src/crypto/package-lock.json'],
+    ['locale catalogs', 'src/crypto/messages.po'],
+    ['compiled locale catalogs', 'src/crypto/locales/en/messages.ts'],
+  ])('%s does not contribute to deep or security mode', (_rule, filename) => {
+    const files = Array.from({ length: 40 }, () => ({ filename, additions: 600, deletions: 10 }));
+    const info = computeDeepMode(files, false);
+    expect(info.deepMode).toBe(false);
+    expect(info.securityMode).toBe(false);
+    expect(info.fileCount).toBe(0);
+    expect(info.changedLines).toBe(0);
+    expect(info.totalFileCount).toBe(40); // docs still form a real reviewable diff
+    expect(info.sensitiveFiles).toEqual([]);
+  });
+
+  test('code still triggers at exactly 600 changed lines or 40 files', () => {
+    expect(computeDeepMode([{ filename: 'src/app.tsx', additions: 300, deletions: 300 }], false).deepMode).toBe(true);
+    expect(computeDeepMode(Array.from({ length: 40 }, () => file(1)), false).deepMode).toBe(true);
+  });
+
+  test('executable Markdown prompts contribute to deep mode', () => {
+    for (const filename of ['.claude/skills/review/SKILL.md', '.claude/agents/reviewer.md', 'AGENTS.md', 'CLAUDE.md']) {
+      const info = computeDeepMode([{ filename, additions: 600, deletions: 0 }], false);
+      expect(info.deepMode).toBe(true);
+      expect(info.fileCount).toBe(1);
+      expect(info.changedLines).toBe(600);
+    }
+  });
+
   test('a small diff stays single-pass', () => {
     const info = computeDeepMode([file(10), file(20)], false);
     expect(info.deepMode).toBe(false);
@@ -543,6 +993,120 @@ describe('computeDeepMode: size gate + bounded-mode flag', () => {
 // SCENARIO 7b — matchesSecurityPath: the crypto/E2EE path predicate that drives
 // the path-conditional security dimension. Glob-prefixes vs exact files.
 // ---------------------------------------------------------------------------
+
+describe('summarizeExecution: aggregate SDK events without content', () => {
+  const agent = (id, name, subagentType) => ({
+    type: 'assistant', message: { content: [
+      { type: 'text', text: 'PRIVATE MESSAGE' },
+      { type: 'tool_use', id, name, input: { subagent_type: subagentType, prompt: 'PRIVATE PROMPT' } },
+    ] },
+  });
+  const usage = { costUSD: 1, inputTokens: 10, outputTokens: 20, cacheReadInputTokens: 30, cacheCreationInputTokens: 40 };
+
+  test('reports whole-tree modelUsage from the final result and unique Agent/Task calls by type', () => {
+    const events = [
+      { type: 'result', total_cost_usd: 1, num_turns: 1 },
+      agent('a', 'Agent', 'powersync-sync-reviewer'),
+      agent('a', 'Agent', 'powersync-sync-reviewer'), // SDK can repeat blocks
+      agent('b', 'Task', 'powersync-sync-reviewer'),
+      agent('c', 'Agent', 'general-purpose'),
+      agent('d', 'Read', 'ignored'),
+      { type: 'result', subtype: 'success', total_cost_usd: 2, num_turns: 9, result: 'PRIVATE RESULT',
+        usage: { input_tokens: 999 }, modelUsage: { 'claude-opus-4-8': usage, 'claude-sonnet-4-6': usage } },
+    ];
+    const summary = summarizeExecution(events);
+    expect(summary).toEqual({
+      costUsd: 2, turns: 9,
+      models: {
+        'claude-opus-4-8': { costUsd: 1, input: 10, output: 20, cacheRead: 30, cacheCreation: 40 },
+        'claude-sonnet-4-6': { costUsd: 1, input: 10, output: 20, cacheRead: 30, cacheCreation: 40 },
+      },
+      agentCalls: { 'powersync-sync-reviewer': 2, 'general-purpose': 1 },
+    });
+    expect(JSON.stringify(summary)).not.toContain('PRIVATE');
+  });
+
+  test('error results retain metrics; missing results do not fabricate zero spend', () => {
+    expect(summarizeExecution([{ type: 'result', subtype: 'error_max_turns', total_cost_usd: 3, num_turns: 40 }]))
+      .toEqual({ costUsd: 3, turns: 40, models: {}, agentCalls: {} });
+    expect(summarizeExecution([agent('a', 'Agent', 'general-purpose')]))
+      .toEqual({ costUsd: null, turns: null, models: {}, agentCalls: { 'general-purpose': 1 } });
+    expect(summarizeExecution([])).toEqual({ costUsd: null, turns: null, models: {}, agentCalls: {} });
+  });
+
+  test('whitelists numeric fields and identifier labels before logging', () => {
+    const summary = summarizeExecution([
+      agent('a', 'Task', 'PRIVATE\n::error::content'),
+      { type: 'result', total_cost_usd: 'PRIVATE', num_turns: -1,
+        modelUsage: { 'PRIVATE\n::error::content': { ...usage, inputTokens: 'PRIVATE', outputTokens: Infinity, secret: 'PRIVATE' } } },
+    ]);
+    expect(summary.models.unknown).toEqual({ costUsd: 1, input: null, output: null, cacheRead: 30, cacheCreation: 40 });
+    expect(summary.agentCalls).toEqual({ unknown: 1 });
+    expect(summary.costUsd).toBeNull();
+    expect(summary.turns).toBeNull();
+    expect(JSON.stringify(summary)).not.toContain('PRIVATE');
+  });
+
+  test('preserves distinct model ids with context-window suffixes', () => {
+    const summary = summarizeExecution([{ type: 'result', modelUsage: {
+      'claude-opus-4-8[1m]': usage,
+      'claude-sonnet-4-6[1m]': { ...usage, inputTokens: 50 },
+    } }]);
+    expect(summary.models['claude-opus-4-8[1m]'].input).toBe(10);
+    expect(summary.models['claude-sonnet-4-6[1m]'].input).toBe(50);
+    expect(Object.keys(summary.models)).toHaveLength(2);
+  });
+});
+
+describe('telemetry phase', () => {
+  /** Exercise the phase directly with isolated execution logs and no GitHub credentials. */
+  const runTelemetry = (raw, outcome = 'success', explicitPath = true) => {
+    const directory = mkdtempSync(join(tmpdir(), 'thunder-telemetry-'));
+    const file = join(directory, 'claude-execution-output.json');
+    try {
+      if (raw !== null) writeFileSync(file, raw);
+      return spawnSync('node', [fileURLToPath(new URL('./review-orchestrator.mjs', import.meta.url)), 'telemetry'], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, RUNNER_TEMP: directory, EXECUTION_FILE: explicitPath ? file : '', MODEL_OUTCOME: outcome },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  };
+
+  test('emits aggregates from the runner-temp fallback even after a model error', () => {
+    const raw = JSON.stringify([{ type: 'result', subtype: 'error_max_turns', total_cost_usd: 4, num_turns: 40,
+      result: 'PRIVATE', modelUsage: { 'claude-opus-4-8': {
+        costUSD: 4, inputTokens: 1, outputTokens: 2, cacheReadInputTokens: 3, cacheCreationInputTokens: 4,
+      } } }]);
+    const output = runTelemetry(raw, 'failure', false);
+    expect(output.status).toBe(0);
+    expect(JSON.parse(output.stdout).costUsd).toBe(4);
+    expect(output.stderr).toBe('');
+    expect(output.stdout).not.toContain('PRIVATE');
+  });
+
+  test('absent execution files warn without failing', () => {
+    const output = runTelemetry(null);
+    expect(output.status).toBe(0);
+    expect(output.stdout).toBe('');
+    expect(output.stderr).toContain('::warning::Claude execution file absent');
+  });
+
+  test('malformed execution logs warn without exposing their contents', () => {
+    const output = runTelemetry('PRIVATE invalid JSON');
+    expect(output.status).toBe(0);
+    expect(output.stderr).toContain('::warning::Could not aggregate');
+    expect(output.stderr + output.stdout).not.toContain('PRIVATE');
+  });
+
+  test('skipped gate telemetry does not reuse an existing recall log', () => {
+    const output = runTelemetry('[{"type":"result","total_cost_usd":999,"num_turns":999}]', 'skipped');
+    expect(output.status).toBe(0);
+    expect(output.stdout).toBe('');
+    expect(output.stderr).toContain('::warning::Model step skipped');
+  });
+});
 
 describe('matchesSecurityPath: crypto/E2EE path predicate', () => {
   test('matches the glob-prefixed crypto trees', () => {
@@ -718,7 +1282,7 @@ describe('internal fields never reach human-facing output', () => {
       normalizeFindings({ findings: [{ ...blockerCandidate, confidence: 'low', evidence: SECRET, ...over }] }),
       diffIndex,
     );
-    return { kept, payload: buildReviewPayload({ toPost: selectFindingsToPost(kept, noPrior), diffIndex, deepInfo: {}, skipCount: 0 }) };
+    return { kept, payload: buildReviewPayload({ toPost: selectFindingsToPost(kept, noPrior), diffIndex, deepInfo: {} }) };
   };
 
   test('inline comment body contains neither the evidence string nor "confidence"', () => {

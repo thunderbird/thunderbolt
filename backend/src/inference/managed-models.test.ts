@@ -67,7 +67,7 @@ describe('managed model backend coverage', () => {
       expect(await loadInferencePrice(database, identity!)).not.toBeNull()
       expect(resolveManagedDirectRuntime(model)).toBeUndefined()
     }
-    expect(resolveConfidentialManagedModel('opus-5')).toBeUndefined()
+    expect(resolveConfidentialManagedModel('opus-5-5')).toBeUndefined()
     expect(resolveConfidentialManagedModel('unknown')).toBeUndefined()
   })
 })

@@ -246,6 +246,13 @@
       "when": 1791414043381,
       "tag": "0034_seed-tinfoil-deepseek-v4-1-flash-price",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791466400765,
+      "tag": "0035_seed-anthropic-claude-opus-5-5-price",
+      "breakpoints": true
     }
   ]
 }

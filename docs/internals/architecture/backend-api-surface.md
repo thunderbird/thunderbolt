@@ -116,7 +116,7 @@ Metered routes add two guards:
 
 Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:33-40`, threaded into route groups from `backend/src/index.ts:90-198`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances.
 
-- **User-keyed limiters go inside the `guard({ auth: true }, …)` callback.** They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
+- **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or, on `/v1/chat` and the hosted agent, inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`). They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.
 - **`RATE_LIMIT_ENABLED=false` returns an empty plugin**: the limiter disappears rather than being bypassed per request.
 

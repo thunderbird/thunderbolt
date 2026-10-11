@@ -3,12 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'bun:test'
-import { defaultModelOpus5, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
+import { defaultModelOpus55, defaultModels, defaultModelsVersion } from '@shared/defaults/models'
 import { pickModelsDefaults } from './pick-defaults'
 
 const serverPayload = (version: number) => ({
   version,
-  data: [{ ...defaultModelOpus5, name: `Server v${version}` }],
+  data: [{ ...defaultModelOpus55, name: `Server v${version}` }],
 })
 
 describe('pickModelsDefaults', () => {
@@ -74,8 +74,8 @@ describe('pickModelsDefaults', () => {
     const disjointPayload = {
       version: defaultModelsVersion + 5,
       data: [
-        { ...defaultModelOpus5, id: 'disjoint-id-1', name: 'Fully Different Model 1' },
-        { ...defaultModelOpus5, id: 'disjoint-id-2', name: 'Fully Different Model 2' },
+        { ...defaultModelOpus55, id: 'disjoint-id-1', name: 'Fully Different Model 1' },
+        { ...defaultModelOpus55, id: 'disjoint-id-2', name: 'Fully Different Model 2' },
       ],
     }
     const picked = pickModelsDefaults(disjointPayload)
@@ -90,8 +90,8 @@ describe('pickModelsDefaults', () => {
     const partialOverlap = {
       version: defaultModelsVersion + 1,
       data: [
-        defaultModelOpus5, // in bundle
-        { ...defaultModelOpus5, id: 'new-id', name: 'Server-only New Model' },
+        defaultModelOpus55, // in bundle
+        { ...defaultModelOpus55, id: 'new-id', name: 'Server-only New Model' },
       ],
     }
     const picked = pickModelsDefaults(partialOverlap)

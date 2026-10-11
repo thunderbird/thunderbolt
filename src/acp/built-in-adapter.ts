@@ -194,6 +194,13 @@ const profileThinkingOptionsSchema = z
  *  never regresses a model that didn't configure one. */
 const fallbackThinkingLevel: ThinkingLevel = 'medium'
 
+/** Managed Anthropic slugs whose Pi catalog entry is not `claude-<slug>`. pi-ai
+ *  0.82.1 has no claude-opus-5-5, so Opus 5.5 borrows Opus 5's metadata (adaptive
+ *  thinking, image input) while the wire keeps the public slug; drop the alias when
+ *  upgrading Pi. A `Map`, so a user-edited slug like `constructor` cannot resolve
+ *  through the prototype. */
+const managedAnthropicCatalogAliases: ReadonlyMap<string, string> = new Map([['opus-5-5', 'claude-opus-5']])
+
 /** Maps an Anthropic-style thinking budget (tokens) to a Pi level by upper bound:
  *  ≤0 → off, ≤1024 → minimal, ≤4096 → low, ≤12288 → medium, else high. */
 const budgetToThinkingLevel = (budget: number): ThinkingLevel => {
@@ -457,7 +464,7 @@ export const resolvePiModel = async (
     }
   }
   if (model.provider === 'thunderbolt' && model.vendor === 'anthropic') {
-    const catalogModelId = `claude-${model.model}`
+    const catalogModelId = managedAnthropicCatalogAliases.get(model.model) ?? `claude-${model.model}`
     if (!agentCore.isKnownAnthropicModel(catalogModelId)) {
       return null
     }

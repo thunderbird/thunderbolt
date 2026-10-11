@@ -5,7 +5,7 @@
 export {
   defaultModelProfileDeepSeekV41Flash,
   defaultModelProfileGlm53,
-  defaultModelProfileOpus5,
+  defaultModelProfileOpus55,
   defaultModelProfiles,
   hashModelProfile,
 } from './model-profiles/index'

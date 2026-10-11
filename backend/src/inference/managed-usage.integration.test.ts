@@ -173,7 +173,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           providerCalls.push({ url: request.url, method: request.method, bodyBytes, bodyJson })
 
           if (request.url === 'https://api.anthropic.com/v1/chat/completions') {
-            return new Response(createOpenAiSse('chatcmpl-opus', 'claude-opus-5', opusCounts), {
+            return new Response(createOpenAiSse('chatcmpl-opus', 'claude-opus-5-5', opusCounts), {
               status: 200,
               headers: { 'Content-Type': 'text/event-stream' },
             })
@@ -253,7 +253,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'opus-5',
+            model: 'opus-5-5',
             messages: [{ role: 'user', content: 'opus fixture' }],
             stream: true,
             stream_options: { include_usage: false, client_value: 'ignored' },
@@ -305,7 +305,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
           method: 'POST',
           headers: authenticatedJsonHeaders,
           body: JSON.stringify({
-            model: 'opus-5',
+            model: 'opus-5-5',
             messages: [{ role: 'user', content: 'must be rejected before transport' }],
             stream: true,
           }),
@@ -340,7 +340,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       ).toEqual([
         {
           provider: 'anthropic',
-          model: 'claude-opus-5',
+          model: 'claude-opus-5-5',
           ...opusCounts,
           costNanoUsd: 50_000_000n,
         },
@@ -381,6 +381,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
         })),
       ).toEqual([
         { provider: 'anthropic', model: 'claude-opus-5', ...officialPriceOracle['anthropic/claude-opus-5'] },
+        { provider: 'anthropic', model: 'claude-opus-5-5', ...officialPriceOracle['anthropic/claude-opus-5'] },
         {
           provider: 'fireworks',
           model: 'accounts/fireworks/models/glm-5p3',
@@ -421,7 +422,7 @@ it('preserves one anonymous web-session quota across direct and confidential tra
       expect(providerCalls[0].bodyJson).toBeNull()
       expect(providerCalls[0].bodyBytes).toEqual(glmRequestBytes)
       expect(providerCalls[1].bodyJson).toMatchObject({
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         stream: true,
         stream_options: { include_usage: true },
       })

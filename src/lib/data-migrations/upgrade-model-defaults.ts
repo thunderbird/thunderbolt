@@ -7,7 +7,7 @@ import { modelsTable } from '@/db/tables'
 import {
   defaultModelGlm53,
   defaultModelDeepSeekV41Flash,
-  defaultModelOpus5,
+  defaultModelOpus55,
   hashModel,
   type SharedModel,
 } from '@shared/defaults/models'
@@ -17,9 +17,9 @@ import { eq } from 'drizzle-orm'
 // reconciliation. Enumerate shipped slugs/names to preserve custom identities.
 const modelLineages = [
   {
-    target: defaultModelOpus5,
-    legacySlugs: ['sonnet-4.5', 'opus-4.8'],
-    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8'],
+    target: defaultModelOpus55,
+    legacySlugs: ['sonnet-4.5', 'opus-4.8', 'opus-5'],
+    legacyNames: ['sonnet-4.5', 'Sonnet 4.5', 'Opus 4.8', 'Opus 5'],
   },
   {
     target: defaultModelGlm53,

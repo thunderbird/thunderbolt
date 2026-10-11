@@ -66,8 +66,9 @@ export type AgentChatRequest = { id: string; messages: UIMessage[] }
 /**
  * Parse a `DefaultChatTransport` body into a history safe to send to the model. Client system messages and
  * the parts above are dropped. Too many messages, unknown part types, and file parts are rejected, as is
- * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`). The byte
- * cap is enforced earlier,
+ * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`): Anthropic
+ * treats a trailing assistant message as prefill, which would let a caller write the start of the answer.
+ * The byte cap is enforced earlier,
  * while the body is read (see `readBoundedJson`).
  */
 export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null => {

@@ -48,7 +48,7 @@ describe('Microsoft buildAuthUrl', () => {
   it('produces a valid authorization URL when configured', async () => {
     const { client } = createMockHttpClient([{ client_id: 'real-id', configured: true }])
     const url = new URL(await buildAuthUrl(client, 'state-xyz', 'cc-abc'))
-    expect(url.host).toBe('login.microsoftonline.com')
+    expect(url.origin + url.pathname).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/authorize')
     expect(url.searchParams.get('client_id')).toBe('real-id')
     expect(url.searchParams.get('state')).toBe('state-xyz')
     expect(url.searchParams.get('code_challenge')).toBe('cc-abc')

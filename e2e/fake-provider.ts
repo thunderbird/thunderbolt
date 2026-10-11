@@ -39,7 +39,7 @@ export const createFakeProvider = async (port: number): Promise<Server> => {
         id: `msg_${crypto.randomUUID()}`,
         type: 'message',
         role: 'assistant',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         content: [],
         container: null,
         stop_details: null,

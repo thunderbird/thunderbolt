@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { getSettings } from '@/config/settings'
+import { getSettings, type Settings } from '@/config/settings'
 import { getPostHogClient, isPostHogConfigured } from '@/posthog/client'
 import { elapsedMs } from '@/utils/timing'
 import Anthropic from '@anthropic-ai/sdk'
@@ -19,9 +19,13 @@ export type InferenceClient = {
   provider: InferenceProvider
 }
 
+/** The caller an upstream attempt belongs to, so `/v1/chat` and hosted-agent traffic can be told apart. */
+type InferenceUpstreamSource = 'chat' | 'agent'
+
 export type InferenceUpstreamAttemptLog = {
   event: 'inference_upstream_attempt'
   provider: InferenceProvider
+  source: InferenceUpstreamSource
   attempt: number
   method: string
   host: string
@@ -75,8 +79,12 @@ export type InferenceRouteLog =
 
 type InferenceLogContext = InferenceUpstreamAttemptLog | InferenceProxyLatencyLog | InferenceRouteLog
 
+type InferenceErrorLog = ManagedInferenceIdentity & { event: 'inference_price_unavailable' }
+
 export type InferenceLogger = {
   info: (context: InferenceLogContext, message: string) => void
+  /** Optional so info-only test loggers still fit; the app's pino logger provides it. */
+  error?: (context: InferenceErrorLog, message: string) => void
 }
 
 /** Emit inference telemetry without allowing logger failures to alter request control flow. */
@@ -99,6 +107,8 @@ export type InferenceClientOptions = {
   logger?: InferenceLogger
   /** Monotonic clock used for upstream-attempt instrumentation. */
   nowFn?: () => number
+  /** Labels the upstream-attempt logs; defaults to `chat`. */
+  source?: InferenceUpstreamSource
 }
 
 type InferenceFetchOptions = InferenceClientOptions & {
@@ -145,12 +155,17 @@ const logUpstreamAttempt = (
   logger?.info({ event: 'inference_upstream_attempt', ...context }, 'Inference upstream attempt')
 }
 
-/** Wrap fetch with safe, per-attempt upstream telemetry for OpenAI-compatible clients. */
+/**
+ * Wrap fetch with safe, per-call upstream telemetry. `attempt` is read from `X-Stainless-Retry-Count`, which
+ * only the OpenAI and Anthropic SDKs send: the AI SDK does not, so each of its calls, retries included, logs
+ * as its own entry with `attempt: 1`.
+ */
 export const createInferenceFetch = ({
   provider,
   fetchFn = globalThis.fetch,
   logger,
   nowFn = () => performance.now(),
+  source = 'chat',
 }: InferenceFetchOptions): typeof fetch => {
   const instrumentedFetch = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -163,6 +178,7 @@ export const createInferenceFetch = ({
       const startedAt = nowFn()
       const requestContext = {
         provider,
+        source,
         attempt,
         method: getRequestMethod(input, init),
         host: getRequestHost(input),
@@ -200,37 +216,72 @@ export const createInferenceFetch = ({
 }
 
 /**
- * Lazily initialized Fireworks client
+ * Derive the `/v1` endpoint from the Anthropic API root. It serves both the OpenAI-compatible API and the
+ * native Messages API the AI SDK provider calls.
  */
-let fireworksClient: OpenAI | PostHogOpenAI | null = null
+export const getAnthropicV1BaseUrl = (root: string): string => `${root.replace(/\/$/, '')}/v1/`
+
+/** A managed provider called directly with the deployment's own key; tinfoil goes through its enclave instead. */
+type ManagedDirectProvider = Exclude<InferenceProvider, 'tinfoil'>
+type ManagedProviderSettings = Pick<Settings, 'anthropicApiKey' | 'anthropicBaseUrl' | 'fireworksApiKey'>
+
+const managedProviderEndpoints = {
+  anthropic: (settings) => ({
+    name: 'Anthropic',
+    envVar: 'ANTHROPIC_API_KEY',
+    apiKey: settings.anthropicApiKey,
+    baseURL: getAnthropicV1BaseUrl(settings.anthropicBaseUrl),
+  }),
+  fireworks: (settings) => ({
+    name: 'Fireworks',
+    envVar: 'FIREWORKS_API_KEY',
+    apiKey: settings.fireworksApiKey,
+    baseURL: 'https://api.fireworks.ai/inference/v1',
+  }),
+} satisfies Record<
+  ManagedDirectProvider,
+  (settings: ManagedProviderSettings) => { name: string; envVar: string; apiKey: string; baseURL: string }
+>
 
 /**
- * Lazily initialized Anthropic client
+ * Key, `/v1` API root and instrumented fetch for one managed provider. The OpenAI SDK constructor and the AI
+ * SDK provider factories (`createAnthropic`) both take this shape as-is, so every SDK client of a managed
+ * provider shares the per-call telemetry of {@link createInferenceFetch} and the `fetchFn` seam. Throws when
+ * the provider's key is unset, so a caller that builds its client at startup fails at startup.
  */
-let anthropicClient: OpenAI | PostHogOpenAI | null = null
+export const createManagedProviderConnection = (
+  provider: ManagedDirectProvider,
+  settings: ManagedProviderSettings,
+  { fetchFn, logger, nowFn, source }: InferenceClientOptions = {},
+) => {
+  const { name, envVar, apiKey, baseURL } = managedProviderEndpoints[provider](settings)
+  if (!apiKey) {
+    throw new Error(`${name} API key not configured: set ${envVar}`)
+  }
+  return { apiKey, baseURL, fetch: createInferenceFetch({ provider, fetchFn, logger, nowFn, source }) }
+}
+
+/** Lazily initialized OpenAI-compatible clients, one per provider. */
+const openAICompatibleClients = new Map<ManagedDirectProvider, OpenAI | PostHogOpenAI>()
 let anthropicMessagesClient: Anthropic | null = null
 
 /**
- * Get the Fireworks AI client
+ * Get the OpenAI-compatible client for a managed direct provider. Cached unless the caller injects its own
+ * fetch or analytics client.
  */
-const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
+const getOpenAICompatibleClient = (
+  provider: ManagedDirectProvider,
+  options: InferenceClientOptions = {},
+): OpenAI | PostHogOpenAI => {
   const { fetchFn, logger, nowFn, posthogClient } = options
-  if (fireworksClient && !fetchFn && !posthogClient) {
-    return fireworksClient
+  const cacheable = !fetchFn && !posthogClient
+  const cached = cacheable ? openAICompatibleClients.get(provider) : undefined
+  if (cached) {
+    return cached
   }
 
-  const settings = getSettings()
-
-  if (!settings.fireworksApiKey) {
-    throw new Error('Fireworks API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.fireworksApiKey,
-    baseURL: 'https://api.fireworks.ai/inference/v1',
-    fetch: createInferenceFetch({ provider: 'fireworks', fetchFn, logger, nowFn }),
-    // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
-  }
+  // OpenAI SDK defaults to 2 retries; changing maxRetries is a follow-up decision after collecting attempt data.
+  const params = createManagedProviderConnection(provider, getSettings(), { fetchFn, logger, nowFn })
 
   const client = isPostHogConfigured()
     ? new PostHogOpenAI({
@@ -239,46 +290,8 @@ const getFireworksClient = (options: InferenceClientOptions = {}): OpenAI | Post
       })
     : new OpenAI(params)
 
-  if (!fetchFn && !posthogClient) {
-    fireworksClient = client
-  }
-
-  return client
-}
-
-/** Derive the OpenAI-compatible endpoint from the Anthropic API root. */
-export const getAnthropicOpenAIBaseUrl = (root: string): string => `${root.replace(/\/$/, '')}/v1/`
-
-/**
- * Get the Anthropic AI client using OpenAI-compatible API
- */
-const getAnthropicClient = (options: InferenceClientOptions = {}): OpenAI | PostHogOpenAI => {
-  const { fetchFn, logger, nowFn, posthogClient } = options
-  if (anthropicClient && !fetchFn && !posthogClient) {
-    return anthropicClient
-  }
-
-  const settings = getSettings()
-
-  if (!settings.anthropicApiKey) {
-    throw new Error('Anthropic API key not configured')
-  }
-
-  const params = {
-    apiKey: settings.anthropicApiKey,
-    baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl),
-    fetch: createInferenceFetch({ provider: 'anthropic', fetchFn, logger, nowFn }),
-  }
-
-  const client = isPostHogConfigured()
-    ? new PostHogOpenAI({
-        ...params,
-        posthog: posthogClient ?? getPostHogClient(fetchFn),
-      })
-    : new OpenAI(params)
-
-  if (!fetchFn && !posthogClient) {
-    anthropicClient = client
+  if (cacheable) {
+    openAICompatibleClients.set(provider, client)
   }
 
   return client
@@ -315,29 +328,16 @@ export const getAnthropicMessagesClient = (options: InferenceClientOptions = {})
  * Clients are lazily initialized and reused across requests
  */
 export const getInferenceClient = (
-  provider: Exclude<InferenceProvider, 'tinfoil'>,
+  provider: ManagedDirectProvider,
   options: InferenceClientOptions = {},
-): InferenceClient => {
-  const clientMap = {
-    anthropic: () => getAnthropicClient(options),
-    fireworks: () => getFireworksClient(options),
-  } satisfies Record<Exclude<InferenceProvider, 'tinfoil'>, () => OpenAI | PostHogOpenAI>
-
-  const client = clientMap[provider]()
-
-  return {
-    client,
-    provider,
-  }
-}
+): InferenceClient => ({ client: getOpenAICompatibleClient(provider, options), provider })
 
 /**
  * Clear cached inference clients
  * Used for testing purposes to ensure test isolation
  */
 export const clearInferenceClientCache = () => {
-  fireworksClient = null
-  anthropicClient = null
+  openAICompatibleClients.clear()
   anthropicMessagesClient = null
 }
 
@@ -345,4 +345,4 @@ export const clearInferenceClientCache = () => {
  * Legacy export for backward compatibility
  * @deprecated Use getInferenceClient instead
  */
-export const getOpenAI = getFireworksClient
+export const getOpenAI = (options?: InferenceClientOptions) => getOpenAICompatibleClient('fireworks', options)

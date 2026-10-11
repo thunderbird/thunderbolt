@@ -41,11 +41,11 @@ appId: net.thunderbird.thunderbolt.dev
           when:
             notVisible: Choose model
           commands:
-            - tapOn: 'GLM 5.3.*|Opus 5'
+            - tapOn: 'GLM 5.3.*|Opus 5.5'
       - waitForAnimationToEnd
-      - tapOn: Opus 5
+      - tapOn: Opus 5.5
       - assertNotVisible: Choose model
-      - assertVisible: Opus 5
+      - assertVisible: Opus 5.5
 - retry:
     maxRetries: 2
     commands:

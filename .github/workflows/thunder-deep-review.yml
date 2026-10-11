@@ -15,8 +15,8 @@
 #     (they hold the review logic + the API-key reference).
 #
 # Orchestration is deterministic CODE, not model tool-calls: .github/scripts/
-# review-orchestrator.mjs does ALL GitHub I/O (poll A's bots, build the
-# skip-list, post the inline PR review). The model step is READ-ONLY and ONLY
+# review-orchestrator.mjs does ALL GitHub I/O (fetch the diff, dedup and
+# post the inline PR review). The model step is READ-ONLY and ONLY
 # emits structured JSON findings as the action's structured_output (via
 # --json-schema); a separate non-model step materializes that to a file.
 # =============================================================================
@@ -27,7 +27,7 @@ on:
   pull_request:
     # Include ready_for_review so un-drafting triggers a review; drafts
     # are skipped by the job `if:` below.
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     # NOTE: fork PRs are GATED OFF entirely by the job `if:` — do NOT switch
     # to `pull_request_target` + checkout of fork head (the key-exposure
     # pwn-request). Fork coverage, if ever wanted, is a separate `workflow_run`
@@ -37,15 +37,6 @@ on:
 permissions:
   contents: read # read the diff/files
   pull-requests: write # post the inline PR review (POST /pulls/{n}/reviews)
-  checks: read # poll A's bot check-runs (without this the poller 403s)
-
-concurrency:
-  # Only review the latest push. cancel-in-progress during the debounce
-  # `sleep` (below) is free. No cross-run lock: a run posts a review only when it
-  # has new findings (it skips otherwise) and converges via open-thread hash dedup
-  # (the post phase resolves/skips the threads it already owns), so a cancelled run is safe.
-  group: thunder-deep-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   review:
@@ -55,7 +46,13 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
-      github.event.pull_request.draft == false
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'labeled' || github.event.label.name == 'review:full')
+
+    # Apply concurrency after the job gate so unrelated labels cannot cancel a review.
+    concurrency:
+      group: thunder-deep-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
 
     # GitHub-hosted ephemeral runner: a clean VM per job. Safe now that the
     # job only runs on same-repo PRs (fork `if:` gate above) and uses the
@@ -63,26 +60,26 @@ jobs:
     runs-on: ubuntu-latest
 
     # Cap total runner time so a hung model API call can't hold the
-    # runner indefinitely. Sized for: 60s debounce + up to ~6min of bot
-    # polling + TWO model steps (the recall pass runs at xhigh effort with a
-    # 40-turn budget, so it is the long pole).
+    # runner indefinitely. Sized for: 60s debounce + diff preparation + TWO
+    # model steps (the recall pass runs at high effort with a
+    # $45 API budget, so it is the long pole).
     timeout-minutes: 30
 
     env:
       # Reconcile EVERYTHING to the PR HEAD sha, never the synthetic merge ref.
-      # Both the poller and the diff must describe the same code.
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PR_ACTION: ${{ github.event.action }}
       PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # The orchestrator posts the review under the default GITHUB_TOKEN, so the
-      # author login is github-actions[bot]. The script matches/resolves its own
-      # threads by this login (+ a hidden marker). No separate GitHub App.
+      # author login is github-actions[bot]. The script identifies its own
+      # threads and reviews by this login only; the hidden marker only tags the format.
       THUNDER_BOT_LOGIN: github-actions[bot]
       # File handoff between steps (must match .github/scripts/review-orchestrator.mjs).
       THUNDER_DIFF_FILE: ${{ github.workspace }}/thunder-diff.patch
-      THUNDER_SKIPLIST_FILE: ${{ github.workspace }}/thunder-skiplist.json
+      THUNDER_PR_DIFF_FILE: ${{ github.workspace }}/thunder-pr-diff.patch
+      THUNDER_PREVIOUS_FINDINGS_FILE: ${{ github.workspace }}/thunder-previous-findings.json
       THUNDER_DEEPMODE_FILE: ${{ github.workspace }}/thunder-deepmode.json
       # The security exclusion list, taken from the BASE branch rather than the
       # checked-out head — see the fetch step below for why.
@@ -110,7 +107,7 @@ jobs:
       # reconstructed from the GitHub API by the orchestrator `pre` phase, so we
       # need NO base/head fetch and NOT fetch-depth:0 — the working tree is only
       # here for the model's Read/Grep/Glob tools and the .claude symlink-prune
-      # step. SHA pinned to v7.0.0.
+      # step. SHA pinned to v7.0.1.
       # ─────────────────────────────────────────────────────────────────────
       - name: Checkout (head, shallow)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -153,12 +150,11 @@ jobs:
       # (e.g. PR #1032 at ~24k changed lines). Instead the orchestrator
       # reconstructs the diff from the List-pull-request-files API — GitHub's
       # recommended large-PR path — which paginates and has no per-diff line cap.
-      # That endpoint returns the SAME merge-base..head ("Files changed") set
-      # `POST /pulls/{n}/reviews` validates inline `comments[]` against (it is in
-      # fact the view the reviews API cross-references), so the reconstructed diff
-      # anchors findings exactly. A local `git diff` is deliberately avoided: a
-      # two-dot `base..head` uses base's CURRENT tip, not the merge-base, injecting
-      # base-only commits as reverse diffs that 422 the review.
+      # The full PR patch is kept for comment anchors. On synchronize, if the bot's last
+      # posted review recorded a head SHA that is an ancestor of this head, the model
+      # reviews only the Compare API delta since it. Other events, including adding
+      # review:full, review the full PR. If nothing reviewable remains, the model steps are skipped.
+      # Files without usable patches are listed in a partial review, and the head marker is still recorded.
       # ─────────────────────────────────────────────────────────────────────
       # The repo commits `.claude/{commands,agents}/thunderbot*` as symlinks into
       # a local-only `.thunderbot/` dir that is NOT checked out in CI, so they are
@@ -173,12 +169,13 @@ jobs:
           done
 
       # ─────────────────────────────────────────────────────────────────────
-      # (PRE phase): poll A's bots, build the skip-list, reconstruct the unified
-      # diff from the Files API (writing ${THUNDER_DIFF_FILE}), and compute the
-      # deterministic deep-mode flag. ALL GitHub I/O is in this script.
+      # Choose the review scope (full PR or delta since the last checkpoint), then
+      # write the model patch, the full PR patch for anchors, the previous-findings
+      # file and the mode flags. ALL GitHub I/O is in this script.
       # This step touches untrusted PR metadata but holds no model credentials.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Orchestrator — poll bots + build skip-list (pre)
+      - name: Orchestrator — prepare diff + mode flags (pre)
+        id: pre
         run: node .github/scripts/review-orchestrator.mjs pre
         # NOTE: .github/scripts/review-orchestrator.mjs is checked in at the
         # repo-relative path; recommend CODEOWNERS-protecting it.
@@ -217,13 +214,14 @@ jobs:
       #        Read/Grep/Glob need no permission but are listed for clarity. The
       #        skill + its subagents under `.claude/{skills,agents}/` are auto-
       #        discovered because the SDK loads the `project` setting source by default.
-      # SHA pinned to v1.
+      # SHA pinned to v1.0.244, which installs Claude Code 2.1.292.
       # PIN the model id LITERALLY here — do NOT source from vars.* (a
       #         mutable repo/org var changes review behavior with no PR/audit trail).
       # ─────────────────────────────────────────────────────────────────────
       - name: thunder-deep-review (step 1 — recall pass, candidate findings)
         id: review_model
-        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c # v1
+        if: steps.pre.outputs.skip == 'false'
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Pass the workflow token so the action authenticates to GitHub WITH it
@@ -240,14 +238,9 @@ jobs:
           allowed_bots: "thunderbolt-automation-agent[bot]"
           use_sticky_comment: "false" # we own the inline review via the post step
           # Model id pinned LITERALLY (a mutable vars.* would change review
-          # behavior with no PR/audit trail). claude-opus-4-8 is a pinned
-          # snapshot id (the 4.6+ generation uses a dateless-but-pinned format).
-          # --effort xhigh: the vendor-recommended setting for agentic coding work
-          # on this model, and the primary lever for tool-use triggering — the
-          # skill's verification bar requires actually Reading cross-file context
-          # before asserting architecture/security claims, so effort is a recall
-          # lever here, not a luxury. Set EXPLICITLY (never rely on the CLI
-          # default, which is not pinned across versions).
+          # behavior with no PR/audit trail). Opus 5.5 high keeps cross-file
+          # judgment in the recall pass; the gate uses medium for verification.
+          # Set effort explicitly rather than relying on the CLI default.
           # --allowedTools: Skill (invokes the review skill — permission-required,
           # so it MUST be allow-listed or the headless run denies it and no-ops),
           # Task AND Agent (the skill's read-only sub-reviewer fan-out — also
@@ -255,11 +248,11 @@ jobs:
           # versions and `Agent` in others, so both names are listed), and
           # Read,Grep,Glob (read-only working-tree access). NO Bash,
           # NO write tools — the model is fully READ-ONLY and CANNOT write a file.
-          # --max-turns caps the agent loop. Sized at 40 for the full fan-out
-          # (10 lane sub-reviewers + domain subagents + micro-specialists in deep
-          # mode, plus reference/diff Reads) — a mid-review cap does not fail the
-          # step, it silently TRUNCATES recall, so the cap must comfortably exceed
-          # the worst-case fan-out, and the job timeout-minutes is the real guard.
+          # --max-budget-usd replaces the turn cap: $45 leaves headroom above
+          # the estimated Opus 5.5 p95 ($30–40) and includes subagent spend.
+          # Budget exhaustion ends with error_max_budget_usd (no partial structured_output):
+          # a failed step; the action logs the subtype and telemetry keeps the cost.
+          # Client-side estimate, not a billing ceiling.
           # --json-schema: the model is read-only, so it can't write the candidates
           # file directly. Instead it returns candidates as the action's STRUCTURED
           # OUTPUT (action.yml `outputs.structured_output`, populated only when a
@@ -275,10 +268,10 @@ jobs:
           #   (string|null); evidence (string|null — the quoted offending line,
           #   internal grounding for the gate, never rendered).
           claude_args: >-
-            --model claude-opus-4-8
-            --effort xhigh
+            --model claude-opus-5-5
+            --effort high
             --allowedTools Read,Grep,Glob,Skill,Task,Agent
-            --max-turns 40
+            --max-budget-usd 45
             --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             Use the thunder-deep-review skill to review this pull request. This is
@@ -293,13 +286,10 @@ jobs:
             confidence level and the quoted offending line (evidence) so the gate
             can verify and rank it.
             The unified diff to review is in the file: ${{ env.THUNDER_DIFF_FILE }} (read it with Read).
-            A skip-list of issues ALREADY reported by other bots is in:
-              ${{ env.THUNDER_SKIPLIST_FILE }}
-            Do NOT repeat anything on the skip-list. Surface what the other bots
-            missed: real correctness and security bugs they overlooked, AND the
-            categories they do not cover (architecture, conventions, testability,
-            docs-intent, readability). No category is out of scope — the skip-list
-            excludes specific already-reported findings, never whole categories.
+            Previous-findings file: ${{ env.THUNDER_PREVIOUS_FINDINGS_FILE }}.
+            Follow SKILL.md's Inputs and operating rule 6 for scope and history.
+            Review all categories covered by the skill (bugs, conventions,
+            React, tests, security, bundle size, docs-intent, readability).
             Deep-mode / bounded-mode / securityMode flags are in: ${{ env.THUNDER_DEEPMODE_FILE }} —
             honor them; do NOT decide spend yourself. When `securityMode` is true,
             ALSO run the skill's path-conditional Security dimension over the
@@ -339,6 +329,13 @@ jobs:
             Emit NO markdown headers, NO severity trailer, NO PR comment — the
             orchestrator renders and posts. If nothing to add, return {"findings":[]}.
 
+      - name: Model telemetry — recall
+        if: always() && steps.pre.outputs.skip == 'false'
+        env:
+          EXECUTION_FILE: ${{ steps.review_model.outputs.execution_file }}
+          MODEL_OUTCOME: ${{ steps.review_model.outcome }}
+        run: node .github/scripts/review-orchestrator.mjs telemetry
+
       # ─────────────────────────────────────────────────────────────────────
       # Persist STEP 1's STRUCTURED OUTPUT to the CANDIDATES file the precision
       # gate (STEP 2) reads. The recall pass is READ-ONLY (no Write/Edit/Bash
@@ -362,7 +359,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Persist candidate findings to file
         id: persist_candidates
-        if: always()
+        if: always() && steps.pre.outputs.skip == 'false'
         env:
           STRUCTURED_OUTPUT: ${{ steps.review_model.outputs.structured_output }}
         run: |
@@ -433,6 +430,8 @@ jobs:
           steps.persist_candidates.outputs.count != '' &&
           steps.persist_candidates.outputs.count != '0'
         run: |
+          # The action reuses this path; a gate failure must not report recall metrics.
+          rm -f "${RUNNER_TEMP}/claude-execution-output.json"
           find .claude -type l | while read -r l; do
             [ -e "$l" ] || { echo "pruning dangling symlink: $l"; rm -f "$l"; }
           done
@@ -442,7 +441,7 @@ jobs:
         if: >-
           steps.persist_candidates.outputs.count != '' &&
           steps.persist_candidates.outputs.count != '0'
-        uses: anthropics/claude-code-action@1298632ce7736903d02a1435002705aa2a594a6c # v1
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -451,17 +450,15 @@ jobs:
           use_sticky_comment: "false" # we own the inline review via the post step
           # Same model + same findings schema as STEP 1 so the kept subset round-
           # trips into readModelFindings unchanged (title/body/rule/evidence stay
-          # VERBATIM; the gate's only permitted edit is DEMOTING severity). Fewer
-          # turns: this is one judgment over an already-enumerated list, not a
-          # fresh review. --effort high (explicit, never the unpinned CLI
-          # default): a focused verify-and-judge pass, one notch below the recall
-          # pass's xhigh — it re-checks evidence against the diff but does not
-          # fan out.
+          # VERBATIM; the gate's only permitted edit is DEMOTING severity).
+          # --effort medium: verify the enumerated candidates without fan-out.
+          # $3 leaves headroom over the expected $0.2–0.4 gate cost; exhaustion
+          # fails without partial structured_output, as in the recall pass.
           claude_args: >-
-            --model claude-opus-4-8
-            --effort high
+            --model claude-opus-5-5
+            --effort medium
             --allowedTools Read,Grep,Glob
-            --max-turns 12
+            --max-budget-usd 3
             --json-schema '{"type":"object","additionalProperties":false,"required":["findings"],"properties":{"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","confidence","file","line","title","body","rule","evidence"],"properties":{"severity":{"type":"string","enum":["critical","blocking","convention","nit"]},"confidence":{"type":"string","enum":["high","medium","low"]},"file":{"type":["string","null"]},"line":{"type":["integer","null"],"minimum":1},"side":{"type":"string","enum":["RIGHT","LEFT"]},"title":{"type":"string"},"body":{"type":"string"},"rule":{"type":["string","null"]},"evidence":{"type":["string","null"]}}}}}}'
           prompt: |
             You are the PRECISION GATE for a code review. The file
@@ -532,6 +529,13 @@ jobs:
             the ONLY permitted edit; do NOT rewrite anything else). It is correct
             and expected to return {"findings":[]} when nothing clears the bar.
 
+      - name: Model telemetry — gate
+        if: always() && steps.pre.outputs.skip == 'false'
+        env:
+          EXECUTION_FILE: ${{ steps.gate.outputs.execution_file }}
+          MODEL_OUTCOME: ${{ steps.gate.outcome }}
+        run: node .github/scripts/review-orchestrator.mjs telemetry
+
       # ─────────────────────────────────────────────────────────────────────
       # Persist the GATE's STRUCTURED OUTPUT to the FINDINGS file the post phase
       # reads — the kept subset, NOT the candidates. Same materialize-from-env
@@ -548,7 +552,7 @@ jobs:
       # check (the post phase then fail-softs on the missing file).
       # ─────────────────────────────────────────────────────────────────────
       - name: Persist gate findings to file
-        if: always()
+        if: always() && steps.pre.outputs.skip == 'false'
         env:
           STRUCTURED_OUTPUT: ${{ steps.gate.outputs.structured_output }}
           GATE_OUTCOME: ${{ steps.gate.outcome }}
@@ -582,7 +586,7 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # (POST phase): read+validate the model's JSON, compute the
-      # resolved-diff structurally, render markdown deterministically, and post
+      # diff positions structurally, render markdown deterministically, and post
       # ONE PR review (POST /pulls/{n}/reviews, event=COMMENT) with anchored inline
       # comments — no issue comment, no PATCH/upsert, no lock. No model creds here;
       # pure GitHub I/O.
@@ -590,5 +594,5 @@ jobs:
       # fail-soft) — but the script itself exits 0 on any error.
       # ─────────────────────────────────────────────────────────────────────
       - name: Orchestrator — render + post inline review (post)
-        if: always()
+        if: always() && steps.pre.outputs.skip == 'false'
         run: node .github/scripts/review-orchestrator.mjs post

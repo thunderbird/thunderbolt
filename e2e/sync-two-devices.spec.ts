@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Page } from '@playwright/test'
-import { defaultModelOpus5 } from '../shared/defaults/models'
+import { defaultModelOpus55 } from '../shared/defaults/models'
 import { fakeProviderReply } from './fake-provider'
 import { collectPageErrors, loginViaEmailCode, openSidebarOnMobile, sendChatPrompt } from './helpers'
 import { expect, isolateProviderRequests, test } from './test'
@@ -62,7 +62,7 @@ test('a chat created on one device appears on another without reloading', async 
     )
 
     await page.getByTestId('model-selector-trigger').click()
-    await page.getByRole('button', { name: defaultModelOpus5.name, exact: true }).click()
+    await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
     const title = `Sync check ${crypto.randomUUID().slice(0, 8)}`
     await sendChatPrompt(page, title)
     await expect(page.getByText(fakeProviderReply)).toBeVisible()

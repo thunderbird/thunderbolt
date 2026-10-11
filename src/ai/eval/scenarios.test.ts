@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   defaultModelDeepSeekV41Flash,
   defaultModelGlm53,
-  defaultModelOpus5,
+  defaultModelOpus55,
   defaultModels,
 } from '@shared/defaults/models'
 import { deriveEvalModelMatrix, evalModelSlugs, evalModels, getScenarios } from './scenarios'
@@ -14,7 +14,7 @@ import { deriveEvalModelMatrix, evalModelSlugs, evalModels, getScenarios } from 
 describe('eval model matrix', () => {
   test('tracks every shipped default model with a stable slug and production engine', () => {
     expect(evalModels).toEqual([
-      { id: defaultModelOpus5.id, name: 'opus', engineName: 'pi' },
+      { id: defaultModelOpus55.id, name: 'opus', engineName: 'pi' },
       { id: defaultModelDeepSeekV41Flash.id, name: 'flash', engineName: 'pi' },
       { id: defaultModelGlm53.id, name: 'glm', engineName: 'pi' },
     ])

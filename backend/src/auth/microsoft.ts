@@ -9,7 +9,6 @@ import { safeErrorHandler } from '@/middleware/error-handling'
 import { Elysia, t } from 'elysia'
 import { codeRequestSchema, refreshRequestSchema, type OAuthTokenResponse } from './types'
 
-const microsoftTokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
 // Must match scopes requested by the frontend (see integrations/microsoft/auth.ts)
 const scopes = 'https://graph.microsoft.com/mail.read User.Read offline_access'
 
@@ -64,7 +63,7 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
         })
 
         try {
-          const response = await fetchFn(microsoftTokenUrl, {
+          const response = await fetchFn(`${settings.microsoftBaseUrl}/common/oauth2/v2.0/token`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -136,7 +135,7 @@ export const createMicrosoftAuthRoutes = (auth: Auth, fetchFn: typeof fetch = gl
         })
 
         try {
-          const response = await fetchFn(microsoftTokenUrl, {
+          const response = await fetchFn(`${settings.microsoftBaseUrl}/common/oauth2/v2.0/token`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',

@@ -242,7 +242,7 @@ describe('API key authentication', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': key },
         body: JSON.stringify({
-          model: 'opus-5',
+          model: 'opus-5-5',
           messages: [{ role: 'user', content: 'direct request' }],
           stream: true,
         }),

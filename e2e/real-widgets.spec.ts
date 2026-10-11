@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import type { Locator, Page } from '@playwright/test'
-import { defaultModelOpus5 } from '../shared/defaults/models'
+import { defaultModelOpus55 } from '../shared/defaults/models'
 import { widgetPrompts } from '../src/ai/eval/widget-prompts'
 import { getHostname } from '../src/widgets/link-preview/utils'
 import { loginViaOidc, sendChatPrompt } from './helpers'
@@ -53,7 +53,7 @@ for (const id of widgetIds) {
 
     await loginViaOidc(page)
     await page.getByTestId('model-selector-trigger').click()
-    await page.getByRole('button', { name: defaultModelOpus5.name, exact: true }).click()
+    await page.getByRole('button', { name: defaultModelOpus55.name, exact: true }).click()
     const prompt =
       id === 'WIDGET_LINK_PREVIEW'
         ? `Show a link preview for ${linkUrl}. Use only this URL; do not search or suggest other links.`

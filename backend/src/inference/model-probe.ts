@@ -8,7 +8,7 @@ import { defaultModels, type SharedModel } from '@shared/defaults/models'
 import { randomBytes } from 'node:crypto'
 import OpenAI from 'openai'
 import { SecureClient } from 'tinfoil'
-import { getAnthropicOpenAIBaseUrl } from './client'
+import { getAnthropicV1BaseUrl } from './client'
 import { resolveConfidentialManagedModel, resolveManagedDirectRuntime } from './managed-models'
 
 export type ModelProbeFailureReason = 'no-text' | 'timeout' | 'upstream-error' | 'missing-price' | 'not-configured'
@@ -95,7 +95,7 @@ export const probeCatalogModels = async (deps: ModelProbeDeps): Promise<ModelPro
       signal.throwIfAborted()
       stage = runtime || deps.confidentialTransport ? 'completion' : 'attestation'
       const transport = runtime
-        ? { fetch: fetchFn, baseURL: getAnthropicOpenAIBaseUrl(settings.anthropicBaseUrl) }
+        ? { fetch: fetchFn, baseURL: getAnthropicV1BaseUrl(settings.anthropicBaseUrl) }
         : (deps.confidentialTransport ??
           (await Promise.race([(confidentialTransport ??= createConfidentialTransport()), deadline.promise])))
       signal.throwIfAborted()

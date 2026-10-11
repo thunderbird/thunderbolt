@@ -36,14 +36,21 @@ const receiptRequestSchema: z.ZodType<InferenceUsageReceiptRequest> = z.object({
 })
 const maxReceiptRequestBytes = 4_096
 
-/** Parse only the signed receipt and token counts from an untrusted request body. */
+/**
+ * Parse only the signed receipt and token counts from an untrusted request body. A body stream that fails
+ * mid-read is null too, so the route keeps its empty 400 rather than the error handler's JSON 500.
+ */
 const parseReceiptRequest = async (request: Request): Promise<InferenceUsageReceiptRequest | null> => {
-  const read = await readBoundedJson(request, maxReceiptRequestBytes)
-  if (!read.ok) {
+  try {
+    const read = await readBoundedJson(request, maxReceiptRequestBytes)
+    if (!read.ok) {
+      return null
+    }
+    const parsed = receiptRequestSchema.safeParse(read.value)
+    return parsed.success ? parsed.data : null
+  } catch {
     return null
   }
-  const parsed = receiptRequestSchema.safeParse(read.value)
-  return parsed.success ? parsed.data : null
 }
 
 /** Create a truly body-free receipt endpoint response. */
@@ -58,7 +65,13 @@ export const createInferenceUsageReceiptRoutes = (options: ReceiptRouteOptions):
   return new Elysia()
     .onError(safeErrorHandler)
     .use(
-      createMeteredRouteGuard({ auth, database, cliDeviceRegistrationEnabled, confidentialApiKeysEnabled, rateLimit }),
+      createMeteredRouteGuard({
+        auth,
+        database,
+        cliDeviceRegistrationEnabled,
+        allowPersonalAccessTokens: confidentialApiKeysEnabled,
+        rateLimit,
+      }),
     )
     .post(
       `/${inferenceUsageReceiptPath}`,

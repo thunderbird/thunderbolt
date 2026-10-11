@@ -164,6 +164,22 @@ describe('createHostedAgentRoutes', () => {
     expect(model.doStreamCalls).toHaveLength(0)
   })
 
+  it('admits a personal access token past the guard', async () => {
+    const app = createMockedApp()
+    const response = await app.handle(
+      new Request('http://localhost/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': 'valid-personal-access-token' },
+        body: chatBody(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await response.text()
+    await settleRun()
+    expect(model.doStreamCalls).toHaveLength(1)
+  })
+
   it('rejects an invalid history before admission or the model call', async () => {
     const app = createMockedApp()
     const response = await postChat(app, chatBody([{ id: 'm1', role: 'user', parts: [{ type: 'data-x' }] }]))

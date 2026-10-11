@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { createMidReadFailingBody } from '@/test-utils/request-body'
 import { readBoundedJson } from './request-body'
 
 /** A streamed body that records how many chunks were pulled from it; chunked unless `headers` says otherwise. */
@@ -66,14 +67,10 @@ describe('readBoundedJson', () => {
     expect(await readBoundedJson(createChunkedRequest([badUtf8]).request, 30)).toEqual(invalid)
   })
 
-  it('reports a body stream that fails mid-read as invalid', async () => {
-    const body = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        controller.enqueue(new TextEncoder().encode('{"a":'))
-        controller.error(new Error('connection reset'))
-      },
-    })
+  it('rethrows a body stream that fails mid-read, leaving the fault to the caller', async () => {
+    const { body, error, state } = createMidReadFailingBody('{"a":')
     const request = new Request('http://localhost/', { method: 'POST', body })
-    expect(await readBoundedJson(request, 30)).toEqual({ ok: false, reason: 'invalid' })
+    await expect(readBoundedJson(request, 30)).rejects.toBe(error)
+    expect(state.pulls).toBe(2)
   })
 })

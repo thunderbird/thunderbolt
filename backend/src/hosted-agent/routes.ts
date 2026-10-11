@@ -98,6 +98,7 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
         auth,
         database,
         cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        allowPersonalAccessTokens: true,
         rateLimit,
       }),
     )

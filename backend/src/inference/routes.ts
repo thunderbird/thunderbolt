@@ -221,6 +221,7 @@ export const createInferenceRoutes = (options: CreateInferenceRoutesOptions) => 
         auth,
         database,
         cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
+        allowPersonalAccessTokens: true,
         rateLimit,
       }),
     )

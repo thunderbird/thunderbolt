@@ -17,11 +17,14 @@ import {
 } from './usage-ledger'
 import { createPriceUnavailableResponse, createQuotaExceededResponse } from './usage-responses'
 
+/** The resolved session user a managed request is admitted and charged for. */
+export type ManagedRequestUser = { id: string; isAnonymous?: boolean | null }
+
 type AdmitManagedRequestOptions = {
   database: InferenceDatabase
   settings: Parameters<typeof getInferenceQuotaLimits>[0]
   identity: ManagedInferenceIdentity
-  user: { id: string; isAnonymous?: boolean | null }
+  user: ManagedRequestUser
   /** The route's `ctx.set`. The access log reads its status, which a returned raw Response does not touch. */
   set: Pick<Context['set'], 'status'>
   logger?: InferenceLogger

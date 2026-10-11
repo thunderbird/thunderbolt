@@ -10,7 +10,8 @@ import type { InferenceDatabase } from '@/inference/usage-ledger'
 import type { ConsoleSpies } from '@/test-utils/console-spies'
 import { setupConsoleSpy } from '@/test-utils/console-spies'
 import { createTestDb } from '@/test-utils/db'
-import { createMockAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
+import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
+import { createRejectingRateLimit } from '@/test-utils/rate-limit'
 import { inferenceModelHeader, inferenceUsageReceiptHeader } from '@shared/inference-usage'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { and, eq } from 'drizzle-orm'
@@ -157,6 +158,19 @@ describe('createTinfoilRoutes', () => {
       }),
     )
 
+  /** The test database, counting reads so a test can pin that admission never ran. */
+  const createCountingDatabase = () => {
+    const policySelects = { count: 0 }
+    const countingDatabase: InferenceDatabase = {
+      insert: database.insert,
+      select: ((fields) => {
+        policySelects.count += 1
+        return database.select(fields)
+      }) as InferenceDatabase['select'],
+    }
+    return { countingDatabase, policySelects }
+  }
+
   describe('configuration', () => {
     it('returns 503 when the Tinfoil API key is not configured', async () => {
       const app = buildApp({ apiKey: '' })
@@ -186,23 +200,9 @@ describe('createTinfoilRoutes', () => {
 
   describe('header handling', () => {
     it('rejects an authenticated x-api-key before rate limiting, admission, or upstream forwarding', async () => {
-      let policySelectCalls = 0
-      const rateLimitCalls = mock(() => {})
-      const countingDatabase: InferenceDatabase = {
-        insert: database.insert,
-        select: ((fields) => {
-          policySelectCalls += 1
-          return database.select(fields)
-        }) as InferenceDatabase['select'],
-      }
-      const rejectingRateLimit = new Elysia()
-        .onBeforeHandle(({ set }) => {
-          rateLimitCalls()
-          set.status = 429
-          return { error: 'Too many requests' }
-        })
-        .as('scoped')
-      const app = buildApp({ database: countingDatabase, rateLimit: rejectingRateLimit })
+      const { countingDatabase, policySelects } = createCountingDatabase()
+      const { rateLimit, seenUserIds } = createRejectingRateLimit()
+      const app = buildApp({ database: countingDatabase, rateLimit })
 
       const response = await app.handle(
         new Request('http://localhost/tinfoil/v1/chat/completions', {
@@ -215,25 +215,23 @@ describe('createTinfoilRoutes', () => {
 
       expect(response.status).toBe(403)
       expect(JSON.parse(body)).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
-      expect(rateLimitCalls).not.toHaveBeenCalled()
-      expect(policySelectCalls).toBe(0)
+      expect(seenUserIds).toEqual([])
+      expect(policySelects.count).toBe(0)
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('applies the rate limit to an authenticated session before admission or upstream forwarding', async () => {
-      const rejectingRateLimit = new Elysia()
-        .onBeforeHandle(({ set }) => {
-          set.status = 429
-          return { error: 'Too many requests' }
-        })
-        .as('scoped')
-      const app = buildApp({ rateLimit: rejectingRateLimit })
+    it('applies the rate limit to the resolved user before admission or upstream forwarding', async () => {
+      const { countingDatabase, policySelects } = createCountingDatabase()
+      const { rateLimit, seenUserIds } = createRejectingRateLimit()
+      const app = buildApp({ database: countingDatabase, rateLimit })
 
       const response = await app.handle(
         new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }),
       )
 
       expect(response.status).toBe(429)
+      expect(seenUserIds).toEqual(['test-user'])
+      expect(policySelects.count).toBe(0)
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
@@ -649,14 +647,7 @@ describe('createTinfoilRoutes', () => {
       ['POST', '/v1/audio/speech'],
       ['POST', '/v1/embeddings'],
     ] as const)('does not apply managed policy to %s %s', async (method, path) => {
-      let policySelectCalls = 0
-      const countingDatabase: InferenceDatabase = {
-        insert: database.insert,
-        select: ((fields) => {
-          policySelectCalls += 1
-          return database.select(fields)
-        }) as InferenceDatabase['select'],
-      }
+      const { countingDatabase, policySelects } = createCountingDatabase()
       const request = new Request(`http://localhost/tinfoil${path}`, {
         method,
         body: method === 'POST' ? 'opaque-bytes' : undefined,
@@ -665,7 +656,7 @@ describe('createTinfoilRoutes', () => {
 
       expect(response.status).toBe(200)
       expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
-      expect(policySelectCalls).toBe(0)
+      expect(policySelects.count).toBe(0)
       expect(mockFetch).toHaveBeenCalledTimes(1)
       await response.arrayBuffer()
     })
@@ -1613,15 +1604,18 @@ describe('createTinfoilRoutes', () => {
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
+    it('sanitizes an internal authentication error without exposing its raw message', async () => {
+      const response = await buildApp({
+        auth: createThrowingAuth(new Error('sensitive auth provider internals')),
+      }).handle(new Request('http://localhost/tinfoil/v1/chat/completions', { method: 'POST', body: 'opaque-bytes' }))
+
+      expect(response.status).toBe(500)
+      expect(await response.text()).toBe('{"success":false,"data":null,"error":"Internal Server Error"}')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('returns 401 before managed policy for an unauthenticated exact chat request', async () => {
-      let policySelectCalls = 0
-      const countingDatabase: InferenceDatabase = {
-        insert: database.insert,
-        select: ((fields) => {
-          policySelectCalls += 1
-          return database.select(fields)
-        }) as InferenceDatabase['select'],
-      }
+      const { countingDatabase, policySelects } = createCountingDatabase()
       const response = await buildApp({ auth: mockAuthUnauthenticated, database: countingDatabase }).handle(
         new Request('http://localhost/tinfoil/v1/chat/completions', {
           method: 'POST',
@@ -1631,7 +1625,7 @@ describe('createTinfoilRoutes', () => {
 
       expect(response.status).toBe(401)
       expect(response.headers.get(inferenceUsageReceiptHeader)).toBeNull()
-      expect(policySelectCalls).toBe(0)
+      expect(policySelects.count).toBe(0)
       expect(mockFetch).not.toHaveBeenCalled()
     })
   })

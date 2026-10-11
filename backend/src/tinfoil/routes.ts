@@ -6,7 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { getSettings } from '@/config/settings'
 import { errorKindFromStatus } from '@/inference/error-kind'
 import { logInferenceSafely, type InferenceLogger } from '@/inference/client'
-import { admitManagedRequest } from '@/inference/managed-request'
+import { admitManagedRequest, type ManagedRequestUser } from '@/inference/managed-request'
 import { createMeteredRouteGuard } from '@/inference/metered-route-guard'
 import type { InferenceDatabase } from '@/inference/usage-ledger'
 import { resolveConfidentialManagedModel } from '@/inference/managed-models'
@@ -119,6 +119,16 @@ const resolveEnclaveUrl = (
   }
 }
 
+type ProxyToEnclaveOptions = {
+  requestStartedAt: number
+  request: Request
+  wildcard: string
+  server: Bun.Server<unknown> | null
+  /** The route's `ctx.set`: the timing headers go on its headers, and admission sets its status. */
+  set: Pick<Context['set'], 'headers' | 'status'>
+  user: ManagedRequestUser
+}
+
 /** Forwards HPKE-encrypted bodies to the Tinfoil enclave; injects the bearer key from env. */
 export type CreateTinfoilRoutesOptions = {
   auth: Auth
@@ -156,14 +166,14 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
   const upstreamOriginStore = options.upstreamOriginStore ?? tinfoilUpstreamOriginStore
   const captureInferenceErrorFn = options.captureInferenceErrorFn ?? captureInferenceError
 
-  const proxyToEnclave = async (
-    requestStartedAt: number,
-    request: Request,
-    wildcard: string,
-    server: Bun.Server<unknown> | null,
-    set: Context['set'],
-    user: { id: string; isAnonymous?: boolean | null },
-  ): Promise<Response> => {
+  const proxyToEnclave = async ({
+    requestStartedAt,
+    request,
+    wildcard,
+    server,
+    set,
+    user,
+  }: ProxyToEnclaveOptions): Promise<Response> => {
     const handlerStartedAt = nowFn()
     const preHandlerMs = elapsedMs(requestStartedAt, handlerStartedAt)
     const requestUrl = new URL(request.url)
@@ -405,10 +415,6 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
     }
   }
 
-  // `{ parse: 'none' }` keeps the request stream untouched so the HPKE-encrypted
-  // payload reaches the upstream unchanged, even for recognised content types.
-  // The wildcard-derived subpath survives changes to the outer mount prefix
-  // (e.g. `/v1` in src/index.ts).
   return new Elysia({ prefix: '/tinfoil' })
     .onError(safeErrorHandler)
     .decorate('tinfoilRequestStartedAt', 0)
@@ -424,14 +430,24 @@ export const createTinfoilRoutes = (options: CreateTinfoilRoutesOptions) => {
         auth,
         database,
         cliDeviceRegistrationEnabled: settings.cliDeviceRegistrationEnabled,
-        confidentialApiKeysEnabled: settings.confidentialApiKeysEnabled,
+        allowPersonalAccessTokens: settings.confidentialApiKeysEnabled,
         rateLimit,
       }),
     )
     .all(
+      // The wildcard-derived subpath survives changes to the outer mount prefix (e.g. `/v1` in src/index.ts).
       '/*',
       (ctx) =>
-        proxyToEnclave(ctx.tinfoilRequestStartedAt, ctx.request, ctx.params['*'] ?? '', ctx.server, ctx.set, ctx.user),
+        proxyToEnclave({
+          requestStartedAt: ctx.tinfoilRequestStartedAt,
+          request: ctx.request,
+          wildcard: ctx.params['*'] ?? '',
+          server: ctx.server,
+          set: ctx.set,
+          user: ctx.user,
+        }),
+      // Keeps the request stream untouched so the HPKE-encrypted payload reaches the upstream unchanged, even
+      // for recognised content types.
       { parse: 'none' },
     )
 }

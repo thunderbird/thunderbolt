@@ -7,6 +7,8 @@ import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
 import { createTestDb } from '@/test-utils/db'
 import { createMockAuth, createThrowingAuth, mockAuth, mockAuthUnauthenticated } from '@/test-utils/mock-auth'
+import { createRejectingRateLimit } from '@/test-utils/rate-limit'
+import { createMidReadFailingBody } from '@/test-utils/request-body'
 import { inferenceUsageReceiptPath, type InferenceUsageReceiptRequest } from '@shared/inference-usage'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { and, eq, sql } from 'drizzle-orm'
@@ -158,51 +160,28 @@ describe('inference usage receipt routes', () => {
   })
 
   it('rejects an authenticated x-api-key before parsing the request body', async () => {
-    const rateLimitCalls = mock(() => {})
-    const rejectingRateLimit = new Elysia()
-      .onBeforeHandle(({ set }) => {
-        rateLimitCalls()
-        set.status = 429
-        return { error: 'Too many requests' }
-      })
-      .as('scoped')
+    const { rateLimit, seenUserIds } = createRejectingRateLimit()
     const rateLimitedApp = new Elysia().use(
-      createInferenceUsageReceiptRoutes({
-        auth: mockAuth,
-        database,
-        secret,
-        nowSeconds: () => nowSeconds,
-        rateLimit: rejectingRateLimit,
-      }),
+      createInferenceUsageReceiptRoutes({ auth: mockAuth, database, secret, nowSeconds: () => nowSeconds, rateLimit }),
     )
 
     const response = await postRaw(rateLimitedApp, '{', { 'x-api-key': 'valid-personal-access-token' })
 
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ error: { code: 'WEB_LOGIN_REQUIRED' } })
-    expect(rateLimitCalls).not.toHaveBeenCalled()
+    expect(seenUserIds).toEqual([])
   })
 
-  it('applies the rate limit to an authenticated session before storing usage', async () => {
-    const rejectingRateLimit = new Elysia()
-      .onBeforeHandle(({ set }) => {
-        set.status = 429
-        return { error: 'Too many requests' }
-      })
-      .as('scoped')
+  it('applies the rate limit to the resolved user before storing usage', async () => {
+    const { rateLimit, seenUserIds } = createRejectingRateLimit()
     const rateLimitedApp = new Elysia().use(
-      createInferenceUsageReceiptRoutes({
-        auth: mockAuth,
-        database,
-        secret,
-        nowSeconds: () => nowSeconds,
-        rateLimit: rejectingRateLimit,
-      }),
+      createInferenceUsageReceiptRoutes({ auth: mockAuth, database, secret, nowSeconds: () => nowSeconds, rateLimit }),
     )
 
     const response = await postJson(rateLimitedApp, { receipt: issueReceipt(), ...defaultCounts })
 
     expect(response.status).toBe(429)
+    expect(seenUserIds).toEqual(['test-user'])
     expect(await database.select().from(inferenceUsage)).toEqual([])
   })
 
@@ -386,12 +365,7 @@ describe('inference usage receipt routes', () => {
   })
 
   it('rejects a body stream that fails mid-read with an empty 400', async () => {
-    const body = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        controller.enqueue(new TextEncoder().encode('{"receipt":'))
-        controller.error(new Error('connection reset'))
-      },
-    })
+    const { body, state } = createMidReadFailingBody('{"receipt":')
     const response = await app.handle(
       new Request(`http://localhost/${inferenceUsageReceiptPath}`, {
         method: 'POST',
@@ -401,6 +375,7 @@ describe('inference usage receipt routes', () => {
     )
 
     await expectEmptyResponse(response, 400)
+    expect(state.pulls).toBe(2)
   })
 
   it('accepts a total count that differs from prompt plus completion', async () => {

@@ -12,24 +12,35 @@ import type { UIMessage } from 'ai'
 import { z } from 'zod'
 
 /**
- * Parts the client may replay. Each schema rebuilds the part from known fields only, so client-forged
- * `providerMetadata` never reaches the provider. Files must be inline data URLs: a remote URL would make
- * the AI SDK download it from this server. Blank text parts are dropped (see `isBlankTextPart`).
+ * Parts the client may replay: text only (see `isHostedAgentPartType` in `@shared/hosted-agent-history`). Each
+ * schema rebuilds the part from known fields only, so client-forged `providerMetadata` never reaches the
+ * provider. Blank text parts are dropped (see `isBlankTextPart`).
  */
 const textPartSchema = z
   .object({ type: z.literal('text'), text: z.string() })
   .transform((part) => (isBlankTextPart(part) ? null : part))
-const filePartSchema = z.object({
-  type: z.literal('file'),
-  mediaType: z.string(),
-  url: z.string().startsWith('data:'),
-  filename: z.string().optional(),
-})
 
 /**
- * Parts dropped from the replay. The server registers no tools and enables no extended thinking, so tool and
- * reasoning parts were not produced by it (a replayed reasoning part also lacks the signature Anthropic
- * requires). `step-start` is a UI step marker that carries no content.
+ * Any message carrying a file part, in any role. The agent takes no attachments yet, whatever its model, so a
+ * file is refused with its own reason rather than dropped or lumped in with malformed bodies.
+ */
+const fileBearingRequestSchema = z.object({
+  messages: z.array(z.object({ parts: z.array(z.unknown()) })),
+})
+const filePartSchema = z.object({ type: z.literal('file') })
+
+const containsFilePart = (body: unknown): boolean => {
+  const request = fileBearingRequestSchema.safeParse(body)
+  return (
+    request.success &&
+    request.data.messages.some(({ parts }) => parts.some((part) => filePartSchema.safeParse(part).success))
+  )
+}
+
+/**
+ * Parts dropped from the replay. The server registers no tools and never streams reasoning to the client
+ * (`sendReasoning: false`), so tool and reasoning parts were not produced by it (a replayed reasoning part also
+ * lacks the signature Anthropic requires). `step-start` is a UI step marker that carries no content.
  */
 const droppedPartSchema = z
   .object({ type: z.string().regex(/^(tool-.+|dynamic-tool|reasoning|step-start)$/) })
@@ -38,14 +49,11 @@ const droppedPartSchema = z
 /** Remove the parts the schemas above mapped to null. */
 const withoutDroppedParts = <Part>(parts: (Part | null)[]): Part[] => parts.filter((part) => part !== null)
 
-/**
- * A role's replayed parts. A part type the role may not send rejects the request, and that includes
- * every file: file parts still parse above so the shared rule (`isHostedAgentPartType`) is what refuses
- * them, which leaves room for a coded file check ahead of these schemas.
- */
+/** A role's replayed parts, checked against the shared per-role rule. Files never get here: `containsFilePart`
+ *  refuses them first, with their own reason. */
 const partsSchemaFor = (role: 'user' | 'assistant') =>
   z
-    .array(z.union([textPartSchema, filePartSchema, droppedPartSchema]))
+    .array(z.union([textPartSchema, droppedPartSchema]))
     .transform(withoutDroppedParts)
     .refine((parts) => parts.every((part) => isHostedAgentPartType(role, part.type)))
 
@@ -62,19 +70,24 @@ const requestSchema = z.object({
 })
 
 export type AgentChatRequest = { id: string; messages: UIMessage[] }
+export type AgentChatParseResult =
+  | { ok: true; value: AgentChatRequest }
+  | { ok: false; reason: 'invalid' | 'files_unsupported' }
 
 /**
  * Parse a `DefaultChatTransport` body into a history safe to send to the model. Client system messages and
- * the parts above are dropped. Too many messages, unknown part types, and file parts are rejected, as is
- * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`): Anthropic
- * treats a trailing assistant message as prefill, which would let a caller write the start of the answer.
- * The byte cap is enforced earlier,
- * while the body is read (see `readBoundedJson`).
+ * the parts above are dropped. A file part anywhere is refused as `files_unsupported`, before any of the shared
+ * rules from `@shared/hosted-agent-history` run. Too many messages and unknown part types are `invalid`, as is
+ * a history that does not start and end with a user message (see `startsAndEndsOnUserMessage`). The byte cap
+ * is enforced earlier, while the body is read (see `readBoundedJson`).
  */
-export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null => {
+export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
+  if (containsFilePart(body)) {
+    return { ok: false, reason: 'files_unsupported' }
+  }
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
   const messages = parsed.data.messages.flatMap((message) => {
     if (message.role === 'system') {
@@ -83,7 +96,7 @@ export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null =>
     return message.parts.length === 0 ? [] : [{ id: message.id, role: message.role, parts: message.parts }]
   })
   if (!startsAndEndsOnUserMessage(messages)) {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
-  return { id: parsed.data.id, messages }
+  return { ok: true, value: { id: parsed.data.id, messages } }
 }

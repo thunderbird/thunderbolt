@@ -61,6 +61,9 @@ const getUpstreamStatus = (error: unknown): number | undefined => {
 const createRunInProgressResponse = (): Response =>
   Response.json({ error: { code: 'AGENT_RUN_IN_PROGRESS' } }, { status: 429 })
 
+const createFilesUnsupportedResponse = (): Response =>
+  Response.json({ error: { code: 'AGENT_FILES_UNSUPPORTED' } }, { status: 400 })
+
 /**
  * Hosted agent routes: `POST /agent/chat` takes a `DefaultChatTransport` body and streams a UI message
  * response. Stateless: the browser owns the conversation and resends it each turn. Mounts nothing unless
@@ -109,12 +112,20 @@ export const createHostedAgentRoutes = (options: CreateHostedAgentRoutesOptions)
           ctx.set.status = 413
           return createErrorResponse(getSafeErrorMessage(413))
         }
-        const chatRequest = body.ok ? parseAgentChatRequest(body.value) : null
-        if (!chatRequest) {
+        const chatRequest = body.ok ? parseAgentChatRequest(body.value) : ({ ok: false, reason: 'invalid' } as const)
+        if (!chatRequest.ok && chatRequest.reason === 'files_unsupported') {
+          logger?.info(
+            { event: 'agent_files_unsupported', provider: identity.provider, model: identity.model },
+            'Agent request carried file parts',
+          )
+          ctx.set.status = 400
+          return createFilesUnsupportedResponse()
+        }
+        if (!chatRequest.ok) {
           ctx.set.status = 400
           return createErrorResponse(getSafeErrorMessage(400))
         }
-        const messages = await convertToModelMessages(chatRequest.messages)
+        const messages = await convertToModelMessages(chatRequest.value.messages)
 
         const userId = ctx.user.id
         const admission = await admitManagedRequest({

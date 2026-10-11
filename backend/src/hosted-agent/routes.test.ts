@@ -172,6 +172,23 @@ describe('createHostedAgentRoutes', () => {
     expect(model.doStreamCalls).toHaveLength(0)
   })
 
+  it('refuses file parts with AGENT_FILES_UNSUPPORTED before admission or the model call', async () => {
+    const file = { type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,AAAA' }
+    const app = createMockedApp()
+    const response = await postChat(
+      app,
+      chatBody([{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }, file] }]),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: { code: 'AGENT_FILES_UNSUPPORTED' } })
+    expect(logger.info).toHaveBeenCalledWith(
+      { event: 'agent_files_unsupported', provider: 'anthropic', model: 'claude-test' },
+      'Agent request carried file parts',
+    )
+    expect(checkAdmission).not.toHaveBeenCalled()
+    expect(model.doStreamCalls).toHaveLength(0)
+  })
+
   it.each([
     ['malformed JSON', new TextEncoder().encode('{"id":"chat-1","messages":[')],
     ['invalid UTF-8', new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d])],

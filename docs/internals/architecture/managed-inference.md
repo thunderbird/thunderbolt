@@ -157,6 +157,7 @@ Retiring a model is a one-way door. `cleanupRemovedDefaults` soft-deletes every 
 | Variable                        | Enables                                                         |
 | ------------------------------- | --------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`             | the direct tier (`/v1/chat/*`)                                  |
+| `FIREWORKS_API_KEY`             | the hosted agent, when `AGENT_MODEL` is a Fireworks model       |
 | `TINFOIL_API_KEY`               | the confidential tier (`/v1/tinfoil/*`) and the keep-warm probe |
 | `TINFOIL_ENCLAVE_URL`           | enclave base URL; must include the `/v1` prefix                 |
 | `CONFIDENTIAL_API_KEYS_ENABLED` | lets a PAT reach the confidential routes                        |
@@ -171,7 +172,7 @@ Full descriptions: [configuration.md](../../self-hosting/configuration.md#ai-pro
 | Path                                            | Role                                                                  |
 | ----------------------------------------------- | --------------------------------------------------------------------- |
 | `backend/src/inference/routes.ts`               | direct tier: `/chat/completions`, `/chat/v1/messages`                 |
-| `backend/src/inference/managed-models.ts`       | public slug → upstream identity, for both tiers                       |
+| `backend/src/inference/managed-models.ts`       | public slug → upstream identity, for both tiers and the hosted agent  |
 | `backend/src/inference/usage-ledger.ts`         | price lookup, cost math, rolling windows, admission, ledger insert    |
 | `backend/src/inference/usage-responses.ts`      | the stable 503 / 429 bodies                                           |
 | `backend/src/inference/managed-request.ts`      | admission and ledger-write callbacks, shared with the hosted agent    |

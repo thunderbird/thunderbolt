@@ -244,10 +244,11 @@ const managedProviderEndpoints = {
 >
 
 /**
- * Key, `/v1` API root and instrumented fetch for one managed provider. The OpenAI SDK constructor and the AI
- * SDK provider factories (`createAnthropic`, `createOpenAICompatible`) all take this shape as-is, so every SDK
- * client of a managed provider shares the per-call telemetry of {@link createInferenceFetch} and the `fetchFn`
- * seam. Throws when the provider's key is unset, so a caller that builds its client at startup fails at startup.
+ * Key, `/v1` API root and instrumented fetch for one managed provider. The OpenAI SDK constructor and
+ * `createAnthropic` take this shape as-is, and `createOpenAICompatible` takes it alongside its own provider
+ * options (`name`, `includeUsage`, `convertUsage`), so every SDK client of a managed provider shares the per-call telemetry of
+ * {@link createInferenceFetch} and the `fetchFn` seam. Throws when the provider's key is unset, so a caller that
+ * builds its client at startup fails the boot rather than the first request.
  */
 export const createManagedProviderConnection = (
   provider: ManagedDirectProvider,

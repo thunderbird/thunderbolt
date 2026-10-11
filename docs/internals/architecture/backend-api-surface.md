@@ -19,6 +19,7 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:66`). Route groups are pl
 | `GET /v1/auth/{google,microsoft}/config`, `POST …/exchange`, `POST …/refresh` | `auth/google.ts`, `auth/microsoft.ts`   | session                                   | none                                              | gated   |
 | `GET /v1/locations`, `GET /v1/locations/:id`                                  | `api/routes.ts`                         | session                                   | none                                              | gated   |
 | `POST /v1/chat/completions`, `POST /v1/chat/v1/messages`                      | `inference/routes.ts`                   | session, CLI-device-checked               | `inference`                                       | gated   |
+| `POST /v1/agent/chat`‡                                                        | `hosted-agent/routes.ts`                | session, CLI-device-checked               | `inference`                                       | gated   |
 | `POST /v1/inference-usage/receipts`                                           | `inference/usage-receipt-routes.ts`     | session, web-only by default              | `receipt`                                         | gated   |
 | `ALL /v1/tinfoil/*`                                                           | `tinfoil/routes.ts`                     | session, web-only by default              | `pro`                                             | gated   |
 | `ALL /v1/proxy`                                                               | `proxy/routes.ts`                       | session                                   | `pro`                                             | gated   |
@@ -42,6 +43,8 @@ One Elysia app, `prefix: '/v1'` (`backend/src/index.ts:66`). Route groups are pl
 
 † The `pro` limiter is mounted on the WebSocket plugin but keys on the macro-resolved `user`, while the bearer is authorized in `open()`, so the handshake is not user-limited ([rate-limiting.md](../../../backend/docs/rate-limiting.md)).
 
+‡ Text parts only: a request carrying a file part gets `400` with code `AGENT_FILES_UNSUPPORTED` (`hosted-agent/history.ts`).
+
 Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.test.ts`).
 
 ### Conditional groups
@@ -52,6 +55,7 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 | SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                     |
 | `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                   |
 | Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                        |
+| Hosted agent                  | only under `AGENT_ENABLED`                                          |
 | Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset              |
 | `PUT /v1/account/devices/cli` | stays mounted, answers 404 unless `CLI_DEVICE_REGISTRATION_ENABLED` |
 

@@ -91,7 +91,7 @@ SET input_nano_usd_per_token = EXCLUDED.input_nano_usd_per_token,
     updated_at = now();
 ```
 
-Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which slightly overstates spend.
+Migration `0033` seeds `accounts/fireworks/models/glm-5p3` and `accounts/fireworks/models/minimax-m3`. Those two and `claude-opus-5-5` are the ids the [hosted agent](./configuration.md#hosted-agent) accepts as `AGENT_MODEL` (`managedAgentModels` in `backend/src/inference/managed-models.ts`); a new agent model needs an entry there as well as a price row. Fireworks cached-input discounts are not modelled; cached tokens are billed at the full input price, which overstates spend.
 
 ## Confidential inference
 

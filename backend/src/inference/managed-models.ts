@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { defaultModels } from '@shared/defaults/models'
+import type { ManagedDirectProvider } from './client'
 import type { ManagedInferenceIdentity } from './usage-ledger'
 
 export type ManagedDirectRuntime = {
@@ -42,3 +43,18 @@ const confidentialManagedModels = new Map<string, ManagedInferenceIdentity>(
 /** Resolve confidential managed catalog and legacy identities, without prototype-property lookups. */
 export const resolveConfidentialManagedModel = (model: string): ManagedInferenceIdentity | undefined =>
   confidentialManagedModels.get(model)
+
+export type ManagedAgentIdentity = ManagedInferenceIdentity & { provider: ManagedDirectProvider }
+
+/**
+ * The models the hosted agent may run as `AGENT_MODEL`, keyed by the id the provider's API takes: a Fireworks
+ * serverless id (`accounts/fireworks/models/<name>`), or the upstream id of a `managedDirectRuntimes` model.
+ * Each needs a price row too, which admission checks per request.
+ */
+export const managedAgentModels = new Map<string, ManagedAgentIdentity>(
+  [
+    { provider: 'fireworks', model: 'accounts/fireworks/models/glm-5p3' } as const,
+    { provider: 'fireworks', model: 'accounts/fireworks/models/minimax-m3' } as const,
+    ...Object.values(managedDirectRuntimes).map(({ provider, internalName }) => ({ provider, model: internalName })),
+  ].map((identity) => [identity.model, identity]),
+)

@@ -22,6 +22,8 @@ describe('captcha DAL', () => {
   })
 
   const inOneMinute = () => new Date(Date.now() + 60_000)
+  // The sweep's grace for clock skew between instances.
+  const graceMs = 5 * 60 * 1000
 
   it('redeemCaptchaChallenge succeeds once per challenge', async () => {
     expect(await redeemCaptchaChallenge(db, 'challenge-a', inOneMinute())).toBe(true)
@@ -29,13 +31,15 @@ describe('captcha DAL', () => {
     expect(await redeemCaptchaChallenge(db, 'challenge-b', inOneMinute())).toBe(true)
   })
 
-  it('deleteExpiredCaptchaChallenges removes expired rows and keeps live ones', async () => {
-    await redeemCaptchaChallenge(db, 'expired', new Date(Date.now() - 1000))
+  it('deleteExpiredCaptchaChallenges removes rows past the grace window and keeps the rest', async () => {
+    const now = Date.now()
+    await redeemCaptchaChallenge(db, 'past-grace', new Date(now - graceMs - 1000))
+    await redeemCaptchaChallenge(db, 'within-grace', new Date(now - graceMs + 60_000))
     await redeemCaptchaChallenge(db, 'live', inOneMinute())
 
     await deleteExpiredCaptchaChallenges(db)
 
-    const remaining = (await db.select().from(solvedCaptchaChallenges)).map((row) => row.challenge)
-    expect(remaining).toEqual(['live'])
+    const remaining = (await db.select().from(solvedCaptchaChallenges)).map((row) => row.challenge).sort()
+    expect(remaining).toEqual(['live', 'within-grace'])
   })
 })

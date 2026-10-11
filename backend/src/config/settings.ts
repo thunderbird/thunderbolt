@@ -196,14 +196,23 @@ const settingsSchema = z
       .int()
       .positive()
       .default(defaultAnonymousSignInRateLimitWindowSecs),
-    // Providers are added together with their verifier (backend/src/auth/captcha.ts).
+    // Deployment-wide anonymous sign-in budget: one constant-key bucket shared by every IP, so
+    // a raised per-IP limit cannot mint unbounded accounts. It bounds worst-case anonymous
+    // inference spend at this many accounts times the per-account quota, per window.
+    anonymousSignInGlobalRateLimitMax: z.coerce.number().int().positive().default(2000),
+    anonymousSignInGlobalRateLimitWindowSecs: z.coerce.number().int().positive().default(3600),
+    // Each value maps to a provider in createCaptchaProvider (backend/src/auth/captcha.ts).
     captchaProvider: z.enum(['none', 'altcha']).default('none'),
+    // ALTCHA_* settings apply only when CAPTCHA_PROVIDER=altcha.
     // HMAC key signing ALTCHA challenges; required (32+ characters) when the provider is altcha.
-    captchaSecret: z.string().default(''),
+    altchaSecret: z.string().default(''),
     // ALTCHA maxnumber: a client tries maxnumber/2 SHA-256 hashes on average, so this trades
-    // bot cost against how long a low-end phone spins before sign-in.
-    captchaDifficulty: z.coerce.number().int().positive().default(100_000),
-    captchaTtlSecs: z.coerce.number().int().positive().default(600),
+    // bot cost against how long a low-end phone spins before sign-in. The 100000 default solves
+    // in about 80 ms (median, single thread) in Bun on Apple silicon; phones are slower.
+    // The floor is a sanity bound, not the control: a native solver needs only milliseconds at
+    // any sane difficulty, so the global anonymous sign-in budget is what caps a scripted run.
+    altchaDifficulty: z.coerce.number().int().min(50_000).default(100_000),
+    altchaTtlSecs: z.coerce.number().int().positive().default(600),
 
     // Managed inference rolling quotas (integer cents)
     inferenceQuotaAnonymousFiveHourCents: z.coerce.number().int().positive().default(10),
@@ -261,11 +270,11 @@ const settingsSchema = z
         input: '[REDACTED]',
       })
     }
-    if (data.captchaProvider === 'altcha' && data.captchaSecret.length < 32) {
+    if (data.captchaProvider === 'altcha' && data.altchaSecret.length < 32) {
       ctx.addIssue({
         code: 'custom',
-        message: 'CAPTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha',
-        path: ['captchaSecret'],
+        message: 'ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha',
+        path: ['altchaSecret'],
       })
     }
     const anonymousSignInLimitRaised =
@@ -505,10 +514,12 @@ const parseSettings = (): Settings => {
     rateLimitEnabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     anonymousSignInRateLimitMax: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX || undefined,
     anonymousSignInRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS || undefined,
+    anonymousSignInGlobalRateLimitMax: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX || undefined,
+    anonymousSignInGlobalRateLimitWindowSecs: process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS || undefined,
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase(),
-    captchaSecret: process.env.CAPTCHA_SECRET || '',
-    captchaDifficulty: process.env.CAPTCHA_DIFFICULTY || undefined,
-    captchaTtlSecs: process.env.CAPTCHA_TTL_SECS || undefined,
+    altchaSecret: process.env.ALTCHA_SECRET || '',
+    altchaDifficulty: process.env.ALTCHA_DIFFICULTY || undefined,
+    altchaTtlSecs: process.env.ALTCHA_TTL_SECS || undefined,
     inferenceQuotaAnonymousFiveHourCents: process.env.INFERENCE_QUOTA_ANONYMOUS_5H_CENTS,
     inferenceQuotaAnonymousSevenDayCents: process.env.INFERENCE_QUOTA_ANONYMOUS_7D_CENTS,
     inferenceQuotaRegisteredFiveHourCents: process.env.INFERENCE_QUOTA_REGISTERED_5H_CENTS,

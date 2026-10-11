@@ -19,6 +19,17 @@ export const redeemCaptchaChallenge = async (database: QueryableDatabase, challe
   return inserted.length > 0
 }
 
-/** Sweep solved challenges past their expiry (startup + interval, like the E2EE nonce sweep). */
+/**
+ * How long a solved challenge outlives its expiry. This table is a deny-list, so deleting a row
+ * at the exact expiry would reopen replay on any instance whose clock runs behind.
+ */
+const solvedCaptchaChallengeGraceMs = 5 * 60 * 1000
+
+/**
+ * Sweep solved challenges more than `solvedCaptchaChallengeGraceMs` past their expiry
+ * (startup + hourly, alongside the E2EE nonce sweep).
+ */
 export const deleteExpiredCaptchaChallenges = async (database: QueryableDatabase) =>
-  database.delete(solvedCaptchaChallenges).where(lte(solvedCaptchaChallenges.expiresAt, new Date()))
+  database
+    .delete(solvedCaptchaChallenges)
+    .where(lte(solvedCaptchaChallenges.expiresAt, new Date(Date.now() - solvedCaptchaChallengeGraceMs)))

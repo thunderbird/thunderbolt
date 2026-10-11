@@ -20,11 +20,12 @@ type RateLimitTier =
   | 'pro'
   | 'auth'
   | 'anonymous-sign-in'
+  | 'anonymous-sign-in-global'
   | 'captcha-challenge'
   | 'debug-transcript'
   | 'debug-transcript-intake'
 /** Tiers with a hardcoded limit; the anonymous sign-in and captcha challenge tiers are configured by the operator. */
-type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'captcha-challenge'>
+type FixedRateLimitTier = Exclude<RateLimitTier, 'anonymous-sign-in' | 'anonymous-sign-in-global' | 'captcha-challenge'>
 export type UserRateLimitTier = Exclude<FixedRateLimitTier, 'auth'>
 
 type RateLimitTierConfig = {
@@ -42,6 +43,8 @@ export type IpRateLimitSettings = RateLimitSettings & {
 
 export type AuthPluginIpRateLimitSettings = IpRateLimitSettings & {
   anonymousSignIn: RateLimitTierConfig
+  /** Deployment-wide anonymous sign-in budget; null when anonymous auth is off. */
+  anonymousSignInGlobal: RateLimitTierConfig | null
 }
 
 /** Hardcoded per-tier limits. */
@@ -77,15 +80,21 @@ const setRateLimitHeaders = (
   headers['RateLimit-Reset'] = String(resetSecs)
 }
 
-/** Consume a rate limit point or return a 429 response. */
+/**
+ * Consume a rate limit point or return a 429 response. A secondary bucket passes
+ * `setHeadersOnSuccess: false` so an allowed request keeps the primary bucket's headers.
+ */
 const consumeOrReject = async (
   limiter: RateLimiterAbstract,
   key: string,
   set: { status?: number | string; headers: Record<string, string | string[] | number> },
+  { setHeadersOnSuccess }: { setHeadersOnSuccess: boolean } = { setHeadersOnSuccess: true },
 ) => {
   try {
     const res = await limiter.consume(key)
-    setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
+    if (setHeadersOnSuccess) {
+      setRateLimitHeaders(set.headers, limiter.points, res.remainingPoints, Math.ceil(res.msBeforeNext / 1000))
+    }
   } catch (err) {
     if (err instanceof RateLimiterRes) {
       set.status = 429
@@ -151,6 +160,7 @@ export const createUserTierRateLimit = (
 const createIpRateLimitMiddleware = (
   limiterFor: (request: Request) => RateLimiterDrizzle,
   trustedProxy: IpRateLimitSettings['trustedProxy'],
+  globalLimiterFor: (request: Request) => RateLimiterDrizzle | null = () => null,
 ) =>
   new Elysia()
     .onBeforeHandle(async (ctx) => {
@@ -159,20 +169,32 @@ const createIpRateLimitMiddleware = (
       // same shared fail-closed bucket as a missing one, never a stray `ip:` key.
       const socketIp = ctx.server?.requestIP(ctx.request)?.address || 'unknown'
       const clientIp = extractClientIp(ctx.request.headers, socketIp, trustedProxy)
-      return consumeOrReject(limiterFor(ctx.request), `ip:${clientIp}`, set)
+      const rejected = await consumeOrReject(limiterFor(ctx.request), `ip:${clientIp}`, set)
+      if (rejected) {
+        return rejected
+      }
+      // Drawn only once the IP bucket admits the request, so an IP already over its own
+      // limit cannot drain the deployment-wide budget for everyone else.
+      const globalLimiter = globalLimiterFor(ctx.request)
+      return globalLimiter
+        ? consumeOrReject(globalLimiter, globalRateLimitKey, set, { setHeadersOnSuccess: false })
+        : undefined
     })
     .as('scoped')
 
-/** IP-keyed middleware for one configured tier; fails closed like createAuthIpRateLimit. */
-export const createIpTierRateLimit = (
-  database: typeof DbType,
-  settings: IpRateLimitSettings,
-  tier: FixedRateLimitTier,
-) => {
+/**
+ * A tier and its limit: fixed tiers use `tierConfigs`; 'captcha-challenge' is sized by the
+ * operator, so the caller passes the same config object that sizes 'anonymous-sign-in'.
+ */
+type IpTierArgs = [tier: FixedRateLimitTier] | [tier: 'captcha-challenge', config: RateLimitTierConfig]
+
+/** IP-keyed middleware for one tier; fails closed like createAuthIpRateLimit. */
+export const createIpTierRateLimit = (database: typeof DbType, settings: IpRateLimitSettings, ...args: IpTierArgs) => {
   if (!settings.enabled) {
     return new Elysia()
   }
-  const limiter = createLimiter(database, tier, tierConfigs[tier])
+  const config = args[0] === 'captcha-challenge' ? args[1] : tierConfigs[args[0]]
+  const limiter = createLimiter(database, args[0], config)
   return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
 }
 
@@ -182,13 +204,17 @@ export const createAuthIpRateLimit = (database: typeof DbType, settings: IpRateL
 
 const anonymousSignInMountPath = `${authBasePath}${anonymousSignInPath}`
 
+/** The single key of a deployment-wide bucket: every client shares it. */
+const globalRateLimitKey = 'all'
+
 /** Exact match, as Better Auth routes it: a trailing slash or lookalike prefix is a 404 there. */
 const isAnonymousSignIn = (request: Request) => new URL(request.url).pathname === anonymousSignInMountPath
 
 /**
  * IP rate limit for the Better Auth mount. Anonymous sign-in draws from its own
  * operator-configured 'anonymous-sign-in' bucket so raising it never loosens any other
- * auth route; everything else draws from the fixed 'auth' tier.
+ * auth route, and, while anonymous auth is on, from the deployment-wide
+ * 'anonymous-sign-in-global' bucket; everything else draws from the fixed 'auth' tier.
  */
 export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: AuthPluginIpRateLimitSettings) => {
   if (!settings.enabled) {
@@ -196,26 +222,14 @@ export const createAuthPluginIpRateLimit = (database: typeof DbType, settings: A
   }
   const authLimiter = createLimiter(database, 'auth', tierConfigs.auth)
   const anonymousSignInLimiter = createLimiter(database, 'anonymous-sign-in', settings.anonymousSignIn)
+  const anonymousSignInGlobalLimiter =
+    settings.anonymousSignInGlobal &&
+    createLimiter(database, 'anonymous-sign-in-global', settings.anonymousSignInGlobal)
   return createIpRateLimitMiddleware(
     (request) => (isAnonymousSignIn(request) ? anonymousSignInLimiter : authLimiter),
     settings.trustedProxy,
+    (request) => (isAnonymousSignIn(request) ? anonymousSignInGlobalLimiter : null),
   )
-}
-
-/**
- * IP rate limit for the captcha challenge route. Every anonymous sign-in needs one challenge,
- * so it is sized like the anonymous sign-in limit, in its own bucket so many people behind one
- * venue NAT never drain the 'auth' tier that OTP and waitlist routes share.
- */
-export const createCaptchaChallengeIpRateLimit = (
-  database: typeof DbType,
-  settings: IpRateLimitSettings & { captchaChallenge: RateLimitTierConfig },
-) => {
-  if (!settings.enabled) {
-    return new Elysia()
-  }
-  const limiter = createLimiter(database, 'captcha-challenge', settings.captchaChallenge)
-  return createIpRateLimitMiddleware(() => limiter, settings.trustedProxy)
 }
 
 type RateLimitSet = Parameters<typeof consumeOrReject>[2]

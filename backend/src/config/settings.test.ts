@@ -364,10 +364,12 @@ describe('Config Settings', () => {
       'TRUSTED_PROXY',
       'ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX',
       'ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX',
+      'ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS',
       'CAPTCHA_PROVIDER',
-      'CAPTCHA_SECRET',
-      'CAPTCHA_DIFFICULTY',
-      'CAPTCHA_TTL_SECS',
+      'ALTCHA_SECRET',
+      'ALTCHA_DIFFICULTY',
+      'ALTCHA_TTL_SECS',
       'AUTH_ALLOW_ANONYMOUS',
     ] as const
 
@@ -504,50 +506,76 @@ describe('Config Settings', () => {
     ])('should allow %s=%s with anonymous auth on and altcha', (key, value) => {
       process.env.AUTH_ALLOW_ANONYMOUS = 'true'
       process.env.CAPTCHA_PROVIDER = 'altcha'
-      process.env.CAPTCHA_SECRET = 'a'.repeat(32)
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
       process.env[key] = value
       expect(getSettings().captchaProvider).toBe('altcha')
     })
 
-    it('should default the captcha difficulty and TTL', () => {
-      delete process.env.CAPTCHA_DIFFICULTY
-      delete process.env.CAPTCHA_TTL_SECS
+    it('should default the deployment-wide anonymous sign-in budget to 2000 per hour', () => {
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX
+      delete process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS
       const settings = getSettings()
-      expect(settings.captchaDifficulty).toBe(100_000)
-      expect(settings.captchaTtlSecs).toBe(600)
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(2000)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(3600)
+    })
+
+    it('should read the deployment-wide anonymous sign-in budget from env', () => {
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '500'
+      process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '1800'
+      const settings = getSettings()
+      expect(settings.anonymousSignInGlobalRateLimitMax).toBe(500)
+      expect(settings.anonymousSignInGlobalRateLimitWindowSecs).toBe(1800)
+    })
+
+    it('should refuse an ALTCHA difficulty below the 50000 floor and accept the floor itself', () => {
+      process.env.ALTCHA_DIFFICULTY = '49999'
+      expect(() => getSettings()).toThrow()
+      clearSettingsCache()
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      expect(getSettings().altchaDifficulty).toBe(50_000)
+    })
+
+    it('should default the ALTCHA difficulty and TTL', () => {
+      delete process.env.ALTCHA_DIFFICULTY
+      delete process.env.ALTCHA_TTL_SECS
+      const settings = getSettings()
+      expect(settings.altchaDifficulty).toBe(100_000)
+      expect(settings.altchaTtlSecs).toBe(600)
     })
 
     it('should read the altcha settings from env', () => {
       process.env.CAPTCHA_PROVIDER = 'ALTCHA'
-      process.env.CAPTCHA_SECRET = 'a'.repeat(32)
-      process.env.CAPTCHA_DIFFICULTY = '50000'
-      process.env.CAPTCHA_TTL_SECS = '120'
+      process.env.ALTCHA_SECRET = 'a'.repeat(32)
+      process.env.ALTCHA_DIFFICULTY = '50000'
+      process.env.ALTCHA_TTL_SECS = '120'
       const settings = getSettings()
       expect(settings.captchaProvider).toBe('altcha')
-      expect(settings.captchaSecret).toBe('a'.repeat(32))
-      expect(settings.captchaDifficulty).toBe(50_000)
-      expect(settings.captchaTtlSecs).toBe(120)
+      expect(settings.altchaSecret).toBe('a'.repeat(32))
+      expect(settings.altchaDifficulty).toBe(50_000)
+      expect(settings.altchaTtlSecs).toBe(120)
     })
 
     it.each([
       ['unset', undefined],
       ['shorter than 32 characters', 'a'.repeat(31)],
-    ])('should reject CAPTCHA_PROVIDER=altcha with CAPTCHA_SECRET %s', (_label, secret) => {
+    ])('should reject CAPTCHA_PROVIDER=altcha with ALTCHA_SECRET %s', (_label, secret) => {
       process.env.CAPTCHA_PROVIDER = 'altcha'
       if (secret === undefined) {
-        delete process.env.CAPTCHA_SECRET
+        delete process.env.ALTCHA_SECRET
       } else {
-        process.env.CAPTCHA_SECRET = secret
+        process.env.ALTCHA_SECRET = secret
       }
-      expect(() => getSettings()).toThrow('CAPTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha')
+      expect(() => getSettings()).toThrow('ALTCHA_SECRET must be at least 32 characters when CAPTCHA_PROVIDER=altcha')
     })
 
     it.each([
       ['ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX', '0'],
       ['ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS', 'abc'],
       ['CAPTCHA_PROVIDER', 'turnstile'],
-      ['CAPTCHA_DIFFICULTY', '0'],
-      ['CAPTCHA_TTL_SECS', 'abc'],
+      ['ALTCHA_DIFFICULTY', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX', '0'],
+      ['ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS', 'abc'],
+      ['ALTCHA_TTL_SECS', 'abc'],
     ])('should reject %s=%s', (key, value) => {
       process.env[key] = value
       expect(() => getSettings()).toThrow()

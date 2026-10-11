@@ -32,7 +32,7 @@ import {
   sendWaitlistJoinedEmail as defaultSendWaitlistJoinedEmail,
   sendWaitlistNotReadyEmail as defaultSendWaitlistNotReadyEmail,
 } from '@/waitlist/utils'
-import { captchaTokenHeader, createCaptchaVerifier } from './captcha'
+import { captchaTokenHeader, createCaptchaProvider } from './captcha'
 import { anonymousSignInPath, authBasePath } from './paths'
 import { challengeTokenHeader, otpExpiryMs, otpExpirySeconds, testSignInOtp } from './otp-constants'
 import { buildVerifyUrl, parseTrustedOrigins, sendSignInEmail as defaultSendSignInEmail } from './utils'
@@ -153,7 +153,7 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
   const sendSignInEmail = emailDeps.sendSignInEmail ?? defaultSendSignInEmail
   const sendWaitlistJoinedEmail = emailDeps.sendWaitlistJoinedEmail ?? defaultSendWaitlistJoinedEmail
   const sendWaitlistNotReadyEmail = emailDeps.sendWaitlistNotReadyEmail ?? defaultSendWaitlistNotReadyEmail
-  const captchaVerifier = createCaptchaVerifier(settings, database)
+  const captchaProvider = createCaptchaProvider(settings, database)
 
   // Include the backend's own origin so the SSO desktop-callback can be used as callbackURL.
   // Spread to avoid mutating the shared default array returned by parseTrustedOrigins.
@@ -192,8 +192,10 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
       },
     }),
     // NOTE: Uses in-memory storage by default — not shared across instances in
-    // horizontally-scaled deployments. Provides single-instance defence only. The captcha
-    // on anonymous sign-in (CAPTCHA_PROVIDER) is the distributed bot control.
+    // horizontally-scaled deployments. Provides single-instance defence only. Today this
+    // limiter and the DB-backed `auth` IP tier are the controls; the captcha on anonymous
+    // sign-in (CAPTCHA_PROVIDER) will be the distributed bot control once the app supports
+    // ALTCHA.
     rateLimit: {
       enabled: settings.rateLimitEnabled,
       window: 60,
@@ -265,11 +267,14 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
           // Better Auth's hook context exposes no socket address, so only a trusted proxy
           // header can identify the client here.
           const headers = ctx.headers ?? new Headers()
-          const captchaSolved = await captchaVerifier.verify(headers.get(captchaTokenHeader), {
+          const captchaSolved = await captchaProvider.verify(headers.get(captchaTokenHeader), {
             clientIp: extractClientIp(headers, 'unknown', settings.trustedProxy),
           })
           if (!captchaSolved) {
-            throw ctx.error('FORBIDDEN', { message: 'Captcha verification failed' })
+            throw ctx.error('FORBIDDEN', {
+              message: 'Captcha verification failed',
+              code: 'CAPTCHA_VERIFICATION_FAILED',
+            })
           }
           const existing = await getSessionFromCtx(ctx, { disableRefresh: true })
           if (existing?.user && (existing.user as { isAnonymous?: boolean }).isAnonymous !== true) {
@@ -371,7 +376,6 @@ export const createAuth = (database: typeof DbType, emailDeps: AuthEmailDeps = {
         resendStrategy: 'reuse', // Preserves attempt counter on resend (prevents reset-by-resend attack).
         // Defense-in-depth: 8-digit OTP (100M keyspace) + 3 attempts + 15s cooldown between
         // code requests + session binding (challenge token) make brute-force infeasible.
-        // TODO(THU-113): proof-of-work (ALTCHA) will add further distributed protection.
 
         async sendVerificationOTP({ email, otp, type }, ctx) {
           // We only support sign-in (no password-based auth, so no email-verification or forget-password)

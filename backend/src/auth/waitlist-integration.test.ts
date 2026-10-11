@@ -393,8 +393,7 @@ describe('Auth Waitlist Integration', () => {
       // Documents a known limitation: resendStrategy "reuse" only preserves the counter
       // when attempts haven't been fully exhausted. Once all 3 attempts are burned,
       // Better Auth falls through to generate a fresh OTP with counter=0.
-      // This is mitigated by the 15s cooldown on /waitlist/join and will be
-      // further addressed by proof-of-work (THU-113).
+      // This is mitigated by the 15s cooldown on /waitlist/join.
       auth = createAuth(db, { ...emailDeps, generateSignInOtp: createOtpGenerator() })
       const email = 'exhausted-resend@example.com'
       await db.insert(user).values({

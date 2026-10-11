@@ -47,14 +47,15 @@ Re-derive from `app.routes` on a `createApp()` app (pattern: `backend/src/index.
 
 ### Conditional groups
 
-| Group                         | Condition                                                           |
-| ----------------------------- | ------------------------------------------------------------------- |
-| PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                         |
-| SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                     |
-| `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                   |
-| Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                        |
-| Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset              |
-| `PUT /v1/account/devices/cli` | stays mounted, answers 404 unless `CLI_DEVICE_REGISTRATION_ENABLED` |
+| Group                         | Condition                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| PowerSync routes              | empty plugin without `POWERSYNC_JWT_SECRET`                                                         |
+| SSO desktop callbacks         | mounted only when `AUTH_MODE` is not `consumer`                                                     |
+| `GET /v1/auth/oidc/config`    | only under `AUTH_MODE=oidc` with an `OIDC_ISSUER`                                                   |
+| Transcript intake             | only under `DEBUG_TRANSCRIPT_INTAKE_ENABLED`                                                        |
+| Transcript relay              | 403 stub when `DEBUG_TRANSCRIPT_UPSTREAM_URL` is unset                                              |
+| `PUT /v1/account/devices/cli` | stays mounted, answers 404 unless `CLI_DEVICE_REGISTRATION_ENABLED`                                 |
+| `GET /v1/captcha/challenge`   | mounted only when the captcha provider issues challenges (`altcha`) and `AUTH_ALLOW_ANONYMOUS=true` |
 
 ### Prefix quirks
 
@@ -106,16 +107,19 @@ Metered routes add two guards:
 
 ## Rate-limit tiers
 
-| Tier                      | Budget       | Key                            |
-| ------------------------- | ------------ | ------------------------------ |
-| `inference`               | 60 / minute  | `user:<id>`                    |
-| `receipt`                 | 100 / minute | `user:<id>`                    |
-| `pro`                     | 100 / minute | `user:<id>`                    |
-| `auth`                    | 10 / minute  | `ip:<addr>`                    |
-| `debug-transcript`        | 10 / hour    | `user:<id>`                    |
-| `debug-transcript-intake` | 600 / hour   | `ip:<addr>`, and `client:<id>` |
+| Tier                       | Budget       | Key                             |
+| -------------------------- | ------------ | ------------------------------- |
+| `inference`                | 60 / minute  | `user:<id>`                     |
+| `receipt`                  | 100 / minute | `user:<id>`                     |
+| `pro`                      | 100 / minute | `user:<id>`                     |
+| `auth`                     | 10 / minute  | `ip:<addr>`                     |
+| `anonymous-sign-in`        | 10 / minute  | `ip:<addr>`                     |
+| `captcha-challenge`        | 10 / minute  | `ip:<addr>`                     |
+| `anonymous-sign-in-global` | 2000 / hour  | `all` (one deployment-wide key) |
+| `debug-transcript`         | 10 / hour    | `user:<id>`                     |
+| `debug-transcript-intake`  | 600 / hour   | `ip:<addr>`, and `client:<id>`  |
 
-Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:33-40`, threaded into route groups from `backend/src/index.ts:90-198`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances.
+Limits are hardcoded per tier in `backend/src/middleware/rate-limit.ts:51-58`, threaded into route groups from `backend/src/index.ts:94-238`, and persisted through `rate-limiter-flexible`'s Drizzle store (`backend/src/db/rate-limit-schema.ts`), so they hold across instances. The exceptions are operator-set, and the table shows their defaults: `anonymous-sign-in` is sized by `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` / `_WINDOW_SECS`, `captcha-challenge` takes that same object, and `anonymous-sign-in-global` (`ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` / `_WINDOW_SECS`) caps anonymous sign-in across every IP while anonymous auth is on.
 
 - **User-keyed limiters go after the auth macro's guard**: inside a `guard({ auth: true }, …)` callback, or, on `/v1/chat` and the hosted agent, inside `createMeteredRouteGuard` (`backend/src/inference/metered-route-guard.ts`). They read the macro-resolved `user`; at app level the resolve runs after `onBeforeHandle` and the limit is a silent no-op.
 - **IP-keyed limiters fail closed.** An unresolvable IP shares one `ip:unknown` bucket instead of skipping the check, so the guard on OTP send and waitlist join cannot disable itself. `extractClientIp` trusts forwarding headers only under `TRUSTED_PROXY`.

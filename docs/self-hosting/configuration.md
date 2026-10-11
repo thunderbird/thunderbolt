@@ -271,16 +271,18 @@ Request headers need no configuration: the API echoes back whatever the browser 
 
 ## Rate limiting
 
-| Variable                                   | Default  | What it does                                                                                                               |
-| ------------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `RATE_LIMIT_ENABLED`                       | `true`   | Set `false` to switch limits off. Local evaluation only.                                                                   |
-| `TRUSTED_PROXY`                            | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address. |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`         | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                         |
-| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` | `60`     | Length of that window, in seconds.                                                                                         |
-| `CAPTCHA_PROVIDER`                         | `none`   | Captcha on anonymous sign-in. Keep `none`: the app cannot complete `altcha` yet. See [ALTCHA](#altcha).                    |
-| `CAPTCHA_SECRET`                           | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                          |
-| `CAPTCHA_DIFFICULTY`                       | `100000` | Upper bound of the ALTCHA search. Higher costs bots more and makes phones wait longer.                                     |
-| `CAPTCHA_TTL_SECS`                         | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                            |
+| Variable                                          | Default  | What it does                                                                                                                       |
+| ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`                              | `true`   | Set `false` to switch limits off. Local evaluation only.                                                                           |
+| `TRUSTED_PROXY`                                   | empty    | `cloudflare` trusts `CF-Connecting-IP`, `akamai` trusts `True-Client-IP`, empty trusts only the connecting socket address.         |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX`                | `10`     | Anonymous sign-ins allowed per IP address per window. See [Anonymous sign-in](#anonymous-sign-in).                                 |
+| `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`        | `60`     | Length of that window, in seconds.                                                                                                 |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX`         | `2000`   | Anonymous sign-ins allowed per window across the whole deployment, every IP together. See [Anonymous sign-in](#anonymous-sign-in). |
+| `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS` | `3600`   | Length of that window, in seconds.                                                                                                 |
+| `CAPTCHA_PROVIDER`                                | `none`   | Captcha on anonymous sign-in. Keep `none`: the app cannot complete `altcha` yet. See [ALTCHA](#altcha).                            |
+| `ALTCHA_SECRET`                                   | empty    | Key that signs ALTCHA challenges. Required with `altcha`, at least 32 characters.                                                  |
+| `ALTCHA_DIFFICULTY`                               | `100000` | Upper bound of the ALTCHA search, at least `50000`. Higher costs bots more and makes phones wait longer.                           |
+| `ALTCHA_TTL_SECS`                                 | `600`    | How long an issued ALTCHA challenge stays solvable, in seconds.                                                                    |
 
 > Don't set `TRUSTED_PROXY` unless you know exactly what sits in front of the API. Trusting the wrong header lets any client claim any IP and walk straight past the limits.
 
@@ -304,8 +306,10 @@ Anonymous sign-in has its own bucket, separate from the sign-in row above, so ra
 
 Whether to raise the limit depends on the captcha, which protects anonymous sign-in only:
 
-- **With a captcha enabled**, the captcha is the bot control. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
+- **With a captcha enabled**, the captcha and the deployment-wide budget below are the bot controls. You can raise the limit for venues where many people share a few public IPs (conference Wi-Fi, campus NAT), since a per-IP cap there blocks legitimate users rather than bots.
 - **Without a captcha** (`CAPTCHA_PROVIDER=none`), the IP limit is the only bot control. Keep the defaults.
+
+A second, deployment-wide budget applies on top whenever `AUTH_ALLOW_ANONYMOUS=true`: at most `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX` anonymous sign-ins per `ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS`, counted across every IP and every API instance. It is the control that caps a scripted run, since a captcha costs a native solver only milliseconds. It also bounds what anonymous use can cost: each window admits at most that many new accounts, and each account can spend at most its [spending limit](#spending-limits) (`INFERENCE_QUOTA_ANONYMOUS_5H_CENTS` per five hours, `INFERENCE_QUOTA_ANONYMOUS_7D_CENTS` per seven days). At the defaults (2000 an hour, 10 and 60 cents), one hour of sign-ins can spend at most $200 in its first five hours and $1,200 over a week. Size the budget to the attendees you expect, times that quota. A request refused by its per-IP limit does not count against the budget, so one busy address cannot use it up for everyone.
 
 The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=none`, it refuses to start if `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` is above 10 or `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS` is below 60. The `altcha` provider will lift this once the app supports it; until then an anonymous deployment keeps the defaults.
 
@@ -317,7 +321,7 @@ The API enforces this: with `AUTH_ALLOW_ANONYMOUS=true` and `CAPTCHA_PROVIDER=no
 
 Each solution works once. Redeemed challenges are recorded in the database, so a token cannot be replayed against another API instance, and expired records are swept hourly. Generate the secret with `openssl rand -hex 32` and give every instance the same value; changing it invalidates challenges already issued.
 
-`CAPTCHA_DIFFICULTY` is the trade-off between bot cost and user wait. A client tries half that many SHA-256 hashes on average, and the cost scales linearly for an attacker and for a low-end phone alike. Time a sign-in on the slowest phone you expect visitors to carry before raising it, and lower it if sign-in feels slow there.
+`ALTCHA_DIFFICULTY` is the trade-off between bot cost and user wait. A client tries half that many SHA-256 hashes on average, and the cost scales linearly for an attacker and for a low-end phone alike. The `50000` floor is only a sanity bound: a native solver needs milliseconds at any difficulty a phone can bear, so the deployment-wide budget above is what limits a script. Time a sign-in on the slowest phone you expect visitors to carry before raising it, and lower it if sign-in feels slow there.
 
 The challenge route has its own per-IP bucket, sized by the same `ANONYMOUS_SIGN_IN_RATE_LIMIT_MAX` and `ANONYMOUS_SIGN_IN_RATE_LIMIT_WINDOW_SECS`, because every anonymous sign-in needs one challenge.
 
@@ -407,3 +411,4 @@ Several further settings are read when the app is built but are not offered as b
 | `MIN_APP_VERSION` is not a version number             | Use a semver string, for example `0.2.0`, or clear it.                                    |
 | `DATABASE_URL` is required with the `postgres` driver | Set a connection string, or set `DATABASE_DRIVER=pglite` for evaluation.                  |
 | The debug transcript URL and key must be set together | Set both `DEBUG_TRANSCRIPT_UPSTREAM_URL` and `DEBUG_TRANSCRIPT_UPSTREAM_KEY`, or neither. |
+| `ALTCHA_SECRET` must be at least 32 characters        | Generate one with `openssl rand -hex 32`, or leave `CAPTCHA_PROVIDER` unset.              |

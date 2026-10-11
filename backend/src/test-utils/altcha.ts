@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { solveChallenge } from 'altcha-lib/v1'
-import type { Challenge } from 'altcha-lib/v1/types'
+import type { Challenge, Payload } from 'altcha-lib/v1/types'
 
 /** Solve an ALTCHA challenge and encode the result as the widget sends it in `x-captcha-token`. */
-export const solveAltchaChallenge = async (challenge: Challenge, overrides: Record<string, unknown> = {}) => {
+export const solveAltchaChallenge = async (challenge: Challenge, overrides: Partial<Payload> = {}) => {
   const solution = await solveChallenge(challenge.challenge, challenge.salt, challenge.algorithm, challenge.maxnumber)
     .promise
   if (!solution) {

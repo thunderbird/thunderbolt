@@ -489,7 +489,6 @@ describe('Rate Limiting', () => {
       enabled: true,
       trustedProxy: 'cloudflare',
       anonymousSignIn: { max: 40, durationSecs: 120 },
-      anonymousSignInGlobal: null,
     }
 
     /** Mirrors createBetterAuthPlugin: the IP limit wraps a catch-all fetch handler. */
@@ -549,48 +548,6 @@ describe('Rate Limiting', () => {
 
       const response = await app.handle(authRequest('/x/sign-in/anonymous', '10.5.0.7'))
       expect(response.headers.get('ratelimit-limit')).toBe('10')
-    })
-
-    it('caps anonymous sign-in deployment-wide, whatever the IP', async () => {
-      const app = createPluginApp({ ...pluginSettings, anonymousSignInGlobal: { max: 3, durationSecs: 3600 } })
-
-      for (const ip of ['10.6.0.1', '10.6.0.2', '10.6.0.3']) {
-        const allowed = await app.handle(authRequest('/sign-in/anonymous', ip))
-        expect(allowed.status).toBe(200)
-        // An allowed request reports its own per-IP bucket, not the global one.
-        expect(allowed.headers.get('ratelimit-limit')).toBe('40')
-      }
-      const blocked = await app.handle(authRequest('/sign-in/anonymous', '10.6.0.4'))
-      expect(blocked.status).toBe(429)
-      expect(blocked.headers.get('ratelimit-limit')).toBe('3')
-      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(60)
-    })
-
-    it('does not let an IP over its own limit drain the deployment-wide budget', async () => {
-      const app = createPluginApp({
-        ...pluginSettings,
-        anonymousSignIn: { max: 1, durationSecs: 120 },
-        anonymousSignInGlobal: { max: 2, durationSecs: 3600 },
-      })
-
-      expect((await app.handle(authRequest('/sign-in/anonymous', '10.6.1.1'))).status).toBe(200)
-      expect((await app.handle(authRequest('/sign-in/anonymous', '10.6.1.1'))).status).toBe(429)
-      expect((await app.handle(authRequest('/sign-in/anonymous', '10.6.1.2'))).status).toBe(200)
-    })
-
-    it('keeps other auth routes out of the deployment-wide budget', async () => {
-      const app = createPluginApp({ ...pluginSettings, anonymousSignInGlobal: { max: 1, durationSecs: 3600 } })
-
-      await app.handle(authRequest('/get-session', '10.6.2.1'))
-      expect((await app.handle(authRequest('/sign-in/anonymous', '10.6.2.2'))).status).toBe(200)
-    })
-
-    it('builds no deployment-wide bucket when none is configured', async () => {
-      const app = createPluginApp(pluginSettings)
-
-      await app.handle(authRequest('/sign-in/anonymous', '10.6.3.1'))
-      const keys = (await database.select().from(rateLimits)).map((row) => row.key)
-      expect(keys).toEqual(['anonymous-sign-in:ip:10.6.3.1'])
     })
 
     it('does not rate limit when disabled', async () => {

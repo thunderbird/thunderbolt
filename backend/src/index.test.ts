@@ -6,6 +6,7 @@ import type { Auth } from '@/auth/elysia-plugin'
 import { clearSettingsCache, getSettings } from '@/config/settings'
 import { user } from '@/db/auth-schema'
 import { inferencePrices, inferenceUsage } from '@/db/inference-usage-schema'
+import { managedDirectRuntimes } from '@/inference/managed-models'
 import { issueInferenceUsageReceipt } from '@/inference/usage-receipt'
 import { createTestDb } from '@/test-utils/db'
 import { inferenceUsageReceiptHeader, inferenceUsageReceiptPath } from '@shared/inference-usage'
@@ -102,9 +103,10 @@ describe('createApp inference receipt wiring', () => {
 })
 
 describe('createApp hosted-agent wiring', () => {
+  const agentModel = managedDirectRuntimes['opus-5-5'].internalName
   const agentEnv = {
     AGENT_ENABLED: 'true',
-    AGENT_MODEL: 'claude-test',
+    AGENT_MODEL: agentModel,
     ANTHROPIC_API_KEY: 'test-key',
     ANTHROPIC_BASE_URL: 'https://anthropic.test',
   }
@@ -142,12 +144,11 @@ describe('createApp hosted-agent wiring', () => {
       emailVerified: true,
       isAnonymous: false,
     })
-    await database.insert(inferencePrices).values({
-      provider: 'anthropic',
-      model: 'claude-test',
-      inputNanoUsdPerToken: 1n,
-      outputNanoUsdPerToken: 1n,
-    })
+    // A migration may already seed this row; admission only needs one to exist.
+    await database
+      .insert(inferencePrices)
+      .values({ provider: 'anthropic', model: agentModel, inputNanoUsdPerToken: 1n, outputNanoUsdPerToken: 1n })
+      .onConflictDoNothing()
     const fetchFn = mock(async (_input: RequestInfo | URL) =>
       Response.json({ type: 'error', error: { type: 'invalid_request_error', message: 'stub' } }, { status: 400 }),
     )

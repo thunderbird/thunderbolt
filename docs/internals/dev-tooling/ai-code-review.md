@@ -6,20 +6,20 @@ Every non-draft pull request from a branch in this repository (Dependabot except
 
 | Aspect        | Behaviour                                                                                                                                   |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Trigger       | `pull_request`: `opened, synchronize, reopened, ready_for_review` (`thunder-deep-review.yml:30`)                                            |
-| Gated off     | fork PRs, Dependabot, drafts (`thunder-deep-review.yml:55`)                                                                                 |
+| Trigger       | `pull_request`: `opened, synchronize, reopened, ready_for_review`; `labeled` only for `review:full` (`thunder-deep-review.yml:30`)            |
+| Gated off     | fork PRs, Dependabot, drafts (`thunder-deep-review.yml:46-50`)                                                                                 |
 | Posts         | one PR review with `event: 'COMMENT'`, max 50 inline comments                                                                               |
 | Never does    | approve, request changes, or merge; it never gates anything                                                                                 |
-| On error      | logs and exits 0 without posting (`review-orchestrator.mjs:158`); the next push retries                                                     |
-| Cost guards   | 60s debounce `sleep` (`thunder-deep-review.yml:102`), `cancel-in-progress` keyed on the PR number (`:42-47`), `timeout-minutes: 30` (`:69`) |
+| On error      | logs and exits 0 without posting (`review-orchestrator.mjs`); the next push retries                                                     |
+| Cost guards   | 60s debounce `sleep` (`thunder-deep-review.yml:102`), `cancel-in-progress` keyed on the PR number (`:52-55`), `timeout-minutes: 30` (`:66`) |
 | Permissions   | `contents: read`, `pull-requests: write` (`thunder-deep-review.yml:37-40`)                                                  |
 | Secret        | `ANTHROPIC_API_KEY` only                                                                                                                    |
 | Run it myself | `/thunder-deep-review` in this working tree                                                                                                 |
 
 ## Can it block my merge? No
 
-`event: 'COMMENT'` is the only event the orchestrator sends (`.github/scripts/review-orchestrator.mjs:1301`, `:1316`,
-`:1361`), so a finding is feedback, not a CI failure; `/thunderfix`
+`event: 'COMMENT'` is the only event the orchestrator sends (`.github/scripts/review-orchestrator.mjs`),
+so a finding is feedback, not a CI failure; `/thunderfix`
 ([`.thunderbot/thunderfix.md`](../../../.thunderbot/thunderfix.md)) treats it that way. Reply in the thread if a finding
 is wrong; a thread you resolve yourself stays resolved (see [Convergence](#convergence-across-pushes)).
 
@@ -67,24 +67,36 @@ dependencies, built-in `fetch`). Two phases surround the model steps; a telemetr
 
 | Phase  | Step                                                                                | What it does                                                                                                     |
 | ------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `pre`  | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Reconstructs the unified diff and computes deep, bounded and security mode flags |
+| `pre`  | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Chooses the review scope; writes the model patch, the PR patch for anchors, the previous-findings file and the mode flags |
 | `post` | [`thunder-deep-review.yml`](../../../.github/workflows/thunder-deep-review.yml) | Validates the model JSON, anchors findings to diff lines, dedups and posts one PR review |
 | `telemetry` | After recall and gate | Logs cost, turns, per-model tokens/cache usage and Agent/Task call counts; warns if metrics are unavailable |
 
-- **The diff is rebuilt from the Files API, not `git diff`.** `Accept: v3.diff` caps at 20,000 lines / 1 MB and 406s
-  on large PRs, so the orchestrator paginates `/pulls/{n}/files` (`buildUnifiedDiff`, `review-orchestrator.mjs:878`).
-  That endpoint returns the merge-base..head set `POST /pulls/{n}/reviews` anchors against; a two-dot `base..head`
-  diff would use base's _current_ tip and 422 the review by injecting base-only commits as reverse diffs.
+- **The incremental review patch comes from the commits Compare API.** The paginated `/pulls/{n}/files` API supplies
+  the full review scope and the separate merge-base..head patch used to anchor `POST /pulls/{n}/reviews` comments.
+  A two-dot `base..head` diff would include base-only commits as reverse diffs and invalidate those anchors.
+- The model's patch omits lockfiles (`bun.lock`, `*.lock`, `package-lock.json`), compiled Lingui
+  `locales/**/messages.ts`, `backend/drizzle/meta/*_snapshot.json`, and `src/acp/iroh/pkg/**`.
+  Its first line lists omitted paths. Docs, `.po` catalogs, `_journal.json` and SQL migrations remain in the patch;
+  a scope containing only generated files skips the model steps.
 - Everything reconciles to the PR head SHA, never the synthetic merge ref.
 - Unit-tested (`.github/scripts/review-orchestrator.test.mjs`) as part of `bun run test`.
 
+Each posted review outside bounded mode records its head SHA in a hidden marker. On `synchronize`, if that SHA is
+an ancestor of the new head and the comparison has no merge commits and fewer than 300 files, the model reviews
+only the changes since it. It also receives the bot's earlier findings and replies. Other events, and comparisons
+that fail these checks, review the full PR. Adding `review:full` forces one full pass; later pushes go back to deltas
+even if the label stays. A run that posts no review keeps the previous checkpoint.
+When a changed, non-generated file other than a removal has no usable patch, the model reviews the available patches.
+Both findings and no-issues reviews list those files as partial coverage and record the head marker,
+so the next delta starts at that head without retrying the missing patches. Only bounded reviews omit the marker.
+
 ## Deep mode and bounded mode
 
-Spend is decided by code, not by the model (`computeDeepMode`, `review-orchestrator.mjs:519`).
+Spend is decided by code, not by the model (`computeDeepMode`, `review-orchestrator.mjs`).
 
 | Flag          | Trigger                                                                | Effect                                                             |
 | ------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `deepMode`    | ≥ 600 changed lines, or ≥ 40 files, or a `review:deep` label on the PR | The skill adds six narrow micro-specialists on top of its 11 lanes |
+| `deepMode`    | ≥ 600 changed lines or ≥ 40 files in the reviewed scope (the delta on incremental runs), or a `review:deep` label | The skill adds six narrow micro-specialists on top of its 11 lanes |
 | `boundedMode` | The PR exceeds GitHub's 3000-file listing cap                          | The diff handed to the model is clipped to the first 200 files     |
 | `securityMode` | A changed path matches `SECURITY_PATH_MATCHERS` | The skill adds the threat-model security dimension |
 
@@ -92,32 +104,32 @@ Deep and security mode exclude ordinary Markdown/MDX, the `docs/` tree, lockfile
 (`.po` and compiled `locales/**/messages.ts`). Markdown prompts under `.claude/` and `AGENTS.md`/`CLAUDE.md`
 count toward deep mode. Comment-only changes in sensitive code still trigger security mode.
 
-Thresholds are `DEEP_MODE_CHANGED_LINES` and `DEEP_MODE_FILE_COUNT` (`:97-98`); the clip is `BOUNDED_MODE_FILE_LIMIT`
-(`:105`), applied to the input itself so it is enforced rather than advisory. Label a small but risky PR
+Thresholds are `DEEP_MODE_CHANGED_LINES` and `DEEP_MODE_FILE_COUNT`; the clip is `BOUNDED_MODE_FILE_LIMIT`,
+applied to the input itself so it is enforced rather than advisory. Label a small but risky PR
 `review:deep` to buy the expensive review.
 
 ## Convergence across pushes
 
-Convergence is structural, not stateful, so running on every push adds no repeats.
+Convergence relies on hidden hashes in the bot's own comments and on a head checkpoint in its last posted review.
 
-- Each finding carries a hidden stable hash (`findingHash`, `review-orchestrator.mjs:593`) over the file, the rule id,
+- Each finding carries a hidden stable hash (`findingHash`) over the file, the rule id,
   and a **liveness key**: a distinctiveness-checked window of diff text around the line, or the path for a file-level
   finding.
 - The window is the trimmed line when distinctive, widened to its neighbours when not, so a bare `}` or `return;`
-  cannot match every diff (`livenessWindowFor`, `:804`; `classifyFindings`, `:905`).
+  cannot match every diff (`livenessWindowFor`, `classifyFindings`).
 - Severity is deliberately _not_ hashed: the gate may demote it, and a re-keyed finding would duplicate the comment.
-- A hash that already has an open thread is not posted again (`selectFindingsToPost`, `:1392`).
+- A hash that already has an open thread is not posted again (`selectFindingsToPost`).
 - Threads remain open until someone resolves them; the orchestrator does not auto-resolve them.
-- A thread **a human resolved** is never re-posted (`:1491`), even with the code unchanged. Bot-resolved threads are
+- A thread **a human resolved** is never re-posted, even with the code unchanged. Bot-resolved threads are
   exempt, so a genuine regression reappears.
 - A clean PR gets one "no issues" note, suppressed when a prior thread is open, when the latest own review is already
-  that note, or on `reopened` (`decideTerminalAction`, `:1411`).
-- 50 inline comments max (`MAX_INLINE_COMMENTS`, `:110`); overflow and findings whose file is not in the diff go to an
+  that note, or on `reopened` (`decideTerminalAction`).
+- 50 inline comments max (`MAX_INLINE_COMMENTS`); overflow and findings whose file is not in the diff go to an
   "Additional notes" section in the review body.
 
 ## What the reviewer is checking
 
-Findings render as `🚫 Blocking`, `📐 Convention`, or `🔧 Nit` (`SEVERITY_LABEL`, `:1195`). The rule vocabulary lives
+Findings render as `🚫 Blocking`, `📐 Convention`, or `🔧 Nit` (`SEVERITY_LABEL`). The rule vocabulary lives
 under `.claude/skills/thunder-deep-review/`.
 
 | File                                    | Vocabulary                                                                        |

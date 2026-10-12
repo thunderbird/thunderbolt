@@ -11,6 +11,7 @@ import { getSharedIsolatedTestDb } from '@/test-utils/db'
 import type { Challenge } from 'altcha-lib/v1/types'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { DrizzleQueryError } from 'drizzle-orm/errors'
+import { eq } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import { captchaTokenHeader, createCaptchaProvider } from './captcha'
 import { createCaptchaRoutes } from './captcha-routes'
@@ -172,6 +173,33 @@ describe('captcha challenge route and anonymous sign-in', () => {
     expect(text).not.toContain('rate_limits')
     expect(text).not.toContain('198.51.100.25')
     errorSpy.mockRestore()
+  })
+
+  /** Points drawn from the deployment-wide anonymous sign-in budget, or null before the first. */
+  const globalBudgetPoints = async () => {
+    const [row] = await db.select().from(rateLimits).where(eq(rateLimits.key, 'anonymous-sign-in-global:all'))
+    return row?.points ?? null
+  }
+
+  it('leaves the deployment-wide budget untouched for sign-ins that fail the captcha', async () => {
+    const app = await createApp({ database: db })
+    for (let i = 0; i < 5; i++) {
+      expect((await app.handle(signInRequest('198.51.100.27'))).status).toBe(403)
+    }
+    expect(await globalBudgetPoints()).toBeNull()
+  })
+
+  it('charges the deployment-wide budget once per sign-in that passes the captcha', async () => {
+    const app = await createApp({ database: db })
+    const ip = '198.51.100.28'
+    const challenge = (await (await app.handle(challengeRequest(ip))).json()) as Challenge
+    const token = await solveAltchaChallenge(challenge)
+
+    expect((await app.handle(signInRequest(ip, token))).status).toBe(200)
+    expect(await globalBudgetPoints()).toBe(1)
+    // The replay fails the captcha, so it is not charged either.
+    expect((await app.handle(signInRequest(ip, token))).status).toBe(403)
+    expect(await globalBudgetPoints()).toBe(1)
   })
 
   it('requires a solved, unused challenge for anonymous sign-in', async () => {

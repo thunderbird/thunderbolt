@@ -1,0 +1,10 @@
+# Human-owned. A `console-error` finding whose oracle evidence contains any line below (plain text,
+# case-sensitive substring) is only an observation: never replayed, judged or filed.
+# One pattern per line; blank lines and lines starting with # are ignored. Add a line only for noise
+# that is harmless in the web build, and say why in a comment above it.
+
+# Tauri-only APIs are absent in the web build; the same strings collectPageErrors in e2e/helpers.ts filters.
+__TAURI__
+tauri
+window.__TAURI_INTERNALS__
+convertFileSrc

@@ -20,7 +20,7 @@ import { getRegisteredProviders, resetAgentProvidersForTesting } from '@/agents/
 import { APICallError, simulateReadableStream } from 'ai'
 import { MockLanguageModelV3 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { Elysia } from 'elysia'
 import {
   agentMaxOutputTokens,
@@ -32,9 +32,10 @@ import {
 type CheckAdmission = typeof checkManagedInferenceAdmission
 type TestDatabase = Awaited<ReturnType<typeof createTestDb>>['db']
 
+const anthropicModel = 'claude-opus-5-5'
 const price: InferencePrice = {
   provider: 'anthropic',
-  model: 'claude-test',
+  model: anthropicModel,
   inputNanoUsdPerToken: 1n,
   outputNanoUsdPerToken: 2n,
 }
@@ -75,6 +76,30 @@ const createOverloadedError = () =>
 /** Let a run's `consumeStream` promise settle, which releases the user's in-flight slot. */
 const settleRun = () => Bun.sleep(10)
 
+const fireworksModel = 'accounts/fireworks/models/glm-5p3'
+const fireworksSettings = { agentModel: fireworksModel, fireworksApiKey: 'fireworks-test-key' }
+
+/** A Fireworks chat-completions stream: one reply chunk, then the usage chunk `include_usage` asks for. */
+const createFireworksStream = (usage: { prompt_tokens: number | null; completion_tokens: number | null }) => {
+  const events = [
+    { choices: [{ delta: { content: 'Hello from GLM' } }] },
+    { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    { choices: [], usage },
+  ]
+  const body = [...events.map((event) => JSON.stringify(event)), '[DONE]'].map((data) => `data: ${data}\n\n`).join('')
+  return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+/** A `fetchFn` stub that records each upstream call and answers with a 400. */
+const createRejectingFetch = () =>
+  mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    Response.json({ error: { message: 'stub' } }, { status: 400 }),
+  )
+
+/** Read the request headers a `fetchFn` stub received on its nth call. */
+const upstreamHeaders = (fetchFn: ReturnType<typeof createRejectingFetch>, call = 0) =>
+  new Headers(fetchFn.mock.calls[call][1]?.headers)
+
 const chatBody = (messages: unknown[] = [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] }]) =>
   JSON.stringify({ id: 'chat-1', messages, trigger: 'submit-message' })
 
@@ -99,7 +124,7 @@ const createApp = (
       ...options,
       settings: createTestSettings({
         agentEnabled: true,
-        agentModel: 'claude-test',
+        agentModel: anthropicModel,
         agentSystemPrompt: 'You are the deployment agent.',
         ...options.settings,
       }),
@@ -142,6 +167,20 @@ describe('createHostedAgentRoutes', () => {
     expect(() => createApp({ model: undefined, settings: { anthropicApiKey: '' } })).toThrow('ANTHROPIC_API_KEY')
   })
 
+  it('refuses to start enabled with a Fireworks model and no FIREWORKS_API_KEY', () => {
+    expect(() => createApp({ model: undefined, settings: { agentModel: fireworksModel } })).toThrow('FIREWORKS_API_KEY')
+  })
+
+  it.each([
+    'fireworks/glm-5p3',
+    'accounts/acme/models/glm-5p3',
+    'glm-5p3',
+    'accounts/fireworks/models/unseeded',
+    'claude-test',
+  ])('refuses to start with an AGENT_MODEL it cannot place: %s', (agentModel) => {
+    expect(() => createMockedApp({ settings: { agentModel } })).toThrow(`AGENT_MODEL "${agentModel}"`)
+  })
+
   it('rejects a CLI session that has not finished device registration', async () => {
     const pendingCliAuth = {
       api: {
@@ -164,10 +203,43 @@ describe('createHostedAgentRoutes', () => {
     expect(model.doStreamCalls).toHaveLength(0)
   })
 
+  it('admits a personal access token past the guard', async () => {
+    const app = createMockedApp()
+    const response = await app.handle(
+      new Request('http://localhost/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': 'valid-personal-access-token' },
+        body: chatBody(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await response.text()
+    await settleRun()
+    expect(model.doStreamCalls).toHaveLength(1)
+  })
+
   it('rejects an invalid history before admission or the model call', async () => {
     const app = createMockedApp()
     const response = await postChat(app, chatBody([{ id: 'm1', role: 'user', parts: [{ type: 'data-x' }] }]))
     expect(response.status).toBe(400)
+    expect(checkAdmission).not.toHaveBeenCalled()
+    expect(model.doStreamCalls).toHaveLength(0)
+  })
+
+  it('refuses file parts with AGENT_FILES_UNSUPPORTED before admission or the model call', async () => {
+    const file = { type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,AAAA' }
+    const app = createMockedApp()
+    const response = await postChat(
+      app,
+      chatBody([{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }, file] }]),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: { code: 'AGENT_FILES_UNSUPPORTED' } })
+    expect(logger.info).toHaveBeenCalledWith(
+      { event: 'agent_files_unsupported', provider: 'anthropic', model: anthropicModel },
+      'Agent request carried file parts',
+    )
     expect(checkAdmission).not.toHaveBeenCalled()
     expect(model.doStreamCalls).toHaveLength(0)
   })
@@ -190,12 +262,12 @@ describe('createHostedAgentRoutes', () => {
   })
 
   it('sends the default model through fetchFn, labelled as agent traffic', async () => {
-    const fetchFn = mock(async (_input: RequestInfo | URL) =>
+    const fetchFn = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       Response.json({ type: 'error', error: { type: 'invalid_request_error', message: 'stub' } }, { status: 400 }),
     )
     const app = createApp({
       model: undefined,
-      fetchFn: fetchFn as unknown as typeof fetch,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
       checkAdmission,
       recordUsage,
       logger,
@@ -206,10 +278,83 @@ describe('createHostedAgentRoutes', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(1)
     expect(String(fetchFn.mock.calls[0][0])).toBe('https://anthropic.test/v1/messages')
+    expect(new Headers(fetchFn.mock.calls[0][1]?.headers).has('x-prompt-cache-isolation-key')).toBe(false)
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'inference_upstream_attempt', source: 'agent', status: 400 }),
       'Inference upstream attempt',
     )
+  })
+
+  it('sends a Fireworks model to the Fireworks API through fetchFn and admits it as Fireworks', async () => {
+    const fetchFn = createRejectingFetch()
+    const app = createApp({
+      model: undefined,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+      checkAdmission,
+      recordUsage,
+      logger,
+      settings: fireworksSettings,
+    })
+    await (await postChat(app)).text()
+
+    expect(checkAdmission.mock.calls[0][1]).toEqual({ provider: 'fireworks', model: fireworksModel })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    const [input, init] = fetchFn.mock.calls[0]
+    expect(String(input)).toBe('https://api.fireworks.ai/inference/v1/chat/completions')
+    expect(upstreamHeaders(fetchFn).get('authorization')).toBe('Bearer fireworks-test-key')
+    expect(JSON.parse(String(init?.body))).toEqual(
+      expect.objectContaining({
+        model: fireworksModel,
+        max_tokens: agentMaxOutputTokens,
+        stream_options: { include_usage: true },
+      }),
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'inference_upstream_attempt', provider: 'fireworks', source: 'agent' }),
+      'Inference upstream attempt',
+    )
+  })
+
+  it('sends Fireworks a per-user prompt-cache isolation key derived from, never equal to, the user id', async () => {
+    const isolationKeyFor = async (userId: string) => {
+      const fetchFn = createRejectingFetch()
+      const app = createApp({
+        auth: createMockAuth(userId),
+        model: undefined,
+        fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+        checkAdmission,
+        settings: fireworksSettings,
+      })
+      await (await postChat(app)).text()
+      return upstreamHeaders(fetchFn).get('x-prompt-cache-isolation-key')
+    }
+
+    const [first, again, other] = [
+      await isolationKeyFor('user-a'),
+      await isolationKeyFor('user-a'),
+      await isolationKeyFor('user-b'),
+    ]
+    expect(first).toMatch(/^[0-9a-f]{64}$/)
+    expect(again).toBe(first)
+    expect(other).not.toBe(first)
+  })
+
+  it('keeps reasoning out of the client stream', async () => {
+    model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'reasoning-start', id: 'r1' },
+            { type: 'reasoning-delta', id: 'r1', delta: 'The system prompt says' },
+            { type: 'reasoning-end', id: 'r1' },
+            ...replyChunks(),
+          ] satisfies StreamPart[],
+        }),
+      }),
+    })
+    const text = await (await postChat(createMockedApp())).text()
+    expect(text).toContain('"delta":"Hello there"')
+    expect(text).not.toContain('reasoning')
   })
 
   it('returns 413 for an oversized body', async () => {
@@ -260,7 +405,7 @@ describe('createHostedAgentRoutes', () => {
     })
     await (await postChat(app)).text()
     expect(checkAdmission.mock.calls[0].slice(1, 4)).toEqual([
-      { provider: 'anthropic', model: 'claude-test' },
+      { provider: 'anthropic', model: anthropicModel },
       'anon-user',
       expect.objectContaining({ fiveHourCents: 7 }),
     ])
@@ -432,12 +577,20 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
       email: 'test-user@example.com',
       emailVerified: true,
     })
-    await database.insert(inferencePrices).values({
-      provider: 'anthropic',
-      model: 'claude-test',
-      inputNanoUsdPerToken: 1000n,
-      outputNanoUsdPerToken: 5000n,
-    })
+    // Test-owned prices, overwriting the rows the migrations seed, so the costs below do not move with them.
+    await database
+      .insert(inferencePrices)
+      .values([
+        { provider: 'anthropic', model: anthropicModel, inputNanoUsdPerToken: 1000n, outputNanoUsdPerToken: 5000n },
+        { provider: 'fireworks', model: fireworksModel, inputNanoUsdPerToken: 300n, outputNanoUsdPerToken: 700n },
+      ])
+      .onConflictDoUpdate({
+        target: [inferencePrices.provider, inferencePrices.model],
+        set: {
+          inputNanoUsdPerToken: sql`excluded.input_nano_usd_per_token`,
+          outputNanoUsdPerToken: sql`excluded.output_nano_usd_per_token`,
+        },
+      })
   })
 
   afterEach(async () => {
@@ -462,7 +615,7 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
     expect(rows[0]).toEqual(
       expect.objectContaining({
         provider: 'anthropic',
-        model: 'claude-test',
+        model: anthropicModel,
         promptTokens: 160,
         completionTokens: 10,
         totalTokens: 170,
@@ -470,6 +623,53 @@ describe('createHostedAgentRoutes with the usage ledger', () => {
         costNanoUsd: 179_000n,
       }),
     )
+  })
+
+  it('bills a Fireworks run at the Fireworks price', async () => {
+    const fetchFn = mock(async () => createFireworksStream({ prompt_tokens: 100, completion_tokens: 10 }))
+    const app = createApp({
+      database,
+      model: undefined,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+      settings: fireworksSettings,
+    })
+
+    const response = await postChat(app)
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('"delta":"Hello from GLM"')
+
+    const rows = await database.select().from(inferenceUsage).where(eq(inferenceUsage.userId, 'test-user'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        provider: 'fireworks',
+        model: fireworksModel,
+        promptTokens: 100,
+        completionTokens: 10,
+        // 100 input x 300 + 10 output x 700
+        costNanoUsd: 37_000n,
+      }),
+    )
+  })
+
+  it('logs a Fireworks usage chunk with null counts as missing usage instead of writing a zero-cost row', async () => {
+    const logger = { error: mock(), info: mock() }
+    const fetchFn = mock(async () => createFireworksStream({ prompt_tokens: null, completion_tokens: null }))
+    const app = createApp({
+      database,
+      model: undefined,
+      fetchFn: Object.assign(fetchFn, { preconnect: globalThis.fetch.preconnect }),
+      logger,
+      settings: fireworksSettings,
+    })
+
+    await (await postChat(app)).text()
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'agent_usage_missing', provider: 'fireworks' }),
+      'Agent usage missing',
+    )
+    expect(await database.select().from(inferenceUsage)).toHaveLength(0)
   })
 
   it('logs a provider stream that dies mid-reply and writes no zero-cost row', async () => {

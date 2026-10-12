@@ -105,16 +105,7 @@ export const createApp = async (deps?: AppDeps) => {
   // Create auth plugin with the database instance (tests may inject their own auth)
   const { plugin: betterAuthPlugin, auth: createdAuth } = createBetterAuthPlugin(
     database,
-    createAuthPluginIpRateLimit(database, {
-      ...ipRateLimitSettings,
-      anonymousSignIn: anonymousSignInLimit,
-      anonymousSignInGlobal: settings.authAllowAnonymous
-        ? {
-            max: settings.anonymousSignInGlobalRateLimitMax,
-            durationSecs: settings.anonymousSignInGlobalRateLimitWindowSecs,
-          }
-        : null,
-    }),
+    createAuthPluginIpRateLimit(database, { ...ipRateLimitSettings, anonymousSignIn: anonymousSignInLimit }),
   )
   const auth = deps?.auth ?? createdAuth
 

@@ -9,25 +9,36 @@ import { z } from 'zod'
 export const maxHistoryMessages = 200
 
 /**
- * Parts the client may replay. Each schema rebuilds the part from known fields only, so client-forged
- * `providerMetadata` never reaches the provider. Files must be inline data URLs: a remote URL would make
- * the AI SDK download it from this server. A blank text part is dropped: `useChat` leaves one behind when a
- * reply is stopped as it starts, and Anthropic rejects the empty assistant message it would become.
+ * Parts the client may replay: text only. Each schema rebuilds the part from known fields only, so
+ * client-forged `providerMetadata` never reaches the provider. A blank text part is dropped: `useChat` leaves
+ * one behind when a reply is stopped as it starts, and Anthropic rejects the empty assistant message it would
+ * become.
  */
 const textPartSchema = z
   .object({ type: z.literal('text'), text: z.string() })
   .transform((part) => (part.text.trim() === '' ? null : part))
-const filePartSchema = z.object({
-  type: z.literal('file'),
-  mediaType: z.string(),
-  url: z.string().startsWith('data:'),
-  filename: z.string().optional(),
-})
 
 /**
- * Parts dropped from the replay. The server registers no tools and enables no extended thinking, so tool and
- * reasoning parts were not produced by it (a replayed reasoning part also lacks the signature Anthropic
- * requires). `step-start` is a UI step marker that carries no content.
+ * Any message carrying a file part, in any role. The agent takes no attachments yet, whatever its model, so a
+ * file is refused with its own reason rather than dropped or lumped in with malformed bodies.
+ */
+const fileBearingRequestSchema = z.object({
+  messages: z.array(z.object({ parts: z.array(z.unknown()) })),
+})
+const filePartSchema = z.object({ type: z.literal('file') })
+
+const containsFilePart = (body: unknown): boolean => {
+  const request = fileBearingRequestSchema.safeParse(body)
+  return (
+    request.success &&
+    request.data.messages.some(({ parts }) => parts.some((part) => filePartSchema.safeParse(part).success))
+  )
+}
+
+/**
+ * Parts dropped from the replay. The server registers no tools and never streams reasoning to the client
+ * (`sendReasoning: false`), so tool and reasoning parts were not produced by it (a replayed reasoning part also
+ * lacks the signature Anthropic requires). `step-start` is a UI step marker that carries no content.
  */
 const droppedPartSchema = z
   .object({ type: z.string().regex(/^(tool-.+|dynamic-tool|reasoning|step-start)$/) })
@@ -40,7 +51,7 @@ const messageSchema = z.discriminatedUnion('role', [
   z.object({
     id: z.string(),
     role: z.literal('user'),
-    parts: z.array(z.union([textPartSchema, filePartSchema, droppedPartSchema])).transform(withoutDroppedParts),
+    parts: z.array(z.union([textPartSchema, droppedPartSchema])).transform(withoutDroppedParts),
   }),
   z.object({
     id: z.string(),
@@ -57,18 +68,24 @@ const requestSchema = z.object({
 })
 
 export type AgentChatRequest = { id: string; messages: UIMessage[] }
+export type AgentChatParseResult =
+  | { ok: true; value: AgentChatRequest }
+  | { ok: false; reason: 'invalid' | 'files_unsupported' }
 
 /**
  * Parse a `DefaultChatTransport` body into a history safe to send to the model. Client system messages and
- * the parts above are dropped. Too many messages, unknown part types, and assistant files are rejected, as is
- * a history that does not start and end with a user message: Anthropic treats a trailing assistant message
- * as prefill, which would let a caller write the start of the answer. The byte cap is enforced earlier,
- * while the body is read (see `readBoundedJson`).
+ * the parts above are dropped. A file part anywhere is refused as `files_unsupported`. Too many messages and
+ * unknown part types are `invalid`, as is a history that does not start and end with a user message:
+ * Anthropic treats a trailing assistant message as prefill, which would let a caller write the start of the
+ * answer. The byte cap is enforced earlier, while the body is read (see `readBoundedJson`).
  */
-export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null => {
+export const parseAgentChatRequest = (body: unknown): AgentChatParseResult => {
+  if (containsFilePart(body)) {
+    return { ok: false, reason: 'files_unsupported' }
+  }
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
   const messages = parsed.data.messages.flatMap((message) => {
     if (message.role === 'system') {
@@ -77,7 +94,7 @@ export const parseAgentChatRequest = (body: unknown): AgentChatRequest | null =>
     return message.parts.length === 0 ? [] : [{ id: message.id, role: message.role, parts: message.parts }]
   })
   if (messages[0]?.role !== 'user' || messages.at(-1)?.role !== 'user') {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
-  return { id: parsed.data.id, messages }
+  return { ok: true, value: { id: parsed.data.id, messages } }
 }

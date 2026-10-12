@@ -20,6 +20,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",
     "@ai-sdk/anthropic": "^3.0.127",
+    "@ai-sdk/openai-compatible": "^2.0.81",
     "@anthropic-ai/sdk": "^0.127.0",
     "@better-auth/api-key": "^1.6.9",
     "@better-auth/sso": "^1.6.9",

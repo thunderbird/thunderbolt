@@ -14,38 +14,39 @@ export type MeteredRouteGuardOptions = {
   database: InferenceDatabase
   cliDeviceRegistrationEnabled: boolean
   /**
-   * Set on a confidential route to add the personal-access-token check before the CLI check: a PAT is
-   * refused unless this is true. Left unset, PATs pass, as on the direct managed routes.
+   * Whether an `x-api-key` personal access token may use the route. When false, a PAT is refused with 403
+   * `WEB_LOGIN_REQUIRED` before the CLI check. Required so that a new route has to choose its PAT policy.
    */
-  confidentialApiKeysEnabled?: boolean
-  /** The inference-tier user rate limit; omitted in tests that do not exercise it. */
+  allowPersonalAccessTokens: boolean
+  /** The route's user-keyed rate limit; omitted in tests that do not exercise it. */
   rateLimit?: AnyElysia
 }
 
 /**
- * Guards the direct managed-inference routes (`/v1/chat` and the hosted agent) registered after it on the
- * parent: a session (the auth macro), optionally the confidential PAT check, a CLI device-grant session bound
- * to its device, then the user rate limit. The order matters: every later step reads the `user` the macro
- * resolves. Tinfoil and the receipt route still wire these by hand.
+ * Guards the managed-inference routes registered after it on the parent: those that call a model on the
+ * deployment's provider account, metered or not, and the route that records usage against a user's budget.
+ * In order: a session (the auth macro), the personal-access-token policy, a CLI device-grant session bound to
+ * its device, then the user rate limit. The order matters: every later step reads the `user` the macro resolves.
  */
 export const createMeteredRouteGuard = ({
   auth,
   database,
   cliDeviceRegistrationEnabled,
-  confidentialApiKeysEnabled,
+  allowPersonalAccessTokens,
   rateLimit,
-}: MeteredRouteGuardOptions) =>
-  new Elysia()
+}: MeteredRouteGuardOptions) => {
+  const guard = new Elysia()
     .use(createAuthMacro(auth))
     .guard({ auth: true })
     // Destructure, never take the whole context: Elysia would infer the hook reads `body` and parse it early.
-    .onBeforeHandle(({ request }) =>
-      confidentialApiKeysEnabled === undefined
-        ? undefined
-        : rejectPersonalAccessToken({ request }, confidentialApiKeysEnabled),
-    )
+    .onBeforeHandle(({ request }) => rejectPersonalAccessToken({ request }, allowPersonalAccessTokens))
     .onBeforeHandle(({ request, session, user }) =>
       rejectUnregisteredCliDevice(database, cliDeviceRegistrationEnabled, { request, session, user }),
     )
-    .use(rateLimit ?? new Elysia())
-    .as('scoped')
+  // A statement, not a chained `.use()`: `rateLimit` is `AnyElysia`, and chaining it would type every guarded
+  // handler's context as `any`.
+  if (rateLimit) {
+    guard.use(rateLimit)
+  }
+  return guard.as('scoped')
+}

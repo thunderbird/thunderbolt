@@ -435,6 +435,15 @@ describe('anonymous sign-in: rate limit', () => {
     expect(next.headers.get('ratelimit-limit')).toBe('2000')
   })
 
+  it('charges the deployment-wide budget on every sign-in when the captcha provider is none', async () => {
+    const app = await createApp({ database: db })
+    for (const ip of ['198.51.100.11', '198.51.100.12', '198.51.100.13']) {
+      expect((await app.handle(signInRequest('http://localhost/v1/api/auth/sign-in/anonymous', ip))).status).toBe(200)
+    }
+    const [row] = await db.select().from(rateLimits).where(eq(rateLimits.key, 'anonymous-sign-in-global:all'))
+    expect(row?.points).toBe(3)
+  })
+
   it('follows the ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_* pair', async () => {
     process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_MAX = '2'
     process.env.ANONYMOUS_SIGN_IN_GLOBAL_RATE_LIMIT_WINDOW_SECS = '120'

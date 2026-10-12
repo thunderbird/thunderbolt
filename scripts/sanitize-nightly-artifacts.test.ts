@@ -104,6 +104,24 @@ test('keeps trace timing, report outcomes, and videos while removing captured co
   }
 })
 
+test('sanitizes the traces of a test output directory without an HTML report', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightly-sanitize-'))
+  try {
+    await mkdir(join(root, 'some-test'))
+    const trace = new JSZip()
+    trace.file('0-trace.trace', `${JSON.stringify({ type: 'before', method: 'fill', params: { value: secret } })}\n`)
+    trace.file('0-trace.network', secret)
+    await writeFile(join(root, 'some-test', 'trace.zip'), await trace.generateAsync({ type: 'nodebuffer' }))
+
+    expect(runSanitizer(root).exitCode).toBe(0)
+    const cleanTrace = await JSZip.loadAsync(await readFile(join(root, 'some-test', 'trace.zip')))
+    expect(await cleanTrace.file('0-trace.trace')!.async('string')).not.toContain(secret)
+    expect(await cleanTrace.file('0-trace.network')!.async('string')).toBe('')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test('rejects missing or corrupt embedded reports', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightly-sanitize-'))
   try {

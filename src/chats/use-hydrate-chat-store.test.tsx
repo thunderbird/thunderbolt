@@ -422,6 +422,26 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
     })
 
+    it('opens a returning visitor on the cached default row while discovery has not answered yet', async () => {
+      await seedDiscoveredDefault()
+      expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'pending' })
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
+    it('ignores a stale cached default row once discovery has reported no default', async () => {
+      // Discovery cleared the default (a 403, or none named) before this chat
+      // opened, but hydration still reads the row it removed.
+      await seedDiscoveredDefault()
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
+    })
+
     it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
       await seedDiscoveredDefault()
 

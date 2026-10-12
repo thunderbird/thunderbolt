@@ -125,11 +125,18 @@ type ChatStoreState = {
   reconnectClient: ReconnectClient
   models: Model[]
   sessions: Map<string, ChatSession>
-  /** The agent the latest discovery named as default, held in memory so a chat
-   *  that hydrates while discovery lands resolves against it rather than against
-   *  `agents_system` rows read before discovery wrote them. */
-  discoveredDefaultAgent: Agent | null
+  /** What this session's discovery reported as the default agent, held in memory
+   *  so a chat that hydrates while discovery lands resolves against it rather than
+   *  against `agents_system` rows read before discovery wrote or cleared them. */
+  agentDiscovery: AgentDiscovery
 }
+
+/**
+ * `pending` until discovery first answers this session, so hydration falls back to
+ * the cached `is_default` row (a returning visitor). `done` once it has, and then
+ * its `defaultAgent` wins over that row, including a `null` that cleared it.
+ */
+type AgentDiscovery = { status: 'pending' } | { status: 'done'; defaultAgent: Agent | null }
 
 type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
@@ -180,7 +187,7 @@ const initialState: ChatStoreState = {
   reconnectClient: async () => null,
   models: [],
   sessions: new Map(),
-  discoveredDefaultAgent: null,
+  agentDiscovery: { status: 'pending' },
 }
 
 export const useChatStore = create<ChatStore>()((set, get) => ({
@@ -247,7 +254,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         nextSessions.set(session.id, { ...session, selectedAgent })
       }
     }
-    set({ discoveredDefaultAgent: defaultAgent, sessions: nextSessions })
+    set({ agentDiscovery: { status: 'done', defaultAgent }, sessions: nextSessions })
   },
 
   cancelPendingPermissionsForAgent: (agentId) => {

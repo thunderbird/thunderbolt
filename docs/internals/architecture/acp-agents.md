@@ -333,7 +333,8 @@ message stream to the chat unchanged. Both ends apply the same history rules fro
 for a system agent, since a synced custom row's `type` is plaintext (see `customRowToAgent`).
 
 The hosted agent takes no attachments for now: the composer hides the attach action and ignores
-dropped and pasted files (`agentAcceptsAttachments`), and the adapter replaces any file already in
+dropped and pasted files (`agentAcceptsAttachments`), files queued before the chat moved onto it stay
+visible but hold the send until they are removed, and the adapter replaces any file already in
 the history (a chat that switched agents) with one "could not be delivered" note per user turn. Its
 threads are created with `isEncrypted` 0: the content reaches the backend unencrypted, so the thread
 is never a private chat, and the private-chat model lock is skipped while the hosted agent answers.

@@ -241,13 +241,16 @@ export const useHydrateChatStore = ({
     })
     // Only a brand-new chat takes the discovered default; a persisted thread with
     // no agent of its own stays on the fallback chain. Read after the last await
-    // so nothing can land between this and `createSession`. The store copy covers
-    // discovery that wrote its rows after `getAllSystemAgents` read them.
+    // so nothing can land between this and `createSession`. Once discovery has
+    // answered, its result wins over `agents_system` rows read before it wrote or
+    // cleared them; until then the cached `is_default` row stands in.
+    const { agentDiscovery } = useChatStore.getState()
     const discoveredDefaultRowId = systemAgentRows.find((row) => row.isDefault === 1)?.id
     const discoveredDefaultAgent = chatThread
       ? undefined
-      : (useChatStore.getState().discoveredDefaultAgent ??
-        allAgents.find((agent) => agent.id === discoveredDefaultRowId))
+      : agentDiscovery.status === 'done'
+        ? (agentDiscovery.defaultAgent ?? undefined)
+        : allAgents.find((agent) => agent.id === discoveredDefaultRowId)
     const selectedAgent = resolveSessionAgent(allAgents, {
       threadAgentId: chatThread?.agentId,
       lastUsedAgentId: settings.selectedAgent,

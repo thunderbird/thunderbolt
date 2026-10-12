@@ -60,6 +60,10 @@ msgstr[2] "# outils"
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: src/components/chat/chat-prompt-input.tsx
+msgid "{agentName} can't take attachments. Remove the attached files to send."
+msgstr "{agentName} n'accepte pas les pièces jointes. Retirez les fichiers joints pour envoyer."
+
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
 msgid "# chat"

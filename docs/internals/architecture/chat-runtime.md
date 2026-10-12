@@ -43,9 +43,11 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    a first-time visitor lands on the default, and `disableBuiltInAgent`
    deployments and deleted custom agents degrade quietly. Discovery can finish
    while a new chat is hydrating or after it has resolved its agent, as on a
-   first visit. `applyDiscoveredDefaultAgent` keeps the default (or its
-   absence, after a 401/403) in the chat store, which hydration reads after its
-   last await, and re-runs `resolveSessionAgent` against the refreshed agent
+   first visit. `applyDiscoveredDefaultAgent` records the result in the chat
+   store's `agentDiscovery` (`pending` until discovery first answers, then
+   `done` with the default or `null` after a 401/403 or none named), which
+   hydration reads after its last await: `done` wins over the cached
+   `is_default` row, and only `pending` falls back to it. It also re-runs `resolveSessionAgent` against the refreshed agent
    list for chats with no thread row, no messages, and no agent or model the
    user picked in them (`agentChosenByUser`).
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:

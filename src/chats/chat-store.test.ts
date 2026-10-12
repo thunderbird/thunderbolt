@@ -569,10 +569,10 @@ describe('chat-store', () => {
 
       it('records the discovered default for chats that hydrate later, and forgets it on null', () => {
         useChatStore.getState().applyDiscoveredDefaultAgent(hostedDefault, [builtInAgent, hostedDefault], {})
-        expect(useChatStore.getState().discoveredDefaultAgent?.id).toBe(hostedDefault.id)
+        expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: hostedDefault })
 
         useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
-        expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+        expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: null })
       })
 
       it('moves unstarted chats off a cleared default through the fallback chain, but not picked ones', async () => {

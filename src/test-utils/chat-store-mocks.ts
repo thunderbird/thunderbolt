@@ -226,7 +226,7 @@ export const resetStore = () => {
     getMcpClients: () => [],
     models: [],
     sessions: new Map(),
-    discoveredDefaultAgent: null,
+    agentDiscovery: { status: 'pending' },
   })
 }
 

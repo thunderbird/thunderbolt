@@ -954,6 +954,21 @@ describe('createChatInstance — retry policy', () => {
     expect(savedMessage?.metadata?.debugTranscript?.engine).toBe('legacy')
   })
 
+  it.each([
+    ['managed-http', 'hosted'],
+    ['remote-acp', 'acp'],
+  ] as const)('keeps a %s turn stamped as engine %p once it finishes', async (type, engine) => {
+    const saveMessages = mock(async (_input: Parameters<SaveMessagesFunction>[0]) => {})
+    const { finishSuccessfully, instance } = createRetryHarness(saveMessages)
+    useChatStore.getState().updateSession(sessionId, { selectedAgent: { ...builtInAgent, type } })
+    setDebugTranscriptCaptureEnabled(true)
+
+    await instance.sendMessage({ text: 'route this turn' })
+    await finishSuccessfully()
+
+    expect(saveMessages.mock.calls[0]?.[0].messages[0]?.metadata?.debugTranscript?.engine).toBe(engine)
+  })
+
   it('starts stamping only new messages after capture is enabled mid-session', async () => {
     const { instance, sendMessage } = createRetryHarness()
     setDebugTranscriptCaptureEnabled(false)

@@ -83,7 +83,7 @@ describe('useBootstrapSystemAgents', () => {
     await act(async () => {})
 
     expect(refresh).toHaveBeenCalledTimes(1)
-    expect(useChatStore.getState().discoveredDefaultAgent).toEqual(hostedAgent)
+    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: hostedAgent })
     expect(agentOfUnstartedChat()).toBe(hostedAgent.id)
   })
 
@@ -132,7 +132,7 @@ describe('useBootstrapSystemAgents', () => {
 
     expect(signals[0]!.aborted).toBe(true)
     expect(signals[1]!.aborted).toBe(false)
-    expect(useChatStore.getState().discoveredDefaultAgent).toEqual(hostedAgent)
+    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: hostedAgent })
   })
 
   it('moves unstarted chats off the old default when discovery answers 403', async () => {
@@ -146,7 +146,7 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: null })
     expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
   })
 
@@ -161,7 +161,7 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(useChatStore.getState().discoveredDefaultAgent).toBeNull()
+    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: null })
     expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
   })
 

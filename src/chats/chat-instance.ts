@@ -690,7 +690,7 @@ export const createChatInstance = (
     }
     turn.agentId = session.selectedAgent.id
     if (!isBuiltInAgent(session.selectedAgent)) {
-      turn.engine = 'acp'
+      turn.engine = debugTranscriptEngineFor(session.selectedAgent, undefined)
       turn.traceId = uuidv7()
       return
     }

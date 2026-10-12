@@ -44,12 +44,15 @@ Entry is `src/chats/detail.tsx` → `useHydrateChatStore` → `createChatInstanc
    deployments and deleted custom agents degrade quietly. Discovery can finish
    while a new chat is hydrating or after it has resolved its agent, as on a
    first visit. `applyDiscoveredDefaultAgent` records the result in the chat
-   store's `agentDiscovery` (`pending` until discovery first answers, then
-   `done` with the default or `null` after a 401/403 or none named), which
-   hydration reads after its last await: `done` wins over the cached
-   `is_default` row, and only `pending` falls back to it. It also re-runs `resolveSessionAgent` against the refreshed agent
-   list for chats with no thread row, no messages, and no agent or model the
-   user picked in them (`agentChosenByUser`).
+   store's `agentDiscovery`: `pending` from the start of each discovery run (a new
+   account or server resets it), then `done` with the default, or `null` after a
+   401/403 or none named, plus the agent list that run loaded. Hydration reads it
+   after its last await: `done` wins over the cached `is_default` row and adds its
+   list to the agents hydration read, and only `pending` falls back to the row. A
+   default is taken only when it is one of those agents. It also re-runs
+   `resolveSessionAgent` against the refreshed agent list for chats with no
+   thread row, no messages, and no agent or model the user picked in them
+   (`agentChosenByUser`).
 2. **Send.** `createChatInstance` overrides `instance.sendMessage`:
    `startNewTurn()` (cancel any pending auto-retry, mint a turn budget and
    telemetry, clear the Stop suppression), reject a model whose confidentiality

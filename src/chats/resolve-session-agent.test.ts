@@ -43,6 +43,12 @@ describe('resolveSessionAgent', () => {
     expect(resolveSessionAgent(agents, { discoveredDefaultAgent: agentWithId('discovered') }).id).toBe('discovered')
   })
 
+  it('skips a discovered default that is not one of the available agents', () => {
+    // An answer from another account or server, naming an agent this list doesn't have.
+    const candidates = { discoveredDefaultAgent: agentWithId('other-server-agent') }
+    expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates).id).toBe('first-system')
+  })
+
   it('falls back past ids that no longer resolve to the first available agent', () => {
     const candidates = { threadAgentId: 'deleted', lastUsedAgentId: 'gone' }
     expect(resolveSessionAgent(agentsWithoutBuiltIn, candidates).id).toBe('first-system')

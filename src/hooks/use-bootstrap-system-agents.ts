@@ -68,6 +68,8 @@ export const useBootstrapSystemAgents = ({ refresh = refreshSystemAgents }: UseB
     // Signing in re-runs this while the anonymous refresh may still be in flight.
     // Aborting it stops its late response (a 403 that clears the table, or a
     // smaller anonymous list) from overwriting what the signed-in refresh wrote.
+    // Until this run answers, the last account's or server's result must not stand in for it.
+    useChatStore.getState().resetAgentDiscovery()
     const controller = new AbortController()
     const { signal } = controller
     const run = async () => {

@@ -442,6 +442,17 @@ describe('useHydrateChatStore', () => {
       expect(getCurrentSession()?.selectedAgent.id).toBe(builtInAgent.id)
     })
 
+    it('uses the cached default row again once discovery restarts for a new account or server', async () => {
+      await seedDiscoveredDefault()
+      // The previous server answered 403; the run for the new one has just started.
+      useChatStore.getState().applyDiscoveredDefaultAgent(null, [builtInAgent], {})
+      useChatStore.getState().resetAgentDiscovery()
+
+      await hydrateNewChat()
+
+      expect(getCurrentSession()?.selectedAgent.id).toBe('hosted-agent')
+    })
+
     it('opens a first-time visitor with no last-used agent on the agent discovery names as default', async () => {
       await seedDiscoveredDefault()
 

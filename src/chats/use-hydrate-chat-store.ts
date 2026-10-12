@@ -251,7 +251,12 @@ export const useHydrateChatStore = ({
       : agentDiscovery.status === 'done'
         ? (agentDiscovery.defaultAgent ?? undefined)
         : allAgents.find((agent) => agent.id === discoveredDefaultRowId)
-    const selectedAgent = resolveSessionAgent(allAgents, {
+    // A finished discovery's own list covers agents its write added after the read above.
+    const knownAgents =
+      agentDiscovery.status === 'done'
+        ? [...allAgents, ...agentDiscovery.agents.filter((agent) => !allAgents.some(({ id }) => id === agent.id))]
+        : allAgents
+    const selectedAgent = resolveSessionAgent(knownAgents, {
       threadAgentId: chatThread?.agentId,
       lastUsedAgentId: settings.selectedAgent,
       hasModelPick: !!settings.selectedModel,

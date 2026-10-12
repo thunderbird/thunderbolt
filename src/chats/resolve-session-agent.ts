@@ -29,7 +29,9 @@ export type AgentPreference = {
  *
  * Callers pass `discoveredDefaultAgent` for a brand-new chat only: a persisted
  * thread with no agent of its own (automation runs, threads from before
- * `agent_id` existed) stays on the fallback chain.
+ * `agent_id` existed) stays on the fallback chain. It is taken only when it is
+ * one of `allAgents`, so a stale default from another account or server falls
+ * through.
  */
 export const resolveSessionAgent = (
   allAgents: Agent[],
@@ -41,7 +43,7 @@ export const resolveSessionAgent = (
     findAgent(candidates.threadAgentId) ??
     findAgent(candidates.lastUsedAgentId) ??
     (candidates.hasModelPick ? findAgent(builtInAgent.id) : undefined) ??
-    candidates.discoveredDefaultAgent ??
+    findAgent(candidates.discoveredDefaultAgent?.id) ??
     allAgents[0] ??
     builtInAgent
   )

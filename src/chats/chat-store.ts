@@ -132,11 +132,15 @@ type ChatStoreState = {
 }
 
 /**
- * `pending` until discovery first answers this session, so hydration falls back to
- * the cached `is_default` row (a returning visitor). `done` once it has, and then
- * its `defaultAgent` wins over that row, including a `null` that cleared it.
+ * `pending` until the current discovery run answers, so hydration falls back to
+ * the cached `is_default` row (a returning visitor). It goes back to `pending`
+ * whenever a run starts for a new account or server, so the last one's answer is
+ * never taken for this one's. `done` once the run has answered: its
+ * `defaultAgent` wins over the row, including a `null` that cleared it, and
+ * `agents` is the list it loaded after writing its rows, which hydration's own
+ * read may predate.
  */
-type AgentDiscovery = { status: 'pending' } | { status: 'done'; defaultAgent: Agent | null }
+type AgentDiscovery = { status: 'pending' } | { status: 'done'; defaultAgent: Agent | null; agents: Agent[] }
 
 type ChatStoreActions = {
   allowAlwaysForAgent(agentId: string): void
@@ -150,6 +154,8 @@ type ChatStoreActions = {
    *  resolved its agent, as on a first visit, or seed an agent the user's synced
    *  pick names. Chats whose agent or model the user picked are left alone. */
   applyDiscoveredDefaultAgent(defaultAgent: Agent | null, agents: Agent[], preference: AgentPreference): void
+  /** Put discovery back to `pending` as a run starts for a new account or server. */
+  resetAgentDiscovery(): void
   cancelPendingPermissionsForAgent(agentId: string): void
   isAlwaysAllowed(agentId: string, toolKey: string): boolean
   setCurrentSessionId(id: string): void
@@ -254,8 +260,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         nextSessions.set(session.id, { ...session, selectedAgent })
       }
     }
-    set({ agentDiscovery: { status: 'done', defaultAgent }, sessions: nextSessions })
+    set({ agentDiscovery: { status: 'done', defaultAgent, agents }, sessions: nextSessions })
   },
+
+  resetAgentDiscovery: () => set({ agentDiscovery: { status: 'pending' } }),
 
   cancelPendingPermissionsForAgent: (agentId) => {
     const matching = [...get().sessions.entries()].filter(

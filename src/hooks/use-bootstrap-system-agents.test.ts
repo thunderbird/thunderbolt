@@ -10,6 +10,7 @@ import { useChatStore } from '@/chats/chat-store'
 import { updateSettings } from '@/dal/settings'
 import { resetTestDatabase, setupTestDatabase, teardownTestDatabase } from '@/dal/test-utils'
 import { getDb } from '@/db/database'
+import { agentsSystemTable } from '@/db/tables'
 import type { RefreshSystemAgentsResult } from '@/db/seeding/seed-agents'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import { createMockAuthClient } from '@/test-utils/auth-client'
@@ -32,6 +33,18 @@ const hostedAgent: Agent = {
   deletedAt: null,
   userId: null,
 }
+
+/** The hosted agent's `agents_system` row, as discovery writes it. */
+const seedHostedAgentRow = () =>
+  getDb().insert(agentsSystemTable).values({
+    id: hostedAgent.id,
+    name: hostedAgent.name,
+    type: 'managed-http',
+    transport: 'http',
+    url: '/v1/agent/chat',
+    fetchedAt: new Date().toISOString(),
+    isDefault: 1,
+  })
 
 const refreshed: RefreshSystemAgentsResult = {
   refreshed: true,
@@ -74,7 +87,11 @@ const agentOfUnstartedChat = () => useChatStore.getState().sessions.get('unstart
 describe('useBootstrapSystemAgents', () => {
   it('runs discovery for an anonymous session and applies the discovered default', async () => {
     hydrateUnstartedChat()
-    const refresh = mock(async () => refreshed)
+    // A real refresh writes the row it names as the default.
+    const refresh = mock(async () => {
+      await seedHostedAgentRow()
+      return refreshed
+    })
 
     renderHook(() => useBootstrapSystemAgents({ refresh }), {
       wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
@@ -83,7 +100,7 @@ describe('useBootstrapSystemAgents', () => {
     await act(async () => {})
 
     expect(refresh).toHaveBeenCalledTimes(1)
-    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: hostedAgent })
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done', defaultAgent: hostedAgent })
     expect(agentOfUnstartedChat()).toBe(hostedAgent.id)
   })
 
@@ -132,7 +149,7 @@ describe('useBootstrapSystemAgents', () => {
 
     expect(signals[0]!.aborted).toBe(true)
     expect(signals[1]!.aborted).toBe(false)
-    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: hostedAgent })
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done', defaultAgent: hostedAgent })
   })
 
   it('moves unstarted chats off the old default when discovery answers 403', async () => {
@@ -146,7 +163,7 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: null })
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done', defaultAgent: null })
     expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
   })
 
@@ -161,7 +178,7 @@ describe('useBootstrapSystemAgents', () => {
 
     await act(async () => {})
 
-    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'done', defaultAgent: null })
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done', defaultAgent: null })
     expect(agentOfUnstartedChat()).toBe('thunderbolt-built-in')
   })
 
@@ -214,6 +231,33 @@ describe('useBootstrapSystemAgents', () => {
 
     expect(logError).toHaveBeenCalledWith('Failed to apply agent discovery', failure)
     logError.mockRestore()
+  })
+
+  it('puts discovery back to pending when the server changes, until the new answer lands', async () => {
+    const settleSecond: { resolve?: (result: RefreshSystemAgentsResult) => void } = {}
+    const refresh = mock((_db: unknown, _client: unknown, _signal?: AbortSignal) =>
+      refresh.mock.calls.length === 1
+        ? Promise.resolve<RefreshSystemAgentsResult>({ refreshed: false, reason: 'unauthenticated' })
+        : new Promise<RefreshSystemAgentsResult>((resolve) => {
+            settleSecond.resolve = resolve
+          }),
+    )
+    renderHook(() => useBootstrapSystemAgents({ refresh }), {
+      wrapper: createTestProvider({ authClient: createMockAuthClient({ session: anonymousSession }) }),
+    })
+    await act(async () => {})
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done', defaultAgent: null })
+
+    await act(async () => {
+      useLocalSettingsStore.setState({ cloudUrl: 'https://other-server.example/v1' })
+    })
+
+    // The old server's 403 must not stand in for the new server's answer.
+    expect(useChatStore.getState().agentDiscovery).toEqual({ status: 'pending' })
+    await act(async () => {
+      settleSecond.resolve!({ refreshed: true, wireIdentityChangedAgents: [], defaultAgent: null })
+    })
+    expect(useChatStore.getState().agentDiscovery).toMatchObject({ status: 'done' })
   })
 
   it('skips discovery without a session', () => {

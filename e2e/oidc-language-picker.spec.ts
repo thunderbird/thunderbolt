@@ -161,6 +161,9 @@ const openLocalizationSettings = async (page: Page) => {
 const pickGerman = async (page: Page) => {
   await page.getByTestId('language').click()
   await page.getByRole('option', { name: 'Deutsch' }).click()
+  // The Select hands focus back to its trigger after its close animation;
+  // anything opened before then gets that focus pulled out from under it.
+  await expect(page.getByTestId('language')).toBeFocused()
   await expect(page.getByText(de.localization)).toBeVisible()
   await expect(page.locator(`label[aria-label="${de.modifiedItem}"]`).filter({ hasText: de.language })).toBeVisible()
 }

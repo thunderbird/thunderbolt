@@ -32,14 +32,21 @@ describe('clearLocalData', () => {
     mock.restore()
   })
 
-  it('forgets image-support results along with the local database', async () => {
+  it('forgets image-support results and web storage along with the local database', async () => {
+    localStorage.setItem('oauth_flow_state', 'x')
+    sessionStorage.setItem('oauth_connecting', 'x')
     await clearLocalData({ ...onlyLocalSteps, clearDatabase: true })
     expect(getCachedImageSupport(llava)).toBeUndefined()
+    expect(localStorage.length).toBe(0)
+    expect(sessionStorage.length).toBe(0)
   })
 
   it('keeps them when the database stays ("Leave data on device")', async () => {
+    localStorage.setItem('oauth_flow_state', 'x')
     await clearLocalData({ ...onlyLocalSteps, clearDatabase: false })
     expect(getCachedImageSupport(llava)).toBe('supported')
+    expect(localStorage.getItem('oauth_flow_state')).toBe('x')
+    localStorage.removeItem('oauth_flow_state')
   })
 })
 

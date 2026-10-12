@@ -965,7 +965,9 @@ export const createEncryptionRoutes = (
         }
         if (device.revokedAt != null) {
           set.status = 403
-          return { error: 'Device has been revoked' }
+          // The code is what tells the approval poll this is revocation and not the
+          // transient unbound-session 403 above — the client wipes the device on it.
+          return { error: 'Device has been revoked', code: 'DEVICE_DISCONNECTED' }
         }
 
         // Device was denied or cancelled — not pending, not trusted, not revoked

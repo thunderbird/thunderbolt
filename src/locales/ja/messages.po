@@ -536,6 +536,7 @@ msgid "Available tools:"
 msgstr "利用できるツール:"
 
 #: src/components/account-deleted.tsx
+#: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "アプリに戻る"
@@ -873,7 +874,6 @@ msgid "Configuration"
 msgstr "構成"
 
 #: src/components/modification-indicator.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Confirm"
 msgstr "確認"
 
@@ -1364,7 +1364,6 @@ msgid "Delete Chat"
 msgstr "チャットを削除"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Delete data from device"
 msgstr "デバイスからデータを削除"
 
@@ -1418,7 +1417,6 @@ msgid "Delete your account?"
 msgstr "アカウントを削除しますか？"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 #: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
@@ -1471,7 +1469,7 @@ msgstr "説明"
 msgid "Dev Settings"
 msgstr "開発者設定"
 
-#: src/components/revoked-device-modal.tsx
+#: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr "デバイスのアクセスを取り消しました"
 
@@ -2190,8 +2188,8 @@ msgid "Keep Current Units"
 msgstr "現在の単位を維持"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Keep data on device"
-msgstr "データをデバイスに残す"
+#~ msgid "Keep data on device"
+#~ msgstr "データをデバイスに残す"
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -3086,7 +3084,6 @@ msgstr "削除"
 #~ msgstr ""
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "このデバイスからすべてのチャット、設定、キャッシュデータを削除します。"
 
@@ -3653,8 +3650,8 @@ msgid "Signed Out"
 msgstr "サインアウトしました"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out…"
-msgstr "サインアウトしています…"
+#~ msgid "Signing out…"
+#~ msgstr "サインアウトしています…"
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -3969,7 +3966,11 @@ msgstr ""
 #~ msgstr "デバイスはサインアウトされ、次回の同期時にローカルデータが消去されます。同期を利用するには、このデバイスで再度サインインする必要があります。"
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -4055,8 +4056,8 @@ msgid "This device has been approved and sync is now enabled across your devices
 msgstr "このデバイスは承認され、すべてのデバイスで同期が有効になりました。"
 
 #: src/components/revoked-device-modal.tsx
-msgid "This device has been signed out remotely. Choose what to do with your local data."
-msgstr "このデバイスはリモートからサインアウトされました。ローカルデータをどうするか選択してください。"
+#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
+#~ msgstr "このデバイスはリモートからサインアウトされました。ローカルデータをどうするか選択してください。"
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4064,6 +4065,10 @@ msgstr "このデバイスはまだ承認されていません。先に信頼済
 
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
+#: src/components/device-revoked.tsx
+msgid "This device was signed out remotely and its local data has been cleared."
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -4854,8 +4859,8 @@ msgid "Your chats and settings will remain on this device for next time."
 msgstr "チャットと設定は次回のためにこのデバイスに残ります。"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Your chats and settings will remain on this device for offline use."
-msgstr "チャットと設定はオフラインで使えるようにこのデバイスに残ります。"
+#~ msgid "Your chats and settings will remain on this device for offline use."
+#~ msgstr "チャットと設定はオフラインで使えるようにこのデバイスに残ります。"
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

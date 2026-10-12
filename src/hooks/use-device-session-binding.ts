@@ -41,7 +41,7 @@ export const useDeviceSessionBinding = (): void => {
       // DEVICE_NOT_BOUND, which `connector.ts` rightly treats as a retryable
       // defer because that is what it means for every other device. This is the
       // one place the difference is visible, so it hands off to the revocation
-      // flow and lets the user choose what happens to their local data.
+      // flow, which clears the device.
       const body =
         error instanceof HttpError && error.response.status === 403
           ? ((await error.response

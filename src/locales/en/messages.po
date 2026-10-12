@@ -548,6 +548,7 @@ msgid "Available tools:"
 msgstr "Available tools:"
 
 #: src/components/account-deleted.tsx
+#: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "Back to App"
@@ -885,7 +886,6 @@ msgid "Configuration"
 msgstr "Configuration"
 
 #: src/components/modification-indicator.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Confirm"
 msgstr "Confirm"
 
@@ -1376,7 +1376,6 @@ msgid "Delete Chat"
 msgstr "Delete Chat"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Delete data from device"
 msgstr "Delete data from device"
 
@@ -1430,7 +1429,6 @@ msgid "Delete your account?"
 msgstr "Delete your account?"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 #: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
@@ -1483,7 +1481,7 @@ msgstr "Description"
 msgid "Dev Settings"
 msgstr "Dev Settings"
 
-#: src/components/revoked-device-modal.tsx
+#: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr "Device access revoked"
 
@@ -2202,8 +2200,8 @@ msgid "Keep Current Units"
 msgstr "Keep Current Units"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Keep data on device"
-msgstr "Keep data on device"
+#~ msgid "Keep data on device"
+#~ msgstr "Keep data on device"
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -3098,7 +3096,6 @@ msgstr "Remove"
 #~ msgstr "Remove {name}"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "Remove all chats, settings, and cached data from this device."
 
@@ -3665,8 +3662,8 @@ msgid "Signed Out"
 msgstr "Signed Out"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out…"
-msgstr "Signing out…"
+#~ msgid "Signing out…"
+#~ msgstr "Signing out…"
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -3981,8 +3978,12 @@ msgstr "The device lost access, but your account key was not replaced, so it can
 #~ msgstr "The device will be signed out and its local data will be cleared on next sync. This device will need to sign in again to use sync."
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
-msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgstr "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
+msgstr "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
 
 #: src/components/chat/error-message.tsx
 msgid "The instructions from your skills or project are too long for this agent. Shorten a long skill or the project's instructions, then try again."
@@ -4067,8 +4068,8 @@ msgid "This device has been approved and sync is now enabled across your devices
 msgstr "This device has been approved and sync is now enabled across your devices."
 
 #: src/components/revoked-device-modal.tsx
-msgid "This device has been signed out remotely. Choose what to do with your local data."
-msgstr "This device has been signed out remotely. Choose what to do with your local data."
+#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
+#~ msgstr "This device has been signed out remotely. Choose what to do with your local data."
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4077,6 +4078,10 @@ msgstr "This device has not been approved yet. Please approve it from a trusted 
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
 msgstr "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+
+#: src/components/device-revoked.tsx
+msgid "This device was signed out remotely and its local data has been cleared."
+msgstr "This device was signed out remotely and its local data has been cleared."
 
 #: src/settings/preferences.tsx
 msgid "This file doesn't look like a Thunderbolt export."
@@ -4866,8 +4871,8 @@ msgid "Your chats and settings will remain on this device for next time."
 msgstr "Your chats and settings will remain on this device for next time."
 
 #: src/components/revoked-device-modal.tsx
-msgid "Your chats and settings will remain on this device for offline use."
-msgstr "Your chats and settings will remain on this device for offline use."
+#~ msgid "Your chats and settings will remain on this device for offline use."
+#~ msgstr "Your chats and settings will remain on this device for offline use."
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

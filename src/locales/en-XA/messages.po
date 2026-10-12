@@ -548,6 +548,7 @@ msgid "Available tools:"
 msgstr ""
 
 #: src/components/account-deleted.tsx
+#: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr ""
@@ -885,7 +886,6 @@ msgid "Configuration"
 msgstr ""
 
 #: src/components/modification-indicator.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Confirm"
 msgstr ""
 
@@ -1376,7 +1376,6 @@ msgid "Delete Chat"
 msgstr ""
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Delete data from device"
 msgstr ""
 
@@ -1430,7 +1429,6 @@ msgid "Delete your account?"
 msgstr ""
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 #: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
@@ -1483,7 +1481,7 @@ msgstr ""
 msgid "Dev Settings"
 msgstr ""
 
-#: src/components/revoked-device-modal.tsx
+#: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr ""
 
@@ -2202,8 +2200,8 @@ msgid "Keep Current Units"
 msgstr ""
 
 #: src/components/revoked-device-modal.tsx
-msgid "Keep data on device"
-msgstr ""
+#~ msgid "Keep data on device"
+#~ msgstr ""
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -3098,7 +3096,6 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr ""
 
@@ -3665,8 +3662,8 @@ msgid "Signed Out"
 msgstr ""
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out…"
-msgstr ""
+#~ msgid "Signing out…"
+#~ msgstr ""
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -3981,7 +3978,11 @@ msgstr ""
 #~ msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -4067,8 +4068,8 @@ msgid "This device has been approved and sync is now enabled across your devices
 msgstr ""
 
 #: src/components/revoked-device-modal.tsx
-msgid "This device has been signed out remotely. Choose what to do with your local data."
-msgstr ""
+#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
+#~ msgstr ""
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4076,6 +4077,10 @@ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
+#: src/components/device-revoked.tsx
+msgid "This device was signed out remotely and its local data has been cleared."
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -4866,8 +4871,8 @@ msgid "Your chats and settings will remain on this device for next time."
 msgstr ""
 
 #: src/components/revoked-device-modal.tsx
-msgid "Your chats and settings will remain on this device for offline use."
-msgstr ""
+#~ msgid "Your chats and settings will remain on this device for offline use."
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

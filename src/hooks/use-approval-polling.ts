@@ -17,7 +17,8 @@ type UseApprovalPollingOptions = {
 /**
  * Polls to detect when this device has been approved by a trusted device.
  * Calls `checkApproval` at a regular interval; on success, fires `onApproved`.
- * If a 403 is received (device revoked), fires `onRevoked` and stops polling.
+ * A 403 carrying `DEVICE_DISCONNECTED` (device revoked) fires `onRevoked` and stops polling.
+ * Any other 403 — a session not yet bound to this device — is transient and keeps polling.
  * Other errors are silently ignored — the manual Continue button serves as fallback.
  */
 export const useApprovalPolling = ({
@@ -65,7 +66,14 @@ export const useApprovalPolling = ({
         }
       } catch (err) {
         if (err instanceof HttpError && !cancelled) {
-          if (err.response.status === 403) {
+          const body =
+            err.response.status === 403
+              ? ((await err.response
+                  .clone()
+                  .json()
+                  .catch(() => null)) as { code?: string } | null)
+              : null
+          if (body?.code === 'DEVICE_DISCONNECTED') {
             clearInterval(intervalId)
             setIsPolling(false)
             onRevokedRef.current?.()

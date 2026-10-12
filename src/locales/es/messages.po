@@ -560,6 +560,7 @@ msgid "Available tools:"
 msgstr "Herramientas disponibles:"
 
 #: src/components/account-deleted.tsx
+#: src/components/device-revoked.tsx
 #: src/components/not-found.tsx
 msgid "Back to App"
 msgstr "Volver a la app"
@@ -897,7 +898,6 @@ msgid "Configuration"
 msgstr "Configuración"
 
 #: src/components/modification-indicator.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Confirm"
 msgstr "Confirmar"
 
@@ -1388,7 +1388,6 @@ msgid "Delete Chat"
 msgstr "Eliminar chat"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Delete data from device"
 msgstr "Eliminar los datos del dispositivo"
 
@@ -1442,7 +1441,6 @@ msgid "Delete your account?"
 msgstr "¿Eliminar tu cuenta?"
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 #: src/settings/account/delete-account-section.tsx
 #: src/settings/connections/index.tsx
 #: src/settings/models/index.tsx
@@ -1495,7 +1493,7 @@ msgstr "Descripción"
 msgid "Dev Settings"
 msgstr "Ajustes de desarrollo"
 
-#: src/components/revoked-device-modal.tsx
+#: src/components/device-revoked.tsx
 msgid "Device access revoked"
 msgstr "Acceso del dispositivo revocado"
 
@@ -2214,8 +2212,8 @@ msgid "Keep Current Units"
 msgstr "Mantener las unidades actuales"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Keep data on device"
-msgstr "Mantener los datos en el dispositivo"
+#~ msgid "Keep data on device"
+#~ msgstr "Mantener los datos en el dispositivo"
 
 #: src/skills/discard-create-dialog.tsx
 msgid "Keep editing"
@@ -3110,7 +3108,6 @@ msgstr "Quitar"
 #~ msgstr ""
 
 #: src/components/logout-modal.tsx
-#: src/components/revoked-device-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "Quitar todos los chats, ajustes y datos en caché de este dispositivo."
 
@@ -3677,8 +3674,8 @@ msgid "Signed Out"
 msgstr "Sesión cerrada"
 
 #: src/components/revoked-device-modal.tsx
-msgid "Signing out…"
-msgstr "Cerrando sesión…"
+#~ msgid "Signing out…"
+#~ msgstr "Cerrando sesión…"
 
 #: src/components/magic-link-verify.tsx
 msgid "Signing you in…"
@@ -3993,7 +3990,11 @@ msgstr ""
 #~ msgstr "Se cerrará la sesión del dispositivo y sus datos locales se borrarán en la próxima sincronización. Este dispositivo tendrá que volver a iniciar sesión para usar la sincronización."
 
 #: src/components/revoke-device-dialog.tsx
-msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgid "The device will be signed out and lose access to your synced data, and it will need to sign in again to use sync. Data already stored on it is not erased remotely — that device is asked whether to keep or delete its local copy. Your recovery phrase keeps working."
+#~ msgstr ""
+
+#: src/components/revoke-device-dialog.tsx
+msgid "The device will be signed out and lose access to your synced data. If it is online, its local copy is cleared; a device that is offline keeps what is already on it. Your recovery phrase keeps working."
 msgstr ""
 
 #: src/components/chat/error-message.tsx
@@ -4079,8 +4080,8 @@ msgid "This device has been approved and sync is now enabled across your devices
 msgstr "Este dispositivo se ha aprobado y la sincronización ya está activa en todos tus dispositivos."
 
 #: src/components/revoked-device-modal.tsx
-msgid "This device has been signed out remotely. Choose what to do with your local data."
-msgstr "Se ha cerrado la sesión de este dispositivo de forma remota. Elige qué hacer con tus datos locales."
+#~ msgid "This device has been signed out remotely. Choose what to do with your local data."
+#~ msgstr "Se ha cerrado la sesión de este dispositivo de forma remota. Elige qué hacer con tus datos locales."
 
 #: src/hooks/use-sync-setup.ts
 msgid "This device has not been approved yet. Please approve it from a trusted device first."
@@ -4088,6 +4089,10 @@ msgstr "Este dispositivo todavía no está aprobado. Apruébalo primero desde un
 
 #: src/settings/devices.tsx
 msgid "This device lost access, but your account key was not replaced — so it can still read data it already has, and anything written since. Finish securing your account to lock it out."
+msgstr ""
+
+#: src/components/device-revoked.tsx
+msgid "This device was signed out remotely and its local data has been cleared."
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -4878,8 +4883,8 @@ msgid "Your chats and settings will remain on this device for next time."
 msgstr "Tus chats y ajustes seguirán en este dispositivo para la próxima vez."
 
 #: src/components/revoked-device-modal.tsx
-msgid "Your chats and settings will remain on this device for offline use."
-msgstr "Tus chats y ajustes seguirán en este dispositivo para usarlos sin conexión."
+#~ msgid "Your chats and settings will remain on this device for offline use."
+#~ msgstr "Tus chats y ajustes seguirán en este dispositivo para usarlos sin conexión."
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Your deployment's server"

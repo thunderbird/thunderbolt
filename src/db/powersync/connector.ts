@@ -15,7 +15,7 @@ import { sanitizeErrorForTracking, trackSyncEvent } from './sync-tracker'
 /**
  * Dispatched when the backend rejects credentials. The detail.reason discriminates handling:
  * - 410 (account deleted), 409 + DEVICE_ID_TAKEN, 400 + DEVICE_ID_REQUIRED → full reset
- * - 403 + DEVICE_DISCONNECTED → open revoked-device modal, preserve local data
+ * - 403 + DEVICE_DISCONNECTED → full reset, then the device-revoked screen
  * - 401 (session expired) → open sign-in modal, preserve local data
  * - 403 + ANONYMOUS_SYNC_FORBIDDEN → backend says this session may not sync (e.g. anonymous user);
  *   we disable local sync via setSyncEnabled(false)

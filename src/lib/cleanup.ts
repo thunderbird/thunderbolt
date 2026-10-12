@@ -19,7 +19,7 @@ type ClearLocalDataOptions = {
   disableSync?: boolean
   /** Clear all encryption keys from IndexedDB + invalidate CK cache (default: true) */
   clearEncryptionKeys?: boolean
-  /** Delete the database and app files via resetAppDir (default: true) */
+  /** Delete the database, app files and all web storage (default: true) */
   clearDatabase?: boolean
   /** Clear auth token and device ID from localStorage (default: true) */
   clearAuth?: boolean
@@ -77,6 +77,15 @@ export const clearLocalData = async (options?: ClearLocalDataOptions): Promise<v
     clearActiveLocale()
     // Detection results describe this account's models, so they go with the database.
     clearImageSupportCache()
+
+    // Everything else in web storage — OAuth flow state, banners, in-flight markers —
+    // so the next load starts as a first visit.
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch (error) {
+      console.error('[clearLocalData] Failed to clear web storage:', error)
+    }
   }
 
   if (clearAuth) {

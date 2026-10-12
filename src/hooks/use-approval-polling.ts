@@ -73,6 +73,10 @@ export const useApprovalPolling = ({
                   .json()
                   .catch(() => null)) as { code?: string } | null)
               : null
+          // Reading the body awaited, so the effect may have been cleaned up meanwhile.
+          if (cancelled) {
+            return
+          }
           if (body?.code === 'DEVICE_DISCONNECTED') {
             clearInterval(intervalId)
             setIsPolling(false)

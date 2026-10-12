@@ -128,9 +128,9 @@ const settingsSchema = z
     powersyncInternalUrl: z.string().default(''),
     powersyncJwtKid: z.string().default(''),
     powersyncJwtSecret: z.string().default(''),
-    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us, so a
-    // revoked device keeps reading the sync stream until its current token expires. This value
-    // therefore *is* the post-revocation read window for downloads — keep it short.
+    // PowerSync verifies this JWT locally (signature + expiry) and never calls back to us. Revocation
+    // cuts the stream through the sync rules; this only bounds how long a device can keep
+    // reconnecting — keep it short.
     powersyncTokenExpirySeconds: z.coerce.number().int().positive().default(300),
 
     /**

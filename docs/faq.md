@@ -164,7 +164,7 @@ Ten active devices. Devices awaiting approval do not count against the limit.
 
 ### What happens if a device is lost or stolen?
 
-Revoke it from _Settings → Devices_ on another device. It can no longer ask for a new sync token, so an online device is cut off within 5 minutes and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
+Revoke it from _Settings → Devices_ on another device. An online device is cut off as soon as the revocation reaches the sync service, and an offline one when it reconnects. Its sign-in sessions end at once, and the account's keys are replaced so it cannot read anything written afterwards. That enrolment can never rejoin; re-admitting the same machine means setting it up again as a new device.
 
 Revocation is not a remote wipe. The device signs out and clears its local copy the next time it connects. One that never comes back online is never reached: whatever was on it stays readable until you wipe it through whatever endpoint management you already use.
 

@@ -211,6 +211,35 @@ describe('useApprovalPolling', () => {
     expect(onRevoked).not.toHaveBeenCalled()
   })
 
+  it('does not call onRevoked when cleanup happens while the 403 body is still being read', async () => {
+    // A body that stays open until the test closes it, so cleanup lands mid-read.
+    let bodyController: ReadableStreamDefaultController<Uint8Array>
+    const slowBody = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        bodyController = controller
+      },
+    })
+    const checkApproval = mock(() => Promise.reject(new HttpError(new Response(slowBody, { status: 403 }))))
+    const onRevoked = mock(() => {})
+
+    const { unmount } = renderHook(() =>
+      useApprovalPolling({ enabled: true, checkApproval, onApproved: () => {}, onRevoked, intervalMs: 50 }),
+    )
+
+    await act(async () => {
+      await getClock().tickAsync(60)
+    })
+
+    unmount()
+
+    await act(async () => {
+      bodyController!.enqueue(new TextEncoder().encode(JSON.stringify({ code: 'DEVICE_DISCONNECTED' })))
+      bodyController!.close()
+    })
+
+    expect(onRevoked).not.toHaveBeenCalled()
+  })
+
   it('does not call onApproved after cleanup even if check resolves', async () => {
     let resolveCheck: (value: boolean) => void
     const checkApproval = mock(

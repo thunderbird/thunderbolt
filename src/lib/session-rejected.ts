@@ -9,9 +9,10 @@ import { getAuthToken } from '@/lib/auth-token'
  * HttpClient (chat, voice, the built-in agent). Fires `session_expired`, whose
  * handler also asks whether this device was revoked.
  *
- * Status alone is not enough: the proxy relays upstream statuses verbatim, so a
- * provider's 401 for a bad API key must not sign the user out. Only our auth gate
- * pairs 401 with `UNAUTHENTICATED`. Reads a clone so the caller keeps the body.
+ * Our auth gate pairs 401 with `UNAUTHENTICATED`, so a provider's plain 401 for a bad
+ * API key doesn't sign the user out. The body alone can still be forged by an upstream
+ * the proxy relays, so the proxy only calls this for responses it didn't relay.
+ * Reads a clone so the caller keeps the body.
  */
 export const handleSessionRejected = async (response: Response): Promise<void> => {
   if (response.status !== 401 || !getAuthToken()) {

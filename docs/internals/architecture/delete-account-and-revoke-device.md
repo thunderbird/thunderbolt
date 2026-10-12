@@ -28,9 +28,9 @@ Both end the same way. Revocation is the action you take for a lost or stolen de
 2. `useRevokeDevice` (`src/hooks/use-revoke-device.ts`) runs `revokeDeviceAndRotate` (`src/services/encryption.ts`) on a device holding the account keys, and a bare `revokeDeviceWithProof` on a pre-E2EE account.
 3. `POST /v1/account/devices/:id/revoke` carries a `revoke` challenge proof signed with the canary-derived key; pre-E2EE accounts and v1 leftovers send none. In one transaction the backend deletes the device's envelope, sets `revoked_at`, and revokes that device's sessions. PowerSync syncs the row to all clients.
 4. `POST /v1/encryption/rotate` then replaces the account key and mints a new primary data key, with envelopes for every device except the revoked one. If it fails, the server reports the device as awaiting lockout and any trusted device can finish it ([e2e-encryption.md](e2e-encryption.md#device-revocation)).
-5. The revoked device resets on whichever comes first: the watched `revokedAt` on its synced row (`src/hooks/use-powersync-credentials-invalid-listener.ts:153-162`), or a **403** `code: 'DEVICE_DISCONNECTED'` on token refresh (`src/db/powersync/connector.ts:43-63`).
+5. The revoked device resets on whichever comes first: the watched `revokedAt` on its synced row, or a **403** `code: 'DEVICE_DISCONNECTED'`. Revocation deletes its sessions, so that 403 comes from the session check (`backend/src/auth/elysia-plugin.ts`): the app runs it on start while a session is stored, and once more after our backend answers with a 401, because a 401 alone can't tell an expired session from a revoked device. A device whose session had already expired before it was revoked only finds out when someone signs in on it.
 
-It clears everything — database, encryption keys, auth token, device id and web storage — and lands on `/device-revoked`. Anything still queued for upload is lost, since uploads from a revoked device are refused.
+It clears everything — database, attachments, encryption keys, auth token, device id and web storage — and lands on `/device-revoked`. Anything still queued for upload is lost, since uploads from a revoked device are refused.
 
 ## Backend Routes
 
@@ -54,31 +54,31 @@ Three properties of those routes drive the flows above:
 
 The connector maps a rejected token request to a `CredentialsInvalidReason` (`src/db/powersync/connector.ts:23-29`) and dispatches `powersync_credentials_invalid`; `usePowerSyncCredentialsInvalidListener` branches on it.
 
-| Reason                                  | What happens                                                           | What survives                         |
-| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| `account_deleted`                       | `clearLocalData()`, then `window.location.replace('/account-deleted')` | nothing local                         |
-| `device_id_taken`, `device_id_required` | the same reset, redirecting to `/`                                     | nothing local                         |
-| `device_revoked`                        | the same reset, redirecting to `/device-revoked`                       | nothing local                         |
-| `session_expired`                       | `clearAuthToken()`, `setSyncEnabled(false)`, sign-in modal             | database, encryption keys, device id  |
-| `sync_not_permitted`                    | `setSyncEnabled(false)` only                                           | everything, including the auth token  |
+| Reason                                  | What happens                                                           | What survives                        |
+| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------ |
+| `account_deleted`                       | `clearLocalData()`, then `window.location.replace('/account-deleted')` | nothing local                        |
+| `device_id_taken`, `device_id_required` | the same reset, redirecting to `/`                                     | nothing local                        |
+| `device_revoked`                        | the same reset, redirecting to `/device-revoked`                       | nothing local                        |
+| `session_expired`                       | `clearAuthToken()`, `setSyncEnabled(false)`, sign-in modal             | database, encryption keys, device id |
+| `sync_not_permitted`                    | `setSyncEnabled(false)` only                                           | everything, including the auth token |
 
-Revocation and deletion outrank session expiry: once a reset or the sign-in modal is under way, a later `session_expired` is ignored so no sign-in prompt lands on top of a reset. `sign_in_success` clears the latch after re-authentication, so a later expiry can prompt again (`src/hooks/use-powersync-credentials-invalid-listener.ts:85-139`).
+Revocation and deletion outrank session expiry: once a reset or the sign-in modal is under way, a later `session_expired` is ignored so no sign-in prompt lands on top of a reset. `sign_in_success` clears the latch after re-authentication, so a later expiry can prompt again (`src/hooks/use-powersync-credentials-invalid-listener.ts`).
 
-`clearLocalData` (`src/lib/cleanup.ts:33-87`) is the one teardown, shared by reset and sign-out. It always clears identity-scoped memory and disposes warm ACP adapters, then runs four independently skippable groups:
+`clearLocalData` (`src/lib/cleanup.ts`) is the one teardown, shared by reset and sign-out. It always clears identity-scoped memory and disposes warm ACP adapters, then runs four independently skippable groups:
 
 1. Disable sync.
 2. Wipe encryption keys.
-3. `resetAppDir()` plus the local-settings store, cached locale, and all of `localStorage` and `sessionStorage`.
+3. `resetAppDir()`, attachments, the local-settings store and cached locale, then — after group 4, so other tabs see the sign-out — all of `localStorage` and `sessionStorage`.
 4. Clear the auth token, device id, user cache secret, iroh client secret and cached session.
 
 Each step logs and continues on failure so one bad step can't strand the user half-signed-out. Callers navigate, not `clearLocalData`; reset uses `window.location.replace` rather than a reload so the cleared state isn't reachable with Back.
 
 ### Devices Watcher
 
-The listener also watches the current device's synced row via `useQuery` over `getDevice(deviceId)` (`src/hooks/use-powersync-credentials-invalid-listener.ts:77-80`):
+The listener also watches the current device's synced row via `useQuery` over `getDevice(deviceId)` (`src/hooks/use-powersync-credentials-invalid-listener.ts`):
 
 - **`revokedAt` set**: reset to `/device-revoked`, exactly as the 403 does. The row survives the revocation because it also rides the ungated `device_self` bucket.
-- **Row missing**: reset, but only if the row was already seen this session (`hadDeviceOnceRef`). On a cold start the devices table may not have synced yet, and treating that as "account deleted" would clear storage and sign the user out after an ordinary refresh (`:38-45`, `:142-168`).
+- **Row missing**: reset, but only if the row was already seen this session (`hadDeviceOnceRef`). On a cold start the devices table may not have synced yet, and treating that as "account deleted" would clear storage and sign the user out after an ordinary refresh.
 
 ### Settings > Devices Page
 

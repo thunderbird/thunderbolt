@@ -19,6 +19,7 @@
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
 import {
+  finalUrlHeader,
   passthroughPrefix,
   passthroughPrefixCased,
   proxyFramingHeaders,
@@ -29,9 +30,9 @@ import { encodeBase64Url } from '@shared/base64url'
 import { encodeWsBearer, wsBearerSubprotocolPrefix, wsCarrierSubprotocol } from '@shared/ws-bearer'
 import { appVersionHeader } from './app-version'
 import { handleAppVersionUnsupported } from './app-version-unsupported'
-import { handleSessionRejected } from '@/lib/session-rejected'
 import { getAuthToken } from './auth-token'
 import { getCapabilities, isTauri } from './platform'
+import { handleSessionRejected } from './session-rejected'
 
 const defaultIsStandalone = isTauri
 const defaultReadProxyEnabled = (): string | null =>
@@ -232,7 +233,11 @@ export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
     const f = options.fetchImpl ?? globalThis.fetch
     const proxyResponse = await f(proxyRequest)
     await raiseOuterHopVersionBlock(proxyResponse)
-    await handleSessionRejected(proxyResponse)
+    // The backend stamps the final-URL header on every response it relays from an
+    // upstream, so its absence is what proves this 401 came from our own auth gate.
+    if (!proxyResponse.headers.has(finalUrlHeader)) {
+      await handleSessionRejected(proxyResponse)
+    }
     return unwrapHostedResponse(proxyResponse)
   }
   return Object.assign(proxyFetch, { preconnect: () => Promise.resolve(false) })

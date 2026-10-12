@@ -94,7 +94,7 @@ Keep the entry bundle small by lazy-loading routes that aren't on the critical l
 - Chat (`ChatLayout`, `ChatDetailPage`) — the landing page must feel instant.
 - Layouts (`SettingsLayout`, `WaitlistLayout`) — chrome around their pages. Lazy-loading a layout creates a sequential waterfall (layout chunk → page chunk) before anything paints, and the layouts themselves are tiny.
 - `WaitlistPage` — one screen hosted directly by the static `WaitlistLayout`, so splitting it buys the same waterfall for a payload smaller than the chunk overhead.
-- Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
+- Small auth/error pages (`MagicLinkVerify`, `OAuthCallback`, `AccountDeleted`, `DeviceRevoked`, `SignedOut`, `NotFound`) — the per-chunk overhead exceeds their payload.
 
 **Lazy (`React.lazy(() => import(...))`):**
 

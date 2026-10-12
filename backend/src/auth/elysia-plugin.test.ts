@@ -180,6 +180,17 @@ describe('session check from a revoked device', () => {
     expect(response.status).toBe(403)
   })
 
+  it('only gates the session check, so a revoked device id cannot lock other auth routes', async () => {
+    const response = await handle.app.handle(
+      new Request('http://localhost/v1/api/auth/sign-out', {
+        method: 'POST',
+        headers: { ...authHeaders(handle.bearerToken), 'X-Device-ID': 'device-revoked' },
+      }),
+    )
+
+    expect(response.status).not.toBe(403)
+  })
+
   it('leaves an active device alone', async () => {
     const response = await getSession(handle, { ...authHeaders(handle.bearerToken), 'X-Device-ID': 'device-active' })
 

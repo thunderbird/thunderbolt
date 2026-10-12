@@ -216,7 +216,7 @@ user's conversations. What follows is about direct access to your own database a
 | ------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Turn sync on or off      | Settings → Preferences → Data | Off keeps everything local to that device                                                                                    |
 | Approve or deny a device | Settings → Devices            | An unapproved device cannot decrypt anything                                                                                 |
-| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. The user chooses whether the local data is wiped                            |
+| Revoke a device          | Settings → Devices            | Ends its sessions and replaces the keys it held. Its local data is cleared the next time it connects                         |
 | Export data              | Settings → Preferences → Data | A single JSON file with chats, settings, models, skills, and configuration                                                   |
 | Delete account           | Settings → Preferences → Data | Permanently deletes the account record on the server and everything synced with it. Other signed-in devices clear themselves |
 | Delete all local data    | Settings → Preferences → Data | Clears this device only. The account and anything already synced are untouched                                               |

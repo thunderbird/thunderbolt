@@ -4,10 +4,10 @@
 
 ## Two credentials, two directions
 
-| Direction | Endpoint                                  | Credential                                     | Isolation mechanism                                                                      |
-| --------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Direction | Endpoint                                  | Credential                                     | Isolation mechanism                                                      |
+| --------- | ----------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
 | Download  | The PowerSync service's own sync stream   | Short-lived JWT from `GET /v1/powersync/token` | Sync rules: every bucket's rows are `... WHERE user_id = bucket.user_id` |
-| Upload    | `PUT /v1/powersync/upload` on the backend | The ordinary app session                       | `applyOperation` (this document)                                                         |
+| Upload    | `PUT /v1/powersync/upload` on the backend | The ordinary app session                       | `applyOperation` (this document)                                         |
 
 - Upload resolves its user with `auth.api.getSession` in the Elysia `.derive` ([backend/src/api/powersync.ts:173-179](../../../backend/src/api/powersync.ts)); the PowerSync JWT plays no part in a write.
 - The download-side sync rules are duplicated across three configs ([powersync-service/config/config.yaml](../../../powersync-service/config/config.yaml), [deploy/config/powersync-config.yaml](../../../deploy/config/powersync-config.yaml), [deploy/k8s/templates/configmaps.yaml](../../../deploy/k8s/templates/configmaps.yaml)), so nothing in `backend/` enforces read isolation.

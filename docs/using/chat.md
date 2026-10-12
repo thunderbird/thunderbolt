@@ -59,7 +59,7 @@ Three consequences follow:
 
 - Attachments do not follow a conversation to your other devices. The message and the filename sync; the file itself does not. On a second device the model is told a file was attached and that it is unavailable there.
 - Attachments are not included in a data export. Export carries your conversations, not the files you attached to them.
-- Nothing inside the app removes an attached file once it has been sent. Deleting the conversation, signing out and deleting your account all leave it in local storage. Clearing site data (browser) or removing the app (desktop and mobile) is what clears it.
+- Deleting the conversation leaves an attached file in local storage. Signing out with **Delete data from device**, deleting your account, or having the device revoked clears it, as does clearing site data (browser) or removing the app (desktop and mobile).
 
 ### How a file reaches the model
 

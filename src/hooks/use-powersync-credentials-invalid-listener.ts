@@ -14,16 +14,16 @@ import { toCompilableQuery } from '@powersync/drizzle-driver'
 import { useQuery } from '@powersync/tanstack-react-query'
 import { useEffect, useRef } from 'react'
 
-/**
- * Full app reset when credentials are no longer valid: disable sync, wipe encryption keys,
- * the database and browser storage, then navigate away. Leaves a clean signed-out state.
- */
 /** Where each reset lands; every other reason goes to `/`. */
 const resetRedirects: Partial<Record<CredentialsInvalidReason, string>> = {
   account_deleted: '/account-deleted',
   device_revoked: '/device-revoked',
 }
 
+/**
+ * Full app reset when credentials are no longer valid: disable sync, wipe encryption keys,
+ * the database and browser storage, then navigate away. Leaves a clean signed-out state.
+ */
 const performCredentialsInvalidReset = async (
   redirectTo: string,
   clearLocalData: typeof defaultClearLocalData,

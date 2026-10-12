@@ -9,7 +9,6 @@ import { useSyncSetup } from '@/hooks/use-sync-setup'
 import { useApprovalPolling } from '@/hooks/use-approval-polling'
 import { checkApprovalAndUnwrap } from '@/services/encryption'
 import { cancelPending } from '@/api/encryption'
-import { powersyncCredentialsInvalid } from '@/db/powersync/connector'
 import { useHttpClient } from '@/contexts'
 import { RecoveryKeyDisplayStep } from './recovery-key-display-step'
 import { ApprovalWaitingStep } from './approval-waiting-step'
@@ -129,8 +128,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const handleRevoked = () => {
+    // The HttpClient has already turned the 403 into the revocation reset; just get out of its way.
     onOpenChange(false)
-    window.dispatchEvent(new CustomEvent(powersyncCredentialsInvalid, { detail: { reason: 'device_revoked' } }))
   }
 
   const handleDenied = () => {

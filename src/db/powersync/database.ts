@@ -461,8 +461,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Wait for PowerSync's priority-1 buckets to complete their initial sync (essentials —
-   * settings, models, model_profiles, devices, chat_threads). Lower-priority data
+   * Wait for PowerSync's priority-1 buckets to complete their initial sync (`user_essentials` —
+   * settings, models, model_profiles, devices, chat_threads — and `device_self`). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background.
    *
    * Resolves after initialSyncTimeoutMs if sync never completes (e.g. network down).

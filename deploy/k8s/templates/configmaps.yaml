@@ -22,9 +22,25 @@ data:
     sync_rules:
       content: |
         bucket_definitions:
+          # This device's own row only, ungated by revocation, so a revoked device
+          # still receives `revoked_at` after its other buckets drop. Parameters read
+          # the claim directly: a table query returns nothing until the row
+          # replicates, which would empty priority 1 on a brand-new device.
+          device_self:
+            priority: 1
+            parameters: SELECT request.jwt() ->> 'device_id' as device_id, request.user_id() as user_id
+            data:
+              # `user_id` is load-bearing, not belt-and-braces: it is what keeps the
+              # row scoped to its owner now that the bucket keys on device id.
+              - SELECT * FROM powersync.devices WHERE id = bucket.device_id AND user_id = bucket.user_id
           user_essentials:
             priority: 1
-            parameters: SELECT request.user_id() as user_id
+            # Second branch is a rollout fallback for a backend that does not stamp
+            # `device_id` yet; without it a claimless token matches nothing and wipes
+            # every client. Drop it once no deployment can still run that backend.
+            parameters:
+              - SELECT user_id FROM powersync.devices WHERE id = request.jwt() ->> 'device_id' AND user_id = request.user_id() AND revoked_at IS NULL
+              - SELECT request.user_id() as user_id WHERE request.jwt() ->> 'device_id' IS NULL
             data:
               - SELECT * FROM powersync.settings WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.models WHERE user_id = bucket.user_id
@@ -33,7 +49,9 @@ data:
               - SELECT * FROM powersync.chat_threads WHERE user_id = bucket.user_id
           user_data:
             priority: 2
-            parameters: SELECT request.user_id() as user_id
+            parameters:
+              - SELECT user_id FROM powersync.devices WHERE id = request.jwt() ->> 'device_id' AND user_id = request.user_id() AND revoked_at IS NULL
+              - SELECT request.user_id() as user_id WHERE request.jwt() ->> 'device_id' IS NULL
             data:
               - SELECT * FROM powersync.chat_messages WHERE user_id = bucket.user_id
               - SELECT * FROM powersync.tasks WHERE user_id = bucket.user_id

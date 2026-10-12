@@ -48,10 +48,13 @@ export const getPowerSyncDatabaseConfig = (
 const initialSyncTimeoutMs = 10_000
 
 /**
- * Sync rule priority we block app init on. Matches the `user_essentials` bucket in
- * `powersync-service/config/config.yaml` (and the PowerSync Cloud dashboard rules):
- * settings, models, model_profiles, devices, chat_threads. Lower-priority buckets
- * (chat_messages, tasks, etc.) stream in the background after the app is interactive.
+ * Sync rule priority we block app init on. Covers `user_essentials` (settings, models,
+ * model_profiles, devices, chat_threads) and `device_self` in
+ * `powersync-service/config/config.yaml`. Lower-priority buckets (chat_messages, tasks,
+ * etc.) stream in the background after the app is interactive.
+ *
+ * `device_self` is here so priority 1 is never empty: a revoked device loses every other
+ * bucket, and that one row is how it learns it was revoked.
  *
  * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
  * (see `SyncStatus.statusForPriority`).

@@ -40,6 +40,8 @@ Backend: primary keys and one `user_id` index per table. No composite foreign ke
 
    In each, add a line under `sync_rules.content` in `bucket_definitions.user_essentials.data` (latency-sensitive, priority 1) or `bucket_definitions.user_data.data` (the rest, priority 2), e.g. `- SELECT * FROM powersync.my_table WHERE user_id = bucket.user_id`.
 
+   Never add a table to `device_self`. That bucket delivers one row — the requesting device's own — to a device whose other buckets revocation has removed, so anything else put there would keep syncing to revoked devices.
+
 6. Run `bun db generate` and confirm `backend/drizzle/meta/_journal.json` gained the entry. Drizzle finds migrations through the journal, so an SQL file without one never runs.
 
 ### PR Flow for Adding Tables
@@ -80,9 +82,16 @@ POWERSYNC_JWT_KID=powersync-dev
 POWERSYNC_TOKEN_EXPIRY_SECONDS=300
 ```
 
-`POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to `300`. It is not just a refresh interval: PowerSync
-verifies the JWT locally and never calls back to the backend, so a revoked device keeps reading the
-sync stream until its current token expires. The TTL **is** the post-revocation read window.
+`POWERSYNC_TOKEN_EXPIRY_SECONDS` defaults to `300`. PowerSync verifies the JWT locally and never
+calls back to the backend, so the TTL used to be the entire post-revocation read window.
+
+It no longer is. The data buckets match only while the requesting device's row is unrevoked, and
+PowerSync re-resolves that as the `revoked_at` write replicates, so a connected device loses its
+buckets — and the rows in them — within replication latency. The TTL now only bounds how long a
+device can keep re-establishing a stream.
+
+This still is not a remote wipe: a device that is offline, or whose session is already dead, never
+receives the update.
 
 The local `config/config.yaml` uses HS256 with the same secret (base64) and kid, so backend-issued tokens are accepted.
 

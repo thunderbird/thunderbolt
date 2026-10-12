@@ -6,7 +6,7 @@
 
 | Direction | Endpoint                                  | Credential                                     | Isolation mechanism                                                                      |
 | --------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Download  | The PowerSync service's own sync stream   | Short-lived JWT from `GET /v1/powersync/token` | Sync rules: every bucket is `... WHERE user_id = bucket.user_id` off `request.user_id()` |
+| Download  | The PowerSync service's own sync stream   | Short-lived JWT from `GET /v1/powersync/token` | Sync rules: every bucket's rows are `... WHERE user_id = bucket.user_id` |
 | Upload    | `PUT /v1/powersync/upload` on the backend | The ordinary app session                       | `applyOperation` (this document)                                                         |
 
 - Upload resolves its user with `auth.api.getSession` in the Elysia `.derive` ([backend/src/api/powersync.ts:173-179](../../../backend/src/api/powersync.ts)); the PowerSync JWT plays no part in a write.

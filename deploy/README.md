@@ -667,14 +667,15 @@ The realm `thunderbolt` is auto-imported from `config/keycloak-realm.json` on fi
 
 Sync rules live in `config/powersync-config.yaml`, and the same rules are inlined in the Helm chart's ConfigMap (`k8s/templates/configmaps.yaml`). Both must be edited together — a table added to one and not the other syncs on one deployment path and silently not on the other.
 
-Two buckets split the tables by how soon the client needs them. Both are parameterised on `request.user_id()`, so every row is scoped to its owner.
-
 | Bucket            | Priority | Tables                                                            |
 | ----------------- | -------- | ----------------------------------------------------------------- |
+| `device_self`     | 1        | the requesting device's own `devices` row                         |
 | `user_essentials` | 1        | settings, models, model_profiles, devices, chat_threads           |
 | `user_data`       | 2        | chat_messages, tasks, prompts, skills, triggers, agents, projects |
 
 Priority 1 completes first, so a reconnecting device gets its settings, model list and thread index before the message bodies start arriving.
+
+Every row is still scoped to its owner, but the two data buckets reach `request.user_id()` through the requesting device's row rather than directly, and match only while that row is unrevoked — so revoking a device removes its buckets, and the data it already downloaded goes with them. `device_self` is deliberately not gated: it is how a revoked device finds out it was revoked after its other buckets disappear.
 
 The PowerSync JWT secret must match between the backend (`POWERSYNC_JWT_SECRET`) and the PowerSync config, where it is supplied base64-encoded as the JWK `k` value. The env var carrying it differs by path: `PS_JWT_KEY_BASE64` in `config/powersync-config.yaml` (Docker Compose and Fargate), `POWERSYNC_JWT_SECRET_B64` in the Helm ConfigMap, which reads it from the `powersync-jwt-secret-b64` entry of the `thunderbolt-secrets` Secret.
 
